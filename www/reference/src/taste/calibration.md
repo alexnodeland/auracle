@@ -16,12 +16,12 @@ proper scoring rule. Two failures, and the second is fatal here:
 
 **It cannot see sharpness.** A model that says 0.51 every time and is right 51%
 of the time scores identically to one that says 0.99 and is right 51% of the
-time. The second is wildly overconfident and accuracy cannot tell you.
+time. The second is wildly overconfident, and accuracy cannot say so.
 
 **It is pinned near 50% by the acquisition rule.** An information-seeking rule
 *deliberately* picks pairs near $p = 0.5$, because those are the questions
 worth asking. So the hit rate sits near chance **by construction**: a perfectly
-calibrated model looks like a coin flip, and the user concludes it is not
+calibrated model looks like a coin flip, and the player concludes it is not
 learning.
 
 <figure class="viz" data-viz="reliability">
@@ -36,15 +36,15 @@ moving, which is why it is the one on display.</figcaption>
 The second point is what makes accuracy harmful rather than merely crude: it
 penalizes the search for doing its job.
 
-`hit_rate` is still computed and shown, **only** so the interface can display
-how misleading it is next to the real number.
+`hit_rate` is still computed, **only** so a frontend could show how misleading
+it is next to the skill score. The app does not show it.
 
 ## Brier score and skill
 
 $$B = \frac{1}{n}\sum_{i} \big(p_i^{\text{chosen}} - 1\big)^2$$
 
 where $p^{\text{chosen}}$ is the probability the model gave to the option the
-user actually picked. Lower is better; $B = 0.25$ is what always saying 0.5
+player actually picked. Lower is better; $B = 0.25$ is what always saying 0.5
 scores.
 
 Reported as **skill** against that baseline:
@@ -79,15 +79,17 @@ questions* as a failure.
 The acquisition function chooses which duels get scored, which means overall
 skill is measured on a question set the model helped select. That is circular.
 
-So a fraction of duels are **drawn uniformly at random** and flagged
-`Forecast::random_check`. The app marks them **◇ unbiased probe**, and
-calibration restricted to those is unbiased:
+So one shown pair in ten (`duel_check_every`, 10, in `engine.rs`) is **drawn
+uniformly at random** and flagged `Forecast::random_check`, and calibration
+restricted to those is unbiased. Under a rule that chooses its pairs (BALD or
+Thompson), the app marks such a pair ◇ unbiased probe. Under the default rule,
+its deal line says every pair is dealt at random (◇ random pair).
 
 | Field | Is |
 |---|---|
 | `check_n` | Number of random-probe forecasts |
-| `check_skill` | Brier skill on them — the number without an asterisk |
-| `check_log_loss` | Log-loss on them — the only log-loss comparable across rules |
+| `check_skill` | Brier skill on them: the number without an asterisk |
+| `check_log_loss` | Log-loss on them: the only log-loss comparable across rules |
 
 It costs a small share of the query budget and it is the only number here that
 means what it says unqualified.
@@ -105,19 +107,19 @@ uniform pairing was chosen. See [Acquisition](../search/acquisition.md).
 
 ## The reliability diagram
 
-Five buckets over $P(A \text{ wins})$ (`N_BINS = 5`, the most a small session
-can fill without every bucket being noise). Each bucket reports:
+Five buckets over $P(A \text{ wins})$ (`N_BINS = 5`, in `calib.rs`: the most a
+small session can fill without every bucket being noise). Each bucket reports:
 
 | | |
 |---|---|
-| `predicted` | Mean forecast in the bucket — the model's claim |
-| `observed` | Observed frequency of "A won" — the evidence |
+| `predicted` | Mean forecast in the bucket: the model's claim |
+| `observed` | Observed frequency of "A won": the evidence |
 | `n` | How many forecasts landed here |
 
 Plotted, the diagonal is the claim and the dots are the reality. This is the
 display that makes calibration *legible*: a single number cannot distinguish
 "overconfident at the top end" from "underconfident in the middle", and the
-shape of the failure is what tells you what to do about it.
+shape of the failure is what says what to do about it.
 
 The app draws a whisker per bucket for how much a bucket that size could wobble
 by chance, so a dot off the diagonal with a whisker crossing it is not yet
@@ -143,7 +145,7 @@ log, and there is no reason to believe they are equally reliable. Scoring them
 against forecasts the model made *before* either answer arrived is the only way
 to find out which, and it costs one tag.
 
-Empty streams are omitted, so a session that has never committed a hand edit
+Empty streams are omitted, so a session whose every answer was a dealt pair
 carries exactly one row.
 
 ## Interpreting it
@@ -151,7 +153,7 @@ carries exactly one row.
 | Shape | Reading |
 |---|---|
 | Skill ≈ 0, small $n$ | Too early. Correct and expected |
-| Skill < 0 with real $n$ | Worse than chance — either overfitting a coincidental coordinate, or genuinely inconsistent answers |
+| Skill < 0 with real $n$ | Worse than chance: either overfitting a coincidental coordinate, or genuinely inconsistent answers |
 | Dots below the diagonal on the right | Overconfident: when it says 80% it is right less often |
 | Dots above on the left | Underconfident |
 | Skill stuck near 0 with large $n$ | The preference is probably [not in the feature space](../../docs/teaching.html#what-it-cannot-learn) |

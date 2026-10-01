@@ -33,7 +33,7 @@ generation and quits from fatigue.
 <figcaption><strong>The same diagram, with the traffic moving.</strong> What the
 ASCII version above cannot show is that the two loops run at <em>different
 speeds</em>. Green flows continuously with no human in it; amber moves at the
-pace you answer questions.</figcaption>
+pace of the player's picks.</figcaption>
 </figure>
 
 ## The patch loop
@@ -41,17 +41,19 @@ pace you answer questions.</figcaption>
 Machine-paced. No human in it.
 
 1. **Fill.** Sample terms from the grammar prior, compile, render, vet,
-   featurize. Pool target is `SessionConfig::pool_size` vetted candidates
-   (**48** by default, though the web app passes **40** in `apps/web/main.js`),
-   with at most 400 draws attempted per fill, since vet failures burn attempts.
+   featurize. The pool target is `SessionConfig::pool_size` vetted candidates
+   (**48** by default in `engine.rs`; the web app passes **40** in
+   `apps/web/main.js`), with at most `max_draws` (400) draws attempted per
+   fill, since vet failures burn attempts.
 2. **Refine.** Once a posterior exists, take the top `refine_seeds` candidates
-   and run `refine_steps` Metropolis–Hastings steps from each. Defaults are
-   **10 seeds × 40 steps**, both scaled from the palette's operator count so a
-   palette change does not silently change the search's character.
-3. **Inject.** Each surviving child is admitted if it beats the pool's
-   lowest-utility member; at the end of the generation the lowest-utility
-   members are retired to bring the pool back to size. Pinned candidates are
-   exempt, including ones pinned while the generation runs.
+   and run `refine_steps` Metropolis–Hastings steps from each. The defaults in
+   `engine.rs` are **10 seeds × 40 steps**, both scaled from the grammar's
+   processor count (`N_OPS`, 20, in `prior.rs`), so a change to the processor
+   set does not silently change the search's character.
+3. **Inject.** Each child is admitted only if it beats the member it would
+   displace. When the generation ends, the lowest-utility members are replaced
+   to bring the pool back to size. Pinned (saved) candidates are exempt,
+   including ones pinned while the generation runs.
 
 The 10 × 40 split is
 [measured](../search/refinement.md#the-split-is-measured); moving in either
@@ -61,19 +63,24 @@ direction is worse.
 
 Human-paced, and persistent across sessions.
 
-1. **Observe.** Every duel, star, keep/kill and edit claim appends to the
-   observation log, as **raw** $\varphi$, never standardized. That is what lets
+1. **Observe.** Every duel (an EVOLVE pair, a heard PERFORM offer, or an edit
+   claim), star and cut appends to the observation log, as **raw** $\varphi$,
+   never standardized. That is what lets
    the standardizer be re-fit later without invalidating history.
 2. **Reweight**, immediately. Each new observation folds into the existing
-   posterior by importance sampling. Exact, $O(S)$, and it is what makes the
-   next question respond to the last answer.
-3. **Refit**, occasionally. Full MCMC over the log: 10 000 post-warmup steps
-   after 3 000 warmup, thinned to at most 500 retained draws.
+   posterior by importance sampling. It is exact, costs time linear in the
+   number of posterior draws, and is what makes the next pair respond to the
+   last pick.
+3. **Refit**, every sixth pick. Full MCMC over the log: 10,000 post-warmup
+   steps (`mcmc_samples`) after 3,000 warmup steps (`mcmc_warmup`), thinned to
+   at most 500 retained draws (`KEEP`, in `auracle-taste`'s `model.rs`).
 
-The refit trigger is the interesting part. It is not "every $n$ duels": it
-fires when the reweighted posterior's **effective sample size** has degraded
-far enough that resampling was needed. See
-[The posterior](../taste/posterior.md#between-fits-sequential-importance-sampling).
+The app paces refits by count: every sixth pick refits (`FIT_EVERY`, 6, in
+`apps/web/main.js`). The engine also reports when the cheap path has run out of
+road, that is, when the reweighted posterior's **effective sample size** has
+collapsed far enough to need resampling since the last fit
+(`Engine::needs_refit`). The app does not wait for that signal. See
+[The posterior](../taste/posterior.md#the-refit-trigger).
 
 ## Where they meet
 
@@ -82,8 +89,9 @@ back into the grammar.
 
 The tilt is the part that makes this more than a scored search. The fitted
 structural coefficients reshape the *categorical weights* of the grammar the
-search draws new modules from — and, because the tilted grammar is installed as
-the prior, of the target it climbs (see [Proposals](../search/proposals.md)):
+search draws new modules from. Because the tilted grammar is installed as the
+prior, they also reshape the target the search climbs (see
+[Proposals](../search/proposals.md)):
 
 $$w'_i \;\propto\; w_i \exp(\eta\, t_i)$$
 
@@ -91,16 +99,17 @@ with each multiplier clamped to $[\tfrac14, 4]$ so no module kind is ever
 starved or monopolized. Details and the shrinkage applied to $t_i$ are in
 [Proposals](../search/proposals.md).
 
-So the loop is genuinely closed: your answers change what gets *proposed* and
-what the search counts as parsimonious, not only what scores well once proposed.
+So the loop is closed: the player's picks change what gets *proposed* and what
+the search counts as parsimonious, not only what scores well once proposed.
 
 ## Why this is preferential Bayesian optimization
 
-There is a latent objective (your utility), an expensive oracle (you), a cheap
-surrogate (the posterior), and a generator of candidates (the grammar prior
-plus MH). The acquisition step is where $\theta$'s posterior *uncertainty*
-earns its keep: early sessions can ask informative questions (duels the model
-cannot rank), and a confident model can mostly serve things you will like.
+There is a latent objective (the player's utility), an expensive oracle (the
+player), a cheap surrogate (the posterior), and a generator of candidates (the
+grammar prior plus MH). The acquisition step is where $\theta$'s posterior
+*uncertainty* would earn its keep: early sessions could ask informative
+questions (duels the model cannot rank), and a confident model could mostly
+serve sounds it predicts the player will pick.
 
 Whether it is *worth* asking informative questions rather than random ones is
 an empirical question. See [Acquisition](../search/acquisition.md).

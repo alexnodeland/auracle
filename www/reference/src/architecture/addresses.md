@@ -56,9 +56,10 @@ execution is determined by the choices the execution makes. The value at
 whether `node/0` exists at all.
 
 That is what lets fugue's generic trace machinery work unchanged: subtree
-regeneration, subtree-swap crossover, and reversible-jump Metropolis–Hastings
-all operate on traces without knowing anything about synthesizers. Auracle
-contributes a grammar; it does not contribute an inference algorithm.
+regeneration and reversible-jump Metropolis–Hastings operate on traces without
+knowing anything about synthesizers. Auracle contributes a grammar, not an
+inference algorithm. It uses no crossover: every child grows from one seed
+(`walk.rs`).
 
 ## Live parameter handles
 
@@ -68,9 +69,9 @@ an atomic the audio thread reads. Turning a knob does two things:
 1. Writes the atomic, so **the running voices change without a recompile**.
 2. Writes the genome at the same address, so the edit is real rather than cosmetic.
 
-Both, always. Writing only the atomic gives you a knob whose change disappears
-on the next patch swap; writing only the genome gives you a knob you have to
-recompile to hear.
+Both, always. Writing only the atomic gives a knob whose change disappears on
+the next patch swap; writing only the genome gives a knob that must be
+recompiled to be heard.
 
 Not every address has a live handle. Structural sites do not, and a few
 parameters feed compile-time decisions. `window.__aur.nonLiveAddrs` in the web

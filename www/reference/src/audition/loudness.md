@@ -1,11 +1,12 @@
 # Loudness normalization
 
 <p class="lede">Louder reliably wins A/B tests. Without normalization the model
-would learn "I like loud" and present it as a preference about timbre.</p>
+would learn a taste for loudness and present it as a preference about
+timbre.</p>
 
-Every render is normalized to **−18 LUFS** (`TARGET_LUFS`) before audition
-*and* before feature extraction. Unnormalized loudness would poison $\theta$,
-and it would do so in a way that looks like a real result.
+Every render is normalized to **−18 LUFS** (`TARGET_LUFS`, in `pipeline.rs`)
+before audition *and* before feature extraction. Unnormalized loudness would
+poison $\theta$, and it would do so in a way that looks like a real result.
 
 ## Why LUFS and not RMS
 
@@ -43,7 +44,7 @@ k^2}{a_0}, \qquad b_1 = \frac{2(k^2 - V_H)}{a_0}, \qquad b_2 = \frac{V_H - V_B
 $$
 
 and the highpass is the standard RBJ form. Deriving rather than tabulating is
-what makes the measurement correct at 44 100 Hz, which is the rate the phrase
+what makes the measurement correct at 44,100 Hz, which is the rate the phrase
 renders at.
 
 <figure class="viz" data-viz="k-weighting">
@@ -101,7 +102,7 @@ practice the cap is a backstop.
 ### Loudness is a target; the peak is a limit
 
 Matching integrated loudness says nothing about the peak, and crest factor spans
-tens of dB across this grammar — a pad and a pluck at the same LUFS are nowhere
+tens of dB across this grammar: a pad and a pluck at the same LUFS are nowhere
 near the same peak. A pure loudness match therefore sends percussive patches
 over full scale, and it did. Measured over 150 vetted prior draws:
 
@@ -110,22 +111,22 @@ over full scale, and it did. Measured over 150 vetted prior draws:
 | peak p50 | 0.623 | **0.623** |
 | peak p90 / p99 / max | 1.061 / 2.098 / 4.063 | 1.000 / 1.000 / 1.000 |
 | over full scale | 22 (15%) | **0** |
-| over 1.25 — where the app's `master.gain = 0.8` clips | 11 (8%) | **0** |
-| gave up gain | — | 22 (15%), mean 3.0 dB, worst 12.2 dB |
+| over 1.25 (where the app's `master.gain = 0.8` clips) | 11 (8%) | **0** |
+| gave up gain | none | 22 (15%), mean 3.0 dB, worst 12.2 dB |
 
 The two 22s are the same twenty-two patches, and the **unmoved median** is the
-check that this is a fault stop rather than a re-levelling of the pool.
+check that this is a fault stop rather than a re-leveling of the pool.
 
 This is not a matter of audio polish. Preference data is elicited on this exact
-buffer, so a clipped audition collects a vote about *clipping* rather than about
-the patch — precisely the confound loudness normalization exists to remove, one
-stage later and silent. The live voice was never exposed to it; its master
+buffer, so a clipped audition collects a pick about *clipping* rather than
+about the patch. That is the confound loudness normalization exists to remove,
+one stage later and silent. The live voice was never exposed to it; its master
 limiter has always held a 0.98 ceiling. The offline path took the volt divisor
 and not the limiter.
 
 **A smaller gain, not a limiter.** A scalar keeps `render_playback`
-bit-identical *by construction* — the property its bit-identity test exists to
-protect — and cannot change timbre at all. A limiter would reshape the waveform,
+bit-identical *by construction* (the property its bit-identity test exists to
+protect), and cannot change timbre at all. A limiter would reshape the waveform,
 moving `crest`, `flatness_mean` and `flux_mean` as well as the RMS pair, and
 would need a second copy of itself inside the replay path forever.
 
@@ -144,15 +145,15 @@ scale-invariant, so the change carries the standing
 [revalidation](../design/milestones.md). Paired 16-seed `make climb`:
 `+1.877 ± 0.362` → `+2.457 ± 0.298` mean gain, paired difference
 **+0.579 ± 0.350 (1 se), 95% CI [−0.121, +1.280]**. That crosses zero, so no
-improvement is claimed — what the run establishes is that the change costs the
+improvement is claimed. What the run establishes is that the change costs the
 search nothing. Every seed now climbs (16/16 against 15/16) and the generation
 curve stopped turning over.
 ```
 
 The report carries `lufs_before`, `gain_db` and `peak_reduction_db`, all of
 which survive into `Features`. They are diagnostics rather than model inputs:
-they are not coordinates of $\varphi$, because "how quiet was this before we
-fixed it" is exactly the information normalization exists to discard.
+they are not coordinates of $\varphi$, because a sound's level before
+normalization is exactly the information normalization exists to discard.
 
 ## Where it sits in the pipeline
 
@@ -165,9 +166,9 @@ patch's real output level, and measuring them post-normalization would make the
 peak ceiling meaningless. See
 [the order is the design](./vetting.md#the-order-is-the-design).
 
-The normalized buffer is also **exactly what the user hears**. One buffer
-serves the health check, the measurement and the playback, which is what makes
-"you never hear an unvetted patch" true by construction rather than by
+The normalized buffer is also **exactly what the player hears**. One buffer
+serves the health check, the measurement, and the playback, which is what makes
+"a player never hears an unvetted patch" true by construction rather than by
 discipline.
 
 ## Mono
@@ -179,5 +180,5 @@ the live output, because the compiler
 but the *measurement* path sums.
 
 So **stereo width is invisible to the model.** There is no width coordinate, so
-no amount of voting can teach a preference for it. The app says so on the
+no number of picks can teach a preference for it. The app says so on the
 chorus module's spec card, and this is why.

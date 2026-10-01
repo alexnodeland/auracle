@@ -18,7 +18,7 @@ Every continuous site is normalized to $[0,1)$ and the mapping to Hz, seconds,
 dB or cents happens in the compiler. **Half-open**, because that is what
 $\mathrm{Uniform}(0,1)$ is: fugue's `log_prob` is $-\infty$ at $x \ge 1$. The
 domain used to be `0.0..=1.0`, which made exactly `1.0` legal here and
-impossible under the prior — a knob dragged to its stop, two shipped presets
+impossible under the prior: a knob dragged to its stop, two shipped presets
 and the default vibrato insert all had $\log p = -\infty$, so `init_from`
 refused them and ⚡ evolve silently did nothing. Every clamp in the crate now
 lands on `PARAM_MAX`, never on `1.0`, and it is one `f64::EPSILON` below rather
@@ -44,7 +44,7 @@ resonance maps to a range that stops short of self-oscillation; delay feedback
 stops short of 1; V/Oct maps into an audible band.
 
 So the grammar **cannot express the most degenerate settings at all**, which
-leaves no pathological region for the search to keep sampling and be penalised
+leaves no pathological region for the search to keep sampling and be penalized
 for.
 
 It is not a substitute for [vetting](../audition/vetting.md), which catches
@@ -75,7 +75,7 @@ Uniform categoricals, each with a named domain:
 |---|---|
 | `#wave` | Waveform: saw, square, triangle, sine |
 | `#oct` | Octave offset |
-| `#color` | Noise colour |
+| `#color` | Noise color |
 | `#fkind` | Filter kind |
 | `#table` | Wavetable shape |
 | `#dmode` | Drive mode: soft, hard, tube |
@@ -158,13 +158,15 @@ value got through everything that was supposed to stop it.
 
 Separately from domains, the search is bounded in size:
 
-| Ceiling | Default | Because |
+| Ceiling (in `mutate.rs`) | Default | Because |
 |---|---|---|
-| Modules | 24 | the realtime voice |
-| Term depth | 6 | the prior's `max_depth` (5) + 1 — the deepest term it can score |
-| Modulation depth | 3 | the prior's `max_mod_depth` (2) + 1 |
+| Modules (`MAX_SIZE`) | 24 | the realtime voice |
+| Term depth (`MAX_DEPTH`) | 6 | the prior's `max_depth` (5) + 1, the deepest term it can score |
+| Modulation depth (`MAX_MOD_DEPTH`) | 3 | the prior's `max_mod_depth` (2) + 1 |
 
-Shown in the app as `8/24 modules · 4/6 depth · 1/3 mod depth`. A hand-built
+The app shows a ceiling once a patch is one step from it, in the form
+`23/24 modules`, and all three (`8/24 modules · 4/6 depth · 1/3 mod depth`)
+with Show measurements on. A hand-built
 patch past a ceiling is refused, and one *at* a ceiling has no room to grow,
 which is a common reason a generation reports "no move was accepted".
 See [the validity gate](edits.md#the-validity-gate) for why the two depth

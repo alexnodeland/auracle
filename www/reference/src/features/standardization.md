@@ -40,6 +40,8 @@ Per column:
 3. Compute winsorized moments $(\mu_w, s_w)$ with the extreme 2% of each tail pulled in.
 4. **Use the winsorized pair only if $s > 10^6 \, s_w$.**
 
+The constants, in `auracle-taste`'s `standardize.rs`:
+
 ```rust
 const WINSOR_TAIL: f64 = 0.02;
 const WINSOR_MIN_ROWS: usize = 10;
@@ -55,7 +57,7 @@ Because it was tried first and thrown out, and the measurement is why.
 
 Clipping 2% of each tail unconditionally took a 16-seed `search_health --climb`
 run from **+1.877 ± 0.362** mean gain, climbing on 15 of 16 seeds, to **+0.204
-± 1.347** on 11 of 16 — with one seed at **−18.2**.
+± 1.347** on 11 of 16, with one seed at **−18.2**.
 
 Trimming a real tail is not free. A data-hygiene fix that costs the search a
 standard deviation is not a fix. So the clip became a **fault detector**: plain
@@ -74,8 +76,8 @@ cargo run -p auracle-features --example winsor_ratio --release -- 150
 ```
 
 fits 150 clean 48-patch pools and reports the largest plain/winsorized $\sigma$
-ratio per column. Over 6 000 column-fits the maximum is **14.6**
-(`rms_std:p2`), with `chord_flatness_delta:p2` at 13.9 — and still climbing
+ratio per column. Over 6,000 column-fits the maximum is **14.6**
+(`rms_std:p2`), with `chord_flatness_delta:p2` at 13.9, and still climbing
 with the sample, because a log-scale audio descriptor over a pool that happens
 to contain one near-silent patch genuinely *has* a tail.
 
@@ -135,7 +137,7 @@ One implementation detail exists to protect that property: the column stays in
 not associative, so summing the sorted column would move the mean by a ULP on
 clean data, and the whole claim is that clean data comes out bit-identical.
 
-## Where this fits in the defence
+## Where this fits in the defense
 
 The fault this detector exists for is fixed upstream of here: `clamp_domains`
 on load, `FeaturizeError::OutOfDomain` before the render, the load-time repair.

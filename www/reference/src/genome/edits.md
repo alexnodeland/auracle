@@ -48,8 +48,8 @@ separate mutation vocabulary.
 
 Consequences:
 
-- Anything you can build by hand, the search can reach. Anything the search
-  produces, you can edit.
+- Anything a player can build by hand, the search can reach. Anything the
+  search produces, a player can edit.
 - A structural edit cannot produce a term the search would consider invalid,
   because validity is one predicate.
 - `⚡ evolve from this` on a hand-built patch is not a special case.
@@ -82,13 +82,13 @@ building and the ceiling only protects the voice. What that reasoning missed is
 that the prior forces `#leaf` at `max_depth` and zeroes `Op`/`Pair` at
 `max_mod_depth`, so the deepest term it can *score* has depth `max_depth + 1`.
 A hand edit past that had $\log p = -\infty$, `EvolutionChain::init_from`
-returned `None`, and ⚡ evolve on the patch did nothing and said nothing — the
+returned `None`, and ⚡ evolve on the patch did nothing and said nothing: the
 very failure the grammar gives `Silence` non-zero weight to prevent. Now the
 ceiling *is* the support, stated once in `prior.rs` and read from there.
 
 A session saved under the old ceilings may hold a deeper tree. It still loads
-and plays — no load path re-checks the ceilings, because corruption must not be
-load-bearing — but refinement reports it as `outside_support` rather than
+and plays (no load path re-checks the ceilings, because corruption must not be
+load-bearing), but refinement reports it as `outside_support` rather than
 pretending to walk, and a structural edit that leaves it over the ceiling is
 refused until one brings it under.
 
@@ -115,8 +115,8 @@ preference is stated in
 ## Naming stability
 
 `NodeKind` serializes as `snake_case`, and that string is also what
-`describe::RackModule::kind` reports and what the frontend keys its palette
-off.
+`describe::RackModule::kind` reports and what the frontend keys its module
+list off.
 
 `RingMod` is renamed by hand, because the derived spelling would be `ring_mod`
 while the module is `ringmod` everywhere else, and one module with two

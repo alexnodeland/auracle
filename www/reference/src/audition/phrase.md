@@ -15,15 +15,15 @@ This module owns that stimulus.</p>
 
 ## The spec
 
-`PhraseSpec::default()` is four notes, ~5.05 seconds, 44 100 Hz, RNG seed
-`0xE05_F00D`:
+`PhraseSpec::default()` is four notes, 5.05 s in all, at 44,100 Hz, with the
+random seed `0xE05_F00D`:
 
 | # | Note | Gate on | Gate off | Chord | Reveals |
 |---|---|---|---|---|---|
-| 1 | C4 | 1.80 s | 0.20 s | — | Slow attacks; sub-Hz modulation over a register-constant sustain |
-| 2 | C5 | 0.30 s | 0.15 s | — | Whether the patch speaks at all an octave up |
+| 1 | C4 | 1.80 s | 0.20 s | none | Slow attacks; sub-Hz modulation over a register-constant sustain |
+| 2 | C5 | 0.30 s | 0.15 s | none | Whether the patch speaks at all an octave up |
 | 3 | C4 | 0.50 s | 0.20 s | +E4 | Intermodulation and mud when voices stack |
-| 4 | C3 | 0.80 s | **1.10 s** | — | Bass register, and the release / delay / reverb tail |
+| 4 | C3 | 0.80 s | **1.10 s** | none | Bass register, and the release / delay / reverb tail |
 
 Pitches are V/Oct offsets from C4. The seed is installed into quiver's
 thread-local RNG before rendering, so noise and analog drift are
@@ -55,8 +55,8 @@ problem.
 
 ```admonish note title="The same argument, not yet finished"
 That reasoning closed four holes and then stopped. It is still true of everything
-the v2 phrase did not reach — velocity above all, since `NoteSpan` has no such
-field and the live instrument responds to it. [What the audition cannot
+the v2 phrase did not reach, velocity above all: `NoteSpan` has no velocity
+field, and the live instrument responds to velocity. [What the audition cannot
 hear](../design/audition-limits.md) is the register of what is still outside
 the stimulus, and this paragraph is the argument it is built on.
 ```
@@ -87,7 +87,7 @@ difference between wall seconds and rendered voice-seconds.
 `Note::chord` carries additional simultaneous pitches, each rendered by **its
 own compiled voice**, gate-synced with the main note.
 
-Two behaviours worth knowing:
+Two behaviors worth knowing:
 
 - Chord voices **start cold** at the note's onset, exactly how live voice
   allocation behaves, so the measurement matches what a player would hear.
@@ -132,7 +132,7 @@ Stated because the model cannot learn what the stimulus does not show:
 
 - **Velocity response.** The phrase plays at one velocity.
 - **Fast passages.** No segment tests how the patch behaves in a run.
-- **Long-term behaviour.** Five seconds cannot reveal a 30-second evolving pad.
+- **Long-term behavior.** Five seconds cannot reveal a 30-second evolving pad.
 - **Stereo width.** The render is summed to mono for feature extraction, and
   there is no width coordinate in $\varphi$ at all. The chorus module's spec
   card says so outright in the app.

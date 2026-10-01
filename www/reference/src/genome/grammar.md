@@ -14,9 +14,9 @@ three:
 
 | Level of evolution | In the term grammar |
 |---|---|
-| **Node settings** | Leaf parameter sites — an `f64` or `usize` draw at each module node |
-| **Connectivity** | Interior structure — chains, parallel branches, modulation attachments |
-| **Node set** | Which productions fire — the module choice sites |
+| **Node settings** | Leaf parameter sites: an `f64` or `usize` draw at each module node |
+| **Connectivity** | Interior structure: chains, parallel branches, modulation attachments |
+| **Node set** | Which productions fire: the module choice sites |
 
 A parameter-vector genome cannot change topology. A raw-graph genome can, but
 most of its mutations produce invalid graphs, so it needs a repair step, which
@@ -30,7 +30,7 @@ Modulation, and they are different <em>Rust types</em>. The dashed edges are
 modulation slots, and no amount of mutation can put one sort where the other
 belongs, because such a term cannot be constructed. Press it repeatedly and
 watch small terms dominate: that is the prior's parsimony, with nothing
-penalising size. (A faithful miniature of the production weights, not the
+penalizing size. (A faithful miniature of the production weights, not the
 shipped grammar.)</figcaption>
 </figure>
 
@@ -47,7 +47,7 @@ probabilistic choices at path-keyed addresses:
 | Site | Address | Distribution |
 |---|---|---|
 | source-vs-processor | `<p>#leaf` | $\mathrm{Bernoulli}(\text{source\_prob})$, forced at max depth |
-| source kind | `<p>#src` | $\mathrm{Categorical}(w_{\text{src}})$, 6 kinds |
+| source kind | `<p>#src` | $\mathrm{Categorical}(w_{\text{src}})$, 7 kinds |
 | processor kind | `<p>#op` | $\mathrm{Categorical}(w_{\text{op}})$, 20 kinds |
 | modulation kind | `<p>/m#mod` | $\mathrm{Categorical}(w_{\text{mod}})$, 9 kinds |
 | CV-processor kind | `<p>/m#modop` | Uniform over `ModOp::ALL` |
@@ -129,12 +129,13 @@ available, and below a processor the "no modulation" option is removed so a
 slot that must be filled is filled.
 
 A modulation slot hangs off every module with somewhere to send it. The
-exceptions are the ones without: `Noise`, whose only site is a colour switch,
+exceptions are the ones without: `Noise`, whose only site is a color switch,
 and `Mix` / `RingMod`, whose two inputs are both audio and whose single knob is
 the blend. Having two audio children is **not** itself an exception: the four
-dynamics productions take two subterms and carry a slot as well.
+sidechained productions (comp, duck, gate and vocoder) take two subterms and
+carry a slot as well.
 
-## The palette
+## The modules
 
 Forty-three modules: **7 sources**, **20 processors**, **16 modulators**.
 
@@ -173,20 +174,22 @@ dragging in the UI does not offer them.
 
 Grammar output is compiled with quiver's `ValidationMode::Strict` in the test
 suite. Because the grammar is typed, **a `SignalMismatch` is by construction a
-bug in our grammar**, so Strict doubles as a property-test oracle: sample $N$
+bug in the grammar**, so Strict doubles as a property-test oracle: sample $N$
 terms, compile all of them, and any error fails the test with quiver's
 actionable message.
 
 Patches are *wired* in `Warn` mode, though, with an allowlist test pinning the
-warning classes. Strict rejects two warning-class pairings the compiler
-deliberately uses, the clearest being a constant bipolar `Offset` feeding a
-unipolar knob. The allowlist test is what keeps "we know about these two" from
-quietly becoming "we ignore all warnings".
+warning classes. Strict rejects warning-class pairings the compiler uses on
+purpose, the clearest being a constant bipolar `Offset` feeding a unipolar
+knob. The allowlist test (`every_prior_sample_compiles`) names each class with
+its reason, which keeps a known exception from quietly becoming a habit of
+ignoring warnings.
 
 ## Where this comes from
 
 The design mirrors fugue-evo's `ArithmeticGrammarPrior`, with quiver signal
-sorts in place of arithmetic types. That is deliberate: Auracle's genome gets
-subtree mutation, subtree-swap crossover, reversible-jump MH and tempered SMC
-from fugue-evo **unchanged**, because they operate on traces and this genome's
-trace encoding is faithful.
+sorts in place of arithmetic types. That is deliberate: fugue-evo's subtree
+mutation and reversible-jump MH apply to this genome **unchanged**, because
+they operate on traces and this genome's trace encoding is faithful. Auracle
+uses that MH. It does not use crossover, since every child grows from one seed
+(`walk.rs`), and it does not use fugue-evo's tempered SMC.

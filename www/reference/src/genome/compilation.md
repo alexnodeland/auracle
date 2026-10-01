@@ -51,7 +51,7 @@ Two details worth knowing when reading the code:
   mean what it looks like.
 - **Filter keytracking is fixed at 0.5.** quiver applies $2^{v \cdot a}$, so
   0.5 moves the corner half an octave per octave played: enough that a patch
-  still speaks two octaves above where it was dialled in, which is what the
+  still speaks two octaves above where it was dialed in, which is what the
   audition phrase's C5 stab measures.
 
 ## The DC blocker, and `makes_dc`
@@ -86,20 +86,21 @@ feature extractor from that offset.** The blocker was.
 
 Patches are wired under `ValidationMode::Warn`, not `Strict`.
 
-quiver's `Strict` rejects *warning-class* pairings, and two of them are idioms
-this compiler leans on deliberately:
+quiver's `Strict` rejects *warning-class* pairings, and this compiler uses
+several of them on purpose, for example:
 
-- a unipolar modulation envelope driving a bipolar FM input,
-- the bipolar pitch `Offset` driving V/Oct inputs.
+- a unipolar modulation envelope driving a bipolar FM input;
+- a constant bipolar `Offset` feeding a unipolar knob.
 
 The type discipline `Strict` would enforce is **already guaranteed by
 construction**: the term's Audio/Mod sorts are Rust types, and the compiler
 only emits known-good connection shapes.
 
 Compile *errors* (invalid ports, cycles) remain hard failures. Accumulated
-warnings are returned for inspection, and a property test asserts they stay
-within the expected classes. That test is what stops "we know about these two"
-from drifting into "we ignore all warnings".
+warnings are returned for inspection, and a property test
+(`every_prior_sample_compiles`) asserts they stay within an allowlist that
+names each class with its reason. That test keeps a known exception from
+drifting into a habit of ignoring warnings.
 
 Separately, the *grammar's* output is compiled under `Strict` in the test
 suite, where a `SignalMismatch` is by construction a bug in the grammar and
@@ -124,8 +125,8 @@ that feed compile-time decisions.
 - **`LivePoly`** compiles the *same* term, through the *same* function, to play
   it: $N$ copies for $N$ voices, limiter included.
 
-So what you hear under your fingers is the patch that was evolved, vetted and
-featurized. There is no separate "playback engine" that could disagree with the
+So what the player hears under their fingers is the patch that was evolved,
+vetted and featurized. There is no separate "playback engine" that could disagree with the
 one the model learned from.
 
 ## Cost
