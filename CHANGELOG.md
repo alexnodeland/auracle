@@ -15,9 +15,16 @@ changelog that edits its own past is not a record.
   render landed ▶ played the one from before: click a VCO's wave from square
   to sine and press ▶ at once, and you heard the square. The press now waits
   for the edit to land (a fraction of a second, longer while the engine is
-  busy) and plays the new sound. Changes you hear on held notes, and ▶
+  busy) and plays the new sound. While it waits the ▶ wears a dotted amber
+  ring. Pressing it again or pressing Space takes the wait back, and so do
+  any other ▶ and switching views. Changes you hear on held notes, and ▶
   pressed once the edit has landed, were already right; a browser test now
   measures both at the output (`patch_audible.spec.js`).
+- **Space in PATCH no longer plays the patch from before your edits when ▶ is
+  off.** With nothing reaching the output (an unplugged source) or a setting
+  muted by the safety check, Space played the bank's saved sample of the
+  patch as it was before any edit. It now says why there is nothing to play,
+  as ▶ would.
 
 ### Changed — one source for colour
 

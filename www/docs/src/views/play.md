@@ -21,9 +21,12 @@ From the top:
 
 **The subject block.** The patch's name, *(edited)* once you have changed it,
 and a caption for what you did to it (*2 locked*). The **▶** (or
-<kbd>Space</kbd>) plays the standard sample of the patch as it stands: pressed
-while an edit is still on its way to the engine, it waits for it. Its id and a short structural summary (`#30 · wsqr·mix·cho`) are the
-engine's bookkeeping, shown only with **⋯ › Show measurements**.
+<kbd>Space</kbd>) plays the standard sample of the patch as it stands, or says
+why it cannot. Pressed while an edit is still on its way to the engine, it
+wears a dotted amber ring and plays once the edit lands; press it again, or
+<kbd>Space</kbd>, to take that back. Its id and a short structural summary
+(`#30 · wsqr·mix·cho`) are the engine's bookkeeping, shown only with **⋯ ›
+Show measurements**.
 
 **The toolbar.** The edit controls (*commit*, *my edit is better*), the layout
 and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *belief*,

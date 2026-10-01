@@ -1288,6 +1288,8 @@ worker.onmessage = (e) => {
       if (earlyOpen && earlyOpen.id === m.id) unvoiceEarly();
       if (benchPending === m.id) {
         benchPending = null;
+        // A ▶ pressed since was for this patch, not the one still here.
+        playWaitCancel();
         pumpLane();
       }
       renderSubject(); // the rack stops saying "opening…"
@@ -2420,6 +2422,7 @@ function releaseRequest(request, id) {
       // Voices that took it early go back to that patch.
       if (earlyOpen) unvoiceEarly();
       benchPending = null;
+      playWaitCancel(); // a ▶ pressed since was for the patch that failed
       renderSubject();
       renderBank();
       pumpLane();
@@ -3457,7 +3460,9 @@ function showView(name) {
   // Nothing may stay in your hand across a view change: PLAY is only hidden,
   // not torn down, so its sockets still match and the armed key handler would
   // go on swallowing EVOLVE's arrow-key votes.
-  if (name !== "play") { disarm(); cancelPending(); }
+  // Nor may a ▶ waiting for an edit: its phrase would start in a view that has
+  // nothing to do with it.
+  if (name !== "play") { disarm(); cancelPending(); playWaitCancel(); }
   currentView = name;
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
@@ -3613,9 +3618,12 @@ function playBuffer(buffer, btn, key = null) {
 }
 
 // Space is a transport: it stops what's sounding, or auditions the current
-// patch's phrase from any view.
+// patch's phrase from any view. A stop takes back the bench's ▶ waiting for an
+// edit (`playOnSettle`) as well as the phrase sounding, both at once: the
+// phrase is stopped and nothing starts when the edit lands. True if either.
 function stopAudition() {
-  if (!playingSrc) return false;
+  const waited = playWaitCancel();
+  if (!playingSrc) return waited;
   const s = playingSrc;
   const g = playingGain;
   if (g) g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
@@ -3630,9 +3638,10 @@ function stopAudition() {
 
 function toggleAudition() {
   if (stopAudition()) return;
-  // A second press while the bench's ▶ waits for an edit is a stop, too.
-  if (playWaitCancel()) return;
-  if (currentView === "play" && wb.buffer && !$("rack-play").disabled) return playBench();
+  // In PATCH, Space is the bench's ▶: the patch as it stands, or why it cannot
+  // play. The bank's render, below, is the patch from before any edit, and
+  // Space used to fall through to it whenever ▶ was disabled.
+  if (currentView === "play" && wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
   awaitRender(id, () => play(id));
@@ -3692,6 +3701,10 @@ const RENDER_WAIT_MS = 12_000;
 const RENDER_POLL_MS = 100;
 
 function awaitRender(id, onReady, opts = {}) {
+  // Every ▶ of a rendered patch starts here (Space outside PATCH, the duel,
+  // a bank row, a style's exemplar, the warm start): the latest ▶ wins, so the
+  // bench's ▶ waiting for an edit is taken back rather than starting over it.
+  playWaitCancel();
   if (renders.has(id)) {
     if (opts.settled) opts.settled();
     return onReady();
@@ -7349,35 +7362,55 @@ function livePending() {
 // bench's buffer is replaced only by the edit's reply, so until then it is the
 // phrase rendered *before* the edit: a wave chip clicked and ▶ pressed at once
 // played the old wave. The press waits for the lane, as COMMIT does
-// (`commitOnSettle`), and plays what the engine rendered for the edit.
+// (`commitOnSettle`), and plays what the engine rendered for the edit. A patch
+// still opening is waited for too, so a ▶ pressed after the click plays that
+// patch and not the one leaving.
+//
+// The ▶ says it heard you at once (`.pending`, as a bank ▶ waiting for its
+// render does). It is a claim on the next phrase only while PATCH is the view
+// and nothing else has been asked to sound: a second press on it, Space, any
+// other ▶, an open, a failed open and leaving PATCH all take it back.
 let playOnSettle = false;
 
+/** Nothing in the lane, nothing at the worker, no patch on its way. */
+function benchSettled() {
+  return laneFree() && benchPending == null;
+}
+
 function playBench() {
-  if (!laneFree()) {
+  if (!benchSettled()) {
     playOnSettle = true;
-    $("rack-play").setAttribute("aria-busy", "true");
+    const b = $("rack-play");
+    b.classList.add("pending");
+    b.setAttribute("aria-busy", "true");
     return;
   }
   playWaitCancel();
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
-  } else if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output");
-  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+    return;
+  }
+  // A refusal of the press (Space reaches here with ▶ disabled): it jumps the
+  // lane, and pressing again says it once.
+  const said = { urgent: true, replace: "bench-play" };
+  if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output", said);
+  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld", said);
 }
 
-/** A ▶ still waiting for the lane is taken back (a new patch is opening, or
- *  Space was pressed again). True if one was waiting. */
+/** A ▶ still waiting for the lane is taken back. True if one was waiting. */
 function playWaitCancel() {
   const was = playOnSettle;
   playOnSettle = false;
-  $("rack-play").removeAttribute("aria-busy");
+  const b = $("rack-play");
+  b.classList.remove("pending");
+  b.removeAttribute("aria-busy");
   return was;
 }
 
 /** The deferred half of `playBench`, once the lane has settled. */
 function settlePlay() {
-  if (playOnSettle && laneFree()) playBench();
+  if (playOnSettle && benchSettled()) playBench();
 }
 
 // Layout constants.
@@ -13442,6 +13475,7 @@ function closeCommitDuel() {
 
 function cdPlay(side) {
   if (!commitDuel) return;
+  playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
   const buf = side === commitDuel.origSide ? commitDuel.orig : commitDuel.edit;
   playBuffer(buf, $(`cd-play-${side}`));
 }
@@ -13501,7 +13535,12 @@ window.addEventListener("keydown", (e) => {
   else if (k === "ArrowRight") { e.preventDefault(); cdPick("b"); }
 }, true);
 
-$("rack-play").onclick = () => playBench();
+// Pressed while it waits for an edit, it takes the wait back, as the warm
+// start's ▶ does; otherwise it plays (or restarts) the bench's phrase.
+$("rack-play").onclick = () => {
+  if (playWaitCancel()) return;
+  playBench();
+};
 $("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
   if (wb.subjectId == null) return;
@@ -15884,7 +15923,9 @@ function paintPreviewScope(target) {
 // pointer-leave of the socket, which is the same movement that carries the
 // pointer to the ▶.
 $("spec-dock")?.addEventListener("click", (ev) => {
-  if (ev.target.closest(".pv-play")) requestPreview(previewTarget(), true);
+  if (!ev.target.closest(".pv-play")) return;
+  playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
+  requestPreview(previewTarget(), true);
 });
 
 // ---- arm and place ----

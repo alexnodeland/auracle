@@ -150,10 +150,16 @@ through one ordered lane in `main.js`:
 - a value-only redraw repaints knobs in place, and no knob is rebuilt under a
   held pointer (`knobDragging`);
 - an undo retires the toast of what it undid;
-- COMMIT (`commitOnSettle`) and the bench's ▶ and Space (`playOnSettle`)
-  pressed while anything is in the lane wait for it to settle. The bench's
-  phrase buffer is replaced only by an edit's reply, so until then it is the
-  sound from before the edit.
+- COMMIT (`commitOnSettle`) and the bench's ▶ (`playOnSettle`) pressed while
+  anything is in the lane wait for it to settle; ▶ also waits for a patch
+  still opening (`benchSettled`). The bench's phrase buffer is replaced only
+  by an edit's reply, so until then it is the sound from before the edit. A
+  waiting ▶ is lit `.pending` at once, and is taken back by a second press,
+  any stop or other ▶ (`stopAudition`, `awaitRender`, `cdPlay`, the node
+  bank's preview), an open or a failed one, and leaving PATCH. In PATCH,
+  Space is the bench's ▶ whenever a patch is on the bench, so with ▶
+  disabled it says why rather than playing the bank's render of the patch
+  from before any edit.
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,
