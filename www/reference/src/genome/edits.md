@@ -11,7 +11,7 @@ an audio slot, and a filter always has exactly one audio input.
 
 | Op | Does |
 |---|---|
-| `Replace { key, kind }` | Swap the node’s kind. Subtrees are preserved where the sorts allow; replacing a source with a processor **wraps** the source |
+| `Replace { key, kind }` | Swap the node’s kind. A processor keeps the old node’s primary input, so replacing a source with a processor **wraps** the source; a source takes the whole subtree’s place |
 | `Insert { key, kind }` | Insert a processor into the wire between this node and its parent; the old subtree becomes its primary input |
 | `Delete { key }` | Remove the node, splicing its primary input up to take its place |
 | `SetMod { key, kind }` | Set the modulation slot on an audio module. A source kind replaces the slot’s term; a shaper **wraps** it |
@@ -32,10 +32,11 @@ ASIDE tray is.
 `Insert` and a processor `Replace` place the kind’s default module, and they
 seat the chain with the same splice `InsertTree` uses. The chain becomes the new
 module’s primary input, `/0`: the old subtree for `Insert`, the old node’s own
-primary input for `Replace`. On the two-input modules that is a mix’s `a`, the
-`in` of a compressor, ducker or gate, and a vocoder’s **carrier**, the one
-branch whose waveform reaches the output. The default module brings its own
-second branch:
+primary input for `Replace` (the old node itself, when it was a source). On the
+two-input modules that is a mix’s or ring mod’s `a`, the `in` of a compressor,
+ducker or gate, and a vocoder’s **carrier**, the one branch whose waveform
+reaches the output. A `Replace` drops the old node itself and its `/1`, and
+nothing else. The default module brings its own second branch:
 
 | Kind | Its own `/1` |
 |---|---|
@@ -48,7 +49,9 @@ So a vocoder placed on a chain makes that chain speak. The Vox Machina preset
 is built the same way: a supersaw stack as the carrier, a formant voice as the
 modulator. Until October 2026 `Insert` and `Replace` built the vocoder with a
 supersaw carrier of its own and dropped the chain they landed on. The app was
-never affected, because its placements send `InsertTree`.
+never affected: it never sends `Insert` or `Replace`. Its structural edits are
+`insert_tree`, `replace_tree`, `set_mod_tree`, `set_mod`, `swap_mix` and
+`delete`, and its other wiring gestures post the whole rewired tree.
 
 ## Wrap versus replace
 

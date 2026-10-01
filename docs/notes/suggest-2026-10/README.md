@@ -668,13 +668,13 @@ The questions as they were put:
 
 - **`StructOp::Insert` with a vocoder dropped the chain** it landed on:
   `default_node` built the vocoder's carrier and modulator fresh and ignored
-  the input it was handed. `InsertTree`, which the app's placements and
+  the input it was handed. `InsertTree`, which the app's insertions and
   PERFORM's grafts use, kept the chain as the carrier. It was not fixed here,
-  and the census left such edits out. **Fixed since,** on
-  `claude/insert-vocoder`: `Insert` and `Replace` (which had the same fault)
-  seat the kind's default module with `graft`, the splice `InsertTree` uses,
-  so the chain is the vocoder's carrier and keeps every module. A vocoder at
-  each wire now qualifies as a candidate; the tables above were measured
+  and the census left such edits out. **Fixed since,** in PR #90: `Insert` and
+  `Replace` (which had the same fault) seat the kind's default module with
+  `graft`, the splice `InsertTree` uses, so the chain is the vocoder's carrier
+  and keeps every module. A vocoder at each wire, where the size and depth
+  limits allow, now qualifies as a candidate; the tables above were measured
   before the fix, without one.
 - **PERFORM's graft is a hand-made suggestion.** `insert_for` puts a neutral EQ
   on the output so Bright and Body have something to turn. The same ranking
