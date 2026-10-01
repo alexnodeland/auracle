@@ -239,9 +239,11 @@ That has two consequences, and one of them decided a default:
 
 ## The screening cascade
 
-$\varphi_{\text{struct}}$ is free (no compile, no render) so a structure-only
-surrogate can prune candidates before the expensive path. Survivors get
-rendered and scored in full.
+$\varphi_{\text{struct}}$ is free (no compile, no render), so a structure-only
+surrogate could prune candidates before the expensive path, and only the
+survivors would be rendered and scored in full. **No such cascade is built:**
+`SurrogateFitness` featurizes every candidate it is handed
+([Directions §12](../design/directions.md#12-the-screening-cascade-is-cited-and-unbuilt)).
 
 This is designed into the feature split and is why $\varphi$ is
 [two-part](../features/structural.md) rather than one vector. In the refinement path

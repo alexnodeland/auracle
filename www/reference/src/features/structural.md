@@ -2,10 +2,12 @@
 
 <p class="lede">Twenty-six dimensions, free to compute.</p>
 
-These cost nothing: no compile, no render, just a walk of the term. That is
-what makes the [screening
+These cost nothing: no compile, no render, only a walk of the term. That is
+what makes a [screening
 cascade](../search/refinement.md#the-screening-cascade) possible: a
-structure-only surrogate prunes candidates before the expensive render path.
+structure-only surrogate could prune candidates before the expensive render
+path. No such cascade is built yet
+([Directions §12](../design/directions.md#12-the-screening-cascade-is-cited-and-unbuilt)).
 They also capture taste axes audio features cannot fully separate ("likes
 supersaws", "likes deep modulated chains").
 
