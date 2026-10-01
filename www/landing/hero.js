@@ -424,7 +424,7 @@
         `<span class="bar-label">${a.label}</span>` +
         `<span class="bar-track"><i class="bar-whisk" data-whisk></i>` +
         `<i class="bar-fill" data-fill></i></span>` +
-        `<span class="bar-val" data-val>—</span>`;
+        `<span class="bar-val" data-val>·</span>`;
       barsEl.appendChild(li);
     }
   }
@@ -453,7 +453,7 @@
       whisk.style.left = `${lo}%`;
       whisk.style.width = `${Math.max(0, hi - lo)}%`;
 
-      val.textContent = picks === 0 ? '—' : `±${s.toFixed(2)}`;
+      val.textContent = picks === 0 ? '·' : `±${s.toFixed(2)}`;
     });
 
     pipsEl.textContent =

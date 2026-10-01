@@ -723,6 +723,9 @@ Lines from the app and the site, rewritten to this guide.
   reads only what a reader sees or hears: comments and code don't count.
 - **Names:** a script line that ends in `// voice: name` holds names, not
   copy, so the check skips its strings.
+- **Quotes:** in Markdown, someone else's words (a standard's title, a label
+  the app used to show) sit between `<!-- voice: quote -->` and
+  `<!-- /voice -->`. They keep their own spelling, and the check skips them.
 - **The ratchet:** the copy is older than this guide, so the check holds it
   to a floor, not a wall. `www/brand/voice-baseline.json` holds each file's
   count for each rule. The check fails when a count rises, or when a new file

@@ -1,27 +1,4 @@
 {
-  "CHANGELOG.md": {
-    "analyse": 2,
-    "behaviour": 2,
-    "cancelled": 1,
-    "catalogue": 6,
-    "centre": 19,
-    "colour": 11,
-    "em dash": 400,
-    "grey": 2,
-    "labelled": 3,
-    "marginalise": 1,
-    "maths": 1,
-    "modelling": 1,
-    "normalise": 2,
-    "recognise": 3,
-    "travelled": 3
-  },
-  "apps/web/perform.js": {
-    "HELD": 1
-  },
-  "apps/web/worker.js": {
-    "retired": 1
-  },
   "www/docs/src/accessibility.md": {
     "catalogue": 1,
     "colour": 3,
@@ -169,15 +146,6 @@
     "duel": 1,
     "posterior": 2,
     "vote": 1
-  },
-  "www/landing/hero.js": {
-    "em dash": 2
-  },
-  "www/landing/index.html": {
-    "em dash": 3
-  },
-  "www/reference/src/bibliography.md": {
-    "normalise": 1
   },
   "www/video/films/composing/script.json": {
     "duel": 1

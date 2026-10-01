@@ -47,6 +47,8 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   (`www/checkwords.py`): a sweep lowers it in the same change with
   `python3 www/checkwords.py --update`.
   A script line that ends in `// voice: name` holds names, not copy.
+  In Markdown, a quotation keeps its own words between
+  `<!-- voice: quote -->` and `<!-- /voice -->`.
 - **Motion shows what the engine does**
   ([ADR-012](../docs/decisions/012-motion-shows-what-the-engine-does.md)): a
   figure or film that animates a mechanism shows what the engine does, and a

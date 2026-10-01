@@ -246,6 +246,24 @@ class WhatItReads(unittest.TestCase):
         )
         self.assertEqual(words(W.md_prose(src)), [(1, "bench"), (6, "bench"), (8, "bench"), (11, "duel")])
 
+    def test_a_marked_quotation_is_not_read(self):
+        src = "\n".join(
+            [
+                "*<!-- voice: quote -->Loudness normalisation — and colour<!-- /voice -->*, then a colour.",  # 1
+                "The toast said <!-- voice: quote -->*Kept — this is",  # 2: a quote that wraps a line
+                "home now.*<!-- /voice --> and the bench — once.",  # 3
+                "<!--voice:quote-->a duel<!--/voice--> and a duel",  # 4: no spaces needed
+            ]
+        )
+        self.assertEqual(words(W.md_prose(src)), [(1, "colour"), (3, "bench"), (3, "em dash"), (4, "duel")])
+
+    def test_a_quotation_without_its_closer_exempts_nothing(self):
+        # No closer at all: the opener is a comment, and the words are read.
+        self.assertEqual(words(W.md_prose("<!-- voice: quote -->a colour — and a duel.\n\nThe bench.")), [(1, "colour"), (1, "duel"), (1, "em dash"), (3, "bench")])
+        # A closer past a blank line: a quote never crosses a paragraph.
+        src = "<!-- voice: quote -->a colour\n\nthe bench<!-- /voice -->, then a duel."
+        self.assertEqual(words(W.md_prose(src)), [(1, "colour"), (3, "bench"), (3, "duel")])
+
     def test_an_admonish_callout_is_prose(self):
         src = "\n".join(
             [
@@ -404,6 +422,18 @@ class TheRatchet(unittest.TestCase):
             for rel, (rule, _) in planted.items():
                 self.assertIn(f"  {rel}: {rule} (", err)
             self.assertEqual(err.count(" hits, and "), len(planted))
+
+    def test_a_marked_quotation_passes(self):
+        with Tree() as t:
+            t.edit(
+                "www/reference/src/page.md",
+                lambda s: s + "\n*<!-- voice: quote -->Loudness normalisation —\nand colour<!-- /voice -->.*\n",
+            )
+            self.assertEqual(t.run()[0], 0)
+            t.edit("www/reference/src/page.md", lambda s: s + "\nThe colour, unquoted.\n")
+            code, _, err = t.run()
+            self.assertEqual(code, 1)
+            self.assertIn("www/reference/src/page.md:8: colour: The colour, unquoted.", err)
 
     def test_a_player_word_in_the_reference_passes(self):
         with Tree() as t:

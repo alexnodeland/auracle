@@ -25,7 +25,10 @@ literals (not its comments, its names, or a literal used as a name: see
 `alt` (and a `<meta>` description or social-card title), Markdown's prose
 outside code (an admonish callout is prose), and a film script's `text`
 lines. Entities are decoded everywhere. A script line that ends in the
-comment `// voice: name` holds names, and its literals are not read.
+comment `// voice: name` holds names, and its literals are not read. In
+Markdown, text between `<!-- voice: quote -->` and `<!-- /voice -->` quotes
+someone else's words (a standard's title, a label the app used to show), and
+is not read; the span can wrap a line, never a paragraph.
 
 A word matches whole, in any case, with its plain inflections (`generate`
 matches "generated", never "generation"). An entry written in capitals (AI,
@@ -284,13 +287,18 @@ def html_text(text: str) -> list[tuple[int, str]]:
 
 
 FENCE_RE = re.compile(r"\s*(`{3,}|~{3,})(.*)$")
+# A quotation: someone else's words, kept as they were written. It may wrap a
+# line but not cross a blank one, so a closer left off exempts nothing past
+# its paragraph (and an opener with no closer at all exempts nothing).
+QUOTE_RE = re.compile(r"<!--\s*voice:\s*quote\s*-->(?:(?!\n[ \t]*\n).)*?<!--\s*/voice\s*-->", re.S)
 
 
 def md_prose(text: str) -> list[tuple[int, str]]:
     """Markdown's prose: not its code blocks, code spans, math, HTML comments,
-    link destinations or mdBook directives. An admonish callout (```admonish)
-    renders as prose, so its body and its title are read. Inline HTML is read
-    as a page."""
+    link destinations or mdBook directives, nor a quotation marked
+    `<!-- voice: quote -->…<!-- /voice -->`. An admonish callout
+    (```admonish) renders as prose, so its body and its title are read.
+    Inline HTML is read as a page."""
     out = []
     fences = []  # each open fence: (character, length, is an admonish callout)
     for ln in text.split("\n"):
@@ -313,6 +321,7 @@ def md_prose(text: str) -> list[tuple[int, str]]:
             out.append(ln)
     t = "\n".join(out)
     sub = lambda pat, s, f=0: re.sub(pat, lambda m: blank(m.group(0)), s, flags=f)  # noqa: E731
+    t = sub(QUOTE_RE, t)
     t = sub(r"<!--.*?-->", t, re.S)
     t = sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", t, re.S)
     t = sub(r"\$\$.*?\$\$", t, re.S)
