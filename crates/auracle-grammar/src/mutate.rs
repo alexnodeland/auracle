@@ -439,7 +439,7 @@ pub enum StructError {
     #[error("{0}")]
     Invalid(String),
     /// The edit would exceed the size/depth ceilings.
-    #[error("patch would exceed limits ({0} modules max, depth {1})")]
+    #[error("the patch would pass its limits ({0} modules, depth {1})")]
     TooBig(usize, usize),
     /// The edit would stack more CV processors on one cable than the realtime
     /// voice is willing to carry.
@@ -961,7 +961,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 Some(input) => *slot = input,
                 None => {
                     return Err(StructError::Invalid(
-                        "a lone source cannot be deleted; replace it instead".into(),
+                        "a lone source can’t be deleted; replace it instead".into(),
                     ))
                 }
             }
