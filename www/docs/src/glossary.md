@@ -79,7 +79,7 @@ list. The rack you see is compiled from it.
 
 ### Set aside
 
-The staging tray under the rack, labelled **SET ASIDE**. Anything you unplug, delete, or bypass goes
+The staging tray under the rack, labeled **SET ASIDE**. Anything you unplug, delete, or bypass goes
 here rather than vanishing, and stays across a reload.
 
 ### Job slot

@@ -55,7 +55,7 @@ export function kindsInLog(observations) {
   if (!Array.isArray(observations)) return null;
   const k = { picks: 0, stars: 0, cuts: 0 };
   for (const o of observations) {
-    const f = o && o.feedback && typeof o.feedback === "object" ? Object.keys(o.feedback)[0] : "Duel";
+    const f = o && o.feedback && typeof o.feedback === "object" ? Object.keys(o.feedback)[0] : "Duel"; // voice: name
     if (f === "Stars") k.stars += 1;
     else if (f === "KeepKill") k.cuts += 1;
     else k.picks += 1;

@@ -16,48 +16,8 @@
     "recognise": 3,
     "travelled": 3
   },
-  "apps/web/index.html": {
-    "HELD": 2,
-    "analyse": 3,
-    "bench": 6,
-    "catalogue": 2,
-    "colour": 1,
-    "commit": 7,
-    "em dash": 51,
-    "favourite": 1,
-    "plate": 4,
-    "vote": 5,
-    "workbench": 2
-  },
-  "apps/web/main.js": {
-    "HELD": 4,
-    "MODEL'S GUESS": 2,
-    "analyse": 1,
-    "bench": 15,
-    "cancelled": 1,
-    "catalogue": 2,
-    "centre": 1,
-    "commit": 6,
-    "duel": 10,
-    "em dash": 327,
-    "favourite": 3,
-    "generate": 2,
-    "lens": 2,
-    "measuring…": 1,
-    "modelling": 1,
-    "plate": 8,
-    "posterior": 1,
-    "preference": 1,
-    "quantise": 1,
-    "vote": 5
-  },
-  "apps/web/midi.js": {
-    "em dash": 5
-  },
   "apps/web/perform.js": {
-    "HELD": 1,
-    "centre": 2,
-    "em dash": 31
+    "HELD": 1
   },
   "apps/web/worker.js": {
     "retired": 1
@@ -68,14 +28,13 @@
     "duel": 1
   },
   "www/docs/src/bank.md": {
-    "duel": 2,
-    "em dash": 6,
-    "evict": 4,
+    "duel": 1,
+    "em dash": 4,
+    "evict": 3,
     "generate": 1,
     "judgement": 1,
     "posterior": 2,
-    "preference": 2,
-    "workbench": 1
+    "preference": 2
   },
   "www/docs/src/films.md": {
     "duel": 7,
@@ -89,7 +48,6 @@
     "em dash": 2,
     "evict": 1,
     "generate": 2,
-    "lens": 2,
     "preference": 1
   },
   "www/docs/src/getting-started/running-locally.md": {
@@ -97,10 +55,7 @@
     "retired": 1
   },
   "www/docs/src/glossary.md": {
-    "HELD": 1,
-    "duel": 9,
-    "em dash": 2,
-    "lens": 5,
+    "duel": 8,
     "posterior": 2,
     "preference": 2,
     "vote": 1
@@ -114,13 +69,11 @@
     "vote": 1
   },
   "www/docs/src/keyboard.md": {
-    "HELD": 3,
     "catalogue": 1,
     "centre": 5,
-    "em dash": 2,
+    "em dash": 1,
     "plate": 4,
-    "recognise": 2,
-    "vote": 1
+    "recognise": 2
   },
   "www/docs/src/playing.md": {
     "centre": 1,
@@ -130,35 +83,28 @@
     "recognise": 1
   },
   "www/docs/src/rack.md": {
-    "HELD": 2,
-    "bench": 1,
     "cancelled": 1,
     "centre": 1,
     "colour": 2,
-    "commit": 11,
     "duel": 1,
-    "em dash": 1,
     "grey": 3,
     "judgement": 1,
     "labelled": 2,
-    "plate": 8
+    "plate": 7
   },
   "www/docs/src/reading-the-model.md": {
     "centre": 1,
     "duel": 8,
-    "em dash": 4,
     "generate": 1,
     "grey": 1,
     "labelled": 1,
-    "lens": 4,
     "posterior": 2,
     "preference": 3,
     "recognise": 1
   },
   "www/docs/src/teaching.md": {
-    "commit": 2,
     "duel": 13,
-    "em dash": 3,
+    "em dash": 2,
     "evict": 1,
     "judgement": 1,
     "lens": 1,
@@ -169,60 +115,49 @@
   },
   "www/docs/src/troubleshooting.md": {
     "bench": 1,
-    "commit": 3,
+    "commit": 1,
     "duel": 5,
-    "em dash": 2,
     "preference": 1,
     "retired": 2
   },
   "www/docs/src/views/evolve.md": {
-    "bench": 3,
+    "bench": 2,
     "duel": 10,
-    "em dash": 7,
+    "em dash": 2,
     "generate": 1,
-    "preference": 1,
-    "vote": 9,
-    "workbench": 1
+    "vote": 6
   },
   "www/docs/src/views/perform.md": {
     "centre": 11,
-    "commit": 1,
     "duel": 3,
-    "em dash": 8,
+    "em dash": 3,
     "labelled": 1,
     "travelled": 1,
     "workbench": 3
   },
   "www/docs/src/views/play.md": {
-    "HELD": 1,
-    "analyse": 1,
     "catalogue": 2,
     "centre": 1,
     "colour": 1,
-    "commit": 3,
-    "duel": 3,
-    "em dash": 3,
-    "lens": 1,
+    "duel": 1,
+    "em dash": 1,
     "plate": 1,
-    "vote": 1,
-    "workbench": 1
+    "vote": 1
   },
   "www/docs/src/views/taste.md": {
     "centre": 4,
-    "commit": 3,
-    "duel": 8,
-    "em dash": 7,
+    "commit": 1,
+    "duel": 7,
+    "em dash": 6,
     "favourite": 1,
     "generate": 1,
     "labelled": 1,
-    "lens": 10,
+    "lens": 1,
     "posterior": 3,
     "preference": 2,
-    "recognise": 1,
-    "workbench": 1
+    "recognise": 1
   },
   "www/docs/src/wiring.md": {
-    "HELD": 1,
     "catalogue": 4,
     "colour": 1,
     "em dash": 3,
@@ -231,9 +166,7 @@
     "preference": 1
   },
   "www/docs/src/your-data.md": {
-    "HELD": 1,
     "duel": 1,
-    "em dash": 2,
     "posterior": 2,
     "vote": 1
   },

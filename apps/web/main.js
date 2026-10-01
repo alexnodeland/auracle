@@ -6808,7 +6808,7 @@ function rateRow(rating, explicitId) {
 // assumption it would, then say so; "rated ★" over a vote that went nowhere is
 // the app stating something untrue about the model.
 function voteDropped(v) {
-  let what = "vote";
+  let what = "pick";
   if (v.kind === "stars") {
     what = "rating";
     if (v.prev > 0) starsById.set(v.id, v.prev);
