@@ -166,10 +166,12 @@ patch’s real output level, and measuring them post-normalization would make th
 peak ceiling meaningless. See
 [the order is the design](./vetting.md#the-order-is-the-design).
 
-The normalized buffer is also **exactly what the player hears**. One buffer
-serves the health check, the measurement, and the playback, which is what makes
-“a player never hears an unvetted patch” true by construction rather than by
-discipline.
+The normalized buffer is also **what ▶ plays** (raised to the target where a
+ceiling stopped it short, in `auracle-wasm`’s `level.rs`). One buffer serves the
+health check, the measurement, and the playback, which is what makes “no
+audition is unvetted” true by construction rather than by discipline. (The
+live keys play an edit before its check: see
+[Safety](../safety.md#the-live-keys-play-an-edit-before-its-check).)
 
 ## Mono
 

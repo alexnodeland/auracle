@@ -28,7 +28,7 @@ module’s spec card in the module rail says them in these words:
 | *The model hasn’t fitted your taste yet. Make a few picks.* | Nothing learned yet. Make some picks |
 | *In 3 of 40 sounds: too few for the model to lean yet.* | Fewer than five sounds in the pool use it: too few to learn from |
 | *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough sounds use it, and the model has looked, but it can’t yet tell which way you lean |
-| *In 12 of 40 sounds.* in *analog sustain (60% of your pool) you lean toward it (θ +0.62 ± 0.20)* | Here is the lean, and how far to trust it |
+| *In 12 of 40 sounds. In analog sustain (60% of your pool), you lean toward it (θ +0.62 ± 0.20).* | Here is the lean, and how far to trust it |
 
 A dash is not zero. “The model isn’t sure yet” and “the model has had no
 chance to form a view” are different statements, and one gray bar can’t say

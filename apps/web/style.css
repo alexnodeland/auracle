@@ -1895,6 +1895,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .oct-ctl { display: flex; align-items: center; gap: var(--s2); }
 #oct-label { font-size: var(--t-value); color: var(--phos-a); min-width: 44px; text-align: center; }
 .live-label { font-size: var(--t-value); color: var(--phos-a-dim); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Space waiting for an edit outside PATCH (main.js `paintLiveLabel`): its own
+   box over the sound's name, right-aligned with it and as wide as its words,
+   so the name's 130 px ellipsis cannot clip it; the amber of ▶'s waiting
+   ring. The name keeps its box, hidden, so nothing around it moves. */
+.live-slot { position: relative; }
+.live-slot.waiting .live-label { visibility: hidden; }
+.live-wait { position: absolute; top: 0; right: 0; font-size: var(--t-value); color: var(--phos-b); white-space: nowrap; }
+.live-wait:empty { display: none; }
 #vol { accent-color: var(--phos-a); width: 110px; }
 
 .piano {

@@ -4,7 +4,7 @@
 Press <kbd>?</kbd> in the app for the same map without leaving it.</p>
 
 The keys below use the Mac’s ⌘. On Windows and Linux, use Ctrl where you see
-⌘: <kbd>⌘Z</kbd> is Ctrl Z.
+⌘: <kbd>⌘Z</kbd> is Ctrl Z, and the app shows it that way there.
 
 ## Notes
 
@@ -35,7 +35,7 @@ are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>Space</kbd> | Hear the sound you’re playing |
+| <kbd>Space</kbd> | Hear the sound you’re playing as it stands on the rack: your edits in PATCH, and what you kept or took in PERFORM, without a control turned since or Wander’s drift. Pressed while an edit is on its way, it plays once the edit lands; outside PATCH, *▶ waiting for the edit…* stands in for the sound’s name at the right of the keybed until then. It plays with a knob or a PERFORM control focused. |
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the sound you’re on |
 | <kbd>m</kbd> | Save the sound you’re on |
@@ -78,6 +78,7 @@ with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 | <kbd>←</kbd> <kbd>→</kbd> | Move between controls |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Turn the focused knob |
 | <kbd>Shift</kbd> and <kbd>↑</kbd> / <kbd>↓</kbd> | Fine |
+| <kbd>Space</kbd> or <kbd>Enter</kbd> / <kbd>⇧</kbd> and either | Cycle the focused setting (a wave, a filter mode) forward / back. A click leaves no focus on a setting, so Space after a click plays. |
 | <kbd>L</kbd> | Lock the focused control |
 
 ## The bank
@@ -176,7 +177,7 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
 1. Click the MIDI state at the right of the keybed (*midi ●* with a device
    connected).
 2. Press **LEARN** on a row, then move a knob: that knob now drives the row’s
-   control. Any knob it replaces is unbound.
+   control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
 The panel lists PERFORM’s eight controls and what drives each. A row with no
@@ -188,8 +189,8 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 
 With that switch on, the first eight different knobs you move take PERFORM’s
 controls in the order you move them: BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE,
-BLEND, and WANDER. Each is announced (*mapped: CC 74 → Bright*). The mod wheel
-is left out, because it already means something.
+BLEND, and WANDER. Each is announced (*CC 74 now moves Bright, the first free
+control.*). The mod wheel is left out, because it already means something.
 
 Some controllers are never taken, by the switch or by **LEARN**, because MIDI
 gives them a meaning of their own:

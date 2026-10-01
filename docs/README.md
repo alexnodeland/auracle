@@ -61,6 +61,7 @@ plugins work on it.
 | [013](decisions/013-one-voice.md) | One voice: the line, the words and the spoken voice in `www/brand/voice.md` (supersedes ADR-011's tagline and spelling) |
 | [014](decisions/014-the-films-sound.md) | The films' sound: one key, one room, the instrument on top, no cues |
 | [015](decisions/015-audio-in.md) | Audio in: one source node, its uses by patching, measured with an audition clip |
+| [016](decisions/016-space-plays-everywhere.md) | Space plays the sound you're playing, in every view (supersedes ADR-009's Space for PERFORM's pads) |
 
 ## Proposals
 

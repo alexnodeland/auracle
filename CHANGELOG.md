@@ -43,6 +43,41 @@ changelog that edits its own past is not a record.
   and could cut it short. Every name in the bank starts a little further
   right to make that room.
 
+### Fixed: Space and the settings on the rack
+
+- **Space plays the sound you’re playing as it stands on the rack, in
+  every view.** In PERFORM and EVOLVE, Space played the preset as it was
+  saved: change a wave in PATCH, switch to PERFORM, press Space, and you
+  heard the old wave. It now plays your edits there too, and in PERFORM what
+  you kept or took, without a control turned since or Wander’s drift. It
+  waits for an edit still on its way, as ▶ does in PATCH, and *▶ waiting
+  for the edit…* stands in for the sound’s name at the right of the keybed
+  until then.
+- **Space plays after a click on a setting or a control.** A click on a
+  wave or filter-mode chip left it focused, and Space then changed the
+  setting again; after a drag on a PERFORM control or a click on the XY
+  pad, Space did nothing. A click now leaves no focus on a setting, and one
+  reached with the keyboard cycles on Space or Enter, as a button does (⇧
+  goes back).
+- **A knob turned into a runaway is muted, as the alarm says.** The alarm
+  read *Muted* while held notes went on playing what the knob had made; a
+  module placed or removed was already muted when its check failed. A
+  setting that fails its check is never played, and the alarm now says
+  *Not applied* for it, where it said *Muted* over the sound from before.
+- **A screen reader hears what a setting on the rack is set to.** Its name
+  carries its value (*VCO wave, sin*), and each change is read out; it was
+  the name alone, so cycling it said nothing.
+- **An undo, a redo, or a Take plays at the sound's own level from the
+  start.** The keys take the sound back before the engine has rendered it
+  again, and they took it at the level of the sound being left: undoing a
+  filter-mode change on Falling Sign played a held note 11.8 dB too loud
+  until the render, and up to 27 dB on other presets. They now take it at
+  the level it was measured at.
+- **A preset opened while an edit is still rendering plays at its own
+  level.** A remembered preset plays from the click, and the reply to an
+  undo or a module change made just before set that edit's level on it, up
+  to 40 dB too loud, until the preset's own reply landed.
+
 ### Changed: one type scale, one set of spaces and speeds
 
 - **No text in the app's panels is smaller than 11 px, and none drawn on a
@@ -189,6 +224,20 @@ changelog that edits its own past is not a record.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.
+- **A MIDI knob that takes a control is announced in a sentence.** A knob
+  that claims a free control says *CC 74 now moves Bright, the first free
+  control.* One bound with LEARN says *CC 21 now moves Snap.* They read
+  *mapped: CC 74 → Bright*.
+- **Three more lines read as sentences.** A sound that kept you waiting to
+  open is announced as *Opened Glass Pad.*, with its period. A module’s spec
+  card says a lean the model is sure of in its own sentence: *In 12 of 40
+  sounds. In analog sustain (60% of your pool), you lean toward it.* It ran
+  on in lowercase after the count. Wander’s tooltip and HOW THIS WORKS say a
+  tap freezes it, as the FREEZE pad does; they said a tap held it.
+- **Keys are printed in each platform’s own words.** Off Apple platforms the
+  ? card reads Ctrl Z and Ctrl Shift Z, the booth menu Shift Esc, and the
+  minimap’s tooltip Shift 1–9. They printed ⌘ and ⇧ everywhere, though Ctrl
+  has always worked.
 
 ### Changed: the guide
 

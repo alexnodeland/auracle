@@ -13,6 +13,9 @@ import {
   emptyGeneration,
   evolveRefusal,
   series,
+  leanSentence,
+  onApple,
+  platformKeys,
   walkSaid,
   walkLabel,
   belowNote,
@@ -196,4 +199,44 @@ test("the bank's lineage lines name the seed, what changed, and both ratings wit
   // A percentage never stands alone (voice.md, the model's voice).
   assert.ok(!/\d%(?! ·)/.test(r), r);
   for (const s of [fromLine("Soft Pad", "+reverb"), grownFrom("Soft Pad", 1), belowNote(2), r]) voiced(s);
+});
+
+test("a module's lean on the spec card reads as a sentence", () => {
+  const s = leanSentence("analog sustain", 0.6, 0.62, 0.2);
+  assert.equal(s, "In analog sustain (60% of your pool), you lean toward it (θ +0.62 ± 0.20).");
+  assert.equal(leanSentence("Warm Wash", 0.35, -0.41, 0.12),
+    "In Warm Wash (35% of your pool), you lean away from it (θ −0.41 ± 0.12).");
+  for (const x of [s, leanSentence("b", 0.1, -1, 0.5)]) {
+    voiced(x);
+    assert.match(x, /^[A-Z]/, `a sentence starts with a capital: ${x}`);
+    assert.match(x, /\.$/, `a sentence ends with a period: ${x}`);
+  }
+});
+
+test("a key chord is written in the platform's own words", () => {
+  // On an Apple platform, the Mac's symbols, as written.
+  for (const k of ["⌘Z", "⇧⌘Z", "⌘0", "⇧Esc"]) assert.equal(platformKeys(k, true), k);
+  // Elsewhere, Ctrl for ⌘, then Alt, then Shift, spelled as the guide does.
+  assert.equal(platformKeys("⌘Z", false), "Ctrl Z");
+  assert.equal(platformKeys("⇧⌘Z", false), "Ctrl Shift Z");
+  assert.equal(platformKeys("⌘0", false), "Ctrl 0");
+  assert.equal(platformKeys("⌘−", false), "Ctrl −");
+  assert.equal(platformKeys("⌘=", false), "Ctrl =");
+  assert.equal(platformKeys("⇧Esc", false), "Shift Esc");
+  assert.equal(platformKeys("⌥⌘K", false), "Ctrl Alt K");
+  // Inside a sentence, only the chord changes.
+  assert.equal(platformKeys("Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.", false),
+    "Shift-click it to bookmark a spot, and Shift 1–9 jumps to one.");
+  assert.equal(platformKeys("They snap to the grid, and ⇧ places them freely.", false),
+    "They snap to the grid, and Shift places them freely.");
+  assert.equal(platformKeys("Bookmark 3 set. ⇧3 comes back here.", false),
+    "Bookmark 3 set. Shift 3 comes back here.");
+  assert.equal(platformKeys("no keys here", false), "no keys here");
+  // Which platform: Apple's say so in `platform` (or userAgentData).
+  assert.equal(onApple({ platform: "MacIntel" }), true);
+  assert.equal(onApple({ platform: "iPhone" }), true);
+  assert.equal(onApple({ platform: "Win32" }), false);
+  assert.equal(onApple({ platform: "Linux x86_64" }), false);
+  assert.equal(onApple({ userAgentData: { platform: "macOS" }, platform: "" }), true);
+  assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
 });

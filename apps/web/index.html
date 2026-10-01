@@ -721,7 +721,13 @@
         <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi ·</button>
         <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
-      <div class="live-label mono" id="live-label">no sound</div>
+      <!-- The sound's name, and over it while Space waits for an edit outside
+           PATCH, the wait (main.js, paintLiveLabel): a box of its own, so the
+           name's ellipsis cannot clip it, and a polite live region. -->
+      <div class="live-slot">
+        <div class="live-label mono" id="live-label">no sound</div>
+        <div class="live-wait mono" id="live-wait" role="status" aria-live="polite"></div>
+      </div>
       <label class="perf-glide mono" title="Master volume: live keys and every ▶">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
     </div>
   </footer>
@@ -840,12 +846,12 @@
         <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller’s first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>space</kbd> hear the sound you’re playing · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
+        <p><kbd>Space</kbd> hear the sound you’re playing · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> hear A or B · <kbd>←</kbd>/<kbd>→</kbd> pick · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
         <div class="help-h">the rack canvas</div>
-        <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
-        <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
-        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>shift</kbd> to place it freely. <b>snap</b> pins everything where it sits now, on the grid, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file.</p>
+        <p><kbd>Home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
+        <p><kbd>Ctrl</kbd> and the wheel, or a pinch, zooms at the pointer · the wheel or a drag on bare canvas pans · <kbd>Space</kbd> and a drag, or a middle-button drag, pans from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>Shift</kbd> to place it freely. <b>snap</b> pins everything where it sits now, on the grid, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file.</p>
         <div class="help-h">the keybed</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
@@ -853,10 +859,10 @@
       </div>
       <div>
         <div class="help-h">the rack</div>
-        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. ⋯ restructures a module; ▢ locks it so breeding can’t touch it. <kbd>Tab</kbd> into the rack, then arrows to move and <kbd>↑</kbd>/<kbd>↓</kbd> to turn.</p>
+        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. ⋯ restructures a module; ▢ locks it so breeding can’t touch it. <kbd>Tab</kbd> into the rack, then arrows to move, <kbd>↑</kbd>/<kbd>↓</kbd> to turn, and <kbd>Space</kbd> or <kbd>Enter</kbd> to cycle a setting (<kbd>Shift</kbd> goes back).</p>
         <div class="help-h">the module rail</div>
-        <p>The rail on the right is the catalog. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>esc</kbd> puts it down.</p>
-        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and which way your taste leans on it. Arrows walk the list; <kbd>enter</kbd> takes one; then arrows walk the lit sockets and <kbd>enter</kbd> places.</p>
+        <p>The rail on the right is the catalog. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>Esc</kbd> puts it down.</p>
+        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and which way your taste leans on it. Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>

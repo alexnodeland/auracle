@@ -23,6 +23,15 @@
 //   changes what comes out of the speakers to each waveform's harmonic
 //   signature, and once the edit has landed ▶ plays the triangle, Space stops
 //   it, and Space plays it again.
+// - A selector change under a held note keeps its level while the engine
+//   renders it: the voices are handed nothing until the edit's reply (the
+//   render slowed by 1.5 s so the window is wide on any machine), the held
+//   note's level stays where it was, and once the reply lands the new filter
+//   mode plays at its measured makeup, within 4 dB of the level before. A
+//   tree sent ahead of its render could carry only the previous tree's
+//   makeup, which on this change (Falling Sign's filter, low-pass to
+//   band-pass) is 11.8 dB too quiet, and up to 27 dB hot on others
+//   (crates/auracle-wasm/examples/selector_makeup.rs).
 // - Turning the filter's cutoff down lowers the centroid and the 3rd harmonic,
 //   live and on ▶.
 // - ▶ or Space pressed while a wave change is still at the engine plays the
@@ -35,9 +44,34 @@
 //   taken back: by a second press, by Space (which also stops a phrase
 //   already sounding), by leaving PATCH, or by another ▶ (a bank row's, whose
 //   phrase it then does not cut off).
+// - An undo and a redo of a selector keep the held note's level: the voices
+//   take the restored tree before its render at the makeup it was measured
+//   at (the engine's memo of that tree), and the level while it renders is
+//   the level once it lands. They took it at the makeup of the tree being
+//   left: 11.8 dB off on this change, up to 27 dB hot on others.
+// - A selector whose check fails is not applied: the voices keep the sound
+//   from before it, and the alarm says so ("Not applied"), not "Muted". A
+//   knob turned after it is not muted for a check of a tree the voices do
+//   not hold.
+// - A knob whose check finds a runaway is muted, as the alarm says: a knob
+//   reaches the voices before its check, and its failed check used to raise
+//   "Muted" over voices still playing. A check that passes lifts the mute.
+//   (The failure is the engine's reply edited on its way to the page.)
+// - An edit's reply leaves alone the voices of a preset opened while the
+//   edit rendered. A structural edit (here a ⌘Z) reaches the voices before
+//   its render, and its reply sets their makeup; a remembered preset clicked
+//   in between plays from memory at once, and that reply used to set the
+//   edit's makeup on it (Pluck's, 24 dB over Held Under's).
 // - In PATCH, Space with ▶ disabled (nothing reaches the output) says so and
 //   plays nothing, rather than the bank's render of the patch before the edit;
 //   ▶'s tooltip gives the same reason.
+// - Space in PERFORM and EVOLVE plays the sound as edited (the wave changed in
+//   PATCH), not the preset as saved, and waits like ▶ for an edit still at the
+//   engine when it is pressed. While it waits, the dock says so ("▶ waiting
+//   for the edit…" over the sound's name, in a polite live region) within
+//   100 ms of the press, whole and on screen, until the edit lands; outside
+//   PATCH nothing did, and a first try appended it to the name, where the
+//   name's ellipsis hid it.
 //
 // The engine is made slow for real where a test needs the window between an
 // edit and its reply (a busy-wait prepended to worker.js, as
@@ -46,8 +80,9 @@
 // What it does not claim: that the harmonic levels are exact (the tolerances
 // are a few dB either side of the textbook values); how quickly a wave change
 // is heard live (it waits for the engine's render, a few hundred ms; the log
-// prints it); anything about ▶ or Space in the other views, which play the
-// bank's render of the patch, not the bench's; anything about other patches.
+// prints it); that every selector change keeps its level within 3 dB (the
+// makeup is measured on the whole phrase, a held C4 is one note of it);
+// anything about other patches.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
@@ -55,7 +90,7 @@ const { test, expect } = require("@playwright/test");
 const INIT = `(() => {
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
-  const io = (window.__pwIO = { out: 0, in: 0, benchAt: [] });
+  const io = (window.__pwIO = { out: 0, in: 0, benchAt: [], replies: [], early: [] });
   const EDITS = new Set(["edit_param", "edit_structure", "edit_set_tree"]);
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
@@ -70,10 +105,19 @@ const INIT = `(() => {
       w.addEventListener("message", (e) => {
         const d = e.data;
         if (!d || typeof d.type !== "string") return;
+        // A check that finds a runaway, on demand: the next edit's reply says
+        // its vet failed (this listener runs before main's, on the same data).
+        if (window.__pwFailVet && d.type === "bench" && d.edited !== undefined) {
+          window.__pwFailVet = false;
+          d.vetOk = false;
+          d.vetSilent = false;
+        }
         if ((d.type === "bench" && d.edited !== undefined) || d.type === "edit_rejected") {
           io.in += 1;
           io.benchAt.push(performance.now());
         }
+        if (d.type === "bench") io.replies.push({ t: performance.now(), edited: d.edited, subject: d.subject, makeup: d.makeup });
+        if (d.type === "tree_json" && d.edited !== undefined) io.early.push(performance.now());
       });
     }
     return w;
@@ -133,6 +177,17 @@ const INIT = `(() => {
     return { f0, level: p.db, h2: rel(2), h3: rel(3), h4: rel(4), h5: rel(5), centroid: den > 0 ? num / den : 0 };
   };
 
+  // The output's RMS over the analyser's window (a third of a second), in dBFS.
+  window.__pwRmsDb = () => {
+    const a = window.__pwTap;
+    if (!a) return null;
+    const b = new Float32Array(a.fftSize);
+    a.getFloatTimeDomainData(b);
+    let sum = 0;
+    for (const x of b) sum += x * x;
+    return sum > 0 ? 10 * Math.log10(sum / b.length) : -Infinity;
+  };
+
   // The output's peak over the analyser's window, in dBFS.
   window.__pwPeakDb = () => {
     const a = window.__pwTap;
@@ -142,6 +197,18 @@ const INIT = `(() => {
     let peak = 0;
     for (const x of b) peak = Math.max(peak, Math.abs(x));
     return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+  };
+
+  // Every tree handed to the voices (the worklet's \`patch\` message), by
+  // time: when a change reached a held note, whatever the analyser's window.
+  const voiced = (window.__pwVoiced = []);
+  // …and every makeup they were handed, with a patch or on its own.
+  const makeups = (window.__pwMakeups = []);
+  const portPost = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (m, ...rest) {
+    if (m && m.type === "patch") voiced.push(performance.now());
+    if (m && (m.type === "patch" || m.type === "makeup") && m.makeup != null) makeups.push({ t: performance.now(), type: m.type, makeup: m.makeup });
+    return portPost.call(this, m, ...rest);
   };
 
   // When the hand last pressed the wave chip, ▶ and Space (page clock).
@@ -169,6 +236,32 @@ const INIT = `(() => {
     new MutationObserver(read).observe(b, { attributes: true, attributeFilter: ["class"] });
   });
 
+  // What the dock's wait sign has said, in order, with the time, and where
+  // it was then: whole (not clipped), on screen, clear of the keybed, and on
+  // top (what is at its middle is the sign).
+  const dock = (window.__pwDockSaid = []);
+  document.addEventListener("DOMContentLoaded", () => {
+    const el = document.getElementById("live-wait");
+    if (!el) return;
+    const read = () => {
+      const text = el.textContent;
+      if (dock.length && dock[dock.length - 1].text === text) return;
+      const r = el.getBoundingClientRect();
+      const p = document.getElementById("piano").getBoundingClientRect();
+      const hit = text ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+      dock.push({
+        t: performance.now(), text,
+        live: el.getAttribute("role") === "status" && el.getAttribute("aria-live") === "polite",
+        whole: el.scrollWidth <= el.clientWidth + 0.5,
+        onScreen: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 0,
+        clearOfKeys: r.left >= p.right || r.right <= p.left || r.bottom <= p.top || r.top >= p.bottom,
+        onTop: !!hit && (hit === el || el.contains(hit)),
+      });
+    };
+    read();
+    new MutationObserver(read).observe(el, { childList: true, characterData: true, subtree: true });
+  });
+
   // Every spectrum for \`ms\` from now, stamped with its time.
   window.__pwRecord = (ms, want) => new Promise((resolve) => {
     const out = [];
@@ -176,7 +269,7 @@ const INIT = `(() => {
     const step = () => {
       const t = performance.now() - t0;
       const s = window.__pwSpectrum(want);
-      if (s) out.push({ t, at: t0 + t, ...s });
+      if (s) out.push({ t, at: t0 + t, rms: window.__pwRmsDb(), ...s });
       if (t < ms) setTimeout(step, 25);
       else resolve(out);
     };
@@ -191,10 +284,27 @@ const INIT = `(() => {
 
 // Prepended to worker.js (as in patch_editing.spec.js): a busy-wait before the
 // engine's own handler sees chosen request types, switched on by a message.
+//
+// `__pw_slow_render` slows the engine's renders of an edit instead:
+// `edit_param` and `edit_revet` busy-wait before they run, so anything that
+// reached the voices ahead of a render shows in the window before its reply.
 const SLOW = `let __pwSlow = {};
 self.addEventListener("message", (e) => {
   const d = e.data;
   if (d && d.type === "__pw_slow") { __pwSlow = d.slow || {}; e.stopImmediatePropagation(); return; }
+  if (d && d.type === "__pw_slow_render") {
+    e.stopImmediatePropagation();
+    const P = WasmEngine.prototype;
+    for (const name of ["edit_param", "edit_revet"]) {
+      const f = P["__pw_" + name] || (P["__pw_" + name] = P[name]);
+      P[name] = function (...a) {
+        const until = performance.now() + d.ms;
+        while (performance.now() < until) {}
+        return f.apply(this, a);
+      };
+    }
+    return;
+  }
   const ms = d && __pwSlow[d.type];
   if (ms) { const until = performance.now() + ms; while (performance.now() < until) {} }
 });
@@ -228,6 +338,8 @@ async function boot(page, { slowable = false } = {}) {
 
 const slow = (page, map) =>
   page.evaluate((m) => window.__pwEngine().postMessage({ type: "__pw_slow", slow: m }), map);
+const slowRender = (page, ms) =>
+  page.evaluate((n) => window.__pwEngine().postMessage({ type: "__pw_slow_render", ms: n }), ms);
 
 /** Every edit posted has been answered, and stays that way for `quiet` ms. */
 async function settled(page, quiet = 700) {
@@ -269,6 +381,23 @@ const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
   return s.length ? s[Math.floor(s.length / 2)] : NaN;
 };
+
+/** The output's RMS once it is steady: polled until two successive reads (a
+ *  poll apart, each over the analyser's third of a second) agree within
+ *  0.5 dB, after a swap's fade-in and the leveler have settled. */
+async function steadyRms(page) {
+  let last = null;
+  let now = null;
+  await expect
+    .poll(async () => {
+      now = await page.evaluate(() => window.__pwRmsDb());
+      const ok = last != null && Number.isFinite(now) && Math.abs(now - last) < 0.5;
+      last = now;
+      return ok;
+    }, { timeout: 15_000, intervals: [250] })
+    .toBe(true);
+  return now;
+}
 
 /** The live output's spectrum at C4, the median of `n` reads 120 ms apart. */
 async function liveSpectrum(page, n = 5) {
@@ -322,6 +451,7 @@ const WAVES = {
   sin: { h2: null, h3: null },
   tri: { h2: null, h3: -19.1 },
   sqr: { h2: null, h3: -9.5 },
+  saw: { h2: -6.0, h3: -9.5 },
 };
 const TOL = 3.5;
 const isWave = (s, w) =>
@@ -457,6 +587,95 @@ test("a VCO's wave cycled in PATCH is heard: live under a held note, and on ▶ 
   expect(errors).toEqual([]);
 });
 
+test("a selector changed under a held note keeps its level: the voices wait for the render and take its measured makeup", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const fk = page.locator('#rack-svg g[data-addr="node#fkind"]');
+  await expect(fk.locator(".enum-text")).toHaveText("svf lp");
+  await holdC4(page);
+  const before = await steadyRms(page);
+  // The render behind the change takes a second and a half more on any
+  // machine.
+  await slowRender(page, 1500);
+  const n = await replies(page);
+  await page.evaluate((w) => { window.__pwRec = window.__pwRecord(2800, w); }, C4);
+  await fk.locator(".enum-body").click();
+  await expect(fk.locator(".enum-text")).toHaveText("svf bp");
+  const [chip, snaps] = await page.evaluate(async () => [window.__pwAt.chip, await window.__pwRec]);
+  await pastReply(page, n, 0);
+  const [landed, voiced] = await page.evaluate(
+    ([i, t]) => [window.__pwIO.benchAt[i], window.__pwVoiced.filter((x) => x > t)], [n, chip]);
+  // The analyser's window is a third of a second: reads from 0.4 s after the
+  // click until the reply hear only what played after the click.
+  const inWindow = snaps.filter((x) => x.at > chip + 400 && x.at < landed - 50).map((x) => x.rms);
+  const lo = Math.min(...inWindow), hi = Math.max(...inWindow);
+  await settled(page);
+  const after = await steadyRms(page);
+  console.log(
+    `[patch_audible] svf lp → svf bp under a held note: ${before.toFixed(1)} dB before; ` +
+      `${lo.toFixed(1)} to ${hi.toFixed(1)} dB over ${inWindow.length} reads while the engine rendered (reply at ` +
+      `${Math.round(landed - chip)} ms); the voices took the tree ${voiced.length ? Math.round(voiced[0] - chip) + " ms" : "never"} ` +
+      `after the click; ${after.toFixed(1)} dB once it landed`,
+  );
+  expect(inWindow.length, "reads while the engine rendered").toBeGreaterThanOrEqual(10);
+  expect(voiced.filter((t) => t < landed), "nothing reached the voices before the render").toEqual([]);
+  expect(Math.max(hi - before, before - lo), "the level held while the engine rendered").toBeLessThan(1.5);
+  expect(voiced.length, "the new mode reached the voices with the reply").toBe(1);
+  // Measured on the whole phrase, the makeup does not level one held C4
+  // exactly: band-pass sits 2.8 dB under low-pass here (the early tree played
+  // it 14.6 dB under, for the length of the render).
+  expect(Math.abs(after - before), "the new mode plays at its measured level").toBeLessThan(4);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("an undo and a redo of a selector keep the held note's level: the voices take the restored tree at its measured makeup", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const fk = page.locator('#rack-svg g[data-addr="node#fkind"]');
+  await expect(fk.locator(".enum-text")).toHaveText("svf lp");
+  // Low-pass to band-pass, measured; then each way back with the render
+  // slowed by 1.5 s, under a held C4.
+  await fk.locator(".enum-body").click();
+  await expect(fk.locator(".enum-text")).toHaveText("svf bp");
+  await settled(page);
+  await holdC4(page);
+  await steadyRms(page);
+  await slowRender(page, 1500);
+  for (const [key, want] of [["ControlOrMeta+z", "svf lp"], ["ControlOrMeta+Shift+z", "svf bp"]]) {
+    const n = await page.evaluate(() => window.__pwIO.replies.length);
+    await page.evaluate((w) => { window.__pwRec = window.__pwRecord(2600, w); }, C4);
+    const t0 = await pageNow(page);
+    await page.locator("#rack-subject").click();
+    await page.keyboard.press(key);
+    const snaps = await page.evaluate(() => window.__pwRec);
+    await expect.poll(() => page.evaluate((i) => window.__pwIO.replies.length > i, n), { timeout: 30_000 }).toBe(true);
+    const { reply, early } = await page.evaluate(([i, t]) => {
+      const reply = window.__pwIO.replies[i];
+      return { reply, early: window.__pwMakeups.filter((m) => m.t > t && m.t < reply.t && m.type === "patch") };
+    }, [n, t0]);
+    await expect(fk.locator(".enum-text")).toHaveText(want);
+    await settled(page);
+    const after = await steadyRms(page);
+    const inWindow = snaps.filter((x) => x.at > (early[0]?.t ?? t0) + 400 && x.at < reply.t - 50).map((x) => x.rms);
+    const lo = Math.min(...inWindow), hi = Math.max(...inWindow);
+    const db = (g) => (20 * Math.log10(g)).toFixed(1);
+    console.log(
+      `[patch_audible] ${key} → ${want}: the voices took it ${early.length ? Math.round(early[0].t - t0) + " ms" : "never"} after the key ` +
+        `at ${early.length ? db(early[0].makeup) : "?"} dB; the reply measured ${db(reply.makeup)} dB at ${Math.round(reply.t - t0)} ms; ` +
+        `${lo.toFixed(1)} to ${hi.toFixed(1)} dBFS while it rendered, ${after.toFixed(1)} dBFS once it landed`,
+    );
+    expect(early.length, `${key}: the voices took the restored tree before its render`).toBe(1);
+    expect(Math.abs(early[0].makeup / reply.makeup - 1), `${key}: at the makeup its render measures`).toBeLessThan(1e-9);
+    expect(inWindow.length, "reads while the engine rendered").toBeGreaterThanOrEqual(8);
+    expect(Math.max(hi - after, after - lo), `${key}: the level while it rendered is the level once it landed`).toBeLessThan(1.5);
+  }
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
 test("a filter cutoff turned down in PATCH lowers the spectral centroid, live and on ▶", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = await boot(page);
@@ -493,6 +712,100 @@ test("a filter cutoff turned down in PATCH lowers the spectral centroid, live an
   // The fundamental is below the corner either way; the harmonics above it fall.
   expect(liveAfter.h3, "live 3rd harmonic").toBeLessThan(liveBefore.h3 - 6);
   expect(after.h3, "▶ 3rd harmonic").toBeLessThan(before.h3 - 6);
+  expect(errors).toEqual([]);
+});
+
+test("a knob whose check finds a runaway is muted, as the alarm says, until a check passes", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page);
+  await openPreset(page, "Falling Sign");
+  await holdC4(page);
+  const k = await rackKnob(page, "node#cut");
+  const n = await replies(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await dragDown(page, k, 6);
+  await pastReply(page, n, 0);
+  await expect(page.locator("#alarm")).toContainText("Muted");
+  await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeLessThan(-80);
+  // The next turn passes its check, and the held note sounds again.
+  const m = await replies(page);
+  await dragDown(page, await rackKnob(page, "node#cut"), -6);
+  await pastReply(page, m, 0);
+  await expect(page.locator("#alarm")).not.toContainText("Muted");
+  await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeGreaterThan(-60);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("a selector whose check fails is not applied and says so, and a knob turned after it is not muted for it", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page);
+  await openPreset(page, "Falling Sign");
+  await holdC4(page);
+  const alarm = page.locator("#alarm");
+  // The wave's check fails: the voices keep the square, and the alarm says
+  // the setting was not applied, not that anything was muted.
+  let n = await replies(page);
+  const t0 = await pageNow(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await clickWave(page);
+  await pastReply(page, n, 0);
+  await expect(alarm).toContainText("Not applied");
+  await expect(alarm).not.toContainText("Muted");
+  expect(await page.evaluate((t) => window.__pwVoiced.filter((x) => x > t).length, t0), "the voices never took it").toBe(0);
+  expectWave(await liveSpectrum(page), "sqr", "the keys play the sound from before the setting");
+  // A knob turned now has its check fail too (the bench still holds the
+  // wave), but the voices hold the tree from before the wave, never judged
+  // with it: they are not muted for it.
+  n = await replies(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await dragDown(page, await rackKnob(page, "node#cut"), 6);
+  await pastReply(page, n, 0);
+  await expect(alarm).toContainText("Not applied");
+  expect(await peakDb(page), "still sounding").toBeGreaterThan(-60);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("an edit's reply leaves alone the makeup of a preset opened while the edit rendered", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, { slowable: true });
+  // Held Under opened once, so the page remembers it and plays it from the
+  // click next time; then Pluck on the rack, with a knob turned.
+  await openPreset(page, "Held Under");
+  await openPreset(page, "Pluck");
+  const k = await page.evaluate(() => window.__aur.wb.rack.modules.flatMap((m) => m.knobs).find((x) => x.kind.t === "continuous").addr);
+  await dragDown(page, await rackKnob(page, k), 20);
+  await settled(page);
+  // ⌘Z reaches the voices as a tree at once, and its render takes a second
+  // and a half more.
+  await slowRender(page, 1500);
+  const early = await page.evaluate(() => window.__pwIO.early.length);
+  await page.locator("#rack-subject").click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => page.evaluate(() => window.__pwIO.early.length), { timeout: 10_000 }).toBeGreaterThan(early);
+  const clicked = await pageNow(page);
+  await page.locator('.bf[data-f="preset"]').click();
+  await page.locator(".bank-item", { hasText: "Held Under" }).first().click();
+  await expect(page.locator("#rack-subject")).toContainText("Held Under", { timeout: 60_000 });
+  await settled(page);
+  const { undo, open, after } = await page.evaluate((t) => ({
+    undo: window.__pwIO.replies.find((r) => r.t > t && r.edited === "restore"),
+    open: window.__pwIO.replies.find((r) => r.t > t && r.subject !== undefined),
+    after: window.__pwMakeups.filter((m) => m.t > t),
+  }), clicked);
+  const db = (g) => (20 * Math.log10(g)).toFixed(1);
+  console.log(
+    `[patch_audible] the undo's reply (makeup ${undo ? db(undo.makeup) : "?"} dB) landed ` +
+      `${undo && open ? Math.round(undo.t - clicked) + " ms after the click, the open's" : "?"} at ${open ? Math.round(open.t - clicked) : "?"} ms ` +
+      `(${open ? db(open.makeup) : "?"} dB); the voices were handed ${after.map((m) => `${m.type} ${db(m.makeup)} dB`).join(", ")}`,
+  );
+  expect(undo, "the undo answered").toBeTruthy();
+  expect(open, "the open answered").toBeTruthy();
+  expect(Math.abs(Math.log10(undo.makeup / open.makeup)) * 20, "two makeups apart").toBeGreaterThan(6);
+  expect(after.filter((m) => Math.abs(m.makeup - undo.makeup) < 1e-9), "the undo's makeup never reached Held Under's voices").toEqual([]);
+  expect(after.length, "the voices took Held Under").toBeGreaterThan(0);
+  expect(Math.abs(after[after.length - 1].makeup - open.makeup), "and play it at its own makeup").toBeLessThan(1e-9);
   expect(errors).toEqual([]);
 });
 
@@ -533,6 +846,69 @@ test("▶ and Space pressed while a wave change is still at the engine play the 
   console.log(`[patch_audible] Space ${Math.round(r.pressedMs)} ms after the chip, reply at ${Math.round(r.landedMs)} ms: ${fmt(r.s)}`);
   expect(r.pressedMs, "Space was pressed while the edit was at the engine").toBeLessThan(r.landedMs);
   expectWave(r.s, "tri", "Space pressed before the edit landed");
+  expect(errors).toEqual([]);
+});
+
+test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an edit still at the engine", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const { addr } = await waveKnob(page);
+  // Square → sine, landed: the preset as saved is square, the sound is sine.
+  await clickWave(page);
+  await expect(chipText(page, addr)).toHaveText("sin");
+  await settled(page);
+  const stop = async () => {
+    await page.keyboard.press(" ");
+    await expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100] }).toBeLessThan(-80);
+  };
+  for (const view of ["perform", "evolve"]) {
+    await page.locator(`.viewtab[data-view="${view}"]`).click();
+    const s = await replaySpectrum(page, () => page.keyboard.press(" "), 2200);
+    console.log(`[patch_audible] Space in ${view}: ${fmt(s)} (${s.n} reads)`);
+    expectWave(s, "sin", `Space in ${view}`);
+    await stop();
+  }
+
+  // An edit still at the engine: the wave cycled in PATCH, the view left at
+  // once and Space pressed there before the edit's reply. It plays the new
+  // wave when the reply lands, not the one before.
+  await slow(page, { edit_param: 1500 });
+  for (const [view, want] of [["perform", "tri"], ["evolve", "saw"]]) {
+    await page.locator('.viewtab[data-view="play"]').click();
+    await quiet(page);
+    const n = await replies(page);
+    const s = await replaySpectrum(page, async () => {
+      await clickWave(page);
+      await page.locator(`.viewtab[data-view="${view}"]`).click();
+      await page.keyboard.press(" ");
+    }, 4500);
+    const at = await page.evaluate(() => window.__pwAt);
+    const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
+    // The dock says Space waits, at once, and stops saying it when the
+    // phrase starts.
+    const dock = await page.evaluate((t) => window.__pwDockSaid.filter((d) => d.t >= t), at.space);
+    const waits = dock.find((d) => d.text === "▶ waiting for the edit…");
+    const done = waits && dock.find((d) => d.t > waits.t && d.text === "");
+    console.log(
+      `[patch_audible] Space in ${view} ${Math.round(at.space - at.chip)} ms after the chip, reply at ${Math.round(landed - at.chip)} ms; ` +
+        `the dock said it waits ${waits ? Math.round(waits.t - at.space) + " ms" : "never"} after the press, until ` +
+        `${done ? Math.round(done.t - at.space) + " ms" : "?"}: ${fmt(s)}`,
+    );
+    expect(at.space - at.chip, `Space in ${view} was pressed while the edit was at the engine`).toBeLessThan(landed - at.chip);
+    expect(waits, `the dock says Space in ${view} waits`).toBeTruthy();
+    expect(waits.live, "in a polite live region").toBe(true);
+    expect(waits.whole, "whole, not clipped").toBe(true);
+    expect(waits.onScreen, "on screen").toBe(true);
+    expect(waits.clearOfKeys, "clear of the keybed").toBe(true);
+    expect(waits.onTop, "and on top, so it is seen").toBe(true);
+    expect(waits.t - at.space, "within 100 ms of the press").toBeLessThan(100);
+    expect(done, "and stops saying it").toBeTruthy();
+    expect(done.t, "once the edit has landed").toBeGreaterThanOrEqual(landed);
+    expectWave(s, want, `Space in ${view}, pressed before the edit landed`);
+    await stop();
+    await settled(page);
+  }
   expect(errors).toEqual([]);
 });
 

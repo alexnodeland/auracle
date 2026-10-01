@@ -59,9 +59,10 @@ marks.</figcaption>
   bred children the pool didn’t keep, a line under the group counts them
   (*2 more were bred and rated below the pool.*).
 - **The green dot** after the glyph marks a child you haven’t heard yet. It
-  goes when its phrase plays (its **▶**, a pair’s **▶ SAMPLE**, or
-  [Compare](#compare-a-sound-beside-its-seed)) or you play a note on it, and
-  it is remembered across a reload until then.
+  goes when its phrase plays (its **▶**, a pair’s **▶ SAMPLE**,
+  [Compare](#compare-a-sound-beside-its-seed), or <kbd>Space</kbd> while it’s
+  the sound you’re playing) or you play a note on it, and it is remembered
+  across a reload until then.
 - **The name** comes from what the sound is, and it keeps that name as the
   bank changes around it. Double-click it to rename it. NEW and the dot sit in
   a column every row keeps left of the name, so the name never moves for

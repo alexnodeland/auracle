@@ -125,6 +125,7 @@ const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, coun
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
+  leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings,
 } = await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
@@ -257,6 +258,9 @@ let perform = null;          // from perform.js, once the voices exist
 let benchPending = null;
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
 let liveLabelText = "no sound";
+// A ▶ or Space waiting for the bench lane to settle (see `playBench`); the
+// dock's label says so outside PATCH (`paintLiveLabel`).
+let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
@@ -1085,7 +1089,9 @@ function performRestore(kind, burst) {
   restoreInFlight = true;
   structInFlight = true;
   beliefStale();
-  send({ type: "edit_set_tree", json: stack[stack.length - 1].json });
+  // `restore`: the worker hands the voices this tree before its render only
+  // at the makeup it was measured at, never the tree being left's.
+  send({ type: "edit_set_tree", json: stack[stack.length - 1].json, restore: true });
 }
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
@@ -1766,7 +1772,7 @@ worker.onmessage = (e) => {
           // nothing is called a bench — was noise in a word the player never
           // meets. Only an open the player asked for that kept them waiting
           // is news, and it is said once, in place of any earlier one.
-          note(`Opened ${nameOf(m.subject)}`, { replace: "open" });
+          note(`Opened ${nameOf(m.subject)}.`, { replace: "open" });
         }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
@@ -1920,7 +1926,11 @@ worker.onmessage = (e) => {
       if (early) earlyOpen = null;
       const openedEarly =
         !!early && !!liveTreeJson && !!m.treeJson && treeSound(liveTreeJson) === treeSound(m.treeJson);
-      const spokeEarly = openedEarly || (liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
+      // An edit's tree the voices took early is "spoken" only while they still
+      // play it: a preset opened from memory since (`voiceEarly`) took them,
+      // and this reply's makeup and pending knobs are not about that preset.
+      const spokeEarly = openedEarly ||
+        (!(earlyOpen && !subjectLoad) && liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
       liveOptimisticJson = null;
       if (openedEarly && liveTreeJson !== m.treeJson) {
         liveTreeJson = m.treeJson;
@@ -1950,8 +1960,17 @@ worker.onmessage = (e) => {
       // (Unless the voices play a patch other than the rack's, taken early:
       // this vet is not about what they play.)
       const vetIsVoices = !voicesLater && !(earlyOpen && !subjectLoad);
+      // A knob is in the voices already too (written as a parameter, before
+      // any check), so a knob whose check finds a runaway is muted as well:
+      // the alarm below says "Muted", and for a knob it was not. Only while
+      // the voices hold the tree that was checked (`voicesHadBench`): after
+      // a selector that failed, they keep the tree from before it, which was
+      // never judged with this knob. A selector that fails never reached
+      // them; a silent failure needs no mute.
+      const knobRanAway =
+        voicesHadBench && m.edited !== undefined && !structural && !paramNonLive && !wb.vetSilent;
       if (vetIsVoices && wb.vetOk) setLiveMuted(false);
-      else if (vetIsVoices && spokeEarly) setLiveMuted(true);
+      else if (vetIsVoices && (spokeEarly || knobRanAway)) setLiveMuted(true);
       // The strip is one slot (see `alarm`), and this owns it only while the
       // condition it reports — a runaway the vet muted — is its own. It used
       // to call `alarm(null)` on every clean vet, which wiped whatever else
@@ -1964,8 +1983,13 @@ worker.onmessage = (e) => {
       // runaway sentence over it was untrue, and the EMPTY plate, the caption
       // ("silent") and the model's line already say what is going on.
       if (!wb.vetOk && !wb.vetSilent) {
+        // Said as it is: muted, or, where the voices never took the setting
+        // (a selector that failed waits for its check, and they keep the
+        // sound from before it), not applied.
         alarm(
-          "Muted: this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
+          liveMuted
+            ? "Muted: this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo."
+            : "Not applied: this setting can run away (self-oscillation or runaway feedback), so the keys play the sound from before it. Choose another, or undo.",
           { label: "undo", run: doUndo }
         );
         $("alarm").dataset.tag = "vet";
@@ -3581,13 +3605,33 @@ function refreshNames() {
   const text = `${nameOf(id)}${edited ? dirtySuffix() : ""}`;
   if (text === liveLabelText) return;
   liveLabelText = text;
-  $("live-label").textContent = text;
+  paintLiveLabel();
   if (perform) perform.relabel();
+}
+
+// The dock's label names what the keys play. Outside PATCH, while Space
+// waits for an edit to land (`playOnSettle`), the wait is said over it:
+// there ▶ is out of sight, and the press was otherwise answered by nothing
+// until the phrase began, which on a busy engine is seconds (ADR-009:
+// acknowledged within 100 ms, on what the player has). In PATCH the ▶'s
+// dotted ring says it. The wait has a box of its own (`#live-wait`, a polite
+// live region): appended to the name it was cut off by the name's ellipsis,
+// and the name's element announces nothing.
+const SPACE_WAITS = "▶ waiting for the edit…";
+function paintLiveLabel() {
+  const label = $("live-label");
+  label.textContent = liveLabelText;
+  const waits = playOnSettle && currentView !== "play";
+  const sign = $("live-wait");
+  if (!sign) return;
+  const text = waits ? SPACE_WAITS : "";
+  if (sign.textContent !== text) sign.textContent = text;
+  label.parentElement.classList.toggle("waiting", waits);
 }
 
 function setLiveLabel(text) {
   liveLabelText = text;
-  $("live-label").textContent = text;
+  paintLiveLabel();
   // The tree reaches PERFORM first (`setLivePatchJson`) and its name second,
   // so PERFORM read the label while it still named the previous patch: a
   // sweep of twelve presets was off by one every time.
@@ -3607,9 +3651,10 @@ function showView(name) {
   // Nothing may stay in your hand across a view change: PLAY is only hidden,
   // not torn down, so its sockets still match and the armed key handler would
   // go on swallowing EVOLVE's arrow-key votes.
-  // Nor may a ▶ waiting for an edit: its phrase would start in a view that has
-  // nothing to do with it.
-  if (name !== "play") { disarm(); cancelPending(); playWaitCancel(); }
+  // Nor may a ▶ or Space waiting for an edit: its phrase would start in a
+  // view other than the one it was pressed in.
+  if (name !== "play") { disarm(); cancelPending(); }
+  if (name !== currentView) playWaitCancel();
   if (name !== currentView) closeCompare(); // it belongs to where it was asked
   currentView = name;
   // Per-viewer convenience: a returning player comes back to the view they
@@ -3786,10 +3831,12 @@ function stopAudition() {
 
 function toggleAudition() {
   if (stopAudition()) return;
-  // In PATCH, Space is the bench's ▶: the patch as it stands, or why it cannot
-  // play. The bank's render, below, is the patch from before any edit, and
-  // Space used to fall through to it whenever ▶ was disabled.
-  if (currentView === "play" && wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
+  // In every view, Space is the bench's ▶: the patch as it stands, waiting
+  // for an edit still on its way, or why it cannot play. The bank's render,
+  // below, is the patch from before any edit. Space used to fall through to
+  // it whenever ▶ was disabled, and outside PATCH always, so PERFORM and
+  // EVOLVE played the preset as saved under a rack you had changed.
+  if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
   awaitRender(id, () => play(id));
@@ -4039,7 +4086,7 @@ async function bootPerform() {
     // the one undo step itself.
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
-    commitTree: (json, why) => {
+    commitTree: (json, why, makeup) => {
       // PERFORM plays a patch still on its way to the bench (`voiceEarly`),
       // and a tree sent now would land on the rack it replaces. PERFORM asks
       // `openLanding` before a Keep, Take or Back and refuses there, before
@@ -4049,7 +4096,9 @@ async function bootPerform() {
         return;
       }
       if (!wb.tree) return note("Open a sound first: there’s nothing to play yet.");
-      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
+      // `makeup`, when PERFORM knows it (a Take: the offer was measured as it
+      // grew), is what the voices take the tree at before its render.
+      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}), ...(makeup > 0 ? { makeup } : {}) }, null, { op: "perform" });
     },
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
@@ -4279,7 +4328,7 @@ async function bootBooth() {
     booth.setOn(!booth.on);
     paintBooth();
     note(booth.on
-      ? "Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; Shift+Esc starts a new visitor."
+      ? platformKeys("Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; ⇧Esc starts a new visitor.")
       : "Booth mode off.");
   };
   $("booth-reset-btn").onclick = () => boothResetVisitor();
@@ -4657,10 +4706,17 @@ document.addEventListener("keydown", (e) => {
   // arrows and Home/End. Swallowing every non-note key made one click on HOLD
   // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
   // elsewhere.
+  //
+  // Space is the transport everywhere else. Only a native button presses
+  // itself on Space; a drawn control keeps Space only if its own handler used
+  // it (`defaultPrevented`: a list row opening, a rack setting's chip focused
+  // from the keyboard cycling). A knob, a PERFORM control or the XY pad keeps
+  // its focus after a drag, and Space there did nothing at all; a chip a
+  // click focused cycled again (a click now leaves no focus on a chip).
   const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
   const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
   if (ctl) {
-    const activates = e.key === " " || e.key === "Enter";
+    const activates = e.key === "Enter" || (e.key === " " && (ctl.matches("button") || e.defaultPrevented));
     const steers = /^(Arrow|Page)|^(Home|End)$/.test(e.key) && ctl.matches(STEERED);
     if (activates || steers) return;
   }
@@ -4744,9 +4800,12 @@ document.addEventListener("visibilitychange", () => {
 // is fatal. Keyboard activation (detail === 0) keeps focus so Tab users keep
 // their place; blur() on an element that no longer holds focus (a handler
 // moved it into an input) is a no-op, so this never steals a deliberate move.
+// A rack setting's chip is a button too (ARIA's: Space and Enter cycle it),
+// so a click leaves no focus on it either, and Space then plays: it used to
+// cycle the wave a click had just changed.
 document.addEventListener("click", (e) => {
   if (e.detail === 0) return;
-  const b = e.target?.closest?.("button");
+  const b = e.target?.closest?.("button, [data-addr][role=button]");
   if (b) b.blur();
 });
 
@@ -7705,6 +7764,8 @@ function voiceEarly(json, makeup, { id = null, index = null, label }) {
     ? earlyOpen.prev
     : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText, muted: liveMuted };
   earlyOpen = { json, id, index, label, prev, tick: ++openTick };
+  // An edit's tree the voices took early is not what they play any more.
+  liveOptimisticJson = null;
   livePatchId = id;
   if (!(liveTreeJson && treeSound(liveTreeJson) === treeSound(json))) {
     live.setPatch(json, makeup);
@@ -7970,10 +8031,12 @@ function livePending() {
 // patch and not the one leaving.
 //
 // The ▶ says it heard you at once (`.pending`, as a bank ▶ waiting for its
-// render does). It is a claim on the next phrase only while PATCH is the view
-// and nothing else has been asked to sound: a second press on it, Space, any
-// other ▶, an open, a failed open and leaving PATCH all take it back.
-let playOnSettle = false;
+// render does), and outside PATCH, where ▶ is out of sight and Space pressed
+// it, the dock's label does (`paintLiveLabel`). It is a claim on the next
+// phrase only while the view it was pressed in is shown and nothing else has
+// been asked to sound: a second press on it, Space, any other ▶, an open, a
+// failed open and any change of view all take it back. (`playOnSettle` is
+// declared beside `liveLabelText`, which the dock's label reads with it.)
 
 /** Nothing in the lane, nothing at the worker, no patch on its way. */
 function benchSettled() {
@@ -7986,12 +8049,14 @@ function playBench() {
     const b = $("rack-play");
     b.classList.add("pending");
     b.setAttribute("aria-busy", "true");
+    paintLiveLabel();
     return;
   }
   playWaitCancel();
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
+    heard(wb.subjectId); // a child on the bench, heard: its unheard dot goes
     return;
   }
   // A refusal of the press (Space reaches here with ▶ disabled): it jumps the
@@ -8008,6 +8073,7 @@ function playWaitCancel() {
   const b = $("rack-play");
   b.classList.remove("pending");
   b.removeAttribute("aria-busy");
+  if (was) paintLiveLabel();
   return was;
 }
 
@@ -10298,7 +10364,7 @@ function buildRack(svg, rack, opts) {
           const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
           tt.textContent = sweepable
-            ? `${k.label} · click to cycle, drag up or down to sweep (live)`
+            ? `${k.label} · click to cycle, drag to sweep`
             : `${k.label} · click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
@@ -10309,6 +10375,7 @@ function buildRack(svg, rack, opts) {
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
             k.value = next;
             txt.textContent = enumDisplay(k);
+            nameSetting(kg, k);
             sendEdit(k.addr, next, true);
           });
           // A live categorical site is worth dragging. `table` is a crossfade
@@ -10350,7 +10417,13 @@ function buildRack(svg, rack, opts) {
         // mouse. One roving tab stop per control; arrows move, up/down turn.
         kg.setAttribute("tabindex", "-1");
         kg.setAttribute("role", k.kind.t === "continuous" ? "slider" : "button");
-        kg.setAttribute("aria-label", `${m.title} ${k.label}`);
+        // Space and Enter cycle a setting, as for any button; with ⇧, back.
+        if (k.kind.t !== "continuous") kg.setAttribute("aria-keyshortcuts", "Shift+Enter Shift+Space");
+        kg.dataset.name = `${m.title} ${k.label}`;
+        // A setting's name carries its value ("VCO wave, sin"), so cycling
+        // it says what it is now (`nameSetting`).
+        if (k.kind.t === "continuous") kg.setAttribute("aria-label", kg.dataset.name);
+        else nameSetting(kg, k);
         kg.dataset.addr = k.addr;
         kg.dataset.kind = m.kind;
         if (variant) kg.dataset.variant = variant;
@@ -11660,7 +11733,7 @@ function bmAdd(rx, ry) {
   list.sort((a, b) => a.slot - b.slot);
   bookmarks.set(k, list);
   bmChanged();
-  note(`Bookmark ${slot} set. ⇧${slot} comes back here.`);
+  note(platformKeys(`Bookmark ${slot} set. ⇧${slot} comes back here.`));
 }
 
 function bmJump(slot) {
@@ -11692,9 +11765,9 @@ function syncMapBtn() {
   const show = mapOn && !!wb.rack;
   el.classList.toggle("hidden", !show);
   b.setAttribute("aria-pressed", String(mapOn));
-  b.closest(".tt").title = mapOn
+  b.closest(".tt").title = platformKeys(mapOn
     ? "Hide the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."
-    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.";
+    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.");
   if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
@@ -13730,6 +13803,8 @@ function attachEnumSweep(el, txt, knob) {
       last = next;
       knob.value = next;
       txt.textContent = enumDisplay(knob);
+      const g = el.closest("[data-addr]");
+      if (g) nameSetting(g, knob);
       sendEdit(knob.addr, next, true, id);
     };
     const onUp = () => {
@@ -13899,11 +13974,20 @@ $("rack-svg").addEventListener("keydown", (e) => {
     paintKnob(kg, knob);
     sendEdit(knob.addr, knob.value, false, id);
   } else if (e.key === "Enter" || e.key === " ") {
+    // A setting focused from the keyboard is a button: Space or Enter cycles
+    // it, ⇧ backwards. A click leaves no focus on it (the document's click
+    // handler), so Space after a click plays rather than cycling again.
     if (knob.kind.t === "continuous") return;
     e.preventDefault();
     pushUndo();
     const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
     knob.value = (Math.round(knob.value) + (e.shiftKey ? n - 1 : 1)) % n;
+    const shown = kg.querySelector(".enum-text");
+    if (shown) shown.textContent = enumDisplay(knob);
+    nameSetting(kg, knob);
+    // A focused element's new name is not always read out: the rack's live
+    // region says it.
+    nbAnnounce(`${kg.dataset.name}: ${enumDisplay(knob)}`);
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
@@ -14202,8 +14286,8 @@ $("lock-clear").onclick = () => {
 const LAYOUT_TIP = {
   chain: "Chain: the signal path on one baseline. Click to pack it tight.",
   compact: "Compact: layers packed tight. Click to place modules by hand.",
-  freeform: "Freeform: drag modules where you like. They snap to the grid, and " +
-    "⇧ places them freely. Click for the straight signal chain.",
+  freeform: platformKeys("Freeform: drag modules where you like. They snap to the grid, and " +
+    "⇧ places them freely. Click for the straight signal chain."),
 };
 function syncLayoutBtn() {
   const b = $("rack-layout");
@@ -15281,6 +15365,14 @@ function nbAnnounce(text) {
   if (el) el.textContent = text;
 }
 
+/** A rack setting's accessible name: the module and the setting, then what
+ *  it is set to ("VCO wave, sin"). It was the name alone, so a screen
+ *  reader heard nothing change when the setting cycled. */
+function nameSetting(kg, knob) {
+  if (!kg || !kg.dataset.name) return;
+  kg.setAttribute("aria-label", `${kg.dataset.name}, ${enumDisplay(knob)}`);
+}
+
 // ---- pool support: how often the model has actually seen a module ----
 // Counted client-side off the `sexpr` each ranked row already carries, so this
 // costs no new wasm surface and is honest from the first vote.
@@ -16003,9 +16095,7 @@ function specParts(m) {
     belief =
       `<span class="sp-dim">In ${sup} of ${total} sounds.</span> ` +
       `<i class="sp-dot" style="background:${color}"></i>` +
-      `<span class="sp-belief">in ${esc(styleName(views.styles[t.style], t.style))} ` +
-      `(${Math.round(t.share * 100)}% of your pool) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
-      ` (θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)})</span>`;
+      `<span class="sp-belief">${esc(leanSentence(styleName(views.styles[t.style], t.style), t.share, t.mean, t.std))}</span>`;
   }
   if (shared.length > 1) {
     belief +=
@@ -21185,6 +21275,15 @@ $("ovf-menu").addEventListener("click", (e) => {
     $("ovf-btn").setAttribute("aria-expanded", "false");
   }
 });
+// The two file items are <label>s, which no key activates by itself: Enter
+// or Space opens the file dialog, as a click does.
+$("ovf-menu").addEventListener("keydown", (e) => {
+  const item = e.target.closest?.("label.ovf-item");
+  if (!item || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  item.click();
+});
 
 // ---------- help overlay ----------
 let helpReturnFocus = null;
@@ -21342,6 +21441,19 @@ function pointFilmChip() {
 $("fc-close").onclick = foldFilmChip;
 // Opened in a new tab: the note has done its job here.
 $("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
+// Each platform's own keys (www/brand/voice.md): the markup writes chords
+// with the Mac's symbols (the ? card, the booth menu, a tooltip), and off
+// Apple platforms they read Ctrl, Alt and Shift. They used to read ⌘
+// everywhere, though the app takes Ctrl wherever it takes ⌘. Strings built
+// later go through `platformKeys` where they are built.
+for (const el of document.querySelectorAll("kbd")) {
+  const t = platformKeys(el.textContent);
+  if (t !== el.textContent) el.textContent = t;
+}
+for (const el of document.querySelectorAll("[title]")) {
+  const t = platformKeys(el.title);
+  if (t !== el.title) el.title = t;
+}
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
