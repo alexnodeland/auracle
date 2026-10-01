@@ -809,8 +809,11 @@ def main():
     report["master"].update(gain_db=round(20 * math.log10(master), 2))
     dump_json(report, os.path.join(odir, "ladder.json"))
     r = report["ladder"]
-    print(f"ladder: voice {r['voice_lufs']:.1f} LUFS, bed at rest {r['bed_rest_vs_voice_lu']:+.1f} LU, "
-          f"under the voice {r['duck_db']:+.1f} dB, {r['carve_db']:+.1f} dB more in "
+    def num(v, f):  # a measure the mix has none of (no voice, no bed) reads as a dash
+        return "–" if v is None else format(v, f)
+
+    print(f"ladder: voice {num(r['voice_lufs'], '.1f')} LUFS, bed at rest {num(r['bed_rest_vs_voice_lu'], '+.1f')} LU, "
+          f"under the voice {num(r['duck_db'], '+.1f')} dB, {num(r['carve_db'], '+.1f')} dB more in "
           f"{CARVE['band_hz'][0]}-{CARVE['band_hz'][1]} Hz")
 
     # Envelopes for the picture.

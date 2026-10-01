@@ -335,6 +335,63 @@ class AFilmMixedToTheLadder(unittest.TestCase):
         self.assertTrue(np.array_equal(with_cues, without))
 
 
+@unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")
+class AFilmNotYetOnN3(unittest.TestCase):
+    """A film still on Study: its bed as one sound (bed.wav), at the ladder's
+    level and duck, with its bed levels; and a mix with no bed at all."""
+
+    def setUp(self):
+        self.film = Film().__enter__()
+        root = self.film.root
+        os.makedirs(os.path.join(root, "bed"))
+        bed = tone(220, Film.DURATION, -26) + tone(1760, Film.DURATION, -40)
+        mix.write(os.path.join(root, "bed", "bed.wav"), bed)
+        with open(os.path.join(root, "films/f/timeline.json")) as f:
+            tl = json.load(f)
+        tl.pop("demos")
+        tl.pop("marks")
+        self.film.json("films/f/timeline.json", tl)
+        # The old rule: the bed out from 13 s to 20 s.
+        self.film.json("films/f/arrangement.json", {"bed": "study", "sections": [], "levels": [[0.0, 0], [13.0, -60], [20.0, 0]]})
+
+    def tearDown(self):
+        self.film.__exit__()
+
+    def run_mix(self, *args):
+        saved = mix.VIDEO, sys.argv
+        mix.VIDEO = self.film.root
+        sys.argv = ["mix.py", "f", "--voice", os.path.join(self.film.root, "voice"), *args]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                mix.main()
+        finally:
+            mix.VIDEO, sys.argv = saved
+        with open(os.path.join(self.film.root, "out/f/ladder.json")) as f:
+            return json.load(f), out.getvalue()
+
+    def test_its_bed_is_mixed_as_one_sound_to_the_ladder_with_its_levels(self):
+        report, log = self.run_mix("--music", os.path.join(self.film.root, "bed"))
+        lad = report["ladder"]
+        self.assertAlmostEqual(lad["voice_lufs"], -18.0, delta=0.05)
+        # The whole bed is set to the ladder, then its levels take it out for
+        # a while; measured where the voice speaks, the 0.4 s ramps show.
+        self.assertAlmostEqual(lad["bed_rest_vs_voice_lu"], -3.0, delta=0.3)
+        self.assertTrue(-2.0 <= lad["duck_db"] < -1.2, lad["duck_db"])
+        self.assertTrue(-3.0 <= lad["carve_db"] < -1.8, lad["carve_db"])
+        self.assertIsNone(lad["pad_dip_db"], "a bed as one sound has no pad to dip")
+        self.assertIn("music: 3 bed levels", log)
+        mixed = mix.load(os.path.join(self.film.root, "out/f/mix.wav"))
+        self.assertLess(level_db(mixed[int(14.5 * SR):int(18.5 * SR)]), level_db(mixed[int(0.5 * SR):int(6.5 * SR)]) - 40,
+                        "the bed is out where its level says -60")
+        self.assertEqual(report["marks"], [])
+
+    def test_a_mix_with_no_bed_still_runs_and_says_what_it_has(self):
+        report, log = self.run_mix()
+        self.assertIsNone(report["ladder"]["bed_rest_vs_voice_lu"])
+        self.assertIn("ladder: voice -18.0 LUFS, bed at rest – LU, under the voice – dB", log)
+
+
 if __name__ == "__main__":
     # One line when they pass, like the rest of `make dev-check`; everything
     # unittest says when one fails.
