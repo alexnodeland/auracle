@@ -405,7 +405,12 @@ Each is decided as its task in Plan-005 comes up.
    recommendation (render the modules the output can take on the farm, and
    rank them by a lower bound on the gain) and what is left to decide
    ([`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md)).
-   Not yet decided.
+   *Decided (2026-10-01):* the recommendation. The modules the output can
+   take are rendered on the farm and ranked by the lower bound, eight in the
+   structural order when there is no farm, and nothing before the warm start.
+   The app calls it the model's guess (GUESS · FILTER, with its reason in the
+   model's italic). A skip keeps that family away from that socket for the
+   patch, and undoing a taken guess counts as a skip.
 3. **The cost of posting the belief after every pick,** so TASTE and the
    bank's ratings move per pick.
    *Answered (2026-10-01):* under 2 ms per pick in wasm at five lenses

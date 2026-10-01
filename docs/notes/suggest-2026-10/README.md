@@ -619,6 +619,25 @@ With 9(d), PATCH would show the suggestion **at its socket**:
 
 ## 9. Open for the maintainer
 
+*Decided (2026-10-01), by the maintainer:*
+
+- **The design:** the recommendation (section 8). The output's candidates are
+  rendered on the farm and ranked by the lower bound; with no farm, dout8;
+  nothing before the warm start (item 3). No trust region for now (item 7):
+  the lower bound is the guard.
+- **The word (item 1):** the model's guess, so no new word. The chip reads
+  GUESS · FILTER, and its reason is the model's italic line, in the third
+  person, like every other guess. "Suggestion" stays on the Not list.
+- **A skip (item 4):** keeps that module's family away from that socket for
+  this patch. Undoing a taken guess counts as a skip.
+- **Taken as recommended:** taking a guess is not evidence (item 5); it is
+  recomputed on structural edits, refits and request (item 6); clearing keeps
+  the amp envelope (item 2); deeper sockets on request only (item 9).
+- **Still open:** tuning the new module's knobs along the taste (item 8),
+  until it is measured.
+
+The questions as they were put:
+
 1. **The word.** The word table in `www/brand/voice.md` lists "suggestion"
    under Not for an offer. The RFC says the model "suggests". A suggestion
    needs its own row, and its silk label (TRY, NEXT, or another).
