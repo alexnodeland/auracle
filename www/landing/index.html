@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Auracle</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A modular synthesizer you play in the browser. Pick between two sounds, and it learns what you like, grows new sounds toward it, and shows you what it learned.">
+<meta name="description" content="Auracle is a modular synthesizer you play in the browser. Pick between two sounds, and it learns what you like, breeds new sounds toward it, and shows you what it learned. Every sound is a patch you can open and change.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0c0d10">
 
@@ -43,16 +43,16 @@
 <!-- ─── hero ───────────────────────────────────────────────────────────── -->
 <section class="hero">
   <div class="hero-copy">
-    <p class="eyebrow">Modular synthesizer · Evolutionary search · Runs in your browser</p>
-    <h1 class="display">A synthesizer<br>that grows toward you</h1>
-    <p class="voice">Pick the sound you&rsquo;d reach for. It learns your ear, and every
+    <p class="eyebrow">Modular synthesizer · Plays in your browser</p>
+    <h1 class="display">A synthesizer<br>that grows toward&nbsp;you</h1>
+    <p class="lede">Pick the sound you&rsquo;d reach for. It learns your ear, and every
     generation grows a little closer.</p>
     <div class="cta-row">
-      <a class="btn btn-go" href="play/">Play the instrument&nbsp;▸</a>
+      <a class="btn btn-go" href="play/">Play it in your browser&nbsp;▸</a>
       <!-- films:cta --><a class="btn btn-film" href="assets/film/launch.mp4" data-film-open="launch" data-src="assets/film/launch.mp4" data-vtt="assets/film/launch.vtt" data-poster="assets/film/launch.jpg" data-title="Auracle"><span class="btn-film-play" aria-hidden="true">▶</span>Watch the film<span class="btn-film-len mono">1:38</span></a><!-- /films:cta -->
     </div>
-    <p class="fineprint">Free, no account, nothing to install. Your patches and your
-    taste model stay in your browser.</p>
+    <p class="fineprint">Free, with no account and nothing to install. Your sounds and
+    your taste stay in your browser.</p>
   </div>
 
   <!-- The launch film, playing silently in the instrument's own bezel, with
@@ -71,27 +71,27 @@
   <div class="try">
     <div class="try-copy">
       <p class="eyebrow">Try it here</p>
-      <h2 class="h2">The panel is real.</h2>
-      <p class="voice">Two patches, rendered by the engine in your browser. Press
-      play, pick the one you like better, and watch what it thinks you like
-      change.</p>
+      <h2 class="h2"><span class="nb">Two sounds.</span> <span class="nb">The one you&rsquo;d reach for.</span></h2>
+      <p class="lede">Auracle plays you two sounds, the same short phrase on each.
+      Pick the one you&rsquo;d reach for, and move on. Every pair is dealt at random,
+      so each pick is also a fair test of what it guessed.</p>
     </div>
 
-    <!-- The signature element: a working duel. -->
+    <!-- The signature element: a working pair, in miniature. -->
     <div class="panel" id="hero-duel">
       <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
       <div class="crt">
         <div class="scanlines" aria-hidden="true"></div>
 
-        <div class="duel" role="group" aria-label="Which patch do you prefer?">
+        <div class="duel" role="group" aria-label="Which sound would you reach for?">
           <article class="card" data-side="a">
             <header class="card-head">
               <span class="card-id">A</span>
               <span class="card-name mono" data-name>—</span>
             </header>
             <canvas class="trace" data-trace width="520" height="86" role="img"
-                    aria-label="Waveform of patch A"></canvas>
+                    aria-label="Waveform of sound A"></canvas>
             <button class="card-play" data-play type="button">
               <span aria-hidden="true">▶</span> hear&nbsp;A <kbd>1</kbd>
             </button>
@@ -103,35 +103,33 @@
               <span class="card-name mono" data-name>—</span>
             </header>
             <canvas class="trace" data-trace width="520" height="86" role="img"
-                    aria-label="Waveform of patch B"></canvas>
+                    aria-label="Waveform of sound B"></canvas>
             <button class="card-play" data-play type="button">
               <span aria-hidden="true">▶</span> hear&nbsp;B <kbd>2</kbd>
             </button>
           </article>
         </div>
 
-        <!-- What the model built from the picks. It takes the whole screen when it
-             arrives, because a new patch appearing beside the duel is a thing you
-             can miss, and the one claim this button makes is that it made you
-             something. Amber throughout: this came out of the model, not out of
-             the random draw the green cards are showing. -->
+        <!-- Its guess: the sound the miniature places where your picks lean. It
+             takes the whole screen when it arrives, because a new sound beside
+             the pair is a thing you can miss. Amber throughout: this came out of
+             the model, not out of the random draw the green cards are showing.
+             It is placed, not bred, so it does not wear the app's ⚡ or "bred"
+             (ADR-012: a stand-in is labelled as one). -->
         <article class="made" data-made hidden>
           <header class="made-head">
-            <!-- The app's own words for such a patch: its bank marks the
-                 latest generation's children ⚡ and "new", and the ⚡ says
-                 "bred by evolution toward your taste". -->
-            <span class="made-tag">⚡ New · bred toward your taste</span>
+            <span class="made-tag">Its guess</span>
             <span class="made-name mono" data-made-name>—</span>
           </header>
           <canvas class="trace made-trace" data-made-trace width="520" height="86" role="img"
-                  aria-label="Waveform of the patch built from your picks"></canvas>
+                  aria-label="Waveform of the sound placed from your picks"></canvas>
           <p class="made-from mono" data-made-from></p>
           <div class="made-row">
             <button class="card-play made-play" data-made-play type="button">
               <span aria-hidden="true">▶</span> hear it again
             </button>
             <button class="card-play made-back" data-made-back type="button">
-              <span aria-hidden="true">◂</span> back to training <kbd>esc</kbd>
+              <span aria-hidden="true">◂</span> back to the pair <kbd>esc</kbd>
             </button>
           </div>
         </article>
@@ -142,10 +140,10 @@
         <button class="pick" data-pick="b" type="button">Pick B <kbd>→</kbd></button>
       </div>
 
-      <!-- The model's mind. Amber, per the phosphor law. -->
+      <!-- What it learned. Amber, per the phosphor law. -->
       <section class="mind" aria-labelledby="mind-h">
         <header class="mind-head">
-          <h2 class="mind-title" id="mind-h">What it thinks you like</h2>
+          <h2 class="mind-title" id="mind-h">What it learned</h2>
           <span class="pips mono" data-pips aria-hidden="true"></span>
         </header>
 
@@ -154,17 +152,18 @@
         </ul>
 
         <p class="verdict" data-verdict role="status">Press <kbd>1</kbd> and <kbd>2</kbd>,
-        then pick the one you prefer.</p>
+        then pick the one you&rsquo;d reach for.</p>
 
         <button class="btn btn-make" data-make type="button" hidden>
-          Make me one&nbsp;▸
+          Hear its guess&nbsp;▸
         </button>
       </section>
 
       <p class="honesty">
-        A four-knob miniature. The real instrument measures
-        <a href="reference/features/audio.html">forty-four coordinates</a> and fits a
-        posterior over up to five taste lenses.
+        A miniature, made for this page: its sounds come from four controls, and it
+        leans one way at a time. The instrument hears
+        <a href="reference/features/audio.html">many more qualities</a> in every sound,
+        and can hold several styles of taste at once.
       </p>
     </div>
   </div>
@@ -173,24 +172,23 @@
 <!-- ─── the thesis ─────────────────────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">The problem</p>
-  <h2 class="h2">Sound design makes you choose between fast and deep.</h2>
+  <h2 class="h2"><span class="nb">Presets are fast.</span> <span class="nb">Patching is deep.</span> <span class="nb">Auracle grows.</span></h2>
 
   <div class="thesis">
     <div class="tcol">
-      <h3 class="tcol-h">Explore</h3>
-      <p>Presets and randomizers. Fast, and shallow. You audition until something
-      works, and nothing accumulates. Tomorrow you start over.</p>
+      <h3 class="tcol-h">Browse</h3>
+      <p>Presets are quick, and nothing you hear today helps tomorrow. You start
+      over every time.</p>
     </div>
     <div class="tcol">
-      <h3 class="tcol-h">Construct</h3>
-      <p>Patch from scratch. Deep, and slow. You get exactly what you can already
-      imagine, at the speed you can build it.</p>
+      <h3 class="tcol-h">Build</h3>
+      <p>Patching from scratch goes deep, slowly. You get what you can already
+      imagine, at the speed you can wire it.</p>
     </div>
     <div class="tcol tcol-ours">
-      <h3 class="tcol-h">Infer</h3>
-      <p>Auracle treats it as inference. It generates, you judge, it fits a model of
-      your taste and searches with it. The work you put in on Tuesday is still
-      there on Friday.</p>
+      <h3 class="tcol-h">Grow</h3>
+      <p>Auracle learns from every pick and grows new sounds toward your taste.
+      What you teach it on Tuesday is still there on Friday.</p>
     </div>
   </div>
 </section>
@@ -198,7 +196,7 @@
 <!-- ─── showcase ───────────────────────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">The instrument</p>
-  <h2 class="h2">Four views, one loop.</h2>
+  <h2 class="h2">One instrument, four views.</h2>
   <!-- films:tour --><!-- /films:tour -->
 
   <div class="shots">
@@ -215,35 +213,36 @@
 
     <div class="shot-pane" role="tabpanel" id="pane-perform" aria-labelledby="tab-perform" tabindex="0">
       <!-- films:pane-perform --><!-- /films:pane-perform -->
-      <img src="assets/screens/perform.webp" alt="The PERFORM view: eight round controls named Bright, Snap, Motion, Body, Grit, Space, Blend and Wander, six large pads (Keep, Back, Offer, Take, Peek, Freeze), a strip announcing an offer waiting in B, and an under-the-hood list of the patch's own knobs moving." width="1440" height="900" loading="eager" decoding="async">
-      <p class="shot-cap"><strong>PERFORM.</strong> Controls named for what you hear,
-      wired to this patch's own knobs by its measured response, with the knobs they
-      turn shown underneath. Wander lets the taste walk move it; Offer grows a
-      variant into B to blend or take.</p>
+      <img src="assets/screens/perform.webp" alt="The PERFORM view: eight round controls named Bright, Snap, Motion, Body, Grit, Space, Blend, and Wander, six large pads (Keep, Back, Offer, Take, Peek, and Freeze), a strip saying an offer waits in B, and a list of the sound's own knobs moving underneath." width="1440" height="900" loading="eager" decoding="async">
+      <p class="shot-cap"><strong>PERFORM.</strong> Play the sound with controls named
+      for what you hear, from BRIGHT to SPACE. Each one turns the few knobs that move
+      this sound most in its direction. Press OFFER, and it grows a variant into B for
+      you to blend or take.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0" hidden>
       <!-- films:pane-play --><!-- /films:pane-play -->
-      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left with match percentages; on the rack, Fat Bell's chain of phaser, distortion, chorus, compressor and a second distortion, with envelope followers, a step sequencer and mod envelopes driving it through amber modulation cables; the model's guess and its reasons above; the node bank catalogue on the right; a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
-      <p class="shot-cap"><strong>PATCH.</strong> The whole rack, with knobs at true
-      positions in musical units. Edit it and lock parts of it while it runs live
-      under your hands.</p>
+      <img src="assets/screens/play.webp" alt="The PATCH view: the bank on the left with match percentages; on the rack, Fat Bell's chain of phaser, distortion, chorus, compressor, and a second distortion, with envelope followers, a step sequencer, and mod envelopes driving it through amber modulation cables; the model's guess and its reasons above; the catalog of modules on the right; a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>PATCH.</strong> Open a sound to see its patch: every
+      module, cable, and knob, each knob in its own units. Change any of it while you
+      play. Lock what you love, and ⚡&nbsp;EVOLVE FROM THIS grows new sounds around
+      it.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-evolve" aria-labelledby="tab-evolve" tabindex="0" hidden>
       <!-- films:pane-evolve --><!-- /films:pane-evolve -->
-      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two duel cards side by side with rendered waveforms, a teaching meter reading fifty-three picks in, and a log below of what each generation changed." width="1440" height="900" loading="lazy" decoding="async">
-      <p class="shot-cap"><strong>EVOLVE.</strong> Duels under a meter that counts down
-      to the next refit, and a lineage log that says what each generation changed:
-      <span class="mono">decay 100 ms → 91 ms, granular → filter, … +mix, −vco</span>.</p>
+      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two sounds side by side with their waveforms, a teaching meter reading fifty-three picks in, and a log below of what each generation changed." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>EVOLVE.</strong> Pick between two sounds, and a meter
+      counts the picks until it next redraws your taste. Press EVOLVE POOL, and the log
+      says what each generation changed, knob by knob and module by module.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-taste" aria-labelledby="tab-taste" tabindex="0" hidden>
       <!-- films:pane-taste --><!-- /films:pane-taste -->
       <img src="assets/screens/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and brightness, three named style chips above it, and a legend reading less / would like and sure / unsure." width="1440" height="900" loading="lazy" decoding="async">
-      <p class="shot-cap"><strong>TASTE.</strong> Every patch you have heard, placed by
-      sound and structure. Glow is how much it thinks you would like it; size is how
-      sure it is.</p>
+      <p class="shot-cap"><strong>TASTE.</strong> Your sounds on one map, placed by how
+      they sound and how they&rsquo;re built. A brighter dot is one it rates higher for
+      you; a bigger dot is one it&rsquo;s less sure about.</p>
     </div>
   </div>
 
@@ -253,41 +252,31 @@
 <!-- ─── how it learns ──────────────────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">How it learns</p>
-  <h2 class="h2">A model that can be wrong in public.</h2>
+  <h2 class="h2">It can be wrong, and it tells you when.</h2>
 
   <div class="learn">
     <div class="learn-copy">
-      <p>Your picks condition one latent quantity: how much you would like a patch.
-      Taste is a <strong>maximum over lenses</strong> rather than a single direction,
-      so you are allowed to love dark drones <em>and</em> bright plucks without the
-      model averaging them into a preference for neither.</p>
+      <p>Every pick tells it which of two sounds you&rsquo;d reach for. From those
+      picks it learns which way your taste leans, and it can hold more than one way
+      at once: you can love dark drones and bright plucks without it averaging them
+      into neither. Before each pick it guesses yours, and afterward it shows you
+      whether it was right.</p>
 
-      <div class="formula" aria-label="u of x equals the maximum over k of theta k dot phi of x">
-        <span class="mono">u(x) = max<sub>k</sub> θ<sub>k</sub> · φ(x)</span>
-      </div>
-
-      <p>Search then proposes <em>toward</em> you: the fitted taste reshapes the
-      grammar's own proposal weights, not just the score.</p>
-
-      <div class="formula" aria-label="pi beta of x is proportional to p grammar of x times e to the beta u of x">
-        <span class="mono">π<sub>β</sub>(x) ∝ p<sub>grammar</sub>(x) · e<sup>βu(x)</sup></span>
-      </div>
-
-      <p>And every duel is <strong>forecast before you answer it</strong>, then scored
-      against a proper scoring rule. So the instrument can tell you when it does not
-      know yet. Early on, it does.</p>
-
-      <a class="inline-go" href="reference/">Read how it works&nbsp;▸</a>
+      <!-- The math (the utility as a max over styles, and the target the search
+           climbs) lives in the reference, one link further (voice.md, "How it
+           works": layered). -->
+      <a class="inline-go" href="reference/taste/utility.html">The taste model, with the math&nbsp;▸</a>
     </div>
 
     <figure class="learn-fig">
       <!-- The DIRECTIONS panel, not the frame around it. This figure gets about
            700px beside the copy, and a whole 1440px app frame at that width is
-           a 0.46× reduction — the plot becomes a smear and the bank and the
+           a 0.46× reduction: the plot becomes a smear and the bank and the
            keyboard take up half of it for nothing. -->
-      <img src="assets/screens/directions-detail.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." width="1160" height="621" loading="lazy" decoding="async">
-      <figcaption>Every coefficient with its credible interval. A long bar whose
-      whisker crosses the centre line is a guess, and the display says so.</figcaption>
+      <img src="assets/screens/directions-detail.webp" alt="TASTE's directions: qualities of sound down the left and, for each, one amber bar per style reaching left or right of a center line, each with a thin line showing how far it could be off." width="1160" height="621" loading="lazy" decoding="async">
+      <figcaption>Which way each style leans, one quality of sound to a row. The thin
+      line is how far it could be off: where it crosses the center, the lean is still
+      a guess.</figcaption>
     </figure>
   </div>
 
@@ -299,21 +288,22 @@
   <!-- /films:learning -->
 </section>
 
-<!-- ─── architecture ───────────────────────────────────────────────────── -->
+<!-- ─── how it breeds ──────────────────────────────────────────────────── -->
+<!-- The reference's two-loops figure used to sit here. Its readout speaks the
+     reference's technical register, and it draws the breeding loop as running
+     continuously, where in the app a generation runs when you press EVOLVE
+     POOL. The reference keeps it, with the math. -->
 <section class="band">
-  <p class="eyebrow">How it fits together</p>
-  <h2 class="h2">Two loops, running at different speeds.</h2>
+  <p class="eyebrow">How it breeds</p>
+  <h2 class="h2">Every generation grows a little closer.</h2>
 
-  <p class="band-lede">The machine evaluates thousands of candidates against what it
-  has learned about you, silently, and surfaces a curated few. Interactive-evolution
-  tools usually do the opposite: they ask you to rate a whole population, every
-  generation, until you quit.</p>
+  <p class="band-lede">Once it has a first guess at your taste, press EVOLVE POOL. The
+  sounds it rates highest each take a short walk: a few knobs move, and now and then
+  a module changes. Each walk ends in a new sound, which joins the pool only if it
+  rates above the weakest one there. The lowest-rated sounds are replaced. A sound
+  you saved never is.</p>
 
-  <figure class="viz" data-viz="two-loops">
-  <figcaption>Green flows continuously with no human in it. Amber moves at the pace
-  you answer questions, and carries your taste back into how the search
-  <em>proposes</em>, not only how it scores.</figcaption>
-  </figure>
+  <a class="inline-go" href="reference/search/refinement.html">How a generation breeds, with the math&nbsp;▸</a>
 
   <!-- films:engine -->
   <div class="film-chips">
@@ -323,36 +313,45 @@
   <!-- /films:engine -->
 </section>
 
-<!-- ─── the palette, by signal path ────────────────────────────────────── -->
+<!-- ─── the modules, by signal path ────────────────────────────────────── -->
 <section class="band">
-  <p class="eyebrow">The module palette</p>
-  <h2 class="h2">Forty-two modules, from source to output.</h2>
+  <p class="eyebrow">The modules</p>
+  <h2 class="h2">Every sound is a real instrument.</h2>
 
+  <p class="band-lede">Not samples. Each sound is a modular patch, built and wired from
+  scratch, and you play it from your computer keys, a MIDI keyboard, or the keys on
+  screen. Open it, and every module, cable, and knob is there to change.</p>
+
+  <!-- The groups, their names and their members are the node bank's own
+       (NB_GROUPS and MODULES in apps/web/main.js), in its order. -->
   <ol class="path">
-    <li><span class="path-n mono">sources</span><span class="path-b">A wavetable, a
-      physically-modelled pluck, a formant oscillator that speaks vowels, supersaw,
-      VCO, noise</span></li>
+    <li><span class="path-n mono">sources</span><span class="path-b">VCO, supersaw, a
+      wavetable, a physically modeled pluck, a formant oscillator that speaks vowels,
+      and noise</span></li>
     <li><span class="path-n mono">shape</span><span class="path-b">Wavefolder,
-      distortion in three drive modes, bitcrush</span></li>
-    <li><span class="path-n mono">filter</span><span class="path-b">SVF, diode ladder,
-      parametric EQ, vocoder</span></li>
-    <li><span class="path-n mono">space</span><span class="path-b">Delay, reverb,
-      granular, pitch shift</span></li>
-    <li><span class="path-n mono">motion</span><span class="path-b">Chorus, phaser,
-      flanger, tremolo, vibrato</span></li>
-    <li><span class="path-n mono">dynamics</span><span class="path-b">Compressor,
-      ducker, noise gate, each with a <em>control</em> input you can sidechain
-      into</span></li>
-    <li><span class="path-n mono">combine</span><span class="path-b">Crossfade and
-      ring modulation, merging two chains into one</span></li>
+      distortion in three drive modes, and bitcrush</span></li>
+    <li><span class="path-n mono">filter</span><span class="path-b">A filter with three
+      state-variable responses and a diode ladder, and a three-band EQ</span></li>
+    <li><span class="path-n mono">space</span><span class="path-b">Delay, chorus, reverb,
+      phaser, flanger, and granular</span></li>
+    <li><span class="path-n mono">motion</span><span class="path-b">Tremolo, vibrato, and
+      pitch shift</span></li>
+    <li><span class="path-n mono">dynamics</span><span class="path-b">Compressor, ducker,
+      and gate, each with a <em>control</em> input you can sidechain into</span></li>
+    <li><span class="path-n mono">combine</span><span class="path-b">Mix, ring mod, and
+      vocoder, each merging two chains into one</span></li>
     <li><span class="path-n mono">modulation</span><span class="path-b">LFO, envelope,
-      sample-and-hold, slew, follower, Euclidean, a step sequencer. These <strong>chain</strong>:
-      <span class="mono">s&amp;h rand → quantize → slew</span> before it ever reaches a
-      cutoff</span></li>
+      sample-and-hold, follower, Euclidean rhythm, and a step sequencer</span></li>
+    <li><span class="path-n mono">shape cv</span><span class="path-b">Quantize, slew,
+      rectify, and hold, which bend a modulator on its way to a knob. They
+      <strong>chain</strong>: <span class="mono">s&amp;h rand → quantize → slew</span>
+      before it ever reaches a cutoff</span></li>
+    <li><span class="path-n mono">combine cv</span><span class="path-b">Six ways to merge
+      two modulators into one cable</span></li>
   </ol>
 
-  <p class="path-note">Every knob is an address in the genome, so turning one edits the
-  patch the search is working on. Lock a knob and refinement leaves it alone.</p>
+  <p class="path-note">Turn a knob, and you hear it at once. Lock it, and
+  ⚡&nbsp;EVOLVE FROM THIS leaves it as it is.</p>
 
   <!-- films:making --><!-- /films:making -->
 </section>
@@ -360,26 +359,28 @@
 <!-- ─── start ──────────────────────────────────────────────────────────── -->
 <section class="band band-start">
   <p class="eyebrow">Start</p>
-  <h2 class="h2">Nothing to install.</h2>
+  <h2 class="h2">Play it now, offline, or from source.</h2>
 
   <div class="routes">
     <a class="route route-first" href="play/">
       <h3 class="route-h">Play it now</h3>
-      <p>The live build, tracking the tip of the repo. Pick three presets when it
-      asks, then answer duels.</p>
-      <span class="route-go">Open the instrument&nbsp;▸</span>
+      <p>The live build, rebuilt with every change to the source. When it asks, pick
+      the three sounds you&rsquo;d reach for, then pick between pairs.</p>
+      <span class="route-go">Play it in your browser&nbsp;▸</span>
     </a>
 
     <a class="route" href="https://github.com/alexnodeland/auracle/releases">
       <h3 class="route-h">Run it offline</h3>
-      <p>Every release attaches a prebuilt bundle. Unzip, serve the folder, open the
-      URL. No toolchain.</p>
+      <p>Every release comes with a ready-built bundle. Unzip it, run
+      <span class="mono">python3 serve.py</span>, and open the address it prints. No
+      Rust needed.</p>
       <span class="route-go">Releases&nbsp;▸</span>
     </a>
 
     <a class="route" href="https://github.com/alexnodeland/auracle">
       <h3 class="route-h">Build it</h3>
-      <p>A Rust workspace of five crates. Clone it, build it, serve it.</p>
+      <p>A Rust workspace of five crates, and a web app with no build step. Clone it,
+      then run <span class="mono">make setup</span> and <span class="mono">make serve</span>.</p>
       <span class="route-go">Source&nbsp;▸</span>
     </a>
   </div>

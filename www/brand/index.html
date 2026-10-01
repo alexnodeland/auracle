@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Auracle | Brand</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Auracle's mark, logotype, lockups and icon set — the specification, and the rules that hold it together.">
+<meta name="description" content="Auracle's mark, logotype, lockups, and icon set: the specification, and the rules that hold it together.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0c0d10">
 <meta name="robots" content="noindex">
@@ -12,7 +12,7 @@
 <link rel="icon" href="mark.svg">
 
 <style>
-/* The faces are copied to site/fonts by `make site-landing` — one source in
+/* The faces are copied to site/fonts by `make site-landing`: one source in
    apps/web/fonts, as everywhere else. See www/theme/fonts/README.md. */
 @font-face {
   font-family: "Jost";
@@ -27,7 +27,7 @@
   font-display: swap;
 }
 
-/* Tokens are the instrument's own: the colours and the families are generated
+/* Tokens are the instrument's own: the colors and the families are generated
    from tokens.json, the one source for every surface (`make tokens`). A brand
    page painted in anything else would be arguing with itself. */
 /* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
@@ -167,11 +167,11 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
   line-height: 1;
 }
 .lk-stack .glyph { width: 2.6em; height: 2.6em; }
-/* Tracked type centres wrong: letter-spacing is applied after the last letter
-   too, so a centred line's ink sits half a letter-space left of true centre. A
-   start margin of one full letter-space puts it back — on every line, which
-   `text-indent` would not do once the descriptor wraps. Both members of the
-   stack are corrected, or they are centred against each other by luck. */
+/* Tracked type centers wrong: letter-spacing is applied after the last letter
+   too, so a centered line's ink sits half a letter-space left of true center. A
+   start margin of one full letter-space puts it back, on every line, which
+   `text-indent` would not do once the tagline wraps. Both members of the
+   stack are corrected, or they are centered against each other by luck. */
 .lk-stack .wm { letter-spacing: 0.14em; margin-inline-start: 0.14em; }
 .desc {
   font-family: var(--font-mono);
@@ -179,9 +179,9 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
   font-size: 0.32em;
   letter-spacing: 0.2em;
   margin-inline-start: 0.2em;
-  /* The stack centres it as a box; this centres its lines inside that box, so
-     a descriptor that wraps stays centred rather than going ragged-right under
-     a centred wordmark. */
+  /* The stack centers it as a box; this centers its lines inside that box, so
+     a tagline that wraps stays centered rather than going ragged-right under
+     a centered wordmark. */
   text-align: center;
   text-wrap: balance;
   text-transform: uppercase;
@@ -335,7 +335,7 @@ section:first-of-type { border-top: 0; }
   display: flex; flex-direction: column; align-items: center; gap: var(--s4);
   text-align: center;
 }
-/* Single colour, taking the colour of whatever it sits in — which is the
+/* Single color, taking the color of whatever it sits in, which is the
    whole difference between these and the mark. */
 .ui-icon { width: 30px; height: 30px; color: var(--silk); }
 .iconset .name {
@@ -344,7 +344,7 @@ section:first-of-type { border-top: 0; }
 }
 .iconset .use { font-size: 0.86rem; color: var(--silk-dim); line-height: 1.5; }
 
-/* icons taking their surroundings' colour, demonstrated */
+/* icons taking their surroundings' color, demonstrated */
 .tints { display: flex; gap: var(--s4); flex-wrap: wrap; margin-top: var(--s5); }
 .tint {
   display: flex; align-items: center; gap: var(--s3);
@@ -414,7 +414,7 @@ section:first-of-type { border-top: 0; }
     <circle cx="8" cy="8" r="1.6" style="fill: var(--phos-b)"/>
   </symbol>
 
-  <!-- The icon set. Single colour, currentColor, 24px grid, 2px stroke. -->
+  <!-- The icon set. Single color, currentColor, 24px grid, 2px stroke. -->
   <symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
     <path d="M6.5 11.9c0 8 11 8 11 0"/>
     <circle cx="6.5" cy="9" r="2.9"/>
@@ -457,17 +457,17 @@ section:first-of-type { border-top: 0; }
     mind</strong>, and AURACLE set in Jost 500. What follows is how they go together.</p>
     <p class="t">The files live in <code>www/brand/</code> and are copied into every
     consumer at build time by <code>make site-brand</code>. <strong>Nothing else in the
-    repo may hold a mark</strong> — one source, or the copies drift apart.</p>
+    repo may hold a mark</strong>: one source, or the copies drift apart.</p>
   </section>
 
   <section>
     <p class="eyebrow">The mark</p>
     <h2 class="h2">Three rings and a core. An aura outward, a posterior inward.</h2>
-    <p class="t">Deep green outside, bright green inside, amber at the centre. Read
-    outward it radiates; read inward it is a distribution contracting onto one taste,
+    <p class="t">Deep green outside, bright green inside, amber at the center. Read
+    outward it radiates; read inward it is a distribution settling onto one taste,
     which is the same picture the instrument draws of itself. Two phosphors and no third.</p>
     <p class="t"><strong>The tile is part of the mark.</strong> It stays dark on every
-    ground, including paper — the phosphor colours have no light-mode equivalent, and
+    ground, including paper: the phosphor colors have no light-mode equivalent, and
     inventing one would be a second brand to keep in sync.</p>
 
     <div class="ladder">
@@ -497,10 +497,10 @@ section:first-of-type { border-top: 0; }
     <p class="eyebrow">The logotype</p>
     <h2 class="h2">Jost 500 caps, and exactly one lamp in the lockup.</h2>
     <p class="t">AURACLE is Jost 500, all caps, on a tracking ramp. Jost is a geometric
-    sans built for signage, which is what an instrument panel is — and it is the face the
+    sans built for signage, which is what an instrument panel is, and it is the face the
     instrument itself is set in.</p>
     <p class="t">The mark is a lamp. <strong>The wordmark's final E must not be a second
-    one.</strong> In the app that E is instrumentation — it lights while the model is
+    one.</strong> In the app that E is instrumentation: it lights while the model is
     fitting, and is a live reading of something true. Set anywhere it cannot light, it is
     a light that is always on, and <em>a light that pulses without meaning is worse than
     no light</em>.</p>
@@ -512,7 +512,7 @@ section:first-of-type { border-top: 0; }
       </div>
       <div class="yes">
         <span class="lk lk-lg" style="font-size:34px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
-        <p class="verdict">One lamp &middot; the mark holds it<br>colour lands in exactly one place</p>
+        <p class="verdict">One lamp &middot; the mark holds it<br>color lands in exactly one place</p>
       </div>
     </div>
 
@@ -525,7 +525,8 @@ section:first-of-type { border-top: 0; }
     <p class="eyebrow">The lockups &middot; four, no more</p>
     <h2 class="h2">One primary, one stacked, and the two halves alone.</h2>
     <p class="t">A logo system fails by having too many members. These four cover every
-    surface Auracle has.</p>
+    surface Auracle has. Where a lockup carries words, they are the line: the tagline
+    under the wordmark, and on the social card, the descriptor under the tagline.</p>
 
     <div class="stage">
       <div class="cell">
@@ -541,7 +542,7 @@ section:first-of-type { border-top: 0; }
           <span class="wm">AURACLE</span>
           <span class="desc">A synthesizer that grows toward you</span>
         </span>
-        <span class="cap"><b>Stacked &middot; with descriptor</b>social card, boot screen, splash, print</span>
+        <span class="cap"><b>Stacked &middot; with the tagline</b>social card, boot screen, splash, print</span>
       </div>
     </div>
 
@@ -565,7 +566,7 @@ section:first-of-type { border-top: 0; }
       <span class="constr-inner"><span class="lk lk-xl" style="font-size:40px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span></span>
     </div>
     <p class="constr-note"><b>Amber</b> &middot; the lockup's own bounding box<br>
-    Dashed &middot; the minimum clear space, one mark-height on all four sides &mdash;
+    Dashed &middot; the minimum clear space, one mark-height on all four sides:
     nothing crosses it, including page gutters and card edges</p>
 
     <div class="scroller">
@@ -576,7 +577,7 @@ section:first-of-type { border-top: 0; }
           <tr><td>Gap, mark to word</td><td class="num">0.62 em</td><td>Wide enough to be a lockup, tight enough not to be two objects</td></tr>
           <tr><td>Optical lift</td><td class="num">&minus;0.035 em</td><td>Caps sit high in the line box; without it the tile sags</td></tr>
           <tr><td>Tracking, under 24px</td><td class="num">0.145 em</td><td>Small type needs air between letters to stay countable</td></tr>
-          <tr><td>Tracking, 24&ndash;48px</td><td class="num">0.115 em</td><td>The ramp &mdash; tracking comes off as size goes on</td></tr>
+          <tr><td>Tracking, 24&ndash;48px</td><td class="num">0.115 em</td><td>The ramp: tracking comes off as size goes on</td></tr>
           <tr><td>Tracking, over 48px</td><td class="num">0.095 em</td><td>Past this the word disintegrates into seven letters</td></tr>
           <tr><td>Clear space</td><td class="num">1 &times; mark height</td><td>A rule that scales, rather than a pixel value that does not</td></tr>
           <tr><td>Minimum, horizontal</td><td class="num">96 px wide</td><td>Below this the tracking closes up and the mark muddies</td></tr>
@@ -590,23 +591,23 @@ section:first-of-type { border-top: 0; }
     <p class="eyebrow">The icon set</p>
     <h2 class="h2">Five shapes, for five things the product already names.</h2>
     <p class="t">The set is five: <code>play</code>, <code>evolve</code>,
-    <code>taste</code>, <code>teach</code>, <code>active</code>. They are
+    <code>taste</code>, <code>teach</code>, and <code>active</code>. They are
     <strong>a different kind of object from the mark</strong>:
-    single colour, <code>currentColor</code>, no tile, 24px grid, 2px stroke. A UI icon
-    has to take the colour of the control it sits in, and the two-phosphor split belongs
-    to the brand mark alone — an icon that insists on its own colours is a sticker, not
+    single color, <code>currentColor</code>, no tile, 24px grid, 2px stroke. A UI icon
+    has to take the color of the control it sits in, and the two-phosphor split belongs
+    to the brand mark alone: an icon that insists on its own colors is a sticker, not
     an icon.</p>
 
     <div class="iconset">
       <div>
         <svg class="ui-icon"><use href="#ic-play"/></svg>
         <span class="name">play</span>
-        <span class="use">Two jacks and a cable. PLAY, the patch, wiring, the rack.</span>
+        <span class="use">Two jacks and a cable. PATCH, modules, cables, the rack.</span>
       </div>
       <div>
         <svg class="ui-icon"><use href="#ic-evolve"/></svg>
         <span class="name">evolve</span>
-        <span class="use">A peak at the mode. EVOLVE, the duels, a proposal.</span>
+        <span class="use">A peak at the mode. EVOLVE, pairs, a generation.</span>
       </div>
       <div>
         <svg class="ui-icon"><use href="#ic-taste"/></svg>
@@ -625,17 +626,18 @@ section:first-of-type { border-top: 0; }
       </div>
     </div>
 
-    <p class="t" style="margin-top:var(--s6)">The first four are the guide's own chapters
-    — <code>views/play.md</code>, <code>views/evolve.md</code>, <code>views/taste.md</code>,
-    <code>teaching.md</code>. That is the test of whether an icon set is real: it names
-    things the product already names, rather than inventing categories to fill a grid.
-    An icon with no chapter behind it does not belong in the set.</p>
+    <p class="t" style="margin-top:var(--s6)">The first four are the guide's own chapters:
+    <code>views/play.md</code> (PATCH), <code>views/evolve.md</code>,
+    <code>views/taste.md</code>, and <code>teaching.md</code>. That is the test of whether
+    an icon set is real: it names things the product already names, rather than inventing
+    categories to fill a grid. An icon with no chapter behind it does not belong in the
+    set.</p>
 
     <p class="t">Every one of them is a shape, never a letterform. A letter cannot carry a
-    meaning in a toolbar — <code>teach</code> is a meter for that reason, not a stylised
+    meaning in a toolbar: <code>teach</code> is a meter for that reason, not a stylized
     E.</p>
 
-    <p class="t">Taking the colour of the control, which is the whole point:</p>
+    <p class="t">Taking the color of the control, which is the whole point:</p>
     <div class="tints">
       <span class="tint rest"><svg class="ui-icon"><use href="#ic-play"/></svg>Resting</span>
       <span class="tint here"><svg class="ui-icon"><use href="#ic-taste"/></svg>Where you are</span>
@@ -643,7 +645,7 @@ section:first-of-type { border-top: 0; }
       <span class="tint busy"><svg class="ui-icon"><use href="#ic-active"/></svg>Fitting</span>
     </div>
     <p class="t" style="margin-top:var(--s4)"><code>active</code> is the only icon in the
-    set allowed to move, and only while a fit is actually running. It also honours
+    set allowed to move, and only while a fit is actually running. It also honors
     <code>prefers-reduced-motion</code>, as everything here does.</p>
   </section>
 
@@ -679,7 +681,7 @@ section:first-of-type { border-top: 0; }
         <tbody>
           <tr><td>mark.svg</td><td>site favicon, docs + reference favicons, this page</td><td class="num">make site-brand</td></tr>
           <tr><td>mark-16.svg</td><td>the app's inline tab icon, as base64</td><td class="num">by hand, documented</td></tr>
-          <tr><td>mark-active.svg</td><td>beside a running fit</td><td class="num">&mdash;</td></tr>
+          <tr><td>mark-active.svg</td><td>beside a running fit, and this page</td><td class="num">make site-extras</td></tr>
           <tr><td>favicon.png</td><td>the PNG fallback slot</td><td class="num">make site-landing</td></tr>
           <tr><td>apple-touch-icon.png</td><td>site root</td><td class="num">make site-landing</td></tr>
           <tr><td>og.png</td><td>site/assets/og.png</td><td class="num">make site-landing</td></tr>
@@ -690,7 +692,7 @@ section:first-of-type { border-top: 0; }
     </div>
     <p class="t" style="margin-top:var(--s6)">Rasters are committed rather than built, so
     that neither CI nor a contributor needs a renderer installed to build the site. After
-    changing <code>mark.svg</code>, run <code>make brand-rasters</code> — and see
+    changing <code>mark.svg</code>, run <code>make brand-rasters</code>, and see
     <code>www/brand/README.md</code> for the two that a renderer cannot make, because they
     set the logotype and need real Jost outlines.</p>
   </section>

@@ -94,17 +94,13 @@ thead th,
     color: inherit;
 }
 
-/* The voice. `<em>` inside a blockquote or a lede is the product talking about
-   itself, which in the app is Newsreader italic. Elsewhere `<em>` is ordinary
-   emphasis and stays in the body face. */
-.content > blockquote em,
-.content .lede {
-    font-family: var(--font-voice);
-    font-style: italic;
-}
-
+/* The lede: what the page is for, in one or two sentences. It is the guide
+   (or the reference) talking, so it is plain, in the body face. Newsreader
+   italic belongs to the model alone, in the app (www/brand/voice.md, "The
+   model's voice"), and `<em>` everywhere here is ordinary emphasis. */
 .content .lede {
     font-size: 1.95rem;
+    font-weight: 300;
     line-height: 1.45;
     color: var(--silk-dim);
     margin-block-end: 1.6em;

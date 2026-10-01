@@ -175,12 +175,12 @@ html.light {
     --menu-bar-height: 48px;
     --searchbar-margin-block-start: 5px;
 
-    /* The instrument's three faces, self-hosted — see fonts/README.md for why
-       a local-only stack is a coin flip on the reader's machine. Jost for
-       prose, Plex Mono for anything that is a value or an identifier,
-       Newsreader italic for the voice in which the product speaks about
-       itself. The families are generated above; mdBook calls the mono one
-       `--mono-font`. */
+    /* The instrument's three faces, self-hosted (see fonts/README.md for why
+       a local-only stack is a coin flip on the reader's machine). Jost for
+       prose, ledes included; Plex Mono for anything that is a value or an
+       identifier; Newsreader italic for the model's own words, and only
+       those (www/brand/voice.md, "The model's voice"). The families are
+       generated above; mdBook calls the mono one `--mono-font`. */
     --mono-font: var(--font-mono);
 
     --code-font-size: 0.86em;

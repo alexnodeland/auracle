@@ -135,7 +135,6 @@
   --phos-a-32: rgba(142, 240, 177, 0.32);
   --phos-b-03: rgba(255, 180, 84, 0.03);
   --phos-b-032: rgba(255, 180, 84, 0.032);
-  --phos-b-045: rgba(255, 180, 84, 0.045);
   --phos-b-05: rgba(255, 180, 84, 0.05);
   --phos-b-06: rgba(255, 180, 84, 0.06);
   --phos-b-10: rgba(255, 180, 84, 0.1);
@@ -169,7 +168,7 @@
      which is the entire reason it is not a serif or a grotesque. */
   --t-display: clamp(2.4rem, 6.4vw, 4.6rem);
   --t-h2: clamp(1.6rem, 3.2vw, 2.3rem);
-  --t-voice: clamp(1.05rem, 1.7vw, 1.28rem);
+  --t-lede: clamp(1.05rem, 1.7vw, 1.28rem);
   --t-body: 1rem;
   --t-label: 0.7rem;   /* silk caps — panel labels */
   --t-micro: 0.66rem;  /* mono — values */
@@ -199,7 +198,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 /* `hidden` is a UA rule at type-selector strength, so any class that sets
-   `display` silently defeats it — which is how "Make me one" appeared before the
+   `display` silently defeats it — which is how "Hear its guess" appeared before the
    model had anything to say. Restate it where it cannot lose. */
 [hidden] { display: none !important; }
 
@@ -361,16 +360,24 @@ kbd {
   text-wrap: balance;
 }
 
-/* The product's own voice — the register the instrument uses when it speaks
-   about itself. Italic Newsreader against geometric Jost is the page's whole
-   typographic contrast, and it is used only here and in figure captions. */
-.voice {
-  font-family: var(--font-voice);
-  font-style: italic;
-  font-size: var(--t-voice);
+/* A heading made of short sentences breaks between them, not inside one. */
+.nb { white-space: nowrap; }
+
+/* The lede under a heading: the page describing the instrument, in plain Jost.
+   Only the model speaks in Newsreader italic (voice.md, "The model's voice"),
+   and on this page the model speaks only in the demo's verdict (`.model`). */
+.lede {
+  font-size: var(--t-lede);
   line-height: 1.5;
   color: var(--silk-dim);
   max-width: 44ch;
+}
+
+/* The model's own words: what it believes, and its limits, said by it.
+   Newsreader italic is reserved for this. */
+.model {
+  font-family: var(--font-voice);
+  font-style: italic;
 }
 
 .band {
@@ -432,7 +439,7 @@ kbd {
 }
 
 .hero-copy { min-width: 0; }
-.display + .voice { margin-top: var(--s5); }
+.display + .lede { margin-top: var(--s5); }
 
 .cta-row {
   display: flex;
@@ -490,7 +497,7 @@ kbd {
 }
 
 /* Holding the height it had with two cards on it (hero.js pins the value), so
-   the built patch sits in the middle of the screen rather than at the top of a
+   its guess sits in the middle of the screen rather than at the top of a
    screen that is mostly empty. */
 .crt[data-made-on] {
   display: flex;
@@ -568,7 +575,7 @@ kbd {
 .card-play:hover { background: var(--phos-a-09); }
 .card-play kbd { border-color: var(--phos-a-deep); color: var(--phos-a-dim); }
 
-/* ─── the patch it built ────────────────────────────────────────────────── */
+/* ─── its guess ─────────────────────────────────────────────────────────── */
 
 /* Amber, per the phosphor law: the duel's cards are candidates the page drew at
    random (green — sound), and this one came out of the model (amber — mind). It
@@ -767,15 +774,16 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* Plain when it instructs or describes; the model's own lines inside it are
+   `.model` spans (hero.js), and only those are italic. */
 .verdict {
   margin-top: var(--s3);
-  font-family: var(--font-voice);
-  font-style: italic;
-  font-size: 0.98rem;
+  font-size: 0.94rem;
   line-height: 1.45;
   color: var(--silk-dim);
   min-height: 2.9em;
 }
+.verdict .model { font-size: 1.04em; }
 .verdict strong { color: var(--phos-b); font-style: normal; font-weight: 500; }
 
 .btn-make {
@@ -955,7 +963,7 @@ kbd {
   gap: clamp(var(--s6), 5vw, var(--s8));
   align-items: center;
 }
-.try-copy .voice { margin-top: var(--s5); text-wrap: pretty; }
+.try-copy .lede { margin-top: var(--s5); text-wrap: pretty; }
 
 /* A section's films: small, beside the claim they show. */
 .film-chips {
@@ -1069,16 +1077,6 @@ kbd {
 .learn-copy p { color: var(--silk-dim); margin-bottom: var(--s4); }
 .learn-copy strong { color: var(--silk); font-weight: 500; }
 
-.formula {
-  margin: var(--s5) 0;
-  padding: var(--s4);
-  background: var(--phos-b-045);
-  border-inline-start: 2px solid var(--phos-b-deep);
-  border-radius: 0 3px 3px 0;
-  overflow-x: auto;
-}
-.formula .mono { font-size: 0.95rem; color: var(--phos-b); white-space: nowrap; }
-
 .learn-fig { margin: 0; min-width: 0; }
 .learn-fig img {
   max-width: 100%;
@@ -1088,19 +1086,19 @@ kbd {
   border-radius: 4px;
   background: var(--bezel);
 }
+/* A caption describes the figure; it is not the model speaking, so it is
+   plain. */
 .learn-fig figcaption {
   margin-top: var(--s3);
-  font-family: var(--font-voice);
-  font-style: italic;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   line-height: 1.5;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
 }
 
-/* ─── the palette, by signal path ───────────────────────────────────────── */
+/* ─── the modules, by signal path ───────────────────────────────────────── */
 
-/* An ordered list because the order is real information — this is the signal
-   path, and it is the order the instrument's own catalogue uses. The markers are
+/* An ordered list because the order is real information: this is the signal
+   path, and it is the order the instrument's own catalog uses. The markers are
    the stage names rather than numbers, because "sources → shape → filter" tells
    you something and "01 02 03" does not. */
 .path { margin-top: var(--s7); display: grid; gap: 0; }
@@ -1235,11 +1233,11 @@ kbd {
   .hero { display: grid; gap: var(--s6); }
   .eyebrow { order: 1; }
   .display { order: 2; }
-  .voice { order: 3; max-width: none; }
+  .lede { order: 3; max-width: none; }
   .panel { order: 4; }
   .cta-row { order: 5; margin-top: 0; }
   .fineprint { order: 6; margin-top: 0; }
-  .voice, .h2 { max-width: 46ch; }
+  .lede, .h2 { max-width: 46ch; }
 
   /* The footer's two columns become one, and the links go back to reading
      left-to-right under the wordmark rather than staying right-aligned
@@ -1265,7 +1263,7 @@ kbd {
   .panel { animation: power-on 0.6s ease-out both; }
   .card:nth-child(1) { animation: trace-in 0.5s ease-out 0.34s both; }
   .card:nth-child(2) { animation: trace-in 0.5s ease-out 0.46s both; }
-  /* Same sweep when the built patch replaces them — it starts on reveal, since
+  /* Same sweep when its guess replaces them — it starts on reveal, since
      an animation on a display:none box does not run until the box exists. */
   .made { animation: trace-in 0.45s ease-out both; }
 
