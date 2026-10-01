@@ -15,10 +15,10 @@ pub fn in_domain(v: f64) -> bool {
 ```
 
 Every continuous site is normalized to $[0,1)$ and the mapping to Hz, seconds,
-dB or cents happens in the compiler. **Half-open**, because that is what
+dB, or cents happens in the compiler. **Half-open**, because that is what
 $\mathrm{Uniform}(0,1)$ is: fugue's `log_prob` is $-\infty$ at $x \ge 1$. The
 domain used to be `0.0..=1.0`, which made exactly `1.0` legal here and
-impossible under the prior: a knob dragged to its stop, two shipped presets
+impossible under the prior: a knob dragged to its stop, two shipped presets,
 and the default vibrato insert all had $\log p = -\infty$, so `init_from`
 refused them and ⚡ evolve silently did nothing. Every clamp in the crate now
 lands on `PARAM_MAX`, never on `1.0`, and it is one `f64::EPSILON` below rather
@@ -57,7 +57,7 @@ Not every continuous site is heard. A step sequencer (`ModNode::Steps`, see
 [the grammar](./grammar.md#the-step-sequencers-values-are-latent)) always
 carries eight step values `#s0` … `#s7`, and `#slen` decides how many of them
 play. The rest are **latent**: in the trace, in the domain, drawn from the
-prior and moved by MH like any other site, but inert until a longer `#slen`
+prior, and moved by MH like any other site, but inert until a longer `#slen`
 reveals them.
 
 That is deliberate, and it costs nothing the search has to pay for. A proposal

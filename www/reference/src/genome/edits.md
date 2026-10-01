@@ -124,7 +124,7 @@ spellings is a defect waiting for a caller.
 
 `Silence` is `silence` on both sides, and it is the one kind in the vocabulary
 nobody shops for: `Replace { kind: silence }` is how an edit unplugs a socket.
-The app's unplug, extract and cable-move gestures leave the same leaf (as
+The app's unplug, extract, and cable-move gestures leave the same leaf (as
 `{"Silence":{}}` in the tree they post), the rack describes it as kind
 `silence` titled *empty*, and it renders nothing. It used to be unreachable by
 hand, so the app stood a saw VCO in an unplugged socket and drew the EMPTY

@@ -40,7 +40,7 @@ The **representation**, and the crate everything else is built on.
 | `presets` | The 62-patch hand-made library, in seven families |
 
 **`genome`'s codec *is* the grammar's addressing.** It is one scheme rather
-than two kept in sync, which is what makes a knob turn, a lock and an MH
+than two kept in sync, which is what makes a knob turn, a lock, and an MH
 proposal refer to the same thing.
 
 ## auracle-features
@@ -88,7 +88,7 @@ The **engine** every frontend drives.
 |---|---|
 | `engine` | `Engine`: pool, log, posterior, refinement, workbench, lineage. About 4,100 lines |
 | `walk` | A generation's walks as data: the jobs, the context they share, and the walk as a pure function |
-| `perform` | PERFORM's named controls, drift and offers |
+| `perform` | PERFORM's named controls, drift, and offers |
 | `surrogate` | The learned taste as a fugue-evo `Fitness` |
 | `calib` | Prequential forecast scoring and reliability diagrams |
 | `map` | The 2D projection behind the taste map |

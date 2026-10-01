@@ -37,8 +37,8 @@ pub fn refine<R: Rng>(&mut self, rng: &mut R) {
 the top `refine_seeds` candidates by posterior utility, best first. Every walk
 shares one **context**: the grammar prior tilted by the posterior (computed
 once, as the pool stands when the generation opens), the posterior, the
-standardizer, the phrase, β and the keep rule. Each job carries its seed tree,
-its step budget and **its own RNG seed**, derived from a single draw of the
+standardizer, the phrase, β, and the keep rule. Each job carries its seed tree,
+its step budget, and **its own RNG seed**, derived from a single draw of the
 caller's `refine` stream. It returns nothing (and does *not* advance the
 counter) when there is no posterior or no standardizer, because there is no
 direction to climb in.

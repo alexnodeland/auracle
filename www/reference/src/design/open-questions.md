@@ -49,8 +49,8 @@ measurement that would settle it.
   indices (`node/0`, `node/1`) are the trace addressing, so a shared node has no
   single path and the address scheme stops being a naming of the term. That
   scheme is load-bearing for panel knobs, locks, live parameter handles, MH
-  proposals and the persisted genome, and `CONTRIBUTING.md` lists it as a sharp
-  edge for exactly this reason. `children()`, `size()`, `depth()` and
+  proposals, and the persisted genome. `CONTRIBUTING.md` lists it as a sharp
+  edge for exactly this reason. `children()`, `size()`, `depth()`, and
   `site_count()` all assume each node is visited once, and `size` sets the
   module ceiling (`MAX_SIZE`). Every structural op in `mutate` assumes a unique parent. It is
   a genome-format change with a migration, not a production.
@@ -175,7 +175,7 @@ measurement that would settle it.
   entry read: *"a compiled patch exposes exactly one output … a quiver-side
   probe API would turn both into measurements. Not filed: it needs scoping
   first."* There was nothing to scope and nothing to file. quiver's
-  `StateObserver` has taken `Level`, `Scope` and `Spectrum` subscriptions on
+  `StateObserver` has taken `Level`, `Scope`, and `Spectrum` subscriptions on
   any node port for some time, in the release the lockfile already pinned. The
   gap was here, not upstream.
 
@@ -258,7 +258,7 @@ measurement that would settle it.
   patch with a tail, so it is a `RENDER_EPOCH` bump *and* owes the measurement
   (φ over prior draws before and after, and `make revalidate`), which has not
   been made. Documented at the line rather than changed blind.
-- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
+- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean`, and
   `centroid_mean` are three genuine measurements of one perceptual thing.
   A fused prior over the cluster is now **implemented and switched off**, which
   is a more useful state than either "not done" or "done".

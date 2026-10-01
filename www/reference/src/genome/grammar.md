@@ -112,7 +112,7 @@ drag in the rack is an atomic write, not a recompile. Its clock is free-running
 (`#srate` is $0.5\cdot 2^{5x}$ steps per second), and every audition hears it
 that way; tempo sync is a live-instrument concern and is not in the genome.
 With the dock's **sync** on, the live engine snaps each sequencer's rate to the
-nearest division of the tempo in octaves (straight, triplet or dotted, a
+nearest division of the tempo in octaves (straight, triplet, or dotted; a
 quarter-step per beat up to eight) and drives every voice's clock from one
 transport through a `sync` port the term never sees (`<key>#~sync`). The
 transport restarts on the first key down or on MIDI start, and it counts steps,
@@ -132,7 +132,7 @@ A modulation slot hangs off every module with somewhere to send it. The
 exceptions are the ones without: `Noise`, whose only site is a color switch,
 and `Mix` / `RingMod`, whose two inputs are both audio and whose single knob is
 the blend. Having two audio children is **not** itself an exception: the four
-sidechained productions (comp, duck, gate and vocoder) take two subterms and
+sidechained productions (comp, duck, gate, and vocoder) take two subterms and
 carry a slot as well.
 
 ## The modules

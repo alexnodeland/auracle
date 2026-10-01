@@ -13,7 +13,7 @@ sound**: a patch that changes on its own without changing what it is made of.
 The first is a least-squares problem on the patch's own Jacobian. The second is
 the [locked walk](./locks.md) with every structural site locked. Both live in
 `auracle_session::perform`, and reach the browser as `perform_wire`,
-`perform_apply`, `perform_drift` and `perform_offer` on `WasmEngine`.
+`perform_apply`, `perform_drift`, and `perform_offer` on `WasmEngine`.
 
 ## Symbols on this page
 
@@ -240,7 +240,7 @@ is about 0.1σ, since many pool patches have no filter for a named control to
 turn. That is the honest reading, and a search control's offer is the answer
 to it.
 
-The same 24 patches, after the effect ranking, the control's-own-knobs pass
+The same 24 patches, after the effect ranking, the control's-own-knobs pass,
 and a half-travel retry in `verify` (all three above and below). Both rows
 are measured on the same build, since the pink-noise fix and the re-voiced
 presets moved the pool standardizer:
@@ -462,7 +462,7 @@ convex. A touch stops the glide where it is.
 ## Offers
 
 `Engine::offer` is the same walk with only the player's locks, so structural
-moves are allowed: it may add, remove or replace a module. It is also
+moves are allowed: it may add, remove, or replace a module. It is also
 non-inserting. The instrument asks for 20 steps (40 in *roam*) and plays the
 result in the B slot, never as a jump. The Offer pad and Wander ask for this
 walk. A [search control](#wiring-ridge-support-re-solve) released more than
@@ -592,7 +592,7 @@ controls needs no taste at all, only a standardizer.
 ## The B slot
 
 An offer is heard through a second `LivePoly` in the same AudioWorklet. It
-receives every note-on, note-off, bend, glide, unison and arpeggiator message
+receives every note-on, note-off, bend, glide, unison, and arpeggiator message
 the first one does, and notes held when it loads are replayed into it, so it
 joins a chord already sounding. It renders continuously while loaded, so its
 envelopes and tails are in step with A when the mix moves.

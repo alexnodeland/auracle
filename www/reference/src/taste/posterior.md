@@ -38,14 +38,14 @@ TastePosterior { cfg, samples, weights: vec![1.0 / n; n] }
 clones `Address` (an `Arc` refcount bump plus a cached hash) into each node.
 
 Building addresses inline (`addr!(format!("theta{k}"), i)`) cost a `format!`
-into a `String`, a re-allocation into `Arc<str>` and a SipHash of that string,
+into a `String`, a re-allocation into `Arc<str>`, and a SipHash of that string,
 **per site per step**: roughly 3.7 M allocations per mature fit, and measurably
 the bulk of the fit's wall time (`examples/fit_bench.rs`; the fit is `steps ×
 sites`-shaped and the likelihood is only ~20% of it even at 100 observations).
 
 The addresses are a pure function of $(K, d, n_{\text{stars}}, S)$, none of
 which move during a fit. And they are produced by the *same* `addr!`
-invocations as before, so traces, serialized posteriors and warm-start paths
+invocations as before, so traces, serialized posteriors, and warm-start paths
 see byte-identical addresses.
 
 ### Thinning happens at the driver, not after it
@@ -188,7 +188,7 @@ switching), so per-style summaries are meaningless on a raw posterior.
 Alignment is **exhaustive over permutations**, which is fine because $K \le 5$
 and $5! = 120$. No-op at $K = 1$.
 
-Call it before `theta_mean`, `theta_std`, `style_share` or anything else
+Call it before `theta_mean`, `theta_std`, `style_share`, or anything else
 per-style. Aggregate quantities (`utility_mix`, `prob_prefers`) are
 permutation-invariant and do not need it.
 

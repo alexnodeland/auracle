@@ -60,7 +60,7 @@ is an octave, which is what makes the coordinate weightable at
 all.</figcaption>
 </figure>
 
-So `log_axis` puts centroid, rolloff and ZCR on a shared **octaves-above-20
+So `log_axis` puts centroid, rolloff, and ZCR on a shared **octaves-above-20
 Hz** scale, normalized to $[0,1]$ at Nyquist:
 
 $$\text{log\_axis}(f) = \frac{\log_2\!\big(\max(f, f_0)/f_0\big)}{\log_2\!\big(\max(f_{\text{Nyq}}, 2f_0)/f_0\big)}, \qquad f_0 = 20\ \text{Hz}$$
@@ -204,7 +204,7 @@ alone read 4.3 octaves over the floor in the slow band, because a ramp is
 curved in log level and detrending leaves most of it.
 
 Each trajectory is linearly detrended (a ramp across the span is drift, which
-`held_centroid_std` already carries), Hann-windowed, and transformed. With $r$ the detrended residual, $\sigma^2_r$ its variance and
+`held_centroid_std` already carries), Hann-windowed, and transformed. With $r$ the detrended residual, $\sigma^2_r$ its variance, and
 $P(f)$ its modulation power spectrum, band $B$ gets the variance share
 
 $$

@@ -34,7 +34,7 @@ $$G = 3.999844\ \text{dB}, \quad Q = 0.707175, \quad f_c = 1681.974\ \text{Hz}$$
 
 $$Q = 0.500327, \quad f_c = 38.1355\ \text{Hz}$$
 
-With $k = \tan(\pi f_c / f_s)$, $V_H = 10^{G/20}$ and $V_B = V_H^{0.499667}$,
+With $k = \tan(\pi f_c / f_s)$, $V_H = 10^{G/20}$, and $V_B = V_H^{0.499667}$,
 the shelf's coefficients are
 
 $$
@@ -127,7 +127,7 @@ and not the limiter.
 **A smaller gain, not a limiter.** A scalar keeps `render_playback`
 bit-identical *by construction* (the property its bit-identity test exists to
 protect), and cannot change timbre at all. A limiter would reshape the waveform,
-moving `crest`, `flatness_mean` and `flux_mean` as well as the RMS pair, and
+moving `crest`, `flatness_mean`, and `flux_mean` as well as the RMS pair, and
 would need a second copy of itself inside the replay path forever.
 
 What it costs is on the record rather than hidden: the ~15% that reach the
@@ -150,7 +150,7 @@ search nothing. Every seed now climbs (16/16 against 15/16) and the generation
 curve stopped turning over.
 ```
 
-The report carries `lufs_before`, `gain_db` and `peak_reduction_db`, all of
+The report carries `lufs_before`, `gain_db`, and `peak_reduction_db`, all of
 which survive into `Features`. They are diagnostics rather than model inputs:
 they are not coordinates of $\varphi$, because a sound's level before
 normalization is exactly the information normalization exists to discard.

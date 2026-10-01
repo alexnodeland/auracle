@@ -4,7 +4,7 @@
 that acceptable rather than dangerous.</p>
 
 Randomly composed DSP graphs produce screaming resonance, silent duds,
-NaN-poisoned recursive state and astronomically high pitches. None of that is
+NaN-poisoned recursive state, and astronomically high pitches. None of that is
 hypothetical and none of it is rare. Safety is layered because no single check
 covers it.
 
@@ -64,7 +64,7 @@ check.
 Thresholds, the measurements that confirmed them, and the ordering that makes
 the whole thing work are in [The vetting gate](./audition/vetting.md).
 
-The structural point: **one render serves the health check, the features and
+The structural point: **one render serves the health check, the features, and
 the playback.** That is what makes "a player never hears an unvetted patch"
 true by construction rather than by discipline: there is no second path that could skip
 the check, because there is no second render.
@@ -118,7 +118,7 @@ shared patch was script execution in the recipient's session. Every
 interpolation of a name is now escaped, including the two that land in
 attributes, and `textContent` is preferred wherever the node allows it.
 
-**Refuse to measure a term you cannot interpret.**
+**Refuse to measure a term that cannot be interpreted.**
 `FeaturizeError::OutOfDomain` rejects a term with a knob outside its range
 *before* the render, because its $\varphi$ would be a lie and a row the model
 cannot interpret must not enter the log. This is the gate the

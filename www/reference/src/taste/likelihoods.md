@@ -204,5 +204,5 @@ is reconstructed once per step. Two consequences, both measured by
 
 That is a real tension in the design, and it is why the
 [address table is hoisted](./posterior.md#the-address-table) out of the step loop.
-Building addresses inline cost a `format!`, a re-allocation and a SipHash **per
+Building addresses inline cost a `format!`, a re-allocation, and a SipHash **per
 site per step**, which measured as the bulk of a mature fit's wall time.

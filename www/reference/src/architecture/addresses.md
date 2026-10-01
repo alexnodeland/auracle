@@ -34,7 +34,7 @@ convention is reused there without ambiguity.
 | **The lineage diff** | Print what changed (`node/0#cut 0.31→0.78`) |
 
 Six subsystems, one vocabulary. The alternative is three schemes that drift: a
-UI parameter id, a genome index and a DSP handle, mapped to each other. The
+UI parameter id, a genome index, and a DSP handle, mapped to each other. The
 drift surfaces as a knob that edits the wrong thing after a structural change.
 
 ## Why it cannot drift

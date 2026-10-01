@@ -44,7 +44,7 @@ region is better than generating it and rejecting it.
 
 Two details worth knowing when reading the code:
 
-- **Some quiver inputs are gates, not amounts.** `Adsr.shape`, `Vca.response`
+- **Some quiver inputs are gates, not amounts.** `Adsr.shape`, `Vca.response`,
   and `Limiter.soft` are read at a 2.5 V threshold, so 5 V and 10 V do the same
   thing. The compiler uses named constants `GATE_TRUE = 5.0` / `GATE_FALSE =
   0.0` rather than bare numbers, because "5.0" at one of those ports does not
@@ -126,7 +126,7 @@ that feed compile-time decisions.
   it: $N$ copies for $N$ voices, limiter included.
 
 So what the player hears under their fingers is the patch that was evolved,
-vetted and featurized. There is no separate "playback engine" that could disagree with the
+vetted, and featurized. There is no separate "playback engine" that could disagree with the
 one the model learned from.
 
 ## Cost

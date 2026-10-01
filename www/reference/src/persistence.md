@@ -175,7 +175,7 @@ needs an access-time write on every *hit*, turning the cheap path into a write,
 and what is being protected is a disk quota rather than a working set.
 
 It lives in the farm worker rather than in the engine's `runFarm` loop, whose
-absorb cursor, re-issue watchdog and speculative-work handling must not acquire
+absorb cursor, re-issue watchdog, and speculative-work handling must not acquire
 asynchrony. A cache hit is simply a job that returns fast.
 
 ## Pins live engine-side

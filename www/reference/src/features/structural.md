@@ -40,13 +40,13 @@ counts**.
 
 Two reasons.
 
-**Nothing meaningful distinguishes them.** `n_fold`, `n_distortion` and
+**Nothing meaningful distinguishes them.** `n_fold`, `n_distortion`, and
 `n_bitcrush` all answer "how much nonlinear color". `n_chorus`, `n_phaser`,
-`n_flanger`, `n_tremolo` and `n_vibrato` all answer "how much periodic
+`n_flanger`, `n_tremolo`, and `n_vibrato` all answer "how much periodic
 movement". A user who likes drive does not first decide *which* drive.
 
 **Per-kind columns arrive as near-indicator variables.** The prior draws
-bitcrush at 2.5%, ring mod at 2% and granular at 1.5%, so those columns are
+bitcrush at 2.5%, ring mod at 2%, and granular at 1.5%, so those columns are
 zero in ~19 of every 20 pool members. A coefficient fitted on a column that is
 almost always zero is estimated from a handful of rows, and the Styles tab
 would render it beside coefficients fitted on hundreds, at the same visual
@@ -123,7 +123,7 @@ unmistakable in a VIF sweep, and a near-exact one is a large number that looks
 like a judgment call.
 
 The identity holds exactly, for every tree. It became a *general* statement
-only when the four sidechained productions (comp, duck, gate and vocoder)
+only when the four sidechained productions (comp, duck, gate, and vocoder)
 arrived, each taking two audio subterms exactly as mix and ring mod do.
 
 That is **one** equation, so exactly **one** column has to go, and dropping
@@ -145,7 +145,7 @@ column, the only family whose members are all on the wrong side of the
 identity.
 
 It is safe because the identity needs each binary count **separately**.
-`n_ringmod` is only ever visible summed with folds, distortions and
+`n_ringmod` is only ever visible summed with folds, distortions, and
 bitcrushers; `n_vocoder` only summed with filters and EQs. No linear
 combination of the retained columns isolates either, so the equation cannot be
 reconstructed. `n_dynamics` supplies three of the six binary terms and nothing

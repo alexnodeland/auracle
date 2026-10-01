@@ -64,7 +64,7 @@ direction is worse.
 Human-paced, and persistent across sessions.
 
 1. **Observe.** Every duel (an EVOLVE pair, a heard PERFORM offer, or an edit
-   claim), star and cut appends to the observation log, as **raw** $\varphi$,
+   claim), star, and cut appends to the observation log, as **raw** $\varphi$,
    never standardized. That is what lets
    the standardizer be re-fit later without invalidating history.
 2. **Reweight**, immediately. Each new observation folds into the existing
@@ -84,7 +84,7 @@ collapsed far enough to need resampling since the last fit
 
 ## Where they meet
 
-**Acquisition** picks what to show you. **The taste tilt** carries $\theta$
+**Acquisition** picks the pair the player hears next. **The taste tilt** carries $\theta$
 back into the grammar.
 
 The tilt is the part that makes this more than a scored search. The fitted

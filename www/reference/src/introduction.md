@@ -33,8 +33,8 @@ $\theta$, and $\theta$ reshapes how the next term is proposed.
 
 ## Three commitments
 
-**Every number is sourced.** Thresholds, dimensions, defaults and step counts
-are quoted from the code, with the constant named so you can check. Where a
+**Every number is sourced.** Thresholds, dimensions, defaults, and step counts
+are quoted from the code, with the constant named so a reader can check. Where a
 figure came out of a measurement, the measurement is named too.
 
 **Design and implementation are distinguished.** Several things in Auracle are
@@ -55,7 +55,7 @@ without forking a dependency, it is written down.
    levels of evolution (settings, connectivity, module set) live in one object,
    and every sample is valid by construction.
 2. **[Trace addresses](./architecture/addresses.md)** are the naming scheme
-   shared by panel knobs, hand edits, locks, live parameter handles and search
+   shared by panel knobs, hand edits, locks, live parameter handles, and search
    proposals. Nothing else stays coherent without it.
 3. **[Utility as a max of experts](./taste/utility.md)** explains why taste is
    a *maximum* over styles rather than a mixture, and what that buys.
@@ -83,7 +83,7 @@ without forking a dependency, it is written down.
 - What changed when is
   [`CHANGELOG.md`](https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md).
 
-Design decisions, rejected alternatives, the milestones, the open questions and
+Design decisions, rejected alternatives, the milestones, the open questions, and
 the [directions nobody has raised yet](./design/directions.md) are **in this
 book**, under [Design](./design/decisions.md). They used to be a
 `DESIGN.md` at the repo root, which made the reasoning and the math it

@@ -62,7 +62,7 @@ There is **no velocity field**, anywhere in the render path. Every audition note
 is struck identically.
 
 Three feet away in the same repository, the live instrument takes MIDI
-**velocity**, pitch bend and sustain, and the guide documents playing it that
+**velocity**, pitch bend, and sustain, and the guide documents playing it that
 way. So the instrument responds to a dimension the measurement holds constant.
 
 The consequence is not a missing coordinate; it is a category error about what

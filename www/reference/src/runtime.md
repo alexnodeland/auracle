@@ -28,7 +28,7 @@ main is out of the data path, and no audition buffer ever touches the UI
 thread.
 
 No nested workers (Safari shipped those only in 16.4), no `SharedArrayBuffer`,
-no COOP/COEP headers, no build step and no server change. Those constraints are
+no COOP/COEP headers, no build step, and no server change. Those constraints are
 why the topology is a star around the engine worker rather than a tree.
 
 ## The AudioWorklet's hostile environment

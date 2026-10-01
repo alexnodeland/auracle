@@ -100,7 +100,7 @@ already exposed as *⋯ → Save taste profile*. What is missing is a
 **destination**, not a format.
 
 **What this must not become.** The decisions log keeps implicit signals out of
-the likelihood, and the guide is explicit that listen time, replays and hovers
+the likelihood, and the guide is explicit that listen time, replays, and hovers
 are not recorded as preferences.
 That decision is about what the *model* is allowed to learn from, and it should
 survive this entry untouched. The property worth keeping is **nothing leaves
@@ -296,7 +296,7 @@ the bank into every DAW that loads a sampler, today, with no audio-thread work
 and no shell.
 
 A second, smaller one: the genome *is* a term with a compiler, so *export this
-patch as quiver source* costs a printer and makes a patch inspectable, diffable
+patch as quiver source* costs a printer and makes a patch inspectable, diffable,
 and portable to a native host.
 
 **What it does not solve, and the entry should not pretend otherwise.** A
@@ -411,7 +411,7 @@ when a second consumer actually exists.
 
 The [acquisition](../search/acquisition.md) entry is a well-powered null. BALD
 ties uniform random pairing on cosine similarity to $\theta^*$, on rank
-correlation and on excess nats across three regimes at 20 CRN-paired seeds,
+correlation, and on excess nats across three regimes at 20 CRN-paired seeds,
 while beating dueling
 Thompson (t = 2.9 to 6.9) throughout. The literature on preference elicitation
 is full of acquisition functions and nearly empty of properly paired nulls, and
@@ -478,14 +478,14 @@ it is part of the stated justification for $\varphi$ being two-part at all.
 
 **Nothing in `auracle-session` prunes anything.** `SurrogateFitness::evaluate`
 calls `featurize_memo` for every candidate it is handed (a full
-compile → render → vet → featurize), and there is no screen, cascade or
+compile → render → vet → featurize), and there is no screen, cascade, or
 pre-filter in the crate. This entry is therefore half a direction and half a
 correction: either the cascade gets built, or `structural.rs` should say *makes
 possible* rather than *works*, as the two reference pages now do.
 
 **The risk profile is unusually good, and it is worth naming.** A screen can
 only ever waste *opportunity*; it can never corrupt *evidence*. Anything
-actually injected is still really rendered, really vetted and really
+actually injected is still really rendered, really vetted, and really
 featurized, so the observation log is untouched no matter how wrong the screen
 is. Very little else in this system has that property.
 
@@ -515,7 +515,7 @@ idle. It named the blocker too: farm workers were stateless
 
 What shipped crosses that blocker with data rather than state. A generation is
 now jobs and a shared context ([refinement](../search/refinement.md#what-runs)):
-`refine_jobs` hands out one job per seed (its tree, step budget and its own
+`refine_jobs` hands out one job per seed (its tree, step budget, and its own
 RNG seed) and one context (the tilted prior, the posterior, the standardizer,
 the phrase), a pure `run_walk` walks a job on any worker, and `refine_absorb`
 folds the results back **in job order**, so the pool is the serial path's at
@@ -617,7 +617,7 @@ selection over the pool rather than a new search. It is also a different
 product with a different buyer.
 
 **A teaching artifact.** This reference is most of a course on typed MH,
-reversible jump, Boltzmann targets, ordinal likelihoods and calibration, with a
+reversible jump, Boltzmann targets, ordinal likelihoods, and calibration, with a
 runnable instrument attached and, the part no course has, negative results
 with their measurements.
 
@@ -635,7 +635,7 @@ everything else here that needs people.
 
 This reference is ~5,100 lines of Markdown against 38,518 lines of Rust
 (measured the day this page was written, and this page is 429 of the former),
-beside a user guide, a brand spec and a changelog that carries measurement
+beside a user guide, a brand spec, and a changelog that carries measurement
 tables. That ratio is why this project is good, and it is also a wall.
 [`CONTRIBUTING.md`](https://github.com/alexnodeland/auracle/blob/main/CONTRIBUTING.md)
 invites contributions and enforces `make check` and `make site-check`. What it
