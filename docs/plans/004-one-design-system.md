@@ -59,7 +59,11 @@ and printed key hints are built here; its other contracts stay in
      dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
      (a literal fallback for `--bezel`, which Paper lacks) and
      `www/brand/render.html` (a hand copy of six tokens, with task 3).
-2. **Voice guide** (part 2): `www/brand/voice.md` with its audiences, four
+2. **Voice guide** (part 2). Written 2026-09-30, as
+   [`www/brand/voice.md`](../../www/brand/voice.md) under
+   [ADR-013](../decisions/013-one-voice.md). It has a new line, American
+   spelling and the spoken voice, and the copy sweep and the check follow.
+   The original scope: `www/brand/voice.md` with its audiences, four
    registers, claims and spelling. ADR-004's copy rules, the `AGENTS.md` files,
    the docs-writer agent, the changelog skill and `VIEWS.md` point to it. The
    tagline goes everywhere the other three appear, and the descriptor is

@@ -56,6 +56,14 @@ the long-form notes are this directory's `README.md`.
   symbol in a comment beside it. What the engine doesn't record isn't drawn,
   or is drawn as a guess (dashed amber). Plan-005 rebuilds the views as one
   space to RFC-006.
+- **One voice** ([ADR-013](../../docs/decisions/013-one-voice.md)): copy
+  follows [`www/brand/voice.md`](../../www/brand/voice.md). That means:
+  - silk labels, plain toasts and status lines, the model's italic for the
+    model only;
+  - the word table (a sound is what you hear, a patch how it's built);
+  - American spelling and no em dashes.
+
+  New words get a row in the table first.
 - **Say what is true.** In-app copy, tooltips and status lines are
   descriptions too. If PERFORM says "measuring…", the dials must really be
   waiting. Check the guide (`www/docs/src/views/*.md`) when you change what a

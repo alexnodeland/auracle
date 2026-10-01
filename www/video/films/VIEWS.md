@@ -62,7 +62,11 @@ by what you hear before what they are called. Leave the maths to *The math*.
 
 ## Voice, captions, music
 
-- Voice `af_heart` at speed 0.9, with pronunciations from `lexicon.json`.
+- The spoken voice follows [`www/brand/voice.md`](../../brand/voice.md), which
+  wins where this file differs: explain, pause, demo, continue, and nothing
+  under speech. The film sound's specification (RFC-007) will replace the
+  music rule below.
+- Voice `af_heart` at speed 0.81, with pronunciations from `lexicon.json`.
   Every line passes `asr_check.py` (per-line WER ≤ 0.10; aim for a mean of
   0.02 or less). Then run `timeline.py --voice` for real word times.
 - Short sentences with one idea each, because every sentence is also a

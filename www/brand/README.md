@@ -13,6 +13,22 @@ the tracking ramp, the icon set, and the rule behind each. It builds to
 what the system is, not how it came to be. Read it before changing anything
 here, and keep new text in that register.
 
+## The voice
+
+[`voice.md`](voice.md) is the one set of language rules for every medium
+([ADR-013](../../docs/decisions/013-one-voice.md)):
+
+- the line, "A synthesizer that grows toward you", with its descriptor;
+- who Auracle sounds like and what it believes;
+- the tone by moment;
+- the registers;
+- the spoken voice of the films;
+- the word table and the banned list the check reads;
+- the mechanics: American spelling and no em dashes.
+
+The lockup raster (`lockup.png`) and the social card (`og.png`) still carry the
+old tagline until they are re-rendered.
+
 ## The mark
 
 | File | What it is |
