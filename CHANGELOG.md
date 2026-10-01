@@ -31,6 +31,76 @@ changelog that edits its own past is not a record.
   undo or a module change made just before set that edit's level on it, up
   to 40 dB too loud, until the preset's own reply landed.
 
+### Changed: one type scale, one set of spaces and speeds
+
+- **No text in the app's panels is smaller than 11 px, and none drawn on a
+  canvas is smaller than 12 px.** Labels, chips, and captions that were
+  10 px are 11 px, and values and readouts are 12. The minimap's bookmark
+  numbers, which were 7 px, are 11 on a larger pip. The scopes' and TASTE's
+  canvas text, which was 9 to 11 px, is 12, and TRUST's last line no longer
+  sits on the canvas's bottom edge. The rack keeps its own sizes, which grow
+  and shrink with its zoom, and a glyph on a button is sized to its button.
+- **Some text grew and some shrank.** Prose is 14 px where it was 13, a
+  sound's name and a card's title are 21 where they were 17, and the model's
+  italic is 17 where it was 15. The rest of the old 15 px text is 14,
+  including EVOLVE's teaching line (15 px, or 17 on a wide window). The
+  wordmark is 21 px where it was 22, and 14 on a phone where it was 17; the
+  booth's line under it is 14 where it was 17.
+- **Spacing, corners, and motion come from one short list.** Paddings and
+  gaps sit on a 4 px grid (4, 8, 12, 16, 24, 32, and 48 px), corners come
+  from three radii (4, 8, and 14 px; a hairline's rounding stays under 4),
+  and a press, a change of state, and a move take 90, 180, and 320 ms. The
+  rack's relayout and camera, and PERFORM's re-center and Blend home, take
+  the same three. With your system set to reduce motion, all three are
+  instant, and nothing pulses, including a bank row's *opening…*.
+- **PERFORM's control captions are whole at every window width.** They wrap
+  to as many as three lines instead of ending in an ellipsis (*turns
+  toward…*), and under 1280 px the knobs give their gaps to them. To fit
+  three lines, a control that moves two knobs with long names names one and
+  how many more (*wavefolder mod depth +2*), and Wander says *nothing better
+  nearby* where it said *staying: nothing better nearby*. On a phone, behind
+  *look around anyway*, the warm start's cards fit the screen in two columns.
+- **The module search and the line under the rack still fit.** The search's
+  example reads *search: grit, vowel*, and the line under the rack is
+  shorter: *Point at a module, here or in the module rail: this strip says
+  what it does, where it can go, and how your taste leans.*
+
+### Changed: quiver 0.4.0
+
+- **Plucked strings and delays sound slightly different.** Auracle now runs
+  on quiver 0.4.0, whose plucked string was rebuilt to stay stable at every
+  pitch, and whose delay no longer lags its input by one sample. Sounds with
+  neither render exactly as before: of the 62 presets, the 12 with a Pluck or
+  a Delay changed, and the other 50 are the same bit for bit.
+- **Your sounds are measured again, once.** The first boot after the update
+  is slower, because every sound in your bank is measured again instead of
+  read from the browser's saved measurements. The first time you open a sound
+  in PERFORM, it plays from its last measurement and measures again in the
+  background (*re-checking*): a measurement from the old version is never
+  kept as current.
+
+### Changed: the films' sound
+
+- **The films are mixed the way their sound was chosen, with no sound
+  effects.**
+  - The narration is lightly equalized and softened on its "s" sounds, at a
+    steady level.
+  - The music sits a little under the voice. While the voice speaks, it
+    dips a little, and a little more in the range where speech is clearest.
+  - Each demo plays after its line, never under it, as loud as the voice,
+    with the music well under it.
+  - Two short themes open and close a film, just under two seconds from its
+    first and last words.
+  - The music under a film is written to fit its timing: a held low note,
+    chords that move one voice at a time, and short falling phrases only
+    where the narration pauses.
+
+  Before, the music sat lower under an untreated voice and dropped sharply
+  whenever it spoke. The app's own sound came in at whatever level it was
+  recorded, and whooshes, clicks and a logo sting played on top. Each film
+  changes when it is re-voiced and mixed again; until then it sounds as it
+  did, without the effects (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**
@@ -88,6 +158,12 @@ changelog that edits its own past is not a record.
   carry no em dashes or ids, and are spelled the American way: *Saved Glass
   Pad. No generation will replace it.* They used to start lowercase, run on
   with dashes, and name some sounds by number.
+- **The words the engine writes follow the same rules: the preset
+  descriptions, and the reason a refused edit gives.** Six of them ran on
+  with an em dash, two lists lacked the serial comma, and First Bass was *the
+  plain correct one*. A refused edit could name a module by its address (*no
+  node at node/0/1*) or say *no patch on the bench*; it now says *that module
+  is not in the patch* or *there is no sound open to edit*.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.

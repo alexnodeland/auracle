@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # A walkthrough (the real app, recorded), from its rehearsed shots to the
 # encoded MP4 and WebM:
-#   record every shot → check the takes → study score fitted to the
-#   arrangement → sound cues → the app's own sound laid under the picture
-#   (app_audio.py follows cuts) → first mix → frames → final mix and encode.
+#   record every shot → check the takes → the bed (a film on N3: its bed and
+#   marks written to the timeline; otherwise the study score fitted to the
+#   arrangement) → the picture's sound cues, counted (the mix lays none) → the
+#   app's own sound laid under the picture (app_audio.py follows cuts) → first
+#   mix → frames → final mix and encode.
 #
 #   www/video/tools/walkthrough.sh FILM POSTER_SECONDS [--record-only | --no-record]
 #                                  [--shot a,b] [--draft]
@@ -19,8 +21,13 @@
 # Record on a quiet machine: nothing else heavy running, one browser. A
 # rehearsal (rehearse.sh) must pass first, and voice.sh must have run (the
 # shots are pinned to the narration's measured words). This never re-times
-# the narration. MUSIC_DB / DUCK_DB / APP_DB override the levels; JOBS sets
-# the render's parallel pages (default: one per core).
+# the narration. The mix takes the ladder and the duck from
+# www/brand/sound.json (mix.py's defaults), brings each demo window to the
+# demo's level, and lays no cues (ADR-014). A film laid out before the grammar
+# (no marks, no demos) is mixed exactly as it was, bar the cues (sound.json
+# `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's level and its
+# duck for a trial mix, and APP_DB the app's gain; JOBS sets the render's
+# parallel pages (default: one per core).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"; shift 2
@@ -40,16 +47,26 @@ if [ "$REC" = 1 ]; then
 fi
 python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"
 [ "$POST" = 1 ] || exit 0
-A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
-python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
+# Is the film on the N3 bed (sound.json `bed.name`, as the timeline reads its
+# script)? Its score renders into music/<the score's title, as a file name>.
+read -r ON_N3 BED < <(python3 -c "
+import json, re, sys; sys.path.insert(0, 'tools'); import sound_defaults as d, timeline
+print(int(timeline.on_n3(json.load(open(sys.argv[1])))), re.sub('[^a-z0-9]+', '_', d.SCORES['bed']['title'].lower()).strip('_'))
+" "films/$F/script.json")
 rm -rf "out/$F/music"
-(cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+if [ "$ON_N3" = 1 ]; then
+  python3 tools/fit_score.py --film "films/$F" "out/$F/$BED.film.json" | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/$BED.film.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+  MUSIC=(--score "out/$F/$BED.film.json" --music "out/$F/music/$BED")
+else
+  A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
+  python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+  MUSIC=(--music "out/$F/music/study")
+fi
 node tools/render.mjs "$F" --cues | tail -1
-python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
-# The bed's level and its duck are mix.py's defaults, from www/brand/sound.json
-# (`mix_now`): today's levels, kept until Plan-006 task 3 moves the mix to the
-# spec's ladder, so no film's mix changes before then.
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json"
+python3 tools/app_audio.py "$F" ${APP_DB:+--gain-db "$APP_DB"} > "out/$F/app.json"
+MIX=(--voice "out/$F/voice" "${MUSIC[@]}" --app "out/$F/app.json"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
 node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1

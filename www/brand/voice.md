@@ -473,6 +473,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 42 modules") |
 | **set aside** | Modules unplugged or deleted, waiting to go back | HELD |
 | **59% · leaning** | A prediction: a percentage and a word | MODEL'S GUESS 0.59 |
+| **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
 
@@ -720,9 +721,18 @@ Lines from the app and the site, rewritten to this guide.
   stays the one list. It counts three things: the banned words, em dashes,
   and British spellings. It reads each surface the block names, with the
   figures and the films' on-screen text, and the script lists the files. It
-  reads only what a reader sees or hears: comments and code don't count.
-- **Names:** a script line that ends in `// voice: name` holds names, not
-  copy, so the check skips its strings.
+  reads only what a reader sees or hears. In a page or the docs, that is the
+  text and the attributes shown; in a script or Rust source, it is the
+  strings, never the comments or the code around them.
+- **The engine's words:** some of the app's words are written in the Rust
+  engine: preset names and descriptions, the rack's labels, PERFORM's
+  controls, the bank's sound names, and the reasons an edit is refused. The
+  check reads every string in the files they come from, as the app's own,
+  except what builds only for tests.
+- **Names:** in a script or Rust source, the comment `// voice: name` marks
+  its line as names (or a code, or a key), not copy: the check skips each
+  string that starts on that line. A string that runs over several lines
+  can't carry the mark, because its first line ends inside it.
 - **Quotes:** in Markdown, someone else's words (a standard's title, a label
   the app used to show) sit between `<!-- voice: quote -->` and
   `<!-- /voice -->`. They keep their own spelling, and the check skips them.
@@ -740,5 +750,7 @@ Lines from the app and the site, rewritten to this guide.
   agents, the changelog skill, `VIEWS.md`, and `SCRIPTS.md` point here and
   don't restate these rules.
 - **Changes:** a new word gets a row in the table before it ships. A new
-  surface gets a row in "Who each surface speaks to".
+  surface gets a row in "Who each surface speaks to". The engine's words have
+  none of their own: players read them in the app, so the app's row covers
+  them.
 - **Approval:** the maintainer approves changes to this guide.

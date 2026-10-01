@@ -180,6 +180,6 @@ that lurks under randomly composed DSP:
   remains defense in depth.
 
 Since quiver-dsp 0.3.0, `voct_to_hz` clamps pitch to ±32 octaves (Auracle pins
-0.3.3), so the overflow Q198 recovers from can no longer be produced by pitch
+0.4.0), so the overflow Q198 recovers from can no longer be produced by pitch
 CV. What remains at the clamp is finite aliasing, which meets this gate like
 any other render.

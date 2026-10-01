@@ -42,6 +42,11 @@ loop (observe, refit). Rules shared by all crates are in
   Anything keyed by lens index (names, colours, shares) relies on it.
 - **Session state is persisted and migrated.** A new field needs a default for
   old profiles.
+- **PERFORM's control words and the bank's sound names are copy.**
+  `CONTROLS` in `perform.rs` and the words in `naming.rs` reach the screen,
+  and `make dev-check` reads both against `www/brand/voice.md`
+  ([`../AGENTS.md`](../AGENTS.md)). `CONTROLS` is also part of the shipped
+  wirings' fingerprint: change a word there and run `make perform-wirings`.
 
 ## Tests and measurements
 
@@ -49,4 +54,6 @@ loop (observe, refit). Rules shared by all crates are in
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
-`AIM_WALKS`) and the loops.
+`AIM_WALKS`) and the loops. `suggest_census` measures ways the model could
+suggest the next module in PATCH, their cost and their quality against
+synthetic listeners (`docs/notes/suggest-2026-10/`).

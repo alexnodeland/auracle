@@ -27,6 +27,11 @@ stale. The notes themselves (the voicings, the burble, the sighs, how the
 lead plays a line) are not generated: `sound.json` describes them, and
 `make dev-check` fails while the two disagree.
 
-The pipeline does not play them yet: `fit_score.py`, `mix.py` and the
-timeline are being brought to them
-([Plan-006](../../../docs/plans/006-the-sound-of-the-films.md)).
+A film plays them through `tools/fit_score.py --film`, which writes the
+film's bed and marks to its timeline: the drone held from Bloom to the end of
+Reach, Bloom's last chord held into the bed's bar 1, the cycle tied for as long
+as the film needs, the pad re-voiced under each demo, and the sighs placed in
+the narration's gaps. Its tracks take their cast from these files and their
+notes from `sound.json`'s `bed`. The films move onto it as they are re-voiced
+([Plan-006](../../../docs/plans/006-the-sound-of-the-films.md)); until then
+they play Study.

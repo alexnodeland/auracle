@@ -19,6 +19,7 @@ FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 FILM = os.path.basename(FDIR)
 MANIFEST = os.path.join(VIDEO, "out", FILM, "voice", "manifest.json")
+DEMOS = os.path.join(VIDEO, "out", FILM, "demos.json")  # the demos' measured tails (tools/demo_tail.py)
 # Each beat's own tail, before the bar is filled: the chapter cards (t-*) are
 # one bar with no tail, the cold open none, the outro rings out.
 BASE = {"cold": 0.0, "title": 0.3, "together": 0.5, "outro": 2.5}
@@ -29,8 +30,8 @@ def base_tail(beat_id):
 
 
 def timeline():
-    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FDIR, "--voice", MANIFEST],
-                   check=True, capture_output=True)
+    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FDIR, "--voice", MANIFEST]
+                   + (["--demos", DEMOS] if os.path.exists(DEMOS) else []), check=True, capture_output=True)
     return json.load(open(os.path.join(FDIR, "timeline.json")))
 
 

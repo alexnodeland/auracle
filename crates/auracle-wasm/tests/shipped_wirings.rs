@@ -8,8 +8,8 @@
 //! stand between a change and that:
 //!
 //! - `shipped_preset_wirings_are_current` compares fingerprints of the presets
-//!   and of the measurement's named inputs (phrase, feature names, controls,
-//!   PERFORM's constants). It renders nothing.
+//!   and of the measurement's named inputs (phrase, render namespace, feature
+//!   names, controls, PERFORM's constants). It renders nothing.
 //! - `shipped_preset_wirings_measure_the_same_today` catches what no
 //!   fingerprint sees (feature maths, loudness normalization, vetting,
 //!   compiler, DSP, the pool the standardizer is fitted to, PERFORM's solver)
@@ -43,7 +43,7 @@ fn shipped_preset_wirings_are_current() {
     assert_eq!(
         file["fingerprint"].as_str(),
         Some(measurement_fingerprint(&PhraseSpec::default()).as_str()),
-        "the phrase, the feature names, the controls or PERFORM's constants changed since the wirings were measured — {REGENERATE}"
+        "the phrase, the render namespace (RENDER_EPOCH, the quiver version), the feature names, the controls or PERFORM's constants changed since the wirings were measured — {REGENERATE}"
     );
     let rows = file["presets"].as_array().expect("a presets array");
     let bank = preset_bank();

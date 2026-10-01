@@ -20,7 +20,9 @@ this table.
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
+| Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
+| Film tools | `make dev-check` (its last step) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
 | Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
@@ -91,13 +93,15 @@ generation), `evolve_from_new.spec.js` (20 s measured on a 16-core M3 Max,
 not yet on CI: six picks, a refit and a ⚡ walk, the walk alone about 23 s on a
 quiet four-core machine), `evolve_truth.spec.js`'s generation with no farm (186 s),
 `perform_next.spec.js` (78 s), `perform_truth.spec.js`'s drift re-check
-(72 s), all four tests in `perform_instant.spec.js` (66 and 44 s, the
-held-engine reload test, which boots twice like them, and the reload-at-once
-test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI),
+(72 s), all five tests in `perform_instant.spec.js` (66 and 44 s; the
+held-engine reload test, which boots twice like them; the reload-at-once
+test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
+and the kept wiring from another build, a boot and one background
+measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s) and `perform_teaches.spec.js` (54 s). Sixteen tests, ~19 min in one
-worker; the other 87 took ~16.6 min when last timed (at 80), and the fast tier's five runners take
-2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
+(54 s) and `perform_teaches.spec.js` (54 s). Seventeen tests, ~19 min in one
+worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
+tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
 
 **Exactly one tier each.** The fast tier is defined as the complement of the
@@ -128,7 +132,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `budgets.spec.js` | The response-time budget: the timing marks exist; a preset's controls live ≤ 1 s from its click; a warm-start pick's ≤ 1 s from *teach it*; pick → next pair ≤ 0.3 s; duel ▶ ≤ 0.15 s |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_open_early.spec.js` | With the engine's messages held: a Keep while a patch is still opening is refused and says why; the preset clicked last is the one opened; an open that cannot complete puts the voices back on the rack |
-| `perform_instant.spec.js` | With the shipped file blocked, the player's cache: a revisit wired ≤ 0.5 s, ≤ 1.5 s after a reload (from the cache, not measured again), and a preset opened before wired from the click with every message to the engine held; a preset opened, or a patch measured, just before a reload is remembered after it (both caches are written as the page is left); a spare offer lands at once |
+| `perform_instant.spec.js` | With the shipped file blocked, the player's cache: a revisit wired ≤ 0.5 s, ≤ 1.5 s after a reload (from the cache, not measured again), and a preset opened before wired from the click with every message to the engine held; a preset opened, or a patch measured, just before a reload is remembered after it (both caches are written as the page is left); a spare offer lands at once; a kept wiring stamped by a build before the render namespace (a new quiver) plays at once, is re-measured, and is replaced |
 | `perform_next.spec.js` | A spare grows while B holds an offer, so NEXT is as fast as Offer; the pad reads NEXT · passes on B; a heard pass has UNDO (B back, nothing recorded) and counts after its window; an unheard pass says it was not counted |
 | `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and HOW THIS WORKS say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
@@ -144,6 +148,8 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
+| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on TASTE's tabs, TRUST graded, and TRUST's last line 16 px clear of its edge; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
+| `text_fits.spec.js` | Text the type scale enlarged still fits: the warm start's cards inside a 390 and a 360 px phone's screen, and their words inside the cards; at 1000 and 1280 px every PERFORM control caption state whole (no ellipsis, no clamp, nothing past its box), with the knob row one height whatever the captions say |
 
 ## Rules
 

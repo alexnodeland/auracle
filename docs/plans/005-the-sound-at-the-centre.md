@@ -61,6 +61,12 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - radii, durations and easings.
    - A mark on a row (the unheard dot, a seed mark) sits in space the row
      already has, and the label never moves. This becomes a component rule.
+   - *Progress (2026-10-01):* the values are in `tokens.json` and generated
+     into every surface; the app's stylesheet is on them (Plan-004 task 1).
+     Where the app set an element at a size the specimen gives another role
+     (PERFORM's held name, its control names and pads), it keeps its size,
+     marked `token-exempt:`, until task 5 rebuilds PERFORM. The filled
+     primary and the raised depth are component work, for the rebuilds.
 2. **The shell.**
    - The levels: LEARNING, TASTE, PERFORM and PATCH, with EVOLVE beside them.
    - Zoom by pinch, ⌥-scroll, ⌥↑ and ⌥↓, or the rail. The header names the
@@ -116,7 +122,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - (b) The seed count, exposed (`refine_seeds`).
    - (c) The palette's twelve new directions. Define each in φ and measure
      how often each is reachable across the presets.
-   - (d) The module suggestion: a design note first (Open 2).
+   - (d) The module suggestion: a design note first (Open 2). The note is
+     [`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md),
+     waiting on the maintainer's decision.
    - (e) A cable-level probe.
    - (f) Keeping a generation's replaced trees until the next one (Open 1).
      Done only if the maintainer decides to keep them.

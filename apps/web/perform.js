@@ -581,7 +581,7 @@ export function createPerform(host) {
       if (inFlight("perform_offer")) return ["ideas · growing…", null];
     }
     if (!state.cur || !state.wire) return [z, null];
-    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying: nothing better nearby", null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["nothing better nearby", null];
     const [from, at] = wanderDue();
     const left = Math.max(0, at - now);
     const span = Math.max(1, at - from);
@@ -855,12 +855,17 @@ export function createPerform(host) {
   }
 
   // The caption under a control: at most two knobs by name, then how many
-  // more ("mod depth · lfo rate +1"). Three long names were clipped
-  // mid-word by the two-line clamp, which reads as broken; the tooltip and
-  // the under-the-hood strip list them all.
+  // more ("mod depth · lfo rate +1"), and one when two would run past
+  // CAPTION_CHARS (two names that need their modules, "wavefolder mod depth ·
+  // vco mod depth"). The caption wraps in three lines, and three lines of
+  // the narrowest column (1000 px) hold 24 characters on any renderer; the
+  // tooltip and the under-the-hood strip list every knob.
+  const CAPTION_CHARS = 24;
   function knobCaption(addrs) {
-    if (addrs.length <= 2) return knobWords(addrs);
-    return `${knobWords(addrs).split(" · ").slice(0, 2).join(" · ")} +${addrs.length - 2}`;
+    const names = knobWords(addrs).split(" · ");
+    const two = names.length <= 2 ? names.join(" · ") : `${names.slice(0, 2).join(" · ")} +${names.length - 2}`;
+    if (names.length < 2 || two.length <= CAPTION_CHARS) return two;
+    return `${names[0]} +${names.length - 1}`;
   }
 
   function onKnob(k, fromMidi) {
@@ -907,10 +912,12 @@ export function createPerform(host) {
   // sound does not move, but the dial used to jump to 12 o'clock under the
   // player's eyes ("I set Bright to 70% and now it says 0"), and a MIDI pot on
   // it went dead until swept back through the middle. Now the pointer glides
-  // home over RECENTRE_MS while a ghost tick marks where it was and fades
+  // home over `--d-state` while a ghost tick marks where it was and fades
   // (none of it under reduced motion), and a pot bound to it keeps working
   // from where it is (midi.js re-anchors instead of letting go).
-  const RECENTRE_MS = 250;
+  // A motion token's length in ms, read when the motion starts (main.js's
+  // `motionMs`): 0 under reduced motion, which the glides also skip.
+  const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
   const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   function recentre(k) {
     if (k.tween) cancelAnimationFrame(k.tween);
@@ -928,8 +935,9 @@ export function createPerform(host) {
       ghost.classList.add("fade");
     }
     const t0 = performance.now();
+    const ms = motionMs("--d-state");
     const step = () => {
-      const u = clamp((performance.now() - t0) / RECENTRE_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : from * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
@@ -1040,7 +1048,10 @@ export function createPerform(host) {
   // pool — and a player flicking between presets asks for the same few again
   // and again, so every first measurement (no knob overrides yet) is kept,
   // tagged with how much the model had seen when it was taken (a refit moves
-  // the standardizer the wiring is expressed in).
+  // the standardizer the wiring is expressed in) and with the render
+  // namespace it was measured in (`cache_namespace`: the stimulus, the
+  // featurizer's RENDER_EPOCH and the quiver version), because a wiring holds
+  // φ (`z`) and a new DSP or featurizer measures the same patch differently.
   //
   // Stale-while-revalidate: a patch measured before is playable *at once*
   // from its last measurement, whatever the tag, and re-measured in the
@@ -1053,6 +1064,10 @@ export function createPerform(host) {
   const WIRE_CACHE_MAX = 48;
   const WIRE_STORE = "auracle-perform-wirings";
   const tasteRev = () => (host.tasteRev ? host.tasteRev() : 0);
+  // The tag a wiring is kept under and compared with. One written before the
+  // namespace was part of it is a bare number, which never matches: it is
+  // played at once and re-measured, like any stale one.
+  const wireRev = () => `${tasteRev()}@${(host.renderNs && host.renderNs()) || ""}`;
   // Keyed by what the patch *is*, not by the bytes it arrived as. A tree's
   // JSON carries its node uids, and the pool mints those per session
   // (`Uid::mint`, one process-wide counter), so the same preset loaded after
@@ -1199,7 +1214,7 @@ export function createPerform(host) {
       markWired(hit.shipped ? "shipped" : "cached");
       knobs.forEach(paintKnob);
       renderHood();
-      if (!hit.shipped && hit.rev === tasteRev()) return;
+      if (!hit.shipped && hit.rev === wireRev()) return;
       // Playable now; the fresh measurement lands when it lands.
       if (!heldForOpen("revalidate")) revalidate();
       return;
@@ -1216,7 +1231,7 @@ export function createPerform(host) {
     // under that tree's text; knobs turned in PATCH since are laid over it
     // when it lands (`applyWired`).
     const req = request("perform_wire", { tree: state.cur.json, overrides: first ? [] : overrides() });
-    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev() };
+    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev() };
   }
 
   function revalidate() {
@@ -1225,7 +1240,7 @@ export function createPerform(host) {
     // Background (`bg`): the patch is already playable from its last
     // measurement, so this waits behind anything the player asks for.
     const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true };
   }
 
   // The sound has moved a long way from where its wiring was measured (a
@@ -1243,7 +1258,7 @@ export function createPerform(host) {
     state.revalidating = true;
     renderStatus();
     const req = request("perform_wire", { tree: state.cur.json, overrides: overrides(), bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true, nocache: true };
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true, nocache: true };
   }
 
   // A patch on its way out is not measured. A measurement is thirty-odd
@@ -1537,7 +1552,7 @@ export function createPerform(host) {
   }
 
   // Blend back to *home*: at once for the sound and the control's value (B
-  // is empty or emptying), and over BLEND_HOME_MS for the pointer, drawn
+  // is empty or emptying), and over `--d-move` for the pointer, drawn
   // (`k.drawn`) as a re-centre is, so the eye sees where it went. A hand on
   // Blend stops the glide (bindDrag).
   //
@@ -1547,7 +1562,7 @@ export function createPerform(host) {
   // blend over the little travel it had left (from 0.9, all of it in about
   // thirteen steps), so the next nudge poured the next offer in over what the
   // player had just chosen, which is what bringing Blend home is for.
-  const BLEND_HOME_MS = 300;
+  // Home over `--d-move`.
   function blendHome() {
     const k = knobs.find((x) => x.spec.kind === "blend");
     state.blend = 0;
@@ -1561,8 +1576,9 @@ export function createPerform(host) {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!v0 || still) return paintKnob(k);
     const t0 = performance.now();
+    const ms = motionMs("--d-move");
     const step = () => {
-      const u = clamp((performance.now() - t0) / BLEND_HOME_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : v0 * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
@@ -2011,7 +2027,7 @@ export function createPerform(host) {
       sendTouch();
       state.revalidating = true;
       const req = request("perform_wire", { tree: json, overrides: [] });
-      state.pending.get(req).cacheAs = { json, rev: tasteRev(), quiet: true, carried: true };
+      state.pending.get(req).cacheAs = { json, rev: wireRev(), quiet: true, carried: true };
       renderStatus();
     } else if (state.visible) wire();
     knobs.forEach(paintKnob);
@@ -2757,17 +2773,18 @@ export function createPerform(host) {
     // not disturbed by a measurement of something else.
     //
     // `fresh`: a shipped wiring, or one measured before the model's last
-    // refit, is not enough — measure it under this session's model (the warm
-    // start's cards, while the player is choosing).
+    // refit or under another render namespace, is not enough — measure it
+    // under this session's model (the warm start's cards, while the player is
+    // choosing).
     prewarm(json, { fresh = false } = {}) {
       const key = wireKey(json);
       const hit = fresh ? wireCache.get(key) : knownWiring(key);
-      if (hit && (!fresh || hit.rev === tasteRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
+      if (hit && (!fresh || hit.rev === wireRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
         const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
         p.gen = -1;
-        p.cacheAs = { json, rev: tasteRev() };
+        p.cacheAs = { json, rev: wireRev() };
         p.prewarm = resolve;
       });
     },

@@ -4,7 +4,7 @@ number: 8
 status: accepted
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 supersedes: null
 superseded_by: null
 ---
@@ -153,9 +153,12 @@ where needed. Accepted on that instruction.
 
 ## Open
 
-1. **The quiver dependency.** Auracle uses `quiver-dsp` 0.3.3 from crates.io,
-   so a new quiver needs a release (0.4.0) or a git dependency. Either one is
-   published outside this repository, so it waits for the maintainer's word.
+1. **The quiver dependency.** Auracle used `quiver-dsp` 0.3.3 from crates.io,
+   so a new quiver needed a release (0.4.0) or a git dependency. Either one is
+   published outside this repository, so it waited for the maintainer's word.
+   *Answered (2026-10-01):* a release. quiver 0.4.0 is published to crates.io
+   (`quiver-dsp`) and npm (`@quiver-dsp/wasm`) from the `v0.4.0` tag, and
+   Auracle depends on it from crates.io.
 2. **The reference signal:** what neutral phrase measures a patch before its
    input is heard.
 3. **Latency** in the browser's worklet path, measured on the machines the films

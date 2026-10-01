@@ -26,7 +26,7 @@ class Tree:
 
     def __enter__(self):
         self.root = tempfile.mkdtemp(prefix="tokens-")
-        files = {c["file"] for c in T.CONSUMERS} | {rel for rel, _ in T.scanned_files()} | {T.SOURCE}
+        files = {c["file"] for c in T.CONSUMERS} | {rel for rel, _ in T.scanned_files()} | {T.SOURCE, T.SIZES_BASELINE}
         for rel in files:
             dst = os.path.join(self.root, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -46,7 +46,11 @@ class Tree:
             f.write(fn(text))
 
     def problems(self):
-        return T.generate(check=True) or T.scan(T.load())
+        errs = T.generate(check=True)
+        if errs:
+            return errs
+        now, exempt = T.size_counts()
+        return T.scan(T.load()) + exempt + T.size_problems(now, T.load_size_baseline())
 
 
 def source(rel):
@@ -159,6 +163,198 @@ class TheCheck(unittest.TestCase):
             self.assertEqual(t.problems(), [])
             t.edit("www/brand/index.html", lambda s: s.replace("</main>", "<p><code>#6e4d22</code></p></main>", 1))
             self.assertTrue(any("in prose is not a token's value" in p for p in t.problems()))
+
+
+class TheSizesRatchet(unittest.TestCase):
+    def test_a_literal_font_size_spacing_radius_or_duration_in_the_app_fails_the_check(self):
+        for rule, kind in (
+            (".x { font-size: 13px; }", "font"),
+            (".x { padding: 6px 10px; }", "space"),
+            (".x { border-radius: 6px; }", "radius"),
+            (".x { transition: opacity 200ms ease; }", "time"),
+        ):
+            with Tree() as t:
+                t.edit("apps/web/style.css", lambda s: s + f"\n{rule}\n")
+                got = t.problems()
+                self.assertTrue(any(p.startswith("apps/web/style.css:") and f"literal {kind} sizes" in p for p in got), (rule, got))
+
+    def test_a_literal_size_in_a_script_fails_the_check(self):
+        for line in ("ctx.font = `${10 * dpr}px mono`;", 'ctx.font = "11px mono";', 'el.style.fontSize = "13px";', 'Object.assign(el.style, { padding: "6px" });'):
+            with Tree() as t:
+                t.edit("apps/web/main.js", lambda s: s + "\n" + line + "\n")
+                self.assertTrue(any(p.startswith("apps/web/main.js:") for p in t.problems()), line)
+
+    def test_a_nudge_a_shape_and_a_token_pass(self):
+        with Tree() as t:
+            t.edit(
+                "apps/web/style.css",
+                lambda s: s + "\n.x { padding: 3px var(--s2); margin: -1px 0; border-radius: 999px; gap: var(--s1);"
+                " transition: color var(--d-state) var(--e-settle); font-size: var(--t-body); }\n.y { border-radius: 50%; }\n",
+            )
+            self.assertEqual(t.problems(), [])
+
+    def test_a_literal_that_says_why_passes_and_one_that_does_not_fails(self):
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s + "\n.x { animation: spin 1.2s linear infinite; } /* token-exempt: a loop's period */\n")
+            self.assertEqual(t.problems(), [])
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s + "\n.x { animation: spin 1.2s linear infinite; } /* token-exempt: */\n")
+            self.assertTrue(any("a token-exempt says why" in p for p in t.problems()))
+
+    def test_a_count_that_falls_without_lowering_the_baseline_fails(self):
+        with Tree() as t:
+            t.edit("www/404.html", lambda s: s.replace("padding: 24px;", "padding: var(--s5);", 1))
+            got = t.problems()
+            self.assertTrue(any(p.startswith("www/404.html") and "under the baseline" in p for p in got), got)
+            now, _ = T.size_counts()
+            T.write_size_baseline(T.updated_baseline(now, T.load_size_baseline(), allow_rise=False))
+            self.assertEqual(t.problems(), [])
+
+    def test_the_baseline_only_goes_down_without_allow_rise(self):
+        base = {"a.css": {"font": 2}}
+        self.assertEqual(T.updated_baseline({"a.css": {"font": 5}}, base, allow_rise=False), base)
+        self.assertEqual(T.updated_baseline({"a.css": {"font": 1}}, base, allow_rise=False), {"a.css": {"font": 1}})
+        self.assertEqual(T.updated_baseline({"a.css": {"font": 5}}, base, allow_rise=True), {"a.css": {"font": 5}})
+
+    def test_a_token_redefined_after_its_block_fails_the_check(self):
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s + "\n:root { --s3: 11px; }\n")
+            self.assertTrue(any("defines --s3, which the tokens block already does" in p for p in t.problems()))
+
+    def test_a_size_off_the_scale_in_the_source_is_refused(self):
+        cases = [
+            ('"t-body": { "value": "14px"', '"t-body": { "value": "15px"', "is step 1 up from 12px at 1.2, which is 14px"),
+            ('"s3": { "value": "12px" }', '"s3": { "value": "1.2rem" }', "is not a whole number of px"),
+            ('"d-state": { "value": "180ms"', '"d-state": { "value": "0.18s"', "is not a duration in ms"),
+            ('"e-swap": { "value": "cubic-bezier(0.6, 0, 0.2, 1)"', '"e-swap": { "value": "ease"', "is not a cubic-bezier()"),
+        ]
+        for old, new, want in cases:
+            with Tree() as t:
+                t.edit(T.SOURCE, lambda s: s.replace(old, new, 1))
+                got = t.problems()
+                self.assertTrue(any(want in p for p in got), (new, got))
+
+    def test_every_block_carries_the_reduced_motion_rule(self):
+        for c in T.CONSUMERS:
+            block = T.BLOCK_RE.search(source(c["file"])).group(0)
+            self.assertRegex(block, r"@media \(prefers-reduced-motion: reduce\) \{\s*:root \{ --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; \}", c["file"])
+
+    def test_an_edit_inside_the_reduced_motion_line_leaves_the_block_stale(self):
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s.replace(":root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }", ":root { --d-press: 0ms; --d-state: 0ms; --d-move: 90ms; }", 1))
+            self.assertTrue(any(p.startswith("apps/web/style.css") and "stale" in p for p in t.problems()))
+
+    def test_the_generator_is_idempotent(self):
+        with Tree() as t:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                T.generate(check=False)
+            self.assertEqual(out.getvalue(), "", "a second run wrote a block the first had written")
+            before = {c["file"]: open(os.path.join(t.root, c["file"]), encoding="utf-8").read() for c in T.CONSUMERS}
+            with contextlib.redirect_stdout(io.StringIO()):
+                T.generate(check=False)
+            after = {c["file"]: open(os.path.join(t.root, c["file"]), encoding="utf-8").read() for c in T.CONSUMERS}
+            self.assertEqual(before, after)
+
+
+class TheRatchetsHoles(unittest.TestCase):
+    """Each way a size or duration slipped past the count, planted in the app
+    and expected to count."""
+
+    def counts_in(self, rel, add):
+        with Tree() as t:
+            t.edit(rel, lambda s: s + "\n" + add + "\n")
+            return [p for p in t.problems() if p.startswith(rel)]
+
+    def test_an_em_or_percent_or_uppercase_font_size_counts(self):
+        for rule in (".x { font-size: 0.9em; }", ".x { font-size: 85%; }", ".x { font: 600 0.8em/1 var(--font-mono); }", ".x { font-size: 13PX; }"):
+            self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/style.css", rule)), rule)
+
+    def test_a_scripts_animation_duration_counts(self):
+        for line in ("el.animate(kf, { duration: 300, easing: e });", "el.animate([{ opacity: 0 }, { opacity: 1 }], 240);"):
+            self.assertTrue(any("literal time sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+
+    def test_a_canvas_font_in_any_form_counts(self):
+        for line in (
+            "ctx.font = `${dpr * 11}px mono`;",
+            'ctx.font = Math.round(10 * dpr) + "px mono";',
+            "ctx.font = f;",
+            'ctx.font = size + "px mono";',
+        ):
+            self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+        self.assertEqual(self.counts_in("apps/web/main.js", "ctx.font = canvasFont(dpr);"), [])
+
+    def test_set_property_counts(self):
+        for line in ('el.style.setProperty("padding", "6px");', 'el.style.setProperty("padding", wide ? "6px" : "0px");'):
+            self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+
+    def test_an_svg_font_size_attribute_counts(self):
+        line = 'svg.innerHTML = `<text font-size="9" x="1">in</text>`;'
+        self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", line)))
+
+    def test_a_literal_held_in_a_custom_property_counts_where_a_counted_declaration_uses_it(self):
+        self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/style.css", ".x { --pad: 10px; }\n.y { padding: var(--pad); }")))
+        self.assertTrue(any("literal time sizes" in p for p in self.counts_in("apps/web/main.js", 'el.style.setProperty("--fade-in", "200ms"); const r = "transition: opacity var(--fade-in)";')))
+        # A height in a custom property is not a space.
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { --tall: 44px; }\n.y { height: var(--tall); }"), [])
+
+    def test_a_token_another_surface_owns_cannot_be_defined_or_used(self):
+        got = self.counts_in("apps/web/style.css", ":root { --s8: 72px; }")
+        self.assertTrue(any("defines --s8, which belongs to" in p for p in got), got)
+        got = self.counts_in("apps/web/style.css", ".x { margin: var(--s8); }")
+        self.assertTrue(any("var(--s8) belongs to" in p for p in got), got)
+
+    def test_two_surfaces_sharing_a_custom_property_name_do_not_count_for_each_other(self):
+        # The brand page's --frame is a width. The landing page padding with a
+        # --frame of its own must not make the brand page's count as a space.
+        with Tree() as t:
+            t.edit("www/landing/style.css", lambda s: s + "\n.x { padding: var(--frame); }\n")
+            got = t.problems()
+            self.assertFalse(any(p.startswith("www/brand/index.html") for p in got), got)
+        # Within one surface the app's script and stylesheet count together.
+        self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/main.js", 'el.style.setProperty("--gap-x", "10px"); const r = "gap: var(--gap-x)";')))
+
+    def test_a_duration_outside_animate_is_not_an_animation(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", "note(text, { duration: 4000 });\nconst clip = { duration: 2.5 };"), [])
+
+    def test_only_a_canvas_contexts_font_counts_and_a_style_font_counts_once(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", "label.font = fontFor(kind);"), [])
+        self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", 'this.ctx.font = "10px mono";')))
+        got = self.counts_in("apps/web/main.js", 'el.style.font = "12px mono";')
+        self.assertTrue(any(": 1 literal font sizes" in p for p in got), got)
+
+    def test_a_font_size_that_is_the_parents_is_not_counted(self):
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 100%; }\n.y { font-size: 1em; }\n.z { font: inherit; }"), [])
+
+    def test_an_exemption_attaches_past_a_strings_quote_and_another_comment(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", 'el.style.cssText = "padding: 6px"; // token-exempt: geometry'), [])
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 13px; /* a note */ /* token-exempt: a glyph */ }"), [])
+
+    def test_an_exemption_covers_only_the_declaration_it_trails(self):
+        got = self.counts_in("apps/web/style.css", ".x { font-size: 13px; animation: spin 1.2s linear infinite; } /* token-exempt: a loop's period */")
+        self.assertTrue(any("literal font sizes" in p for p in got), got)
+        self.assertFalse(any("literal time sizes" in p for p in got), got)
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 13px; /* token-exempt: a glyph */ animation: spin 1.2s linear infinite; /* token-exempt: a loop */ }"), [])
+
+
+class TheSpecimensScale(unittest.TestCase):
+    """The approved specimen (prototype v2) is a dated record; tokens.json
+    carries its type, space, radii and motion, and must not drift from it."""
+
+    def test_the_tokens_are_the_specimens(self):
+        css = source("docs/notes/vision-2026-09/prototype/style.css")
+        root = re.search(r":root \{(.*?)\n\}", css, re.S).group(1)
+        spec = dict(re.findall(r"--([\w-]+):\s*([^;]+);", root))
+        src = T.load()
+        names = {n: t["value"] for g in T.SIZE_GROUPS for n, t in src[g]["tokens"].items()}
+        nums = lambda v: [float(x) for x in re.findall(r"-?\d*\.?\d+", v)]  # noqa: E731
+        for name, want in spec.items():
+            if name in names:
+                self.assertEqual(nums(names[name]), nums(want), name)
+        self.assertEqual(sum(n in spec for n in names), len(names) - 1, "every token but the canvas floor is the specimen's")
+        self.assertEqual(src["type"]["ratio"], 1.2)
+        self.assertEqual(names["t-canvas"], "12px")
+        still = re.search(r"prefers-reduced-motion: reduce\)\s*\{\s*:root \{([^}]*)\}", css).group(1)
+        self.assertEqual(dict(re.findall(r"--([\w-]+):\s*([^;]+);", still)), src["motion"]["reduced"])
 
 
 class TheDriftsItClosed(unittest.TestCase):

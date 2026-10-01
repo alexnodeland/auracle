@@ -239,14 +239,16 @@ measurement that would settle it.
   revalidation.
 
 - ~~**Remaining quiver hardening.**~~ **Closed.** `voct_to_hz` gained a
-  ±32-octave clamp in quiver-dsp 0.3.0, and Auracle pins 0.3.3 as of the
-  September 2026 audit. Renders inside ±32 octaves are unchanged, so no
-  `RENDER_EPOCH` was bumped for it; the render-cache namespace now carries the
-  quiver version as its own coordinate (`QUIVER_DSP_VERSION`), which orphans
-  the stored rows from 0.2.0 anyway. That is the right outcome, because for pathological CV (chained `Offset`s past ±32
-  octaves) the two versions render *differently*: 0.2.0 recovered an infinite
-  increment by phase reset, 0.3.x aliases at a finite ~THz pitch. Both are
-  garbage the vet gate quarantines; they are not the same garbage.
+  ±32-octave clamp in quiver-dsp 0.3.0, and Auracle has pinned a clamped
+  quiver since the September 2026 audit (0.3.3 then, 0.4.0 now). The clamp
+  left renders inside ±32 octaves unchanged, so no `RENDER_EPOCH` was bumped
+  for it; the render-cache namespace now carries the quiver version as its own
+  coordinate (`QUIVER_DSP_VERSION`), which orphans the stored rows from 0.2.0
+  anyway. That is the right outcome, because for pathological CV (chained
+  `Offset`s past ±32 octaves) the two versions render *differently*: 0.2.0
+  recovered an infinite increment by phase reset, 0.3.x aliases at a finite
+  ~THz pitch. Both are garbage the vet gate quarantines; they are not the same
+  garbage.
 - **Frame silence is recognized only at exactly zero power** (AU-F2, open).
   `audio.rs` splits the phrase into chains at frames whose unnormalized FFT
   power is below `1e-12`, which is an amplitude of ≈2e-9 (−173 dBFS). Rests

@@ -123,6 +123,45 @@
   --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+
+  /* type: one ratio (1.2) and six roles. The steps run up from the value size,
+     12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit under the
+     scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
+     has sizes of its own, and a lone glyph is sized to its button */
+  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
+  --t-value: 12px;   /* mono values, readouts, small print */
+  --t-body: 14px;    /* prose, names, hints */
+  --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
+  --t-title: 21px;   /* a title: a sound's name, a card's heading, the wordmark */
+  --t-display: 52px; /* a level's one headline */
+  --t-canvas: 12px;  /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
+
+  /* space: a 4 px grid to 16, then wider. Under the first step (1 to 3 px) is
+     an optical nudge, not a space, and is written as it is */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* radius: three. A circle is 50% and a pill 999px, shapes rather than steps;
+     1 to 3 px is a hairline's rounding */
+  --r1: 4px;  /* a row, a chip, a small control */
+  --r2: 8px;  /* a button, a pad, a card */
+  --r3: 14px; /* the well, a sheet */
+
+  /* motion: three durations and two easings. Under prefers-reduced-motion
+     every duration is 0 ms. A loop's period is not one of these */
+  --d-press: 90ms;                /* a press: a control going down, a row lighting */
+  --d-state: 180ms;               /* a state changing: a color, a hover, a reveal */
+  --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
+  --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
+  --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
 }
 /* tokens:end */
 

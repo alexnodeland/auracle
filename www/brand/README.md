@@ -85,9 +85,9 @@ instrument, and belongs in its own commit.
 
 ## The tokens
 
-`tokens.json` is the one source of every color and font family on every
-surface: the app, the landing page, the docs theme, this brand page, the 404,
-and the film stage. It holds:
+`tokens.json` is the one source of every color, font family, type size,
+spacing step, radius and motion on every surface: the app, the landing page,
+the docs theme, this brand page, the 404, and the film stage. It holds:
 
 - **the palettes**: the rack (the instrument's dark palette, in the tiers the
   app has always named: `rack`, `panel`, `hairline`, the plate and button
@@ -102,7 +102,24 @@ and the film stage. It holds:
   `--phos-b-30` is `--phos-b` at 30%; a third digit is a tenth, so
   `--phos-a-045` is green at 4.5%. An opacity is generated as `rgba()`, not
   `color-mix()`: a gradient with a `color-mix()` color in it interpolates in
-  Oklab rather than sRGB, and moved pixels.
+  Oklab rather than sRGB, and moved pixels;
+- **the type scale, spacing, radii and motion**, every surface's, from the
+  approved specimen (prototype v2's `:root`, in
+  `docs/notes/vision-2026-09/prototype/style.css`, which `test_tokens.py`
+  holds them to):
+
+  | Group | Tokens |
+  | --- | --- |
+  | `type` | One ratio, 1.2, from the value size: `--t-value` 12 px (mono values, readouts), `--t-body` 14 (prose, names), `--t-voice` 17 (the model speaking, in Newsreader italic, and nothing else), `--t-title` 21 (a sound's name, a card's heading, the wordmark), `--t-display` 52 (a level's one headline). Each is 12 × 1.2ⁿ rounded, and the check holds them to it. `--t-label` 11 px (silk caps) sits under the scale and is the page's floor. `--t-canvas` 12 px is the floor for text a canvas draws. |
+  | `space` | `--s1` to `--s7`: 4, 8, 12, 16, 24, 32, 48 px. 1 to 3 px is an optical nudge, not a space, and is written as it is. |
+  | `radius` | `--r1` 4 px (a row, a chip), `--r2` 8 (a button, a pad, a card), `--r3` 14 (the well, a sheet). A circle is `50%` and a pill `999px`. |
+  | `motion` | `--d-press` 90 ms, `--d-state` 180 ms, `--d-move` 320 ms; `--e-settle` (arriving and coming to rest) and `--e-swap` (one thing giving way to another). Under `prefers-reduced-motion` every duration is 0 ms. A loop's period is none of these. |
+
+- **each surface's own sizes**: the rack's type tier in the app
+  (`--t-rack-*`, drawn through its camera and sized at zoom 1), the landing
+  page's display tier, prose size and wide steps (`--s8`, `--s9`), and the
+  brand page's. A surface may restate a shared size for itself, with a note
+  that says why (the landing page reads its prose at `1rem`).
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS
 beside it.
@@ -121,8 +138,15 @@ page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
 (`www/video/stage/kit.js`), which every film uses. Each reads
 `getComputedStyle(document.documentElement)` once per name.
 
-`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds
-something that is not a color, when a block is stale, and on a color written
+The app's canvases read `--t-canvas` the same way (`canvasFont()` in
+`main.js`), and the rack reads its own tier.
+
+`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds a
+color that is not a color, a size that is not a length, a duration not in ms,
+an easing that is not a `cubic-bezier()`, or a type step off the ratio; when a
+block is stale; when a stylesheet defines, after its block, a token the block
+already defines (the later one would silently win) or one another surface owns;
+and on a color written
 outside a block in any of these (the `SCANNED` list in `tokens.py`):
 
 - the app: `apps/web/*.css`, `*.js` and `index.html`;
@@ -161,6 +185,40 @@ and `docs/notes/` (dated records). A new color is a token first: add it to
 expects the check to fail on it, and holds the two drifts the tokens closed
 (the films' deep amber, the brand page's lamp) in place.
 
+**Sizes and durations are a ratchet.** The same files are counted, outside
+their blocks, for four kinds of literal, in any unit case:
+
+- a font size in px, rem, em or % (`font-size` and the `font` shorthand; not
+  100% or 1em, which are the parent's size), an SVG `font-size` attribute,
+  and any assignment to a canvas context's `.font` (`ctx`, `…Ctx`,
+  `context`) that is not `canvasFont(…)`;
+- a `padding`, `margin` or `gap` of 4 px or more, in px or rem;
+- a `border-radius` from 4 to 99 px;
+- a `transition` or `animation` time, and in a script a `duration: N` or a
+  bare number inside an `.animate(…)` call's arguments.
+
+They are read in stylesheets, `<style>` blocks and `style` attributes, and
+in a script's strings, `.style.*` assignments, style objects and
+`style.setProperty()` calls; a literal held in a custom property counts when
+that property is `var()`'d in one of the declarations above, in a file of
+the same surface. A script's other durations (a `duration:` outside
+`.animate()`, timers: when something happens, not how long it moves), a
+`.font` on anything but a canvas context, widths, heights, offsets, shadows
+and spacing in em are not counted.
+`sizes-baseline.json` holds each file's counts, and the check fails when one
+rises, when a file it does not list has any, or when one falls below it (a
+move lowers the baseline in the same change, so the floor only goes down):
+
+    python3 www/brand/tokens.py --where FILE    every counted literal in a file
+    python3 www/brand/tokens.py --update        lower the baseline to today's counts
+
+`--check` lists the files not yet moved every time it runs. The app's
+stylesheet and scripts are at zero: where the scale has no step for a
+literal (a loop's period, a glyph sized to its button, a key that must light
+at once), the declaration says why with a trailing `token-exempt:` comment,
+which covers that declaration and no other. The landing page, the brand page, the 404 and the films have their
+counts in the baseline until each is moved.
+
 ## The sound
 
 `sound.json` is the one source of the films' sound, as `tokens.json` is of
@@ -172,13 +230,12 @@ value was chosen in `docs/notes/sound-2026-09/SPEC.md`). Its keys:
 | `key`, `tempo`, `form` | F over an F2/C3 pedal; 66 BPM (the marks at 60); the 8-bar cycle Fmaj9, G6/F, Bbmaj7/F, Bbm6/F |
 | `cast` | The sixteen presets a film casts from, by role (RFC-007); the one room (Cathedral's stock reverb); and each part (drone, bed pad, marks' pad, lead, burble, demo) with its preset, voices and every knob the finals turned, stock and used |
 | `marks` | Bloom and Reach: each one's record score, its generated file, which part plays each track, and how it meets the bed |
-| `bed` | N3: its record score and generated file, and its parts (voicings, burble cells, sighs) |
+| `bed` | N3: its record score and generated file, and its parts (voicings, the pad under a demo, burble cells, sighs and the rule that places them) |
 | `mix` | Each part's EQ, pan and level, on stems |
 | `voice_chain` | The narration's four stages, from the 85 Hz high-pass to the de-esser |
 | `ladder` | Every element's loudness, from the narration at −18 LUFS to the master at −16 |
 | `duck` | The bed under the voice: the 2 dB duck, the 3 dB carve in 1–4 kHz, the pad's 2 dB dip in 300–600 Hz |
-| `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice |
-| `mix_now` | The bed's level and duck the films are mixed with today (−6 and −9 dB), until the new mix replaces them |
+| `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice (1.75 s in a film), and 2.6 s for the room after the exit mark |
 
     make sound
 
@@ -191,8 +248,10 @@ so at their top; edit the JSON, never them.
   trim, transpose and used knobs, the lead's bend times, and the drone's
   breath. The notes are the auditioned finals'.
 - **Into `sound_defaults.py`** go `mix`, `voice_chain`, `ladder`, `duck`, the
-  timings in `grammar`, the marks' levels and hand-overs, the shortlist, the
-  room, and `mix_now`.
+  timings in `grammar`, the marks' levels and hand-overs, the shortlist and
+  the room. `mix.py` reads every level it sets from there. The bed's parts
+  and how the lead plays a line go there too (`BED`, `LEAD`), for
+  `fit_score.py --film` to write a film's bed from.
 - **The rest describes the notes:** the pedal, the marks' length, the lead's
   legato and swell, the bed's voicings, burble and sighs, and the demo (which
   only the reel played). `make sound` leaves the notes as they are, so these
@@ -204,11 +263,12 @@ so at their top; edit the JSON, never them.
 - a preset in the cast or the shortlist is not in the bank;
 - a knob is outside 0–1, the drone's breath does not run low ≤ stock ≤ high,
   or a part turns the room's knobs;
-- a number is `mix.py`'s `--music-db` or `--duck-db` default, or a film
-  tool's shell code has a numeric `MUSIC_DB`/`DUCK_DB` fallback or a numeric
-  `--music-db`/`--duck-db` flag. These are the ways the duck came to have
-  three values; docstrings, help strings and comments may quote a level, and
-  the scan does not look for every other way to write one.
+- a number is a film tool's `--music-db`, `--duck-db` or `--gain-db`
+  default, or a film tool's shell code has a numeric `MUSIC_DB`, `DUCK_DB`
+  or `APP_DB` fallback or a numeric `--music-db`/`--duck-db`/`--gain-db`
+  flag. These are the ways the duck came to have three values; docstrings,
+  help strings and comments may quote a level, and the scan does not look
+  for every other way to write one.
 
 `test_sound.py`, also run by `make dev-check`, makes each of these changes in
 a copy of the tree and expects the check to fail on it. With

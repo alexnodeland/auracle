@@ -30,6 +30,18 @@ const INK = {
   amberDim: tok("--phos-b-dim"),
   amberDeep: tok("--phos-b-deep"),
 };
+// Canvas text is set at the canvas floor, `--t-canvas` (12 px; TA20 found the
+// 10 px it had too small), in the mono family, scaled by the pixel ratio. A
+// canvas cannot read a custom property, and `make dev-check` counts a size
+// written into a `.font` string here.
+const CANVAS_PX = parseFloat(tok("--t-canvas"));
+const canvasFont = (dpr) => `${CANVAS_PX * dpr}px ${tok("--font-mono")}`;
+// A motion token's length in ms (`--d-press`, `--d-state`, `--d-move`), read
+// when a motion starts rather than once: the reduced-motion rule sets them to
+// 0, and the setting can change with the app open. A script's tween takes its
+// length here, so it keeps the same three speeds, and the same rule, as a CSS
+// transition; `make dev-check` counts an animation's literal `duration:`.
+const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
 // Two phosphors and silk, and nothing else: every other colour the canvases
 // and the inline styles use is made *from* these tokens, so no third hue can
 // creep in as a literal and the whole instrument moves when the palette does.
@@ -1102,6 +1114,10 @@ function settleRestore() {
 
 // ---------- worker protocol ----------
 const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
+// The render namespace the engine measures in (`cache_namespace`: the
+// stimulus, the featurizer's RENDER_EPOCH and the quiver version), from its
+// `ready`. Null until then, or from a binary too old to say.
+let renderNs = null;
 
 worker.onmessage = (e) => {
   const m = e.data;
@@ -1945,6 +1961,7 @@ worker.onmessage = (e) => {
     // The engine is up. It says what the structural ceilings are so the
     // budget readout cannot restate a number the grammar has since moved.
     case "ready": {
+      renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -3169,8 +3186,8 @@ function dismissToast(t, immediate) {
   }
   clearTimeout(t.timer);
   // Retire the *action* on the window boundary, not when the animation
-  // finishes — the 300 ms fade kept a clickable undo on screen past the moment
-  // its commit had already fired.
+  // finishes — the fade (`--d-move`) kept a clickable undo on screen past the
+  // moment its commit had already fired.
   const b = t.el.querySelector(".toast-undo");
   if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
   t.el.classList.add("out");
@@ -3183,8 +3200,10 @@ function dismissToast(t, immediate) {
     toastLive = null;
     toastPump();
   };
+  // Removed when the fade (`.toast.out`, over `--d-move`) has played, and at
+  // once under reduced motion, where it is 0.
   if (immediate) gone();
-  else setTimeout(gone, 300);
+  else setTimeout(gone, motionMs("--d-move"));
 }
 
 // What the lane may never cover, in two kinds. STRIPS are stepped over — the
@@ -3892,6 +3911,9 @@ async function bootPerform() {
     // Wirings are measured against the taste model; a new observation can
     // move the standardizer they were measured in, so it keys their cache.
     tasteRev: () => status.observations,
+    // …and in φ, as this binary renders it: a wiring measured under another
+    // render namespace (a new quiver, a new featurizer) is re-measured.
+    renderNs: () => renderNs,
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,
@@ -5274,7 +5296,7 @@ function drawPendingScope(side, now) {
     ctx.shadowBlur = 0;
   }
   ctx.fillStyle = failed ? INK.silkDim : INK.amberDim;
-  ctx.font = `${11 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace"}`;
+  ctx.font = canvasFont(dpr);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(failed ? "no audio for this one" : "rendering…", w / 2, h / 2);
@@ -9951,7 +9973,7 @@ function buildRack(svg, rack, opts) {
 //   arrivals   fade and scale up from 0.96;
 //   departures leave a ghost that fades, shrinks and drops 6px, so a deletion
 //              is *seen* leaving rather than simply never having been there.
-const MOTION_MS = 260;
+// The rack's motion is a move: `--d-move` (`motionMs`).
 const STILL_MQ = window.matchMedia("(prefers-reduced-motion: reduce)");
 /** Live, not a snapshot: the OS switch can be thrown while the app is open,
  *  and a page that only honours it at load time honours it by luck. */
@@ -10089,7 +10111,8 @@ function startRackMotion(before) {
   const arriving = rackFrame.wires.filter((it) => !before.wids.has(it.wid));
   if (!moves.length && !enters.length && !arriving.length && !ghosts.length) return false;
 
-  const fade = { duration: MOTION_MS, easing: EASE_CSS };
+  const moveMs = motionMs("--d-move");
+  const fade = { duration: moveMs, easing: EASE_CSS };
   for (const it of enters) {
     for (const el of [it.plateG, it.g]) {
       el.animate(
@@ -10125,7 +10148,7 @@ function startRackMotion(before) {
     }
     // The next teardown would take the layer with it anyway; this is for the
     // case where there isn't one.
-    setTimeout(() => layer.remove(), MOTION_MS + 60);
+    setTimeout(() => layer.remove(), moveMs + 60);
   }
 
   if (!moves.length) return enters.length > 0 || ghosts.length > 0;
@@ -10146,7 +10169,7 @@ function startRackMotion(before) {
 
   const t0 = performance.now();
   const step = (now) => {
-    const u = Math.min(1, (now - t0) / MOTION_MS);
+    const u = moveMs > 0 ? Math.min(1, (now - t0) / moveMs) : 1;
     const e = EASE_MOTION(u);
     // The whole layout at this instant: final positions for everything that
     // did not move, interpolated ones for everything that did. The cables are
@@ -10745,10 +10768,10 @@ function cancelTween() {
  *  motion rather than a fit racing a relayout. */
 function tweenView(t, ms, ease) {
   cancelTween();
-  if (prefersStill()) { Object.assign(view, t); applyView(); return; }
+  if (prefersStill() || !(ms > 0)) { Object.assign(view, t); applyView(); return; }
   const from = { x: view.x, y: view.y, zoom: view.zoom };
   const t0 = performance.now();
-  const dur = ms || 180;
+  const dur = ms;
   const curve = ease || ((u) => 1 - (1 - u) * (1 - u) * (1 - u)); // ease-out cubic
   const step = (now) => {
     const u = clamp((now - t0) / dur, 0, 1);
@@ -10954,7 +10977,7 @@ function fitBox(box, animate, coMotion) {
   t.x = fit(box.x + box.w - (w - pad) / z, box.x - pad / z, t.x);
   t.y = fit(box.y + box.h - (h - pad) / z, box.y - pad / z, t.y);
   viewUserSet = false;
-  if (animate) tweenView(t, coMotion ? MOTION_MS : 180, coMotion ? EASE_MOTION : null);
+  if (animate) tweenView(t, motionMs(coMotion ? "--d-move" : "--d-state"), coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
 }
 function fitAll(animate) {
@@ -11085,7 +11108,7 @@ function ensureRackVisible(el) {
   if (r.top < f.top + m) dy = r.top - (f.top + m);
   else if (r.bottom > f.bottom - m) dy = r.bottom - (f.bottom - m);
   if (dx === 0 && dy === 0) return;
-  tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, 160);
+  tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, motionMs("--d-state"));
 }
 
 // ---------- minimap ----------
@@ -11094,6 +11117,10 @@ function ensureRackVisible(el) {
 // how much of the patch you are currently looking at.
 const MM_W = 172;
 const MM_H = 116;
+// A bookmark's pip: big enough for its digit at the label size (`.mm-pip-n`),
+// the page's floor. The map is 1:1 and never zooms, so this is the size the
+// digit is read at.
+const MM_PIP_R = 8;
 let mmT = null;        // {s, ox, oy} — rack units → map units
 let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
 let mmMarkSig = "";    // …and which bookmarks the pips were drawn from
@@ -11135,8 +11162,9 @@ function bmAdd(rx, ry) {
   if (!k) return note("Open a sound first: a bookmark is a place inside its patch.");
   const list = [...(bookmarks.get(k) || [])];
   // A pip is a target as well as a mark. Measured in *map* units, because the
-  // thing being aimed at is 5.5 map units across whatever the patch's scale is.
-  const near = list.find((b) => Math.hypot(b.x - rx, b.y - ry) * mmT.s < 8);
+  // thing being aimed at is 2 × MM_PIP_R map units across whatever the
+  // patch's scale is.
+  const near = list.find((b) => Math.hypot(b.x - rx, b.y - ry) * mmT.s < MM_PIP_R + 1);
   if (near) {
     bookmarks.set(k, list.filter((b) => b !== near));
     bmChanged();
@@ -11176,7 +11204,7 @@ function bmJump(slot) {
   allowZoomBelow(Math.min(b.zoom, view.zoom));
   tweenView(
     { zoom: b.zoom, x: b.x - w / (2 * b.zoom), y: b.y - h / (2 * b.zoom) },
-    MOTION_MS,
+    motionMs("--d-move"),
     EASE_MOTION,
   );
   if (!mapOn) note(`Bookmark ${slot}.`);
@@ -11253,10 +11281,10 @@ function drawMinimap() {
         // Clamped inside the map: a bookmark set at one zoom and read at
         // another can sit outside the patch bounds, and a pip you cannot see
         // is a slot you cannot clear.
-        const cx = clamp(mmT.ox + b.x * s, 6, MM_W - 6).toFixed(1);
-        const cy = clamp(mmT.oy + b.y * s, 6, MM_H - 6).toFixed(1);
-        return `<circle class="mm-pip" cx="${cx}" cy="${cy}" r="5.6"/>` +
-          `<text class="mm-pip-n" x="${cx}" y="${(Number(cy) + 2.6).toFixed(1)}">${b.slot}</text>`;
+        const cx = clamp(mmT.ox + b.x * s, MM_PIP_R + 1, MM_W - MM_PIP_R - 1).toFixed(1);
+        const cy = clamp(mmT.oy + b.y * s, MM_PIP_R + 1, MM_H - MM_PIP_R - 1).toFixed(1);
+        return `<circle class="mm-pip" cx="${cx}" cy="${cy}" r="${MM_PIP_R}"/>` +
+          `<text class="mm-pip-n" x="${cx}" y="${cy}">${b.slot}</text>`;
       }).join("");
     }
   }
@@ -15593,8 +15621,8 @@ function renderSpecDock() {
     // longer have to be enumerated in advance while holding 120 px of the
     // patcher's vertical budget to say so.
     dock.innerHTML =
-      `<div class="sd-rest mono">Point at a module, in the catalog or in this patch, ` +
-      `and this strip says what it does, where it can go, and which way your taste leans on it.</div>`;
+      `<div class="sd-rest mono">Point at a module, here or in the module rail: ` +
+      `this strip says what it does, where it can go, and how your taste leans.</div>`;
     return;
   }
   const p = specParts(m);
@@ -18113,7 +18141,7 @@ function drawWave(canvas, data) {
   }
   ctx.setLineDash([]);
   ctx.fillStyle = INK.greenDim;
-  ctx.font = `${9 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace"}`;
+  ctx.font = canvasFont(dpr);
   ctx.textAlign = "left";
   ctx.fillText("0 dBFS", 4 * dpr, mid - mid * 0.92 + 11 * dpr);
   const step = Math.max(1, Math.floor(data.length / w));
@@ -18431,7 +18459,7 @@ function drawTaste() {
   renderStyleChips();
   mapHits = [];
 
-  ctx.font = `${10 * dpr}px "IBM Plex Mono", monospace`;
+  ctx.font = canvasFont(dpr);
   const noTaste = !views || !views.styles;
   const empty = {
     map: !(views && views.map && views.map.points && views.map.points.length),
@@ -18462,7 +18490,23 @@ function drawTaste() {
 function drawTrustFromEngine(ctx, w, h, dpr, E) {
   const pad = 56 * dpr;
   const x0 = pad, y0 = pad * 0.5;
-  const side = Math.min(w - pad * 2.4, h - pad * 2.0);
+  // The lines under the plot, measured first, because the plot gives up
+  // height to them. Where the answers came from goes on the headline's
+  // baseline, right-aligned, while the headline leaves room for it, and on a
+  // line of its own under the headline when it doesn't (a narrow window, at
+  // the canvas floor's 12 px).
+  const head = `${E.n} guesses · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`;
+  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
+  const prov = streams.length > 1
+    ? streams.map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`).join("  ·  ")
+    : "";
+  const provOwnLine = !!prov &&
+    x0 + ctx.measureText(head).width + 24 * dpr > w - 24 * dpr - ctx.measureText(prov).width;
+  const extra = provOwnLine ? 18 * dpr : 0;
+  // The last line sits 84 px under the plot (102 with the provenance on its
+  // own line), and 16 px clear of the canvas's edge (TA20: it sat on the
+  // edge, and at the canvas floor's 12 px its descenders were cut off).
+  const side = Math.min(w - pad * 2.4, h - y0 - (84 + 16) * dpr - extra);
   const sx = (p) => x0 + p * side;
   const sy = (p) => y0 + (1 - p) * side;
 
@@ -18529,41 +18573,34 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
   }
   ctx.fillStyle = INK.amberDim;
   ctx.textAlign = "left";
-  ctx.fillText("dots inside their whisker are indistinguishable from honest", x0, y0 + side + 84 * dpr);
+  ctx.fillText("dots inside their whisker are indistinguishable from honest", x0, y0 + side + 84 * dpr + extra);
 
   ctx.textAlign = "left";
   ctx.fillStyle = INK.silk;
-  ctx.fillText(
-    `${E.n} guesses · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`,
-    x0, y0 + side + 48 * dpr
-  );
+  ctx.fillText(head, x0, y0 + side + 48 * dpr);
   ctx.fillStyle = INK.amberDim;
   ctx.fillText(
     E.check_n >= SKILL_MIN_N
       ? `on ${E.check_n} fair-test picks: ${skillLine(E.check_skill, E.check_n)}, the number to trust`
       : `fair-test picks (pairs dealt at random) are the unbiased measure: ${E.check_n} of ${SKILL_MIN_N} so far`,
-    x0, y0 + side + 66 * dpr
+    x0, y0 + side + 66 * dpr + extra
   );
   // Where the answers came from. Committing a hand edit after hearing it
   // against the original is a different act from ticking "my edit is better",
   // and the model has no way to know which it was told — so the two are
   // scored apart, and the split is drawn rather than left in the log. Silent
   // until there is something to compare: one stream is not a comparison.
-  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
-  if (streams.length > 1) {
+  if (prov) {
     // Right-aligned against the panel's own edge, on the headline's baseline:
-    // the three lines under the plot are full sentences with no room for a
-    // fourth, and the plot is a square in a wide panel — the whole right half
-    // of that line is empty.
+    // the plot is a square in a wide panel, and the whole right half of that
+    // line is empty. Under the headline when the panel is too narrow for both.
     ctx.fillStyle = INK.amberDim;
-    ctx.textAlign = "right";
-    ctx.fillText(
-      streams
-        .map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`)
-        .join("  ·  "),
-      w - 24 * dpr, y0 + side + 48 * dpr
-    );
-    ctx.textAlign = "left";
+    if (provOwnLine) ctx.fillText(prov, x0, y0 + side + 66 * dpr);
+    else {
+      ctx.textAlign = "right";
+      ctx.fillText(prov, w - 24 * dpr, y0 + side + 48 * dpr);
+      ctx.textAlign = "left";
+    }
   }
 }
 
@@ -18681,11 +18718,23 @@ function drawMapTab(ctx, w, h, dpr) {
   // are the directions the patches differ most, and the share is how much of
   // their difference a flat picture can hold — 29–32% in the sessions the
   // films measured, so "close" is a hint, not a promise.
-  ctx.fillText(
-    `A flat view of ${pts.filter((p) => p.id != null).length} sounds: close dots usually sound alike ` +
-      `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`,
-    10 * dpr, h - 8 * dpr
-  );
+  // Left of the legend, which sits over the canvas's bottom right: on a
+  // narrow window the sentence breaks before it, and the lines stack upward.
+  const footer = `A flat view of ${pts.filter((p) => p.id != null).length} sounds: close dots usually sound alike ` +
+    `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`;
+  const legend = $("map-legend");
+  const cr = ctx.canvas.getBoundingClientRect();
+  const room = legend && !legend.classList.contains("hidden") && cr.width
+    ? (legend.getBoundingClientRect().left - cr.left) * (w / cr.width) - 10 * dpr - 16 * dpr
+    : w - 20 * dpr;
+  const lines = [];
+  for (const word of footer.split(" ")) {
+    const last = lines.length ? lines[lines.length - 1] : null;
+    if (last != null && ctx.measureText(`${last} ${word}`).width <= room) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  const lead = CANVAS_PX * 1.4 * dpr;
+  lines.forEach((ln, i) => ctx.fillText(ln, 10 * dpr, h - 8 * dpr - (lines.length - 1 - i) * lead));
 }
 
 function activeStyles() {
@@ -19689,7 +19738,7 @@ const INLINE_INITIAL = {
   filter: "none",
   "paint-order": "normal",
   "shape-rendering": "auto",
-  "font-size": "16px",
+  "font-size": "16px", // token-exempt: the initial size as getComputedStyle reports it; compared, never painted
   "font-weight": "400",
   "font-style": "normal",
   "letter-spacing": "normal",

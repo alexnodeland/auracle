@@ -14,6 +14,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/score.rs` | Renders a film score (`www/video/sound/*.json`) with the engine's own voices |
 | `examples/pick_belief.rs` | Measures what each pick's reply costs: the reweight, `belief`, and what a refit posts (ranked list, map, lenses), per number of lenses, at rest and with a generation open (`breed`) |
 | `examples/pick_belief.mjs` | The same loop against the built package under node, for the wasm figures (`make wasm` first) |
+| `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
 | `examples/selector_makeup.rs` | Measures the level a selector change (a wave, a filter mode) would play at if its tree reached the voices before its render, against what cheaper renders would estimate, over every preset's selector changes: why selectors wait for theirs |
 | `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
@@ -37,6 +38,13 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
   recurses with large modules by value, and the default 1 MB overflows as
   "memory access out of bounds". Build through `make wasm`, never wasm-pack
   directly.
+- **An edit's refusal is copy.** `edit_structure_apply` and
+  `edit_set_tree_apply` return the reason PATCH's toast quotes, so
+  `make dev-check` reads `lib.rs`'s strings against `www/brand/voice.md`
+  ([`../AGENTS.md`](../AGENTS.md)). A JSON shape or a code there that trips
+  the check gets the comment `// voice: name` on the line the literal starts
+  on (as `edit_utility`'s shape does); the comment exempts only literals that
+  start on its line.
 - **Every new binding needs its caller.** Add the method, call it from
   `worker.js`, and let `tests/web/smoke.spec.js` prove the binary exports it.
 

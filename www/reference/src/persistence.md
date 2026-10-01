@@ -153,16 +153,29 @@ change to the normalizer or to a descriptor’s formula is a change to the
 **function**: the same key would then name a different measurement.
 
 `RENDER_EPOCH` (3, in `auracle-features`’ `cache.rs`) is that missing
-coordinate, and `cache_namespace` combines the two.
+coordinate for the featurizer. `QUIVER_DSP_VERSION` (0.4.0, beside it) is the
+same coordinate for the DSP library every render calls into: a quiver release
+can change a sample with no line of Auracle changing, as 0.4.0 did for Pluck and
+Delay. `cache_namespace` combines the three: the epoch, the quiver version, and a
+hash of the phrase spec.
 A namespace mismatch orphans **every** stored row at once, which is the only
 correct granularity: a cache whose invalidation is anything less than total will
 one day serve a number from a featurizer that no longer exists. Bump the epoch on
 any change to a $\varphi$ coordinate, to loudness normalization (including
 `PEAK_CEILING` and `TARGET_LUFS`), to the vetting thresholds, or to the compiler’s
-term → module mapping. When in doubt, bump: the cost is one cold boot.
+term → module mapping. Move `QUIVER_DSP_VERSION` with the quiver dependency: a
+test reads `Cargo.lock` and fails while they disagree. When in doubt, bump: the
+cost is one cold boot.
 
-A hit is **checked rather than trusted**: `pre_featurized` re-derives the key
-from the tree the engine holds at that index and drops the row if it disagrees.
+Every row is stored under a key that begins with its namespace (`farm_key`: the
+namespace, then `render_key`), so a row written under another namespace is never
+a hit. The store’s own stamp is not enough for that: it is checked when a farm
+worker opens the store, and a tab still running an older build goes on writing
+its rows after a newer tab has cleared and re-stamped it.
+
+A hit is **checked rather than trusted**: `pre_featurized` re-derives the content
+address from the tree the engine holds at that index and drops the row if it
+disagrees.
 
 ### Two deliberate limits
 

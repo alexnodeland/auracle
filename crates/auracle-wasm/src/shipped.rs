@@ -15,10 +15,11 @@
 //! catches each its own way:
 //!
 //! - **Named inputs**: a preset edited, added or renamed, or the phrase, the
-//!   feature names, the controls or PERFORM's constants changed. The file
-//!   carries a fingerprint of each preset's content and one of these inputs
-//!   ([`preset_source`], [`measurement_fingerprint`]); comparing them renders
-//!   nothing.
+//!   render namespace (the featurizer's `RENDER_EPOCH` or the quiver
+//!   version), the feature names, the controls or PERFORM's constants
+//!   changed. The file carries a fingerprint of each preset's content and one
+//!   of these inputs ([`preset_source`], [`measurement_fingerprint`]);
+//!   comparing them renders nothing.
 //! - **Arithmetic**: the feature maths, loudness normalization, vetting, the
 //!   compiler and the DSP, the grammar prior the standard pool is drawn from,
 //!   the standardizer fit, PERFORM's solver. No fingerprint of the inputs sees
@@ -32,7 +33,7 @@
 //! A change that moves none of the sample can still slip through; the sample
 //! is chosen to be cheap and broad, not complete.
 
-use auracle_features::{featurize_memo, AudioFeatures, PhraseSpec};
+use auracle_features::{cache_namespace, featurize_memo, AudioFeatures, PhraseSpec};
 use auracle_grammar::PatchTree;
 use auracle_session::perform;
 
@@ -87,8 +88,15 @@ pub fn preset_source(name: &str, tree: &PatchTree) -> String {
 }
 
 /// The measurement's inputs other than the patch: the audition phrase, the
-/// feature names the controls' directions are read in, the controls
-/// themselves and the constants that shape a wiring.
+/// render namespace φ is measured in ([`cache_namespace`]: the featurizer's
+/// `RENDER_EPOCH` and the quiver version), the feature names the controls'
+/// directions are read in, the controls themselves and the constants that
+/// shape a wiring.
+///
+/// The namespace is here because a new quiver or featurizer changes what a
+/// preset measures as without changing any other input, and the file should
+/// say it is stale by name rather than wait for the re-measured sample to
+/// happen to cover a module that moved.
 pub fn measurement_fingerprint(phrase: &PhraseSpec) -> String {
     let consts = [
         perform::JACOBIAN_STEP,
@@ -102,8 +110,9 @@ pub fn measurement_fingerprint(phrase: &PhraseSpec) -> String {
         perform::REACH_FLOOR,
     ];
     let text = format!(
-        "{}\n{:?}\n{:?}\n{:?}",
+        "{}\n{}\n{:?}\n{:?}\n{:?}",
         serde_json::to_string(phrase).unwrap_or_default(),
+        cache_namespace(phrase),
         AudioFeatures::NAMES,
         perform::CONTROLS,
         consts,

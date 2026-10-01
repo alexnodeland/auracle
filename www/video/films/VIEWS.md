@@ -39,7 +39,7 @@ by what you hear before what they are called. Leave the maths to *The math*.
    the master bus, so the voices and every audition are in it. Play musical
    material, not scattered keys: chords that change on the bar line, a
    bassline, a pad held while a control moves. When a demo has a tempo, use
-   84 BPM, the bed's tempo.
+   66 BPM, the bed's tempo, in F (84 BPM for a film still on Study).
 2. **Show, then say.** The picture shows the thing happening while the
    narration names it; a callout points at it when the eye would not find it
    alone. Never describe a change you can't hear or see.
@@ -64,16 +64,24 @@ by what you hear before what they are called. Leave the maths to *The math*.
 
 - The spoken voice follows [`www/brand/voice.md`](../../brand/voice.md), which
   wins where this file differs: explain, pause, demo, continue, and nothing
-  under speech. The film sound's specification (RFC-007) will replace the
-  music rule below.
+  under speech.
 - Voice `af_heart` at speed 0.81, with pronunciations from `lexicon.json`.
   Every line passes `asr_check.py` (per-line WER ≤ 0.10; aim for a mean of
   0.02 or less). Then run `timeline.py --voice` for real word times.
 - Short sentences with one idea each, because every sentence is also a
   caption. Plain, warm and precise, with no marketing adjectives.
-- Music: the `study` bed at 84 BPM under the cold-open title, the chapter
-  turns and the outro. Under a demo, the app is the music, so the bed is out
-  (arrange its sections that way in `arrangement.json`) or ducked far under.
+- Music: ADR-014's, in `docs/notes/sound-2026-09/SPEC.md` section 9.
+  - The script is on the N3 bed (`"music": {"bed": "n3"}`).
+  - Bloom comes before the first word and Reach after the last, 1.75 s from
+    the voice.
+  - The bed sits under the voice throughout, with no `bed_db`.
+  - Each demo plays after its line (the line's `demo`, `README.md` § A demo):
+    0.7 s after the last word, its tail rung out, 0.8 s more. The bed comes
+    down 9 LU under it by itself.
+  - Nothing snaps to a bar.
+  - The films still on the `study` bed keep the old rule until they are
+    re-voiced: the bed under the title, the chapter turns and the outro, and
+    out under each demo.
 
 ## Structure of each film
 
@@ -213,7 +221,8 @@ changing, not sitting still.
 1. **`script.json` and `storyboard.md`** in `films/<id>/`, in the format of
    `films/playing/`, with chapter-sized beats and short lines.
 2. **The voice:** `tts.py` → `asr_check.py` (it must pass) → `timeline.py
-   --voice` → `arrangement.json` with the bed placed per the rules above.
+   --voice --demos` (the demos' measured tails) → `fit_score.py --film`, which
+   writes the bed and the marks to the timeline.
 3. **`shots.json`:** a seeded `init`, one shot per beat, `clips` for any
    wait. Rehearse with `footage.mjs <id> --dry` until every shot passes with
    empty errors and little lateness. `validate.mjs` and `framing.py` must be

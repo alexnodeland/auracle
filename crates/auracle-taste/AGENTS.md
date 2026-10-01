@@ -27,6 +27,10 @@ all crates are in [`../AGENTS.md`](../AGENTS.md).
 - **The MCMC budget is measured.** `make fit-bench` draws the
   recovery-vs-budget curve that set `SessionConfig::mcmc_samples`. Change the
   budget only with that curve.
+- **No string here reaches the screen.** A provenance (`"duel"`) is a key the
+  app names (`PROVENANCE_NAME` in `apps/web/main.js`). A string that starts to
+  reach the screen is copy, and its file joins the voice check
+  ([`../AGENTS.md`](../AGENTS.md)).
 
 ## Tests
 

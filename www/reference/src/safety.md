@@ -51,7 +51,7 @@ state through the routing buffers. Containment at the graph boundary;
 per-module input sanitization remains defense in depth.
 
 `voct_to_hz` is clamped to ±32 octaves as of quiver-dsp 0.3.0 (Auracle pins
-0.3.3), so the overflow Q198 recovers from can no longer be produced by pitch
+0.4.0), so the overflow Q198 recovers from can no longer be produced by pitch
 CV at all; what remains at the clamp is finite aliasing garbage, which the vet
 gate quarantines like any other.
 

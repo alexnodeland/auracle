@@ -107,6 +107,9 @@ plugins work on it.
 - [`vision-2026-09/`](notes/vision-2026-09/README.md): prototype v2 (the
   sound at the centre), the maintainer's decisions round by round, and the
   review of it on desktop and phones (informed RFC-006)
+- [`suggest-2026-10/`](notes/suggest-2026-10/README.md): how the model could
+  suggest the next module in PATCH; four designs measured for cost and against
+  synthetic listeners, and a recommendation (RFC-006 Open 2, Plan-005 task 9d)
 
 ## Runbooks
 
