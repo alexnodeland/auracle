@@ -306,7 +306,12 @@ pair. The worker answers deals in the order they were asked, so pairs go up
 in the order they were dealt whatever the timing (a seeded session shows the
 same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
 `dealsOut` counts deals not yet answered; a taken-back pick leaves a deal
-still out to become the next pair. `placePair` is the one place a pair goes
+still out to become the next pair. With the table waiting, an answer that may
+not go up is dealt again, and after three tries goes up anyway, so a pool too
+small to deal anything else cannot leave the cards dimmed. An answer holding a
+cut sound is the exception: it is always dealt again (`holdsCut`). That ends,
+because each deal excludes the cuts made before it was asked for, so only a
+cut made while a deal is out brings one back. `placePair` is the one place a pair goes
 up: anything owed to a pair being shown belongs there.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;

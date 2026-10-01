@@ -13,7 +13,8 @@
 //   to leave the old pair up with buttons that looked live and did nothing.
 // - A cut patch is never dealt again, and its toast names it without an id.
 //   That holds for a deal asked for while the cut was taken back, which
-//   rightly did not exclude it, whenever its pair lands.
+//   rightly did not exclude it, whenever its pair lands, and for the deal a
+//   waiting table puts up after three tries, which used to go up anyway.
 // - After clicking the EVOLVE tab, → picks.
 // - An open is not announced unless it kept the player waiting.
 //
@@ -64,11 +65,14 @@ const init = ({ warmed = true, holdAhead = false } = {}) => `(() => {
         log.push({ type: "sent:" + m.type, at: performance.now() });
         if (m.type === "duel") deals.push({ exclude: [...(m.exclude || [])], ahead: !!m.ahead });
         if (m.type === "duel_shown") shown.push([m.a, m.b]);
-        // A request stalled on request (\`__pwStall\`, a message type): the
-        // next one is kept (\`__pwStalled\`) and never reaches the engine, and
-        // the spec answers it itself (\`__pwAnswer\`), with the reply and at
-        // the moment it chooses: an engine that dealt that pair, then.
-        if (window.__pwStall === m.type) {
+        // A request stalled on request (\`__pwStall\`, a key or a list of
+        // them, keyed as __pwHold is below: "duel" is the table's deal,
+        // "duel:ahead" the next pair's): the next one is kept
+        // (\`__pwStalled\`) and never reaches the engine, and the spec answers
+        // it itself (\`__pwAnswer\`), with the reply and at the moment it
+        // chooses: an engine that dealt that pair, then.
+        const stallKey = m.type === "duel" && m.ahead ? "duel:ahead" : m.type;
+        if ([].concat(window.__pwStall || []).includes(stallKey)) {
           window.__pwStall = null;
           window.__pwStalled = m;
           return;
@@ -384,7 +388,7 @@ for (const { holds, lands } of [
     // A deal asked for now, with the patch not cut: ↻ puts the pair waiting
     // up and asks for the next, or waits on a deal it asks for.
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
-    await page.evaluate(() => { window.__pwStall = "duel"; });
+    await page.evaluate(() => { window.__pwStall = ["duel", "duel:ahead"]; });
     await page.locator("#skip-duel").click();
     await page.waitForFunction(() => window.__pwStalled, null, { timeout: 30_000 });
     const asked = await page.evaluate(() => window.__pwStalled);
@@ -428,6 +432,61 @@ for (const { holds, lands } of [
     expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
   });
 }
+
+// With the table waiting, a deal that may not go up is dealt again, and after
+// three tries the next answer goes up anyway: a pool too small to deal
+// anything else must not leave the cards dimmed for good (`onDealt`). That
+// last answer used to go up even holding a sound cut while it was out. Here
+// the engine answers the table's deal three times with the pair just put
+// away (the one answer a small pool can be stuck on), a sound is cut while
+// the fourth is out, and the fourth answer holds it.
+test("a sound cut while the table waits on its fourth deal is not put up by it", async ({ page }) => {
+  // No pair waiting (see the ↻ test above), so ↻ waits on a deal.
+  const pageErrors = await boot(page, { holdAhead: true });
+  await toEvolve(page);
+  const [a, b] = await cardIds(page);
+  const ids = await page.evaluate(() =>
+    [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((el) => Number(el.dataset.id)));
+  const [cut, partner] = ids.filter((id) => id !== a && id !== b);
+  const row = page.locator(`#bank-list .bank-item[data-id="${cut}"]`);
+
+  // ↻: the pair goes away and the table waits on the deal it asks for.
+  await page.evaluate(() => { window.__pwStall = "duel"; });
+  await page.locator("#skip-duel").click();
+  await page.waitForFunction(() => window.__pwStalled, null, { timeout: 30_000 });
+  // Three answers with the pair just put away, each refused, and each
+  // followed by another deal, held in its turn.
+  for (let i = 1; i <= 3; i++) {
+    const again = await page.evaluate((pair) => {
+      const m = window.__pwStalled;
+      window.__pwStalled = null;
+      window.__pwStall = "duel";
+      window.__pwAnswer({ type: "duel", pair, meta: null, ahead: !!m.ahead });
+      return !!window.__pwStalled;
+    }, [a, b]);
+    expect(again, `the answer ${i} was put up rather than dealt again`).toBe(true);
+    await expect(page.locator("#choose-a")).toBeDisabled();
+  }
+  // The fourth deal is out. A sound is cut now…
+  await row.scrollIntoViewIfNeeded();
+  await row.hover();
+  await row.locator(".bi-kill").click();
+  await expect(row).toHaveCount(0);
+  // …and the fourth answer holds it: the engine dealt it before the cut.
+  await page.evaluate((pair) => {
+    const m = window.__pwStalled;
+    window.__pwStalled = null;
+    window.__pwAnswer({ type: "duel", pair, meta: null, ahead: !!m.ahead });
+  }, [cut, partner]);
+
+  // It is dealt again, and a pair without it goes up.
+  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
+  expect(await cardIds(page)).not.toContain(cut);
+  const { deals, shown } = await expectNotDealtSinceCut(page, cut);
+  expect(shown.length).toBe(1);
+  expect(deals.length).toBeGreaterThanOrEqual(1);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
 
 test("after clicking the EVOLVE tab, → picks", async ({ page }) => {
   const pageErrors = await boot(page);
