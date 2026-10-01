@@ -194,13 +194,13 @@ export class ClockTempo {
 // What the panel says when there is no input to list, by where access stands.
 const ACCESS_WHY = {
   unsupported:
-    "This browser can't reach MIDI devices: Safari has no Web MIDI. Chrome, Edge, Brave, Arc and Firefox do — open Auracle in one of those.",
+    "This browser can’t reach MIDI devices: Safari has no Web MIDI. Chrome, Edge, Brave, Arc and Firefox do, so open Auracle in one of those.",
   idle: "Press connect to let this page use your MIDI devices.",
-  asking: "Waiting for your browser's permission to use MIDI — answer its prompt (in Firefox it asks to add a site permission). No prompt? Press connect.",
+  asking: "Waiting for your browser’s permission to use MIDI: answer its prompt (in Firefox it asks to add a site permission). No prompt? Press connect.",
   denied:
-    "MIDI access was refused. Allow MIDI for this site in the browser's site settings (the icon left of the address), then press connect.",
-  failed: "The browser couldn't open its MIDI system. Press connect to try again; if it keeps failing, reload the page.",
-  ready: "No MIDI device yet. Plug one in — it shows up here as soon as the browser sees it.",
+    "MIDI access was refused. Allow MIDI for this site in the browser’s site settings (the icon left of the address), then press connect.",
+  failed: "The browser couldn’t open its MIDI system. Press connect to try again; if it keeps failing, reload the page.",
+  ready: "No MIDI device yet. Plug one in, and it shows up here as soon as the browser sees it.",
   elsewhere:
     "MIDI is playing another Auracle tab. Click anywhere in this one to play it here instead.",
 };
@@ -304,7 +304,7 @@ export function createMidi(host) {
       if (guess !== "abs") {
         m.mode = guess;
         save();
-        host.note(`CC ${cc} is an endless encoder — following it relatively`);
+        host.note(`CC ${cc} is an endless encoder, so it’s followed relatively.`);
       }
     }
     if (m.mode === "abs") drive(key, m.slot, value / 127, "abs");
@@ -470,7 +470,7 @@ export function createMidi(host) {
               ? "mod wheel"
               : i === state.pressureSlot
                 ? "pressure"
-                : "—";
+                : "·";
       const learn = document.createElement("button");
       learn.type = "button";
       learn.className = "util-btn";

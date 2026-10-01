@@ -157,7 +157,7 @@ export function createPerform(host) {
   // ---------- layout ----------
   const head = el("div", "pf-head");
   const title = el("div", "pf-title");
-  const nameEl = el("div", "pf-name", "—");
+  const nameEl = el("div", "pf-name", "·");
   const statusEl = el("div", "pf-status mono", "");
   title.append(nameEl, statusEl);
   const scope = el("canvas", "pf-scope");
@@ -322,7 +322,7 @@ export function createPerform(host) {
         where.setAttribute("cx", x.toFixed(2));
         where.setAttribute("cy", y.toFixed(2));
         where.style.display = "";
-        const dotSays = `The amber dot is where this sound measures on ${w.name}, compared with the patches in your session.`;
+        const dotSays = `The amber dot is where this sound measures on ${w.name}, compared with the sounds in your session.`;
         where.querySelector("title").textContent = dotSays;
         // What the player can do, not where the app infers the sound sits: a
         // half closes because the renders did not confirm it, which is not
@@ -356,10 +356,10 @@ export function createPerform(host) {
         where.style.display = "none";
         k.sub.textContent = listening ? "listening…" : "";
         k.wrap.title = listening
-          ? `${k.spec.name}: listening to how this patch moves. It turns once that is done.`
+          ? `${k.spec.name}: listening to how this sound moves. It turns once that is done.`
           : k.spec.name;
       }
-      k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "centre" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
+      k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "center" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
       const [words, left] = wanderState();
@@ -581,14 +581,14 @@ export function createPerform(host) {
       if (inFlight("perform_offer")) return ["ideas · growing…", null];
     }
     if (!state.cur || !state.wire) return [z, null];
-    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying — nothing better nearby", null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying: nothing better nearby", null];
     const [from, at] = wanderDue();
     const left = Math.max(0, at - now);
     const span = Math.max(1, at - from);
     return [`${z} · next in ${Math.max(1, Math.ceil(left / 1000))} s`, Math.min(1, left / span)];
   }
   function wanderTitle() {
-    const base = "Wander: how alive the patch is — still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to hold it.";
+    const base = "Wander: how alive the sound is. Still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to hold it.";
     return state.wanderWhy ? `${base}\nLast move: ${state.wanderWhy}.` : base;
   }
   function renderWander() {
@@ -775,7 +775,7 @@ export function createPerform(host) {
       const [lo, hi] = rangeOf(w);
       const o = document.createElement("option");
       o.value = String(i);
-      o.textContent = `${c.name.toLowerCase()} — soft ${c.low}, hard ${c.high}`;
+      o.textContent = `${c.name.toLowerCase()}: soft ${c.low}, hard ${c.high}`;
       o.disabled = !turns(w) || lo === 0 || hi === 0;
       if (i === state.touch.i) o.selected = true;
       sel.append(o);
@@ -974,7 +974,7 @@ export function createPerform(host) {
         request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
       } else {
         const aim = aimAt(k.i, up ? 1 : -1);
-        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing ${aim ? `a ${aim.word}` : "an"} offer instead`, { replace: "pf-offer", urgent: true });
+        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low}, so it’s growing ${aim ? `a ${aim.word}` : "an"} offer instead.`, { replace: "pf-offer", urgent: true });
         requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`, aim);
       }
     }
@@ -988,10 +988,10 @@ export function createPerform(host) {
     if (!turns(w)) {
       host.note(
         w && w.search
-          ? `${w.name} isn't in this patch's knobs — turn it to ask for a variant`
+          ? `${w.name} isn’t in this patch’s knobs. Turn it to ask for a variant.`
           : state.measuring || state.revalidating
-            ? `${k.spec.name}: still listening to this patch — try again in a moment`
-            : `${k.spec.name} hasn't been measured on this patch yet`,
+            ? `${k.spec.name}: still listening to this sound. Try again in a moment.`
+            : `${k.spec.name} hasn’t been measured on this sound yet.`,
         { urgent: true },
       );
       return;
@@ -1305,17 +1305,17 @@ export function createPerform(host) {
   function answerOffer(took) {
     const pt = holdAnswer(took);
     if (!pt) return;
-    pt.toast = host.note("Took B — that counts as a pick over what you had.", {
+    pt.toast = host.note("Took B. That counts as a pick over what you had.", {
       undo: () => {
         if (pt.sent) {
-          host.note("Already counted — that Take's window had closed.", { urgent: true });
+          host.note("Already counted: that Take’s window had closed.", { urgent: true });
           return;
         }
         pt.dropped = true;
         clearTimeout(pt.timer);
         if (state.answerWait === pt) state.answerWait = null;
       },
-      undoLabel: "don't count it",
+      undoLabel: "don’t count it",
       replace: "pf-offer",
     });
     waitAnswer(pt);
@@ -1463,17 +1463,17 @@ export function createPerform(host) {
     knobs.forEach(paintKnob);
     if (!o || state.quiet) return;
     if (!pt) {
-      host.note("B skipped — not counted, you hadn't heard it.", {
+      host.note("Skipped B. Not counted, because you hadn’t heard it.", {
         undo: () => restoreOffer(o, gen),
         undoLabel: "undo",
         replace: "pf-offer",
       });
       return;
     }
-    pt.toast = host.note("Passed on B — that counts as a pick for what you had.", {
+    pt.toast = host.note("Passed on B. That counts as a pick for what you had.", {
       undo: () => {
         if (pt.sent) {
-          host.note("Already counted — that pass's window had closed.", { urgent: true });
+          host.note("Already counted: that pass’s window had closed.", { urgent: true });
           return;
         }
         pt.dropped = true;
@@ -1494,7 +1494,7 @@ export function createPerform(host) {
   // was a variant of the sound before.
   function restoreOffer(o, gen) {
     if (gen !== state.gen || !state.cur) {
-      host.note("Not counted — B was a variant of the patch before, so it can't come back.", { replace: "pf-offer" });
+      host.note("Not counted: B was a variant of the sound before, so it can’t come back.", { replace: "pf-offer" });
       return;
     }
     // What B holds now, and any offer still growing, wait as the Offer pad's
@@ -1660,11 +1660,11 @@ export function createPerform(host) {
   const AIM_SAID = 0.075;
   function aimNote(aim) {
     const span = el("span", "pf-offer-aim");
-    span.title = "How far this offer moved the way you turned, in σ: the spread of the patches in this session. Offers from the Offer button and Wander are not aimed.";
+    span.title = "How far this offer moved the way you turned, in σ: the spread of the sounds in this session. Offers from the Offer button and Wander are not aimed.";
     const by = aim.sign * Number(aim.moved);
     if (aim.moved == null || !Number.isFinite(by)) span.textContent = `aimed ${aim.word}, not measured`;
     else if (by >= AIM_SAID) span.textContent = `${aim.word} by ${by.toFixed(1)}σ`;
-    else span.textContent = `not ${aim.word}: this walk found no way there — turn it again to try another`;
+    else span.textContent = `not ${aim.word}: this walk found no way there. Turn it again to try another`;
     return span;
   }
 
@@ -1718,9 +1718,9 @@ export function createPerform(host) {
         state.c[it.i] = k.value;
         push();
         paintKnob(k);
-        host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`, { replace: `pf-graft:${w.name}` });
+        host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}.`, { replace: `pf-graft:${w.name}` });
       } else if (w) {
-        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`, { replace: `pf-graft:${w.name}`, urgent: true });
+        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} didn’t reach it here, so it’s growing an offer instead.`, { replace: `pf-graft:${w.name}`, urgent: true });
         requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`, aimAt(it.i, it.dir));
       }
     }
@@ -1811,7 +1811,7 @@ export function createPerform(host) {
           // measurement to replace it, it goes rather than lingering.
           state.wire = null;
           state.carried = false;
-          renderStatus("could not measure this patch");
+          renderStatus("couldn’t measure this patch");
         }
         knobs.forEach(paintKnob);
         renderHood();
@@ -1821,7 +1821,7 @@ export function createPerform(host) {
       if (!m.data) {
         state.measuring = false;
         state.wire = null;
-        renderStatus(m.error ? "could not measure this patch" : "the taste model has not seen enough patches to measure against yet");
+        renderStatus(m.error ? "couldn’t measure this patch" : "the model hasn’t heard enough sounds to measure against yet");
       } else {
         applyWired(m.data);
         markWired("measured");
@@ -1864,7 +1864,7 @@ export function createPerform(host) {
           requestOffer(state.offerWhy);
           return true;
         }
-        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time — turn it again, or loosen a lock` : "no offer beat this patch — try again, or loosen a lock"));
+        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "no offer rated above this sound: try again, or loosen a lock"));
         return true;
       }
       if (p.aim) m.offer.aim = p.aim;
@@ -1879,7 +1879,7 @@ export function createPerform(host) {
         state.intent = null;
         const w = state.wire && state.wire[i];
         if (w) {
-          host.note(`${w.name}: nothing to add here — growing an offer instead`, { replace: `pf-graft:${w.name}`, urgent: true });
+          host.note(`${w.name}: nothing to add here, so it’s growing an offer instead.`, { replace: `pf-graft:${w.name}`, urgent: true });
           requestOffer(`${w.name.toLowerCase()} ${dir > 0 ? "up" : "down"}`, aimAt(i, dir));
         }
         return true;
@@ -2049,9 +2049,9 @@ export function createPerform(host) {
   // the one that no retry fixes: the patch has a value the grammar gives no
   // mass, so evolution cannot start from it at all.
   function whyNot(m, r, otherwise) {
-    if (m.error) return "the walk failed on this patch — try again";
+    if (m.error) return "the walk failed on this sound: try again";
     if (r && r.reason === "outside_support")
-      return "this patch is outside what evolution can start from — nudge any knob off its stop and try again";
+      return "a walk can’t start from this sound: nudge any knob off its stop and try again";
     return otherwise;
   }
 
@@ -2137,14 +2137,14 @@ export function createPerform(host) {
     if (!addrs.length) return;
     const h = el("div", "pf-hood-h", "under the hood");
     h.title =
-      "The patch's own knobs these controls are turning right now. Click one to open it in PATCH — which shows the kept sound until you press Keep.";
+      "The patch’s own knobs these controls are turning now. Click one to open it in PATCH, which shows the kept sound until you press Keep.";
     hood.append(h);
     const grid = el("div", "pf-hood-grid");
     for (const a of addrs) {
       const { module, label } = info(a);
       const row = el("button", "pf-hood-row");
       row.type = "button";
-      row.title = `${module} ${label} — open in PATCH (it shows the kept value until you Keep)`;
+      row.title = `${module} ${label}: open in PATCH (it shows the kept value until you Keep)`;
       const name = el("span", "pf-hood-name");
       name.append(el("span", "pf-hood-mod", module), document.createTextNode(` ${label}`));
       const track = el("span", "pf-hood-track");
@@ -2205,7 +2205,7 @@ export function createPerform(host) {
   function refusedWhileLanding(what) {
     const name = host.openLanding ? host.openLanding() : null;
     if (!name) return false;
-    host.note(`${what} waits for ${name} to finish opening — try again in a moment.`, { urgent: true, replace: "pf-landing" });
+    host.note(`${what} waits for ${name} to finish opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
     return true;
   }
 
@@ -2226,7 +2226,7 @@ export function createPerform(host) {
       state.home = { json, makeup: state.cur.makeup, knobs: new Map(here) };
       state.keeping = json;
       host.commitTree(json);
-      host.note("Kept — this is home now. Back returns here.", { replace: "pf-keep" });
+      host.note("Kept: this is home now. Back returns here.", { replace: "pf-keep" });
       flash("keep");
     });
   }
@@ -2252,7 +2252,7 @@ export function createPerform(host) {
   }
 
   function take() {
-    if (!state.offer) return host.note("Nothing offered yet — press Offer, or turn Wander up.", { urgent: true });
+    if (!state.offer) return host.note("Nothing offered yet. Press Offer, or turn Wander up.", { urgent: true });
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
@@ -2345,12 +2345,12 @@ export function createPerform(host) {
     nameEl.classList.toggle("pending", !!incoming);
     if (msg) parts.push(msg);
     else if (incoming) parts.push(`opening ${incoming}…`);
-    else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
+    else if (state.heldWire === "measure") parts.push("opening the sound you picked…");
     // A re-measure with a wiring in hand (after a glide past TRUST, say)
     // keeps the dials working on the old one, so it reads as a re-check, as
     // after a Take. "listening to this patch…" is for a patch with no wiring
     // yet, whose dials really are waiting.
-    else if (state.measuring && !state.wire) parts.push("listening to this patch…");
+    else if (state.measuring && !state.wire) parts.push("listening to this sound…");
     else if (state.wire) {
       const n = state.wire.filter(turns).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
@@ -2365,16 +2365,16 @@ export function createPerform(host) {
     const body = el("div", "pf-offer-body");
     if (msg) body.textContent = msg;
     else if (state.offer) {
-      const src = state.offer.taste ? "grown toward your taste" : "drawn from the grammar — it has not learned your taste yet";
+      const src = state.offer.taste ? "grown toward your taste" : "grown before it has learned your taste";
       // What changed first — it is the thing a player decides on — then
       // where it came from, then what to do with it.
       body.innerHTML = "";
       if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
       const aim = state.offer.aim;
       if (aim) body.append(aimNote(aim), document.createTextNode(" · "));
-      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`));
+      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek to hear it, slide Blend, or Take it`));
     }
-    else body.textContent = "no offer — press Offer to grow a variant from here";
+    else body.textContent = "no offer: press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
     offerCard.append(lab, body);
     // Take and Peek act on an offer; until there is one they look it.
@@ -2399,10 +2399,10 @@ export function createPerform(host) {
   whyBtn.type = "button";
   const whyBody = el("div", "pf-why-body hidden");
   whyBody.innerHTML =
-    "<p>Each control is a direction in what the instrument can hear — <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a patch loads, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
-    "<p>The amber dot on a control's ring is where this sound measures on it, compared with the patches in your session. A control that turns only one way on this patch says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the centre on the other. One that reads <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>" +
-    "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session's patches) or that it did not get there; short of the notch it springs back and asks nothing.</p>" +
-    "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
+    "<p>Each control is a direction in what the instrument can hear: <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, and <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a sound opens, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
+    "<p>The amber dot on a control’s ring is where this sound measures on it, compared with the sounds in your session. A control that turns only one way on this sound says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the center on the other. One that reads <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>" +
+    "<p>A control drawn in amber can’t be reached by this patch’s knobs (a patch with no drive can’t get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session’s sounds) or that it didn’t get there. Short of the notch it springs back and asks nothing.</p>" +
+    "<p><b>Wander</b> sets how alive the sound is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
     whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));
@@ -2549,10 +2549,10 @@ export function createPerform(host) {
     const listening = state.wire ? state.revalidating : state.measuring;
     xyNote.classList.toggle("pending", !dx && !dy);
     xyNote.textContent = dx && dy
-      ? "neither reaches this patch — pick two others"
-      : dx ? `${kx.spec.name} doesn't reach this patch`
-        : dy ? `${ky.spec.name} doesn't reach this patch`
-          : (px || py) && listening ? "listening to this patch…" : "";
+      ? "neither reaches this patch: pick two others"
+      : dx ? `${kx.spec.name} doesn’t reach this patch`
+        : dy ? `${ky.spec.name} doesn’t reach this patch`
+          : (px || py) && listening ? "listening to this sound…" : "";
     xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
   }
   // Only a reachable axis moves: dragging along an amber one would be a
@@ -2621,7 +2621,7 @@ export function createPerform(host) {
       const live = host.live();
       state.peeking = true;
       if (live && state.offer) live.bMix(1);
-      else host.note("Nothing offered yet — press Offer first.", { urgent: true });
+      else host.note("Nothing offered yet. Press Offer first.", { urgent: true });
     },
     () => {
       state.peeking = false;

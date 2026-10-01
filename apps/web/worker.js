@@ -817,7 +817,7 @@ async function restoreSession(saved, farmed, stages) {
         stage: 0,
         stages,
         workers: farmCrew(),
-        label: `recalling ${landed} of ${jobs.length} patches…`,
+        label: `recalling ${landed} of ${jobs.length} sounds…`,
       }),
   });
   // Whatever the farm did not finish (every worker died, a draw retired) is
@@ -1952,7 +1952,7 @@ async function dispatch(m) {
             target: 1,
             stage: 0,
             stages,
-            label: `recalled ${restored} patches`,
+            label: `recalled ${restored} sounds`,
           });
           // Say so when the restore had to mend something. A profile fitted on
           // values that were not measurements is the one kind of silent repair

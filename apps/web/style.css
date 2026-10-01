@@ -965,9 +965,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 10px 4px 3px;
 }
 .preset-item .pb-blurb {
-  font-family: var(--font-voice);
-  font-style: italic;
-  /* Serif italic at 11px is hairline-thin at 1×; the body size holds up. */
+  font-family: var(--font-silk);
+  /* Plain, not the model's voice: a preset's blurb describes the sound. */
   font-size: var(--t-body);
   color: var(--silk-dim);
   line-height: 1.4;
@@ -988,7 +987,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .preset-item.in-bank { border-left-color: var(--phos-a-dim); }
 .preset-item.kbd { border-color: var(--phos-a); box-shadow: 0 0 0 1px var(--phos-a-deep) inset; }
 
-.bench-empty { color: var(--silk-dim); font-size: var(--t-body); font-style: italic; font-family: var(--font-voice); padding: var(--s3) var(--s2); }
+.bench-empty { color: var(--silk-dim); font-size: var(--t-body); font-family: var(--font-silk); padding: var(--s3) var(--s2); }
 
 /* ---- stage + views ---- */
 .stage { flex: 1; min-width: 0; position: relative; }
@@ -1226,7 +1225,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 6px;
   background: var(--surface-pop);
   box-shadow: 0 6px 20px var(--black-60);
-  font-family: var(--font-voice); font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-body);
   color: var(--silk-dim);
   pointer-events: auto;
@@ -1237,7 +1236,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   color: var(--silk-dim);
-  font-family: var(--font-voice); font-style: italic; font-size: var(--t-lead);
+  font-family: var(--font-silk); font-size: var(--t-lead);
   padding: 0 60px; text-align: center;
 }
 
@@ -1691,8 +1690,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .caption {
   flex: 1 1 300px;
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk-dim);
@@ -1983,8 +1981,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-note {
   padding: 6px 10px 7px;
   border-bottom: 1px solid var(--hairline);
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk-dim);
@@ -2031,7 +2028,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   margin: 2px 0 5px;
 }
 .bank-tour .tour-body {
-  font-family: var(--font-voice);
+  font-family: var(--font-silk);
   font-size: var(--t-label);
   line-height: 1.5;
   color: var(--silk);
@@ -2544,7 +2541,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   line-height: 1.55;
   color: var(--silk-dim);
 }
-.nb-none { font-family: var(--font-voice); font-style: italic; font-size: var(--t-body); }
+.nb-none { font-family: var(--font-silk); font-size: var(--t-body); }
 .nb-inline {
   background: none; border: none; padding: 0;
   font: inherit;
@@ -2757,7 +2754,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   color: var(--silk-dim);
 }
 .sd-blurb {
-  font-family: var(--font-voice); font-style: italic; font-size: var(--t-body);
+  font-family: var(--font-silk); font-size: var(--t-body);
   color: var(--silk-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sd-hint { font-size: var(--t-micro); color: var(--silk-dim); margin-left: auto; white-space: nowrap; }
@@ -2831,12 +2828,12 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .sp-glyph .gl-rule { fill: none; stroke: var(--silk-mute); stroke-width: 0.8; stroke-dasharray: 2 2; }
 .sp-glyph.mod .gl { stroke: var(--phos-b); }
 .sp-glyph.mod .gl-ghost { stroke: var(--phos-b-deep); }
-/* The teaching sentence is the app's voice, so it is set in the voice face —
-   the same treatment the model's own statements get elsewhere. */
+/* A module's sentence is plain: the voice face (Newsreader italic) is the
+   model's alone (www/brand/voice.md, ADR-013), and a module description is
+   not the model speaking. */
 .sp-blurb {
   margin: 0 0 8px;
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-body);
   line-height: 1.5;
   color: var(--silk);
@@ -3603,8 +3600,7 @@ select:focus-visible,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
   color: var(--phos-b);
   background: var(--phos-b-07);
@@ -3734,7 +3730,7 @@ select:focus-visible,
 .sp-val { font-family: var(--font-mono); font-style: normal; color: var(--phos-a-dim); margin-left: 6px; }
 .sp-note {
   margin-top: var(--s2);
-  font-family: var(--font-voice); font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-micro); color: var(--silk-dim); line-height: 1.5;
 }
 
@@ -3941,8 +3937,7 @@ html:not(.engineer) .dn-sig { display: none; }
   box-shadow: 0 0 8px var(--phos-b-70);
 }
 .teach-copy {
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
   line-height: 1.45;
   color: var(--silk-dim);
@@ -4097,8 +4092,7 @@ html:not(.engineer) .dn-sig { display: none; }
 }
 .warm-card { width: min(760px, 92vw); padding: var(--s6) var(--s5) var(--s5); text-align: center; }
 .warm-sub {
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
   line-height: 1.5;
   color: var(--silk-dim);
@@ -4523,8 +4517,7 @@ input[type="range"]::-moz-range-thumb {
   color: var(--phos-b);
 }
 .crt-empty .ce-copy {
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
   line-height: 1.55;
   color: var(--silk-dim);
@@ -4599,8 +4592,7 @@ input[type="range"]::-moz-range-thumb {
   bottom: calc(var(--keybar-h) - 42px);
   transform: translateX(-50%);
   z-index: 57;
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
   color: var(--phos-b);
   background: var(--panel-94);
@@ -5018,8 +5010,7 @@ html.handheld .handheld-gate {
   border: 1px dashed var(--hairline);
   border-radius: 6px;
   color: var(--silk-dim);
-  font-family: var(--font-voice);
-  font-style: italic;
+  font-family: var(--font-silk);
   font-size: var(--t-lead);
 }
 .pf-offer.ready { border-style: solid; border-color: var(--phos-b-deep); color: var(--silk); }
@@ -5069,7 +5060,7 @@ html.handheld .handheld-gate {
 @media (prefers-reduced-motion: reduce) { #rack-svg .hood-pulse { animation: none; outline: 2px solid var(--phos-a); } }
 @media (max-width: 900px) { .pf-hood-grid { grid-template-columns: minmax(0, 1fr); } }
 .pf-why { width: min(1040px, 100%); }
-.pf-why-body { max-width: 72ch; font-family: var(--font-voice); font-size: var(--t-lead); color: var(--silk-dim); line-height: 1.5; }
+.pf-why-body { max-width: 72ch; font-family: var(--font-silk); font-size: var(--t-lead); color: var(--silk-dim); line-height: 1.5; }
 .pf-why-body b { color: var(--silk); font-weight: 600; }
 @media (max-width: 900px) {
   .pf-deck { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -5253,7 +5244,7 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
     backdrop-filter: blur(3px);
   }
 }
-.ng-card { max-width: 380px; text-align: center; color: var(--silk-dim); font-family: var(--font-voice); font-size: var(--t-lead); line-height: 1.5; }
+.ng-card { max-width: 380px; text-align: center; color: var(--silk-dim); font-family: var(--font-silk); font-size: var(--t-lead); line-height: 1.5; }
 .ng-title { font-family: var(--font-silk); letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a); margin-bottom: var(--s3); }
 
 /* ---------- booth attract mode ----------
@@ -5291,7 +5282,7 @@ html.booth .pf-marquee { display: grid; min-height: 46px; }
   letter-spacing: 0.145em;
   color: var(--silk);
 }
-.ba-sub { font-family: var(--font-voice); font-style: italic; font-size: var(--t-title); color: var(--silk); animation: ba-pulse 2.4s ease-in-out infinite; }
+.ba-sub { font-family: var(--font-silk); font-size: var(--t-title); color: var(--silk); animation: ba-pulse 2.4s ease-in-out infinite; }
 .ba-cap { font-size: var(--t-body); color: var(--phos-b); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ba-cap:empty { display: none; }
 @keyframes ba-pulse { 50% { opacity: 0.45; } }
