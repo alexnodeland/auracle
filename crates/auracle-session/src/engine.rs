@@ -3598,15 +3598,21 @@ impl Engine {
     /// exactly the machinery a dealt duel is, and differ only in the tag that
     /// says where they came from.
     fn record_duel_as(&mut self, a: usize, b: usize, chose_a: bool, provenance: Provenance) {
+        // An answer consumes the check its showing was, whether or not the
+        // model can forecast it yet. This used to happen only inside the
+        // forecast below, so a check shown and answered before the first fit
+        // stayed pending, and the next time the same pair was shown (as a
+        // chosen pair, after the fit) its answer was scored as that old
+        // check: one check too many, on a pair the model had chosen.
+        let key = pair_key(self.pool[a].id, self.pool[b].id);
+        let random_check = match self.pending_checks.iter().position(|k| *k == key) {
+            Some(i) => {
+                self.pending_checks.remove(i);
+                true
+            }
+            None => false,
+        };
         if let Some(p_a) = self.predict_duel(a, b) {
-            let key = pair_key(self.pool[a].id, self.pool[b].id);
-            let random_check = match self.pending_checks.iter().position(|k| *k == key) {
-                Some(i) => {
-                    self.pending_checks.remove(i);
-                    true
-                }
-                None => false,
-            };
             self.forecasts.push(Forecast {
                 p_a,
                 chose_a,

@@ -3312,6 +3312,43 @@ mod tests {
         );
     }
 
+    /// A check shown and answered before the first fit is used up by its
+    /// answer, though there was no forecast to score. It used to stay
+    /// pending, and the next answer on the same pair (after the fit, on a
+    /// pair the model had chosen, or the same question put back up) was
+    /// scored as that old check.
+    #[test]
+    fn a_check_answered_before_the_first_fit_is_not_scored_again() {
+        let mut rng = StdRng::seed_from_u64(0xC4EC);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 8,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let first = engine.deal_duel_except(&mut rng, &[]).unwrap();
+        assert!(first.random_check, "with no fit every pair is a check");
+        let (ia, ib) = (engine.pool[first.a].id, engine.pool[first.b].id);
+        assert!(engine.duel_shown(ia, ib));
+        engine.record_duel(first.a, first.b, true);
+        for _ in 0..8 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let before = engine.calibration().check_n;
+        // The same pair answered again, not dealt as a check this time.
+        engine.record_duel(first.a, first.b, false);
+        assert_eq!(
+            engine.calibration().check_n,
+            before,
+            "an answer before the fit left its check pending for a later answer"
+        );
+    }
+
     /// something: its standardized vectors are inverted back to raw values,
     /// re-projected by name, and the votes survive the feature-set change
     /// that motivated the whole exercise.
