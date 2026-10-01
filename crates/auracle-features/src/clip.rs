@@ -114,7 +114,7 @@ pub enum ClipSource {
 ///
 /// Cheap to clone (the samples are shared). Equality is equality of content:
 /// two clips are the same clip when their ids are.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AuditionClip {
     /// One `Vec` per channel, every sample a multiple of `1/32768`.
     channels: Arc<Vec<Vec<f32>>>,
@@ -122,6 +122,20 @@ pub struct AuditionClip {
     source: ClipSource,
     /// 32 hex chars of FNV-1a 128 over the canonical bytes ([`Self::id`]).
     id: String,
+}
+
+/// What a clip is, not what it holds: a phrase, a session config or a walk
+/// context printed with `{:?}` would otherwise print every sample.
+impl std::fmt::Debug for AuditionClip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditionClip")
+            .field("id", &self.id)
+            .field("source", &self.source)
+            .field("frames", &self.frames())
+            .field("channels", &self.channel_count())
+            .field("sample_rate", &self.sample_rate)
+            .finish()
+    }
 }
 
 impl PartialEq for AuditionClip {
@@ -761,6 +775,15 @@ mod tests {
         assert_eq!(back.planar(), clip.planar());
         let json = serde_json::to_string(&clip).unwrap();
         let again: AuditionClip = serde_json::from_str(&json).unwrap();
+        // A debug print names the clip and does not dump it.
+        let printed = format!(
+            "{:?}",
+            PhraseSpec {
+                clip: Some(clip.clone()),
+                ..spec.clone()
+            }
+        );
+        assert!(printed.contains(clip.id()) && printed.len() < 2_000);
         assert_eq!(again.planar(), clip.planar());
         assert_eq!(again.source(), ClipSource::Captured);
     }
