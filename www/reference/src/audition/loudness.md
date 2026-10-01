@@ -11,10 +11,10 @@ poison $\theta$, and it would do so in a way that looks like a real result.
 ## Why LUFS and not RMS
 
 Because the confound is *perceived* loudness. K-weighting approximates the
-ear's sensitivity (a high-shelf boost above ~1.7 kHz plus a ~38 Hz highpass),
+ear’s sensitivity (a high-shelf boost above ~1.7 kHz plus a ~38 Hz highpass),
 and 400 ms gated blocks keep silence and release tails from dragging the
 measurement down. Plain RMS would under-measure a bright patch and over-measure
-a bass-heavy one, and then the "loudness" the model learned about would be a
+a bass-heavy one, and then the “loudness” the model learned about would be a
 spectral preference in disguise.
 
 The implementation follows ITU-R BS.1770 (`auracle_features::loudness`).
@@ -23,7 +23,7 @@ The implementation follows ITU-R BS.1770 (`auracle_features::loudness`).
 
 Two biquads in direct form 1, derived **parametrically** from the BS.1770
 analog prototype by the RBJ bilinear transform, the same approach pyloudnorm
-takes, so any sample rate works and the coefficients match the spec's published
+takes, so any sample rate works and the coefficients match the spec’s published
 48 kHz values at 48 kHz.
 
 **Stage 1, the high shelf:**
@@ -35,7 +35,7 @@ $$G = 3.999844\ \text{dB}, \quad Q = 0.707175, \quad f_c = 1681.974\ \text{Hz}$$
 $$Q = 0.500327, \quad f_c = 38.1355\ \text{Hz}$$
 
 With $k = \tan(\pi f_c / f_s)$, $V_H = 10^{G/20}$, and $V_B = V_H^{0.499667}$,
-the shelf's coefficients are
+the shelf’s coefficients are
 
 $$
 a_0 = 1 + \tfrac{k}{Q} + k^2, \qquad b_0 = \frac{V_H + V_B \tfrac{k}{Q} +
@@ -58,11 +58,11 @@ buys.</figcaption>
 
 ## Block loudness and the two gates
 
-Blocks are **400 ms with 75% overlap**. Each block's loudness is
+Blocks are **400 ms with 75% overlap**. Each block’s loudness is
 
 $$L_j = -0.691 + 10 \log_{10}\!\left(\frac{1}{N}\sum_{n} w[n]^2\right)$$
 
-where $w$ is the K-weighted signal. The $-0.691$ dB offset is the spec's
+where $w$ is the K-weighted signal. The $-0.691$ dB offset is the spec’s
 calibration constant.
 
 Then two gates, in order:
@@ -111,7 +111,7 @@ over full scale, and it did. Measured over 150 vetted prior draws:
 | peak p50 | 0.623 | **0.623** |
 | peak p90 / p99 / max | 1.061 / 2.098 / 4.063 | 1.000 / 1.000 / 1.000 |
 | over full scale | 22 (15%) | **0** |
-| over 1.25 (where the app's `master.gain = 0.8` clips) | 11 (8%) | **0** |
+| over 1.25 (where the app’s `master.gain = 0.8` clips) | 11 (8%) | **0** |
 | gave up gain | none | 22 (15%), mean 3.0 dB, worst 12.2 dB |
 
 The two 22s are the same twenty-two patches, and the **unmoved median** is the
@@ -134,7 +134,7 @@ What it costs is on the record rather than hidden: the ~15% that reach the
 ceiling audition *below* target, so loudness matching degrades exactly where
 crest is highest. Quieter is a smaller bias on a preference judgment than
 clipped. `Features::peak_reduction_db` carries the amount, so a surface can say
-"pulled down 3 dB so it would not clip" instead of presenting a peak-limited
+“pulled down 3 dB so it would not clip” instead of presenting a peak-limited
 patch as merely quiet.
 
 `make norm-peak` reproduces the table.
@@ -152,7 +152,7 @@ curve stopped turning over.
 
 The report carries `lufs_before`, `gain_db`, and `peak_reduction_db`, all of
 which survive into `Features`. They are diagnostics rather than model inputs:
-they are not coordinates of $\varphi$, because a sound's level before
+they are not coordinates of $\varphi$, because a sound’s level before
 normalization is exactly the information normalization exists to discard.
 
 ## Where it sits in the pipeline
@@ -162,13 +162,13 @@ normalization is exactly the information normalization exists to discard.
 $$\text{render} \to \text{vet} \to \text{normalize} \to \varphi_{\text{audio}}$$
 
 Vetting inspects the **raw** render, deliberately: its thresholds are about the
-patch's real output level, and measuring them post-normalization would make the
+patch’s real output level, and measuring them post-normalization would make the
 peak ceiling meaningless. See
 [the order is the design](./vetting.md#the-order-is-the-design).
 
 The normalized buffer is also **exactly what the player hears**. One buffer
 serves the health check, the measurement, and the playback, which is what makes
-"a player never hears an unvetted patch" true by construction rather than by
+“a player never hears an unvetted patch” true by construction rather than by
 discipline.
 
 ## Mono
@@ -181,4 +181,4 @@ but the *measurement* path sums.
 
 So **stereo width is invisible to the model.** There is no width coordinate, so
 no number of picks can teach a preference for it. The app says so on the
-chorus module's spec card, and this is why.
+chorus module’s spec card, and this is why.

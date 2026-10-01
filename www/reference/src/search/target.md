@@ -8,9 +8,9 @@ them.</p>
 
 $$\pi_\beta(x) \;\propto\; p_{\text{grammar}}(x)\;\exp\!\big(\beta \cdot \E[u_\theta(\varphi(x))]\big)$$
 
-This is fugue-evo's `EvolutionModel` with the learned utility plugged in as
+This is fugue-evo’s `EvolutionModel` with the learned utility plugged in as
 fitness, so the whole thing becomes an ordinary probabilistic program and
-fugue-evo's typed MH applies unchanged.
+fugue-evo’s typed MH applies unchanged.
 
 ## What each factor does
 
@@ -18,8 +18,8 @@ fugue-evo's typed MH applies unchanged.
 probability of the term under the
 [typed PCFG](../genome/grammar.md#parsimony-is-the-prior-not-a-penalty), not a penalty
 term. Deeper terms pay more prior mass by construction, because each extra
-level multiplies in another Bernoulli that came out "processor" plus that
-node's own parameter draws.
+level multiplies in another Bernoulli that came out “processor” plus that
+node’s own parameter draws.
 
 Ad-hoc size penalties in genetic programming need tuning, interact badly with
 fitness scaling, and leave the target distribution unwritten. Here the target
@@ -27,7 +27,7 @@ fitness scaling, and leave the target distribution unwritten. Here the target
 hyperparameter.
 
 **$\exp(\beta \E[u_\theta])$ is the direction.** The expectation is over the
-posterior, so the search climbs the model's *mean* belief and is not seduced by
+posterior, so the search climbs the model’s *mean* belief and is not seduced by
 a single confident-looking draw.
 
 <figure class="viz" data-viz="boltzmann">
@@ -47,7 +47,7 @@ than tuned.</figcaption>
 |---|---|
 | $\to 0$ | Browse the prior. The taste model is ignored |
 | $2.0$ | Shipped default |
-| large | Optimizer mode: the search climbs toward the model's single best guess |
+| large | Optimizer mode: the search climbs toward the model’s single best guess |
 
 One dial for conservatism, which is the practical payoff of writing the target
 down: there is no explore/exploit schedule to tune, no diversity term, no
@@ -113,6 +113,6 @@ adaptive single-site MH walk warm-started from each of the best pool members
 and keeps the final state: local hill-climbing *on* that target, which is what
 a candidate pool needs, rather than a draw *from* it.
 
-The design's tempered SMC is not built, and there is no crossover: every child
+The design’s tempered SMC is not built, and there is no crossover: every child
 grows from one seed (`walk.rs`). [Refinement](./refinement.md) draws the
 distinction.

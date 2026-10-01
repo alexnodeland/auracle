@@ -80,14 +80,14 @@ row above is the first of those and could be the second.
 ## 1. The register is gated on evidence that cannot arrive
 
 The fit-cost entry in [open questions](./open-questions.md) says this in as many
-words: it is "open for want of *data* rather than for want of an instrument",
+words: it is “open for want of *data* rather than for want of an instrument”,
 and `Engine::style_shares` was built to collect exactly the rows that bear on
 it: the ones where `k == k_styles`. Behind it sits the question the K cap is a
 proxy for, which is whether a player ever uses five styles at all.
 
-Those rows are on other people's machines, and there is no path off them.
+Those rows are on other people’s machines, and there is no path off them.
 [Persistence](../persistence.md#where-the-browser-keeps-it) is unambiguous:
-IndexedDB under the page's origin, no account, no server, nothing transmitted,
+IndexedDB under the page’s origin, no account, no server, nothing transmitted,
 and the only backup that exists is a profile the player downloaded by hand.
 
 So a project whose method is *close the question by measuring it* has a class of
@@ -124,17 +124,17 @@ engine that has to be built.
 **Two reasons it might be wrong, both worth stating before it is built.** A
 donated corpus is self-selected: it answers *how many styles does an
 enthusiast use*, which is not the question. And a population prior asserts that
-other players' preferences are evidence about each player's, which is close to the
+other players’ preferences are evidence about each player’s, which is close to the
 assumption the [max-of-experts design](../taste/utility.md) already refused at
-the level of one listener's islands; refusing it within a person and accepting
+the level of one listener’s islands; refusing it within a person and accepting
 it across people needs an argument, not an analogy.
 
 **What would settle it.** Cross-validation on donated profiles: does a
 population-prior warm start beat the three-pick warm start on held-out duels
-over a session's first hundred observations? That is an offline measurement
+over a session’s first hundred observations? That is an offline measurement
 with no live user in it, and it can be run the day a corpus exists.
 
-## 2. Target-directed search: "make it sound like this"
+## 2. Target-directed search: “make it sound like this”
 
 Every path through this system learns a utility. But the
 [Boltzmann target](../search/target.md) consumes $u$ as a black box:
@@ -165,10 +165,10 @@ the grammar prior left to supply the parsimony that keeps the means sane. A
 match that also scored structure would be asking the search to reproduce a
 topology the reference never had.
 
-**What actually stands in the way is φ_audio's stimulus dependence.** $\varphi$
+**What actually stands in the way is φ_audio’s stimulus dependence.** $\varphi$
 is measured under the [standard phrase](../audition/phrase.md); the
 [`:p2` tag](../audition/phrase.md#the-p2-stimulus-tag) exists precisely because
-a coordinate's meaning is relative to the stimulus that produced it, and a
+a coordinate’s meaning is relative to the stimulus that produced it, and a
 reference clip is not that phrase. Twelve of the eighteen
 [φ_audio](../features/audio.md) coordinates are whole-phrase statistics and
 survive the mismatch with a caveat about pitch content; the six
@@ -178,7 +178,7 @@ by property (first note, highest note, first chord), and arbitrary audio may
 have none of them. The imputation
 is already honest, since an absent coordinate reads as *no evidence*, but here
 the absence lands on the axes describing timbral motion and register, which is
-where a listener's "sounds like" often lives.
+where a listener’s “sounds like” often lives.
 
 The honest form is therefore a **partial** match with the matched subset named
 on screen, rather than a match that quietly scores twelve coordinates and calls
@@ -228,9 +228,9 @@ exists.
 The cost that will actually bite is historical: an observation becomes a
 judgment about a *(patch, context)* pair, and every vote already in every log
 has no context. Under the [by-name imputation
-rule](../persistence.md#names-not-indices) that reads as the standardizer's
+rule](../persistence.md#names-not-indices) that reads as the standardizer’s
 mean, which is honest and weak: the correct behavior, and still a real
-dilution of a player's history the first time it ships.
+dilution of a player’s history the first time it ships.
 
 **This does not close the open question; it reroutes it.** Per-*style* phrases
 stay exactly as open as they are. What changes is that the per-*context* half
@@ -245,7 +245,7 @@ and a player needs the corner they are working in tonight.
 ## 4. Radio is a throughput fix, not the third mode
 
 [Grid and radio remain open](./milestones.md), and keep/kill is a fitted
-likelihood whose only surface, the bank's **cut**, records kills alone. The
+likelihood whose only surface, the bank’s **cut**, records kills alone. The
 usual reading is *two modes left to build*.
 There is a sharper one.
 
@@ -266,7 +266,7 @@ mechanisms are denominated in observation counts:
 - **[Calibration](../taste/calibration.md)** is a Brier skill score against
   0.5, plus random check duels. Its error bars are a sample-size problem.
 
-So radio is not the third mode. It is what makes the model's own dynamics
+So radio is not the third mode. It is what makes the model’s own dynamics
 *observable*, and it should be ranked on that rather than on effort.
 
 **The counter-argument, which is real.** Keep/kill is the weakest signal per
@@ -281,7 +281,7 @@ down.
 
 ## 5. The bank does not leave the browser
 
-What comes out today is a WAV of the player's own playing, a patch file, and a
+What comes out today is a WAV of the player’s own playing, a patch file, and a
 profile. Everything a musician does next happens in a DAW.
 [Lineage](./lineage.md) names the intended shells (`nih-plug` VST3/CLAP, then
 AUv3), and neither is started.
@@ -350,16 +350,16 @@ tested.
 quantity with uncertainty, so an argmax over it is an argmax over a surrogate:
 the same move the [`RefineKeep::Best` measurement](./open-questions.md) found to
 be lower-variance rather than better. A suggestion without its interval
-overclaims in exactly the way this project's TRUST surfaces exist to prevent.
+overclaims in exactly the way this project’s TRUST surfaces exist to prevent.
 And a confidently-signed suggestion that is wrong is the failure a player
 notices and does not forgive, which argues for reporting the top few with
 intervals rather than one imperative.
 
-This is also the concrete cash-out of the README's claim against
+This is also the concrete cash-out of the README’s claim against
 star-a-generation synths: that they cannot say *why*. Coefficients are an
 answer to that. A named edit is the answer a person asked for.
 
-## 8. The map's axes could be learned rather than principal
+## 8. The map’s axes could be learned rather than principal
 
 The [taste map](../../docs/views/taste.html) projects with PCA over standardized
 $\varphi$ (the top two principal axes, by power iteration), and `TasteMap` carries
@@ -372,16 +372,16 @@ An alternative is to project onto **learned** directions instead: the top two
 style vectors $\theta_k$ (orthogonalized), or utility against posterior
 standard deviation. Those axes are stable against the eigenvalue tie by
 construction. They are also *nameable*, which is the part that matters for a
-surface inviting someone to recognize territory: "more like your style 1" is a thing
-a person can hold, and "the first principal axis of a standardized feature
-matrix" is not.
+surface inviting someone to recognize territory: “more like your style 1” is a thing
+a person can hold, and “the first principal axis of a standardized feature
+matrix” is not.
 
 **Not obviously better, and the reason is worth keeping.** A learned axis moves
 when the model does, so the territory changes meaning between fits. That is a
 different instability, moved from the solver to the model: arguably worse for
 a map, arguably better because it is *explicable* and can be announced.
 
-**What would settle it.** Measure the rotation of each projection's axes
+**What would settle it.** Measure the rotation of each projection’s axes
 between consecutive fits over a session and compare. That is a small
 instrumentation on top of `TasteMap` and a number, not an opinion.
 
@@ -404,7 +404,7 @@ hyperparameters: the model does not know the difference.
 API commitment, and the project is 0.x with a save format that still moves;
 publishing a crate whose serialization is not settled buys a migration
 obligation to strangers. That is a *timing* argument, which is a much better
-reason than "no time", and it means the entry has a trigger: revisit at 1.0, or
+reason than “no time”, and it means the entry has a trigger: revisit at 1.0, or
 when a second consumer actually exists.
 
 ## 10. The measurements are a result, and results travel
@@ -423,8 +423,8 @@ gates that disagreed, with a general reason attached: a VIF is a fact about
 not follow.
 
 Neither needs any work. They are written, sourced, and reproducible from a
-checkout. What is missing is a destination, and the gap between "recorded in a
-changelog" and "somewhere a person searching for the answer will find it" is
+checkout. What is missing is a destination, and the gap between “recorded in a
+changelog” and “somewhere a person searching for the answer will find it” is
 the entire distance.
 
 ## 11. The model nobody has fitted is in the render cache
@@ -435,7 +435,7 @@ explaining why only the *structural* half of $\theta$ tilts the grammar:
 > Turning `centroid_mean` into a proposal tilt would require a model of which
 > productions raise brightness, which is a model nobody has fitted.
 
-That model's training set already exists, in quantity, and the project is
+That model’s training set already exists, in quantity, and the project is
 already paying to store it. Every $(\text{term}, \text{spec}) \to \varphi$ the
 system has ever computed is a labeled row, and the
 [persistent render cache](../persistence.md#the-persistent-render-cache) is
@@ -453,7 +453,7 @@ currency the tilt exists to buy: a search that looks where the model expects to
 find things.
 
 **The objection, and why the existing design already answers it.** Brightness
-is a property of the composition, not of a module (a filter's effect depends
+is a property of the composition, not of a module (a filter’s effect depends
 on what precedes it), so a linear map is crude. But a tilt needs only a sign
 and a rough magnitude, and it is already clamped to $[\tfrac14, 4]$. The clamp
 exists to stop a confident coefficient starving a kind; it doubles as the rail
@@ -461,7 +461,7 @@ that makes a crude map safe to consult.
 
 **What would settle it.** The `search_health --budget-ab` shape: does
 audio-tilted proposal weighting beat structural-only tilting on a synthetic
-user's *true* utility, over paired seeds? The harness that answered the 40 × 10
+user’s *true* utility, over paired seeds? The harness that answered the 40 × 10
 split answers this unchanged.
 
 ## 12. The screening cascade is cited, and unbuilt
@@ -506,7 +506,7 @@ away.
 [decisions log](./decisions.md) when it was built. It is kept here, short,
 because it was argued on this page first.
 
-The entry observed that an MH walk is sequential but a generation's ten
+The entry observed that an MH walk is sequential but a generation’s ten
 **seeds** are not: they are independent by construction, `search_health`
 already walked them one thread per seed natively, and in the browser they ran
 one after another while the [render farm](../runtime.md#the-render-farm) sat
@@ -518,14 +518,14 @@ now jobs and a shared context ([refinement](../search/refinement.md#what-runs)):
 `refine_jobs` hands out one job per seed (its tree, step budget, and its own
 RNG seed) and one context (the tilted prior, the posterior, the standardizer,
 the phrase), a pure `run_walk` walks a job on any worker, and `refine_absorb`
-folds the results back **in job order**, so the pool is the serial path's at
+folds the results back **in job order**, so the pool is the serial path’s at
 every width. The context crosses to each walk worker once per generation. In
 the browser the walks run on a crew raised on demand
 ([walks on the farm](../runtime.md#walks-on-the-farm)), and a generation takes
 about as long as its slowest walks rather than the sum of ten.
 
 The prize the entry named, ⚡ latency, moved less than the entry hoped: ⚡ is
-one walk, so it still takes a walk's time. What changed is that it walks on the
+one walk, so it still takes a walk’s time. What changed is that it walks on the
 farm, and the engine answers everything else while it does.
 
 ## 14. Stars have a global scale; keep/kill has a per-session one
@@ -534,13 +534,13 @@ farm, and the engine answers everything else while it does.
 argues for the per-session threshold exactly right:
 
 > Without the per-session threshold, a strict day and a generous day would
-> average into a meaningless global bar, and both days' data would be degraded
-> by the other's.
+> average into a meaningless global bar, and both days’ data would be degraded
+> by the other’s.
 
 That argument is fully general over absolute-scale signals, and the
 [star cutpoints](../taste/likelihoods.md#star-ratings-a-cumulative-logit) are
 fitted **globally**. Worse, the asymmetry runs the wrong way round from ship
-state: keep/kill reaches the log only as kills, from the bank's **cut**, while
+state: keep/kill reaches the log only as kills, from the bank’s **cut**, while
 stars are a signal players actually emit. So the mechanism exists on the
 one-sided signal and is missing from the full scale.
 
@@ -572,7 +572,7 @@ up honestly as *wall time* rather than dishonestly as *degraded inference*.
 
 The two are different trades. Capping $K$ spends capability to buy cost;
 rescaling spends time to buy cost. Which is right depends on whether a mature
-fit's wall time is actually a problem for a person, and that is a UX question
+fit’s wall time is actually a problem for a person, and that is a UX question
 nobody has asked, not a statistics question.
 
 `auracle-taste/examples/fit_bench.rs` already measures the exact axis, so the
@@ -608,7 +608,7 @@ each way you talk to it*.
 Not directions so much as observations about what the engine already is.
 
 **Sound *sets*, not sounds.** A style plus a diversity constraint
-yields a coherent *family*: twelve UI sounds in one voice, a game's one-shot
+yields a coherent *family*: twelve UI sounds in one voice, a game’s one-shot
 set, an earcon family that a person can learn. The engine is closer to this
 than it looks: the pool already holds diverse candidates, the map already
 measures spread, and what is missing is a set-level objective (maximize total
@@ -625,7 +625,7 @@ with their measurements.
 *requires* reduces to *which of these two*. That is an accessibility property
 rather than a beginner property, and it is not claimed anywhere.
 
-**An instrument for a real empirical question.** Whether one listener's timbre
+**An instrument for a real empirical question.** Whether one listener’s timbre
 preference is multi-modal at all is testable, `style_shares` is already the
 recording of it, and the answer is interesting whichever way it falls. Blocked
 on [§1](#1-the-register-is-gated-on-evidence-that-cannot-arrive), like

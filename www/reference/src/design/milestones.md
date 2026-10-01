@@ -1,7 +1,7 @@
 # Milestones and the gates that closed them
 
 <p class="lede">Each milestone had a demo that either worked or did not. None of
-them closed on "the code is written".</p>
+them closed on “the code is written”.</p>
 
 | # | Deliverable | Demo / gate | Status |
 |---|---|---|---|
@@ -17,8 +17,8 @@ them closed on "the code is written".</p>
 ([dynamic K, max-of-experts, post-hoc label alignment](../taste/utility.md)),
 styles are nameable and persist, and profiles
 [download and open](../persistence.md) as a portable observation log plus its
-standardizer. **Grid and radio modes remain open**, and with them keep/kill's
-triage surface: today it is emitted only by the bank's **cut**, as a kill.
+standardizer. **Grid and radio modes remain open**, and with them keep/kill’s
+triage surface: today it is emitted only by the bank’s **cut**, as a kill.
 
 The pass-by-pass record is
 [`CHANGELOG.md`](https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md).
@@ -35,7 +35,7 @@ duels/stars/keep-kills with realistic noise, asserting
 That makes the core falsifiable headlessly, and it later doubled as a demo mode
 that learns a fake user in fast-forward.
 
-It has since become the harness the engine's own tuning is settled on.
+It has since become the harness the engine’s own tuning is settled on.
 `search_health --budget-ab` chose the [40 × 10 refinement
 split](../search/refinement.md), and `learn_synthetic --compare` produced the
 [acquisition measurement](../search/acquisition.md). The closed-loop test runs
@@ -55,7 +55,7 @@ radio, sequenced by signal quality rather than by effort.
    reporting on itself: the map, the styles, their coefficients with credible
    intervals, and the calibration diagram.
 2. **Population grid: open.** See a generation at once, rate/cull/breed; keeps
-   evosynth v1's "generations" mental model for users who want to steer. This
+   evosynth v1’s “generations” mental model for users who want to steer. This
    is where keep/kill triage would get its surface.
 3. **Radio mode: open.** Lean-back continuous stream with keep/kill/skip; the
    payoff once generation quality is high.

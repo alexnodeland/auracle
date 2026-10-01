@@ -29,8 +29,8 @@ The **representation**, and the crate everything else is built on.
 
 | Module | Owns |
 |---|---|
-| `term` | `PatchTree`, `AudioNode`, `ModNode`: the genome type. The Audio/Mod sort split is enforced by Rust's type system, so ill-sorted terms are unrepresentable |
-| `prior` | `PatchGrammarPrior`: the PCFG as a fugue program. Implements fugue-evo's `GenomePrior` |
+| `term` | `PatchTree`, `AudioNode`, `ModNode`: the genome type. The Audio/Mod sort split is enforced by Rust’s type system, so ill-sorted terms are unrepresentable |
+| `prior` | `PatchGrammarPrior`: the PCFG as a fugue program. Implements fugue-evo’s `GenomePrior` |
 | `genome` | The canonical trace codec. **This is the addressing scheme**, and a round-trip property test keeps it from drifting |
 | `compile` | Term → quiver `Patch`, with live parameter handles. Nearly 5,000 lines, the largest single file in the workspace |
 | `mutate` | Structural edit operations, and their validity gate |
@@ -39,7 +39,7 @@ The **representation**, and the crate everything else is built on.
 | `describe` | The rack description the panel draws from |
 | `presets` | The 62-patch hand-made library, in seven families |
 
-**`genome`'s codec *is* the grammar's addressing.** It is one scheme rather
+**`genome`’s codec *is* the grammar’s addressing.** It is one scheme rather
 than two kept in sync, which is what makes a knob turn, a lock, and an MH
 proposal refer to the same thing.
 
@@ -87,8 +87,8 @@ The **engine** every frontend drives.
 | Module | Owns |
 |---|---|
 | `engine` | `Engine`: pool, log, posterior, refinement, workbench, lineage. About 4,100 lines |
-| `walk` | A generation's walks as data: the jobs, the context they share, and the walk as a pure function |
-| `perform` | PERFORM's named controls, drift, and offers |
+| `walk` | A generation’s walks as data: the jobs, the context they share, and the walk as a pure function |
+| `perform` | PERFORM’s named controls, drift, and offers |
 | `surrogate` | The learned taste as a fugue-evo `Fitness` |
 | `calib` | Prequential forecast scoring and reliability diagrams |
 | `map` | The 2D projection behind the taste map |
@@ -115,7 +115,7 @@ Vanilla JavaScript, no build step, no framework, no dependencies. Eight scripts
 carry it: `main.js` (UI and Web Audio), `worker.js` (the engine), `farm.js` (a
 stateless render and walk worker), `live-audio.js` (worklet assembly),
 `perform.js` (PERFORM), `midi.js` (MIDI controllers), `booth.js` (booth mode),
-and `taste-geom.js` (the TASTE view's geometry).
+and `taste-geom.js` (the TASTE view’s geometry).
 
 Its own architecture notes are in
 [`apps/web/README.md`](https://github.com/alexnodeland/auracle/blob/main/apps/web/README.md);
@@ -138,6 +138,6 @@ Two build settings worth knowing, both in `Cargo.toml`:
   Everything the player waits on is render-bound. `panic = "abort"` also drops
   unwinding tables from the wasm bundle. None of these can change float
   results; only `--fast-math`-style options could, and none is enabled.
-- **`serde_json` with `float_roundtrip`.** The observation log is the profile's
-  source of truth and must reload bit-identically; serde_json's fast float
+- **`serde_json` with `float_roundtrip`.** The observation log is the profile’s
+  source of truth and must reload bit-identically; serde_json’s fast float
   parse can be off by one ULP.

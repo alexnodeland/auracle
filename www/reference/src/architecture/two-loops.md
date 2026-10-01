@@ -25,7 +25,7 @@ observation stream.</p>
 
 The two loops run at different speeds on purpose. The machine can evaluate
 thousands of candidates against a learned surrogate silently, and surface only
-a curated few. That addresses interactive evolution's classic failure mode: the
+a curated few. That addresses interactive evolution’s classic failure mode: the
 human bottleneck, where a user is asked to rate a whole population per
 generation and quits from fatigue.
 
@@ -33,7 +33,7 @@ generation and quits from fatigue.
 <figcaption><strong>The same diagram, with the traffic moving.</strong> What the
 ASCII version above cannot show is that the two loops run at <em>different
 speeds</em>. Green flows continuously with no human in it; amber moves at the
-pace of the player's picks.</figcaption>
+pace of the player’s picks.</figcaption>
 </figure>
 
 ## The patch loop
@@ -47,9 +47,9 @@ Machine-paced. No human in it.
    fill, since vet failures burn attempts.
 2. **Refine.** Once a posterior exists, take the top `refine_seeds` candidates
    and run `refine_steps` Metropolis–Hastings steps from each. The defaults in
-   `engine.rs` are **10 seeds × 40 steps**, both scaled from the grammar's
+   `engine.rs` are **10 seeds × 40 steps**, both scaled from the grammar’s
    processor count (`N_OPS`, 20, in `prior.rs`), so a change to the processor
-   set does not silently change the search's character.
+   set does not silently change the search’s character.
 3. **Inject.** Each child is admitted only if it beats the member it would
    displace. When the generation ends, the lowest-utility members are replaced
    to bring the pool back to size. Pinned (saved) candidates are exempt,
@@ -73,11 +73,11 @@ Human-paced, and persistent across sessions.
    last pick.
 3. **Refit**, every sixth pick. Full MCMC over the log: 10,000 post-warmup
    steps (`mcmc_samples`) after 3,000 warmup steps (`mcmc_warmup`), thinned to
-   at most 500 retained draws (`KEEP`, in `auracle-taste`'s `model.rs`).
+   at most 500 retained draws (`KEEP`, in `auracle-taste`’s `model.rs`).
 
 The app paces refits by count: every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`). The engine also reports when the cheap path has run out of
-road, that is, when the reweighted posterior's **effective sample size** has
+road, that is, when the reweighted posterior’s **effective sample size** has
 collapsed far enough to need resampling since the last fit
 (`Engine::needs_refit`). The app does not wait for that signal. See
 [The posterior](../taste/posterior.md#the-refit-trigger).
@@ -99,14 +99,14 @@ with each multiplier clamped to $[\tfrac14, 4]$ so no module kind is ever
 starved or monopolized. Details and the shrinkage applied to $t_i$ are in
 [Proposals](../search/proposals.md).
 
-So the loop is closed: the player's picks change what gets *proposed* and what
+So the loop is closed: the player’s picks change what gets *proposed* and what
 the search counts as parsimonious, not only what scores well once proposed.
 
 ## Why this is preferential Bayesian optimization
 
-There is a latent objective (the player's utility), an expensive oracle (the
+There is a latent objective (the player’s utility), an expensive oracle (the
 player), a cheap surrogate (the posterior), and a generator of candidates (the
-grammar prior plus MH). The acquisition step is where $\theta$'s posterior
+grammar prior plus MH). The acquisition step is where $\theta$’s posterior
 *uncertainty* would earn its keep: early sessions could ask informative
 questions (duels the model cannot rank), and a confident model could mostly
 serve sounds it predicts the player will pick.
@@ -116,7 +116,7 @@ an empirical question. See [Acquisition](../search/acquisition.md).
 
 ## The gate on all of it
 
-`auracle-session`'s closed-loop test runs the engine against a `SyntheticUser`
+`auracle-session`’s closed-loop test runs the engine against a `SyntheticUser`
 with known ground-truth $\theta^*$, end to end through the **real** grammar →
 render → vet → feature pipeline, and asserts that the learned taste ranks
 genuinely preferred patches on top.

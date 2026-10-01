@@ -28,7 +28,7 @@ $$
 \R
 $$
 
-A loop closes over it: the player's picks condition the taste parameters
+A loop closes over it: the player’s picks condition the taste parameters
 $\theta$, and $\theta$ reshapes how the next term is proposed.
 
 ## Three commitments
@@ -96,13 +96,13 @@ Auracle is thin on top of two in-house libraries:
 - **[fugue-evo](https://github.com/alexnodeland/fugue-evo)** does evolution as
   Bayesian inference. Priors as probabilistic programs, typed
   Metropolis–Hastings with automatic reversible jump, grammar-based genetic
-  programming, tempered SMC in trace space. Auracle's grammar is a
-  `GenomePrior`, and its search is fugue-evo's typed MH with a learned fitness
+  programming, tempered SMC in trace space. Auracle’s grammar is a
+  `GenomePrior`, and its search is fugue-evo’s typed MH with a learned fitness
   plugged in. Auracle uses neither the tempered SMC nor any crossover.
 - **[quiver](https://github.com/alexnodeland/quiver)** does modular synthesis.
   Arrow-style combinators, typed ports (Audio / V-Oct / Gate / CV), patch
-  graphs, headless rendering, first-class WebAssembly. Auracle's genome is a
-  term in quiver's combinator algebra; its "compiler" targets a quiver patch
+  graphs, headless rendering, first-class WebAssembly. Auracle’s genome is a
+  term in quiver’s combinator algebra; its “compiler” targets a quiver patch
   graph.
 
 Where a guarantee comes from one of them, this book says so.

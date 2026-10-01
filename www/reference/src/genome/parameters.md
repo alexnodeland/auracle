@@ -1,7 +1,7 @@
 # Parameter sites and their domains
 
 <p class="lede">Every continuous knob in the genome is a draw from
-$\mathrm{Uniform}(0,1)$. The musical meaning is the compiler's job.</p>
+$\mathrm{Uniform}(0,1)$. The musical meaning is the compiler’s job.</p>
 
 ## One domain, everywhere
 
@@ -16,7 +16,7 @@ pub fn in_domain(v: f64) -> bool {
 
 Every continuous site is normalized to $[0,1)$ and the mapping to Hz, seconds,
 dB, or cents happens in the compiler. **Half-open**, because that is what
-$\mathrm{Uniform}(0,1)$ is: fugue's `log_prob` is $-\infty$ at $x \ge 1$. The
+$\mathrm{Uniform}(0,1)$ is: fugue’s `log_prob` is $-\infty$ at $x \ge 1$. The
 domain used to be `0.0..=1.0`, which made exactly `1.0` legal here and
 impossible under the prior: a knob dragged to its stop, two shipped presets,
 and the default vibrato insert all had $\log p = -\infty$, so `init_from`
@@ -38,7 +38,7 @@ bound, and an infinity is exactly the runaway the gate exists to stop.
 
 ## Bounded by the mapping
 
-Because the mapping is the compiler's, the *musically* dangerous regions are
+Because the mapping is the compiler’s, the *musically* dangerous regions are
 excluded by how $[0,1]$ is spent rather than by a downstream guard. Filter
 resonance maps to a range that stops short of self-oscillation; delay feedback
 stops short of 1; V/Oct maps into an audible band.
@@ -97,17 +97,17 @@ self.to_trace().choices.iter().filter_map(|(a, c)| match c.value {
 
 The trace enumerates exactly the continuous sites, by construction, from the
 same walk the prior samples. A hand-written match over the productions would be
-a second table of "which fields are knobs", and the first module somebody
+a second table of “which fields are knobs”, and the first module somebody
 forgot to add to it would be the one the next bad value escaped through.
 
 This is the [address scheme](../architecture/addresses.md) paying for itself:
-there is one enumeration of the genome's sites, and it is the one inference
+there is one enumeration of the genome’s sites, and it is the one inference
 uses.
 
 ## Repair, not refusal
 
 `clamp_domains()` pulls every out-of-domain site back in and returns how many
-it fixed. `NaN` goes to the domain's midpoint; anything else is clamped, with
+it fixed. `NaN` goes to the domain’s midpoint; anything else is clamped, with
 `1.0` and above landing on `PARAM_MAX`. It runs on every session load, which is
 what mends a save written by a build that still let a knob rest on the stop.
 
@@ -149,7 +149,7 @@ The fixes are at three layers:
   would be a lie, before spending the render. This is the gate that keeps the
   log clean; every row in the log came through it.
 - **Runaway-column detection in the standardizer**, so the *next* escape costs
-  a coordinate's precision rather than the coordinate.
+  a coordinate’s precision rather than the coordinate.
 
 Layers 1 and 2 should make layer 3 unnecessary. It exists anyway, because the
 value got through everything that was supposed to stop it.
@@ -161,13 +161,13 @@ Separately from domains, the search is bounded in size:
 | Ceiling (in `mutate.rs`) | Default | Because |
 |---|---|---|
 | Modules (`MAX_SIZE`) | 24 | the realtime voice |
-| Term depth (`MAX_DEPTH`) | 6 | the prior's `max_depth` (5) + 1, the deepest term it can score |
-| Modulation depth (`MAX_MOD_DEPTH`) | 3 | the prior's `max_mod_depth` (2) + 1 |
+| Term depth (`MAX_DEPTH`) | 6 | the prior’s `max_depth` (5) + 1, the deepest term it can score |
+| Modulation depth (`MAX_MOD_DEPTH`) | 3 | the prior’s `max_mod_depth` (2) + 1 |
 
 The app shows a ceiling once a patch is one step from it, in the form
 `23/24 modules`, and all three (`8/24 modules · 4/6 depth · 1/3 mod depth`)
 with Show measurements on. A hand-built
 patch past a ceiling is refused, and one *at* a ceiling has no room to grow,
-which is a common reason a generation reports "no move was accepted".
+which is a common reason a generation reports “no move was accepted”.
 See [the validity gate](edits.md#the-validity-gate) for why the two depth
 ceilings are derived from the prior rather than set above it.

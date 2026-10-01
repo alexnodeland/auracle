@@ -31,7 +31,7 @@ what any amount of modeling can currently buy.
 | # | What cannot be heard | Costs |
 |---|---|---|
 | [1](#1-a-patch-is-a-function-from-performance-to-sound-and-it-is-sampled-once) | How a patch responds to *playing*, velocity above all | The object being modeled |
-| [2](#2-modulation-is-the-distinctive-claim-and-its-rate-is-not-measured) | Modulation **rate** and shape | The instrument's best feature, unrewardable |
+| [2](#2-modulation-is-the-distinctive-claim-and-its-rate-is-not-measured) | Modulation **rate** and shape | The instrument’s best feature, unrewardable |
 | [3](#3-loudness-is-normalized-away-and-the-raw-level-is-already-computed) | How loud a patch natively is | A whole axis of ordinary preference |
 | [4](#4-everything-is-judged-in-a-silent-room) | How a patch sits against other material | Why isolated judgments mislead |
 | [5](#5-there-is-no-tempo-and-the-presets-are-working-around-it-by-hand) | Anything tempo-relative | The difference between a sound and a part |
@@ -94,7 +94,7 @@ are the precedent for measuring a *contrast* rather than a level.
 
 ## 2. Modulation is the distinctive claim, and its rate is not measured
 
-The instrument's distinguishing feature is that modulation is a whole chain: an
+The instrument’s distinguishing feature is that modulation is a whole chain: an
 `s&h rand → quantize → slew` can reach a cutoff, the module list exists to
 show where a modulator may legally go, and nearly every module carries a mod
 slot.
@@ -113,7 +113,7 @@ everything $\varphi$ recorded about that:
 7 Hz tremolo at equal depth landed on near-identical coordinates. A random
 sample-and-hold and a sine LFO were indistinguishable to every one of them.
 
-So *"I like slow evolving movement and dislike fast wobble"* was not a
+So *“I like slow evolving movement and dislike fast wobble”* was not a
 preference that is hard to learn. It was **inexpressible**, in exactly the
 sense [the log-axis argument](../features/audio.md#frequency-features-are-logarithmic-not-linear-in-hz)
 uses about brightness on a linear-Hz axis, and for the same reason: the model is
@@ -124,12 +124,12 @@ The second-order consequence is worse than the first. Proposal tilts read the
 [structural coefficients](../search/proposals.md#structural-taste-specifically),
 and `mod_density` is one of them, so the tilt **can** learn *more modulation*
 and **cannot** learn *slower modulation*. Before the motion bands the fitness
-could not either, and the instrument's most distinctive capability was the one
+could not either, and the instrument’s most distinctive capability was the one
 the search could not be rewarded for using well.
 
 **The measurement already has its window open.** The held note exists, in the
-words of its own page, to reveal "sub-Hz modulation over a register-constant
-sustain". The segment was built for this and then not measured for it. An
+words of its own page, to reveal “sub-Hz modulation over a register-constant
+sustain”. The segment was built for this and then not measured for it. An
 autocorrelation of the centroid or RMS envelope across that span yields two
 coordinates:
 
@@ -142,7 +142,7 @@ If two numbers could be added to $\varphi$, these are the two.
 
 **Status: rate is measured now; periodicity was tried and cannot be, in this
 window.** Rate arrived as three [motion bands](../features/audio.md#motion-bands)
-rather than one dominant-rate number: a single "rate" coordinate is undefined
+rather than one dominant-rate number: a single “rate” coordinate is undefined
 for a static patch and meaningless for a random walk, while band energies are
 defined for everything and let a linear model hold *slow yes, fast no* as two
 coefficients of opposite sign. On the probe ladder the band that reads highest
@@ -160,7 +160,7 @@ the reason given is the right one: loudness bias would poison the preference
 data.
 
 The other half of that trade is not stated anywhere. **Loudness is part of a
-sound's identity.** *Hits hard*, *sits back*, *has weight* are ordinary,
+sound’s identity.** *Hits hard*, *sits back*, *has weight* are ordinary,
 strongly-held preferences, and they have been normalized out of existence by
 design. `crest` and `rms_std` recover dynamics *within* a patch; absolute level
 is gone.
@@ -168,7 +168,7 @@ is gone.
 What makes this an easy win rather than a lament is that the number already
 exists. [`VetReport`](../audition/vetting.md#what-it-measures) measures `peak`
 and `rms` on the **raw, pre-normalization** render (deliberately, because the
-gate's thresholds are about real output level), and `Features` keeps both,
+gate’s thresholds are about real output level), and `Features` keeps both,
 beside the raw loudness `lufs_before`. None of them reaches $\varphi$. The
 quantity *how loud is this patch natively* is computed on every candidate this
 project has ever rendered.
@@ -201,21 +201,21 @@ elsewhere: the premise of this project is that the instrument is learning what
 the player likes, and what it is learning is what they like *in an empty
 room*.
 
-The scope that would test it is not "build a DAW". One player-supplied backing
+The scope that would test it is not “build a DAW”. One player-supplied backing
 loop, played underneath the audition, changes what every pick means, and it
 interacts directly with [§3](#3-loudness-is-normalized-away-and-the-raw-level-is-already-computed),
 because level against a bed is exactly the judgment normalization removes.
 
 ## 5. There is no tempo, and the presets are working around it by hand
 
-An LFO's rate is sampled as `u01()` and mapped to Hz. The live instrument has a
-tempo (the arpeggiator's, which MIDI clock can set) and a SYNC switch, but SYNC
-reaches only step sequencers: it snaps each one's rate to the nearest division
+An LFO’s rate is sampled as `u01()` and mapped to Hz. The live instrument has a
+tempo (the arpeggiator’s, which MIDI clock can set) and a SYNC switch, but SYNC
+reaches only step sequencers: it snaps each one’s rate to the nearest division
 of the tempo. LFO rates, and everything the audition renders, have no tempo at
-all. A `Clock` tempo exists for the euclidean sequencer's own `bpm` port, and it
+all. A `Clock` tempo exists for the euclidean sequencer’s own `bpm` port, and it
 is not a session-level musical clock.
 
-The evidence that this costs something is in this repository's own preset
+The evidence that this costs something is in this repository’s own preset
 source, in comments:
 
 ```rust
@@ -231,8 +231,8 @@ unusable in a track: it can be set close by ear and it drifts over sixteen bars.
 For an instrument whose output is meant to end up in music, tempo-relative rates
 are not a convenience. They are the difference between a **sound** and a
 **part**, and they would also give [§2](#2-modulation-is-the-distinctive-claim-and-its-rate-is-not-measured)
-a natural axis to express rate *on*, since a player's preference about
-movement is far more plausibly "a cycle per bar" than "0.34 Hz".
+a natural axis to express rate *on*, since a player’s preference about
+movement is far more plausibly “a cycle per bar” than “0.34 Hz”.
 
 ## 6. The loop is selection; sound design is pursuit
 
@@ -262,19 +262,19 @@ difference between a tool that knows the player and a tool that is useful
 
 ## 7. Comparability constrains the measurement, not the listener
 
-The [decisions log](./decisions.md) records the audition as *"Standard 5.05 s
-phrase + free-play"*, with the rationale *"feature comparability requires fixed
-stimulus"*.
+The [decisions log](./decisions.md) records the audition as *“Standard 5.05 s
+phrase + free-play”*, with the rationale *“feature comparability requires fixed
+stimulus”*.
 
 The rationale is true of $\varphi$. It is **not** true of the person.
 
 $\varphi$ comes from a deterministic offline render. What a human hears while
 deciding is an independent choice, and could be anything at all, including
-the player's own playing, on both patches, with the same lick. The coordinates would
+the player’s own playing, on both patches, with the same lick. The coordinates would
 remain exactly as comparable, because nothing about them depends on what came
 out of the speakers during the vote.
 
-So a *duel in the player's own hands* costs $\varphi$ nothing. It is a far more musical
+So a *duel in the player’s own hands* costs $\varphi$ nothing. It is a far more musical
 elicitation than voting on four notes chosen by the instrument, and it is the
 direct remedy for [§1](#1-a-patch-is-a-function-from-performance-to-sound-and-it-is-sampled-once):
 a player testing velocity response themselves is measuring the dimension the
@@ -282,7 +282,7 @@ phrase holds constant, even if the coordinates still cannot see it.
 
 **The cost, stated rather than hidden.** The vote becomes a judgment about an
 experience the coordinates only partly describe. That adds noise, and adds bias
-if a player's own gestures systematically emphasize something the phrase does
+if a player’s own gestures systematically emphasize something the phrase does
 not. But it is noise in the measurement of something a player cares about,
 against precision about something they do not. The project already owns the
 instrument that would detect it, since
@@ -295,14 +295,14 @@ measurable on arrival.
 
 The rack exposes every trace address, and the word *macro* does not appear in
 the web app. A player performing wants two to four hands-on controls, not one
-per address in the term. PERFORM's six named controls (Bright, Snap, Motion,
+per address in the term. PERFORM’s six named controls (Bright, Snap, Motion,
 Body, Grit, and Space) are macros in all but name, but each is a **fixed**
 direction in $\varphi$, the same for every player
 ([Performance](../search/perform.md)).
 
 The interesting part is that **the fitted model already contains the personal
 axes**. A style $\theta_k$ is a direction in feature space whose meaning is
-*what this player cares about*. A macro that moves a patch along the model's
+*what this player cares about*. A macro that moves a patch along the model’s
 top learned direction is a control that is personal by construction (bite for
 one player, movement for another), and nothing else can offer it, because nothing
 else has fitted the model.
@@ -320,7 +320,7 @@ reports a discrete edit; the other puts the direction under a finger.
    ([§2](#2-modulation-is-the-distinctive-claim-and-its-rate-is-not-measured)).
    *Rate done, as three motion bands; periodicity blocked on stimulus length.*
    Cheapest and highest value: it lets the search be rewarded for the
-   instrument's best feature, and the segment it needs already exists for this
+   instrument’s best feature, and the segment it needs already exists for this
    exact purpose.
 2. **`log(raw rms)` as a coordinate**
    ([§3](#3-loudness-is-normalized-away-and-the-raw-level-is-already-computed)).
@@ -337,7 +337,7 @@ reports a discrete edit; the other puts the direction under a finger.
 5. **Declared context**
    ([§6](#6-the-loop-is-selection-sound-design-is-pursuit)), promoted from the
    other register on musical grounds.
-6. **Duels in the player's own hands**
+6. **Duels in the player’s own hands**
    ([§7](#7-comparability-constrains-the-measurement-not-the-listener)).
    Nearly free, conceptually the largest change, and measurable via provenance
    from the day it ships.

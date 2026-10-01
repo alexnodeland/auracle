@@ -7,7 +7,7 @@ too.</p>
 
 ## Moves
 
-Refinement uses fugue's **adaptive single-site MH** over the trace, so the move
+Refinement uses fugue’s **adaptive single-site MH** over the trace, so the move
 set is whatever the trace machinery provides:
 
 - **Parameter moves** perturb one continuous or discrete site.
@@ -21,7 +21,7 @@ vocabulary, two callers.
 
 ## The tilt
 
-Once a posterior exists, the grammar's **categorical weights** are reshaped by
+Once a posterior exists, the grammar’s **categorical weights** are reshaped by
 what it has learned:
 
 $$w'_i \;\propto\; w_i \cdot \mathrm{clamp}\!\big(e^{\eta t_i},\ \tfrac14,\ 4\big)$$
@@ -49,15 +49,15 @@ $[\tfrac14, 4]$ bounds every multiplier, so **no module kind is ever starved or
 monopolized**.
 
 <figure class="viz" data-viz="tilt">
-<figcaption><strong>Hollow bars are the prior's own weights; filled bars are the
-tilted ones.</strong> Raise η and the model's opinions start pushing kinds
+<figcaption><strong>Hollow bars are the prior’s own weights; filled bars are the
+tilted ones.</strong> Raise η and the model’s opinions start pushing kinds
 around. Then turn the clamp off: the strongest coefficients drive their kinds
 toward never being proposed at all. A prior that cannot <em>generate</em> an
 option can never be argued back into it, because the evidence would have to
 come from proposing it. Red is a multiplier sitting at a bound.</figcaption>
 </figure>
 
-Without it a confidently-fitted coefficient could drive a kind's proposal
+Without it a confidently-fitted coefficient could drive a kind’s proposal
 weight to effectively zero, and the search would stop being able to *discover*
 that it was wrong about that kind. A prior that has been argued out of
 considering an option cannot be argued back in by evidence it can no longer

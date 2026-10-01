@@ -18,7 +18,7 @@ covers it.
 | **3** | `auracle-grammar` | Mandatory `… → DC blocker → VCA → Limiter → StereoOutput`; parameter ranges bounded away from pathology |
 | **4** | tests | `ValidationMode::Strict` as a property-test oracle over grammar output |
 
-Layer 0 is a dependency's, and the one Auracle has least control over, which is
+Layer 0 is a dependency’s, and the one Auracle has least control over, which is
 why it was audited and why two bugs found there are recorded below.
 
 ## Layer 0: quiver
@@ -46,7 +46,7 @@ with no error message. Fixed with a shared $O(1)$ `wrap_phase` that recovers
 non-finite values.
 
 **Q199: cross-module poisoning.** Graph scatter now zeroes non-finite module
-outputs, so one module's NaN or Inf cannot poison another module's recursive
+outputs, so one module’s NaN or Inf cannot poison another module’s recursive
 state through the routing buffers. Containment at the graph boundary;
 per-module input sanitization remains defense in depth.
 
@@ -65,7 +65,7 @@ Thresholds, the measurements that confirmed them, and the ordering that makes
 the whole thing work are in [The vetting gate](./audition/vetting.md).
 
 The structural point: **one render serves the health check, the features, and
-the playback.** That is what makes "a player never hears an unvetted patch"
+the playback.** That is what makes “a player never hears an unvetted patch”
 true by construction rather than by discipline: there is no second path that could skip
 the check, because there is no second render.
 
@@ -86,7 +86,7 @@ Only vetted patches are free-playable, and the compiled output chain is
 $$\langle\text{audio}\rangle \to \text{DC blocker} \to \text{VCA} \to \text{Limiter} \to \text{StereoOutput}$$
 
 The limiter is compiled in by `auracle-grammar`, not optional and not a
-setting. It sits on top of quiver's scatter sanitization.
+setting. It sits on top of quiver’s scatter sanitization.
 
 And parameter priors are **bounded** (resonance max 0.85, delay feedback max
 0.7, V/Oct into an audible band) so the grammar cannot *express* the most
@@ -98,7 +98,7 @@ them: there is no pathological region for the search to keep sampling.
 Grammar output is compiled with `ValidationMode::Strict` in the test suite.
 Because the grammar is typed, **a `SignalMismatch` is by construction a bug in
 the grammar**, so Strict is a property-test oracle: sample $N$ terms, compile
-all, any error fails the test with quiver's actionable message.
+all, any error fails the test with quiver’s actionable message.
 
 Patches are *wired* in `Warn` mode, with an allowlist test pinning the warning
 classes the compiler uses on purpose. See
@@ -114,7 +114,7 @@ are the same kind of thinking applied elsewhere.
 by interpolating `r.name` straight into `innerHTML`. Renaming a patch to `<img
 src=x onerror=…>` executed, persisted into the saved bank, and re-fired on
 every reload. The *same* sink is fed by **imported patch JSON**, so opening a
-shared patch was script execution in the recipient's session. Every
+shared patch was script execution in the recipient’s session. Every
 interpolation of a name is now escaped, including the two that land in
 attributes, and `textContent` is preferred wherever the node allows it.
 
@@ -133,7 +133,7 @@ when it did not exist.
   that is always a claim rather than a guarantee.
 - **Hearing damage** is mitigated (limiter, LUFS normalization to a
   [peak ceiling](./audition/loudness.md#loudness-is-a-target-the-peak-is-a-limit),
-  no unvetted playback), but the output level is ultimately the player's.
+  no unvetted playback), but the output level is ultimately the player’s.
   Nothing stops a limiter-bounded signal from being turned up.
 - **Denial of service via a huge patch** is bounded by the module and depth
   ceilings, not by a time limit. A 24-module patch with granular and reverb is

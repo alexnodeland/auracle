@@ -25,14 +25,14 @@ random seed `0xE05_F00D`:
 | 3 | C4 | 0.50 s | 0.20 s | +E4 | Intermodulation and mud when voices stack |
 | 4 | C3 | 0.80 s | **1.10 s** | none | Bass register, and the release / delay / reverb tail |
 
-Pitches are V/Oct offsets from C4. The seed is installed into quiver's
+Pitches are V/Oct offsets from C4. The seed is installed into quiver’s
 thread-local RNG before rendering, so noise and analog drift are
-**bit-reproducible**: a patch's features are the same every time it is
+**bit-reproducible**: a patch’s features are the same every time it is
 measured.
 
 <figure class="viz" data-viz="phrase">
 <figcaption><strong>Click a segment.</strong> Solid is gate-on, dashed is the
-release window after it, and the second lane is the dyad's own compiled voice.
+release window after it, and the second lane is the dyad’s own compiled voice.
 The amber band is the final 300 ms, the window <code>tail_ratio</code> is
 measured in, which is why the low note is <em>last</em>.</figcaption>
 </figure>
@@ -40,7 +40,7 @@ measured in, which is why the low note is <em>last</em>.</figcaption>
 ## Why each segment
 
 The original phrase was three short notes (0.6 s stab, 0.25 s stab, 0.8 s low
-note), and it was the loop's weakest link. It could not discriminate
+note), and it was the loop’s weakest link. It could not discriminate
 
 - **slow pads**: a 2-second attack was silent for most of the stimulus,
 - **anything modulated below ~1 Hz**: no register-constant segment long enough
@@ -67,7 +67,7 @@ The v2 default covers each hole with the cheapest segment that reveals it:
    2.0 s rather than 0.75 s, and the sustain is long enough that sub-Hz
    modulation completes most of a cycle. `held_centroid_std` is measured **here
    specifically**, which is what makes it register-constant by construction.
-2. **C5 stab.** One octave above the old ceiling. With the compiler's fixed 0.5
+2. **C5 stab.** One octave above the old ceiling. With the compiler’s fixed 0.5
    keytracking, this is where dark patches reveal whether they speak up high
    (`high_ratio`).
 3. **C4+E4 dyad.** A second compiled voice, gate-synced with the main voice,
@@ -79,7 +79,7 @@ The v2 default covers each hole with the cheapest segment that reveals it:
    note last is what makes the tail see release length and reverb rather than a
    truncated chord decay.
 
-Cost: about 2× the v1 render, measured. The dyad's second voice is the
+Cost: about 2× the v1 render, measured. The dyad’s second voice is the
 difference between wall seconds and rendered voice-seconds.
 
 ## Chord voices
@@ -89,14 +89,14 @@ own compiled voice**, gate-synced with the main note.
 
 Two behaviors worth knowing:
 
-- Chord voices **start cold** at the note's onset, exactly how live voice
+- Chord voices **start cold** at the note’s onset, exactly how live voice
   allocation behaves, so the measurement matches what a player would hear.
 - After the shared gate closes they **keep ticking until their own output parks
   on silence**. A truncated release tail is a broadband click, and a click
   would poison every spectral feature in the frame it lands in.
 
 `max_voices()` reports the largest simultaneous count (2 for the default spec),
-and the [vet gate's peak ceiling scales with
+and the [vet gate’s peak ceiling scales with
 it](./vetting.md#the-polyphony-scaled-ceiling).
 
 ## The `:p2` stimulus tag
@@ -110,7 +110,7 @@ centroid_mean:p2   rms_std:p2   attack_s:p2   …
 This is the migration mechanism, not a version comment.
 
 A stimulus change changes what every audio value *means*, even when the formula
-is untouched. A slow pad's `rms_mean` under a phrase that never lets it open is
+is untouched. A slow pad’s `rms_mean` under a phrase that never lets it open is
 a different quantity from the same field under one that does. The observation
 log stores raw $\varphi$ **by name**, and `FitSet::build` projects old logs
 onto the current names on the rule *same name ⇒ same coordinate*.
@@ -119,7 +119,7 @@ So tagging the name with the stimulus generation means votes recorded under the
 v1 phrase:
 
 - **keep** their structural coordinates, which are stimulus-independent;
-- have their old-stimulus audio coordinates **imputed as "no evidence"** rather
+- have their old-stimulus audio coordinates **imputed as “no evidence”** rather
   than mixed into a standardizer they were never commensurable with.
 
 Bump the tag whenever `PhraseSpec::default()` changes audibly. Failing to bump
@@ -134,7 +134,7 @@ Stated because the model cannot learn what the stimulus does not show:
 - **Fast passages.** No segment tests how the patch behaves in a run.
 - **Long-term behavior.** Five seconds cannot reveal a 30-second evolving pad.
 - **Stereo width.** The render is summed to mono for feature extraction, and
-  there is no width coordinate in $\varphi$ at all. The chorus module's spec
+  there is no width coordinate in $\varphi$ at all. The chorus module’s spec
   card says so outright in the app.
 
 The intended direction is **per-style audition phrases** (a discovered bass

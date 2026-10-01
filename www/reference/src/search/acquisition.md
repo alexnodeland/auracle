@@ -1,7 +1,7 @@
 # Acquisition
 
-<p class="lede">Which duel to ask next. The answer turned out to be "it does not
-matter much".</p>
+<p class="lede">Which duel to ask next. The answer turned out to be “it does not
+matter much”.</p>
 
 ## The rules
 
@@ -25,7 +25,7 @@ cargo run -p auracle-session --example learn_synthetic --release -- --compare 20
 The methodology matters more than usual here, because the effect sizes are
 small:
 
-- **Common random numbers.** Pool fill, the user's coin flip at duel $t$, the
+- **Common random numbers.** Pool fill, the user’s coin flip at duel $t$, the
   MCMC seed at round $r$, and refinement seeds are all **shared across arms**,
   so only the acquisition draw differs. Without this the between-seed variance
   would swamp everything.
@@ -83,7 +83,7 @@ constants that ties a rule with none should not ship on a tie.**
 Two supporting reasons survived checking, one did not:
 
 - The `info_gain` BALD reports had **zero consumers** in the frontend.
-- BALD's repeat avoidance is real but barely needed over a pool this size that
+- BALD’s repeat avoidance is real but barely needed over a pool this size that
   uniform pairing already samples without repeating (gated by
   `duels_spread_over_candidates_not_just_pairs`).
 - `Random` makes **every** duel an unbiased [calibration
@@ -95,7 +95,7 @@ Two supporting reasons survived checking, one did not:
 One earlier justification was withdrawn for a bad reason, and the record should
 say so.
 
-The "pool grows and concentrates" argument was dismissed on the grounds that
+The “pool grows and concentrates” argument was dismissed on the grounds that
 insertion caps the pool, but a capped *size* is not an unchanging *spread*, and
 evicting the worst member could in principle concentrate a pool. Dismissing the
 concentration argument **because it was unmeasured**, while treating a
@@ -131,7 +131,7 @@ nats.
 
 Both are scale bets, and both lost. The enjoyment term grew without bound as
 the posterior sharpened, and $\exp(\Delta J / T)$ ran to $e^{10}$, so the
-"softmax" was an argmax. That version was measurably **worse than random**, and
+“softmax” was an argmax. That version was measurably **worse than random**, and
 it is the version an independent replication measured.
 
 It also produced the duel repetition observed in the running app: the same
@@ -144,7 +144,7 @@ eventually break that bet.
 
 ## Where uncertainty would earn its keep
 
-The design's argument for acquisition is that $\theta$'s posterior
+The design’s argument for acquisition is that $\theta$’s posterior
 *uncertainty* lets early sessions ask informative questions (duels the model
 cannot rank) while a confident model mostly serves sounds the player will
 pick. That

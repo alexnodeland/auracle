@@ -23,9 +23,9 @@ is finite by construction, because [vetting](../audition/vetting.md) ran first.
 | 9 | `attack_s:p2` | $\log(\text{attack} + 5\,\text{ms})$ of the first note |
 | 10 | `tail_ratio:p2` | $\log$ tail level relative to whole-phrase RMS |
 | 11 | `bass_fraction:p2` | Energy fraction below ~250 Hz |
-| 12 | `held_centroid_std:p2` | Centroid SD over **the held note's** gate-on span only |
-| 13 | `high_ratio:p2` | $\log$ RMS of the **highest note's** span, relative to the held note's |
-| 14 | `chord_flatness_delta:p2` | Flatness over the **chord note's** span, minus the held note's |
+| 12 | `held_centroid_std:p2` | Centroid SD over **the held note’s** gate-on span only |
+| 13 | `high_ratio:p2` | $\log$ RMS of the **highest note’s** span, relative to the held note’s |
+| 14 | `chord_flatness_delta:p2` | Flatness over the **chord note’s** span, minus the held note’s |
 | 15 | `motion_slow:p2` | Held-note motion energy, 0.5–2 Hz: **sweeps and breathing** |
 | 16 | `motion_mid:p2` | Held-note motion energy, 2–8 Hz: **pulsing and tremolo** |
 | 17 | `motion_fast:p2` | Held-note motion energy, 8–30 Hz: **flutter** |
@@ -55,7 +55,7 @@ pool. The preference is not hard to learn, it is **inexpressible**.
 place a frequency by ear, with the same distance meaning the same interval, but
 they report different <em>coordinates</em>. On the linear axis one octave is
 worth forty times more at the top of the spectrum than at the bottom, so a
-single weight cannot mean "brighter" in both places. On the log axis an octave
+single weight cannot mean “brighter” in both places. On the log axis an octave
 is an octave, which is what makes the coordinate weightable at
 all.</figcaption>
 </figure>
@@ -89,8 +89,8 @@ $$\text{crest} = \log\!\frac{\text{peak}}{\text{RMS} + \epsilon}, \qquad
 ms}}}{\text{RMS} + \epsilon} + 10^{-3}\right)$$
 
 The $10^{-3}$ floor inside the tail log matters: a pluck fully decayed by the
-last 300 ms would otherwise send the log to $-\infty$, and *"silent tail"* and
-*"very quiet tail"* are the same judgment to a listener anyway.
+last 300 ms would otherwise send the log to $-\infty$, and *“silent tail”* and
+*“very quiet tail”* are the same judgment to a listener anyway.
 
 ### The attack crossing is interpolated, not floored
 
@@ -108,7 +108,7 @@ h^\star = (i-1) + \frac{0.9\,\max(e) - e_{i-1}}{e_i - e_{i-1}}, \qquad
 0.005\right)
 $$
 
-The measurement window is onset → **the second note's onset** (2.0 s under the
+The measurement window is onset → **the second note’s onset** (2.0 s under the
 v2 phrase), and the $+5$ ms inside the log keeps the fast end resolved instead
 of compressing every percussive patch into the same value.
 
@@ -144,7 +144,7 @@ contain.
 
 ## Segment-local coordinates
 
-The last three are measured over **one note's gate-on span**, and they exist
+The last three are measured over **one note’s gate-on span**, and they exist
 because whole-phrase statistics conflate things a listener does not.
 
 Roles are found by **property, not position**, which is what keeps them
@@ -154,18 +154,18 @@ meaningful if the phrase changes:
 - **high**: the highest note at least half an octave above the held one.
 - **chord**: the first note with chord voices.
 
-A phrase missing a role yields **0.0** for its features, which reads as "no
-evidence" rather than as a measurement.
+A phrase missing a role yields **0.0** for its features, which reads as “no
+evidence” rather than as a measurement.
 
 **`held_centroid_std`** is the important one. `centroid_std` over the whole
 phrase conflates note-to-note register jumps with genuine timbral motion: a
 static patch played across two octaves has a large `centroid_std`. Restricted
-to the held note's span the coordinate is **register-constant by
-construction**, so it is the axis on which "a filter sweeping at 0.4 Hz" and "a
-static patch" are different patches at all. It needs at least 3 frames in the
+to the held note’s span the coordinate is **register-constant by
+construction**, so it is the axis on which “a filter sweeping at 0.4 Hz” and “a
+static patch” are different patches at all. It needs at least 3 frames in the
 span, or it reports 0.0.
 
-**`high_ratio`** = $\log$ of the high note's span RMS over the held note's.
+**`high_ratio`** = $\log$ of the high note’s span RMS over the held note’s.
 Does the patch speak in the upper register, or does its filter choke it?
 
 **`chord_flatness_delta`** = mean flatness over the chord span minus the held
@@ -178,7 +178,7 @@ span. Intermodulation and mud when voices stack.
 modulations (`cargo run -p auracle-features --example motion_probe --release`),
 a 0.55 Hz sweep and a 13 Hz flutter score 0.098 and 0.094, and stepped random
 motion scores like a 6 Hz LFO. A linear model on those coordinates cannot hold
-"slow breathing, not fast wobble", which is the first thing anyone says about a
+“slow breathing, not fast wobble”, which is the first thing anyone says about a
 texture.
 
 Hearing sorts fluctuation by **modulation rate**: a filterbank over the
@@ -191,7 +191,7 @@ Motion is measured over the held span, starting once the note has *arrived*, so
 the attack is not read as motion. That is 250 ms after onset (`MOTION_SKIP_S`,
 in `audio.rs`), or later if the level, smoothed over ≈ 46 ms, has not yet
 reached 97% of its peak (`MOTION_ARRIVED`). Two trajectories are taken at a
-256-sample hop (`MOTION_HOP`, ≈ 172 frames/s); the spectral features' own
+256-sample hop (`MOTION_HOP`, ≈ 172 frames/s); the spectral features’ own
 43 frames/s would fold the fast band. One is brightness,
 $c_t = \log_2(\text{centroid}_t / 20\,\text{Hz})$, in octaves. The other is
 level, $\ell_t = \max(\log_2 \text{RMS}_t,\ \log_2 \text{peak} - 10)$, where one
@@ -215,7 +215,7 @@ $$
 
 The result is a log standard deviation in octaves. The floor, $\tfrac12\log_2
 10^{-4} \approx -6.64$, is a hundredth of an octave: a static tone reads it
-exactly in all three bands, so "still" is one value and not numerical noise. A
+exactly in all three bands, so “still” is one value and not numerical noise. A
 phrase whose held span is shorter than 0.75 s reads the floor too.
 
 Measured on the probe ladder, the band that reads highest follows the rate:
@@ -236,8 +236,8 @@ so regularity waits for a stimulus with a longer held span.
 ## Deliberately compact
 
 Eighteen dimensions is a choice. The model is a mixture of *linear* experts, and
-**interpretable axes are the point**: "bright", "noisy", "slow attack", and
-"long tail" are things the [DIRECTIONS tab](../../docs/views/taste.html#directions)
+**interpretable axes are the point**: “bright”, “noisy”, “slow attack”, and
+“long tail” are things the [DIRECTIONS tab](../../docs/views/taste.html#directions)
 can name and a person can recognize in their own taste.
 
 A 128-dimensional MFCC bank would carry more information and would be
@@ -256,7 +256,7 @@ comfortable, with one cluster that is not:
 | `zcr_mean` | ≈ 9.7 |
 | `centroid_mean` | ≈ 5.9 |
 
-These are the values after the zero-crossing rate's DC removal; before it they
+These are the values after the zero-crossing rate’s DC removal; before it they
 were 18.4, 10.4, and 5.9 ([Open questions](../design/open-questions.md) has the
 history).
 

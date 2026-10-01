@@ -39,7 +39,7 @@ shares one **context**: the grammar prior tilted by the posterior (computed
 once, as the pool stands when the generation opens), the posterior, the
 standardizer, the phrase, β, and the keep rule. Each job carries its seed tree,
 its step budget, and **its own RNG seed**, derived from a single draw of the
-caller's `refine` stream. It returns nothing (and does *not* advance the
+caller’s `refine` stream. It returns nothing (and does *not* advance the
 counter) when there is no posterior or no standardizer, because there is no
 direction to climb in.
 
@@ -113,15 +113,15 @@ never among them. Pinned candidates are always exempt.
 Both the bar a child must beat and the trim at the end are judged under the
 posterior the generation **opened** with, the one in its context and the one
 its walks climbed. A pick made while the generation runs reweights the
-engine's posterior at once, so the next pair responds to it, but not the
-generation's: which children are kept and which members leave do not depend
+engine’s posterior at once, so the next pair responds to it, but not the
+generation’s: which children are kept and which members leave do not depend
 on when picks landed between absorptions (natively,
 `picks_during_a_generation_do_not_change_which_children_are_kept`). The picks
 count from the next refit, which waits for the generation to end.
 
 ## The split is measured
 
-Defaults (in `engine.rs`), both scaled from the grammar's processor count
+Defaults (in `engine.rs`), both scaled from the grammar’s processor count
 `N_OPS = 20` (in `prior.rs`):
 
 $$\text{refine\_steps} = 2 \cdot N_{\text{OPS}} = 40, \qquad
@@ -135,7 +135,7 @@ set.
 
 The 40 × 10 split was an *argument* that could have been wrong in either
 direction, so `search_health --budget-ab` was written to settle it. Over 8
-seeds, 6 generations, graded against a synthetic user's true utility:
+seeds, 6 generations, graded against a synthetic user’s true utility:
 
 | steps | seeds | proposals | mean $u$ | max $u$ | |
 |---|---|---|---|---|---|
@@ -167,15 +167,15 @@ Re-run this before changing either number.
 The gap between design and implementation is real, but the implementation is
 not merely a shortcut.
 
-**A candidate pool is not a sample.** The pool's job is to hold a few dozen
+**A candidate pool is not a sample.** The pool’s job is to hold a few dozen
 patches worth auditioning. A correct sample from $\pi_\beta$ would include
 low-utility regions in proportion to their (small but nonzero) probability
 mass, which is right for estimating an expectation and wrong for filling a
 shortlist a person will listen to.
 
 **Warm-starting from the best members is deliberate.** It concentrates effort
-where the model already believes, which is what "propose toward me" means from
-the player's side.
+where the model already believes, which is what “propose toward me” means from
+the player’s side.
 
 **Diversity comes from elsewhere.** The measured result below is that the pool
 does not concentrate over a session anyway, so the thing SMC would primarily
@@ -187,9 +187,9 @@ of it. The other thing this section used to claim was lost turns out not to be.
 
 ## The islands are not separated by a valley
 
-This page previously said that a player with two distant islands "may find that
+This page previously said that a player with two distant islands “may find that
 refinement from island A never discovers island B, and has to reach it by hand
-or by the prior". That was an argument from the shape of a local walk, and it is
+or by the prior”. That was an argument from the shape of a local walk, and it is
 **false**.
 
 `make islands` teaches a bimodal synthetic user (two islands opposed on every
@@ -235,7 +235,7 @@ That has two consequences, and one of them decided a default:
 2. The concentrated regime that [BALD](./acquisition.md) was hypothesized to
    win in **never arises**, so the measured tie between BALD and uniform
    pairing is not an artifact of a spread pool that only the static setup
-   guaranteed. The product's own dynamics keep the pool spread.
+   guaranteed. The product’s own dynamics keep the pool spread.
 
 ## The screening cascade
 

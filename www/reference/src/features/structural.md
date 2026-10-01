@@ -8,8 +8,8 @@ cascade](../search/refinement.md#the-screening-cascade) possible: a
 structure-only surrogate could prune candidates before the expensive render
 path. No such cascade is built yet
 ([Directions §12](../design/directions.md#12-the-screening-cascade-is-cited-and-unbuilt)).
-They also capture taste axes audio features cannot fully separate ("likes
-supersaws", "likes deep modulated chains").
+They also capture taste axes audio features cannot fully separate (“likes
+supersaws”, “likes deep modulated chains”).
 
 ## The coordinates
 
@@ -34,16 +34,16 @@ coordinates](./audio.md) to give $\varphi \in \R^{44}$.
 ## Families, not one column per module
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
-and the auto-namer both want "two filters", not "two subtractive stages"), but
+and the auto-namer both want “two filters”, not “two subtractive stages”), but
 `NAMES` and `to_vec` collapse **forty-three productions into nineteen family
 counts**.
 
 Two reasons.
 
 **Nothing meaningful distinguishes them.** `n_fold`, `n_distortion`, and
-`n_bitcrush` all answer "how much nonlinear color". `n_chorus`, `n_phaser`,
-`n_flanger`, `n_tremolo`, and `n_vibrato` all answer "how much periodic
-movement". A user who likes drive does not first decide *which* drive.
+`n_bitcrush` all answer “how much nonlinear color”. `n_chorus`, `n_phaser`,
+`n_flanger`, `n_tremolo`, and `n_vibrato` all answer “how much periodic
+movement”. A user who likes drive does not first decide *which* drive.
 
 **Per-kind columns arrive as near-indicator variables.** The prior draws
 bitcrush at 2.5%, ring mod at 2%, and granular at 1.5%, so those columns are
@@ -70,7 +70,7 @@ anew at every tick. It does not join the euclid in `n_mod_logic`, because a
 euclid emits a gate and a step sequence emits a value. The column keeps the
 name `n_rand` because stored observations carry φ names, and every row already
 on disk predates the step sequencer, so its `n_rand` already *is* its
-stepped-CV count. The panel labels the column "stepped mods".
+stepped-CV count. The panel labels the column “stepped mods”.
 
 ## What is deliberately not in φ
 
@@ -132,7 +132,7 @@ counts gone, $\varphi$ could not tell a crossfade from a ring modulator at all,
 which are about as different as two nodes in this grammar get.
 
 So `n_mix` leaves: it is the one determined by the others, and its proposal
-tilt is recovered from the source coefficients in the engine's `biased_prior`.
+tilt is recovered from the source coefficients in the engine’s `biased_prior`.
 The other five stay, but **never as columns of their own**: ring mod lives
 inside `n_drive`, the vocoder inside `n_filter`, and comp/duck/gate inside
 `n_dynamics`.

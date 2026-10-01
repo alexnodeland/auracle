@@ -1,6 +1,6 @@
 # Bibliography
 
-The literature Auracle's methods come from, grouped by where they appear. These
+The literature Auracle’s methods come from, grouped by where they appear. These
 are the specific results the implementation relies on, not a survey.
 
 ## Preference learning
@@ -12,7 +12,7 @@ The duel likelihood, $P(A \succ B) = \sigma(u_A - u_B)$.
 
 **Chu, W. and Ghahramani, Z. (2005).** *Preference Learning with Gaussian
 Processes.* ICML. → The framing of preference data as observations of a latent
-utility. Auracle's utility is linear in a fixed feature map rather than a GP,
+utility. Auracle’s utility is linear in a fixed feature map rather than a GP,
 which is a deliberate trade of flexibility for interpretability and a tractable
 cold start.
 
@@ -24,7 +24,7 @@ ratings are treated as ordinal rather than as numbers.
 **Brochu, E., de Freitas, N. and Ghosh, A. (2007).** *Active Preference
 Learning with Discrete Choice Data.* NIPS. → Preferential Bayesian
 optimization: the loop of latent utility + expensive human oracle + cheap
-surrogate that Auracle's two loops implement.
+surrogate that Auracle’s two loops implement.
 
 ## Active learning and acquisition
 
@@ -47,7 +47,7 @@ replaced accuracy.
 [Why that mattered](./taste/calibration.md#why-not-accuracy)
 
 **Gneiting, T. and Raftery, A. E. (2007).** *Strictly Proper Scoring Rules,
-Prediction, and Estimation.* JASA 102(477), 359–378. → What "proper" means, and
+Prediction, and Estimation.* JASA 102(477), 359–378. → What “proper” means, and
 why a rule that is not proper can be gamed by a model that hedges.
 
 **Dawid, A. P. (1984).** *Present Position and Potential Developments: Some
@@ -106,18 +106,18 @@ what trace-based inference over structured programs makes possible.
 
 **Whigham, P. A. (1995).** *Grammatically-based Genetic Programming.* Workshop
 on Genetic Programming. → Using a grammar to constrain the search space so
-every individual is valid: Auracle's representation decision, with types in
+every individual is valid: Auracle’s representation decision, with types in
 place of production rules.
 
 **Koza, J. R. (1992).** *Genetic Programming: On the Programming of Computers
 by Means of Natural Selection.* MIT Press. → Tree-based GP, and the bloat
 problem that [a prior rather than a penalty](./search/target.md#what-each-factor-does)
-addresses. Auracle takes the tree representation and not Koza's subtree
+addresses. Auracle takes the tree representation and not Koza’s subtree
 crossover: every child grows from one seed.
 
 **Takagi, H. (2001).** *Interactive Evolutionary Computation: Fusion of the
 Capabilities of EC Optimization and Human Evaluation.* Proc. IEEE 89(9),
-1275–1296. → The canonical statement of interactive evolution's **user-fatigue
+1275–1296. → The canonical statement of interactive evolution’s **user-fatigue
 bottleneck**, which is the problem the two-loop architecture and the learned
 surrogate exist to solve.
 
@@ -160,7 +160,7 @@ inflation factors, the diagnostic that found
 
 **Haufe, S., Meinecke, F., Görgen, K., Dähne, S., Haynes, J.-D., Blankertz, B.
 and Bießmann, F. (2014).** *On the Interpretation of Weight Vectors of Linear
-Models in Multivariate Neuroimaging.* NeuroImage 87, 96–110. → A direction's
+Models in Multivariate Neuroimaging.* NeuroImage 87, 96–110. → A direction’s
 *pattern* $\Sigma a$ versus its *filter* $a$, and why
 [a wiring tried and not shipped](./search/perform.md#purity-measures-cross-talk-not-correlates).
 

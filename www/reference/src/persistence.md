@@ -8,7 +8,7 @@ saying so is what makes migration tractable.</p>
 | Object | Contains |
 |---|---|
 | `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts |
-| `BankEntry` | A patch's **tree**, id, origin, name, pinned flag. Renders and features are **re-derived** on import |
+| `BankEntry` | A patch’s **tree**, id, origin, name, pinned flag. Renders and features are **re-derived** on import |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
 | `TastePosterior` | A snapshot. Recomputable from the log |
@@ -44,8 +44,8 @@ something that could disagree with the evidence it was fitted from.
 
 `FitSet::build` projects a stored log onto the **current** feature names,
 matching on the name. The rule is *same name ⇒ same coordinate*, and anything
-unmatched is left at the new standardizer's mean, which standardizes to zero
-and means **"this vote says nothing about that axis"**.
+unmatched is left at the new standardizer’s mean, which standardizes to zero
+and means **“this vote says nothing about that axis”**.
 
 That is the honest imputation, and it is why by-name storage is worth the
 bytes. By index, a feature-set change would silently re-interpret every
@@ -67,22 +67,22 @@ to the log axis:
 | Coordinate | Conversion |
 |---|---|
 | `centroid_mean`, `rolloff_mean`, `zcr_mean` | Recover the frequency from the linear-Hz fraction, re-map onto the octave axis. **Exact** |
-| `centroid_std` | The spread of a linear quantity becoming the spread of a log one. No exact inverse for a spread, so the **delta method**: the local derivative of the axis map at that observation's own centroid. First-order, and honest about it |
+| `centroid_std` | The spread of a linear quantity becoming the spread of a log one. No exact inverse for a spread, so the **delta method**: the local derivative of the axis map at that observation’s own centroid. First-order, and honest about it |
 | `crest`, `tail_ratio`, `attack_s` | Now logged. **Exact** |
 
 **Renamed coordinate, the silent failure.** When `n_delay` became `n_time`,
 by-name matching would have found no `n_time` in any historical row and imputed
-it at the mean for every vote ever cast. That reads as *"this player has no
-opinion about delays"* rather than as a rename, and nothing anywhere would have
+it at the mean for every vote ever cast. That reads as *“this player has no
+opinion about delays”* rather than as a rename, and nothing anywhere would have
 reported a problem.
 
 `RENAMES` carries the value across, and in this case it is **exact rather than
 a convenience**: `n_time` counts delays *and* granulators, and no observation
 predating that wave can contain a granulator, so the old `n_delay` count
-**is** the new coordinate's value for every row being migrated.
+**is** the new coordinate’s value for every row being migrated.
 
 That reasoning is worth copying for the next rename. A rename table entry is
-only exact if the new coordinate's extra contributors could not have been
+only exact if the new coordinate’s extra contributors could not have been
 present in the old data.
 
 ## Schema 1 → raw φ
@@ -118,12 +118,12 @@ misrepresent what an old file meant, it needs a migration instead.
 
 ## Where the browser keeps it
 
-IndexedDB, under the page's origin. No account, no server, nothing transmitted.
+IndexedDB, under the page’s origin. No account, no server, nothing transmitted.
 
 Consequences worth stating in a reference: the hosted build and a
 locally-served copy are **different origins** and do not share storage;
 clearing site data destroys the session; and there is no server-side copy to
-recover from. The only backup of the taste is a downloaded profile (the menu's
+recover from. The only backup of the taste is a downloaded profile (the menu’s
 Save taste profile item).
 
 ## Restore is farmed
@@ -138,27 +138,27 @@ than serially. See [The web runtime](./runtime.md#the-render-farm).
 $\varphi$ is a pure function of $(\text{term}, \text{spec})$, which is the
 [determinism contract](./runtime.md), so a featurization this browser has
 already performed can be replayed instead of re-rendered. Without that, every
-reload re-renders the whole bank from nothing: the app's 40 sounds at ~0.5 s
+reload re-renders the whole bank from nothing: the app’s 40 sounds at ~0.5 s
 each, for numbers the machine computed yesterday.
 
 Farm workers consult an IndexedDB store (`auracle-renders`) before rendering and
-write back on a miss. The engine reports the hit rate per wave into the app's own
+write back on a miss. The engine reports the hit rate per wave into the app’s own
 log.
 
 ### The key is not enough
 
 `render_key` addresses $(\text{term}, \text{spec})$, which is everything
 $\varphi$ depends on *given a fixed featurizer*. It hashes the **inputs**, and a
-change to the normalizer or to a descriptor's formula is a change to the
+change to the normalizer or to a descriptor’s formula is a change to the
 **function**: the same key would then name a different measurement.
 
-`RENDER_EPOCH` (3, in `auracle-features`' `cache.rs`) is that missing
+`RENDER_EPOCH` (3, in `auracle-features`’ `cache.rs`) is that missing
 coordinate, and `cache_namespace` combines the two.
 A namespace mismatch orphans **every** stored row at once, which is the only
 correct granularity: a cache whose invalidation is anything less than total will
 one day serve a number from a featurizer that no longer exists. Bump the epoch on
 any change to a $\varphi$ coordinate, to loudness normalization (including
-`PEAK_CEILING` and `TARGET_LUFS`), to the vetting thresholds, or to the compiler's
+`PEAK_CEILING` and `TARGET_LUFS`), to the vetting thresholds, or to the compiler’s
 term → module mapping. When in doubt, bump: the cost is one cold boot.
 
 A hit is **checked rather than trusted**: `pre_featurized` re-derives the key
@@ -170,11 +170,11 @@ Cached rows carry $\varphi$ **without samples**, so a job that asked for audio
 still renders. Serving it a row would move the saving onto the first patches the
 player actually auditions, which is exactly where `wantAudio` exists to avoid it.
 
-Eviction is "clear everything" past a row cap, which is crude on purpose: an LRU
+Eviction is “clear everything” past a row cap, which is crude on purpose: an LRU
 needs an access-time write on every *hit*, turning the cheap path into a write,
 and what is being protected is a disk quota rather than a working set.
 
-It lives in the farm worker rather than in the engine's `runFarm` loop, whose
+It lives in the farm worker rather than in the engine’s `runFarm` loop, whose
 absorb cursor, re-issue watchdog, and speculative-work handling must not acquire
 asynchrony. A cache hit is simply a job that returns fast.
 
@@ -190,4 +190,4 @@ made
 Capped at `pool_size / 4` (`Engine::pin_cap`) so the pool can never be pinned
 solid. That state has
 no honest report, because it surfaces as `insert_candidate` returning `None`,
-which callers already render as "no move was accepted".
+which callers already render as “no move was accepted”.

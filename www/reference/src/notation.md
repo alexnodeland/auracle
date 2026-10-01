@@ -1,7 +1,7 @@
 # Notation
 
 Fixed throughout. Where a symbol appears in the code under a different name,
-the code's name is given.
+the code’s name is given.
 
 ## Objects
 
@@ -17,7 +17,7 @@ the code's name is given.
 
 $\varphi$ is always the concatenation $[\varphi_{\text{audio}} ;
 \varphi_{\text{struct}}]$, in that order. It is written $\varphi$ rather than
-$\phi$ throughout; the code's `phi` is this vector.
+$\phi$ throughout; the code’s `phi` is this vector.
 
 ## The taste model
 
@@ -25,11 +25,11 @@ $\phi$ throughout; the code's `phi` is this vector.
 |---|---|---|
 | $K$ | Number of **styles**, the experts of the taste model ($\le 5$) | `TasteConfig::k_styles` |
 | $d$ | Feature dimension ($44$) | `TasteConfig::n_features` |
-| $\theta_k \in \R^{d}$ | Style $k$'s weight vector | `TasteSample::theta[k]` |
+| $\theta_k \in \R^{d}$ | Style $k$’s weight vector | `TasteSample::theta[k]` |
 | $\theta$ | All of them, $K \times d$ | `TasteSample::theta` |
 | $u(x)$ | Latent utility of $x$ | `utility_mix` |
-| $u_k(x)$ | Style $k$'s utility, $\theta_k^\top z$ | `utility(phi, k)` |
-| $\tau_s$ | Session $s$'s keep/kill threshold | `TasteSample::tau[s]` |
+| $u_k(x)$ | Style $k$’s utility, $\theta_k^\top z$ | `utility(phi, k)` |
+| $\tau_s$ | Session $s$’s keep/kill threshold | `TasteSample::tau[s]` |
 | $c_j$ | Star cutpoint $j$ | `TasteSample::cuts[j]` |
 | $\sigma_\theta$ | Prior SD of one $\theta$ coordinate | `TasteConfig::sigma_theta()` |
 | $s_K$ | Max-of-$K$-normals SD correction | `MAX_NORMAL_SD` |
@@ -56,7 +56,7 @@ $\phi$ throughout; the code's `phi` is this vector.
   likelihood](./taste/likelihoods.md#star-ratings-a-cumulative-logit).
 - Weights $w$ are always **normalized** unless stated: importance weights sum
   to one, recency weights are relative to the newest observation being $1$.
-- "Standardized" always means *after* the affine transform in
+- “Standardized” always means *after* the affine transform in
   [Standardization](./features/standardization.md). The taste model never sees
   raw $\varphi$; the observation **log** never stores anything else.
 

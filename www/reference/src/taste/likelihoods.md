@@ -4,12 +4,12 @@
 how an answer connects to it.</p>
 
 All three enter as a **single `factor`** carrying the total weighted
-log-likelihood, so from fugue's point of view the model has one observation
+log-likelihood, so from fugue’s point of view the model has one observation
 node regardless of how many kinds of feedback the log contains.
 
 <figure class="viz" data-viz="likelihoods">
 <figcaption><strong>One latent quantity, three ways of asking about it.</strong>
-Move candidate A's utility and watch all three panels respond together. Drag τ
+Move candidate A’s utility and watch all three panels respond together. Drag τ
 to see a strict session and a generous one; drag the star cutpoints to see why
 ★★★ means <em>between two cutpoints</em> rather than the number three. Squeeze
 two cutpoints together and that rating nearly stops being reachable, which is
@@ -34,7 +34,7 @@ information: a preference relation does not have an origin, and pretending
 otherwise is what makes absolute ratings drift.
 
 Note that $u$ here is the **mixture** utility, so a duel across two islands
-compares the drone's best style's rating with the pluck's best style's rating.
+compares the drone’s best style’s rating with the pluck’s best style’s rating.
 That this is well-formed is the whole reason for
 [the max form](./utility.md#why-a-maximum).
 
@@ -49,16 +49,16 @@ $$P(\text{keep}) = \sigma\big(u(x) - \tau_s\big), \qquad \tau_s \sim \mathcal{N}
 
 $\tau_s$ is a **per-session latent**, one per session in the log.
 
-The app emits one side of it: a bank row's **cut** calls
+The app emits one side of it: a bank row’s **cut** calls
 `record_keep(id, false)` once its 7 s undo window closes (`UNDO_WINDOW_MS`, in
-`main.js`'s `cutRow`).
+`main.js`’s `cutRow`).
 Nothing emits a keep; the triage surfaces that would are unbuilt.
 
-"Feeling picky today" is therefore *modeled* rather than treated as noise. A
+“Feeling picky today” is therefore *modeled* rather than treated as noise. A
 session where the player cuts almost everything is read as a strict session (a
 high $\tau_s$) rather than as a change in their taste. Without the per-session
 threshold, a strict day and a generous day would average into a meaningless
-global bar, and both days' data would be degraded by the other's.
+global bar, and both days’ data would be degraded by the other’s.
 
 One implementation subtlety: reweighting an old observation against a posterior
 fitted *before* that session existed finds no $\tau_s$ site, and contributes
@@ -89,10 +89,10 @@ match (k == 0, k == n_cats - 1) {
 
 Subtracting two near-equal sigmoids used to bottom out at a floor of
 $\ln 10^{-12} \approx -27.6$; in log space a rating far from $u$ scores its
-real log-probability. The factor $a$ is 1 unless some of the observation's
+real log-probability. The factor $a$ is 1 unless some of the observation’s
 coordinates were imputed ([below](#imputed-coordinates)).
 
-This treats ★★★ as **"between two cutpoints"** rather than as the number 3,
+This treats ★★★ as **“between two cutpoints”** rather than as the number 3,
 which is the point. A rating is an ordinal judgment, and modeling it as a
 real number asserts that the gap between 1 and 2 stars equals the gap between 4
 and 5, which no rater believes.
@@ -113,7 +113,7 @@ The exponential increments are positive by construction, so ordering holds for
 single-site MH applies unchanged.
 
 The constants place the prior sensibly: $c_0$ near $-2$ (so a 0-star rating
-means "well below average"), and increments with a median of $e^{-0.5} \approx
+means “well below average”), and increments with a median of $e^{-0.5} \approx
 0.61$ so the five cutpoints span a few units of utility.
 
 ## Imputed coordinates
@@ -155,7 +155,7 @@ separately, which is the only way to find out rather than assume.
 
 ## Recency weighting
 
-Every observation's log-likelihood is scaled before summing:
+Every observation’s log-likelihood is scaled before summing:
 
 $$w_i = 0.5^{\,(n - 1 - i)/h}, \qquad h = 150$$
 
@@ -173,7 +173,7 @@ stationarity is the wrong assumption about a person.
 
 ## Implicit signals are logged, not modeled
 
-Play counts, opening a pair's sound in PATCH, and the editor's stream of edits
+Play counts, opening a pair’s sound in PATCH, and the editor’s stream of edits
 and reverts are logged as `ImplicitEvent`s (`Engine::log_event`). **None of
 them enters the likelihood.** Listen time and hover duration are not recorded
 at all.
@@ -205,4 +205,4 @@ is reconstructed once per step. Two consequences, both measured by
 That is a real tension in the design, and it is why the
 [address table is hoisted](./posterior.md#the-address-table) out of the step loop.
 Building addresses inline cost a `format!`, a re-allocation, and a SipHash **per
-site per step**, which measured as the bulk of a mature fit's wall time.
+site per step**, which measured as the bulk of a mature fit’s wall time.

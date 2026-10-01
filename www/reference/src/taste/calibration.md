@@ -5,7 +5,7 @@ forecasts are scored, and why the obvious metric would have lied.</p>
 
 ## Prequential by construction
 
-`record_duel` scores the posterior's $P(A \text{ wins})$ **and only then**
+`record_duel` scores the posterior’s $P(A \text{ wins})$ **and only then**
 appends the observation. So every forecast is an out-of-sample, one-step-ahead
 prediction: the model has never seen the answer it is being scored on.
 
@@ -112,13 +112,13 @@ small session can fill without every bucket being noise). Each bucket reports:
 
 | | |
 |---|---|
-| `predicted` | Mean forecast in the bucket: the model's claim |
-| `observed` | Observed frequency of "A won": the evidence |
+| `predicted` | Mean forecast in the bucket: the model’s claim |
+| `observed` | Observed frequency of “A won”: the evidence |
 | `n` | How many forecasts landed here |
 
 Plotted, the diagonal is the claim and the dots are the reality. This is the
 display that makes calibration *legible*: a single number cannot distinguish
-"overconfident at the top end" from "underconfident in the middle", and the
+“overconfident at the top end” from “underconfident in the middle”, and the
 shape of the failure is what says what to do about it.
 
 The app draws a whisker per bucket for how much a bucket that size could wobble
@@ -168,4 +168,4 @@ against a proper scoring rule means the model **can publicly fail**, and early
 on it does.
 
 That is what makes the number worth reading later, and it is why the app shows
-"not beating a coin flip yet" rather than hiding the metric until it flatters.
+“not beating a coin flip yet” rather than hiding the metric until it flatters.

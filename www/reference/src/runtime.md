@@ -19,7 +19,7 @@ the architecture more than any design preference did.</p>
 |---|---|---|
 | **Main** | UI, Web Audio graph | `main.js`, never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js`: pool fill, fits, refinement, workbench |
-| **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation's walks and ⚡ |
+| **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation’s walks and ⚡ |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -31,10 +31,10 @@ No nested workers (Safari shipped those only in 16.4), no `SharedArrayBuffer`,
 no COOP/COEP headers, no build step, and no server change. Those constraints are
 why the topology is a star around the engine worker rather than a tree.
 
-## The AudioWorklet's hostile environment
+## The AudioWorklet’s hostile environment
 
 An AudioWorklet has **no `fetch`, no `TextDecoder`, no `TextEncoder`**.
-wasm-bindgen's glue needs all three.
+wasm-bindgen’s glue needs all three.
 
 So the worklet is assembled as a **blob** with the glue inlined behind a
 polyfill, and raw wasm **bytes** are transferred into it for a synchronous
@@ -55,7 +55,7 @@ parking. Every workbench edit re-patches the live instrument.
 
 ## The stack size
 
-wasm32's default stack is **1 MB**, and the patch compiler is recursive: every
+wasm32’s default stack is **1 MB**, and the patch compiler is recursive: every
 level of `Compiler::build` constructs quiver modules **by value** before moving
 them into the patch, and some carry large inline buffers. A `PitchShifter`
 holds `[f64; 4800]` (38 KB), a `Granular` more.
@@ -63,7 +63,7 @@ holds `[f64; 4800]` (38 KB), a `Granular` more.
 A dozen-module patch overflows it, and it does so as **`memory access out of
 bounds`**, nowhere near the flag that caused it. It then *poisons the engine*:
 the panic unwinds out of a `&mut self` binding, and every later call fails with
-wasm-bindgen's "recursive use of an object" instead of the real fault.
+wasm-bindgen’s “recursive use of an object” instead of the real fault.
 
 The fix is 8 MB, the same order as the native main-thread stack the test suite
 runs on, which is why `make check` never saw this:
@@ -123,14 +123,14 @@ mismatch, and a browser that cannot structured-clone a `WebAssembly.Module`. So
 parallelism costs time and never content.
 
 A draw retired after two attempts (`MAX_TRIES`, in `worker.js`) is recorded,
-not hidden, but in the app's own log (`window.__aurLog`) rather than as a
+not hidden, but in the app’s own log (`window.__aurLog`) rather than as a
 console warning. It is a designed degradation, and the console gate holds a
 clean boot to zero warnings.
 
 ### Walks on the farm
 
 A generation is `refine_seeds` walks, and each is a pure function of the
-generation's shared context and its own job
+generation’s shared context and its own job
 ([refinement](./search/refinement.md)). So after boot the farm comes back for
 them: the engine worker asks main for a crew when a generation or ⚡ evolve
 from this starts, main spawns it, and the crew is reaped after a minute with
@@ -138,23 +138,23 @@ nothing to walk. Main compiles the wasm module once and keeps it, so a crew is
 an instantiation per worker, not a compile: where boot had a farm (four cores
 or more) the module was compiled then, and on a two- or three-core machine,
 where boot fills serially, the first crew compiles it. A browser that cannot
-hand a compiled module to a worker has each worker compile its own. A crew's
-width is boot's rule with a floor of one worker wherever there are two cores
+hand a compiled module to a worker has each worker compile its own. A crew’s
+width is boot’s rule with a floor of one worker wherever there are two cores
 (`walkWidth`, in `main.js`), because even one worker takes the walk off the
 engine worker, which then answers everything else.
 
-The context (the tilted prior, the posterior's draws, the standardizer, the
+The context (the tilted prior, the posterior’s draws, the standardizer, the
 phrase: about 2.2 MB of JSON) goes to each worker once per generation, as one
 string, and `farm_walk` keeps its parse keyed by that exact text. Results are
 absorbed **in job order**, one per turn, whatever order they finished in, so
-the pool is the serial path's at every width; natively
+the pool is the serial path’s at every width; natively
 `farm_walks_breed_the_serial_generation`. A walk a worker cannot run, or a
-crew that never comes up, is walked in the engine worker from the engine's own
+crew that never comes up, is walked in the engine worker from the engine’s own
 copy of the same job.
 
 ⚡ evolve from this is one job over the same path. It draws its job from the
 `refine` stream **before** it waits for a crew, so a generation asked for
-during a cold crew's handshake cannot draw first and change the child: a
+during a cold crew’s handshake cannot draw first and change the child: a
 seeded session breeds the same ⚡ child however warm the crew was. With no
 crew the engine walks that very job (`refine_from_walk`). A generation and ⚡
 take turns in the engine worker, and a refit waits for both, so a ⚡ child is never absorbed into a generation
@@ -171,11 +171,11 @@ children are kept.
 ## Worker replies are load-bearing
 
 Every workbench edit message **must** get a reply (`bench` or `edit_rejected`),
-or the main thread's in-flight queue deadlocks.
+or the main thread’s in-flight queue deadlocks.
 
 `bench_missing` is the sharpest case. The worker has always sent it when
-`edit_begin` fails, and because nothing handled it, the optimistic "it's on the
-workbench" toast stayed on screen while the bench showed the previous patch. A
+`edit_begin` fails, and because nothing handled it, the optimistic “it’s on the
+workbench” toast stayed on screen while the bench showed the previous patch. A
 protocol whose failure message has no listener is a protocol with a silent
 failure mode.
 
@@ -187,7 +187,7 @@ a note; never a handler that returns.
 ## Caching, in development
 
 The dev server sends `Cache-Control: no-store` **and** the app version-stamps
-its worker and wasm URLs. Both are needed: a browser's heuristic cache ignores
+its worker and wasm URLs. Both are needed: a browser’s heuristic cache ignores
 late `no-store` on an already-cached module worker.
 
 Getting this wrong gives a rebuild that appears to change nothing, or an

@@ -27,7 +27,7 @@ At $K = 1$ this reduces *exactly* to Bayesian linear regression on $z$, which
 is a useful property: the mixture is a strict generalization with no
 special-casing at the boundary.
 
-One posterior draw's utility (`TasteSample::utility_mix`):
+One posterior draw’s utility (`TasteSample::utility_mix`):
 
 ```rust
 pub fn utility_mix(&self, phi: &[f64]) -> f64 {
@@ -40,7 +40,7 @@ pub fn utility_mix(&self, phi: &[f64]) -> f64 {
 ## Why a maximum
 
 Taste is **multi-modal**. One person can love dark drones *and* bright plucks
-("ambient-me" and "acid-me"), and those are not points on one axis. A single
+(“ambient-me” and “acid-me”), and those are not points on one axis. A single
 linear utility would average them into a preference for neither, and would then
 be confidently wrong about both.
 
@@ -52,9 +52,9 @@ whichever style rates it highest, and the comparison is well-formed.
 <figure class="viz" data-viz="max-experts">
 <figcaption><strong>Drag either arrow.</strong> Each arrow is a lens (a style):
 one direction in feature space. Each candidate is colored by the style that
-scores it highest and lit by how highly, the same encoding the instrument's
+scores it highest and lit by how highly, the same encoding the instrument’s
 taste map uses. Pull the arrows apart and two islands appear, each with its own
-idea of what "good" points at. Then press <em>compare K = 1</em>:
+idea of what “good” points at. Then press <em>compare K = 1</em>:
 one direction has to explain both islands at once, and the only direction that
 does lies between them, describing a taste nobody has.</figcaption>
 </figure>
@@ -63,21 +63,21 @@ does lies between them, describing a taste nobody has.</figcaption>
 
 ### A per-session style latent $z_s$
 
-*"One mood per session: sample which style is active, then use it."*
+*“One mood per session: sample which style is active, then use it.”*
 
 Fails because it cannot represent several islands **inside** a session. A user
 who auditions a pad, then a bass, then a pad in one sitting is not switching
-moods; they have two tastes at once. Whenever the session's latent is wrong
+moods; they have two tastes at once. Whenever the session’s latent is wrong
 for the current candidate, every observation in that session is scored by the
 wrong style.
 
 ### A per-observation marginalized style
 
-*"Marginalize over which style judges each observation."*
+*“Marginalize over which style judges each observation.”*
 
 Fails on a sharper point: it forces **both duel items through the same style**,
 so a cross-island comparison is unrepresentable. There is no style under which
-"the drone beats the pluck" is a sensible statement if the drone lives in style
+“the drone beats the pluck” is a sensible statement if the drone lives in style
 1 and the pluck in style 2, and a duel between them is exactly the question the
 acquisition rule will ask.
 
@@ -89,7 +89,7 @@ no better, which is the signature of capacity the likelihood cannot use.
 
 **There are no discrete latent sites at all.** No style assignment to sample,
 no categorical variables, no label-switching *during* inference to fight. Every
-site in the model is an `f64`, which means fugue's generic adaptive single-site
+site in the model is an `f64`, which means fugue’s generic adaptive single-site
 MH applies unchanged, with no custom kernel and no Rao-Blackwellization.
 
 Label permutation is resolved **post hoc** instead, by
@@ -102,7 +102,7 @@ number of *live* styles grows with evidence.
 
 Nothing enforces that; it falls out. A style with no evidence to explain stays
 near its prior, and `style_share` reports what fraction of the pool each style
-actually claims as its best. **A style claiming ≈0% is idle**: the player's
+actually claims as its best. **A style claiming ≈0% is idle**: the player’s
 taste has fewer islands than $K$, and the app dims it rather than inventing a
 name for it.
 
@@ -121,7 +121,7 @@ The $s_K$ factor is the correction the max form forces, and it is easy to miss.
 
 Under the prior each $u_k$ is marginally $\mathcal{N}(0,1)$, so $u = \max_k
 u_k$ is **the maximum of $K$ iid standard normals**, whose standard deviation
-*falls* with $K$ (`MAX_NORMAL_SD`, in `auracle-taste`'s `model.rs`):
+*falls* with $K$ (`MAX_NORMAL_SD`, in `auracle-taste`’s `model.rs`):
 
 | $K$ | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|
@@ -144,7 +144,7 @@ every $K$.
 | Quantity | Is |
 |---|---|
 | `utility_mix(z)` | $(\text{mean}, \text{sd})$ of $u$ over posterior draws: the glow and size on the taste map |
-| `utility(z, k)` | Style $k$'s rating specifically |
+| `utility(z, k)` | Style $k$’s rating specifically |
 | `best_style(z)` | Which style claims this candidate: the hue on the map |
 | `responsibilities(z)` | Posterior probability that each style is the best one for this candidate |
 | `style_share(pool)` | Per-style share of the pool, averaged over candidates |

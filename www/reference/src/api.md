@@ -23,14 +23,14 @@ and [fugue-evo](https://docs.rs/fugue-evo) have their own docs on docs.rs.
 ## Where to start
 
 The doc comments in this codebase carry a lot of the reasoning, and a few are
-worth reading directly rather than through this book's summary of them:
+worth reading directly rather than through this book’s summary of them:
 
 | For | Read |
 |---|---|
-| The grammar's site table | `auracle_grammar::prior` module docs |
+| The grammar’s site table | `auracle_grammar::prior` module docs |
 | Why $\varphi_{\text{struct}}$ has families rather than per-module columns | `auracle_features::structural` module docs |
 | The max-of-experts argument, and the $s_K$ correction | `auracle_taste::model` module docs |
-| Why the standardizer's threshold is $10^6$ | `RUNAWAY_RATIO` in `auracle-taste`'s `standardize.rs` (private, so read it in the source) |
+| Why the standardizer’s threshold is $10^6$ | `RUNAWAY_RATIO` in `auracle-taste`’s `standardize.rs` (private, so read it in the source) |
 | Why refinement is 40 steps × 10 seeds | `auracle_session::SessionConfig::refine_steps` |
 | The acquisition measurement, in full | `auracle_session::Acquisition` |
 | Why accuracy was replaced by Brier skill | `auracle_session::calib` module docs |

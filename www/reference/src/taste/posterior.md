@@ -5,9 +5,9 @@ honest signal for when the cheap path has run out.</p>
 
 ## The full fit
 
-`TasteModel::fit` runs fugue's **adaptive single-site Metropolis–Hastings**,
+`TasteModel::fit` runs fugue’s **adaptive single-site Metropolis–Hastings**,
 with these defaults (`SessionConfig` in `engine.rs`, and `KEEP` in
-`auracle-taste`'s `model.rs`):
+`auracle-taste`’s `model.rs`):
 
 | | Default |
 |---|---|
@@ -40,7 +40,7 @@ clones `Address` (an `Arc` refcount bump plus a cached hash) into each node.
 Building addresses inline (`addr!(format!("theta{k}"), i)`) cost a `format!`
 into a `String`, a re-allocation into `Arc<str>`, and a SipHash of that string,
 **per site per step**: roughly 3.7 M allocations per mature fit, and measurably
-the bulk of the fit's wall time (`examples/fit_bench.rs`; the fit is `steps ×
+the bulk of the fit’s wall time (`examples/fit_bench.rs`; the fit is `steps ×
 sites`-shaped and the likelihood is only ~20% of it even at 100 observations).
 
 The addresses are a pure function of $(K, d, n_{\text{stars}}, S)$, none of
@@ -61,10 +61,10 @@ held live at once to retain 500: **303.1 MB peak RSS** at the shipped budget,
 scaling with `n_samples`, and a plausible mobile-Safari OOM on a 32-bit heap
 rather than mere waste.
 
-It could not be fixed here. The retention was inside fugue's chain driver, and
+It could not be fixed here. The retention was inside fugue’s chain driver, and
 the pieces needed to reimplement that driver with identical RNG consumption
 (`single_site_mh_step`, `propose_and_score`, `SingleSiteProposalHandler`) are
-private or `pub(crate)`; forking fugue's inference core into this crate would
+private or `pub(crate)`; forking fugue’s inference core into this crate would
 have traded a memory spike for a correctness hazard on every upgrade.
 
 So it was fixed **upstream** instead, as
@@ -81,8 +81,8 @@ So it was fixed **upstream** instead, as
 the point of that table rather than a footnote to it. `thin` gates the push and
 nothing else: every transition still runs, so the RNG is consumed in the same
 order and quantity, and $0, \text{stride}, 2\cdot\text{stride}, \dots$ is exactly
-what `step_by` kept. `fit_bench`'s per-fit checksum is the Auracle-side witness;
-fugue's `thinning_retains_exactly_the_draws_step_by_would` is the upstream one.
+what `step_by` kept. `fit_bench`’s per-fit checksum is the Auracle-side witness;
+fugue’s `thinning_retains_exactly_the_draws_step_by_would` is the upstream one.
 
 What stays resident is the 500 draws the posterior actually keeps, so **the peak
 no longer scales with `mcmc_samples` at all**. The budget is now free to be
@@ -118,13 +118,13 @@ Equals the draw count for uniform weights, and collapses toward 1 as weights
 concentrate.
 
 Importance weights **degenerate**, and ESS says so rather than letting the
-posterior quietly become one point wearing 500 hats. It is the engine's signal
+posterior quietly become one point wearing 500 hats. It is the engine’s signal
 that a real refit is due.
 
 <figure class="viz" data-viz="ess">
 <figcaption><strong>Fold observations in and watch the weights concentrate.</strong>
 Each bar is one posterior draw. Reweighting is exact and costs almost nothing,
-but the mass keeps collecting on fewer draws until a "posterior" of a handful
+but the mass keeps collecting on fewer draws until a “posterior” of a handful
 of points would tell the acquisition rule it is certain when it is merely
 exhausted. Then press <em>resample</em>: ESS goes back to full and most of the
 draws are now duplicates of each other: the sample is impoverished rather than
@@ -139,9 +139,9 @@ When weights have concentrated far enough (ESS below half the draws),
 same size.
 
 The trade: resampling produces **duplicate draws**, so the sample is
-impoverished but still spans the posterior's support, and ESS on the fresh
+impoverished but still spans the posterior’s support, and ESS on the fresh
 uniform weights no longer *claims* more information than is there. Left
-unresampled, almost all the mass sits on one draw, and a "posterior" of one
+unresampled, almost all the mass sits on one draw, and a “posterior” of one
 point tells the acquisition function it is certain when it is merely exhausted.
 
 It is a stopgap between full refits, not a substitute for one.
@@ -161,15 +161,15 @@ pub fn needs_refit(&self) -> bool {
 }
 ```
 
-The engine's condition is not a count of picks. It is **"the weights have had
-to be resampled at least once since the last real fit"**, that is, the cheap
+The engine’s condition is not a count of picks. It is **“the weights have had
+to be resampled at least once since the last real fit”**, that is, the cheap
 path has provably run out of road. The engine reports it in its status.
 
 The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
-`apps/web/main.js`), and PERFORM's answered offers count as picks. The app used
+`apps/web/main.js`), and PERFORM’s answered offers count as picks. The app used
 to require `needs_refit` as well, to save the seconds of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
-been, so a run of agreeable picks ended with the teaching meter's countdown and
+been, so a run of agreeable picks ended with the teaching meter’s countdown and
 no refit: the meter promised something it then did not do. A fit costs a few
 seconds off the audio thread, at most once every six picks, and the pair stays
 audible through it.
@@ -207,7 +207,7 @@ All weighted by the importance weights:
 
 `prob_prefers` marginalizes $\theta$ **and** the weights **and** the
 per-candidate style choice, which is why it is the right forecast to show for a
-pair: it is a predictive probability, not a point estimate's opinion.
+pair: it is a predictive probability, not a point estimate’s opinion.
 
 ## Serialization
 

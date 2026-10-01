@@ -35,12 +35,12 @@ runaway**. On clean data it is bit-identical to the naive fit.
 Per column:
 
 1. Drop non-finite cells (a column that is *entirely* non-finite falls back to
-   $\mu = 0, s = 1$, the reading of "no usable evidence on this axis").
+   $\mu = 0, s = 1$, the reading of “no usable evidence on this axis”).
 2. Compute the plain moments $(\mu, s)$.
 3. Compute winsorized moments $(\mu_w, s_w)$ with the extreme 2% of each tail pulled in.
 4. **Use the winsorized pair only if $s > 10^6 \, s_w$.**
 
-The constants, in `auracle-taste`'s `standardize.rs`:
+The constants, in `auracle-taste`’s `standardize.rs`:
 
 ```rust
 const WINSOR_TAIL: f64 = 0.02;
@@ -65,8 +65,8 @@ moments unless the column is provably broken.
 
 ### Why the threshold is $10^6$
 
-The first guess was 8×, on the reasoning that clean columns differ "by a factor
-of order one". The paired run said otherwise: 15 of 16 seeds came back
+The first guess was 8×, on the reasoning that clean columns differ “by a factor
+of order one”. The paired run said otherwise: 15 of 16 seeds came back
 bit-identical and the sixteenth went from **+0.12** to **−40.5**.
 
 So the threshold was measured.
@@ -105,7 +105,7 @@ about it.
 
 There is also a `hi > lo` guard, which keeps a legitimately rare column intact:
 when 96% of rows are the same value (a module that appears in two patches out
-of forty-eight) the tail *is* the column's only information, and clipping it
+of forty-eight) the tail *is* the column’s only information, and clipping it
 would flatten a real coordinate to nothing in the name of robustness.
 
 ### Winsorizing rather than trimming
@@ -127,7 +127,7 @@ than 0.05 and that the coordinate still separates two real patches by more than
 3.
 
 **Clean columns come out bit-identical to the plain moments.** The load-bearing
-property, asserted with `assert_eq!` on floats, because "close enough" would
+property, asserted with `assert_eq!` on floats, because “close enough” would
 let the regression back in, over a heavy right tail, a near-constant column, a
 bipolar one, a count with a legitimately extreme member, and a five-row column
 below the floor entirely.
@@ -141,7 +141,7 @@ clean data, and the whole claim is that clean data comes out bit-identical.
 
 The fault this detector exists for is fixed upstream of here: `clamp_domains`
 on load, `FeaturizeError::OutOfDomain` before the render, the load-time repair.
-This is the line that means **the next** escape costs a coordinate's precision
+This is the line that means **the next** escape costs a coordinate’s precision
 rather than the coordinate.
 
 Layers above should make this unnecessary. It exists anyway, because in
