@@ -113,8 +113,11 @@ Every change must pass `make check`:
    (`make web-check`)
 4. The tooling's own checks (`make dev-check`): the agent docs' links and
    frontmatter, every constant the books quote by name still existing in the
-   code (`www/checknames.py`), the Claude Code hooks against the inputs they
-   must block and pass, and the syntax of every film tool
+   code (`www/checknames.py`), the color tokens (`www/brand/tokens.py`), the
+   voice (`www/checkwords.py`: no file's count of banned words, em dashes or
+   British spellings above `www/brand/voice-baseline.json`), the Claude Code
+   hooks against the inputs they must block and pass, and the syntax of every
+   film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
 6. `cargo test --workspace --profile test-fast` — release-grade codegen

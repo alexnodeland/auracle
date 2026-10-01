@@ -1,0 +1,421 @@
+{
+  "CHANGELOG.md": {
+    "-ise": 1,
+    "analyse": 2,
+    "behaviour": 2,
+    "cancelled": 1,
+    "catalogue": 6,
+    "centre": 19,
+    "colour": 11,
+    "em dash": 400,
+    "grey": 2,
+    "maths": 1,
+    "modelling": 1,
+    "normalise": 2,
+    "recognise": 3
+  },
+  "README.md": {
+    "em dash": 25,
+    "maths": 1,
+    "modelling": 1
+  },
+  "apps/web/index.html": {
+    "HELD": 2,
+    "analyse": 3,
+    "bench": 6,
+    "catalogue": 2,
+    "colour": 1,
+    "commit": 7,
+    "em dash": 51,
+    "favourite": 1,
+    "plate": 4,
+    "vote": 5,
+    "workbench": 2
+  },
+  "apps/web/main.js": {
+    "-ise": 1,
+    "HELD": 4,
+    "MODEL'S GUESS": 2,
+    "analyse": 1,
+    "bench": 17,
+    "cancelled": 1,
+    "catalogue": 2,
+    "centre": 1,
+    "commit": 7,
+    "duel": 11,
+    "em dash": 327,
+    "evict": 1,
+    "favourite": 3,
+    "generate": 2,
+    "lens": 2,
+    "measuring…": 1,
+    "modelling": 1,
+    "plate": 8,
+    "posterior": 1,
+    "preference": 1,
+    "vote": 5
+  },
+  "apps/web/midi.js": {
+    "em dash": 5
+  },
+  "apps/web/perform.js": {
+    "HELD": 1,
+    "centre": 2,
+    "em dash": 31
+  },
+  "apps/web/worker.js": {
+    "retired": 1
+  },
+  "www/docs/src/accessibility.md": {
+    "catalogue": 1,
+    "colour": 3,
+    "duel": 1
+  },
+  "www/docs/src/bank.md": {
+    "duel": 2,
+    "em dash": 6,
+    "evict": 2,
+    "generate": 1,
+    "posterior": 2,
+    "preference": 2,
+    "workbench": 1
+  },
+  "www/docs/src/films.md": {
+    "duel": 7,
+    "lens": 3,
+    "posterior": 2
+  },
+  "www/docs/src/getting-started/first-session.md": {
+    "bench": 1,
+    "commit": 1,
+    "duel": 5,
+    "em dash": 2,
+    "evict": 1,
+    "generate": 2,
+    "lens": 2,
+    "preference": 1
+  },
+  "www/docs/src/getting-started/running-locally.md": {
+    "retired": 1
+  },
+  "www/docs/src/glossary.md": {
+    "HELD": 1,
+    "duel": 9,
+    "em dash": 2,
+    "lens": 5,
+    "posterior": 2,
+    "preference": 2,
+    "vote": 1
+  },
+  "www/docs/src/introduction.md": {
+    "catalogue": 1,
+    "crossover": 1,
+    "duel": 2,
+    "generate": 1,
+    "lens": 1,
+    "posterior": 1,
+    "vote": 1
+  },
+  "www/docs/src/keyboard.md": {
+    "HELD": 3,
+    "catalogue": 1,
+    "centre": 5,
+    "em dash": 2,
+    "plate": 4,
+    "recognise": 2,
+    "vote": 1
+  },
+  "www/docs/src/playing.md": {
+    "centre": 1,
+    "duel": 1,
+    "em dash": 2,
+    "preference": 1,
+    "recognise": 1
+  },
+  "www/docs/src/rack.md": {
+    "HELD": 2,
+    "bench": 1,
+    "cancelled": 1,
+    "centre": 1,
+    "colour": 2,
+    "commit": 11,
+    "duel": 1,
+    "em dash": 1,
+    "grey": 3,
+    "plate": 8
+  },
+  "www/docs/src/reading-the-model.md": {
+    "centre": 1,
+    "duel": 7,
+    "em dash": 4,
+    "generate": 1,
+    "grey": 1,
+    "lens": 4,
+    "posterior": 2,
+    "preference": 3,
+    "recognise": 1
+  },
+  "www/docs/src/teaching.md": {
+    "commit": 2,
+    "duel": 13,
+    "em dash": 3,
+    "evict": 1,
+    "lens": 1,
+    "modelling": 1,
+    "posterior": 1,
+    "preference": 3,
+    "vote": 5
+  },
+  "www/docs/src/troubleshooting.md": {
+    "bench": 1,
+    "commit": 3,
+    "duel": 5,
+    "em dash": 2,
+    "preference": 1,
+    "retired": 2
+  },
+  "www/docs/src/views/evolve.md": {
+    "bench": 3,
+    "duel": 7,
+    "em dash": 6,
+    "generate": 1,
+    "vote": 7,
+    "workbench": 1
+  },
+  "www/docs/src/views/perform.md": {
+    "centre": 11,
+    "commit": 1,
+    "duel": 3,
+    "em dash": 7,
+    "workbench": 3
+  },
+  "www/docs/src/views/play.md": {
+    "HELD": 1,
+    "analyse": 1,
+    "catalogue": 2,
+    "centre": 1,
+    "colour": 1,
+    "commit": 3,
+    "duel": 3,
+    "em dash": 3,
+    "lens": 1,
+    "plate": 1,
+    "vote": 1,
+    "workbench": 1
+  },
+  "www/docs/src/views/taste.md": {
+    "centre": 4,
+    "commit": 3,
+    "duel": 8,
+    "em dash": 7,
+    "favourite": 1,
+    "generate": 1,
+    "lens": 10,
+    "posterior": 3,
+    "preference": 2,
+    "recognise": 1,
+    "workbench": 1
+  },
+  "www/docs/src/wiring.md": {
+    "HELD": 1,
+    "catalogue": 4,
+    "colour": 1,
+    "em dash": 3,
+    "evict": 1,
+    "grey": 1,
+    "preference": 1
+  },
+  "www/docs/src/your-data.md": {
+    "HELD": 1,
+    "duel": 1,
+    "em dash": 2,
+    "posterior": 2,
+    "vote": 1
+  },
+  "www/landing/hero.js": {
+    "em dash": 5
+  },
+  "www/landing/index.html": {
+    "catalogue": 1,
+    "centre": 2,
+    "duel": 4,
+    "em dash": 3,
+    "generate": 1,
+    "lens": 2,
+    "modelling": 1,
+    "posterior": 1,
+    "preference": 1
+  },
+  "www/reference/src/api.md": {
+    "em dash": 5
+  },
+  "www/reference/src/architecture/addresses.md": {
+    "crossover": 1
+  },
+  "www/reference/src/architecture/crates.md": {
+    "em dash": 11
+  },
+  "www/reference/src/architecture/two-loops.md": {
+    "em dash": 1
+  },
+  "www/reference/src/audition/loudness.md": {
+    "em dash": 6
+  },
+  "www/reference/src/audition/phrase.md": {
+    "behaviour": 2,
+    "em dash": 3
+  },
+  "www/reference/src/audition/vetting.md": {
+    "em dash": 2
+  },
+  "www/reference/src/bibliography.md": {
+    "crossover": 2,
+    "em dash": 6,
+    "normalise": 1,
+    "recognise": 1
+  },
+  "www/reference/src/design/audition-limits.md": {
+    "behaviour": 1,
+    "em dash": 28,
+    "modelling": 4
+  },
+  "www/reference/src/design/decisions.md": {
+    "em dash": 3
+  },
+  "www/reference/src/design/directions.md": {
+    "behaviour": 2,
+    "colour": 1,
+    "em dash": 63,
+    "modelling": 3,
+    "recognise": 2
+  },
+  "www/reference/src/design/lineage.md": {
+    "crossover": 1,
+    "em dash": 5
+  },
+  "www/reference/src/design/milestones.md": {
+    "em dash": 4
+  },
+  "www/reference/src/design/open-questions.md": {
+    "-ise": 2,
+    "crossover": 1,
+    "em dash": 36,
+    "modelling": 1,
+    "recognise": 1
+  },
+  "www/reference/src/features/audio.md": {
+    "em dash": 18,
+    "modelling": 1,
+    "recognise": 2
+  },
+  "www/reference/src/features/standardization.md": {
+    "em dash": 2
+  },
+  "www/reference/src/features/structural.md": {
+    "colour": 1,
+    "em dash": 2
+  },
+  "www/reference/src/genome/edits.md": {
+    "em dash": 3
+  },
+  "www/reference/src/genome/grammar.md": {
+    "-ise": 1,
+    "colour": 1,
+    "crossover": 1,
+    "em dash": 3
+  },
+  "www/reference/src/genome/parameters.md": {
+    "-ise": 1,
+    "colour": 1,
+    "em dash": 2
+  },
+  "www/reference/src/introduction.md": {
+    "em dash": 2,
+    "maths": 1,
+    "organise": 1
+  },
+  "www/reference/src/notation.md": {
+    "em dash": 3
+  },
+  "www/reference/src/persistence.md": {
+    "em dash": 10
+  },
+  "www/reference/src/runtime.md": {
+    "em dash": 5
+  },
+  "www/reference/src/safety.md": {
+    "em dash": 7
+  },
+  "www/reference/src/search/acquisition.md": {
+    "em dash": 6
+  },
+  "www/reference/src/search/locks.md": {
+    "em dash": 2
+  },
+  "www/reference/src/search/perform.md": {
+    "cancelled": 1,
+    "centre": 3,
+    "em dash": 4
+  },
+  "www/reference/src/search/proposals.md": {
+    "em dash": 3
+  },
+  "www/reference/src/search/refinement.md": {
+    "em dash": 7
+  },
+  "www/reference/src/search/target.md": {
+    "behaviour": 1,
+    "crossover": 1,
+    "em dash": 1
+  },
+  "www/reference/src/taste/calibration.md": {
+    "em dash": 5
+  },
+  "www/reference/src/taste/likelihoods.md": {
+    "em dash": 3,
+    "modelling": 2
+  },
+  "www/reference/src/taste/posterior.md": {
+    "em dash": 9
+  },
+  "www/reference/src/taste/utility.md": {
+    "colour": 1,
+    "em dash": 7
+  },
+  "www/video/films/composing/script.json": {
+    "duel": 1
+  },
+  "www/video/films/engine/script.json": {
+    "duel": 2,
+    "posterior": 1
+  },
+  "www/video/films/math/script.json": {
+    "duel": 3,
+    "lens": 2
+  },
+  "www/video/films/sounddesign/script.json": {
+    "bench": 1,
+    "commit": 1
+  },
+  "www/video/films/taste/script.json": {
+    "duel": 2,
+    "lens": 1
+  },
+  "www/video/films/view-evolve/script.json": {
+    "duel": 5,
+    "favourite": 1
+  },
+  "www/video/films/view-patch/script.json": {
+    "HELD": 1,
+    "bench": 1,
+    "commit": 3,
+    "plate": 1
+  },
+  "www/video/films/view-perform/script.json": {
+    "centre": 2
+  },
+  "www/video/films/view-taste/script.json": {
+    "centre": 1,
+    "duel": 3
+  }
+}

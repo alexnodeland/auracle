@@ -74,13 +74,18 @@ install-hooks:
 ## dev-check: the tooling around the code stays sound — the agent docs'
 ## links, anchors and frontmatter, the constants the books quote by name, the
 ## colour tokens (every generated block current, no colour written outside
-## www/brand/tokens.json, and the check's own tests), the Claude Code hooks
-## against inputs they must block and pass, and the syntax of every film tool
+## www/brand/tokens.json, and the check's own tests), the voice (no count of
+## a banned word, an em dash or a British spelling above
+## www/brand/voice-baseline.json, and the check's own tests), the Claude Code
+## hooks against inputs they must block and pass, and the syntax of every film
+## tool
 dev-check:
 	@python3 .claude/checks/check_docs.py
 	@python3 www/checknames.py
 	@python3 www/brand/tokens.py --check
 	@python3 www/brand/test_tokens.py
+	@python3 www/checkwords.py
+	@python3 www/test_checkwords.py
 	@bash .claude/checks/test_hooks.sh
 	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py

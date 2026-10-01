@@ -41,6 +41,11 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   - the word table, with sound for what you hear and patch for how it's built;
   - American spelling and no em dashes;
   - the spoken voice for the films.
+
+  `make dev-check` fails when a file's count of banned words, em dashes or
+  British spellings rises above `brand/voice-baseline.json`
+  (`www/checkwords.py`); after a sweep, lower it with
+  `python3 www/checkwords.py --update`.
 - **Motion shows what the engine does**
   ([ADR-012](../docs/decisions/012-motion-shows-what-the-engine-does.md)): a
   figure or film that animates a mechanism shows what the engine does, and a
