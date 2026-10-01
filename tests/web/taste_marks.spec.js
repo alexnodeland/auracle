@@ -112,16 +112,22 @@ function solidAmberIn(page, band) {
   }, band);
 }
 
-test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the node bank", async ({ page }) => {
+test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the module rail, and the guess above the rack is a percentage and a word", async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await boot(page, { warmed: false });
   await warmStartAndFit(page);
+
+  // The guess above the rack is a percentage and a word, never MODEL'S GUESS
+  // and a bare decimal (words.js `guessLabel`).
+  await expect(page.locator("#belief .bl-u")).toHaveText(/^\d+%$/, { timeout: 30_000 });
+  await expect(page.locator("#belief .bl-sure")).toHaveText(/^· (a hunch|leaning|fairly sure)$/);
+  await expect(page.locator("#belief")).not.toContainText(/model's guess/i);
 
   // A real early fit: eighteen preferences, and the model says how few of its
   // pulls it is sure of.
   await tasteTab(page, "dir");
   await expect(page.locator("#taste-caption")).toHaveText(
-    "Where each style leans. Solid = it's sure. Hollow = still a guess — the thin line is how far it could be off.",
+    "Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how far it could be off.",
   );
   const label = await page.locator("#taste-crt").getAttribute("aria-label");
   const m = /^Directions: (\d+) settled, (\d+) still a guess \(marked \?\)\. (.*)$/.exec(label || "");
@@ -133,7 +139,7 @@ test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the node bank"
   expect(rows.length).toBe(settled + guesses);
 
   await page.locator('.tab[data-tab="styles"]').click();
-  await expect(page.locator("#taste-caption")).toContainText("hollow, with a ?, = still a guess");
+  await expect(page.locator("#taste-caption")).toContainText("Hollow, with a ?: still a guess");
   await expect(page.locator("#taste-crt")).toHaveAttribute("aria-label", /^Styles: \d+ settled, [1-9]\d* still a guess/);
 
   // The pixels, on two coefficients chosen here: filter's family settled

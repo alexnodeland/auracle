@@ -145,7 +145,7 @@ test("a half-closed control draws its ring on the side it turns toward, and says
     // The caption says what the player can do, in the open end's word.
     expect(h.sub, h.name).toBe(`turns toward ${h.up ? h.words[1] : h.words[0]} only`);
     expect(h.dot, `${h.name}: the amber dot says what it is`).toMatch(/where this sound measures on/);
-    expect(h.valuetext).toBe("centre");
+    expect(h.valuetext).toBe("center");
   }
 
   // Driven into its stop, the pointer bumps (and the dial stays at centre).
@@ -169,7 +169,7 @@ test("a control still being listened to does nothing, and never looks or acts li
   const errs = await boot(page, { shipped: false });
   await openOnPerform(page, "Glass Pad");
   // A fresh profile has no wiring cached: the first measurement takes seconds.
-  await expect(page.locator(".pf-status")).toContainText("listening to this patch", { timeout: 30_000 });
+  await expect(page.locator(".pf-status")).toContainText("listening to this sound", { timeout: 30_000 });
   expect(await page.locator(".pf-status").textContent()).not.toMatch(/measuring/);
 
   const look = await page.evaluate(() => {
@@ -189,13 +189,13 @@ test("a control still being listened to does nothing, and never looks or acts li
   expect(look.search, "no amber search look while listening").toBe(false);
   expect(look.dead, "no dead XY axis while listening").toBe(false);
   expect(look.struck, "no struck-through XY words while listening").toBe(false);
-  expect(look.note).toBe("listening to this patch…");
+  expect(look.note).toBe("listening to this sound…");
 
   // Turn Grit hard (a search control on Glass Pad, once measured) and let go.
   const grit = page.locator('.pf-knob[data-i="4"]');
   const before = await page.evaluate(() => window.__pfPosts.length);
   await drag(page, grit, -120);
-  expect(await page.locator(".pf-status").textContent(), "still listening when it was turned").toContain("listening to this patch");
+  expect(await page.locator(".pf-status").textContent(), "still listening when it was turned").toContain("listening to this sound");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
   await page.waitForTimeout(1500);
   const asked = await page.evaluate((n) => window.__pfPosts.slice(n).filter((p) => p.type === "perform_graft" || (p.type === "perform_offer" && !p.bg)), before);
@@ -339,7 +339,7 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   await wander.focus();
   await page.keyboard.press("Home"); // Wander still
   await page.locator(".pf-pad", { hasText: "Keep" }).click();
-  await expect(page.locator("#toasts")).toContainText("Kept — this is home now. Back returns here.", { timeout: 10_000 });
+  await expect(page.locator("#toasts")).toContainText("Kept: this is home now. Back returns here.", { timeout: 10_000 });
   await page.waitForTimeout(1500);
   const afterKeep = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t && !p.bg), k0);
   expect(afterKeep, "Keep never re-measures in front of the player").toEqual([]);

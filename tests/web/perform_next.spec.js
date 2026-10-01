@@ -101,7 +101,7 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   const second = await pressOffer(page);
   console.log(`offer → B: first ${first.toFixed(0)} ms, NEXT ${second.toFixed(0)} ms`);
   expect(second, "NEXT hands over the spare grown while B was full").toBeLessThan(300);
-  const toast = page.locator(".toast", { hasText: "Passed on B — that counts as a pick for what you had." });
+  const toast = page.locator(".toast", { hasText: "Passed on B. That counts as a pick for what you had." });
   await expect(toast).toBeVisible({ timeout: 5_000 });
   await expect(toast.locator(".toast-undo")).toHaveText("undo");
 
@@ -120,7 +120,7 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   // An unheard B passed on says it was not counted, and can come back.
   const bUnheard = await page.locator(".pf-offer-body").textContent();
   await page.locator(".pf-pad", { hasText: "Next" }).click();
-  const skipped = page.locator(".toast", { hasText: "B skipped — not counted, you hadn't heard it." });
+  const skipped = page.locator(".toast", { hasText: "Skipped B. Not counted, because you hadn’t heard it." });
   await expect(skipped).toBeVisible({ timeout: 5_000 });
   await skipped.locator(".toast-undo").click();
   await expect(page.locator(".pf-offer-body")).toHaveText(bUnheard, { timeout: 5_000 });

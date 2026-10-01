@@ -146,7 +146,7 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
   await toEvolve(page);
   const restores = await count(page, "sent:edit_set_tree");
   await page.keyboard.press("Control+z");
-  await expect(page.locator("#toasts .toast-msg")).toHaveText("nothing to undo here — PATCH edits undo in PATCH", { timeout: 1_500 });
+  await expect(page.locator("#toasts .toast-msg")).toHaveText("Nothing to undo here. PATCH edits undo in PATCH.", { timeout: 1_500 });
   // Pressed again, it is said once, not queued twice.
   await page.keyboard.press("Control+z");
   await page.waitForTimeout(1500);
@@ -205,7 +205,7 @@ test("the sixth pick can be taken back, and it just learned only once fitted has
 
   // "● it just learned" only after `fitted`, and it stays with no timer.
   await expect.poll(() => count(page, "fitted"), { timeout: 120_000 }).toBeGreaterThan(0);
-  await expect(copy).toContainText("● it just learned — see what changed ▸", { timeout: 2_000 });
+  await expect(copy).toContainText("● it just learned: see what changed ▸", { timeout: 2_000 });
   const t = await page.evaluate(() => ({
     fitted: window.__pwLog.find((e) => e.type === "fitted").at,
     learned: (window.__pwTeach.find((e) => e.text.includes("it just learned")) || {}).at,
@@ -283,7 +283,7 @@ test("a cut patch is not dealt again, and its toast names it without an id", asy
   let said;
   await expect.poll(async () => (said = (await toastsSince(page, mark)).find((t) => t.startsWith("Cut "))),
     { timeout: 15_000 }).toBeTruthy();
-  expect(said).toMatch(/^Cut .+ — it won't be dealt again$/);
+  expect(said).toMatch(/^Cut .+\. It won’t be dealt again\.$/);
   expect(said).not.toMatch(/#\d/);
   // The pair it was on is put away; no deal from here on includes it. The
   // pair dealt ahead goes up at once (re-checked against the cut), and the
@@ -394,13 +394,13 @@ test("with no farm, a pick's deal during a generation says which seed it waits o
   }
   console.log(`deal reasons seen during the generation: ${JSON.stringify([...reasons])}`);
   for (const r of reasons) {
-    expect(r).toMatch(/^dealing — the engine is (breeding \(seed \d+\/\d+\)|breeding|placing a bred generation in the pool)$|^dealing…$/);
+    expect(r).toMatch(/^dealing: the engine is (breeding \(seed \d+\/\d+\)|breeding|placing a bred generation in the pool)$|^dealing…$/);
   }
   expect([...reasons].some((r) => /breeding \(seed \d+\/10\)/.test(r)), "no deal said which seed it waited on").toBe(true);
 
   await expect(page.locator("#evolve-btn")).toBeEnabled({ timeout: 400_000 });
   const said = await toastsSince(page, mark);
-  const receipt = said.find((t) => /^Gen \d+:/.test(t));
+  const receipt = said.find((t) => /^Generation \d+:/.test(t));
   console.log(`generation receipt: ${receipt}`);
   expect(receipt).toBeTruthy();
   expect(receipt).not.toMatch(/#\d|retired/);
@@ -410,7 +410,7 @@ test("with no farm, a pick's deal during a generation says which seed it waits o
   console.log(`lineage strip: ${lineage.slice(0, 300)}`);
   expect(lineage).not.toMatch(/#\d|Δtaste|no proposal beat/);
   if (/gen \d/.test(lineage)) expect(lineage).toMatch(/→ .+ · .* liked [+−]\d/);
-  else expect(lineage).toContain("no move was accepted");
+  else expect(lineage).toMatch(/ran, and none put a new sound in the pool/);
   // The lamp stays lit while the refit the sixth pick armed still runs; the
   // generation's reply no longer puts it out under the refit.
   if (sawSixth) {

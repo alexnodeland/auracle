@@ -7282,7 +7282,7 @@ function syncCommitBtn() {
       : "This patch didn’t pass the safety vet";
   }
   b.title = b.disabled ? ""
-    : "Plays your edit against the original and asks which you’d reach for (with “my edit is better” ticked, it takes your word for it). Either answer teaches the model, and picking the original teaches it most.";
+    : "Plays your edit against the original and asks which you’d reach for (with “pick the edit” ticked, it takes your word for it). Either answer teaches the model, and picking the original teaches it most.";
 }
 
 /** A knob write. `id` is the knob's identity as the gesture saw it (a drag

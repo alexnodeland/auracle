@@ -1864,7 +1864,7 @@ export function createPerform(host) {
           requestOffer(state.offerWhy);
           return true;
         }
-        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "no offer rated above this sound: try again, or loosen a lock"));
+        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "the walk came back unchanged: try again, or loosen a lock"));
         return true;
       }
       if (p.aim) m.offer.aim = p.aim;

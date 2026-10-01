@@ -107,7 +107,7 @@ async function toEvolve(page) {
   await expect(page.locator("#name-a .dn-id")).toBeAttached({ timeout: 30_000 });
 }
 
-test("PICKS counts a pick at once, ⌘Z takes it back, and the lane names the latest pick", async ({ page }) => {
+test("TAUGHT counts a pick at once, ⌘Z takes it back, and the lane names the latest pick", async ({ page }) => {
   const pageErrors = await boot(page);
   await toEvolve(page);
   const chooseA = page.locator("#choose-a");
@@ -116,6 +116,9 @@ test("PICKS counts a pick at once, ⌘Z takes it back, and the lane names the la
   // Counted in the click's own task — not seven seconds on, when the log hears.
   await chooseA.click();
   expect(await picks(page)).toBe(n0 + 1);
+  // TAUGHT counts everything it learned from, and its tooltip splits it.
+  await expect(page.locator("#taught .counter-label")).toHaveText("taught");
+  await expect(page.locator("#taught")).toHaveAttribute("title", new RegExp(`^${n0 + 1} picks? · 0 stars · 0 cuts$`));
   await expect(page.locator("#teach-pips i.lit")).toHaveCount(1);
   await expect(page.locator("#teach-copy")).toContainText("5 more picks");
 
@@ -223,10 +226,10 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   await toEvolve(page);
   const rule = page.locator("#duel-rule");
   const pred = page.locator("#duel-pred");
-  const RANDOM = "◇ random pair — a fair test";
+  const RANDOM = "◇ random pair · a fair test";
   await expect(rule).toHaveText(RANDOM);
   expect(await rule.getAttribute("title")).toContain("every pair is dealt at random");
-  expect(await rule.getAttribute("title")).not.toContain("one duel in ten");
+  expect(await rule.getAttribute("title")).not.toContain("one pair in ten");
 
   // Through votes and skips it holds its place — on the deal after a vote
   // too, where the old mark was never drawn.
@@ -245,7 +248,8 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   await expect.poll(() => count(page, "fitted"), { timeout: 120_000 }).toBeGreaterThan(0);
   await expect(page.locator("#choose-a")).toBeEnabled();
   await page.locator("#choose-a").click();
-  await expect(pred).toHaveText(/Expected|Surprise|Toss-up/, { timeout: 5_000 });
+  // In the model's voice: the side it guessed, its probability, and a word.
+  await expect(pred).toHaveText(/^it guessed (this|the other) · \d+% · (a hunch|leaning|fairly sure)$/, { timeout: 5_000 });
   await expect(rule).toHaveText(RANDOM);
 
   // The engine tags every tenth pair "check" under Random too, though it is
@@ -271,11 +275,11 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
 
   // Under a choosing rule, the one-in-ten mark means what it says.
   await deal("bald");
-  await expect(rule).toHaveText("chosen where it's least sure");
+  await expect(rule).toHaveText("chosen where it’s least sure");
   await deal("check");
-  await expect(rule).toHaveText("◇ unbiased probe — dealt at random");
+  await expect(rule).toHaveText("◇ fair test · dealt at random");
   await expect(rule).toHaveClass(/\bcheck\b/);
-  expect(await rule.getAttribute("title")).toContain("one duel in ten");
+  expect(await rule.getAttribute("title")).toContain("one pair in ten");
 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
@@ -320,12 +324,12 @@ test("the warm start's result replaces its loading toast when it lands", async (
   await page.locator("#warm-go").click();
   // The loading toast, or already the result in its place: on a quick
   // machine the teaching lands before this line looks.
-  await expect(page.locator("#toasts .toast-msg")).toContainText(/Loading those in|preferences learned/, { timeout: 5_000 });
+  await expect(page.locator("#toasts .toast-msg")).toContainText(/Opening those|Your three taught it/, { timeout: 5_000 });
   await page.waitForFunction(() => window.__pwLast.warm_done, null, { timeout: 180_000 });
   // On screen within a beat of the reply, in the loading toast's place.
   const lane = page.locator("#toasts .toast-msg");
-  await expect(lane).toContainText("preferences learned from your three picks", { timeout: 1_500 });
-  await expect(page.locator("#toasts .toast", { hasText: "Loading those in" })).toHaveCount(0);
+  await expect(lane).toContainText("Your three taught it 18 picks", { timeout: 1_500 });
+  await expect(page.locator("#toasts .toast", { hasText: "Opening those" })).toHaveCount(0);
   expect(await picks(page)).toBe(18);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

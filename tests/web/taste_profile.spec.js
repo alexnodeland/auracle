@@ -91,8 +91,8 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await menu(page, "taste-reset-btn");
   const alarm = page.locator("#alarm");
   await expect(alarm).toContainText(
-    "Reset your taste profile? Your 2 picks, stars, cuts and 0 generations are forgotten, with every patch you haven't saved. " +
-      "Your 1 saved patch stays. A copy of the profile downloads first.",
+    "Reset your taste? Your 2 picks, 0 stars, 0 cuts, and 0 generations are forgotten, with every sound you haven’t saved. " +
+      "Your 1 saved sound stays. A copy of your taste downloads first.",
   );
   await expect(alarm.locator("button", { hasText: "download & reset" })).toBeVisible();
   await alarm.locator("button", { hasText: "keep it" }).click();
@@ -132,8 +132,8 @@ test("Save taste profile says what it downloaded", async ({ page }) => {
   const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), menu(page, "export-btn")]);
   expect(download.suggestedFilename()).toBe("auracle-profile.json");
   expect((await readJson(download)).log.observations.length).toBe(1);
-  await expect(page.locator("#toasts .toast-msg", { hasText: "Downloaded auracle-profile.json" })).toHaveText(
-    "Downloaded auracle-profile.json — 1 pick.",
+  await expect(page.locator("#toasts .toast-msg", { hasText: "Downloaded your taste" })).toHaveText(
+    "Downloaded your taste (auracle-profile.json): 1 pick, 0 stars, and 0 cuts.",
     { timeout: 15_000 },
   );
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);

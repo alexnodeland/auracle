@@ -77,7 +77,7 @@ test("a re-centred control glides home with a fading ghost, and a background re-
     }).observe(turn, { attributes: true, attributeFilter: ["transform"] });
   });
   await page.locator(".pf-pad", { hasText: "Keep" }).click();
-  await expect(page.locator("#toasts")).toContainText("Kept — this is home now.", { timeout: 15_000 });
+  await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
   await expect(bright).toHaveAttribute("aria-valuenow", "0.00");
   await page.waitForTimeout(600);
   const angles = await page.evaluate(() => window.__angles);
