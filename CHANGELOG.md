@@ -95,6 +95,10 @@ changelog that edits its own past is not a record.
   sounds. In analog sustain (60% of your pool), you lean toward it.* It ran
   on in lowercase after the count. Wander’s tooltip and HOW THIS WORKS say a
   tap freezes it, as the FREEZE pad does; they said a tap held it.
+- **Keys are printed in each platform’s own words.** Off Apple platforms the
+  ? card, the booth menu, and the rack’s tooltips read Ctrl Z, Ctrl Shift Z,
+  and Shift Esc. They printed ⌘Z and ⇧Esc everywhere, though Ctrl has always
+  worked.
 
 ### Changed: the guide
 

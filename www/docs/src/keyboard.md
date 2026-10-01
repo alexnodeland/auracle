@@ -4,7 +4,7 @@
 Press <kbd>?</kbd> in the app for the same map without leaving it.</p>
 
 The keys below use the Mac’s ⌘. On Windows and Linux, use Ctrl where you see
-⌘: <kbd>⌘Z</kbd> is Ctrl Z.
+⌘: <kbd>⌘Z</kbd> is Ctrl Z, and the app shows it that way there.
 
 ## Notes
 

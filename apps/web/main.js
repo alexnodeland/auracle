@@ -111,7 +111,7 @@ const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, coun
   await import(`./taste-geom.js?v=${BUILD}`);
 // Sentences built from engine facts (a generation's outcome, a prediction's
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
-const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal, leanSentence } =
+const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal, leanSentence, platformKeys } =
   await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -4173,7 +4173,7 @@ async function bootBooth() {
     booth.setOn(!booth.on);
     paintBooth();
     note(booth.on
-      ? "Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; Shift+Esc starts a new visitor."
+      ? platformKeys("Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; ⇧Esc starts a new visitor.")
       : "Booth mode off.");
   };
   $("booth-reset-btn").onclick = () => boothResetVisitor();
@@ -11124,7 +11124,7 @@ function bmAdd(rx, ry) {
   list.sort((a, b) => a.slot - b.slot);
   bookmarks.set(k, list);
   bmChanged();
-  note(`Bookmark ${slot} set. ⇧${slot} comes back here.`);
+  note(platformKeys(`Bookmark ${slot} set. ⇧${slot} comes back here.`));
 }
 
 function bmJump(slot) {
@@ -11156,9 +11156,9 @@ function syncMapBtn() {
   const show = mapOn && !!wb.rack;
   el.classList.toggle("hidden", !show);
   b.setAttribute("aria-pressed", String(mapOn));
-  b.closest(".tt").title = mapOn
+  b.closest(".tt").title = platformKeys(mapOn
     ? "Hide the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."
-    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.";
+    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.");
   if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
@@ -13673,8 +13673,8 @@ $("lock-clear").onclick = () => {
 const LAYOUT_TIP = {
   chain: "Chain: the signal path on one baseline. Click to pack it tight.",
   compact: "Compact: layers packed tight. Click to place modules by hand.",
-  freeform: "Freeform: drag modules where you like. They snap to the grid, and " +
-    "⇧ places them freely. Click for the straight signal chain.",
+  freeform: platformKeys("Freeform: drag modules where you like. They snap to the grid, and " +
+    "⇧ places them freely. Click for the straight signal chain."),
 };
 function syncLayoutBtn() {
   const b = $("rack-layout");
@@ -20734,6 +20734,19 @@ function pointFilmChip() {
 $("fc-close").onclick = foldFilmChip;
 // Opened in a new tab: the note has done its job here.
 $("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
+// Each platform's own keys (www/brand/voice.md): the markup writes chords
+// with the Mac's symbols (the ? card, the booth menu, a tooltip), and off
+// Apple platforms they read Ctrl, Alt and Shift. They used to read ⌘
+// everywhere, though the app takes Ctrl wherever it takes ⌘. Strings built
+// later go through `platformKeys` where they are built.
+for (const el of document.querySelectorAll("kbd")) {
+  const t = platformKeys(el.textContent);
+  if (t !== el.textContent) el.textContent = t;
+}
+for (const el of document.querySelectorAll("[title]")) {
+  const t = platformKeys(el.title);
+  if (t !== el.title) el.title = t;
+}
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
