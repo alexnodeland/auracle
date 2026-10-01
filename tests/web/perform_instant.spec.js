@@ -289,9 +289,10 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
 // A kept wiring holds φ (`z`), and a new DSP or featurizer measures the same
 // patch differently: after an update that moved the render namespace (quiver
 // 0.4.0 did), a wiring from the player's cache is still played at once, but
-// it is re-measured and replaced, never trusted as current. The entry seeded
-// here is stamped the way builds before the namespace joined the tag stamped
-// one: the bare observation count, which a fresh profile matches.
+// the status line says *re-checking* until it is measured again and replaced,
+// never trusted as current. The entry seeded here is stamped the way builds
+// before the namespace joined the tag stamped one: the bare observation count,
+// which a fresh profile matches.
 test("a kept wiring from another build's DSP plays at once and is re-measured", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
@@ -341,10 +342,17 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   });
   console.log(`a kept wiring from another build, wired in ${ms.toFixed(0)} ms`);
   expect(ms, "played at once from the kept wiring").toBeLessThan(1500);
-  // …and measured again, under this build.
-  await page.waitForFunction(() => window.__wires > 0, null, { timeout: 60_000 });
-  // The re-measured wiring replaces the old one, stamped with this build's
-  // render namespace (the cache is written 1.5 s after it changes).
+  expect(await wiredHow(page, "Acid Line"), "wired from the player's cache").toBe("cached");
+  // …and the player is told it is being measured again, under this build,
+  // until the new measurement lands.
+  const status = page.locator(".pf-status");
+  await expect(status, "the status line says the wiring is re-checked").toHaveText(/re-checking/, { timeout: 60_000 });
+  await expect(status, "the re-check lands").not.toHaveText(/re-checking/, { timeout: 150_000 });
+  await expect(status).toHaveText(/controls reach/);
+  // Secondary, internal: the measurement was asked of the engine, and the
+  // re-measured wiring replaced the old one, stamped with this build's render
+  // namespace (the cache is written 1.5 s after it changes).
+  expect(await page.evaluate(() => window.__wires), "a measurement was asked for").toBeGreaterThan(0);
   const keptRev = () =>
     page.evaluate((key) => {
       const kept = new Map(JSON.parse(localStorage.getItem("auracle-perform-wirings") || "[]"));
