@@ -1,7 +1,7 @@
 ---
 title: "The sound of the films: one key, one room, the instrument on top"
 number: 7
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-30
 updated: 2026-09-30
@@ -295,6 +295,9 @@ and 11 on) and in the sound notes:
 10. **The marks bracket the voice:** the first word comes about 1.75 s after
     the entrance mark, and the exit mark about 1.75 s after the last word.
     The final reel runs 42.6 s.
+
+Accepted as [ADR-014](../decisions/014-the-films-sound.md), built as
+[Plan-006](../plans/006-the-sound-of-the-films.md).
 
 ## Open
 
