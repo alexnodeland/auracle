@@ -37,8 +37,10 @@ caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
 the standard phrase on the sound as it stands. Pressed while an edit is still on
 its way to the engine, ▶ wears a dotted amber ring and plays once the edit
 lands; press it again to take that back. Space plays the same phrase from
-PERFORM and EVOLVE, and waits for an edit the same way: there the sound’s name
-at the right of the keybed reads *· ▶ waits for the edit* until it lands.
+PERFORM and EVOLVE: the sound as it stands here, which in PERFORM is what you
+kept or took, without a control turned since or Wander’s drift. It waits for an
+edit the same way, and there the sound’s name at the right of the keybed reads
+*· ▶ waits for the edit* until it lands.
 
 **The next-step chip.** An amber line that always says what to do now, and
 clicking it does the step it names:

@@ -10,12 +10,13 @@ changelog that edits its own past is not a record.
 
 ### Fixed: Space and the settings on the rack
 
-- **Space plays the sound you’re playing, with your edits, in every view.**
-  In PERFORM and EVOLVE, Space played the preset as it was saved: change a
-  wave in PATCH, switch to PERFORM, press Space, and you heard the old wave.
-  It now plays the edited sound there too, and waits for an edit still on
-  its way, as ▶ does in PATCH; while it waits, the sound’s name at the right
-  of the keybed says so.
+- **Space plays the sound you’re playing as it stands on the rack, in
+  every view.** In PERFORM and EVOLVE, Space played the preset as it was
+  saved: change a wave in PATCH, switch to PERFORM, press Space, and you
+  heard the old wave. It now plays your edits there too, and in PERFORM what
+  you kept or took, without a control turned since or Wander’s drift. It
+  waits for an edit still on its way, as ▶ does in PATCH, and the sound’s
+  name at the right of the keybed says so.
 - **Space plays after a click on a setting or a control.** A click on a
   wave or filter-mode chip left it focused, and Space then changed the
   setting again; after a drag on a PERFORM control or a click on the XY
@@ -90,9 +91,10 @@ changelog that edits its own past is not a record.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.
-- **A MIDI knob that takes a control is announced in a sentence:** *CC 74
-  now moves Bright, the first free control.*, or after LEARN *CC 21 now
-  moves Snap.* It read *mapped: CC 74 → Bright*.
+- **A MIDI knob that takes a control is announced in a sentence.** A knob
+  that claims a free control says *CC 74 now moves Bright, the first free
+  control.* One bound with LEARN says *CC 21 now moves Snap.* They read
+  *mapped: CC 74 → Bright*.
 - **Three more lines read as sentences.** A sound that kept you waiting to
   open is announced as *Opened Glass Pad.*, with its period. A module’s spec
   card says a lean the model is sure of in its own sentence: *In 12 of 40
@@ -100,9 +102,9 @@ changelog that edits its own past is not a record.
   on in lowercase after the count. Wander’s tooltip and HOW THIS WORKS say a
   tap freezes it, as the FREEZE pad does; they said a tap held it.
 - **Keys are printed in each platform’s own words.** Off Apple platforms the
-  ? card, the booth menu, and the rack’s tooltips read Ctrl Z, Ctrl Shift Z,
-  and Shift Esc. They printed ⌘Z and ⇧Esc everywhere, though Ctrl has always
-  worked.
+  ? card reads Ctrl Z and Ctrl Shift Z, the booth menu Shift Esc, and the
+  minimap’s tooltip Shift 1–9. They printed ⌘ and ⇧ everywhere, though Ctrl
+  has always worked.
 
 ### Changed: the guide
 
