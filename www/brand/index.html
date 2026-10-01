@@ -400,6 +400,46 @@ section:first-of-type { border-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   .tint.busy .ui-icon { animation: none; }
 }
+/* the scale: every specimen is set with the token it names */
+.scale td:first-child, .scale .sample { white-space: nowrap; }
+.scale .sample { color: var(--silk); line-height: 1.15; }
+.sample.t-label { font-size: var(--t-label); font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; }
+.sample.t-value { font-family: var(--font-mono); font-size: var(--t-value); color: var(--phos-a-dim); }
+.sample.t-body { font-size: var(--t-body); font-weight: 400; }
+.sample.t-voice { font-family: var(--font-voice); font-style: italic; font-size: var(--t-voice); color: var(--phos-b); }
+.sample.t-title { font-size: var(--t-title); font-weight: 500; }
+.sample.t-display { font-size: var(--t-display); font-weight: 400; letter-spacing: -0.01em; }
+.steps {
+  display: flex; align-items: flex-end; gap: var(--s5); flex-wrap: wrap;
+  padding: var(--s5); margin-top: var(--s5);
+  width: fit-content; max-width: 100%;
+  background: var(--bezel); border: 1px solid var(--hairline);
+  border-radius: var(--r1); box-shadow: var(--lift);
+}
+.step { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
+.step i { display: block; height: var(--s6); background: var(--phos-a-deep); }
+.steps.radii .step i { width: var(--s7); height: var(--s7); background: none; border: 1px solid var(--phos-a-dim); }
+.step .px, .lane .px {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  color: var(--silk-mute); font-variant-numeric: tabular-nums;
+}
+.lanes {
+  display: grid; gap: var(--s4);
+  padding: var(--s5); margin-top: var(--s5); max-width: 62ch;
+  background: var(--bezel); border: 1px solid var(--hairline);
+  border-radius: var(--r1); box-shadow: var(--lift);
+}
+.lane { display: grid; grid-template-columns: 18ch 1fr; align-items: center; gap: var(--s3); }
+.lane b { position: relative; height: var(--s4); border-bottom: 1px solid var(--hairline); }
+.lane i {
+  position: absolute; left: 0; top: 0;
+  width: var(--s4); height: var(--s4); border-radius: 50%;
+  background: var(--phos-a);
+  transition: left var(--d-press) var(--e-settle);
+}
+.lane.state i { transition-duration: var(--d-state); }
+.lane.move i { transition-duration: var(--d-move); }
+.lanes:hover .lane i, .lanes:focus-visible .lane i { left: calc(100% - var(--s4)); }
 
 /* don'ts */
 .donts {
@@ -685,6 +725,63 @@ section:first-of-type { border-top: 0; }
     <p class="t" style="margin-top:var(--s4)"><code>active</code> is the only icon in the
     set allowed to move, and only while a fit is actually running. It also honors
     <code>prefers-reduced-motion</code>, as everything here does.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Type, space and motion</p>
+    <h2 class="h2">One ratio, seven steps, three speeds.</h2>
+    <p class="t">The instrument is set on one scale. Its type runs up from the size of a
+    value by a single ratio, <strong>1.2</strong>: 12 &times; 1.2<sup>n</sup>, rounded, is
+    12, 14, 17 and 21, and 52 at the eighth step. Labels sit just under the scale at
+    <strong>11 px</strong>, and nothing in a page is smaller. Text a canvas draws is never
+    under <strong>12 px</strong>. Every specimen here is set with the token it names, from
+    <code>tokens.json</code>, so the page cannot stop matching what ships.</p>
+
+    <div class="scroller">
+      <table class="spec scale">
+        <thead><tr><th>Token</th><th>Size</th><th>Set in it</th></tr></thead>
+        <tbody>
+          <tr><td><code>--t-label</code></td><td class="num">11 px</td><td class="sample t-label">Silk caps · the floor</td></tr>
+          <tr><td><code>--t-value</code></td><td class="num">12 px</td><td class="sample t-value">−22.7 dB · 1.3 ms · 59%</td></tr>
+          <tr><td><code>--t-body</code></td><td class="num">14 px</td><td class="sample t-body">Prose, names and hints.</td></tr>
+          <tr><td><code>--t-voice</code></td><td class="num">17 px</td><td class="sample t-voice">it thinks you’d reach for this one</td></tr>
+          <tr><td><code>--t-title</code></td><td class="num">21 px</td><td class="sample t-title">Folded Lead</td></tr>
+          <tr><td><code>--t-display</code></td><td class="num">52 px</td><td class="sample t-display">Glass Pad</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="t" style="margin-top:var(--s5)"><strong>The voice size is the model's
+    alone</strong>, in Newsreader italic, as the family is. A title is a sound's name or a
+    card's heading; the display is one per level.</p>
+
+    <p class="t" style="margin-top:var(--s6)">Space is a 4 px grid up to 16, then wider.
+    Under the first step, 1 to 3 px is an optical nudge rather than a space, and is
+    written as it is.</p>
+    <div class="steps">
+      <div class="step"><i style="width:var(--s1)"></i><span class="px">s1 · 4</span></div>
+      <div class="step"><i style="width:var(--s2)"></i><span class="px">s2 · 8</span></div>
+      <div class="step"><i style="width:var(--s3)"></i><span class="px">s3 · 12</span></div>
+      <div class="step"><i style="width:var(--s4)"></i><span class="px">s4 · 16</span></div>
+      <div class="step"><i style="width:var(--s5)"></i><span class="px">s5 · 24</span></div>
+      <div class="step"><i style="width:var(--s6)"></i><span class="px">s6 · 32</span></div>
+      <div class="step"><i style="width:var(--s7)"></i><span class="px">s7 · 48</span></div>
+    </div>
+    <div class="steps radii">
+      <div class="step"><i style="border-radius:var(--r1)"></i><span class="px">r1 · 4 · a row, a chip</span></div>
+      <div class="step"><i style="border-radius:var(--r2)"></i><span class="px">r2 · 8 · a button, a card</span></div>
+      <div class="step"><i style="border-radius:var(--r3)"></i><span class="px">r3 · 14 · the well, a sheet</span></div>
+    </div>
+
+    <p class="t" style="margin-top:var(--s6)">Motion has three durations: a
+    <strong>press</strong> (90 ms), a <strong>state</strong> changing (180 ms), and
+    something <strong>moving</strong> (320 ms), arriving on the settle curve. Point at the
+    lanes, or tab to them. Under <code>prefers-reduced-motion</code> every duration is
+    0 ms and the dots jump; a loop's period is none of these.</p>
+    <div class="lanes" tabindex="0" aria-label="The three durations, side by side">
+      <div class="lane"><span class="px">d-press · 90 ms</span><b><i></i></b></div>
+      <div class="lane state"><span class="px">d-state · 180 ms</span><b><i></i></b></div>
+      <div class="lane move"><span class="px">d-move · 320 ms</span><b><i></i></b></div>
+    </div>
   </section>
 
   <section>
