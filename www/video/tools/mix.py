@@ -183,14 +183,25 @@ def k_weight(x, sr=SR):
 
 def _blocks(x, blk_s, hop_s):
     """Mean-square K-weighted power of each block (summed over channels), and
-    each block's centre time."""
-    y = k_weight(x)
+    each block's centre time. A channel at a time: a whole film's K-weighting
+    in float64 is 115 MB a channel for five minutes."""
     blk, hop = int(blk_s * SR), int(hop_s * SR)
-    if len(y) < blk:
+    if len(x) < blk:
         return np.zeros(0), np.zeros(0)
-    p = np.sum(y ** 2, axis=1)
-    c = np.concatenate([[0.0], np.cumsum(p)])
-    idx = np.arange(0, len(p) - blk + 1, hop)
+    p = None
+    for ch in range(x.shape[1]):
+        y = k_weight(x[:, ch])
+        y *= y
+        if p is None:
+            p = y
+        else:
+            p += y
+        del y
+    c = np.empty(len(p) + 1)
+    c[0] = 0.0
+    np.cumsum(p, out=c[1:])
+    del p
+    idx = np.arange(0, len(c) - 1 - blk + 1, hop)
     return (c[idx + blk] - c[idx]) / blk, idx / SR + blk_s / 2
 
 
@@ -221,9 +232,20 @@ def short_term(x):
     return t, -0.691 + 10 * np.log10(ms + 1e-12)
 
 
-def true_peak_db(x):
-    up = resample_poly(x, 4, 1, axis=0)
-    return 20 * np.log10(np.max(np.abs(up)) + 1e-12)
+def true_peak_db(x, block_s=10.0, context=256):
+    """The 4x-oversampled (inter-sample) peak, in dBTP. Ten seconds at a time,
+    each block resampled with `context` samples of the film either side, so
+    every sample is what resampling the whole film gives (the filter reaches
+    about 10 samples): a whole film upsampled at once is 4x its size in
+    float64."""
+    peak = 0.0
+    step = int(block_s * SR)
+    for i in range(0, len(x), step):
+        a, b = max(0, i - context), min(len(x), i + step + context)
+        up = resample_poly(x[a:b], 4, 1, axis=0)
+        k = min(len(x), i + step)
+        peak = max(peak, float(np.max(np.abs(up[4 * (i - a) : 4 * (k - a)]))))
+    return 20 * np.log10(peak + 1e-12)
 
 
 def limiter(x, ceiling_db=None, look_ms=None, release_ms=None):
@@ -318,6 +340,27 @@ def eq(x, hz, kind):
     return sosfilt(_sos(MIX["filter_order"], hz, kind), x, axis=0).astype(np.float32)
 
 
+def _split1(v, lo_hz, hi_hz):
+    """split(), on one channel."""
+    o = MIX["band_split_order"]
+    below = sosfiltfilt(_sos(o, lo_hz, "low"), v)
+    above = sosfiltfilt(_sos(o, hi_hz, "high"), v)
+    band = v - below
+    band -= above
+    return below, band, above
+
+
+def _first(x, n):
+    """The first sample index i (0 to n) at or after x seconds: exactly where
+    np.arange(n) / SR first reaches x, without making that array."""
+    i = min(n, max(0, int(math.ceil(x * SR))))
+    while i > 0 and (i - 1) / SR >= x:
+        i -= 1
+    while i < n and i / SR < x:
+        i += 1
+    return i
+
+
 def split(x, lo_hz, hi_hz):
     """Below, inside and above a band: zero-phase Butterworth of
     MIX['band_split_order'], complementary, so the three sum back to x."""
@@ -358,7 +401,9 @@ def voice_chain(vo, stages=None):
         kind = st["type"]
         when = st.get("when", "always")
         if kind == "highpass":
-            y = sosfilt(_sos(st["order"], st["hz"], "high"), y, axis=0)
+            sos = _sos(st["order"], st["hz"], "high")
+            for ch in range(y.shape[1]):
+                y[:, ch] = sosfilt(sos, y[:, ch])
             did.append(f"high-pass {st['hz']:g} Hz")
         elif kind == "peaking":
             if when != "always":
@@ -369,7 +414,9 @@ def voice_chain(vo, stages=None):
                 did.append(f"{st['gain_db']:+g} dB at {st['hz']:g} Hz ({over:.1f} dB over)")
             else:
                 did.append(f"{st['gain_db']:+g} dB at {st['hz']:g} Hz")
-            y = sosfilt(peaking(st["hz"], st["gain_db"], st["q"]), y, axis=0)
+            sos = peaking(st["hz"], st["gain_db"], st["q"])
+            for ch in range(y.shape[1]):
+                y[:, ch] = sosfilt(sos, y[:, ch])
         elif kind == "deesser":
             y, active = deess(y, st)
             did.append(f"de-essed above {st['above_hz']:g} Hz ({active:.1f}% of frames)")
@@ -381,19 +428,32 @@ def voice_chain(vo, stages=None):
 def deess(y, st):
     """A split-band de-esser: the band above `above_hz` (a zero-phase
     high-pass, the rest untouched) is turned down by `ratio` over
-    `threshold_dbfs` on its RMS, at most `max_cut_db`."""
-    hi = sosfiltfilt(_sos(st["split_order"], st["above_hz"], "high"), y, axis=0)
-    rest = y - hi
+    `threshold_dbfs` on its RMS, at most `max_cut_db`. In place, on a float64
+    voice; returns it and the share of the time it acts."""
+    sos = _sos(st["split_order"], st["above_hz"], "high")
+    hi = np.empty_like(y)
+    for ch in range(y.shape[1]):
+        hi[:, ch] = sosfiltfilt(sos, y[:, ch])
     hop = max(1, int(round(st["detector_rms_ms"] * SR / 1000)))
     n = len(hi) // hop * hop
-    lv = 20 * np.log10(np.sqrt(np.mean(hi[:n].reshape(-1, hop, hi.shape[1]) ** 2, axis=(1, 2))) + 1e-9)
+    # Each 5 ms frame's mean square over both channels, a stretch of frames at
+    # a time (each frame's mean is its own, so the stretches change nothing).
+    frames = hi[:n].reshape(-1, hop, hi.shape[1])
+    ms = np.empty(len(frames))
+    for i in range(0, len(frames), 1 << 16):
+        ms[i : i + (1 << 16)] = np.mean(frames[i : i + (1 << 16)] ** 2, axis=(1, 2))
+    lv = 20 * np.log10(np.sqrt(ms) + 1e-9)
     gr = np.clip((lv - st["threshold_dbfs"]) * (1 - 1 / st["ratio"]), 0, st["max_cut_db"])
     gr = np.concatenate([np.repeat(gr, hop), np.zeros(len(hi) - n)])
     gr = follower(gr / st["max_cut_db"], st["attack_ms"], st["release_ms"]) * st["max_cut_db"]
     # Its activity as SPEC section 6 measured it: the share of the time it
     # cuts by more than half a decibel.
     active = float((gr > 0.5).mean() * 100) if len(gr) else 0.0
-    return rest + hi * (10 ** (-gr / 20))[:, None], active
+    gain = 10 ** (-gr / 20)
+    del gr
+    for ch in range(y.shape[1]):
+        y[:, ch] = (y[:, ch] - hi[:, ch]) + hi[:, ch] * gain
+    return y, active
 
 
 # ---- the bed -----------------------------------------------------------------
@@ -403,30 +463,39 @@ def place(role, x):
     pan, and below MIX['center_below_hz'] in the centre."""
     part = PARTS[ROLE_PART[role]]
     q = part.get("eq") or {}
-    y = x.astype(np.float32)
+    o = MIX["filter_order"]
+    left, right = x[:, 0].astype(np.float32), x[:, 1].astype(np.float32)
+
+    def eq1(v, hz, kind):
+        return sosfilt(_sos(o, hz, kind), v).astype(np.float32)
+
     if isinstance(q, dict):
-        if "highpass_hz" in q:
-            y = eq(y, q["highpass_hz"], "high")
-        if "lowpass_hz" in q:
-            y = eq(y, q["lowpass_hz"], "low")
+        for key, kind in (("highpass_hz", "high"), ("lowpass_hz", "low")):
+            if key in q:
+                left, right = eq1(left, q[key], kind), eq1(right, q[key], kind)
         if "band_hz" in q:
-            y = eq(eq(y, q["band_hz"][0], "high"), q["band_hz"][1], "low")
+            lo, hi = q["band_hz"]
+            left, right = eq1(eq1(left, lo, "high"), hi, "low"), eq1(eq1(right, lo, "high"), hi, "low")
     stereo = part.get("stereo")
     if stereo == "mono":
-        m = y.mean(axis=1)
-        y = np.stack([m, m], axis=1)
+        left = right = np.stack([left, right], axis=1).mean(axis=1)
     elif isinstance(stereo, dict):
-        mid, side = (y[:, 0] + y[:, 1]) / 2, (y[:, 0] - y[:, 1]) / 2
+        mid, side = (left + right) / 2, (left - right) / 2
         low = sosfiltfilt(_sos(MIX["band_split_order"], stereo["side_above_hz"], "low"), side)
         side = low + (side - low) * stereo["side_gain"]
-        y = np.stack([mid + side, mid - side], axis=1)
+        left, right = mid + side, mid - side
+        del mid, side, low
     p = part.get("pan") or 0
     if p:
         th = (p + 1) * math.pi / 4
-        y = y * np.array([math.sqrt(2) * math.cos(th), math.sqrt(2) * math.sin(th)])
-    mid, side = (y[:, 0] + y[:, 1]) / 2, (y[:, 0] - y[:, 1]) / 2
+        left, right = left * np.float64(math.sqrt(2) * math.cos(th)), right * np.float64(math.sqrt(2) * math.sin(th))
+    mid, side = (left + right) / 2, (left - right) / 2
+    del left, right
     side = sosfiltfilt(_sos(MIX["band_split_order"], MIX["center_below_hz"], "high"), side)
-    return np.stack([mid + side, mid - side], axis=1).astype(np.float32)
+    out = np.empty((len(x), 2), np.float32)
+    out[:, 0] = mid + side
+    out[:, 1] = mid - side
+    return out
 
 
 def part_gains(S, span):
@@ -467,21 +536,20 @@ def mark_gains(S, g, n, marks):
     mark. The marks' pad also holds the entrance's last chord into the bed: it
     eases from the mark's scale to bed level (1) after the entrance, and holds
     the exit's scale from the exit on."""
-    t = np.arange(n) / SR
     cl = np.zeros(n, np.float32)
     cp = np.ones(n, np.float32)
     took = []
     if "lead" not in S or "mpad" not in S:
         return cl, cp, took
     over = PARTS["marks_lead"]["level"]["db"]
-    others = sum(S[k] * g.get(k, 1.0) for k in S if k not in ("lead", "mpad"))
-    pad_all = S["mpad"] * g.get("mpad", 1.0) + (S["pad"] * g.get("pad", 1.0) if "pad" in S else 0)
+    under = [k for k in S if k not in ("lead", "mpad")]
     spans = sorted((t0, name) for name, t0 in marks.items() if t0 is not None)
     length = MARKS["length_s"]
     ease = MARKS["into_the_bed"]["pad_to_bed_level_s"]
     for k, (t0, name) in enumerate(spans):
         a, b = int(round(t0 * SR)), int(round((t0 + length) * SR))
-        _, mp = momentary(pad_all[a:b])
+        pad_all = S["mpad"][a:b] * g.get("mpad", 1.0) + (S["pad"][a:b] * g.get("pad", 1.0) if "pad" in S else 0)
+        _, mp = momentary(pad_all)
         _, ml = momentary(S["lead"][a:b])
         on = (ml > SOUNDING_LUFS) & (mp > PAD_SOUNDING_LUFS)
         heard = lufs(S["lead"][a:b] + S["mpad"][a:b] * g.get("mpad", 1.0))
@@ -492,7 +560,7 @@ def mark_gains(S, g, n, marks):
                              "render the score again, or write it again from this timeline (fit_score.py --film)")
         gl = 10 ** ((over - float(np.median(ml[on] - mp[on]))) / 20)
         lead, mpad = S["lead"][a:b] * gl, S["mpad"][a:b] * g.get("mpad", 1.0)
-        rest = others[a:b] if not np.isscalar(others) else 0
+        rest = sum(S[x][a:b] * g.get(x, 1.0) for x in under) if under else 0
         m = 1.0
         for _ in range(20):
             step = 10 ** ((LADDER["marks_lufs"] - lufs(rest + m * (lead + mpad))) / 20)
@@ -501,15 +569,13 @@ def mark_gains(S, g, n, marks):
                 break
         if not math.isfinite(m):
             raise ValueError(f"the {name} mark's level is not a number: a stem under it holds samples that are not numbers")
-        nxt = spans[k + 1][0] if k + 1 < len(spans) else t[-1] + 1
-        here = (t >= (t0 if k else 0)) & (t < nxt)
-        cl[here] = gl * m
+        cl[_first(t0 if k else 0, n) : _first(spans[k + 1][0], n) if k + 1 < len(spans) else n] = gl * m
         if name == "entrance":
-            cp[t < t0 + length] = m
-            r = (t >= t0 + length) & (t < t0 + length + ease)
-            cp[r] = m + (1 - m) * (t[r] - t0 - length) / ease
+            cp[: _first(t0 + length, n)] = m
+            i, j = _first(t0 + length, n), _first(t0 + length + ease, n)
+            cp[i:j] = m + (1 - m) * (np.arange(i, j) / SR - t0 - length) / ease
         else:
-            cp[t >= t0] = m
+            cp[_first(t0, n) :] = m
         took.append({"mark": name, "t0": round(t0, 3), "lead_over_pad_db": over, "scale_db": round(20 * math.log10(m), 2)})
     return cl, cp, took
 
@@ -524,16 +590,34 @@ def app_under_voice(app, env):
 def under_voice(bed, env, duck_db):
     """The duck and the carve on the whole bed: DUCK's broadband cut, and a
     further CARVE in its band, each times the follower."""
-    lo, band, hi = split(bed, *CARVE["band_hz"])
     g = 10 ** (duck_db * env / 20)
-    gc = 10 ** (CARVE["db"] * env / 20)
-    return ((lo + hi) * g[:, None] + band * (g * gc)[:, None]).astype(np.float32)
+    gcarve = g * 10 ** (CARVE["db"] * env / 20)
+    out = np.empty(bed.shape, np.float32)
+    for ch in range(bed.shape[1]):
+        lo, band, hi = _split1(bed[:, ch], *CARVE["band_hz"])
+        lo += hi  # (lo + hi) * g + band * gcarve, in place
+        del hi
+        lo *= g
+        band *= gcarve
+        lo += band
+        out[:, ch] = lo
+        del lo, band
+    return out
 
 
 def dip(pad, env):
     """The pad's dip under the voice: PAD_DIP in its band, times the follower."""
-    lo, band, hi = split(pad, *PAD_DIP["band_hz"])
-    return (lo + hi + band * (10 ** (PAD_DIP["db"] * env / 20))[:, None]).astype(np.float32)
+    gd = 10 ** (PAD_DIP["db"] * env / 20)
+    out = np.empty(pad.shape, np.float32)
+    for ch in range(pad.shape[1]):
+        lo, band, hi = _split1(pad[:, ch], *PAD_DIP["band_hz"])
+        lo += hi  # lo + hi + band * gd, in place
+        del hi
+        band *= gd
+        lo += band
+        out[:, ch] = lo
+        del lo, band
+    return out
 
 
 def demo_ramp(bed, demos, n):
@@ -541,7 +625,6 @@ def demo_ramp(bed, demos, n):
     under the demo's own level over LADDER['bed_under_demo_down_s'] from its
     first note, and back over LADDER['bed_under_demo_up_s'] from its last
     note-off. Never down to silence. Returns the gain, and each window's."""
-    t = np.arange(n) / SR
     gain = np.ones(n, np.float32)
     down, up = LADDER["bed_under_demo_down_s"], LADDER["bed_under_demo_up_s"]
     want = LADDER["demo_lufs"] + LADDER["bed_under_demo_lu"]
@@ -550,11 +633,11 @@ def demo_ramp(bed, demos, n):
         t0, off = d["t0"], d["off"]
         lb = lufs(cut(bed, t0, off))
         gd = min(1.0, 10 ** ((want - lb) / 20)) if lb > -70 else 1.0
-        a = (t >= t0) & (t < t0 + down)
-        gain[a] *= 1 + (gd - 1) * (t[a] - t0) / down
-        gain[(t >= t0 + down) & (t < off)] *= gd
-        b = (t >= off) & (t < off + up)
-        gain[b] *= gd + (1 - gd) * (t[b] - off) / up
+        i, j = _first(t0, n), _first(t0 + down, n)
+        gain[i:j] *= 1 + (gd - 1) * (np.arange(i, j) / SR - t0) / down
+        gain[_first(t0 + down, n) : _first(off, n)] *= gd
+        i, j = _first(off, n), _first(off + up, n)
+        gain[i:j] *= gd + (1 - gd) * (np.arange(i, j) / SR - off) / up
         took.append(round(20 * math.log10(gd), 2))
     return gain, took
 
@@ -595,6 +678,12 @@ def demo_tail(x, t0, off, floor_db=None, hop_s=None):
 def score_stems(score, render_dir):
     """A film score's stems by role, each laid at its section's start: the
     score example writes one per track to stems/<section>/<track>.wav."""
+    return dict(each_score_stem(score, render_dir))
+
+
+def each_score_stem(score, render_dir):
+    """score_stems(), one role at a time, so a film's roles are never all in
+    memory as rendered as well as placed."""
     spb = 60.0 / score["tempo"]
     bpb = score.get("beats_per_bar", 4)
     role = {slug(t["name"]): t.get("role") for t in score["tracks"]}
@@ -602,24 +691,30 @@ def score_stems(score, render_dir):
     if unknown:
         sys.exit(f"mix.py: {', '.join(unknown)} in the score have no role the mix knows "
                  f"({', '.join(ROLE_PART)}); fit_score.py --film writes one on every track")
-    S, at = {}, 0.0
-    for sec in score["sections"]:
-        d = os.path.join(render_dir, "stems", slug(sec["name"]))
-        for name, r in role.items():
-            f = os.path.join(d, f"{name}.wav")
-            if not os.path.exists(f):
-                continue
-            x = load(f)
-            i = int(round(at * SR))
-            cur = S.get(r, np.zeros((0, 2), np.float32))
-            if len(cur) < i + len(x):
-                cur = np.concatenate([cur, np.zeros((i + len(x) - len(cur), 2), np.float32)])
-            cur[i : i + len(x)] += x
-            S[r] = cur
-        at += sec["bars"] * bpb * spb
-    if not S:
+    found = False
+    for want in dict.fromkeys(role.values()):
+        cur, at = None, 0.0
+        for sec in score["sections"]:
+            d = os.path.join(render_dir, "stems", slug(sec["name"]))
+            for name, r in role.items():
+                f = os.path.join(d, f"{name}.wav")
+                if r != want or not os.path.exists(f):
+                    continue
+                x = load(f)
+                i = int(round(at * SR))
+                if cur is None:
+                    cur = np.zeros((0, 2), np.float32)
+                if len(cur) < i + len(x):
+                    cur = np.concatenate([cur, np.zeros((i + len(x) - len(cur), 2), np.float32)])
+                cur[i : i + len(x)] += x
+                del x
+            at += sec["bars"] * bpb * spb
+        if cur is not None:
+            found = True
+            yield want, cur
+            del cur
+    if not found:
         sys.exit(f"mix.py: no stems under {render_dir}/stems/ for the score's tracks")
-    return S
 
 
 def slug(s):
@@ -758,34 +853,48 @@ def main():
                          f"again from this timeline (fit_score.py --film films/{args.film} {args.score})")
         t0 = placed["t0"]
         S = {}
-        for r, x in score_stems(score, args.music).items():
+        for r, x in each_score_stem(score, args.music):
             if not np.isfinite(x).all():
                 sys.exit(f"mix.py: the score's {r} stems hold samples that are not numbers; nothing written")
             y = np.zeros((n, 2), np.float32)
             lay(y, place(r, x), t0)
+            del x
             S[r] = y
         span = (lines[0]["t0"], lines[-1]["t1"]) if lines else (0.0, n / SR)
         g = part_gains(S, span)
         static = sum(S[r] * g[r] for r in BED_ROLES if r in S)
         segs = narrated(lines, demos) or [span]
         lb = lufs(np.concatenate([cut(static, a, b) for a, b in segs]))
+        del static
         kb = 10 ** ((rest_at - lb) / 20)
         g = {r: v * kb for r, v in g.items()}
         try:
             cl, cp, took["marks"] = mark_gains(S, g, n, marks)
         except ValueError as e:
             sys.exit(f"mix.py: {e}")
-        if "pad" in S:
-            pad_raw = S["pad"] * g["pad"]
-            pad_dipped = dip(pad_raw, env)
-        for r in BED_ROLES:
-            if r in S:
-                rest += S[r] * g[r] * (cp[:, None] if r == "mpad" else 1)
-                bed += (pad_dipped if r == "pad" else S[r] * g[r] * (cp[:, None] if r == "mpad" else 1))
+        # Each part into the bed (the pad dipped under the voice) and the bed
+        # at rest, and the lead with its marks; each stem let go once added.
+        parts = len(S)
         if "lead" in S:
-            lead = S["lead"] * cl[:, None]
-        print(f"music: {len(S)} parts on stems, the bed at rest {lb:.1f} LUFS → {rest_at:.1f}; "
-              + "; ".join(f"{m['mark']} {m['scale_db']:+.1f} dB" for m in took["marks"]))
+            lead = S.pop("lead")
+            lead *= cl[:, None]
+        for r in BED_ROLES:
+            if r not in S:
+                continue
+            x = S.pop(r)
+            x *= g[r]
+            if r == "mpad":
+                x *= cp[:, None]
+            rest += x
+            if r == "pad":
+                pad_raw, pad_dipped = x, dip(x, env)
+                bed += pad_dipped
+            else:
+                bed += x
+            del x
+        del S, cl, cp
+        print(f"music: {parts} part{'s' if parts != 1 else ''} on stems, the bed at rest {lb:.1f} LUFS → {rest_at:.1f}"
+              + "".join(f"; {m['mark']} {m['scale_db']:+.1f} dB" for m in took["marks"]))
     elif args.music:
         one = os.path.join(args.music, "bed.wav")
         if os.path.exists(one):
@@ -827,14 +936,13 @@ def main():
             bed *= gain[:, None]
             print(f"music: under {len(demos)} demo{'s' if len(demos) != 1 else ''}, "
                   + ", ".join(f"{g:+.1f} dB" for g in took["demos"]))
-        bed_unducked = bed.copy()
-        bed = under_voice(bed, env, args.duck_db)
+        bed_unducked = bed
+        bed = under_voice(bed_unducked, env, args.duck_db)
     else:
         bed_unducked = bed
 
-    mix = vo + bed + lead + app
     end = int(tl["duration"] * SR)
-    mix = mix[:end]
+    mix = vo[:end] + bed[:end] + lead[:end] + app[:end]
     # A short fade at each end, so no film starts or stops on a click.
     f = int(0.02 * SR)
     mix[:f] *= np.linspace(0, 1, f)[:, None]
@@ -845,7 +953,8 @@ def main():
     if l0 <= -70:
         sys.exit("mix.py: the mix is silent (under the -70 LUFS gate); nothing written")
     master = 10 ** ((args.target - l0) / 20)
-    mix = limiter(mix * master)
+    mix *= master
+    mix = limiter(mix)
     if not np.isfinite(mix).all():
         sys.exit("mix.py: the mastered mix has samples that are not numbers; nothing written")
     l1 = lufs(mix)
@@ -943,7 +1052,7 @@ def _db(a, b):
 
 
 def _band(x, lo, hi):
-    return sosfiltfilt(_sos(MIX["band_split_order"], [lo, hi], "band"), x, axis=0)
+    return sosfiltfilt(_sos(MIX["band_split_order"], [lo, hi], "band"), x, axis=0)  # one channel or a stereo pair
 
 
 def stem_loudness(x):
@@ -972,27 +1081,40 @@ def measure(st, env, lines, demos, marks, took, pad=None):
               "bed_rest_vs_voice_lu": round(rest - lv, 2) if rest is not None and lv is not None else None,
               "duck_db": None, "carve_db": None, "pad_dip_db": None, "voice_over_bed_db": None}
     if speech.any() and np.any(st["bed"]):
-        lo, band, hi = split(st["bed"], *CARVE["band_hz"])
-        lo0, band0, hi0 = split(st["bed_unducked"], *CARVE["band_hz"])
-        outside = _db(np.sum((lo + hi)[speech] ** 2), np.sum((lo0 + hi0)[speech] ** 2))
+        # Energies over speech, summed a channel at a time.
+        e = {}
+
+        def add(key, v):
+            e[key] = e.get(key, 0.0) + float(np.sum(v[speech].astype(np.float64) ** 2))
+
+        for ch in range(st["bed"].shape[1]):
+            for key, x in (("", st["bed"]), ("0", st["bed_unducked"])):
+                lo, band, hi = _split1(x[:, ch], *CARVE["band_hz"])
+                add("out" + key, lo + hi)
+                add("band" + key, band)
+                del lo, band, hi
+            if pad is not None:
+                add("dip0", _band(pad[0][:, ch], *PAD_DIP["band_hz"]))
+                add("dip1", _band(pad[1][:, ch], *PAD_DIP["band_hz"]))
+            for lo_hz, hi_hz in ((125, 250), (250, 1000), (1000, 4000)):
+                add(f"v{lo_hz}", _band(voice[:, ch], lo_hz, hi_hz))
+                add(f"b{lo_hz}", _band(st["bed"][:, ch], lo_hz, hi_hz))
+            add("v", voice[:, ch])
+            add("b", st["bed"][:, ch])
+        outside = _db(e["out"], e["out0"])
         ladder["duck_db"] = outside
-        ladder["carve_db"] = round(_db(np.sum(band[speech] ** 2), np.sum(band0[speech] ** 2)) - outside, 2)
+        ladder["carve_db"] = round(_db(e["band"], e["band0"]) - outside, 2)
         if pad is not None:
-            b0, b1 = (_band(p, *PAD_DIP["band_hz"]) for p in pad)
-            ladder["pad_dip_db"] = _db(np.sum(b1[speech] ** 2), np.sum(b0[speech] ** 2))
-        ratio = {}
-        for lo_hz, hi_hz in ((125, 250), (250, 1000), (1000, 4000)):
-            v, b = _band(voice, lo_hz, hi_hz), _band(st["bed"], lo_hz, hi_hz)
-            ratio[f"{lo_hz}-{hi_hz}"] = _db(np.sum(v[speech] ** 2), np.sum(b[speech] ** 2))
-        ratio["broadband"] = _db(np.sum(voice[speech] ** 2), np.sum(st["bed"][speech] ** 2))
+            ladder["pad_dip_db"] = _db(e["dip1"], e["dip0"])
+        ratio = {f"{lo}-{hi}": _db(e[f"v{lo}"], e[f"b{lo}"]) for lo, hi in ((125, 250), (250, 1000), (1000, 4000))}
+        ratio["broadband"] = _db(e["v"], e["b"])
         ladder["voice_over_bed_db"] = ratio
     out["ladder"] = ladder
 
-    music = st["rest"] + st["lead"]
     out["marks"] = []
     for m in took["marks"]:
-        a = m["t0"]
-        out["marks"].append(dict(m, span_lufs=round(lufs(cut(music, a, a + MARKS["length_s"])), 2)))
+        a, b = m["t0"], m["t0"] + MARKS["length_s"]
+        out["marks"].append(dict(m, span_lufs=round(lufs(cut(st["rest"], a, b) + cut(st["lead"], a, b)), 2)))
 
     out["demos"] = []
     for k, d in enumerate(demos):
