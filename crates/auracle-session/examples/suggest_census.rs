@@ -14,8 +14,9 @@
 //! non-source kind), a source in every empty socket (`Replace` of a `Silence`
 //! leaf), a modulator in every empty mod slot and a shaper on every filled
 //! one (`SetMod`). Each is kept only if it passes `validate_tree` and every
-//! module of the patch survives it (a vocoder inserted by `Insert` drops the
-//! chain it lands on, so it never qualifies). A patch with no sounding
+//! module of the patch survives it. Every `Insert` keeps the chain it lands
+//! on now; the note's `census.txt` predates that, when a vocoder's insert
+//! dropped the chain and so never qualified. A patch with no sounding
 //! source takes sources only: a processor over an empty socket is silent.
 //!
 //! ## The designs

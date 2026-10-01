@@ -15,9 +15,10 @@ set is whatever the trace machinery provides:
   and is therefore a reversible-jump move. fugue handles the Jacobian
   bookkeeping; Auracle does not implement it.
 
-The structural moves are the same lattice as
-[hand edits](../genome/edits.md#hand-edits-and-mh-proposals-are-the-same-moves). One
-vocabulary, two callers.
+The structural moves walk the same lattice as
+[hand edits](../genome/edits.md#hand-edits-and-mh-proposals-share-one-lattice),
+by another route: they regenerate from the trace, and never call the edit
+operations.
 
 ## The tilt
 

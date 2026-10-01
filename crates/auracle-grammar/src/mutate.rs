@@ -1,16 +1,20 @@
 //! User-driven structural edits: create, delete, replace, and rewire nodes
-//! in a patch tree — the "reconnect anything" surface of the workbench.
+//! in a patch tree. This is the "reconnect anything" surface of the workbench.
 //!
 //! Because the genome is a *typed tree*, rewiring is expressed as a small
 //! vocabulary of operations that are type-safe by construction (an LFO can
 //! never end up in an audio slot; a filter always has exactly one audio
 //! input): replace a node, insert a node into a wire, delete/splice a node,
-//! change a modulation source, swap a mixer's inputs. These are the same
-//! moves evolution's structural proposals make — hand edits and MH walk the
-//! same lattice.
+//! change a modulation source, swap a mixer's inputs.
+//!
+//! Hand edits and the search share one lattice: the same terms, the same
+//! addresses, and ceilings that end where the prior's support does. The
+//! search reaches it another way. A walk's structural move is single-site MH
+//! on the trace, which redraws one site and regenerates what it needs from
+//! the prior; it never calls these operations.
 //!
 //! Nodes are addressed by their trace **key** (`node`, `node/0`, `node/0/1`,
-//! `node/0/m` for mod slots — see [`crate::genome`]).
+//! and `node/0/m` for mod slots; see [`crate::genome`]).
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -184,6 +188,57 @@ impl NodeKind {
     }
 }
 
+// `ALL` lists every kind once, in declaration order, checked when the crate
+// compiles. Nothing else ties a fixed array to the enum, so a new kind could be
+// declared and never swept by the edit gate. The match is exhaustive, so a new
+// kind does not compile until it is named here, which is the moment to put it
+// in `ALL`. Each entry's discriminant must be its index: no repeats, no gaps,
+// and a kind declared between two others moves every index after it. A kind
+// declared after the last entry is the one case a const cannot see, and
+// `node_kind_all_names_every_kind` catches it by asking serde for every name.
+const _: () = {
+    const fn named(k: NodeKind) {
+        match k {
+            NodeKind::Vco
+            | NodeKind::Supersaw
+            | NodeKind::Noise
+            | NodeKind::Mix
+            | NodeKind::Filter
+            | NodeKind::Fold
+            | NodeKind::Delay
+            | NodeKind::Chorus
+            | NodeKind::Reverb
+            | NodeKind::Wavetable
+            | NodeKind::Pluck
+            | NodeKind::Distortion
+            | NodeKind::Bitcrush
+            | NodeKind::Phaser
+            | NodeKind::RingMod
+            | NodeKind::Formant
+            | NodeKind::Flanger
+            | NodeKind::Tremolo
+            | NodeKind::Vibrato
+            | NodeKind::Eq
+            | NodeKind::Granular
+            | NodeKind::Shift
+            | NodeKind::Comp
+            | NodeKind::Duck
+            | NodeKind::Gate
+            | NodeKind::Vocoder
+            | NodeKind::Silence => {}
+        }
+    }
+    let mut i = 0;
+    while i < NodeKind::ALL.len() {
+        named(NodeKind::ALL[i]);
+        assert!(
+            NodeKind::ALL[i] as usize == i,
+            "NodeKind::ALL must list every kind once, in declaration order"
+        );
+        i += 1;
+    }
+};
+
 /// A modulation choice for [`StructOp::SetMod`].
 ///
 /// `Lfo` through `Euclid`, and `Steps`, are **sources**: they replace
@@ -284,7 +339,7 @@ impl ModKind {
 /// Default knob values for a hand-placed [`ModOp`], as `(p0, p1)`.
 ///
 /// Every one is chosen so the module is audibly doing something the instant it
-/// lands, on the same argument as [`default_node`]'s second branches.
+/// lands, on the same argument as [`default_fragment`]'s second branches.
 fn default_op_params(kind: ModOp) -> (f64, f64) {
     match kind {
         // Root C, and **minor** rather than chromatic: a chromatic quantizer
@@ -354,8 +409,13 @@ pub fn default_steps() -> ModNode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum StructOp {
-    /// Replace the node at `key` with a `kind` (subtrees preserved where the
-    /// sorts allow; replacing a source with a processor wraps the source).
+    /// Replace the node at `key` with a `kind`.
+    ///
+    /// A processor keeps the old node's primary input as its own `/0` (the
+    /// source itself, when it replaces one, so replacing a source with a
+    /// processor wraps it), seated by the same splice as
+    /// [`StructOp::InsertTree`]; only the old node and its `/1` go. A source
+    /// takes the whole subtree's place.
     Replace {
         /// Node key.
         key: String,
@@ -364,6 +424,11 @@ pub enum StructOp {
     },
     /// Insert a processor/mix between the node at `key` and its parent
     /// (i.e., into the wire toward the output).
+    ///
+    /// The old subtree becomes the new module's primary input, `/0`: a mix's
+    /// `a`, a sidechain module's `in`, a vocoder's carrier. It is
+    /// [`StructOp::InsertTree`] with the kind's default module as the
+    /// fragment, so the two cannot disagree about what a wire keeps.
     Insert {
         /// Node key.
         key: String,
@@ -456,8 +521,18 @@ pub enum StructError {
     OutOfDomain(f64, String),
 }
 
-fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
-    let boxed = |n: Option<AudioNode>| Box::new(n.unwrap_or_else(|| saw_vco(0)));
+/// A freshly placed module of `kind`, with audible defaults.
+///
+/// A processor's primary input (`/0`) is left unplugged here, and only there:
+/// `Insert` and `Replace` hand the module to [`graft`], the splice
+/// [`StructOp::InsertTree`] uses, which seats the chain in that socket and
+/// keeps the module's own second branch. This function used to take the chain
+/// and seat it itself, one arm per kind, beside `graft` doing the same job;
+/// the vocoder's arm built a fresh carrier instead, so an `Insert` of a vocoder
+/// threw away the whole chain below it while `InsertTree` kept it. With one
+/// splice there is nothing left for the two to disagree about.
+pub(crate) fn default_fragment(kind: NodeKind) -> AudioNode {
+    let socket = || Box::new(AudioNode::Silence { uid: Uid::NEW });
     match kind {
         NodeKind::Vco => saw_vco(0),
         NodeKind::Supersaw => AudioNode::Supersaw {
@@ -475,7 +550,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
         NodeKind::Mix => AudioNode::Mix {
             uid: Uid::NEW,
             balance: 0.5,
-            a: boxed(input),
+            a: socket(),
             b: Box::new(AudioNode::Vco {
                 uid: Uid::NEW,
                 wave: Waveform::Triangle,
@@ -491,14 +566,14 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             cutoff: 0.6,
             resonance: 0.3,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Fold => AudioNode::Fold {
             uid: Uid::NEW,
             threshold: 0.5,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Delay => AudioNode::Delay {
@@ -507,7 +582,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             feedback: 0.35,
             mix: 0.35,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Chorus => AudioNode::Chorus {
@@ -516,7 +591,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             depth: 0.4,
             mix: 0.35,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Reverb => AudioNode::Reverb {
@@ -525,7 +600,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             damp: 0.5,
             mix: 0.3,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Wavetable => AudioNode::Wavetable {
@@ -550,7 +625,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             tone: 0.5,
             mode: DriveMode::Soft,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Bitcrush => AudioNode::Bitcrush {
@@ -558,7 +633,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             bits: 0.55,
             downsample: 0.3,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Phaser => AudioNode::Phaser {
@@ -567,13 +642,13 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             depth: 0.6,
             feedback: 0.5,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::RingMod => AudioNode::RingMod {
             uid: Uid::NEW,
             mix: 0.5,
-            a: boxed(input),
+            a: socket(),
             // A sine an octave up, not a copy of the carrier: ring-modulating
             // a signal against itself squares it, which is a quiet, dull
             // module that looks broken. The default has to *ring*.
@@ -605,7 +680,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             // comb without the module announcing itself as a jet.
             feedback: 0.62,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Tremolo => AudioNode::Tremolo {
@@ -614,7 +689,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             depth: 0.5,
             shape: 0.0,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Vibrato => AudioNode::Vibrato {
@@ -629,7 +704,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             // into un-evolvable.
             mix: PARAM_MAX,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Eq => AudioNode::Eq {
@@ -642,7 +717,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             mid: 0.5,
             high: 0.5,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Granular => AudioNode::Granular {
@@ -651,7 +726,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             size: 0.4,
             density: 0.6,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         NodeKind::Shift => AudioNode::Shift {
@@ -664,15 +739,15 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             // than replacing it — which is what a shifter in a patch is for.
             mix: 0.5,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             modulation: ModNode::None,
         },
         // The four below default their `/1` branch to something that makes the
         // module audibly do its job the instant it lands. A compressor keyed
         // off a copy of its own input is a gain trim; a ducker keyed off a pad
-        // is a slow tremolo; a vocoder on a sine carrier is silence. The
-        // second branch is the point of these modules, so the default has to
-        // demonstrate it.
+        // is a slow tremolo; a vocoder whose voice has no formants is a fixed
+        // filter. The second branch is the point of these modules, so the
+        // default has to demonstrate it.
         NodeKind::Comp => AudioNode::Comp {
             uid: Uid::NEW,
             // 0.3 is ≈0.2 V of detector level, just under a plucked string's
@@ -686,7 +761,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             ratio: 0.5,
             makeup: 0.4,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             // A pluck, like the ducker's and the gate's. A *sustained*
             // sidechain — the obvious choice, and what an earlier draft of
             // this table had — makes the compressor a static gain trim: the
@@ -703,7 +778,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             threshold: 0.4,
             release: 0.35,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             key: Box::new(pluck_key()),
             modulation: ModNode::None,
         },
@@ -718,7 +793,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             range: 0.7,
             release: 0.3,
             mod_depth: 0.3,
-            input: boxed(input),
+            input: socket(),
             sidechain: Box::new(pluck_key()),
             modulation: ModNode::None,
         },
@@ -728,17 +803,15 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             attack: 0.25,
             release: 0.3,
             mod_depth: 0.3,
-            // A supersaw carrier because a vocoder can only reveal spectrum
-            // the carrier already has — on a sine there is nothing in fifteen
-            // of the sixteen bands to reveal.
-            carrier: Box::new(AudioNode::Supersaw {
-                uid: Uid::NEW,
-                octave: 0,
-                detune: 0.45,
-                mix: 0.6,
-                mod_depth: 0.3,
-                modulation: ModNode::None,
-            }),
+            // The carrier is the chain the vocoder lands on, as it is for
+            // every processor: the carrier is `/0`, the one branch whose
+            // waveform reaches the output, so it is the sound being played,
+            // and the vocoder makes it speak. Vox Machina is built the same
+            // way, a supersaw stack as the carrier and a formant voice. The
+            // modulator only lends its spectral envelope: a chain seated there
+            // would shape a carrier the player never chose, and its own
+            // waveform would not be heard at all.
+            carrier: socket(),
             // A formant oscillator as the modulator, because the vowel is what
             // makes a vocoder audibly a vocoder rather than a moving filter.
             modulator: Box::new(AudioNode::Formant {
@@ -776,8 +849,8 @@ fn pluck_key() -> AudioNode {
 
 /// The grammar's fallback source: a plain saw at the given octave.
 ///
-/// Extracted because `default_node` names it three times and it gained two
-/// fields in wave 2A — three places to forget one of them.
+/// Extracted when the module defaults named it three times and it gained two
+/// fields in wave 2A; the VCO's default is the one use left.
 fn saw_vco(octave: i8) -> AudioNode {
     AudioNode::Vco {
         uid: Uid::NEW,
@@ -916,15 +989,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let old = take(slot);
             *slot = if kind.is_source() {
                 // Source kinds swap in place; any old subtree is dropped.
-                default_node(*kind, None)
+                default_fragment(*kind)
             } else {
                 // Processor/mix keeps the old primary input; replacing a
                 // source wraps that source.
-                let input = match primary_input(old.clone()) {
-                    Some(i) => Some(i),
-                    None => Some(old),
-                };
-                default_node(*kind, input)
+                let chain = primary_input(old.clone()).unwrap_or(old);
+                graft(default_fragment(*kind), chain)?
             };
         }
         StructOp::Insert { key, kind } => {
@@ -937,7 +1007,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let slot = node_at_mut(&mut out.root, &path)
                 .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let old = take(slot);
-            *slot = default_node(*kind, Some(old));
+            *slot = graft(default_fragment(*kind), old)?;
         }
         StructOp::Delete { key } => {
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
@@ -1555,7 +1625,7 @@ fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     // splices it in place, so every node that lives through the edit carries
     // its own `uid` across with it in the same `memmove` that carried its
     // knobs. The only nodes wanting an identity here are the ones this op just
-    // made (`default_node`, the mod-term literals, the `take` placeholder) and
+    // made (`default_fragment`, the mod-term literals, the `take` placeholder) and
     // any subtree the panel handed in through `ReplaceTree`/`InsertTree` —
     // which is also where a duplicated uid could arrive. Settling covers both.
     tree.ensure_uids();
