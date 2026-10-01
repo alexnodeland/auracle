@@ -178,7 +178,6 @@ value was chosen in `docs/notes/sound-2026-09/SPEC.md`). Its keys:
 | `ladder` | Every element's loudness, from the narration at −18 LUFS to the master at −16 |
 | `duck` | The bed under the voice: the 2 dB duck, the 3 dB carve in 1–4 kHz, the pad's 2 dB dip in 300–600 Hz |
 | `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice |
-| `mix_now` | The bed's level and duck the films are mixed with today (−6 and −9 dB), until the new mix replaces them |
 
     make sound
 
@@ -191,8 +190,8 @@ so at their top; edit the JSON, never them.
   trim, transpose and used knobs, the lead's bend times, and the drone's
   breath. The notes are the auditioned finals'.
 - **Into `sound_defaults.py`** go `mix`, `voice_chain`, `ladder`, `duck`, the
-  timings in `grammar`, the marks' levels and hand-overs, the shortlist, the
-  room, and `mix_now`.
+  timings in `grammar`, the marks' levels and hand-overs, the shortlist and
+  the room. `mix.py` reads every level it sets from there.
 - **The rest describes the notes:** the pedal, the marks' length, the lead's
   legato and swell, the bed's voicings, burble and sighs, and the demo (which
   only the reel played). `make sound` leaves the notes as they are, so these

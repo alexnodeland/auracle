@@ -38,8 +38,8 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
                         └─ footage.mjs       the recording: video and the app's own sound per shot
                               └─ takes.py    each take's errors, paint rate and sound
 score:   fit_score.py sound/study.json → the engine plays it (examples/score.rs) → music/
-cues:    render.mjs --cues (the picture's envelopes, for the mix)
-mix:     mix.py voice + music + stingers + app sound, ducked, −16 LUFS, captions (.vtt)
+cues:    render.mjs --cues (the picture's sound cues; the mix counts them and lays none)
+mix:     mix.py voice + bed + marks + app sound, to the ladder, −16 LUFS, captions (.vtt), ladder.json
 render:  render.mjs → part-*.mkv + picture.ffconcat (frames, in parallel)
 encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -preview.mp4, .jpg, .webp
          (side by side; --draft: a fast MP4 and the preview only)
@@ -52,9 +52,10 @@ marks and the N3 bed into `www/video/sound/` and the mix's defaults into
 `www/video/tools/sound_defaults.py`. `make dev-check` fails when one of them
 is stale, when `sound.json` disagrees with the record scores' notes, and when
 a number is `mix.py`'s bed or duck default or a pipeline's fallback for them.
-[Plan-006](../plans/006-the-sound-of-the-films.md) brings the pipeline above
-to the marks, the bed and the ladder; until then it plays Study with the
-stingers, at the levels in `sound.json`'s `mix_now`.
+`mix.py` mixes to the ladder and lays no cues.
+[Plan-006](../plans/006-the-sound-of-the-films.md) brings the rest of the
+pipeline above to the marks and the bed; until a film is re-scored, it plays
+Study as one bed.
 
 ## Walkthrough shots
 

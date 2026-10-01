@@ -6,14 +6,6 @@ ADR-014; the values are docs/notes/sound-2026-09/SPEC.md's. Their prose (what ea
 value is for, and where it was measured) stays in sound.json.
 """
 
-# The bed's level against the voice and its duck under it, in dB, as the films are mixed today:
-# mix.py's --music-db and --duck-db defaults. Kept so that no film's mix changes before Plan-006
-# task 3 moves the mix to LADDER and DUCK below (the bed at -3 LU, a 2 dB duck); task 3 removes it.
-MIX_NOW = {
-    "music_db": -6,
-    "duck_db": -9,
-}
-
 # The bed's tempo and cycle; the marks are written at marks_bpm and placed by time.
 TEMPO = {
     "bpm": 66,

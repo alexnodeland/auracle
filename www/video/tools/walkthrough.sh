@@ -2,8 +2,9 @@
 # A walkthrough (the real app, recorded), from its rehearsed shots to the
 # encoded MP4 and WebM:
 #   record every shot → check the takes → study score fitted to the
-#   arrangement → sound cues → the app's own sound laid under the picture
-#   (app_audio.py follows cuts) → first mix → frames → final mix and encode.
+#   arrangement → the picture's sound cues, counted (the mix lays none) → the
+#   app's own sound laid under the picture (app_audio.py follows cuts) → first
+#   mix → frames → final mix and encode.
 #
 #   www/video/tools/walkthrough.sh FILM POSTER_SECONDS [--record-only | --no-record]
 #                                  [--shot a,b] [--draft]
@@ -19,8 +20,12 @@
 # Record on a quiet machine: nothing else heavy running, one browser. A
 # rehearsal (rehearse.sh) must pass first, and voice.sh must have run (the
 # shots are pinned to the narration's measured words). This never re-times
-# the narration. MUSIC_DB / DUCK_DB / APP_DB override the levels; JOBS sets
-# the render's parallel pages (default: one per core).
+# the narration. The mix takes the ladder and the duck from
+# www/brand/sound.json (mix.py's defaults), brings each demo window to the
+# demo's level, and lays no cues (ADR-014). MUSIC_DB / DUCK_DB override the
+# bed's level and its duck for a trial mix, and APP_DB the app's gain outside
+# the demo windows; JOBS sets the render's parallel pages (default: one per
+# core).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"; shift 2
@@ -46,10 +51,7 @@ rm -rf "out/$F/music"
 (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
 node tools/render.mjs "$F" --cues | tail -1
 python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
-# The bed's level and its duck are mix.py's defaults, from www/brand/sound.json
-# (`mix_now`): today's levels, kept until Plan-006 task 3 moves the mix to the
-# spec's ladder, so no film's mix changes before then.
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json"
+MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --app "out/$F/app.json"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
 node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1

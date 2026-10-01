@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # An illustrated film (the stage draws every frame), from its measured voice
 # to the encoded MP4 and WebM:
-#   timeline → study score fitted to the arrangement → score render → sound
-#   cues from the picture → first mix (the envelopes the picture pulses with)
-#   → frames → final mix, encode, captions and poster.
+#   timeline → study score fitted to the arrangement → score render → the
+#   picture's sound cues, counted (the mix lays none) → first mix (the
+#   envelopes the picture pulses with) → frames → final mix, encode, captions
+#   and poster.
 #
 #   www/video/tools/illustrated.sh FILM POSTER_SECONDS
 #
-# Run voice.sh FILM first, and sounds.sh once. The bed's level and its duck
-# are mix.py's defaults, from www/brand/sound.json (`mix_now`): today's
-# levels, kept until Plan-006 task 3 moves the mix to the spec's ladder, so no
-# film's mix changes before then. MUSIC_DB / DUCK_DB override them.
+# Run voice.sh FILM first, and sounds.sh once. The mix takes the ladder and
+# the duck from www/brand/sound.json (mix.py's defaults) and lays no cues
+# (ADR-014). MUSIC_DB / DUCK_DB override the bed's level and its duck for a
+# trial mix.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"
@@ -21,7 +22,7 @@ python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed 
 rm -rf "out/$F/music"
 (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 2 | tail -2)
 node tools/render.mjs "$F" --cues | tail -1
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers
+MIX=(--voice "out/$F/voice" --music "out/$F/music/study"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -1
 node tools/render.mjs "$F" --jobs 3 | tr '\r' '\n' | tail -1

@@ -22,9 +22,8 @@ and the grammar's timings. This script writes:
   sound.json reaches every score that plays it;
 - **the mix's defaults**, `www/video/tools/sound_defaults.py`: the ladder, the
   voice chain, the duck, the carve and the dip, each part's EQ, pan and level,
-  the grammar's timings, the marks' levels and hand-overs, the shortlist, the
-  room, and the level and duck the films are mixed with today (`mix_now`),
-  which `mix.py` reads.
+  the grammar's timings, the marks' levels and hand-overs, the shortlist and
+  the room, which `mix.py` reads.
 
 The rest of sound.json's numbers and pitches describe the records' notes
 rather than being written into them: the pedal, the marks' length, the lead's
@@ -77,7 +76,7 @@ GENERATED = "generated from www/brand/sound.json by www/brand/sound.py (make sou
 
 # The two ways the duck came to have three values, looked for where they
 # happened: a number as an argparse default for --music-db or --duck-db in a
-# film tool's Python (read from its syntax tree, so a docstring or a help
+# film tool's Python (mix.py reads them from LADDER and DUCK) (read from its syntax tree, so a docstring or a help
 # string that quotes a level is not read), and a numeric fallback or flag in
 # its shell scripts (read with their comments, inline ones too, taken out).
 # It does not try to catch every way a level could be planted.
@@ -85,9 +84,9 @@ LEVEL_FILES = ["www/video/tools/*.py", "www/video/tools/*.sh"]
 LEVEL_FLAGS = ("--music-db", "--duck-db")
 SHELL_RULES = [
     (re.compile(r"\b(MUSIC|DUCK)_DB:-\s*[\"']?[-+]?\d"),
-     "a numeric fallback for {0}_DB; leave it to mix.py's default (sound.json `mix_now`)"),
+     "a numeric fallback for {0}_DB; leave it to mix.py's default (sound.json `ladder` and `duck`)"),
     (re.compile(r"--(music|duck)-db[\s=]+[\"']?[-+]?\d"),
-     "a numeric --{0}-db; leave it to mix.py's default (sound.json `mix_now`)"),
+     "a numeric --{0}-db; leave it to mix.py's default (sound.json `ladder` and `duck`)"),
 ]
 
 
@@ -140,8 +139,8 @@ NEEDED = (
     "marks.bloom.into_the_bed", "marks.reach.out_of_the_bed.passing_chord_beats",
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
-    "mix.parts", "voice_chain.stages", "ladder", "duck.carve", "duck.pad_dip", "grammar",
-    "mix_now.music_db", "mix_now.duck_db",
+    "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
+    "grammar",
 )
 
 
@@ -465,7 +464,6 @@ def defaults(src: dict) -> dict:
     tempo = src["tempo"]
     beat = 60.0 / tempo["bpm"]
     return {
-        "MIX_NOW": {"music_db": src["mix_now"]["music_db"], "duck_db": src["mix_now"]["duck_db"]},
         "TEMPO": {
             "bpm": tempo["bpm"],
             "beats_per_bar": tempo["beats_per_bar"],
@@ -511,9 +509,6 @@ def strip(v):
 
 
 DEFAULTS_DOC = {
-    "MIX_NOW": "The bed's level against the voice and its duck under it, in dB, as the films are mixed today:\n"
-               "mix.py's --music-db and --duck-db defaults. Kept so that no film's mix changes before Plan-006\n"
-               "task 3 moves the mix to LADDER and DUCK below (the bed at -3 LU, a 2 dB duck); task 3 removes it.",
     "TEMPO": "The bed's tempo and cycle; the marks are written at marks_bpm and placed by time.",
     "SCORES": "The generated scores (repo-relative), and their titles: the score example renders each into <out>/<slug(title)>/.",
     "LADDER": "The loudness ladder (SPEC section 7). bed_rest_lu is against the narration, bed_under_demo_lu against the demo.",
@@ -635,7 +630,7 @@ def scan_python(rel: str) -> list[str]:
         for kw in node.keywords:
             if kw.arg == "default" and _number(kw.value):
                 errs.append(f"{rel}:{node.lineno}: a number as the default of {flag}; "
-                            "read it from sound_defaults (sound.json `mix_now`)")
+                            "read it from sound_defaults (sound.json `ladder` and `duck`)")
     return errs
 
 

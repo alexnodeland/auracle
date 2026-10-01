@@ -1,7 +1,7 @@
 {
   "about": [
     "The one source of the films' sound (ADR-014). The values are docs/notes/sound-2026-09/SPEC.md's, chosen by ear and by measurement over six rounds; each block names the section it comes from.",
-    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is mix.py's bed or duck default or a pipeline's fallback for them.",
+    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is mix.py's bed or duck default or a pipeline's fallback for them: mix.py reads both from the ladder (`ladder.bed_rest_lu`) and the duck (`duck.broadband_db`).",
     "Strings are prose. Every number and pitch is either written into a generated file, or describes the record scores' notes and is checked against them by `--check` (the pedal, the marks' length, the lead's legato and swell, the bed's voicings, burble and sighs, and the demo), so a change here that the scores do not make fails the check. The `stock` knob values are checked against the bank by test_sound.py's render test.",
     "Units: knob values are the engine's normalized knob values, the ones a score's `params` take. Pitches are as they sound. LUFS is ITU-R BS.1770-4, as www/video/tools/mix.py computes it. A pan is -1 (left) to +1 (right), the score renderer's equal-power pan.",
     "Three things are stand-ins, marked `stand_in`, that a film made to this must replace: the demo, the lead's bend for portamento, and the bed's hand-placed sighs."
@@ -344,10 +344,5 @@
       "The voice waits until the demo's tail has fallen 30 dB under its playing level, then 0.8 s more on the bed, then continues. The bed returns over 1.0 s from note-off and resumes its cycle.",
       "The exit mark enters 1.5-2 s after the last word ends, wherever the bed is, handing over as in `marks.reach`."
     ]
-  },
-  "mix_now": {
-    "about": "The bed's level and duck the films are mixed with today: mix.py's defaults, which illustrated.sh and walkthrough.sh use. Kept so that no film's mix changes before Plan-006 task 3 moves the mix to the ladder and the duck above (the bed at -3 LU, a 2 dB duck); task 3 removes this block.",
-    "music_db": -6,
-    "duck_db": -9
   }
 }

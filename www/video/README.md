@@ -12,7 +12,7 @@ again. A film is narration, pictures and sound, and each has one owner here:
 | The music | `sound/` | Scores played by Auracle's own engine, offline (`cargo run -p auracle-wasm --example score`). Every note in these films is the instrument. Its values are `www/brand/sound.json`'s (§ The sound) |
 | The picture | `films/<film>/film.js` | Scenes drawn on the stage (`stage/`), pinned to the timeline's cues, never to hand-typed seconds |
 | The footage | `films/<film>/shots.json` | `tools/footage.mjs`: the real app, driven by a script and recorded with its own sound |
-| The mix | `tools/mix.py` | Narration at a fixed level, music ducked under it, effects on the frames that show them; -16 LUFS, true peak under -1 dBTP; H.264 + AAC, captions (WebVTT) and a poster |
+| The mix | `tools/mix.py` | The ladder in `www/brand/sound.json`: the narration through its chain, the bed under it, each demo at its own level, the two marks, no cues; -16 LUFS, true peak under -1 dBTP; H.264 + AAC, captions (WebVTT) and a poster |
 
 ## The stage
 
@@ -66,7 +66,7 @@ in `tokens.json`:
 - **The mix's defaults** `tools/sound_defaults.py`: the ladder, the voice
   chain, the duck, carve and dip, each part's EQ, pan and level, the
   grammar's timings, the marks' levels, the shortlist and the room. `mix.py`
-  reads the bed's level and duck from it.
+  reads every level it sets from it.
 
 The rest of `sound.json`'s numbers and pitches describe the notes rather than
 being written into them: the pedal, the marks' length, the lead's legato and
@@ -81,12 +81,19 @@ duck came to have three values in three places: a number as `mix.py`'s
 fallback (or `--music-db`/`--duck-db` flag) in a film tool's shell code.
 Docstrings, help strings and comments may quote a level.
 
-The pipeline is being brought to it
-([Plan-006](../../docs/plans/006-the-sound-of-the-films.md)). Until then the
-films still fit and play Study, take their cues from the stingers, and mix
-with the levels the pipelines pass today: the bed 6 dB under the voice and a
-9 dB duck. Those are `sound.json`'s `mix_now`, kept so that no film's mix
-changes before the new mix lands.
+The mix is the spec's (`tools/mix.py`):
+- the voice through its chain, at −18 LUFS;
+- the bed at rest 3 LU under it, ducked 2 dB under the voice, carved a
+  further 3 dB in 1–4 kHz, and the pad dipped 2 dB in 300–600 Hz;
+- each demo window at −18 LUFS, with the bed 9 LU under it;
+- the marks at −18 LUFS over their 4.5 s;
+- the master at −16 LUFS, and no cues.
+
+It writes what it measured to `out/<film>/ladder.json`. The rest of the
+pipeline is being brought to the spec
+([Plan-006](../../docs/plans/006-the-sound-of-the-films.md)): until a film is
+re-scored, it still fits and plays Study as one bed, at the ladder's level
+and duck.
 
 ## Setting up
 
@@ -262,7 +269,7 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
 | `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
-| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster. A cue with no WAV stops it |
+| `tools/mix.py` | Voice, bed, marks and app sound mixed to the ladder and encoded, with captions and poster; the mix measured in `out/<film>/ladder.json`. Lays no cues |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |
