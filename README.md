@@ -1,33 +1,17 @@
 <div align="center">
 
-<img src="www/brand/lockup.png" alt="Auracle — a synthesizer that searches for your sound" width="720">
+<img src="www/brand/lockup.png" alt="Auracle: a synthesizer that grows toward you" width="720">
 
-*Built on [fugue-evo](https://github.com/alexnodeland/fugue-evo) (evolution as
-Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
-(patch-graph DSP).*
+Pick the sound you’d reach for. It learns your ear, and every generation grows
+a little closer.
 
-<!-- One rule, so the row reads as one object rather than six: green belongs to
-     GitHub, amber belongs to us. The two workflow badges are GitHub's own and
-     go red when a check fails, which is the whole point of them — nothing here
-     may override that. Everything else is a fact this README asserts, and is
-     amber on the rack's panel colour. No third colour. -->
-
-[![Release](https://img.shields.io/github/v/release/alexnodeland/auracle?sort=semver&label=release&labelColor=171a1f&color=ffb454)](https://github.com/alexnodeland/auracle/releases/latest)
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
-[![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://auracle.alexnodeland.com/)
-[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-ffb454?labelColor=171a1f)](https://auracle.alexnodeland.com/docs/)
-[![License](https://img.shields.io/badge/license-MIT-ffb454?labelColor=171a1f)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable-ffb454?labelColor=171a1f)](https://www.rust-lang.org/)
 
 </div>
 
-Auracle is a playable modular synthesizer that **models your taste over time**.
-It generates patches by evolutionary search, collects your feedback on what it
-plays (A/B duels, star ratings, your own hand edits) and fits a persistent
-Bayesian model of what you like. Evolution then *proposes toward
-you*: the fitted taste posterior reshapes the grammar's own proposal
-distribution. Over a session it stops guessing and starts proposing, and it can
-show you what it learned.
+Auracle is a modular synthesizer you play in the browser. Pick between two
+sounds, and it learns what you like, breeds new sounds toward it, and shows you
+what it learned. Every sound is a patch you can open and change.
 
 <!-- films:readme -->
 <a href="https://auracle.alexnodeland.com/"><img src="www/landing/assets/film/launch-play.jpg" alt="Watch the launch film (1:38)" width="720"></a>
@@ -35,86 +19,115 @@ show you what it learned.
 **[▶ Watch the launch film](https://auracle.alexnodeland.com/)** (1:38) · [How Auracle learns what you like](https://auracle.alexnodeland.com/docs/films.html#film-taste) (1:49) · [Under the hood](https://auracle.alexnodeland.com/docs/films.html#film-engine) (2:17) · [The math](https://auracle.alexnodeland.com/docs/films.html#film-math) (2:46) · [The sound engine](https://auracle.alexnodeland.com/docs/films.html#film-dsp) (2:49)
 <!-- /films:readme -->
 
-## Table of Contents
+## Play it
 
-- [Why Auracle?](#-why-auracle)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Quick Start](#-quick-start)
-- [Documentation](#-documentation)
-- [Development](#-development)
-- [Contributing](#-contributing)
-- [License](#-license)
+**In your browser: <https://auracle.alexnodeland.com/play/>.** It is free, with
+no account and nothing to install, and your sounds and your taste stay in your
+browser. Every push to `main` rebuilds the engine and redeploys it.
 
-## 🤔 Why Auracle?
+**Offline:** every [release](https://github.com/alexnodeland/auracle/releases)
+comes with a ready-built web bundle. Unzip it, run `python3 serve.py`, and open
+the address it prints. No Rust needed.
 
-Sound design tools make you choose between exploring (presets and randomizers,
-fast but shallow) and constructing (patching from scratch, deep but slow).
-Genetic-algorithm synths tried to bridge this with star-a-generation workflows,
-but they forget everything between sessions and can't tell you *why* they
-suggest what they suggest.
+## Run it locally
 
-Auracle treats the problem as inference:
+You need [rustup](https://rustup.rs/) and Node 22, the version in
+`.node-version`.
 
-| Idea | What it buys |
-|---|---|
-| Patches are **terms in a typed PCFG** over quiver combinators | Every sample, mutation, and hand edit is a valid, playable patch by construction |
-| Evolution is **typed MH toward a Boltzmann target** `π(x) ∝ p_grammar(x) · exp(β·u(x))` via fugue-evo | Parsimony comes from the prior, search intensity is one dial, and locked knobs give *exact* conditional refinement |
-| Taste is a **max-of-linear-experts utility with its own posterior** | One user can love several unrelated islands of sound; the model names them, shows its confidence, and forecasts your votes |
-| The instrument and the search **share one compiler** | What you play live is the same patch that was evolved, vetted, and featurized |
+```bash
+git clone https://github.com/alexnodeland/auracle.git && cd auracle
+make setup   # the wasm target, wasm-pack, the test browser and git hooks, then the engine
+make serve   # http://localhost:8642
+```
 
-## ✨ Features
+`make setup` is idempotent: run it again after pulling. Open
+<http://localhost:8642>, let the pool fill, and play from your computer keys
+(`a w s e d f t g y h u j …`), a MIDI keyboard, or the keys on screen. Press
+<kbd>?</kbd> in the app for the key map and gestures.
 
-- **A real instrument** — 4-voice polyphony in an AudioWorklet, on-screen and
-  computer-key keyboards, Web MIDI (velocity, pitch bend, sustain), sample-
-  accurate arpeggiator, glide, unison, per-patch loudness normalization, WAV
-  recording of your playing, and click-free patch swaps that keep held chords
-  alive.
-- **A live rack** — every knob is a trace address; turning one writes the
-  running voices' atomics (no recompile) *and* the genome. Rewire by dragging
-  typed jacks; structural edits are grammar operations, so an edit always
-  leaves a playable patch. Undo/redo, per-knob and per-module locks.
-- **Forty-two modules** — six sources (a wavetable, a physically-modelled
-  pluck and a formant oscillator among them), twenty processors, and sixteen
-  modulators. Six processors are **binary**: a crossfade and a ring modulator
-  that merge two chains into one, and a compressor, ducker, gate and vocoder
-  whose second input is a *control* — real sidechaining, in a typed tree.
-  Nearly all of them carry a modulation slot with a named destination,
-  including the oscillators, whose slot bends pitch.
-- **Modulation is a whole chain** — a cable can carry `s&h rand → quantize →
-  slew` before it reaches a cutoff, with a depth bound so the grammar's
-  parsimony pressure still applies. The node bank shows what each module does
-  to a signal, where it can legally go, and, only where the evidence supports
-  it, what the model has learned about it.
-- **A taste model that earns trust** — Bradley–Terry duels and ordinal stars
-  feed one max-of-experts posterior (fitted style count grows with evidence).
-  It forecasts each duel *before* your vote and shows its running calibration;
-  styles are nameable and color-coded everywhere; old votes fade with a recency
-  half-life. A keep/kill likelihood is fitted too; the bank's cut records a
-  kill once its undo window closes.
-- **Taste-directed evolution** — refinement warm-starts typed MH from your best
-  patches and takes a short *local* walk on the Boltzmann target (the pool is
-  moved uphill on `π_β`, not sampled from it), with kind-proposal weights
-  tilted by the structural taste posterior. Lock what you love and evolution
-  leaves it alone.
-- **Persistence by default** — the whole session (bank, names, taste log,
-  lineage, style names) autosaves to IndexedDB; profiles and single patches
-  export as shareable files.
+## Read more
 
-## 🏗 Architecture
+- **[The guide](https://auracle.alexnodeland.com/docs/)**: playing it. The four
+  views, teaching it your taste, reading what it learned, the key map,
+  accessibility, and troubleshooting. Start at
+  [your first session](https://auracle.alexnodeland.com/docs/getting-started/first-session.html).
+- **[The reference](https://auracle.alexnodeland.com/reference/)**: how it
+  works, with the math. The grammar, the audition, the features, the taste
+  model, the search, and the safety layers, with the
+  [design decisions](https://auracle.alexnodeland.com/reference/design/decisions.html)
+  and [rustdoc for every crate](https://auracle.alexnodeland.com/reference/api/auracle_session/index.html).
+- **[`docs/`](./docs/README.md)**: for contributors. Architecture notes,
+  decisions (ADRs), proposals, plans, and runbooks.
 
-Two loops around one observation stream, running at different speeds. The
-machine-paced one evaluates thousands of candidates against what it has learned
-about you and surfaces a curated few; the human-paced one advances only when you
-answer something.
+## What it does
+
+Sound design usually means a choice. Presets are fast, and nothing you hear
+today helps tomorrow. Patching from scratch goes deep, slowly. Auracle grows:
+it keeps what you teach it, across sessions, and breeds toward it.
+
+| Idea | What it gives you |
+| --- | --- |
+| Every sound is a **term in a typed grammar** (a probabilistic context-free grammar over [quiver](https://github.com/alexnodeland/quiver) modules) | Every sample, mutation, and hand edit is a valid, playable patch by construction |
+| Breeding is **typed Metropolis–Hastings toward a Boltzmann target**, `π(x) ∝ p_grammar(x) · exp(β·u(x))`, through [fugue-evo](https://github.com/alexnodeland/fugue-evo) | The grammar supplies parsimony, your taste supplies direction, β is one dial between them, and locked knobs give *exact* conditional refinement |
+| Taste is a **max of linear experts, with its own posterior** | One player can love several unrelated kinds of sound; the model names them as styles, shows how sure it is, and guesses each pick before you make it |
+| The instrument and the search **share one compiler** | What you play is the same patch that was bred, vetted, and measured |
+
+### The instrument
+
+- **Play it.** Four voices of polyphony in an AudioWorklet; your computer keys,
+  the keys on screen, or Web MIDI (velocity, pitch bend, sustain); an
+  arpeggiator, glide, and unison; every sound loudness-normalized; WAV
+  recording of your playing; and sound changes that keep held chords ringing.
+- **Open it.** Every knob is a trace address. Turning one writes the running
+  voices' parameters (no recompile) and the genome. Rewire by dragging typed
+  jacks; a structural edit is a grammar operation, so an edit always leaves a
+  playable patch. Undo and redo, and locks per knob and per module.
+- **Forty-two modules.** Six sources (a wavetable, a physically modeled pluck,
+  and a formant oscillator among them), twenty processors, and sixteen
+  modulators. Six processors take two inputs: a mix and a ring modulator that
+  merge two chains into one, and a compressor, ducker, gate, and vocoder whose
+  second input is a *control*, so sidechaining lives in a typed tree. Nearly
+  all of them carry a modulation slot with a named destination, the oscillators
+  included, where it bends pitch.
+- **Modulation chains.** A cable can carry `s&h rand → quantize → slew` before
+  it reaches a cutoff, with a depth bound so the grammar's parsimony still
+  applies. The node bank shows what each module does to a signal, where it can
+  go, and, only where the evidence supports it, what the model has learned
+  about it.
+
+### The model
+
+- **It learns from picks, stars, and edits.** Bradley–Terry picks and ordinal
+  stars feed one max-of-experts posterior, whose number of styles grows with
+  the evidence. It guesses each pick before you make it and shows how often it
+  was right; styles can be named, and keep their color everywhere; older picks
+  fade with a recency half-life. A keep/kill likelihood is fitted too: a cut in
+  the bank records a kill once its undo window closes.
+- **It breeds toward your taste.** EVOLVE POOL runs one generation: a short
+  local Metropolis–Hastings walk from each of the sounds it rates highest, on
+  the Boltzmann target (the pool moves uphill on `π_β`; it is not sampled from
+  it), with the grammar's proposal weights tilted by what it has learned about
+  structure. Lock what you love in PATCH, and ⚡ EVOLVE FROM THIS walks
+  everything else.
+- **It keeps your session.** The whole session (the bank, names, the taste log,
+  lineage, and style names) saves itself to IndexedDB. Taste profiles and
+  single patches download as files you can share.
+
+## How it fits together
+
+Two loops share one record of what you taught it. The breeding loop runs when
+you press EVOLVE POOL: each generation renders and rates hundreds of candidate
+sounds against what the model has learned, with no one listening, and keeps
+only the few that earn a place in the pool. The taste loop moves only when you
+pick.
 
 ```mermaid
 flowchart TD
-    subgraph patch["patch loop · machine-paced"]
+    subgraph patch["breeding loop · machine-paced"]
         prior["grammar prior"]
         vet["render · vet · measure φ"]
-        pool[("candidate pool")]
-        refine["MH refine toward π ∝ p·exp(βu)"]
+        pool[("pool")]
+        refine["MH walk toward π ∝ p·exp(βu)"]
         prior --> vet
         vet --> pool
         pool --> refine
@@ -122,14 +135,14 @@ flowchart TD
     end
 
     subgraph taste["taste loop · human-paced"]
-        duel{{"which do you prefer?"}}
+        pair{{"which would you reach for?"}}
         log[("observation log")]
         post["posterior · u = maxₖ θₖ·φ"]
-        duel -->|"duels · stars · edits"| log
+        pair -->|"picks · stars · edits"| log
         log --> post
     end
 
-    pool -->|"uniform pairing"| duel
+    pool -->|"pairs dealt at random"| pair
     post -->|"θ tilts the proposals"| refine
 ```
 
@@ -137,97 +150,29 @@ The [reference](https://auracle.alexnodeland.com/reference/architecture/two-loop
 takes both apart.
 
 | Crate | Role |
-|---|---|
-| `auracle-grammar` | Typed PCFG over quiver combinator terms; term ⇄ trace codec; term → `Patch` compiler with live parameter handles; structural edit ops; presets |
-| `auracle-features` | Deterministic phrase rendering, vet gate, BS.1770 LUFS normalization, audio + structural features (φ) |
-| `auracle-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
-| `auracle-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
-| `auracle-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
-| `apps/web` | The instrument: PERFORM / PATCH / EVOLVE / TASTE, patch bank, keyboard dock, MIDI |
+| --- | --- |
+| `auracle-grammar` | The typed grammar over quiver combinator terms; the term ⇄ trace codec; the term → `Patch` compiler with live parameter handles; structural edit operations; presets |
+| `auracle-features` | Deterministic phrase rendering, the vetting gate, BS.1770 LUFS normalization, and the audio and structural features (φ) |
+| `auracle-taste` | The max-of-experts utility, three likelihoods, recency weighting, the MCMC posterior, label alignment, and portable profiles |
+| `auracle-session` | The two-loop engine: the pool, dealing pairs (at random by default; BALD selectable), locked refinement, taste-tilted proposals, and session persistence |
+| `auracle-wasm` | `WasmEngine` (the worker's engine) and `LivePoly` (the worklet's instrument) |
+| `apps/web` | The instrument: PERFORM, PATCH, EVOLVE, and TASTE, the bank, the keyboard dock, and MIDI |
 
-## 🚀 Quick Start
-
-**Play it in the browser: https://auracle.alexnodeland.com/play/** — every
-push to `main` builds the wasm engine and deploys the instrument to GitHub
-Pages, and so does every tagged release. Nothing to install; your bank and
-taste model live in your browser.
-
-Prefer to run it yourself with no toolchain? Every
-[release](https://github.com/alexnodeland/auracle/releases) attaches a
-prebuilt web bundle: unzip it, `python3 serve.py`, open the URL.
-
-To build it yourself, Auracle's foundations
-([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
-[`fugue-ppl`](https://crates.io/crates/fugue-ppl),
-[`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io:
-
-```bash
-git clone https://github.com/alexnodeland/auracle.git
-cd auracle
-```
-
-Set up (needs [rustup](https://rustup.rs/) and Node 22, the version in `.node-version`; idempotent), then
-run the instrument:
-
-```bash
-make setup   # wasm target, wasm-pack, test browser, git hooks, then make wasm
-make serve   # no-store static server on http://localhost:8642
-```
-
-`make film-setup` adds everything the films need (the voice's Python
-environment and models, the film tools, the shared sound).
-
-Open http://localhost:8642, wait for the pool to warm up, and play
-(`a w s e d f t g y h u j …`, or plug in a MIDI keyboard). Press `?` in the app
-for the full key map and gesture guide.
+Auracle builds on [`quiver-dsp`](https://crates.io/crates/quiver-dsp)
+(patch-graph DSP), [`fugue-ppl`](https://crates.io/crates/fugue-ppl), and
+[`fugue-evo`](https://crates.io/crates/fugue-evo) (evolution as Bayesian
+inference), all from crates.io.
 
 While the version is 0.x, the public API and the save format may change between
 commits. Sessions written by older builds are migrated on load, but migrations
-are code — **⋯ → Save taste profile** before updating is the only backup that
-exists. See [Your
-data](https://auracle.alexnodeland.com/docs/your-data.html).
+are code: **⋯ → Save taste profile** before updating is the only backup there
+is. See [Your data](https://auracle.alexnodeland.com/docs/your-data.html).
 
-## 📚 Documentation
-
-Two books, published as part of the site and built from `www/`:
-
-- **[User Guide](https://auracle.alexnodeland.com/docs/)** — playing it.
-  The four views, teaching it your taste, reading what it learned, the full
-  key map, accessibility, troubleshooting. Start at [Your first
-  session](https://auracle.alexnodeland.com/docs/getting-started/first-session.html).
-- **[Reference](https://auracle.alexnodeland.com/reference/)** — how it
-  works, with the math. The typed PCFG, the audition pipeline, φ, the
-  max-of-experts posterior, the search, the safety layers. It also holds the
-  [design](https://auracle.alexnodeland.com/reference/design/decisions.html)
-  — the decisions log, the milestones and the open questions — so that a
-  choice and the maths it justifies are never two documents that can disagree.
-  Plus [rustdoc for every
-  crate](https://auracle.alexnodeland.com/reference/api/auracle_session/index.html).
-
-In the repo:
-
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — working *on* Auracle: layout,
-  workflow, quality bar, sharp edges, cutting a release.
-- [`www/README.md`](./www/README.md) — how the site is assembled, and the
-  things about it that fail quietly.
-- [`www/brand/`](./www/brand/) — the mark, the lockups and the icon set, with
-  the [full spec](https://auracle.alexnodeland.com/brand/) at `/brand/`.
-  Read it before drawing anything.
-- [`apps/web/README.md`](./apps/web/README.md) — the web app's architecture
-  (worklet assembly, worker protocol, workbench).
-- [`CHANGELOG.md`](./CHANGELOG.md) — notable changes by pass.
-- [`docs/`](./docs/README.md) — the engineering record: architecture notes,
-  decisions (ADRs), proposals, runbooks and design notes.
-- [`AGENTS.md`](./AGENTS.md) — the working rules for coding agents (and
-  people), one per area of the repo, each linking deeper.
-- [`www/video/README.md`](./www/video/README.md) — how the films are made,
-  from script to the site, with every tool.
-
-## 🛠 Development
+## Development
 
 ```bash
-make check   # fmt-check + clippy (-D warnings) + app syntax + dev-check + wasm32 + tests: the CI gate
-make test    # cargo test --workspace --profile test-fast (DSP tests need optimized code)
+make check   # the CI gate: fmt-check, clippy (-D warnings), app syntax, dev-check, wasm32, and the tests
+make test    # cargo test --workspace --profile test-fast (the DSP tests need optimized code)
 make fmt     # rustfmt
 make lint    # clippy
 make help    # every target, with what it does
@@ -236,22 +181,39 @@ make help    # every target, with what it does
 The site:
 
 ```bash
-make site-tools   # install the pinned doc toolchain (once)
+make site-tools   # install the pinned doc toolchain, once
 make site         # build all four sections into site/
 make site-serve   # http://localhost:8643
-make site-check   # every link, asset and anchor must resolve
+make site-check   # every link, asset, and anchor must resolve
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full guide and
-[`www/README.md`](./www/README.md) for the site.
+`make film-setup` adds what the films need: the voice's Python environment and
+models, the film tools, and the shared sound.
 
-## 🤝 Contributing
+In the repo:
 
-Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). Run
-`make check` before opening a PR.
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md): working *on* Auracle. The layout,
+  the workflow, the quality bar, the sharp edges, and cutting a release.
+- [`AGENTS.md`](./AGENTS.md): the working rules for coding agents and people,
+  one file per area of the repo, each linking deeper.
+- [`www/README.md`](./www/README.md): how the site is assembled, and the
+  things about it that fail quietly.
+- [`www/brand/`](./www/brand/): the mark, the lockups, the icon set, and
+  [`voice.md`](./www/brand/voice.md), the rules for every word Auracle says.
+  The [full spec](https://auracle.alexnodeland.com/brand/) is at `/brand/`.
+- [`apps/web/README.md`](./apps/web/README.md): the web app's architecture
+  (the worklet, the worker protocol, the node bank) and its design system.
+- [`www/video/README.md`](./www/video/README.md): how the films are made, from
+  script to site, with every tool.
+- [`CHANGELOG.md`](./CHANGELOG.md): what changed, release by release.
 
-## 📄 License
+## Contributing
 
-MIT — see [LICENSE](./LICENSE).
+Contributions are welcome: see [`CONTRIBUTING.md`](./CONTRIBUTING.md), and run
+`make check` before opening a pull request.
+
+## License
+
+MIT; see [LICENSE](./LICENSE).
 
 © 2026 [Alex Nodeland](https://alexnodeland.com).
