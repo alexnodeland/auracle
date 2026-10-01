@@ -82,28 +82,40 @@ function tally(reasons) {
 }
 
 /** The toast for a generation that put nothing into the pool. `reasons` is
- *  one engine reason per walk that came back without a child. */
-export function emptyGeneration(gen, reasons, { stopped = false } = {}) {
-  const head = `Generation ${gen}${stopped ? " stopped" : ""}`;
+ *  one engine reason per walk that came back without a child: every walk of
+ *  a generation that ran to its end, only the walks that came back before a
+ *  stop. `replaced` is what the end of the generation replaced (main.js
+ *  `madeRoom`, a sentence with a leading space, or ""). At most two
+ *  sentences: what happened, then what was replaced or what to try. */
+export function emptyGeneration(gen, reasons, { stopped = false, replaced = "" } = {}) {
   const list = reasons || [];
-  if (list.length === 0) {
-    return stopped
-      ? `${head} before it bred anything. The pool is as it was.`
-      : `${head}: nothing joined the pool.`;
-  }
-  const t = tally(list);
   const n = list.length;
+  const t = tally(list);
+  const tail = (advice) => replaced || (advice ? ` ${advice}` : "");
+  if (n === 0) {
+    return stopped
+      ? `Generation ${gen} stopped before it bred anything.${replaced || " The pool is as it was."}`
+      : `Generation ${gen}: nothing joined the pool.${tail("")}`;
+  }
+  // A stop drops the walks still out, so a stopped generation is counted
+  // walk by walk: "every walk" would claim the ones that never came back.
+  const head = stopped ? `Generation ${gen} stopped` : `Generation ${gen}`;
+  const before = stopped ? " before it stopped" : "";
   if (t.outside_support === n) {
-    return `${head}: nothing could be bred. Every seed it picked has a knob on its stop, or is deeper than the model scores: nudge those knobs off their stops.`;
+    const what = stopped
+      ? `${count(n, "seed")} it picked couldn’t be bred from${before}`
+      : "nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores";
+    return `${head}: ${what}.${tail("Nudge those knobs off their stops.")}`;
   }
   if (t.no_move === n) {
-    return `${head}: every walk came back unchanged. A few more picks, or ⚡ on a sound you like, gives the next one a direction.`;
+    const what = stopped ? `${count(n, "walk")} came back unchanged${before}` : "every walk came back unchanged";
+    return `${head}: ${what}.${tail("A few more picks, or ⚡ on a sound you like, gives the next one a direction.")}`;
   }
   if (t.not_admitted === n) {
-    return `${head}: ${n} ${n === 1 ? "was" : "were"} bred, but ${n === 1 ? "it didn’t rate above the sound it would replace" : "none rated above the sounds they would replace"}.`;
+    return `${head}: ${n} ${n === 1 ? "was" : "were"} bred${before}, but ${n === 1 ? "it didn’t rate above the sound it would replace" : "none rated above the sounds they would replace"}.${tail("")}`;
   }
   if (t.duplicate === n) {
-    return `${head}: ${n} ${n === 1 ? "was" : "were"} bred, but ${n === 1 ? "it matched a sound" : "each matched a sound"} already in the pool.`;
+    return `${head}: ${n} ${n === 1 ? "was" : "were"} bred${before}, but ${n === 1 ? "it matched a sound" : "each matched a sound"} already in the pool.${tail("")}`;
   }
   const parts = [];
   if (t.not_admitted) parts.push(`${t.not_admitted} rated below the ${t.not_admitted === 1 ? "sound it" : "sounds they"} would replace`);
@@ -111,7 +123,10 @@ export function emptyGeneration(gen, reasons, { stopped = false } = {}) {
   if (t.no_move) parts.push(`${count(t.no_move, "walk")} came back unchanged`);
   if (t.outside_support) parts.push(`${t.outside_support} couldn’t start from ${t.outside_support === 1 ? "its seed" : "their seeds"}`);
   if (t.other && parts.length === 0) parts.push(`${count(t.other, "walk")} bred nothing`);
-  return `${head}: nothing new joined the pool. ${capital(series(parts))}.`;
+  // One sentence, so the replaced clause still leaves two at most.
+  return stopped
+    ? `Generation ${gen} stopped with nothing new in the pool (before the stop, ${series(parts)}).${replaced}`
+    : `Generation ${gen} put nothing new in the pool: ${series(parts)}.${replaced}`;
 }
 
 /** Why ⚡ evolve from this added nothing, from the engine's reason. `name`

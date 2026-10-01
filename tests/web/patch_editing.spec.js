@@ -613,7 +613,7 @@ test("Esc on the comparison card commits nothing, and its sides are A and B unti
     await expect(cell).not.toContainText(/your edit|the original/);
   }
   await expect(page.locator("#cduel .cd-hint")).toContainText("esc cancel");
-  await expect(page.locator("#cd-skip")).toHaveText("keep as new without comparing");
+  await expect(page.locator("#cd-skip")).toHaveText("skip comparing");
 
   // Esc: the card goes, nothing is committed, the edit is still on the bench.
   await page.keyboard.press("Escape");

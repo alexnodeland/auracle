@@ -74,9 +74,9 @@ test("a generation whose children were refused says so, not that no move was acc
     "Generation 2: 1 was bred, but it didn’t rate above the sound it would replace.");
 });
 
-test("a generation whose walks came back unchanged says that", () => {
-  const s = emptyGeneration(3, Array(10).fill("no_move"));
-  assert.match(s, /^Generation 3: every walk came back unchanged\./);
+test("a generation whose walks came back unchanged says that, and what to try", () => {
+  assert.equal(emptyGeneration(3, Array(10).fill("no_move")),
+    "Generation 3: every walk came back unchanged. A few more picks, or ⚡ on a sound you like, gives the next one a direction.");
 });
 
 test("a generation that bred only sounds the pool holds says that", () => {
@@ -84,22 +84,47 @@ test("a generation that bred only sounds the pool holds says that", () => {
     "Generation 5: 2 were bred, but each matched a sound already in the pool.");
 });
 
-test("a mixed generation counts each outcome", () => {
+test("a mixed generation counts each outcome, in one sentence", () => {
   const s = emptyGeneration(6, ["no_move", "not_admitted", "duplicate", "no_move", "not_admitted", "not_admitted"]);
   assert.equal(s,
-    "Generation 6: nothing new joined the pool. 3 rated below the sounds they would replace, 1 matched a sound already there, and 2 walks came back unchanged.");
+    "Generation 6 put nothing new in the pool: 3 rated below the sounds they would replace, 1 matched a sound already there, and 2 walks came back unchanged.");
 });
 
 test("a generation that could not start from its seeds says how to fix it", () => {
-  const s = emptyGeneration(7, ["outside_support", "outside_support"]);
-  assert.match(s, /^Generation 7: nothing could be bred\./);
-  assert.match(s, /nudge those knobs off their stops\.$/);
+  assert.equal(emptyGeneration(7, ["outside_support", "outside_support"]),
+    "Generation 7: nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores. Nudge those knobs off their stops.");
 });
 
-test("a stopped generation that bred nothing says the pool is as it was", () => {
+test("a stopped generation counts only the walks that came back, never \"every walk\"", () => {
+  // A stop drops the walks still out: of ten, two came back.
+  assert.equal(emptyGeneration(5, ["no_move", "no_move"], { stopped: true }),
+    "Generation 5 stopped: 2 walks came back unchanged before it stopped. A few more picks, or ⚡ on a sound you like, gives the next one a direction.");
+  assert.equal(emptyGeneration(5, ["no_move"], { stopped: true }),
+    "Generation 5 stopped: 1 walk came back unchanged before it stopped. A few more picks, or ⚡ on a sound you like, gives the next one a direction.");
+  assert.equal(emptyGeneration(5, ["outside_support", "outside_support", "outside_support"], { stopped: true }),
+    "Generation 5 stopped: 3 seeds it picked couldn’t be bred from before it stopped. Nudge those knobs off their stops.");
+  assert.equal(emptyGeneration(5, ["not_admitted", "not_admitted"], { stopped: true }),
+    "Generation 5 stopped: 2 were bred before it stopped, but none rated above the sounds they would replace.");
+  assert.equal(emptyGeneration(5, ["no_move", "duplicate"], { stopped: true }),
+    "Generation 5 stopped with nothing new in the pool (before the stop, 1 matched a sound already there and 1 walk came back unchanged).");
+  for (const r of [["no_move"], ["outside_support"], ["no_move", "duplicate"]]) {
+    assert.ok(!/every walk|every seed/.test(emptyGeneration(5, r, { stopped: true })));
+  }
+});
+
+test("a stopped generation that bred nothing says the pool is as it was, unless something was replaced", () => {
   assert.equal(emptyGeneration(8, [], { stopped: true }),
     "Generation 8 stopped before it bred anything. The pool is as it was.");
-  assert.match(emptyGeneration(8, ["no_move"], { stopped: true }), /^Generation 8 stopped: /);
+  assert.equal(emptyGeneration(8, [], { stopped: true, replaced: " The sound it rated lowest was replaced: Bell Jar." }),
+    "Generation 8 stopped before it bred anything. The sound it rated lowest was replaced: Bell Jar.");
+});
+
+test("what a generation replaced takes the second sentence's place", () => {
+  const replaced = " The 2 it rated lowest were replaced: Bell Jar and Glass Pad.";
+  assert.equal(emptyGeneration(4, Array(10).fill("no_move"), { replaced }),
+    `Generation 4: every walk came back unchanged.${replaced}`);
+  assert.equal(emptyGeneration(4, ["no_move", "duplicate"], { stopped: true, replaced }),
+    `Generation 4 stopped with nothing new in the pool (before the stop, 1 matched a sound already there and 1 walk came back unchanged).${replaced}`);
 });
 
 test("every generation outcome is at most two sentences, in the voice", () => {
@@ -109,11 +134,13 @@ test("every generation outcome is at most two sentences, in the voice", () => {
   ];
   for (const r of cases) {
     for (const stopped of [false, true]) {
-      const s = emptyGeneration(9, r, { stopped });
-      voiced(s);
-      assert.ok(/^[A-Z]/.test(s), `a sentence: ${s}`);
-      const sentences = s.split(/\. (?=[A-Z])/);
-      assert.ok(sentences.length <= 2, `two sentences at most: ${s}`);
+      for (const replaced of ["", " The 3 it rated lowest were replaced: A, B, and C."]) {
+        const s = emptyGeneration(9, r, { stopped, replaced });
+        voiced(s);
+        assert.ok(/^[A-Z]/.test(s), `a sentence: ${s}`);
+        const sentences = s.split(/\. (?=[A-Z])/);
+        assert.ok(sentences.length <= 2, `two sentences at most: ${s}`);
+      }
     }
   }
 });

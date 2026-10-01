@@ -1573,7 +1573,7 @@ worker.onmessage = (e) => {
         // it cannot start from. The sentence says which, and how many; it
         // used to say "no move was accepted" for all of them.
         const reasons = Array.isArray(m.reasons) ? m.reasons : [];
-        note(`${emptyGeneration(m.status.generation, reasons, { stopped: wasStopped })}${madeRoom(evicted)}`);
+        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }));
       } else if (m.born && kept.length === 0) {
         // Bred and admitted, then ranked below the rest at the finish.
         note(`Generation ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} ${bred.length === 1 ? "was" : "were"} bred, but none rated above the sounds they would replace, so the pool is as it was.`);
@@ -2090,7 +2090,7 @@ worker.onmessage = (e) => {
         const taught =
           m.outcome === "heard_edited" ? `${was} you picked it`
           : m.outcome === "heard_original" ? `${was} you picked the original (it learns most from that)`
-          : m.outcome === "self_edited" ? ", and taught it your edit is better"
+          : m.outcome === "self_edited" ? ", and told it you’d pick the edit"
           : "";
         // A landed commit is the latest word on the bench: the receipts of the
         // edits it took in ("… TAKE IT OUT") are stale news about a patch that
@@ -5472,7 +5472,7 @@ function renderBelief() {
     `<b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span> ${was}${arrow}` +
     (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
     (belief.lens ? ` <span class="ex-lens">${styleClause()}</span>` : "") +
-    (belief.stale ? ` <span class="bl-stale">· listening…</span>` : "");
+    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
   el.title = belief.stale
     ? "An edit is on its way. This is its guess for the sound before it."
     : `Its guess for the sound you’re playing, the same one the bank’s bar draws (utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}). The qualities beside it add up to that utility.`;
@@ -10554,7 +10554,7 @@ function syncLodBtn() {
       ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and modules lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for modules without knobs."
-        : "Detail: modules, titles and jacks only. Click to go back to automatic.";
+        : "Detail: modules, titles, and jacks only. Click to go back to automatic.";
 }
 $("rack-lod").onclick = () => {
   lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
@@ -10643,7 +10643,7 @@ function beliefEdge(m, p, sup) {
   const tt = svgEl("title", {});
   tt.textContent =
     `The kind, not this module: in ${styleName(views.styles[t.style], t.style)} ` +
-    `(${Math.round(t.share * 100)}% of your bank) you lean ` +
+    `(${Math.round(t.share * 100)}% of your pool) you lean ` +
     `${t.mean >= 0 ? "toward" : "away from"} ${niceName(spec.phi)} ` +
     `(θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
     `from ${sup.byPhi[spec.phi] || 0} of ${sup.total} sounds). The model counts how many of ` +
@@ -12794,7 +12794,7 @@ const KNOB_UNITS = {
   // louder one side actually is — "a 3%" at dead centre described neither the
   // position nor the levels.
   bal: (x) => {
-    if (Math.abs(x - 0.5) < 0.005) return "centre";
+    if (Math.abs(x - 0.5) < 0.005) return "center";
     // At the ends the other side is genuinely silent, so the difference is
     // infinite; printing the clamp artifact ("a +60.0 dB") states a number
     // where the honest answer is a word.
@@ -13735,7 +13735,7 @@ const MODULES = [
     // pitch — no vibrato, no envelope drop, no siren.
     ins: 0, modTarget: "pitch", phi: "n_vco",
     tags: ["osc", "oscillator", "analog", "saw", "square", "sine", "basic", "vibrato"],
-    blurb: "The reference oscillator. One bandlimited shape at a time (sine, triangle, saw or square), tracking the keyboard. Cable its mod input and the pitch itself bends.",
+    blurb: "The reference oscillator. One bandlimited shape at a time (sine, triangle, saw, or square), tracking the keyboard. Cable its mod input and the pitch itself bends.",
     heard: "brightness and roughness, well.",
     glyph: `<path class="gl" d="M1 11.5 L7 2.5 L7 11.5 L13 2.5 L13 11.5 L19 2.5"/>`,
     frag: SEED_VCO,
@@ -13798,7 +13798,7 @@ const MODULES = [
     kind: "noise", tag: "Noise", name: "noise", sort: "source", group: "sources",
     ins: 0, modTarget: null, phi: "n_noise",
     tags: ["white", "pink", "hiss", "wind", "percussion", "air", "snare"],
-    blurb: "Every frequency at once: white is flat, and pink weighted toward the bottom. Filter it and it becomes wind, breath or a snare.",
+    blurb: "Every frequency at once: white is flat, and pink weighted toward the bottom. Filter it and it becomes wind, breath, or a snare.",
     heard: "flatness, loudly. It is the one source φ can pick out on its own.",
     glyph: `<path class="gl" d="M1 7 L2.3 2.6 L3.6 10.8 L4.9 4 L6.2 12 L7.5 3.4 L8.8 9.6 L10.1 2.4 L11.4 11.4 L12.7 4.6 L14 12.2 L15.3 3 L16.6 10 L17.9 4.4 L19 7.4"/>`,
     frag: () => ({ Noise: { color: "White" } }),
@@ -13852,7 +13852,7 @@ const MODULES = [
     kind: "eq", tag: "Eq", name: "eq", sort: "proc", group: "filter",
     ins: 1, modTarget: "mid", phi: "n_filter",
     tags: ["tone", "tilt", "shelf", "bass", "treble", "boost", "cut", "presence"],
-    blurb: "Three bands of ±12 dB: a low shelf, a mid bell and a high shelf. It arrives flat and does nothing until you move it: that is what a tone control is.",
+    blurb: "Three bands of ±12 dB: a low shelf, a mid bell, and a high shelf. It arrives flat and does nothing until you move it: that is what a tone control is.",
     heard: "directly, as brightness and rolloff. The most legible thing in the palette to the model.",
     glyph: `<path class="gl" d="M1 4.6 H3.4 C5 4.6, 5.4 10.4, 7.6 10.4 C9.4 10.4, 10.2 10.4, 11.6 10.4 C13.6 10.4, 14 4.6, 16.2 4.6 H19"/>`,
     frag: () => ({ Eq: { low: 0.5, mid: 0.5, high: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
@@ -14032,7 +14032,7 @@ const MODULES = [
     kind: "ringmod", tag: "RingMod", name: "ring mod", sort: "combine", group: "combine",
     ins: 2, inNames: ["carrier", "mod"], modTarget: null, phi: "n_drive",
     tags: ["am", "ring", "metallic", "bell", "inharmonic", "clang", "radio", "dalek"],
-    blurb: "Multiplies two chains together. What comes out is the sum and difference of their frequencies: inharmonic, so it reads as bell, metal or radio rather than as a note.",
+    blurb: "Multiplies two chains together. What comes out is the sum and difference of their frequencies: inharmonic, so it reads as bell, metal, or radio rather than as a note.",
     heard: "as a jump in roughness and flatness. There is no ring-mod coordinate: the model hears the spectrum it produces, not the operation.",
     glyph:
       `<path class="gl-rule" d="M1 7 q4.5 -5.6 9 0 t9 0"/>` +
@@ -14081,7 +14081,7 @@ const MODULES = [
     kind: "env", tag: "Env", name: "mod env", sort: "mod", group: "modulation",
     ins: 0, modTarget: null, phi: "n_env",
     tags: ["envelope", "ad", "attack", "decay", "per note", "sweep", "pluck"],
-    blurb: "Fires once per note and decays. This is the classic filter sweep: the shape that makes a note sound plucked, bowed or blown.",
+    blurb: "Fires once per note and decays. This is the classic filter sweep: the shape that makes a note sound plucked, bowed, or blown.",
     heard: "clearly: it is the main thing shaping the sample’s spectral contour over time.",
     glyph: `<path class="gl" d="M1 12 L5 2.4 L19 12"/>`,
     frag: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
@@ -14615,7 +14615,7 @@ function renderTray() {
   $("tray").classList.toggle("empty", tray.length === 0);
   if (tray.length === 0) {
     holder.innerHTML =
-      '<span class="tray-hint mono">Anything you unplug, delete or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span>';
+      '<span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span>';
     return;
   }
   for (const t of tray) {
@@ -15141,7 +15141,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
       `style="left:${(zero + mark.lo).toFixed(1)}px;width:${Math.max(1, mark.hi - mark.lo).toFixed(1)}px"></i>` +
     `<i class="tb-bar" style="left:${barL.toFixed(1)}px;width:${barW.toFixed(1)}px;` +
       `${mark.guess ? `border-color:${color}` : `background:${color}`}"></i>`;
-  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank)`;
+  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your pool)`;
   const fig = `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}`;
   cell.title = mark.guess
     ? `Still a guess: in ${lens} it leans ${t.mean >= 0 ? "toward" : "away from"} this, but it could be ` +
@@ -15422,7 +15422,7 @@ function specParts(m) {
       `<span class="sp-dim">In ${sup} of ${total} sounds.</span> ` +
       `<i class="sp-dot" style="background:${color}"></i>` +
       `<span class="sp-belief">in ${esc(styleName(views.styles[t.style], t.style))} ` +
-      `(${Math.round(t.share * 100)}% of your bank) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
+      `(${Math.round(t.share * 100)}% of your pool) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
       ` (θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)})</span>`;
   }
   if (shared.length > 1) {
@@ -18269,7 +18269,7 @@ const EMPTY_CAPTIONS = {
   map: "Every sound you hear, placed by sound and structure. The dots light up when it first redraws your taste map.",
   styles: "Your taste as separate styles. None on record yet.",
   dir: "The sound qualities that pull you: brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you’ll choose, and after 20 guesses it grades itself here.",
+  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you’ll pick, and after 20 guesses it grades itself here.",
 };
 
 const TRUST_MIN_N = 20;
@@ -18326,8 +18326,8 @@ function renderEmptyState(tab) {
     trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
       <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
       <div class="ce-copy">${views && views.styles
-        ? "Before each pick it guesses which you’ll choose."
-        : `From pick ${n + left} on, it guesses before each pick which you’ll choose.`} After
+        ? "Before each pick it guesses which you’ll pick."
+        : `From pick ${n + left} on, it guesses before each pick which you’ll pick.`} After
       ${TRUST_MIN_N} guesses it grades itself here.</div>
       <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
   }[tab];
@@ -18640,7 +18640,7 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = INK.silk;
     ctx.textAlign = "left";
-    ctx.fillText(`${styleName(s, s.k)} · claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
+    ctx.fillText(`${styleName(s, s.k)} · claims ${Math.round(s.share * 100)}% of the pool`, 30 * dpr, y0 + 24 * dpr);
 
     // The centre line a guess's whisker crosses, as in DIRECTIONS.
     const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));

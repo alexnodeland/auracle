@@ -2893,7 +2893,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   align-self: center;
 }
 .tray-items { flex: 1; display: flex; gap: 8px; overflow-x: auto; align-items: center; }
-.tray-hint { font-size: var(--t-micro); color: var(--silk-dim); font-style: italic; }
+.tray-hint { font-family: var(--font-silk); font-size: var(--t-micro); color: var(--silk-dim); }
 /* An empty tray is a slot, not a 74px dashed hole in the rack. It opens when
    a module is staged. */
 .tray:not(:has(.tray-item)) {
