@@ -4,9 +4,10 @@ matches, and the ratchet.
 
     python3 www/test_checkwords.py      (run by `make dev-check`)
 
-The ratchet's cases run on a throwaway copy of every file the check reads,
-the guide and the baseline, so a planted word never touches the tree. Python 3
-standard library only.
+No test reads the real copy. The ratchet's cases run in a throwaway tree of
+fixture files, one on each surface, with a guide and a baseline of its own,
+so a sweep of the real copy never breaks a test. Python 3 standard library
+only.
 """
 
 import contextlib
@@ -22,23 +23,45 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import checkwords as W  # noqa: E402
 
-LIST = W.parse_banned(
-    """
-```banned
+REAL_ROOT = W.ROOT
+
+BANNED = """```banned
 AI | all | the model
 HELD | player | set aside
 MODEL'S GUESS | player | 59% · leaning
-generate | player | breed
+generate | player | breed, grow, offer
 next-generation | all | (say what it does)
 commit | player | keep as new
 bench | player | the sound you're playing
 workbench | player | the sound you're playing
-duel | player | pair
+duel | player | pair, pick
+vote | player | pick
+magic | all | (say what it does)
 made room | player | replaced
 measuring… | player | listening…
-```
-"""
-)
+```"""
+LIST = W.parse_banned(BANNED)
+
+# The fixture tree: a guide, and one file on each surface, each holding a hit
+# or two its baseline starts with.
+VOICE = f"# Voice\n\nThe guide quotes the bench, the AI and an em dash — and is never read.\n\n{BANNED}\n"
+FIXTURES = {
+    "apps/web/index.html": "<!doctype html>\n<title>Auracle</title>\n<p>Back on the bench.</p>\n</body>\n",
+    "apps/web/main.js": 'const bench = 1;\nnote("Back on the bench: play it.");\n$("bench-tour");\n',
+    "www/landing/index.html": "<body>\n<p>Every duel grows closer — to you.</p>\n</body>\n",
+    "www/landing/hero.js": 'const line = "Every duel is two sounds.";\n',
+    "www/viz/viz.js": 'cap.textContent = "Each duel, forecast first.";\n',
+    "www/docs/src/page.md": "# A page\n\nThe bench, and a colour.\n",
+    "www/video/films/demo/script.json": json.dumps(
+        {"title": "Demo", "beats": [{"id": "a", "lines": [{"id": "a1", "text": "Pick between two sounds, then vote."}]}]}, indent=2
+    )
+    + "\n",
+    "www/video/films/demo/film.js": 'voiceLine(over, "A duel.");\n',
+    "www/video/films/demo/cards.js": 'export const CARDS = [{ name: "One pair" }];\n',
+    "www/reference/src/page.md": "# Reference\n\nEach duel updates the posterior, and none of it is magic.\n",
+    "README.md": "# Auracle\n\nA grey note — once.\n",
+    "CHANGELOG.md": "# Changelog\n\n- A centre fix.\n",
+}
 
 
 def words(segments, kind="md", entries=LIST):
@@ -50,16 +73,20 @@ def rules(text, kind="md", entries=LIST):
     return [h.rule for h in W.hits_in([(1, text)], entries, kind)]
 
 
+def js(src):
+    return words(W.js_literals(src), "js")
+
+
 class Tree:
-    """A copy of the guide, the baseline and every file the check reads."""
+    """The fixture tree, with the baseline it starts at."""
 
     def __enter__(self):
         self.root = tempfile.mkdtemp(prefix="checkwords-")
-        for rel in [W.VOICE, W.BASELINE] + [f for f, *_ in W.files()]:
-            dst = os.path.join(self.root, rel)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copyfile(os.path.join(W.ROOT, rel), dst)
         self.real, W.ROOT = W.ROOT, self.root
+        for rel, text in {W.VOICE: VOICE, **FIXTURES}.items():
+            self.edit(rel, lambda _, text=text: text)
+        code, _, err = self.run("--update", "--allow-rise")
+        assert code == 0, err
         return self
 
     def __exit__(self, *exc):
@@ -86,11 +113,9 @@ class Tree:
 
 class TheList(unittest.TestCase):
     def test_the_guides_banned_block_parses(self):
-        got = W.parse_banned(open(os.path.join(W.ROOT, W.VOICE), encoding="utf-8").read())
-        self.assertGreaterEqual(len(got), 30)
-        self.assertIn(W.Entry("AI", "all", "the model, or say what it does"), got)
-        self.assertIn(W.Entry("bench", "player", "the sound you're playing"), got)
-        self.assertIn(W.Entry("MODEL'S GUESS", "player", "59% · leaning"), got)
+        got = W.parse_banned(open(os.path.join(REAL_ROOT, W.VOICE), encoding="utf-8").read())
+        self.assertGreaterEqual(len(got), 25)
+        self.assertTrue(all(e.scope in ("player", "all") and e.instead for e in got))
 
     def test_each_line_is_a_word_a_scope_and_what_to_say(self):
         got = W.parse_banned("text\n\n```banned\nfoo | player | bar\n\nmade room |all|  replaced \n```\n\n```\nx | y | z\n```")
@@ -109,12 +134,12 @@ class TheList(unittest.TestCase):
 
     def test_the_check_reads_the_list_from_the_guide_when_it_runs(self):
         with Tree() as t:
-            t.edit("www/docs/src/bank.md", lambda s: s + "\nA wobbly sound.\n")
+            t.edit("www/docs/src/page.md", lambda s: s + "\nA wobbly sound.\n")
             self.assertEqual(t.run()[0], 0)
             t.edit(W.VOICE, lambda s: s.replace("```banned\n", "```banned\nwobbly | player | (say what it does)\n", 1))
             code, _, err = t.run()
             self.assertEqual(code, 1)
-            self.assertIn("www/docs/src/bank.md: wobbly ((say what it does)): 1 hits", err)
+            self.assertIn("www/docs/src/page.md: wobbly ((say what it does)): 1 hits", err)
 
 
 class WhatItReads(unittest.TestCase):
@@ -134,16 +159,57 @@ class WhatItReads(unittest.TestCase):
                 'el.title = `pick ${n > 1 ? "duels" : "a duel"} ${`one duel`}`;',  # 11: literals inside ${}
                 "const multi = `one",  # 12
                 "and a bench`;",  # 13
+                'const y = i++ / 2; note("the bench");',  # 14: a division after i++, not a regex
+                'log("commit", { kind: "duel" }); // voice: name',  # 15: marked as names
             ]
         )
         self.assertEqual(
-            words(W.js_literals(src), "js"),
-            [(4, "bench"), (5, "bench"), (6, "duel"), (8, "bench"), (11, "duel"), (11, "duel"), (11, "duel"), (13, "bench")],
+            js(src),
+            [(4, "bench"), (5, "bench"), (6, "duel"), (8, "bench"), (11, "duel"), (11, "duel"), (11, "duel"), (13, "bench"), (14, "bench")],
         )
+
+    def test_a_name_looks_like_one(self):
+        names = [
+            '["plate-hot", "dragging"]',
+            'bind("sp-colour", f)',
+            'x = "edit_commit"',
+            'x = "#play-duel"',
+            "key = `duel:${id}`",
+            'x = "./bench.js"',
+            'case "duel":',
+            'send({ type: "bench" })',
+            'if (k === "vote") {}',
+            'el.classList.toggle("held")',
+            'el("div", { class: "plate" })',
+            'const b = beat("duel")',
+            'const at0 = wordTime(l, "duel")',
+            '{ at: "change3:HELD", until: "x" }',
+            'el.querySelector("g[data-kind=amp] .mod-plate")',
+        ]
+        for src in names:
+            self.assertEqual(js(src), [], src)
+
+    def test_copy_that_looks_a_little_like_a_name_is_copy(self):
+        copy = {
+            'note("Committed.")': "commit",
+            'x = "commit."': "commit",
+            'label = "Colour:"': "colour",
+            'note("re-generate")': "generate",
+            'el.textContent = "re-generate"': "generate",
+            'el.textContent = "commit"': "commit",
+            'const word = "Bench"': "bench",
+            'x.innerHTML = "<b>held</b>"': "HELD",
+            "x.innerHTML = `<b>${n}</b>duels`": "duel",
+            "x.innerHTML = `${n}&nbsp;duels`": "duel",
+            'note("Saved &mdash; it stays")': "em dash",
+            'note("Saved \\u2014 it stays")': "em dash",
+        }
+        for src, rule in copy.items():
+            self.assertEqual([r for _, r in js(src)], [rule], src)
 
     def test_markup_in_a_literal_is_read_as_a_page(self):
         src = 'h.innerHTML = `<span class="bench-row" title="the bench">${name}</span> <!-- a bench --> on the bench`;'
-        self.assertEqual(words(W.js_literals(src), "js"), [(1, "bench"), (1, "bench")])
+        self.assertEqual(js(src), [(1, "bench"), (1, "bench")])
 
     def test_code_held_in_a_literal_by_name_is_not_copy(self):
         self.assertEqual(W.js_literals('const POLYFILL = `note("a bench")`;\nconst y = "a bench";', "apps/web/live-audio.js"), [(2, "a bench")])
@@ -180,6 +246,23 @@ class WhatItReads(unittest.TestCase):
         )
         self.assertEqual(words(W.md_prose(src)), [(1, "bench"), (6, "bench"), (8, "bench"), (11, "duel")])
 
+    def test_an_admonish_callout_is_prose(self):
+        src = "\n".join(
+            [
+                '```admonish tip title="Vote fast"',  # 1: its title is read
+                "A duel is a gut reaction.",  # 2
+                "````js",
+                "const bench = 1;",
+                "````",
+                "Then the bench.",  # 6
+                "```",
+                "```rust",
+                "let duel = 1;",
+                "```",
+            ]
+        )
+        self.assertEqual(words(W.md_prose(src)), [(1, "vote"), (2, "duel"), (6, "bench")])
+
     def test_a_film_scripts_spoken_lines_only(self):
         src = json.dumps(
             {"title": "The bench", "description": "a bench", "beats": [{"id": "bench", "lines": [{"id": "b1", "text": "Back to the bench."}]}]},
@@ -204,7 +287,7 @@ class HowItMatches(unittest.TestCase):
     def test_a_label_that_is_a_capitals_entry_in_lowercase_matches(self):
         # Silk labels are lowercase in the source and capitals on screen.
         self.assertEqual(words(W.html_text('<span class="tray-label">held</span>'), "html"), [(1, "HELD")])
-        self.assertEqual(words(W.js_literals("x.innerHTML = `<b>model’s guess</b>`;"), "js"), [(1, "MODEL'S GUESS")])
+        self.assertEqual(js("x.innerHTML = `<b>model’s guess</b>`;"), [(1, "MODEL'S GUESS")])
 
     def test_whole_words_with_their_inflections(self):
         for text, want in [
@@ -224,24 +307,46 @@ class HowItMatches(unittest.TestCase):
     def test_em_dashes(self):
         self.assertEqual(rules("a — b—c"), ["em dash", "em dash"])
         self.assertEqual(words(W.html_text("<p>a &mdash; b</p>"), "html"), [(1, "em dash")])
-        self.assertEqual(words(W.js_literals('note("a \\u2014 b")'), "js"), [(1, "em dash")])
         self.assertEqual(rules("a – b, a - b"), [])
 
     def test_british_spellings(self):
-        flagged = (
-            "colour colours coloured centre centred behaviour behavioural favourite towards maths analyse "
-            "analyser organise organisation normalised recognise recognisable realise grey greyed licence "
-            "catalogue dialogue modelling modelled cancelled cancelling visualisation quantised optimising"
-        ).split()
+        flagged = {
+            "colour colours coloured": "colour",
+            "centre centred": "centre",
+            "behaviour behavioural": "behaviour",
+            "favourite": "favourite",
+            "towards": "towards",
+            "maths": "maths",
+            "grey greyed": "grey",
+            "licence": "licence",
+            "catalogue": "catalogue",
+            "dialogue": "dialogue",
+            "judgement judgements": "judgement",
+            "modelling modelled": "modelling",
+            "labelled labelling": "labelled",
+            "travelled travelling": "travelled",
+            "cancelled cancelling": "cancelled",
+            "analyse analysed analyser": "analyse",
+            "optimise optimised optimises optimising optimisation": "optimise",
+            "normalise unnormalised normalisation": "normalise",
+            "organise organisation reorganised": "organise",
+            "recognise recognisable": "recognise",
+            "realise realisation": "realise",
+            "penalise prioritise minimise maximise summarise utilise visualise categorise": None,
+            "characterise emphasise standardise synthesise synthesiser": None,
+        }
+        for ws, rule in flagged.items():
+            for w in ws.split():
+                self.assertEqual(W.british(w), rule or w.removesuffix("r").removesuffix("ise") + "ise", w)
         fine = (
-            "color center toward math analyses analyze organism realism realist cancellation promised rising "
-            "raised surprising advertising improvisation Ising license catalog dialog gray modeling canceled "
-            "otherwise expertise"
+            "color center toward math analyses analyze organism realism realist cancellation rise rising "
+            "precise otherwise noise promise promised exercise surprising advertising improvisation "
+            "liaising Ising license catalog dialog gray modeling labeled judgment canceled expertise "
+            "synthesis"
         ).split()
-        for w in flagged:
-            self.assertTrue(W.british(w), w)
         for w in fine:
             self.assertIsNone(W.british(w), w)
+            self.assertEqual(rules(w), [], w)
 
     def test_a_spoken_dialogue_is_fine_and_a_written_one_is_not(self):
         self.assertEqual(rules("a dialogue between two sounds", "script"), [])
@@ -254,39 +359,43 @@ class HowItMatches(unittest.TestCase):
 
 
 class TheRatchet(unittest.TestCase):
-    def test_the_tree_as_committed_passes_at_its_baseline(self):
+    def test_the_tree_passes_at_its_own_baseline(self):
         with Tree() as t:
             code, out, err = t.run()
             self.assertEqual((code, err), (0, ""))
-            self.assertRegex(out, r"^  voice: \d+ files, \d+ hits under baseline, 0 rises\n$")
+            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 14 hits under baseline, 0 rises\n")
 
     def test_a_new_hit_fails_and_says_where(self):
         with Tree() as t:
-            t.edit("apps/web/main.js", lambda s: s + '\nnote("Nothing to generate here — yet.");\n')
+            t.edit("apps/web/main.js", lambda s: s + 'note("Nothing to generate here — yet.");\n')
             code, _, err = t.run()
             self.assertEqual(code, 1)
-            self.assertIn("apps/web/main.js: generate (breed, grow, offer):", err)
+            self.assertIn("apps/web/main.js: generate (breed, grow, offer): 1 hits, and the baseline holds 0", err)
             self.assertIn("apps/web/main.js: em dash (a colon, a comma, a period, or parentheses):", err)
-            self.assertIn('note("Nothing to generate here — yet.");', err)
+            self.assertIn('apps/web/main.js:4: generate: note("Nothing to generate here — yet.");', err)
 
-    def test_a_new_word_in_a_comment_or_a_code_span_passes(self):
+    def test_a_new_word_in_a_comment_a_name_or_a_code_span_passes(self):
         with Tree() as t:
-            t.edit("apps/web/main.js", lambda s: s + "\n// generate the colour — later\n")
-            t.edit("www/docs/src/bank.md", lambda s: s + "\nThe `generate_colour` field.\n")
+            t.edit("apps/web/main.js", lambda s: s + '// generate the colour — later\n$("duel-count");\n')
+            t.edit("www/docs/src/page.md", lambda s: s + "\nThe `generate_colour` field.\n")
             self.assertEqual(t.run()[0], 0)
 
     def test_a_new_hit_on_each_surface_fails(self):
         planted = {
             "apps/web/index.html": ("vote", lambda s: s.replace("</body>", "<p>A vote.</p></body>", 1)),
-            "apps/web/perform.js": ("bench", lambda s: s + '\nnote("back on the bench");\n'),
+            "apps/web/main.js": ("bench", lambda s: s + 'note("back on the bench");\n'),
             "www/landing/index.html": ("colour", lambda s: s.replace("</body>", '<img alt="the colour of it"></body>', 1)),
-            "www/landing/hero.js": ("AI", lambda s: s + '\nconst x = "an AI";\n'),
-            "www/docs/src/bank.md": ("towards", lambda s: s + "\nSave it towards the end.\n"),
-            "www/reference/src/introduction.md": ("magic", lambda s: s + "\nIt is not magic.\n"),
-            "README.md": ("grey", lambda s: s + "\nA grey area.\n"),
-            "CHANGELOG.md": ("stunning", lambda s: s + "\nA stunning fix.\n"),
-            "www/video/films/launch/script.json": ("duel", lambda s: s.replace('"text": "', '"text": "A duel. ', 1)),
+            "www/landing/hero.js": ("AI", lambda s: s + 'const x = "an AI";\n'),
+            "www/viz/viz.js": ("commit", lambda s: s + 'cap.textContent = "Commit it.";\n'),
+            "www/docs/src/page.md": ("towards", lambda s: s + "\nSave it towards the end.\n"),
+            "www/video/films/demo/script.json": ("duel", lambda s: s.replace('"text": "', '"text": "A duel. ', 1)),
+            "www/video/films/demo/film.js": ("HELD", lambda s: s + 'txt(over, "goes to HELD");\n'),
+            "www/video/films/demo/cards.js": ("duel", lambda s: s.replace('"One pair"', '"The duel"')),
+            "www/reference/src/page.md": ("AI", lambda s: s + "\nIt is not AI.\n"),
+            "README.md": ("next-generation", lambda s: s + "\nA next-generation synth.\n"),
+            "CHANGELOG.md": ("em dash", lambda s: s + "- Fixed — at last.\n"),
         }
+        self.assertEqual(set(planted), set(FIXTURES))
         with Tree() as t:
             for rel, (_, fn) in planted.items():
                 t.edit(rel, fn)
@@ -298,12 +407,12 @@ class TheRatchet(unittest.TestCase):
 
     def test_a_player_word_in_the_reference_passes(self):
         with Tree() as t:
-            t.edit("www/reference/src/introduction.md", lambda s: s + "\nEach duel updates the posterior.\n")
+            t.edit("www/reference/src/page.md", lambda s: s + "\nEach duel is a vote on the bench.\n")
             self.assertEqual(t.run()[0], 0)
 
     def test_a_film_scripts_title_is_not_a_spoken_line(self):
         with Tree() as t:
-            t.edit("www/video/films/launch/script.json", lambda s: s.replace('"title": "', '"title": "The duel — ', 1))
+            t.edit("www/video/films/demo/script.json", lambda s: s.replace('"title": "', '"title": "The duel — ', 1))
             self.assertEqual(t.run()[0], 0)
 
     def test_a_file_the_baseline_does_not_list_fails_on_any_hit(self):
@@ -315,40 +424,41 @@ class TheRatchet(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("www/docs/src/new-page.md: vote (pick): 1 hits, and a file the baseline does not list", err)
 
-    def test_a_drop_passes_and_update_lowers_the_baseline_to_it(self):
+    def test_a_drop_fails_until_the_sweep_lowers_the_baseline(self):
         with Tree() as t:
-            was = t.baseline()["apps/web/main.js"]["bench"]
-            app = sum(v.get("bench", 0) for k, v in t.baseline().items() if k.startswith("apps/web/"))
-            t.edit("apps/web/main.js", lambda s: s.replace('note("no patch on the bench")', 'note("no sound to play")', 1))
-            code, out, _ = t.run()
-            self.assertEqual(code, 0)
-            self.assertIn("1 fewer than the baseline holds", out)
+            t.edit("www/docs/src/page.md", lambda s: s.replace("The bench", "The sound you're playing"))
+            code, _, err = t.run()
+            self.assertEqual(code, 1)
+            self.assertIn("fewer hits than www/brand/voice-baseline.json holds, in www/docs/src/page.md (1)", err)
+            self.assertIn("python3 www/checkwords.py --update", err)
             code, out, _ = t.run("--update")
             self.assertEqual(code, 0)
-            self.assertIn(f"  app: bench {app} → {app - 1}\n", out)
-            self.assertEqual(t.baseline()["apps/web/main.js"]["bench"], was - 1)
-            # The floor moved: putting it back is now a rise.
-            t.edit("apps/web/main.js", lambda s: s.replace('note("no sound to play")', 'note("no patch on the bench")', 1))
+            self.assertIn("  guide: bench 1 → 0\n", out)
+            self.assertNotIn("bench", t.baseline()["www/docs/src/page.md"])
+            self.assertEqual(t.run()[0], 0)
+            # The floor moved: putting it back is a rise.
+            t.edit("www/docs/src/page.md", lambda s: s.replace("The sound you're playing", "The bench"))
             self.assertEqual(t.run()[0], 1)
+
+    def test_a_file_no_longer_read_is_a_drop(self):
+        with Tree() as t:
+            os.remove(os.path.join(t.root, "README.md"))
+            code, _, err = t.run()
+            self.assertEqual(code, 1)
+            self.assertIn("README.md (2)", err)
+            self.assertEqual(t.run("--update")[0], 0)
+            self.assertNotIn("README.md", t.baseline())
 
     def test_update_never_raises_a_count_unless_told_to(self):
         with Tree() as t:
-            was = t.baseline()["www/docs/src/bank.md"].get("vote", 0)
-            t.edit("www/docs/src/bank.md", lambda s: s + "\nThen vote.\n")
+            t.edit("www/docs/src/page.md", lambda s: s + "\nThen vote.\n")
             code, _, err = t.run("--update")
             self.assertEqual(code, 1)
             self.assertIn("--update --allow-rise takes them", err)
-            self.assertEqual(t.baseline()["www/docs/src/bank.md"].get("vote", 0), was)
+            self.assertNotIn("vote", t.baseline()["www/docs/src/page.md"])
             self.assertEqual(t.run("--update", "--allow-rise")[0], 0)
-            self.assertEqual(t.baseline()["www/docs/src/bank.md"]["vote"], was + 1)
+            self.assertEqual(t.baseline()["www/docs/src/page.md"]["vote"], 1)
             self.assertEqual(t.run()[0], 0)
-
-    def test_update_drops_what_has_no_hits_left(self):
-        with Tree() as t:
-            self.assertIn("README.md", t.baseline())
-            t.edit("README.md", lambda s: "# Auracle\n\nA synthesizer that grows toward you.\n")
-            self.assertEqual(t.run("--update")[0], 0)
-            self.assertNotIn("README.md", t.baseline())
 
     def test_the_summary_counts_each_surface(self):
         with Tree() as t:
@@ -356,6 +466,8 @@ class TheRatchet(unittest.TestCase):
             self.assertEqual(code, 0)
             for surface, tier, _ in W.SURFACES:
                 self.assertRegex(out, rf"(?m)^  {surface} \({tier}, \d+ files\): \d+ hits")
+            self.assertIn("  readme (all, 1 files): 2 hits: em dash 1 · grey 1\n", out)
+            self.assertIn("  films (player, 3 files): 2 hits: duel 1 · vote 1\n", out)
 
     def test_a_broken_baseline_is_reported_not_a_traceback(self):
         with Tree() as t:
@@ -363,6 +475,15 @@ class TheRatchet(unittest.TestCase):
             code, _, err = t.run()
             self.assertEqual(code, 1)
             self.assertIn("is not JSON", err)
+
+
+class TheSurfaces(unittest.TestCase):
+    def test_every_surface_reads_files_in_the_real_tree(self):
+        read = W.files()
+        for surface, _, _ in W.SURFACES:
+            self.assertTrue(any(s == surface for _, s, _, _ in read), surface)
+        for rel in ("www/viz/viz.js", "README.md", "CHANGELOG.md", "apps/web/index.html", "www/landing/index.html"):
+            self.assertIn(rel, {f for f, *_ in read})
 
     def test_the_guide_and_this_check_are_never_read(self):
         read = {f for f, *_ in W.files()}

@@ -31,8 +31,9 @@ here, and keep new text in that register.
 | `voice.md` | **The guide.** Its `banned` block is the list the check reads. |
 | `voice-baseline.json` | The voice check's floor: each file's count of each banned word, em dash and British spelling. Written by `python3 www/checkwords.py --update`, which only lowers a count (`--allow-rise` raises one). |
 
-`make dev-check` runs `www/checkwords.py`, which fails when a file's count
-rises above `voice-baseline.json`, or a file it does not list has any hit.
+`make dev-check` and CI run `www/checkwords.py`, which fails when a file's
+count rises above `voice-baseline.json`, a file it does not list has any hit,
+or a count falls below it (a sweep lowers the baseline in the same change).
 Its tests are `www/test_checkwords.py`. How the check reads each surface is
 in the script's docstring; why it is a ratchet is in voice.md's "How this is
 kept".

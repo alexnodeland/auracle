@@ -71,11 +71,11 @@ install-hooks:
 	git config core.hooksPath .githooks
 	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
 
-## dev-check: the tooling around the code stays sound — the agent docs'
+## dev-check: the tooling around the code stays sound: the agent docs'
 ## links, anchors and frontmatter, the constants the books quote by name, the
-## colour tokens (every generated block current, no colour written outside
-## www/brand/tokens.json, and the check's own tests), the voice (no count of
-## a banned word, an em dash or a British spelling above
+## color tokens (every generated block current, no color written outside
+## www/brand/tokens.json, and the check's own tests), the voice (each file's
+## count of banned words, em dashes and British spellings exactly at
 ## www/brand/voice-baseline.json, and the check's own tests), the Claude Code
 ## hooks against inputs they must block and pass, and the syntax of every film
 ## tool
