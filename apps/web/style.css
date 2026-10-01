@@ -607,7 +607,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .skill { max-width: 170px; }
 }
 @media (max-width: 860px) {
-  :root { --menubar-h: 88px; }
+  /* The bar wraps to two rows here, and takes its own height: 77 px, measured
+     at 860 and 390 (type_scale.spec.js). A min-height of 88 left 11 px of
+     empty bar under the tabs. */
+  :root { --menubar-h: 77px; }
+  .menubar { min-height: 0; }
   .menubar { flex-wrap: wrap; row-gap: var(--s1); padding: var(--s1) var(--s3); }
   /* One screw per ear sits at the bar's middle — between the rows, here. */
   .menubar::before { display: none; }
@@ -4144,7 +4148,9 @@ html:not(.engineer) .dn-sig { display: none; }
   max-width: 52ch;
   margin: var(--s3) auto var(--s5);
 }
-.warm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+/* `minmax(0, 1fr)`: a column's floor is not its longest word, or a narrow
+   window's cards push the third column off the card. */
+.warm-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
 .warm-item {
   display: flex;
   flex-direction: column;
@@ -4163,13 +4169,13 @@ html:not(.engineer) .dn-sig { display: none; }
   border-color: var(--phos-b);
   box-shadow: 0 0 16px var(--phos-b-22), inset 0 0 10px var(--phos-b-08);
 }
-.wi-name { font-size: var(--t-body); font-weight: 500; color: var(--silk); }
-.wi-sig { font-size: var(--t-label); color: var(--phos-a-dim); }
+.wi-name { font-size: var(--t-body); font-weight: 500; color: var(--silk); min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+.wi-sig { font-size: var(--t-label); color: var(--phos-a-dim); min-width: 0; max-width: 100%; overflow-wrap: break-word; }
 /* The ▶ overlays the pick card's bottom-right rather than sitting inside it:
    one cell, two targets, no nested buttons. Padding on `.warm-item` keeps the
    name clear of it. */
 .warm-cell { position: relative; display: flex; }
-.warm-cell .warm-item { flex: 1; padding-right: 40px; } /* token-exempt: the ▶'s column, which overlays the card: 28px wide, 6px in from the edge, 6px clear of the words */
+.warm-cell .warm-item { flex: 1; min-width: 0; padding-right: 40px; } /* token-exempt: the ▶'s column, which overlays the card: 28px wide, 6px in from the edge, 6px clear of the words */
 .wi-play {
   position: absolute;
   right: 6px;
@@ -4200,6 +4206,16 @@ html:not(.engineer) .dn-sig { display: none; }
 @media (pointer: coarse) {
   .wi-play { width: 34px; height: 34px; }
   .warm-cell .warm-item { padding-right: 46px; } /* token-exempt: the ▶'s column on touch: 34px wide, 6px in from the edge, 6px clear of the words */
+}
+/* A phone (behind "look around anyway"): two columns, and the ▶ takes a row
+   under the words rather than a column beside them, which left a 98 px card
+   40 px of text. The card scrolls if the nine run past the screen. */
+@media (max-width: 560px) {
+  .warm { align-items: flex-start; overflow-y: auto; }
+  .warm-card { margin: auto; padding: var(--s5) var(--s4) var(--s4); }
+  .warm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .warm-cell .warm-item { padding-right: var(--s3); }
+  .warm-cell .warm-item { padding-bottom: 46px; } /* token-exempt: the ▶'s row on a phone: 34px tall, 6px up from the edge, 6px clear of the words */
 }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 .warm-tour { margin-right: auto; color: var(--phos-a); font-size: var(--t-body); text-decoration: none; }
@@ -4955,20 +4971,27 @@ html.handheld .handheld-gate {
   font-size: var(--t-label);
   color: var(--phos-a-dim);
   max-width: 100%;
-  /* Two lines rather than an ellipsis: a knob list like "cutoff · resonance
-     · drive" is the answer to "what does this turn?", and cutting it off
-     mid-word read as broken. The block keeps two lines' height so the row
-     does not jump when a caption changes length. */
-  min-height: 2.6em;
+  /* Whole, never cut: a knob list like "cutoff · resonance · drive" is the
+     answer to "what does this turn?", and a caption that ends in an
+     ellipsis reads as broken. It wraps instead, and the block keeps three
+     lines' height, so the row does not jump when a caption changes length
+     (Wander's does, every few seconds): at 11 px in a 1000 px window the
+     longest states ("turns toward restless only", "staying: nothing better
+     nearby") take three. */
+  min-height: 3.9em;
   line-height: 1.3;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
   text-align: center;
-  /* At the label size "turn to ask for it" no longer fits one line; two even
-     lines read as a caption, a word left alone on the second as a mistake. */
+  /* Even lines read as a caption; a word left alone on the last as a
+     mistake. */
   text-wrap: balance;
+  overflow-wrap: break-word;
+}
+/* Under 1280 px the eight columns give their gaps to the captions: at 1000
+   px a column's 75 px held twelve characters a line, and three lines of
+   twelve could not hold every caption. */
+@media (max-width: 1279px) {
+  .pf-deck { gap: var(--s3) var(--s1); padding-inline: var(--s2); }
+  .pf-knob { padding-inline: 0; }
 }
 /* Unreachable by this patch's knobs: amber, and the gesture asks for an offer. */
 .pf-knob.search .pf-k-arc { stroke: var(--phos-b); }

@@ -11,7 +11,7 @@
 //   scopes' "0 dBFS" and a graded TRUST are drawn and read, and TRUST's last
 //   line keeps 16 px clear of the canvas's bottom edge.
 // - The menu bar is as tall as `--menubar-h`, which what opens under it (the
-//   alarm) is placed by.
+//   alarm) is placed by, in one row and in two.
 // - Under prefers-reduced-motion all three durations on the scale are 0, so a
 //   transition built on one is instant; without it, it plays.
 //
@@ -169,17 +169,24 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and TRUST's
   expect(errs).toEqual([]);
 });
 
-test("the menu bar is as tall as --menubar-h, which the alarm is placed under", async ({ page }) => {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/");
-  await expect(page.locator(".menubar")).toBeVisible();
-  const got = await page.evaluate(() => [
-    document.querySelector(".menubar").getBoundingClientRect().height,
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-h")),
-  ]);
-  expect(got[0], "the menu bar's height, against --menubar-h").toBe(got[1]);
-  expect(errs).toEqual([]);
+test("the menu bar is as tall as --menubar-h, which the alarm is placed under, at every width", async ({ browser }) => {
+  // One row at 1000 and up; two at 860 and on a phone, behind "look around
+  // anyway", where the token is the wrapped bar's measured height.
+  for (const [width, height, mobile] of [[1440, 900, false], [1000, 800, false], [860, 800, false], [390, 844, true]]) {
+    const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
+    const errs = [];
+    page.on("pageerror", (e) => errs.push(e.message));
+    await page.addInitScript(() => { try { sessionStorage.setItem("auracle-anyway", "1"); } catch (_) {} });
+    await page.goto("/");
+    await expect(page.locator(".menubar")).toBeVisible();
+    const got = await page.evaluate(() => [
+      document.querySelector(".menubar").getBoundingClientRect().height,
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-h")),
+    ]);
+    expect(got[0], `the menu bar's height at ${width} px, against --menubar-h`).toBe(got[1]);
+    expect(errs).toEqual([]);
+    await page.close();
+  }
 });
 
 test("reduced motion makes every duration on the scale instant, and without it a transition plays", async ({ browser }) => {

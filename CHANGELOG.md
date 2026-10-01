@@ -30,6 +30,11 @@ changelog that edits its own past is not a record.
   rack's relayout and camera, and PERFORM's re-center and Blend home, take
   the same three. With your system set to reduce motion, all three are
   instant, and nothing pulses, including a bank row's *opening…*.
+- **PERFORM's control captions are whole at every window width.** They wrap
+  to as many as three lines instead of ending in an ellipsis (*turns
+  toward…*), and under 1280 px the knobs give their gaps to them. On a
+  phone, behind *look around anyway*, the warm start's cards fit the screen
+  in two columns.
 - **The module search and the line under the rack still fit.** The search's
   example reads *search: grit, vowel*, and the line under the rack is
   shorter: *Point at a module, here or in the module rail: this strip says

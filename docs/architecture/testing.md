@@ -142,7 +142,8 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
-| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on TASTE's tabs, TRUST graded, and TRUST's last line 16 px clear of its edge; the menu bar as tall as `--menubar-h`; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
+| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on TASTE's tabs, TRUST graded, and TRUST's last line 16 px clear of its edge; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
+| `text_fits.spec.js` | Text the type scale enlarged still fits: the warm start's cards inside a 390 and a 360 px phone's screen, and their words inside the cards; at 1000 and 1280 px every PERFORM control caption state whole (no ellipsis, no clamp, nothing past its box), with the knob row one height whatever the captions say |
 
 ## Rules
 
