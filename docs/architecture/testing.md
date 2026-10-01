@@ -111,11 +111,11 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 
 | Spec | Pins |
 | --- | --- |
-| `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface `worker.js` calls |
-| `failure_flows.spec.js` | Bad save, engine error, refused vote, profile import are contained |
+| `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface and the `belief` call `worker.js` calls |
+| `failure_flows.spec.js` | Bad save, engine error, refused vote (and no belief posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
-| `evolve_feedback.spec.js` | TAUGHT counts at once, pick toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
+| `evolve_feedback.spec.js` | TAUGHT counts at once, pick toasts replace, the dealing rule, the sixth-pick redraw, every pick's reply carrying a belief that moves per pick (ten seeds, ten may-replace), bank ▶ |
 | `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; KEEP AS NEW's blind card (Esc cancels), the one-shot *pick the edit*, a commit retiring the edits' receipts |
 | `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the module rail; TASTE's early states count what is left |
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |

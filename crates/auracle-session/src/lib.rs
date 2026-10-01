@@ -25,6 +25,7 @@
 //! end-to-end through the *real* grammar → render → vet → features pipeline,
 //! asserting the learned taste ranks genuinely-preferred patches on top.
 
+pub mod belief;
 pub mod calib;
 pub mod engine;
 pub mod farm;
@@ -35,6 +36,7 @@ pub mod perform;
 pub mod surrogate;
 pub mod walk;
 
+pub use belief::{Belief, BeliefRow};
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
@@ -1567,6 +1569,215 @@ mod tests {
             .expect("in the pool");
         assert!(evolving.refine_from_cancel(id));
         assert!(evolving.refine_from_inflight().is_empty());
+    }
+
+    // ---- the belief after each pick (Plan-005 task 9) ----
+
+    /// The player prefers what the model likes least, `n` times: picks that
+    /// move the posterior as far as a pick can, with no refit.
+    fn contrary_picks(engine: &mut Engine, n: usize) {
+        for _ in 0..n {
+            let ranked = engine.ranked();
+            let (best, worst) = (ranked[0].0, ranked[ranked.len() - 1].0);
+            engine.record_duel(worst, best, true);
+        }
+    }
+
+    /// A member's mixture utility under the posterior the long way, from the
+    /// draws and their weights: `(mean, std, the lens most responsible)`, the
+    /// last of equals as the map's rule keeps.
+    fn summary_by_hand(p: &auracle_taste::TastePosterior, phi: &[f64]) -> (f64, f64, usize) {
+        let mut us = Vec::new();
+        let mut resp = vec![0.0; p.k_styles()];
+        for (s, draw) in p.samples.iter().enumerate() {
+            let lens: Vec<f64> = draw
+                .theta
+                .iter()
+                .map(|t| t.iter().zip(phi).map(|(a, b)| a * b).sum())
+                .collect();
+            let (best, u) = lens
+                .iter()
+                .enumerate()
+                .fold((0, f64::NEG_INFINITY), |acc, (k, &v)| {
+                    if v >= acc.1 {
+                        (k, v)
+                    } else {
+                        acc
+                    }
+                });
+            us.push(u);
+            resp[best] += p.weight(s);
+        }
+        let mean: f64 = us.iter().enumerate().map(|(s, u)| p.weight(s) * u).sum();
+        let var: f64 = us
+            .iter()
+            .enumerate()
+            .map(|(s, u)| p.weight(s) * (u - mean) * (u - mean))
+            .sum();
+        let lens = (0..resp.len()).fold(0, |best, k| if resp[k] >= resp[best] { k } else { best });
+        (mean, var.sqrt(), lens)
+    }
+
+    /// **The belief after a pick is the posterior the pick left.** Picks
+    /// between refits reweight the draws and fit nothing; `Engine::belief`
+    /// must report the reweighted posterior, number for number what a refit's
+    /// views would show of it (the ranked list, the map's pool dots), and what
+    /// the draws and their weights give computed the long way.
+    #[test]
+    fn the_belief_after_a_pick_is_the_reweighted_posterior() {
+        let mut engine = taught(0xBE1F);
+        let fitted = engine.belief();
+        contrary_picks(&mut engine, 4);
+        let after = engine.belief();
+        let p = engine.posterior.clone().expect("taught");
+        assert!(
+            p.ess() < p.samples.len() as f64 - 1e-6 || engine.needs_refit(),
+            "the picks did not reweight the draws"
+        );
+        let numbers = |b: &Belief| -> Vec<(u64, u64, u64)> {
+            b.ranked
+                .iter()
+                .map(|r| (r.id, r.mean.to_bits(), r.std.to_bits()))
+                .collect()
+        };
+        assert_ne!(
+            numbers(&after),
+            numbers(&fitted),
+            "the picks moved nothing, so nothing was tested"
+        );
+        assert!(p.k_styles() > 1, "one lens, so no lens was tested");
+
+        let ranked = engine.ranked();
+        assert_eq!(after.ranked.len(), engine.pool.len());
+        for (row, &(i, mean, std)) in after.ranked.iter().zip(&ranked) {
+            assert_eq!(row.id, engine.pool[i].id, "not the ranked order");
+            assert_eq!(row.mean.to_bits(), mean.to_bits(), "not the ranked mean");
+            assert_eq!(row.std.to_bits(), std.to_bits(), "not the ranked std");
+        }
+        let map = engine.taste_map();
+        let mut dots = 0;
+        for pt in map.points.iter().filter(|pt| pt.id.is_some()) {
+            let row = after.ranked.iter().find(|r| Some(r.id) == pt.id).unwrap();
+            assert_eq!(row.mean.to_bits(), pt.utility.to_bits(), "not the glow");
+            assert_eq!(row.std.to_bits(), pt.utility_std.to_bits(), "not the size");
+            assert_eq!(row.style, pt.style, "not the color");
+            dots += 1;
+        }
+        assert_eq!(dots, engine.pool.len());
+        for row in &after.ranked {
+            let c = &engine.pool[engine.find(row.id).unwrap()];
+            let (mean, std, lens) = summary_by_hand(&p, &c.phi_std);
+            assert!((row.mean - mean).abs() <= 1e-9 * (1.0 + mean.abs()));
+            assert!((row.std - std).abs() <= 1e-9 * (1.0 + std.abs()));
+            assert_eq!(row.style, lens);
+        }
+        assert_eq!(
+            after,
+            engine.belief(),
+            "a belief is a function of the engine"
+        );
+    }
+
+    /// **The seeds and may-be-replaced marks are what a generation does.**
+    /// `next_seeds` names the parents `refine_jobs` then takes, and
+    /// `may_replace` bounds what that generation's end retires:
+    ///
+    /// - before the first fit: no seeds, and no generation opens;
+    /// - at rest, after picks no refit has seen and with the top member and
+    ///   the bottom member saved: a saved patch still seeds, and is never
+    ///   marked;
+    /// - mid-generation, with the pool over size and a pick made since it
+    ///   opened: the next generation opens by retiring what this one
+    ///   displaced, so those never seed it, and the rest rank under the
+    ///   posterior as it stands, not the one this generation opened with.
+    ///
+    /// `belief` carries the same two lists at every step.
+    #[test]
+    fn next_seeds_and_may_replace_are_what_a_generation_does() {
+        let mut engine = taught(0x5EED);
+        let agrees = |e: &Engine| {
+            let b = e.belief();
+            assert_eq!(b.seeds, e.next_seeds(), "belief's seeds");
+            assert_eq!(b.may_replace, e.may_replace(), "belief's may_replace");
+        };
+        let parents = |jobs: &[walk::WalkJob]| jobs.iter().map(|j| j.parent_id).collect::<Vec<_>>();
+
+        let fitted = engine.posterior.take();
+        assert!(engine.next_seeds().is_empty());
+        agrees(&engine);
+        let at = engine.generation;
+        assert!(engine.refine_jobs(&mut StdRng::seed_from_u64(1)).is_none());
+        assert_eq!(engine.generation, at, "a generation opened with no taste");
+        engine.posterior = fitted;
+
+        contrary_picks(&mut engine, 3);
+        let ranked = engine.ranked();
+        let top = engine.pool[ranked[0].0].id;
+        let bottom = engine.pool[ranked[ranked.len() - 1].0].id;
+        assert!(engine.set_pinned(top, true) && engine.set_pinned(bottom, true));
+        let seeds = engine.next_seeds();
+        let may = engine.may_replace();
+        agrees(&engine);
+        assert_eq!(seeds.len(), engine.cfg.refine_seeds);
+        assert_eq!(seeds[0], top, "a saved patch seeds like any other");
+        assert_eq!(
+            may.len(),
+            engine.cfg.refine_seeds,
+            "a full pool can lose one member per walk"
+        );
+        assert!(
+            !may.contains(&top) && !may.contains(&bottom),
+            "a saved patch was marked"
+        );
+        let (ctx, jobs) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(0x5EED))
+            .expect("taught");
+        assert_eq!(parents(&jobs), seeds, "refine_jobs took other parents");
+
+        // Absorb children until the pool is over size, short of the last job.
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        for r in farm_walks(&ctx, &jobs, &order)
+            .into_iter()
+            .take(jobs.len() - 1)
+        {
+            engine.refine_absorb(r);
+            if !engine.retiring().is_empty() {
+                break;
+            }
+        }
+        let retiring = engine.retiring();
+        assert!(
+            !retiring.is_empty(),
+            "no child was admitted over a full pool"
+        );
+        contrary_picks(&mut engine, 2);
+        // Every member may seed now, so the retirees would if nothing kept
+        // them out.
+        engine.cfg.refine_seeds = engine.pool.len();
+        let seeds = engine.next_seeds();
+        agrees(&engine);
+        assert!(
+            retiring.iter().all(|id| !seeds.contains(id)),
+            "a member the next generation retires first was named a seed"
+        );
+        let children: std::collections::HashSet<u64> = engine
+            .lineage
+            .iter()
+            .filter(|ev| ev.generation == engine.generation)
+            .map(|ev| ev.child_id)
+            .collect();
+        let (_, next) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(2))
+            .expect("taught");
+        assert_eq!(parents(&next), seeds, "refine_jobs took other parents");
+        let retired = engine.retired();
+        assert!(!retired.is_empty(), "the generation retired nothing");
+        assert!(
+            retired
+                .iter()
+                .all(|id| may.contains(id) || children.contains(id)),
+            "the generation retired {retired:?}, outside {may:?}"
+        );
     }
 
     /// Locked refinement never touches a locked address: run `refine_from`

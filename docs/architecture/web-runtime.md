@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-10-01
-related_adrs: [1, 2, 7]
+related_adrs: [1, 2, 7, 12]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -76,6 +76,33 @@ crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
 or the main thread's in-flight queue deadlocks.
+
+## The belief after each pick
+
+A pick reweights the posterior's draws in the engine (importance sampling,
+no refit), so what the model believes moves with every pick. The worker
+says so with a `belief` field (`engineBelief`, from `WasmEngine::belief`):
+every pool member's posterior mean, std and lens in ranked order, the
+`seeds` EVOLVE POOL would breed from if pressed now, and what that
+generation `may_replace`. No new message and no new lane: it rides on
+replies that already exist.
+
+- **On a pick's reply:** the `status` that answers `record_duel`,
+  `record_keep` and `record_stars` (`null` when `recorded` is false: the
+  engine took nothing, so nothing moved), and the `status` that follows
+  `perform_record`. These are `now`-lane replies; the belief adds under
+  2 ms in wasm at five lenses (`examples/pick_belief.rs`).
+- **With every views post** (`tasteViews`: a refit, a generation, an
+  edit's commit, an import, the warm start), so the seeds are current after
+  any of them.
+- **On `refine_child` and `pinned`**, which change the pool or its pins and
+  so the seeds and what may be replaced.
+
+Main keeps the latest as `views.belief` and draws nothing from it yet
+(Plan-005 draws picks as directions and moves the glows per pick from it).
+`views.ranked` and `views.map` still change only when views are posted. A pick
+in EVOLVE reaches the worker when its undo window closes, so its belief
+arrives then, not at the click.
 
 ## The breed job
 

@@ -8,6 +8,7 @@
 //! ids (clickable in a frontend); history points are ghosts — patches that
 //! may have been evicted, kept to show where the user has traveled.
 
+use auracle_taste::TastePosterior;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::{Engine, Origin};
@@ -204,6 +205,24 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64, b
     (v, variance, converged)
 }
 
+/// The lens a point is colored by: the style most responsible for `phi`
+/// under the weighted draws ([`TastePosterior::responsibilities`]).
+fn lens_of(p: &TastePosterior, phi: &[f64]) -> usize {
+    most_responsible(&p.responsibilities(phi))
+}
+
+/// The index of the largest responsibility, the last of equals. The map and
+/// [`Engine::belief`] both color a pool member by it, so a dot's color is
+/// the same number from either.
+pub(crate) fn most_responsible(responsibilities: &[f64]) -> usize {
+    responsibilities
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
 /// Turn `axis` to face the way `drawn` did, if it has flipped: the sign that
 /// keeps somewhere you recognise where you left it. An axis that has turned
 /// through a right angle has no such sign, and whichever it keeps is as good.
@@ -300,14 +319,7 @@ impl Engine {
                 let (utility, utility_std, style) = match &self.posterior {
                     Some(p) => {
                         let (m, s) = p.utility_mix(phi);
-                        let r = p.responsibilities(phi);
-                        let style = r
-                            .iter()
-                            .enumerate()
-                            .max_by(|a, b| a.1.total_cmp(b.1))
-                            .map(|(i, _)| i)
-                            .unwrap_or(0);
-                        (m, s, style)
+                        (m, s, lens_of(p, phi))
                     }
                     None => (0.0, 0.0, 0),
                 };

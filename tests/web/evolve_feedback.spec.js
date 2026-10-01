@@ -45,7 +45,15 @@ const init = ({ warmed = true } = {}) => `(() => {
       if (d && typeof d.type === "string") {
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
-        if (d.type === "status" || d.type === "fitted" || d.type === "duel") log.push({ type: d.type, at: performance.now(), needs_refit: d.status && d.status.needs_refit });
+        if (d.type === "status" || d.type === "fitted" || d.type === "duel") {
+          // A pick's reply carries the belief it left (\`engineBelief\`): kept
+          // as its shape and a checksum of its numbers.
+          const b = d.belief;
+          const belief = b
+            ? { rows: b.ranked.length, seeds: b.seeds.length, may: b.may_replace.length, sum: b.ranked.reduce((s, r) => s + r.mean, 0) }
+            : null;
+          log.push({ type: d.type, at: performance.now(), needs_refit: d.status && d.status.needs_refit, pool: d.status && d.status.pool, target: d.status && d.status.pool_target, vote: !!d.vote, belief });
+        }
       }
     });
     const post = w.postMessage.bind(w);
@@ -217,6 +225,22 @@ test("the sixth pick always redraws the taste map, even after agreeable picks", 
     // The row stays full beside "it just learned" until the next pick starts
     // the next one.
     await expect(page.locator("#teach-pips i.lit")).toHaveCount(6);
+    if (cycle === 2) {
+      // Every pick after the first refit answers with the posterior it left
+      // (`WasmEngine::belief`): every member's numbers, the ten seeds of the
+      // next generation and the ten members it may replace. The numbers move
+      // with each pick, with no refit between the first five.
+      const picked = (k) => window.__pwLog.slice(k).filter((e) => e.type === "status" && e.vote);
+      await expect.poll(() => page.evaluate(picked, logFrom).then((p) => p.length)).toBe(6);
+      const replies = await page.evaluate(picked, logFrom);
+      for (const e of replies) {
+        expect(e.belief, "a pick's reply carried no belief").not.toBeNull();
+        expect(e.belief.rows).toBe(e.pool);
+        expect(e.belief.seeds).toBe(10);
+        expect(e.belief.may).toBe(Math.min(10, Math.max(0, e.pool + 10 - e.target))); // fewer while the pool fills
+      }
+      expect(new Set(replies.map((e) => e.belief.sum)).size, "the belief did not move per pick").toBe(6);
+    }
   }
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

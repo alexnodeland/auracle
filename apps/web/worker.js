@@ -896,6 +896,10 @@ function tasteViews() {
     // Rides with every views post so the header's `▣ n/m` cannot drift out of
     // step with the engine after a restore, an eviction or a bred generation.
     pinBudget: Array.from(engine.pin_budget()),
+    // The belief as it stands (`engineBelief`): rides with every views post so
+    // the seeds and the may-be-replaced marks are current after a refit, a
+    // generation or an import, as well as after a pick.
+    belief: engineBelief(),
     // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
     // shipped in `styles`; this is what θ is *worth* — adding one filter is a
     // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
@@ -942,6 +946,22 @@ function postLiveTree(edited, why) {
     knobs,
     why: why || undefined,
   });
+}
+
+// The model's belief about the pool as it stands (`WasmEngine::belief`):
+// every member's posterior mean and std in ranked order, with the lens the map
+// colors it by; the parents EVOLVE POOL would refine from if pressed now
+// (`seeds`); and the members that generation could replace (`may_replace`,
+// cut ones included: the engine does not know about cuts). A pick reweights
+// the posterior's draws without a refit, so these numbers move with every
+// pick, and every reply to one carries them. Under 2 ms in wasm at five lenses
+// (`examples/pick_belief.rs`). `null` from a binary without the call.
+function engineBelief() {
+  try {
+    return JSON.parse(engine.belief());
+  } catch (_) {
+    return null;
+  }
 }
 
 // What the model makes of the bench, without a render: a dot product against
@@ -1376,6 +1396,7 @@ function genLanded(g, child) {
     // the end.
     lineage: JSON.parse(engine.lineage()),
     retiring: refineRetiring(),
+    belief: engineBelief(),
     eta: genEta(g),
   });
   return true;
@@ -2218,6 +2239,9 @@ async function dispatch(m) {
         choseA: m.choseA,
         recorded,
         vote: { kind: "duel", a: m.a, b: m.b },
+        // The posterior this pick left (`engineBelief`); nothing moved if
+        // the engine took nothing.
+        belief: recorded ? engineBelief() : null,
       });
       break;
     }
@@ -2235,6 +2259,7 @@ async function dispatch(m) {
         status: status(),
         recorded,
         vote: { kind: "keep", id: m.id, kept: m.kept },
+        belief: recorded ? engineBelief() : null,
       });
       break;
     }
@@ -2247,6 +2272,7 @@ async function dispatch(m) {
         // `prev` is what the bank showed before the optimistic update — echoed,
         // not remembered here, because this worker holds no UI state.
         vote: { kind: "stars", id: m.id, rating: m.rating, prev: m.prev || 0 },
+        belief: recorded ? engineBelief() : null,
       });
       break;
     }
@@ -2427,7 +2453,7 @@ async function dispatch(m) {
     case "perform_record":
       performReply(m, "perform_recorded", "recorded", true, () =>
         engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
-      post({ type: "status", status: status() });
+      post({ type: "status", status: status(), belief: engineBelief() });
       break;
     // A search control's offer carries the control and the way it was turned
     // (aimed, and its reply says how far it `moved`); the Offer button's and
@@ -2537,6 +2563,8 @@ async function dispatch(m) {
         ok,
         budget,
         ranked: JSON.parse(engine.ranked()),
+        // A save changes what a generation may replace.
+        belief: engineBelief(),
       });
       break;
     }
