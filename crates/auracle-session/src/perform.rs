@@ -38,6 +38,17 @@
 //! then offers a structural variant in that direction instead of moving knobs
 //! that do not do what the label says.
 //!
+//! ## The palette
+//!
+//! The six are the panel's ([`CONTROLS`]) and the first six of [`PALETTE`]'s
+//! eighteen, six families of three (RFC-006 §4). Each of the twelve after them
+//! is a direction of its own over φ, measured exactly like the six
+//! ([`Engine::wire_named`]); its purity is the cosine inside the six axes'
+//! span widened by its own direction ([`purity_basis`]). The Jacobian's
+//! renders are shared, so wiring more controls costs arithmetic and only
+//! their verification renders. `examples/palette_census.rs` in auracle-wasm
+//! measures the definitions, their redundancy and their reach.
+//!
 //! ## Drift and offers
 //!
 //! [`Engine::drift`] samples the same Boltzmann target refinement uses,
@@ -172,8 +183,8 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 /// the same step the `jacobian_probe` measurements used.
 pub const JACOBIAN_STEP: f64 = 0.08;
 /// Two reachable controls whose predicted movements are this collinear
-/// (|cos| above it) are one gesture with two names; the later control in
-/// [`CONTROLS`] order becomes a search control ([`separate`]).
+/// (|cos| above it) are one gesture with two names; the later control in the
+/// order they were wired in becomes a search control ([`separate`]).
 pub const COLLINEAR: f64 = 0.8;
 /// Ridge on the wiring solve, in the units of `z` per unit knob.
 pub const RIDGE: f64 = 0.05;
@@ -219,6 +230,9 @@ pub const AIM_WALKS: usize = 3;
 pub struct NamedControl {
     /// The control's name, the same on every patch.
     pub name: &'static str,
+    /// The palette family it is listed under (RFC-006 §4): Tone, Weight,
+    /// Dynamics, Movement, Space or Character.
+    pub family: &'static str,
     /// What the low end of the control sounds like.
     pub low: &'static str,
     /// What the high end sounds like.
@@ -233,62 +247,262 @@ pub struct NamedControl {
     pub sites: &'static [&'static str],
 }
 
+const BRIGHT: NamedControl = NamedControl {
+    name: "Bright",
+    family: "Tone",
+    low: "dark",
+    high: "bright",
+    axis: &[("centroid_mean", 1.0), ("rolloff_mean", 1.0)],
+    sites: &[
+        "cut", "bright", "tone", "high", "thresh", "drive", "morph", "vowel",
+    ],
+};
+const SNAP: NamedControl = NamedControl {
+    name: "Snap",
+    family: "Dynamics",
+    low: "bloom",
+    high: "snap",
+    axis: &[("attack_s", -1.0), ("crest", 1.0)],
+    sites: &["attack", "att", "decay", "dec", "sustain"],
+};
+const MOTION: NamedControl = NamedControl {
+    name: "Motion",
+    family: "Movement",
+    low: "still",
+    high: "restless",
+    axis: &[
+        ("held_centroid_std", 1.0),
+        ("motion_slow", 1.0),
+        ("motion_mid", 1.0),
+        ("motion_fast", 1.0),
+    ],
+    sites: &[
+        "mdepth", "rate", "crate", "cdepth", "prate", "pdepth", "trate", "tdepth", "vrate",
+        "vdepth", "frate", "fdepth", "erate", "hrate", "glide",
+    ],
+};
+const BODY: NamedControl = NamedControl {
+    name: "Body",
+    family: "Weight",
+    low: "thin",
+    high: "full",
+    axis: &[("bass_fraction", 1.0)],
+    sites: &["det", "smix", "low", "bal", "cut"],
+};
+const GRIT: NamedControl = NamedControl {
+    name: "Grit",
+    family: "Character",
+    low: "smooth",
+    high: "rough",
+    axis: &[("flatness_mean", 1.0)],
+    sites: &["drive", "bits", "dsamp", "thresh", "res"],
+};
+const SPACE: NamedControl = NamedControl {
+    name: "Space",
+    family: "Space",
+    low: "close",
+    high: "far",
+    axis: &[("tail_ratio", 1.0)],
+    sites: &["rmix", "rsize", "rdamp", "time", "fb", "dmix", "release"],
+};
+
 /// The six measured controls, in panel order. Blend and Wander are not
-/// directions in φ and live in the instrument, not here.
-pub const CONTROLS: [NamedControl; 6] = [
-    NamedControl {
-        name: "Bright",
-        low: "dark",
-        high: "bright",
-        axis: &[("centroid_mean", 1.0), ("rolloff_mean", 1.0)],
-        sites: &[
-            "cut", "bright", "tone", "high", "thresh", "drive", "morph", "vowel",
-        ],
-    },
-    NamedControl {
-        name: "Snap",
-        low: "bloom",
-        high: "snap",
-        axis: &[("attack_s", -1.0), ("crest", 1.0)],
-        sites: &["attack", "att", "decay", "dec", "sustain"],
-    },
-    NamedControl {
-        name: "Motion",
-        low: "still",
-        high: "restless",
-        axis: &[
-            ("held_centroid_std", 1.0),
-            ("motion_slow", 1.0),
-            ("motion_mid", 1.0),
-            ("motion_fast", 1.0),
-        ],
-        sites: &[
-            "mdepth", "rate", "crate", "cdepth", "prate", "pdepth", "trate", "tdepth", "vrate",
-            "vdepth", "frate", "fdepth", "erate", "hrate", "glide",
-        ],
-    },
-    NamedControl {
-        name: "Body",
-        low: "thin",
-        high: "full",
-        axis: &[("bass_fraction", 1.0)],
-        sites: &["det", "smix", "low", "bal", "cut"],
-    },
-    NamedControl {
-        name: "Grit",
-        low: "smooth",
-        high: "rough",
-        axis: &[("flatness_mean", 1.0)],
-        sites: &["drive", "bits", "dsamp", "thresh", "res"],
-    },
-    NamedControl {
-        name: "Space",
-        low: "close",
-        high: "far",
-        axis: &[("tail_ratio", 1.0)],
-        sites: &["rmix", "rsize", "rdamp", "time", "fb", "dmix", "release"],
-    },
+/// directions in φ and live in the instrument, not here. These are the
+/// [`PALETTE`]'s first six, at the same indices, and the set PERFORM wires
+/// unless asked for others ([`Engine::wire_named`]).
+pub const CONTROLS: [NamedControl; 6] = [BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE];
+
+// The palette's twelve. Each is its own direction over φ's coordinates, chosen
+// for what the name means to a player and measured against the six by
+// `examples/palette_census.rs` in auracle-wasm (the reference's PERFORM page
+// has the tables). The prototype's blends of the six were tried first, and
+// five pairs of them sat at |cos| ≥ 0.9 (Air +0.94 to Bright, Softness −0.94
+// to Snap, Wobble +0.99 to Motion, Distance +0.92 to Space, and Warmth −0.94
+// to Air): two names for one control. No pair of these eighteen does.
+
+/// Weight low down and a soft upper register: `bass_fraction` up and
+/// `high_ratio` down (the highest note comes through quieter than the held
+/// one, as under a low-pass that does not follow the keys). φ has no low-mid
+/// band. Defined with the spectrum's top instead (−rolloff, or −rolloff and
+/// −zcr, with bass), Warmth moved with Body across the presets and the pool
+/// (r 0.92) and on most presets wired to Bright's gesture turned down.
+const WARMTH: NamedControl = NamedControl {
+    name: "Warmth",
+    family: "Tone",
+    low: "cold",
+    high: "warm",
+    axis: &[("bass_fraction", 1.0), ("high_ratio", -1.0)],
+    sites: &["cut", "tone", "high", "low", "bright", "smix"],
+};
+/// The very top, above the notes: the zero-crossing rate (the highest
+/// partials and any breath or hiss) and the rolloff, measured against the
+/// centroid, so the top opens while the body of the sound stays where it is.
+/// Bright moves all three together; the prototype's Air (mostly Bright) was
+/// +0.94 to it.
+const AIR: NamedControl = NamedControl {
+    name: "Air",
+    family: "Tone",
+    low: "closed",
+    high: "airy",
+    axis: &[
+        ("zcr_mean", 1.0),
+        ("rolloff_mean", 0.5),
+        ("centroid_mean", -0.5),
+    ],
+    sites: &["high", "cut", "res", "bright", "tone", "vowel"],
+};
+/// Weight low down that hits: `bass_fraction` and `crest` (a peak well above
+/// the sound's average level).
+const THUMP: NamedControl = NamedControl {
+    name: "Thump",
+    family: "Weight",
+    low: "light",
+    high: "thumping",
+    axis: &[("bass_fraction", 1.0), ("crest", 1.0)],
+    sites: &["smix", "low", "bal", "attack", "decay", "dec", "sustain"],
+};
+/// Dense, held weight: `rms_mean` (each frame full of level, which loudness
+/// normalization gives a sound that is sustained and low, since K-weighting
+/// counts the lows for less) and `bass_fraction`. The twelfth control, the
+/// Weight family's third: the opposite of a light pluck, not of a dark one.
+/// With −crest in it as well, it was Thump turned down on two presets in
+/// three (both turned the amp envelope, opposite ways).
+const HEFT: NamedControl = NamedControl {
+    name: "Heft",
+    family: "Weight",
+    low: "slight",
+    high: "heavy",
+    axis: &[("rms_mean", 1.0), ("bass_fraction", 1.0)],
+    sites: &[
+        "sustain", "decay", "release", "drive", "smix", "low", "ratio", "makeup",
+    ],
+};
+/// Hits that stand out and fall away: `crest` and `rms_std` (the level moving
+/// over the phrase). Snap is the attack's speed; Punch is the size of the hit
+/// against the rest. The prototype's Punch was +0.89 to Snap.
+const PUNCH: NamedControl = NamedControl {
+    name: "Punch",
+    family: "Dynamics",
+    low: "gentle",
+    high: "punchy",
+    axis: &[("crest", 1.0), ("rms_std", 1.0)],
+    sites: &["decay", "dec", "sustain", "attack", "att"],
+};
+/// A soft attack and few harmonics, the voice's "round": `attack_s` up and
+/// `rolloff_mean` down. The prototype's Softness (−0.8 Snap, −0.3 Bright) was
+/// −0.94 to Snap: Snap turned down under another name.
+const ROUND: NamedControl = NamedControl {
+    name: "Round",
+    family: "Dynamics",
+    low: "hard",
+    high: "round",
+    axis: &[("attack_s", 1.0), ("rolloff_mean", -1.0)],
+    sites: &["attack", "att", "cut", "tone", "bright", "high"],
+};
+/// Pulsing and tremolo: the held note's motion in the 2–8 Hz band alone.
+/// Motion is all four motion coordinates; the prototype's Wobble was +0.99 to
+/// it.
+const THROB: NamedControl = NamedControl {
+    name: "Throb",
+    family: "Movement",
+    low: "steady",
+    high: "throbbing",
+    axis: &[("motion_mid", 1.0)],
+    sites: &[
+        "rate", "mdepth", "trate", "tdepth", "vrate", "vdepth", "crate", "cdepth", "prate",
+        "pdepth", "frate", "fdepth", "erate",
+    ],
+};
+/// Sweeps and breathing: the held note's motion in the 0.5–2 Hz band alone.
+const SWAY: NamedControl = NamedControl {
+    name: "Sway",
+    family: "Movement",
+    low: "fixed",
+    high: "swaying",
+    axis: &[("motion_slow", 1.0)],
+    sites: &[
+        "rate", "mdepth", "prate", "pdepth", "crate", "cdepth", "frate", "fdepth", "glide",
+    ],
+};
+/// What distance does to a sound: a longer tail, a softer attack, smaller
+/// peaks and a duller top (`tail_ratio` and, at half weight, `attack_s`,
+/// −`crest` and −`rolloff_mean`). The prototype's Distance was +0.92 to
+/// Space.
+const DISTANCE: NamedControl = NamedControl {
+    name: "Distance",
+    family: "Space",
+    low: "near",
+    high: "distant",
+    axis: &[
+        ("tail_ratio", 1.0),
+        ("attack_s", 0.5),
+        ("crest", -0.5),
+        ("rolloff_mean", -0.5),
+    ],
+    sites: &[
+        "rmix", "rsize", "rdamp", "release", "dmix", "time", "fb", "cut", "attack",
+    ],
+};
+/// A wash: a longer tail, a shimmer (`motion_fast`, the 8–30 Hz beating that
+/// detune and chorus give) and peaks smoothed away (−`crest`).
+const HAZE: NamedControl = NamedControl {
+    name: "Haze",
+    family: "Space",
+    low: "clear",
+    high: "hazy",
+    axis: &[("tail_ratio", 1.0), ("motion_fast", 1.0), ("crest", -1.0)],
+    sites: &[
+        "rmix", "rsize", "release", "cmix", "cdepth", "crate", "det", "dmix", "fb",
+    ],
+};
+/// An edge: the spectrum changing fast (`flux_mean`) and high partials
+/// (`zcr_mean`). Grit is noise (flatness); Bite is bright change, a filter
+/// that snaps open or a resonance that rings.
+const BITE: NamedControl = NamedControl {
+    name: "Bite",
+    family: "Character",
+    low: "mild",
+    high: "biting",
+    axis: &[("flux_mean", 1.0), ("zcr_mean", 1.0)],
+    sites: &["res", "cut", "drive", "thresh", "att", "dec", "mdepth"],
+};
+/// Worn like tape: hiss (`flatness_mean`), a dull top (−`rolloff_mean`) and
+/// flutter (`motion_fast`). φ has no bit-depth or bandwidth feature, so a
+/// crusher is heard only through the flatness it adds.
+const LOFI: NamedControl = NamedControl {
+    name: "Lo-fi",
+    family: "Character",
+    low: "clean",
+    high: "worn",
+    axis: &[
+        ("flatness_mean", 1.0),
+        ("rolloff_mean", -1.0),
+        ("motion_fast", 1.0),
+    ],
+    sites: &["bits", "dsamp", "cut", "drive", "tone", "vdepth", "vrate"],
+};
+
+/// The palette: eighteen controls in six families (RFC-006 §4), each a fixed
+/// direction in standardized audio φ measured and wired per patch exactly as
+/// the six are. The first six are [`CONTROLS`], at the same indices, so an
+/// index into either names the same control; the twelve after them follow
+/// in family order.
+pub const PALETTE: [NamedControl; 18] = [
+    BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE, WARMTH, AIR, THUMP, HEFT, PUNCH, ROUND, THROB, SWAY,
+    DISTANCE, HAZE, BITE, LOFI,
 ];
+
+/// The [`PALETTE`] entries `set` names, in its order: indices out of range
+/// and repeats are dropped, so every control is wired once.
+pub fn palette_controls(set: &[usize]) -> Vec<NamedControl> {
+    let mut seen = [false; PALETTE.len()];
+    set.iter()
+        .filter_map(|&k| {
+            let fresh = !std::mem::replace(seen.get_mut(k)?, true);
+            fresh.then_some(PALETTE[k])
+        })
+        .collect()
+}
 
 /// `∂z/∂p` for one patch: how each continuous knob moves each standardized
 /// audio coordinate.
@@ -341,6 +555,12 @@ pub struct Wiring {
     /// tell two controls apart ([`separate`]); not sent to the page.
     #[serde(skip, default)]
     pub moved: Vec<f64>,
+    /// The control's unit direction the wiring was solved for, kept so
+    /// [`verify`] projects on the same axis whichever controls were wired;
+    /// not sent to the page. Empty on a wiring read back from JSON, which
+    /// verification then leaves alone.
+    #[serde(skip, default)]
+    pub axis: Vec<f64>,
 }
 
 impl Wiring {
@@ -379,13 +599,51 @@ pub fn direction(control: &NamedControl, names: &[String]) -> Vec<f64> {
     d
 }
 
+/// The subspace a control's purity is measured in, as an orthonormal basis
+/// with the control's unit direction `d` first: `d` and the six named axes
+/// ([`CONTROLS`]), Gram–Schmidt in that order.
+///
+/// For one of the six, `d` is its own axis and the other five are already
+/// orthogonal to it (no two share a coordinate), so they enter unchanged and
+/// purity is exactly what it always was: the cosine with `d` inside the six
+/// axes' span. A palette control that blends the six (Thump is Body with some
+/// Snap) lies inside that span, so the axes it leans on are taken up by `d`
+/// and only their remainders count against it. A control with a coordinate
+/// of its own (Air's zero-crossing rate) widens the span by that much. In
+/// every case a move along the control's own direction has purity 1, and a
+/// move along a named axis it does not lean on counts against it in full.
+pub fn purity_basis(d: &[f64], names: &[String]) -> Vec<Vec<f64>> {
+    let mut basis = vec![d.to_vec()];
+    for c in &CONTROLS {
+        let a = direction(c, names);
+        let proj: Vec<f64> = basis.iter().map(|b| dot(b, &a)).collect();
+        // Exactly orthogonal already (disjoint coordinates): kept as it is,
+        // so the six's purity is bit-for-bit what it was before the palette.
+        if proj.iter().all(|p| *p == 0.0) {
+            basis.push(a);
+            continue;
+        }
+        let mut r = a;
+        for (b, p) in basis.iter().zip(&proj) {
+            r.iter_mut().zip(b).for_each(|(x, y)| *x -= p * y);
+        }
+        let n = r.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if n > 1e-9 {
+            r.iter_mut().for_each(|x| *x /= n);
+            basis.push(r);
+        }
+    }
+    basis
+}
+
 /// The module PERFORM grafts onto the output of a patch whose knobs cannot
-/// reach control `k` ([`CONTROLS`] order), so the control has something to
+/// reach control `k` ([`PALETTE`] order), so the control has something to
 /// turn: a neutral EQ, for Bright and Body. At 0 dB on all three bands it is
 /// transparent, and its high and low shelves are the knobs a player would
 /// name for either. `examples/perform_inserts.rs` measures both claims.
 ///
-/// `None` for everything else, each for a measured reason:
+/// `None` for everything else, each of the six for a measured reason (the
+/// palette's twelve have no graft measured yet):
 ///
 /// * **Snap, Motion** — no single module answers them.
 /// * **Grit** — its axis is spectral flatness, and a drive adds harmonics
@@ -400,7 +658,7 @@ pub fn direction(control: &NamedControl, names: &[String]) -> Vec<f64> {
 /// The fragment's input is a placeholder; `StructOp::InsertTree` replaces it
 /// with the patch it wraps.
 pub fn insert_for(k: usize) -> Option<AudioNode> {
-    match CONTROLS.get(k)?.name {
+    match PALETTE.get(k)?.name {
         "Bright" | "Body" => Some(AudioNode::Eq {
             uid: Uid::NEW,
             low: 0.5,
@@ -422,7 +680,7 @@ pub fn insert_for(k: usize) -> Option<AudioNode> {
 /// Space is only grafted when turned up, so the longer release is what was
 /// asked for; the EQ is transparent in either direction.
 pub fn graft_for(tree: &PatchTree, k: usize) -> Option<PatchTree> {
-    if CONTROLS.get(k)?.name == "Space" {
+    if PALETTE.get(k)?.name == "Space" {
         if tree.amp.release >= SPACE_RELEASE {
             return None;
         }
@@ -696,7 +954,16 @@ pub fn wire(jac: &Jacobian) -> Vec<Wiring> {
 /// [`wire`] with the semantic prior's penalty share given explicitly: 1.0 is
 /// no prior at all. For measuring what the prior costs and buys.
 pub fn wire_with(jac: &Jacobian, semantic: f64) -> Vec<Wiring> {
-    let mut w: Vec<Wiring> = CONTROLS
+    wire_named(jac, &CONTROLS, semantic)
+}
+
+/// Wire `controls` (any of the [`PALETTE`], or a direction being tried out)
+/// onto the patch `jac` was measured on, in their order, then [`separate`]
+/// them in that order. Arithmetic only: the Jacobian's renders are shared by
+/// every control, so wiring eighteen costs no more renders than wiring six.
+/// What does cost renders is [`verify`], four or eight per reachable control.
+pub fn wire_named(jac: &Jacobian, controls: &[NamedControl], semantic: f64) -> Vec<Wiring> {
+    let mut w: Vec<Wiring> = controls
         .iter()
         .map(|c| wire_one(c, jac, semantic))
         .collect();
@@ -777,6 +1044,7 @@ fn wire_over(control: &NamedControl, jac: &Jacobian, semantic: f64, all: &[usize
         up: None,
         down: None,
         moved: Vec::new(),
+        axis: d.clone(),
     };
     if n == 0 || all.is_empty() {
         return out;
@@ -855,12 +1123,11 @@ fn wire_over(control: &NamedControl, jac: &Jacobian, semantic: f64, all: &[usize
     // (Bright's median cosine with its own axis over a fresh pool is 0.26);
     // what a player hears as "this control does something else" is a move
     // along *another control's* axis — attack when asked for bright.
-    let off: f64 = CONTROLS
+    let off: f64 = purity_basis(&d, &jac.names)
         .iter()
-        .filter(|c| c.name != control.name)
-        .map(|c| {
-            let a = direction(c, &jac.names);
-            a.iter()
+        .skip(1)
+        .map(|b| {
+            b.iter()
                 .zip(&moved)
                 .map(|(x, y)| x * y)
                 .sum::<f64>()
@@ -916,7 +1183,10 @@ pub fn apply(jac: &Jacobian, wiring: &[Wiring], c: &[f64]) -> Vec<(String, f64)>
 /// made it very slightly more restless — the linear prediction said otherwise.
 /// So each half is confirmed or closed ([`Wiring::range`]), and a control with
 /// neither half confirmed becomes a search control. Four renders per
-/// reachable control (±½ and ±1), through the memo.
+/// reachable control (±½ and ±1), through the memo, and four more for one
+/// retried at half travel. Each wiring is checked on the axis it was solved
+/// for ([`Wiring::axis`]), so any set [`wire_named`] wired verifies the same
+/// way.
 pub fn verify(
     tree: &PatchTree,
     jac: &Jacobian,
@@ -968,10 +1238,10 @@ pub(crate) fn verify_by(
 ) -> bool {
     let mut complete = true;
     for i in 0..wiring.len() {
-        if wiring[i].search {
+        if wiring[i].search || wiring[i].axis.len() != jac.names.len() {
             continue;
         }
-        let d = direction(&CONTROLS[i], &jac.names);
+        let d = wiring[i].axis.clone();
         let along = |z: &[f64]| z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>();
         let base = along(&jac.z);
         let mut pending = false;
@@ -1066,6 +1336,20 @@ impl Engine {
         tree: &PatchTree,
         failed: &HashSet<String>,
     ) -> Option<(Jacobian, Vec<Wiring>)> {
+        self.wire_named(tree, &CONTROLS, failed)
+    }
+
+    /// [`Self::wire_controls_known`] for any `controls` ([`palette_controls`]
+    /// picks them from the [`PALETTE`]), wired and separated in their order.
+    /// The Jacobian's renders are the same whatever is wired; each reachable
+    /// control adds its own verification renders. The six of [`CONTROLS`]
+    /// give exactly what `wire_controls_known` gives.
+    pub fn wire_named(
+        &self,
+        tree: &PatchTree,
+        controls: &[NamedControl],
+        failed: &HashSet<String>,
+    ) -> Option<(Jacobian, Vec<Wiring>)> {
         let std = self.standardizer.as_deref()?;
         let (spec, memo) = (&self.cfg.phrase, self.memo());
         let mut look = |t: &PatchTree| {
@@ -1076,7 +1360,7 @@ impl Engine {
             }
         };
         let jac = jacobian_by(tree, spec.sample_rate, &mut look).ok()??;
-        let mut wiring = wire(&jac);
+        let mut wiring = wire_named(&jac, controls, SEMANTIC_RIDGE);
         verify_by(tree, &jac, &mut wiring, &mut look);
         Some((jac, wiring))
     }
@@ -1100,6 +1384,18 @@ impl Engine {
         tree: &PatchTree,
         failed: &HashSet<String>,
     ) -> Vec<(String, PatchTree)> {
+        self.wire_plan_named(tree, &CONTROLS, failed)
+    }
+
+    /// [`Self::wire_plan`] for the measurement [`Self::wire_named`] makes of
+    /// `controls`: the same rounds, with each reachable control's points in
+    /// the second and third.
+    pub fn wire_plan_named(
+        &self,
+        tree: &PatchTree,
+        controls: &[NamedControl],
+        failed: &HashSet<String>,
+    ) -> Vec<(String, PatchTree)> {
         let mut need: Vec<(String, PatchTree)> = Vec::new();
         let Some(std) = self.standardizer.as_deref() else {
             return need;
@@ -1121,7 +1417,7 @@ impl Engine {
             }
         };
         if let Ok(Some(jac)) = jacobian_by(tree, spec.sample_rate, &mut look) {
-            let mut wiring = wire(&jac);
+            let mut wiring = wire_named(&jac, controls, SEMANTIC_RIDGE);
             verify_by(tree, &jac, &mut wiring, &mut look);
         }
         need
@@ -1184,7 +1480,8 @@ impl Engine {
     }
 
     /// A search control's offer: [`Self::offer`]'s walk on the target tilted
-    /// along named control `control` ([`CONTROLS`] order), turned up (a
+    /// along named control `control` ([`PALETTE`] order, whose first six are
+    /// [`CONTROLS`]), turned up (a
     /// positive `sign`) or down, at [`AIM_GAMMA`]. A walk that has not yet moved the asked
     /// way by [`REACH_FLOOR`] keeps walking from where it stopped, up to
     /// [`AIM_WALKS`] walks of `steps`. The Offer button and Wander stay on
@@ -1235,7 +1532,7 @@ impl Engine {
         gamma: f64,
         walks: usize,
     ) -> Result<PatchTree, RefineOutcome> {
-        let (Some(c), Some(std)) = (CONTROLS.get(control), self.standardizer.as_ref()) else {
+        let (Some(c), Some(std)) = (PALETTE.get(control), self.standardizer.as_ref()) else {
             return self.offer(rng, tree, player_locks, steps);
         };
         let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
@@ -1310,7 +1607,7 @@ impl Engine {
     /// control, or if either tree does not vet. Both renders are memo hits
     /// after the walk that produced `to`.
     pub fn moved_along(&self, from: &PatchTree, to: &PatchTree, control: usize) -> Option<f64> {
-        let c = CONTROLS.get(control)?;
+        let c = PALETTE.get(control)?;
         let std = self.standardizer.as_deref()?;
         let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
         let d = direction(c, &names);
@@ -1336,10 +1633,20 @@ mod tests {
         Standardizer::fit(&rows)
     }
 
+    /// Every palette direction is unit length over φ's real names, and every
+    /// coordinate it names exists: a control whose one coordinate was renamed
+    /// away has no direction at all, and one that lost one of several would
+    /// quietly narrow to the rest, so each weight is checked by name. The
+    /// six are the palette's first six, and names are unique (a wiring is
+    /// told apart by its name).
     #[test]
     fn directions_are_unit_and_named_coordinates_exist() {
         let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
-        for c in &CONTROLS {
+        let bare: Vec<&str> = names
+            .iter()
+            .map(|n| n.split(':').next().unwrap_or(n))
+            .collect();
+        for c in &PALETTE {
             let d = direction(c, &names);
             let n: f64 = d.iter().map(|x| x * x).sum::<f64>().sqrt();
             assert!(
@@ -1347,6 +1654,85 @@ mod tests {
                 "{} names a coordinate φ lacks",
                 c.name
             );
+            for (a, _) in c.axis {
+                assert!(bare.contains(a), "{}: φ has no {a}", c.name);
+            }
+        }
+        for (k, c) in CONTROLS.iter().enumerate() {
+            assert_eq!(PALETTE[k].name, c.name, "the six lead the palette");
+        }
+        let mut seen = HashSet::new();
+        assert!(PALETTE.iter().all(|c| seen.insert(c.name)), "a name twice");
+        let families = [
+            "Tone",
+            "Weight",
+            "Dynamics",
+            "Movement",
+            "Space",
+            "Character",
+        ];
+        for f in families {
+            let n = PALETTE.iter().filter(|c| c.family == f).count();
+            assert_eq!(n, 3, "{f} has {n} controls");
+        }
+        assert_eq!(
+            palette_controls(&[6, 99, 0, 6])
+                .iter()
+                .map(|c| c.name)
+                .collect::<Vec<_>>(),
+            [PALETTE[6].name, PALETTE[0].name],
+            "out of range and repeats are dropped, order kept"
+        );
+    }
+
+    /// Purity generalizes without moving the six. For each of the six it is
+    /// bit-for-bit the formula it always was (the cosine with its axis
+    /// against the other five axes); for every palette control a move along
+    /// its own direction is pure, and a move along a named axis orthogonal to
+    /// it is not this control at all.
+    #[test]
+    fn purity_keeps_the_six_and_extends_to_the_palette() {
+        let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+        let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(5);
+        let purity = |d: &[f64], m: &[f64]| {
+            let along = dot(m, d);
+            let off: f64 = purity_basis(d, &names)
+                .iter()
+                .skip(1)
+                .map(|b| dot(b, m).powi(2))
+                .sum();
+            along / (along * along + off).sqrt().max(1e-12)
+        };
+        for _ in 0..200 {
+            let m: Vec<f64> = (0..names.len()).map(|_| rng.gen_range(-1.0..1.0)).collect();
+            for c in &CONTROLS {
+                let d = direction(c, &names);
+                let along: f64 = m.iter().zip(&d).map(|(a, b)| a * b).sum();
+                let off: f64 = CONTROLS
+                    .iter()
+                    .filter(|o| o.name != c.name)
+                    .map(|o| {
+                        direction(o, &names)
+                            .iter()
+                            .zip(&m)
+                            .map(|(x, y)| x * y)
+                            .sum::<f64>()
+                            .powi(2)
+                    })
+                    .sum();
+                let was = along / (along * along + off).sqrt().max(1e-12);
+                assert_eq!(purity(&d, &m).to_bits(), was.to_bits(), "{}", c.name);
+            }
+        }
+        for c in &PALETTE {
+            let d = direction(c, &names);
+            assert!((purity(&d, &d) - 1.0).abs() < 1e-12, "{}", c.name);
+            for o in &CONTROLS {
+                let a = direction(o, &names);
+                if dot(&a, &d).abs() < 1e-12 {
+                    assert!(purity(&d, &a).abs() < 1e-12, "{} vs {}", c.name, o.name);
+                }
+            }
         }
     }
 
@@ -1603,68 +1989,120 @@ mod tests {
     /// set of samples proves a nonlinear response monotone; this is the
     /// measurable version of the promise. A wiring whose predicted move does not survive the
     /// nonlinearity of a real render is exactly the dishonest control this
-    /// module exists to refuse.
+    /// module exists to refuse. It holds for the whole [`PALETTE`]: the six as
+    /// the panel wires them, and each of the twelve wired alone.
     #[test]
     fn named_controls_move_the_sound_they_name() {
         let spec = PhraseSpec::default();
         let std = preset_standardizer(&spec);
         let memo = RenderMemo::default();
         let bank = preset_bank();
-        let mut checked = 0;
-        for name in ["First Bass", "Ceiling", "Detune Dream", "Long Way Down"] {
+        // The six as the panel wires them, then each of the palette's twelve
+        // alone, so every control is held to its claim wherever it makes one.
+        let mut sets: Vec<Vec<NamedControl>> = vec![CONTROLS.to_vec()];
+        sets.extend(PALETTE[CONTROLS.len()..].iter().map(|c| vec![*c]));
+        // One preset per thread: every render is a pure function of its tree,
+        // and the memo is shared, so this changes the time and nothing else.
+        let check = |name: &str| -> (usize, usize, HashSet<String>) {
+            let (mut checked, mut palette_checked) = (0, 0);
+            let mut palette_names = HashSet::new();
             let p = bank.iter().find(|p| p.name == name).expect("preset exists");
             let jac = jacobian(&p.tree, &spec, &memo, &std).expect("preset vets");
-            let mut wiring = wire(&jac);
-            verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
-            for (i, w) in wiring.iter().enumerate() {
-                let (lo, hi) = w.range();
-                if w.search {
-                    continue;
-                }
-                let d = direction(&CONTROLS[i], &jac.names);
-                let at = |c: f64| {
-                    let mut cs = vec![0.0; wiring.len()];
-                    cs[i] = c;
-                    let mut t = p.tree.clone();
-                    for (a, v) in apply(&jac, &wiring, &cs) {
-                        t = set_param(&t, &a, ParamValue::Continuous(v)).unwrap();
+            for set in &sets {
+                let mut wiring = wire_named(&jac, set, SEMANTIC_RIDGE);
+                verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
+                for (i, w) in wiring.iter().enumerate() {
+                    let (lo, hi) = w.range();
+                    if w.search {
+                        continue;
                     }
-                    let z = audio_z(&t, &spec, &memo, &std).expect("still vets");
-                    z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>()
-                };
-                let mid = at(0.0);
-                if hi > 0.0 {
-                    let h = at(0.75);
-                    assert!(
-                        h > mid - MONO_TOL,
-                        "{name}/{} up half: {mid:.3} -> {h:.3}",
-                        w.name
-                    );
-                    checked += 1;
-                }
-                if lo < 0.0 {
-                    let l = at(-0.75);
-                    assert!(
-                        l < mid + MONO_TOL,
-                        "{name}/{} down half: {mid:.3} -> {l:.3}",
-                        w.name
-                    );
-                    checked += 1;
+                    assert_eq!(w.axis, direction(&set[i], &jac.names), "{}", w.name);
+                    let d = w.axis.clone();
+                    let mine = set.len() == 1;
+                    if mine && (lo < 0.0 || hi > 0.0) {
+                        palette_names.insert(w.name.clone());
+                    }
+                    let at = |c: f64| {
+                        let mut cs = vec![0.0; wiring.len()];
+                        cs[i] = c;
+                        let mut t = p.tree.clone();
+                        for (a, v) in apply(&jac, &wiring, &cs) {
+                            t = set_param(&t, &a, ParamValue::Continuous(v)).unwrap();
+                        }
+                        let z = audio_z(&t, &spec, &memo, &std).expect("still vets");
+                        z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>()
+                    };
+                    let mid = at(0.0);
+                    let count = if mine {
+                        &mut palette_checked
+                    } else {
+                        &mut checked
+                    };
+                    if hi > 0.0 {
+                        let h = at(0.75);
+                        assert!(
+                            h > mid - MONO_TOL,
+                            "{name}/{} up half: {mid:.3} -> {h:.3}",
+                            w.name
+                        );
+                        *count += 1;
+                    }
+                    if lo < 0.0 {
+                        let l = at(-0.75);
+                        assert!(
+                            l < mid + MONO_TOL,
+                            "{name}/{} down half: {mid:.3} -> {l:.3}",
+                            w.name
+                        );
+                        *count += 1;
+                    }
                 }
             }
-        }
+            (checked, palette_checked, palette_names)
+        };
+        let names = ["First Bass", "Ceiling", "Detune Dream", "Long Way Down"];
+        let results: Vec<(usize, usize, HashSet<String>)> = std::thread::scope(|s| {
+            let jobs: Vec<_> = names
+                .iter()
+                .map(|name| {
+                    let check = &check;
+                    s.spawn(move || check(name))
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|j| j.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+                .collect()
+        });
+        let checked: usize = results.iter().map(|r| r.0).sum();
+        let palette_checked: usize = results.iter().map(|r| r.1).sum();
+        let palette_names: HashSet<String> =
+            results.into_iter().flat_map(|r| r.2.into_iter()).collect();
         assert!(checked >= 8, "too few open halves to be a gate: {checked}");
+        eprintln!(
+            "the twelve: {palette_checked} open halves checked, over {} controls",
+            palette_names.len()
+        );
+        assert!(
+            palette_checked >= 16 && palette_names.len() >= 8,
+            "too few of the palette's halves to be a gate: {palette_checked} over {palette_names:?}"
+        );
     }
 
     /// A measurement paid for in rounds — planned, its renders made elsewhere
     /// and folded into the memo, then finished — is the measurement
     /// `wire_controls` makes in one call: the same wiring, to the bit. And a
-    /// plan renders nothing: the thread asking for one stays free.
+    /// plan renders nothing: the thread asking for one stays free. The same
+    /// holds for the whole palette (`wire_plan_named`, `wire_named`).
     #[test]
     fn a_planned_measurement_is_the_measurement() {
         use crate::engine::{Engine, SessionConfig};
         let bank = preset_bank();
-        for name in ["First Bass", "Glass Pad"] {
+        let six = CONTROLS.len();
+        for (name, controls) in [
+            ("First Bass", &PALETTE[..six]),
+            ("Glass Pad", &PALETTE[..six]),
+            ("First Bass", &PALETTE[..]),
+        ] {
             let p = bank.iter().find(|p| p.name == name).expect("preset exists");
             let fresh = || {
                 let mut e = Engine::new(
@@ -1674,7 +2112,13 @@ mod tests {
                 e.standardizer = Some(std::sync::Arc::new(preset_standardizer(&e.cfg.phrase)));
                 e
             };
-            let whole = fresh().wire_controls(&p.tree).expect("preset vets");
+            let palette = controls.len() > six;
+            let whole = if palette {
+                fresh().wire_named(&p.tree, controls, &HashSet::new())
+            } else {
+                fresh().wire_controls(&p.tree)
+            }
+            .expect("preset vets");
 
             // The planned path, with its renders made on a separate memo — a
             // stand-in for a farm worker — and handed over as rows.
@@ -1684,7 +2128,11 @@ mod tests {
             let mut rounds = 0;
             loop {
                 let misses = engine.memo().stats().misses;
-                let need = engine.wire_plan(&p.tree, &failed);
+                let need = if palette {
+                    engine.wire_plan_named(&p.tree, controls, &failed)
+                } else {
+                    engine.wire_plan(&p.tree, &failed)
+                };
                 assert_eq!(
                     engine.memo().stats().misses,
                     misses,
@@ -1705,9 +2153,13 @@ mod tests {
                 }
             }
             let before = engine.memo().stats().misses;
-            let planned = engine
-                .wire_controls_known(&p.tree, &failed)
-                .expect("preset vets");
+            let planned = if palette {
+                engine.wire_named(&p.tree, controls, &failed)
+            } else {
+                engine.wire_controls_known(&p.tree, &failed)
+            }
+            .expect("preset vets");
+            assert_eq!(planned.1.len(), controls.len(), "{name}: one wiring each");
             assert_eq!(
                 engine.memo().stats().misses,
                 before,

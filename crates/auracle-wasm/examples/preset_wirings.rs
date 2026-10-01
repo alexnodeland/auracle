@@ -69,7 +69,7 @@ fn main() {
                     let id = e.load_preset(i);
                     assert!(id > 0, "{} did not load", p.name);
                     let tree = e.tree_json_of(id);
-                    let data = e.perform_wire(&tree, "[]");
+                    let data = e.perform_wire(&tree, "[]", None);
                     assert!(data != "null", "{} could not be measured", p.name);
                     let data: serde_json::Value = serde_json::from_str(&data).expect("wiring JSON");
                     let reach = data["wiring"]

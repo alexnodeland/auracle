@@ -137,6 +137,14 @@ pub fn preset_z(e: &WasmEngine, tree_json: &str) -> Option<Vec<f64>> {
     Some(perform::standardized_audio(&cf.features, std))
 }
 
+/// The session engine inside `e`, for the measurement examples that ask what
+/// the bindings do not say (a Jacobian, the memo's render count), under the
+/// engine the shipped wirings are measured on. Native only.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn session(e: &WasmEngine) -> &auracle_session::Engine {
+    &e.engine
+}
+
 /// Run `job` over `items` on up to `threads` threads, results in item order.
 #[cfg(not(target_arch = "wasm32"))]
 fn par_map<T: Sync, U: Send>(items: &[T], threads: usize, job: impl Fn(&T) -> U + Sync) -> Vec<U> {

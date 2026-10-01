@@ -166,7 +166,7 @@ fn shipped_preset_wirings_measure_the_same_today() {
         let jobs: Vec<_> = loaded
             .iter()
             .filter(|(i, _)| WIRE_PROBES.contains(i))
-            .map(|(i, tree)| s.spawn(move || (*i, e.perform_wire(tree, "[]"))))
+            .map(|(i, tree)| s.spawn(move || (*i, e.perform_wire(tree, "[]", None))))
             .collect();
         jobs.into_iter()
             .map(|j| j.join().expect("measured"))

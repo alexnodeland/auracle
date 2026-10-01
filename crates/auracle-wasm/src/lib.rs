@@ -582,6 +582,19 @@ fn key_set(json: &str) -> std::collections::HashSet<String> {
         .collect()
 }
 
+/// The named controls a PERFORM measurement wires: the palette entries a
+/// JSON array of indices names (out of range and repeats dropped,
+/// `auracle_session::perform::palette_controls`), or the six of `CONTROLS`
+/// when there is no array, which is what the panel has always been measured
+/// with.
+fn palette_set(json: Option<&str>) -> Vec<auracle_session::perform::NamedControl> {
+    use auracle_session::perform::{palette_controls, CONTROLS};
+    match json.and_then(|j| serde_json::from_str::<Vec<usize>>(j).ok()) {
+        Some(set) => palette_controls(&set),
+        None => CONTROLS.to_vec(),
+    }
+}
+
 #[wasm_bindgen]
 impl WasmEngine {
     /// Create an engine with the default grammar and session config.
@@ -1243,11 +1256,26 @@ impl WasmEngine {
     /// Returns `{addrs, values, z, wiring: [Wiring]}` as JSON, or `null` when
     /// the session has no standardizer yet or the tree does not vet. Costs one
     /// render per continuous knob, through the memo.
-    pub fn perform_wire(&self, tree_json: &str, overrides_json: &str) -> String {
+    ///
+    /// `controls` is which to wire: a JSON array of indices into the
+    /// palette's eighteen (`auracle_session::perform::PALETTE`), and `wiring`
+    /// then holds one entry per valid index, in that order, each named. Left
+    /// out (`undefined` from JS), it is the six of `CONTROLS`, exactly as
+    /// before the palette, which is what today's panel asks for.
+    pub fn perform_wire(
+        &self,
+        tree_json: &str,
+        overrides_json: &str,
+        controls: Option<String>,
+    ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
         };
-        let Some((jac, wiring)) = self.engine.wire_controls(&tree) else {
+        let set = palette_set(controls.as_deref());
+        let Some((jac, wiring)) =
+            self.engine
+                .wire_named(&tree, &set, &std::collections::HashSet::new())
+        else {
             return "null".into();
         };
         serde_json::json!({
@@ -1264,20 +1292,23 @@ impl WasmEngine {
     /// JSON text, ready for a farm job), empty when the measurement can be
     /// finished from the memo — see `Engine::wire_plan`. `failed_json` is a
     /// JSON array of the keys already known not to vet. Renders nothing, so
-    /// it is cheap enough to ask between the player's requests.
+    /// it is cheap enough to ask between the player's requests. `controls`
+    /// as for [`Self::perform_wire`].
     pub fn perform_wire_plan(
         &self,
         tree_json: &str,
         overrides_json: &str,
         failed_json: &str,
+        controls: Option<String>,
     ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "[]".into();
         };
         let failed = key_set(failed_json);
+        let set = palette_set(controls.as_deref());
         let need: Vec<serde_json::Value> = self
             .engine
-            .wire_plan(&tree, &failed)
+            .wire_plan_named(&tree, &set, &failed)
             .into_iter()
             .map(|(key, t)| {
                 serde_json::json!({
@@ -1292,20 +1323,20 @@ impl WasmEngine {
     /// [`Self::perform_wire`], skipping the renders `failed_json` names as
     /// known not to vet (the memo keeps only successes). Once
     /// [`Self::perform_wire_plan`] answers `[]`, this renders nothing; the
-    /// answer is the one `perform_wire` would give.
+    /// answer is the one `perform_wire` would give. `controls` as there, and
+    /// the same set the plan was asked for.
     pub fn perform_wire_known(
         &self,
         tree_json: &str,
         overrides_json: &str,
         failed_json: &str,
+        controls: Option<String>,
     ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
         };
-        let Some((jac, wiring)) = self
-            .engine
-            .wire_controls_known(&tree, &key_set(failed_json))
-        else {
+        let set = palette_set(controls.as_deref());
+        let Some((jac, wiring)) = self.engine.wire_named(&tree, &set, &key_set(failed_json)) else {
             return "null".into();
         };
         serde_json::json!({
@@ -2776,6 +2807,80 @@ mod tests {
             farmed.refine_from_job(0xDEAD, "[]"),
             r#"{"reason":"unknown_seed"}"#
         );
+    }
+
+    /// PERFORM's measurement wires the six it always has unless the worker
+    /// names palette controls, and then exactly those, in the order named,
+    /// each under its own name: an index out of range or named twice is
+    /// dropped, and naming the six is the same as naming none (the panel's
+    /// request, unchanged). The plan and its finish take the same set, and a
+    /// finish whose renders are all in the memo is the one-call answer.
+    #[test]
+    fn perform_wire_measures_the_palette_controls_asked_for() {
+        use auracle_session::perform::{CONTROLS, PALETTE};
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree = engine.edit_tree_json();
+        let names = |reply: &str| -> Vec<String> {
+            let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+            v["wiring"]
+                .as_array()
+                .expect("a wiring")
+                .iter()
+                .map(|w| w["name"].as_str().unwrap().to_string())
+                .collect()
+        };
+        let six = engine.perform_wire(&tree, "[]", None);
+        let want: Vec<&str> = CONTROLS.iter().map(|c| c.name).collect();
+        assert_eq!(names(&six), want);
+        assert_eq!(
+            engine.perform_wire(&tree, "[]", Some("[0,1,2,3,4,5]".into())),
+            six,
+            "naming the six is the panel's request"
+        );
+        assert_eq!(
+            engine.perform_wire(&tree, "[]", Some("not json".into())),
+            six,
+            "an unreadable set is the six"
+        );
+        let ask = "[16, 6, 99, 16, 0]";
+        let asked = engine.perform_wire(&tree, "[]", Some(ask.into()));
+        assert_eq!(
+            names(&asked),
+            [PALETTE[16].name, PALETTE[6].name, PALETTE[0].name]
+        );
+        let all = format!("{:?}", (0..PALETTE.len()).collect::<Vec<_>>());
+        let full = engine.perform_wire(&tree, "[]", Some(all.clone()));
+        assert_eq!(names(&full).len(), PALETTE.len());
+        assert_eq!(
+            engine.perform_wire_plan(&tree, "[]", "[]", Some(all.clone())),
+            "[]",
+            "everything the eighteen need is in the memo"
+        );
+        assert_eq!(
+            engine.perform_wire_known(&tree, "[]", "[]", Some(all)),
+            full
+        );
+        // A palette index names the same control to an aimed offer: the
+        // reply says how far it moved along that control's own direction.
+        let home: PatchTree = serde_json::from_str(&tree).unwrap();
+        let mut aimed = 0;
+        for _ in 0..4 {
+            let reply = engine.perform_offer(&tree, "[]", "[]", 6, Some(16), Some(1.0));
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            if v.get("reason").is_some() {
+                continue;
+            }
+            let grown: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
+            let want = engine.engine.moved_along(&home, &grown, 16).unwrap();
+            assert!((v["moved"].as_f64().expect("moved") - want).abs() < 1e-9);
+            aimed += 1;
+        }
+        assert!(aimed > 0, "no offer aimed along Bite grew");
     }
 
     /// A search control's offer says how far it moved the way it was turned
