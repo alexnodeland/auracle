@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-10-01
-related_adrs: [1, 2, 7]
+related_adrs: [1, 2, 7, 12]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -76,6 +76,46 @@ crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
 or the main thread's in-flight queue deadlocks.
+
+## The ratings after each pick
+
+A pick reweights the posterior's draws in the engine (importance sampling,
+no refit), so the model's ratings of the pool move with every pick. The
+worker says so with a `ratings` field (`engineRatings`, from
+`WasmEngine::belief`): every pool member's posterior mean, std and lens in
+ranked order, the `seeds` EVOLVE POOL would breed from if pressed now, and
+what that generation `may_replace`. No new message and no new lane: it rides
+on replies that already exist. (`ratings`, not `belief`, on the web side:
+`belief` in `main.js` is the bench's guess.)
+
+- **On a pick's reply:** the `status` that answers `record_duel`,
+  `record_keep` and `record_stars` (`null` when `recorded` is false: the
+  engine took nothing, so nothing moved), and the `status` that follows
+  `perform_record`. These are `now`-lane replies. In wasm at five lenses
+  the ratings add under 2 ms at rest, and about 4 ms while a generation is
+  open with the pool over size, when what its end would retire is ranked
+  too (`crates/auracle-wasm/examples/pick_belief.mjs`; its native twin is
+  `pick_belief.rs`).
+- **With every views post** (`tasteViews`: a refit, a generation, an
+  edit's commit, an import, the warm start), so the seeds are current after
+  any of them.
+- **On `refine_child` and `pinned`**, which change the pool or its pins and
+  so the seeds and what may be replaced.
+
+Main keeps the latest as `views.ratings` and draws nothing from it yet
+(Plan-005 draws picks as directions and moves the glows per pick from it).
+`views.ranked` and `views.map` still change only when views are posted. A pick
+in EVOLVE reaches the worker when its undo window closes, so its ratings
+arrive then, not at the click.
+
+**`seeds` and `may_replace` describe a generation opened now.** At rest that
+is the next press of EVOLVE POOL, and they are what to mark. While a
+generation is open or a ⚡ walk is out, a press would wait its turn (see
+[The worker's lanes](#the-workers-lanes)), so they describe one that has not
+started. What the running generation will replace is `refine_child`'s
+`retiring`; its seeds are the last `seeds` posted before it opened, and
+each child's seed comes with it in the lineage `refine_child` carries. Read
+`ratings.may_replace` and `ratings.seeds` only at rest.
 
 ## The breed job
 

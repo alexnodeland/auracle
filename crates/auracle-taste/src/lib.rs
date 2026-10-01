@@ -781,6 +781,54 @@ mod tests {
         assert!((re.prob_prefers(&a, &b) - after.prob_prefers(&a, &b)).abs() < 0.05);
     }
 
+    /// The one-pass summary the app's per-pick belief is built from is the
+    /// two summaries it replaces, bit for bit: on draws with uneven weights
+    /// (a posterior between refits), over random candidates, and where two
+    /// lenses tie (the lens rule keeps the last of equals either way).
+    #[test]
+    fn one_pass_summary_is_utility_and_responsibilities() {
+        let mut rng = StdRng::seed_from_u64(0xBE11EF);
+        let k = 3;
+        let samples: Vec<TasteSample> = (0..200)
+            .map(|s| {
+                let mut theta: Vec<Vec<f64>> = (0..k).map(|_| random_phi(&mut rng)).collect();
+                if s % 7 == 0 {
+                    theta[2] = theta[0].clone(); // a tie between lenses 0 and 2
+                }
+                TasteSample {
+                    theta,
+                    tau: vec![0.0],
+                    cuts: vec![-1.0, 0.0, 1.0],
+                }
+            })
+            .collect();
+        let raw: Vec<f64> = (0..samples.len())
+            .map(|_| rng.gen::<f64>().powi(3))
+            .collect();
+        let total: f64 = raw.iter().sum();
+        let p = TastePosterior {
+            cfg: TasteConfig::mixture(D, k),
+            samples,
+            weights: raw.iter().map(|w| w / total).collect(),
+        };
+        for _ in 0..50 {
+            let phi = random_phi(&mut rng);
+            let ((mean, std), resp) = p.utility_mix_and_responsibilities(&phi);
+            let (m, s) = p.utility_mix(&phi);
+            assert_eq!(mean.to_bits(), m.to_bits(), "mean");
+            assert_eq!(std.to_bits(), s.to_bits(), "std");
+            let r = p.responsibilities(&phi);
+            assert_eq!(resp.len(), r.len());
+            for (a, b) in resp.iter().zip(&r) {
+                assert_eq!(a.to_bits(), b.to_bits(), "responsibilities");
+            }
+        }
+        assert!(
+            (p.ess() - p.samples.len() as f64).abs() > 1.0,
+            "the weights are uniform, so weighting was not tested"
+        );
+    }
+
     /// K = 2 smoke: the mixture path runs end-to-end and returns finite
     /// summaries, weights sum to one, and alignment is well-formed.
     #[test]

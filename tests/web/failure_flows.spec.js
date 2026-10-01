@@ -311,6 +311,7 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
   expect(Date.now() - picked, "the refusal must land inside the 7 s undo window for this to mean anything").toBeLessThan(6_000);
   const dropped = await page.evaluate(() => window.__pwLast.status);
   expect(dropped.pred).toBeNull(); // a forecast for an untaken vote is not scored
+  expect(dropped.ratings).toBeNull(); // and the ratings it did not move are not posted
   expect(dropped.vote).toEqual({ kind: "duel", a: pair[0], b: 4_000_000_000 });
   expect(dropped.status.observations).toBe(observationsBefore); // the log never saw it
   expect(await pips.innerHTML()).toBe(pipsBefore);

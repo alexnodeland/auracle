@@ -1,6 +1,6 @@
 ---
 title: "The engine: from a drawn patch to a learned taste"
-last_updated: 2026-09-28
+last_updated: 2026-10-01
 related_adrs: [1, 2, 5]
 ---
 
@@ -49,7 +49,8 @@ Two loops share one pool of patches.
    and runs MCMC (`mcmc_samples`, `mcmc_warmup`) on the max-of-experts model
    (`model.rs`) with up to `k_styles` lenses. The new posterior is aligned to
    the previous one's lenses, so styles keep their identity and names.
-   Between refits, votes reweight the existing draws.
+   Between refits, votes reweight the existing draws, and every reply to a
+   pick carries what the reweighted draws say (`belief.rs`, `Engine::belief`).
 9. **Refine.** EVOLVE POOL runs a generation: `refine_seeds` typed MH walks
    of `refine_steps` steps on `π_β ∝ p_grammar · exp(β·E[u])`, one child per
    seed. It is split into data and a fold (`walk.rs`,
@@ -66,7 +67,9 @@ Two loops share one pool of patches.
    `refine_seed` the same loop one walk per call. ⚡ *evolve from this* is one
    job over the same path (`refine_from`, or `refine_from_job` +
    `refine_from_absorb` / `refine_from_walk`), with locks; its seed is
-   exempt from eviction while the job is out.
+   exempt from eviction while the job is out. Before a generation opens,
+   `next_seeds` names its parents and `may_replace` the members its end
+   could retire.
 
 ## Key abstractions
 

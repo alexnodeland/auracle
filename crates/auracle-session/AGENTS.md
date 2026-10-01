@@ -14,6 +14,7 @@ loop (observe, refit). Rules shared by all crates are in
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
 | `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`) |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
+| `belief.rs` | The belief after each pick (`Engine::belief`): the ranked numbers and lenses under the reweighted posterior, the next generation's seeds (`next_seeds`) and what it may replace (`may_replace`), as the worker posts them |
 | `calib.rs` | Prequential calibration: forecasts scored on random (check) duels |
 | `naming.rs` | Musical names for patches and styles, read off φ |
 | `surrogate.rs` | The taste as a fugue-evo fitness |

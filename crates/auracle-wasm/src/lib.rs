@@ -1543,6 +1543,33 @@ impl WasmEngine {
         serde_json::to_string(&rows).unwrap()
     }
 
+    /// The belief as it stands, as JSON: what the worker posts after every
+    /// pick (as `ratings`, since `belief` in `main.js` is the bench's guess),
+    /// so the app's ratings and map can move per pick and not only on a
+    /// refit.
+    ///
+    /// ```json
+    /// {"ranked":[{"id":12,"mean":0.84,"std":0.31,"style":1}, …],
+    ///  "seeds":[12,7,31, …],
+    ///  "may_replace":[40,3, …]}
+    /// ```
+    ///
+    /// `ranked` is [`WasmEngine::ranked`]'s rows and order with the numbers
+    /// only, plus `style`, the lens the map colors the member by. Each number
+    /// is under the posterior the engine holds now: a pick reweights the
+    /// draws between refits, and these are the reweighted summaries, the
+    /// same ones a refit's `ranked` and `taste_map` would show. `seeds` are
+    /// the parents EVOLVE POOL would refine from if pressed now, best first,
+    /// exactly as [`WasmEngine::refine_jobs`] would choose them (`[]` before
+    /// the first fit). `may_replace` are the members that generation could
+    /// retire, lowest first: no other member can leave at its end unless
+    /// something else changes the pool meanwhile. It includes members the
+    /// app has cut, which the engine does not know about.
+    pub fn belief(&self) -> String {
+        serde_json::to_string(&self.engine.belief())
+            .unwrap_or_else(|_| r#"{"ranked":[],"seeds":[],"may_replace":[]}"#.into())
+    }
+
     /// Display name of one candidate (user-given, else musical).
     pub fn name_of(&self, id: u32) -> String {
         self.engine
@@ -2584,6 +2611,70 @@ mod tests {
             "",
             "a broken job is refused, not walked"
         );
+    }
+
+    /// **The belief the worker posts after a pick.** On a taught engine with
+    /// picks no refit has seen, `belief`'s rows are `ranked`'s ids, order and
+    /// numbers, under the reweighted posterior (the picks move them); its
+    /// seeds are the parents the twin's `refine_jobs` then hands out; and
+    /// what may be replaced is the lowest member per walk.
+    #[test]
+    fn belief_is_the_ranked_numbers_and_the_next_seeds() {
+        let (mut engine, mut twin) = twins(0xB31F);
+        let fitted = engine.belief();
+        let ids = |json: &str| -> Vec<u64> {
+            serde_json::from_str::<Vec<serde_json::Value>>(json)
+                .unwrap()
+                .iter()
+                .map(|r| r["id"].as_u64().unwrap())
+                .collect()
+        };
+        for e in [&mut engine, &mut twin] {
+            for _ in 0..3 {
+                let order = ids(&e.ranked());
+                let (best, worst) = (order[0] as u32, order[order.len() - 1] as u32);
+                assert!(e.record_duel(worst, best, true));
+            }
+        }
+        let text = engine.belief();
+        assert_ne!(text, fitted, "the picks did not move the belief");
+        let belief: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        let rows = belief["ranked"].as_array().unwrap();
+        assert_eq!(rows.len(), ranked.len());
+        for (row, r) in rows.iter().zip(&ranked) {
+            for field in ["id", "mean", "std"] {
+                assert_eq!(row[field], r[field], "{field} differs from ranked()");
+            }
+            assert!(row["style"].as_u64().is_some());
+        }
+        let list = |v: &serde_json::Value| -> Vec<u64> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap())
+                .collect()
+        };
+        let jobs: serde_json::Value = serde_json::from_str(&twin.refine_jobs()).unwrap();
+        let parents: Vec<u64> = jobs["jobs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|j| j["parent_id"].as_u64().unwrap())
+            .collect();
+        assert_eq!(
+            list(&belief["seeds"]),
+            parents,
+            "not the parents refine_jobs takes"
+        );
+        assert_eq!(parents.len(), 3);
+        let lowest: Vec<u64> = ranked
+            .iter()
+            .rev()
+            .take(3)
+            .map(|r| r["id"].as_u64().unwrap())
+            .collect();
+        assert_eq!(list(&belief["may_replace"]), lowest);
     }
 
     /// ⚡ as one farm job lands the same child as ⚡ in the engine, and so

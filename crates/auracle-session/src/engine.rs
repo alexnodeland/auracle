@@ -988,6 +988,15 @@ fn quantize(row: &[f64]) -> Vec<u64> {
     row.iter().map(|x| x.to_bits()).collect()
 }
 
+/// Posterior-mean mixture utility of a standardized φ under `p` (0 with no
+/// posterior, or for a member never standardized).
+fn mix_utility(p: Option<&TastePosterior>, phi_std: &[f64]) -> f64 {
+    match p {
+        Some(p) if !phi_std.is_empty() => p.utility_mix(phi_std).0,
+        _ => 0.0,
+    }
+}
+
 /// Unordered key for a candidate pair.
 fn pair_key(a: u64, b: u64) -> (u64, u64) {
     if a <= b {
@@ -2469,6 +2478,19 @@ impl Engine {
     /// is the member `min_by` picked when eviction happened one child at a
     /// time.
     fn eviction_order(&self, protect: &HashSet<u64>) -> Vec<(usize, f64)> {
+        let judge = self.judge();
+        self.eviction_order_by(protect, |i| mix_utility(judge, &self.pool[i].phi_std))
+    }
+
+    /// [`Engine::eviction_order`] with each member's utility given by pool
+    /// index rather than taken under [`Engine::judge`]: a generation not yet
+    /// opened would rank under the posterior it would open with, the current
+    /// one.
+    fn eviction_order_by(
+        &self,
+        protect: &HashSet<u64>,
+        utility: impl Fn(usize) -> f64,
+    ) -> Vec<(usize, f64)> {
         let mut rows: Vec<(usize, bool, f64)> = self
             .pool
             .iter()
@@ -2476,7 +2498,7 @@ impl Engine {
             .filter(|(_, c)| {
                 !c.pinned && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
             })
-            .map(|(i, c)| (i, !c.phi_std.is_empty(), self.judged_utility(&c.phi_std)))
+            .map(|(i, c)| (i, !c.phi_std.is_empty(), utility(i)))
             .collect();
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
         rows.into_iter().map(|(i, _, u)| (i, u)).collect()
@@ -2502,10 +2524,7 @@ impl Engine {
     /// Posterior-mean mixture utility of a standardized φ under `judge`
     /// (0 with no posterior).
     fn judged_utility(&self, phi_std: &[f64]) -> f64 {
-        match self.judge() {
-            Some(p) if !phi_std.is_empty() => p.utility_mix(phi_std).0,
-            _ => 0.0,
-        }
+        mix_utility(self.judge(), phi_std)
     }
 
     /// Admit a refined child **without evicting anyone yet**. Returns the new
@@ -2625,7 +2644,8 @@ impl Engine {
     ///
     /// Finishes any generation still open first ([`Engine::refine_finish`]).
     /// Then: bumps [`Engine::generation`], takes the top
-    /// [`SessionConfig::refine_seeds`] of [`Engine::ranked`] as parents, draws
+    /// [`SessionConfig::refine_seeds`] of [`Engine::ranked`] as parents
+    /// ([`Engine::next_seeds`] names them before it runs), draws
     /// **one** `u64` from `rng` (the caller's `refine` stream) and gives job
     /// `i` the seed [`walk_seed`]`(base, i)`. Each walk therefore owns its
     /// randomness, and no walk can move another by finishing early or late.
@@ -2638,11 +2658,10 @@ impl Engine {
         self.generation += 1;
         let base: u64 = rng.gen();
         let jobs: Vec<WalkJob> = self
-            .ranked()
-            .iter()
-            .take(self.cfg.refine_seeds)
+            .seed_rows(&self.ranked(), &HashSet::new())
+            .into_iter()
             .enumerate()
-            .map(|(index, &(i, _, _))| WalkJob {
+            .map(|(index, i)| WalkJob {
                 generation: self.generation,
                 index,
                 parent_id: self.pool[i].id,
@@ -2763,6 +2782,9 @@ impl Engine {
     /// Empty when the pool is not over size.
     pub fn retiring(&self) -> Vec<u64> {
         let owed = self.pool.len().saturating_sub(self.cfg.pool_size);
+        if owed == 0 {
+            return Vec::new(); // and no eviction order to rank
+        }
         let protect = self
             .open
             .as_ref()
@@ -2773,6 +2795,106 @@ impl Engine {
             .take(owed)
             .map(|(i, _)| self.pool[i].id)
             .collect()
+    }
+
+    /// The seed rule, in one place: the top [`SessionConfig::refine_seeds`]
+    /// rows of `ranked` (an [`Engine::ranked`] list) whose member is not in
+    /// `gone`, as pool indices, best first. [`Engine::refine_jobs`] takes its
+    /// parents here, so [`Engine::next_seeds`] cannot drift from it.
+    fn seed_rows(&self, ranked: &[(usize, f64, f64)], gone: &HashSet<u64>) -> Vec<usize> {
+        ranked
+            .iter()
+            .map(|&(i, _, _)| i)
+            .filter(|&i| !gone.contains(&self.pool[i].id))
+            .take(self.cfg.refine_seeds)
+            .collect()
+    }
+
+    /// The parents a generation opened now would refine from, best first:
+    /// the `parent_id`s [`Engine::refine_jobs`] would give its jobs if it ran
+    /// now. Empty before there is a taste to refine toward (no posterior or
+    /// no standardizer), when `refine_jobs` opens nothing.
+    ///
+    /// The top [`SessionConfig::refine_seeds`] of [`Engine::ranked`], under
+    /// the posterior as it stands, so the seeds move with every pick between
+    /// refits as the ranked list does. `refine_jobs` first finishes any
+    /// generation still open, which retires [`Engine::retiring`]; those
+    /// members are passed over here for the same reason.
+    pub fn next_seeds(&self) -> Vec<u64> {
+        self.next_seed_rows(&self.ranked(), &self.retiring())
+    }
+
+    /// [`Engine::next_seeds`] from a ranked list and [`Engine::retiring`]
+    /// already computed. While the pool is over size `retiring` is a whole
+    /// eviction order under the posterior the open generation started with,
+    /// the dearest part of [`Engine::belief`], so it is computed once there.
+    pub(crate) fn next_seed_rows(
+        &self,
+        ranked: &[(usize, f64, f64)],
+        retiring: &[u64],
+    ) -> Vec<u64> {
+        if self.posterior.is_none() || self.standardizer.is_none() {
+            return Vec::new();
+        }
+        let gone: HashSet<u64> = retiring.iter().copied().collect();
+        self.seed_rows(ranked, &gone)
+            .into_iter()
+            .map(|i| self.pool[i].id)
+            .collect()
+    }
+
+    /// The members a generation opened now could retire, lowest first: no
+    /// member outside this list can leave the pool at its end, whatever its
+    /// walks breed, as long as nothing else changes the pool meanwhile (a
+    /// save, an edit, a preset, a ⚡ child).
+    ///
+    /// [`Engine::refine_jobs`] opens with a finish, which retires
+    /// [`Engine::retiring`]: those come first. Then each of the generation's
+    /// `w` walks ([`Engine::next_seeds`]) admits at most one child, and its
+    /// finish retires only as many members as the children put the pool over
+    /// size, lowest first under the posterior it opened with (the current
+    /// one). A member with that many evictable members below it is never
+    /// reached, so the rest of the list is the lowest `pool + w − pool_size`
+    /// evictable members (`w` of them when the pool is at size, fewer while
+    /// it fills): unpinned, and not the seed of a ⚡ in flight.
+    ///
+    /// The engine does not know what the app has cut: a cut member is in the
+    /// pool, ranks low, and is in this list like any other.
+    pub fn may_replace(&self) -> Vec<u64> {
+        let retiring = self.retiring();
+        let walks = self.next_seed_rows(&self.ranked(), &retiring).len();
+        let p = self.posterior.as_deref();
+        self.may_replace_after(retiring, walks, |i| mix_utility(p, &self.pool[i].phi_std))
+    }
+
+    /// [`Engine::may_replace`] given [`Engine::retiring`], the generation's
+    /// `walks`, and each member's utility under the current posterior by pool
+    /// index (all three computed once by a caller that already has them, as
+    /// [`Engine::belief`] has).
+    pub(crate) fn may_replace_after(
+        &self,
+        retiring: Vec<u64>,
+        walks: usize,
+        utility: impl Fn(usize) -> f64,
+    ) -> Vec<u64> {
+        let mut out = retiring;
+        if walks == 0 {
+            return out;
+        }
+        let first: HashSet<u64> = out.iter().copied().collect();
+        let left = self.pool.len() - first.len();
+        let owed = (left + walks).saturating_sub(self.cfg.pool_size);
+        if owed == 0 {
+            return out;
+        }
+        out.extend(
+            self.eviction_order_by(&HashSet::new(), utility)
+                .into_iter()
+                .map(|(i, _)| self.pool[i].id)
+                .filter(|id| !first.contains(id))
+                .take(owed),
+        );
+        out
     }
 
     /// Open a generation with its jobs kept in the engine, and return the

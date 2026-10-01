@@ -1033,8 +1033,40 @@ impl TastePosterior {
         m
     }
 
+    /// [`Self::utility_mix`] and [`Self::responsibilities`] of one candidate
+    /// in a single pass over the draws. Each draw's lens utilities are
+    /// computed once and serve both: the max is its mixture utility, the
+    /// argmax its best lens. The two calls cost about `3K − 2` dot products
+    /// per draw (`best_style` recomputes both sides of every comparison);
+    /// this costs `K`.
+    ///
+    /// Bit-identical to the two calls: the same dot products, folded and
+    /// compared in the same order, summarized by the same arithmetic. It is
+    /// what a summary taken per pool member after every pick can afford
+    /// (`Engine::belief` in `auracle-session`).
+    pub fn utility_mix_and_responsibilities(&self, phi: &[f64]) -> ((f64, f64), Vec<f64>) {
+        let mut resp = vec![0.0; self.k_styles()];
+        let mut us = Vec::with_capacity(self.samples.len());
+        let mut lens = Vec::with_capacity(self.k_styles());
+        for (i, s) in self.samples.iter().enumerate() {
+            lens.clear();
+            lens.extend(s.theta.iter().map(|t| dot(t, phi)));
+            us.push(lens.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+            let best = (0..lens.len())
+                .max_by(|&a, &b| lens[a].total_cmp(&lens[b]))
+                .unwrap_or(0);
+            resp[best] += self.weight(i);
+        }
+        (self.summarize_values(&us), resp)
+    }
+
     fn summarize(&self, f: impl Fn(&TasteSample) -> f64) -> (f64, f64) {
         let us: Vec<f64> = self.samples.iter().map(f).collect();
+        self.summarize_values(&us)
+    }
+
+    /// Weighted mean and std of one value per draw, in draw order.
+    fn summarize_values(&self, us: &[f64]) -> (f64, f64) {
         let mean: f64 = us.iter().enumerate().map(|(i, u)| self.weight(i) * u).sum();
         let var: f64 = us
             .iter()

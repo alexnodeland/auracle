@@ -119,6 +119,26 @@ on when picks landed between absorptions (natively,
 `picks_during_a_generation_do_not_change_which_children_are_kept`). The picks
 count from the next refit, which waits for the generation to end.
 
+### Before a generation: its seeds, and what it may replace
+
+Both are stated by the engine before EVOLVE POOL is pressed.
+
+- **`next_seeds()`** is the parents `refine_jobs` would take if it ran now:
+  the top `refine_seeds` of the ranked list, under the posterior as it
+  stands, so they move with every pick between refits. A saved patch seeds
+  like any other. Natively, `refine_jobs` takes them by the same rule
+  (`next_seeds_and_may_replace_are_what_a_generation_does`).
+- **`may_replace()`** is the members that generation could retire, lowest
+  first. Each walk admits at most one child, and the trim takes only as many
+  members as the children put the pool over size, lowest first. So with the
+  pool at size, nothing outside its `refine_seeds` lowest unpinned members can
+  leave, unless something else changes the pool meanwhile (a save, an edit, a
+  preset). A patch the app has cut is in the pool and ranks low, so it is on
+  this list too: the engine does not know about cuts.
+
+The app is sent both with every pick, beside the ranked numbers
+([the posterior](../taste/posterior.md#what-the-app-is-sent-after-each-pick)).
+
 ## The split is measured
 
 Defaults (in `engine.rs`), both scaled from the grammar’s processor count

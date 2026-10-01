@@ -4,7 +4,7 @@ number: 6
 status: accepted
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 supersedes: null
 superseded_by: null
 ---
@@ -403,5 +403,9 @@ Each is decided as its task in Plan-005 comes up.
 2. **How the model suggests the next module** in an empty or growing patch.
 3. **The cost of posting the belief after every pick,** so TASTE and the
    bank's ratings move per pick.
+   *Answered (2026-10-01):* under 2 ms per pick in wasm at five lenses
+   (under 1 ms at 30 picks), about 4 ms while a generation is open, so it is
+   posted with every pick; the whole map is not
+   ([Plan-005, Measured (task 9a)](../plans/005-the-sound-at-the-centre.md#measured-task-9a)).
 4. **The palette's twelve new directions:** how each is defined in φ, and how
    often each is reachable.

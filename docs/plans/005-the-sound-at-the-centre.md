@@ -4,7 +4,7 @@ number: 5
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 originating_proposal: 6
 related_adrs: [4, 11, 12]
 ---
@@ -134,6 +134,28 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
     - Space in PERFORM and EVOLVE playing the edited patch;
     - Space after a chip;
     - selector changes reaching held notes.
+
+## Measured (task 9a)
+
+`crates/auracle-wasm/examples/pick_belief.rs` (native) and
+`pick_belief.mjs` beside it (the built package under node, V8): the app's
+pool of 40, a refit every sixth pick, 100 picks decided by the model's own
+forecast and a seeded coin, on an Apple M3 Max. Medians in ms, wasm:
+
+| Lenses (picks) | The reweight | `belief` at rest | `belief`, generation open (pool 49 of 40) | Ranked list | Whole map | Refit |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2 (25–42) | 0.21 | 0.74 | 1.80 | 0.83 | 4.2 | 0.36 s |
+| 5 (85–100) | 0.35 | 1.64 | 3.91 | 1.71 | 28.0 | 1.07 s |
+
+wasm runs it 1.2 to 1.3 times slower than native. The first cut took its
+numbers from the calls that already existed and cost 7.9 ms native at five
+lenses; one pass over the draws per member brought it to 1.34.
+
+Decisions: every reply to a pick carries the ratings (`WasmEngine::belief`,
+posted as `ratings`), as does every views post. The whole map is not posted
+per pick: its history ghosts and projection cost 28 ms by 100 picks and grow
+with the history, so they wait for a refit. Task 9b exposes the seed ids
+rather than the count: `seeds` and `may_replace` ride in the same field.
 
 ## Done when
 
