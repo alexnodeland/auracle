@@ -325,7 +325,7 @@ in 9 s* while it waits, with a thin amber arc inside the ring filling toward
 that move; *drift · walking…* while the walk looks for the next setting;
 *drift · gliding* while the knobs glide (*· no taste yet* before the model has
 been fitted); *ideas · one in B* while B holds an offer; *paused 3 s* while
-your hands are on other controls; *held*; and *staying: nothing better
+your hands are on other controls; *frozen*; and *staying: nothing better
 nearby* when the walk finds nothing it prefers, and the sound stays put.
 Wander only runs while PERFORM is on screen.
 
@@ -341,7 +341,7 @@ you. Turning Wander itself is not a touch: it waits while you turn it, and
 answers once you let go.
 
 **Tap to hold.** A short tap on Wander (or the **Freeze** pad) freezes it where
-it is. The dial reads *held*. Tap again to release.
+it is. The dial reads *frozen*. Tap again to release.
 
 ## The pads
 

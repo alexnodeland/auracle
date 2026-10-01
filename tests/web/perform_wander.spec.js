@@ -11,7 +11,7 @@
 // Now: let go in a new zone and the first move is asked for about 1.5 s later;
 // Wander's drag never pauses it; three ticks mark ideas, drift and roam; the
 // line under Wander carries its state ("drift · next in 9 s", "paused 3 s",
-// "held") with a thin arc counting down; the status line keeps to the patch.
+// "frozen") with a thin arc counting down; the status line keeps to the patch.
 //
 // The spec records PERFORM's requests to the engine by wrapping `Worker`
 // before `main.js` runs.
@@ -113,9 +113,9 @@ test("Wander answers a second and a half after it is let go, and says what it is
   await expect(sub).toHaveText(/^paused [1-4] s$/, { timeout: 2_000 });
   await expect(sub).not.toHaveText(/^paused/, { timeout: 8_000 });
 
-  // Held.
+  // Frozen.
   await page.locator(".pf-pad", { hasText: "Freeze" }).click();
-  await expect(sub).toHaveText("held");
+  await expect(sub).toHaveText("frozen");
   await page.locator(".pf-pad", { hasText: "Freeze" }).click();
 
   const statuses = await page.evaluate(() => window.__statuses);

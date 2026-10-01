@@ -43,7 +43,8 @@ changelog that edits its own past is not a record.
   tooltip now splits it (*52 picks · 4 stars · 2 cuts*), and EVOLVE’s meter
   still counts picks. The bank’s tabs read POOL, SAVED, and PRESETS; PATCH’s
   COMMIT is KEEP AS NEW and its HELD tray is SET ASIDE; a pair’s ⌖ BENCH and
-  SKIP ↻ are OPEN IN PATCH and ANOTHER PAIR.
+  SKIP ↻ are OPEN IN PATCH and ANOTHER PAIR. While Freeze stops Wander, the
+  line under it reads *frozen*, where it read *held*.
 - **A guess is a percentage and a word, never a bare number.** The line
   above the rack reads *59% · leaning* where it read MODEL’S GUESS 0.59, and
   a pair’s forecast reads *it guessed this · 72% · fairly sure*. The words

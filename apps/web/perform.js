@@ -569,7 +569,7 @@ export function createPerform(host) {
   // counting down to one.
   function wanderState() {
     const z = wanderZone(state.wander);
-    if (state.hold) return ["held", null];
+    if (state.hold) return ["frozen", null];
     if (z === "still") return ["still", null];
     if (state.wanderGrab) return [z, null];
     const now = performance.now();

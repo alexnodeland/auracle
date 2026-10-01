@@ -16,12 +16,6 @@
     "recognise": 3,
     "travelled": 3
   },
-  "apps/web/perform.js": {
-    "HELD": 1
-  },
-  "apps/web/worker.js": {
-    "retired": 1
-  },
   "www/docs/src/accessibility.md": {
     "catalogue": 1,
     "colour": 3,

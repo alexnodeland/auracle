@@ -597,8 +597,9 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
       if (retirable && state.tries >= MAX_TRIES) {
         // The one path that can change pool content versus a clean run. Say so
         // — a silently different bank is far worse than a slow one. In the log
-        // rather than the console: it is contention, not a fault.
-        logNote(`[auracle] draw ${i} retired after ${state.tries} attempts`,
+        // rather than the console: it is contention, not a fault. The log is
+        // the engine's own record (window.__aurLog), never shown to a player.
+        logNote(`[auracle] draw ${i} retired after ${state.tries} attempts`, // voice: name
           { kind: "draw_retired", i, tries: state.tries });
         results.set(i, { ok: false });
       } else {
