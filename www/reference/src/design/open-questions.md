@@ -239,8 +239,8 @@ measurement that would settle it.
   revalidation.
 
 - ~~**Remaining quiver hardening.**~~ **Closed.** `voct_to_hz` gained a
-  ±32-octave clamp in quiver-dsp 0.3.0, and Auracle pins 0.3.3 as of the
-  September 2026 audit. Renders inside ±32 octaves are unchanged, so no
+  ±32-octave clamp in quiver-dsp 0.3.0, and Auracle has pinned a clamped
+  quiver since the September 2026 audit (0.3.3 then, 0.4.0 now). Renders inside ±32 octaves are unchanged, so no
   `RENDER_EPOCH` was bumped for it; the render-cache namespace now carries the
   quiver version as its own coordinate (`QUIVER_DSP_VERSION`), which orphans
   the stored rows from 0.2.0 anyway. That is the right outcome, because for pathological CV (chained `Offset`s past ±32

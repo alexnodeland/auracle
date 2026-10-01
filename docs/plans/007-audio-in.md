@@ -4,7 +4,7 @@ number: 7
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 originating_proposal: 8
 related_adrs: [4, 12, 15]
 ---
@@ -29,12 +29,20 @@ measured with audition clips, from quiver to the PATCH plate.
 
 ## Tasks
 
-1. **quiver `AudioInput`.**
-   - Block-fed and multichannel, with a host API to write each block before
-     processing.
-   - Tests at block boundaries and with mismatched block sizes.
-   - A quiver release: how it is published waits for the maintainer (RFC-008,
-     Open 1). Until then, a path dependency on a branch, for local work only.
+1. **quiver `AudioInput`.** *Done* in quiver-dsp 0.4.0, published to
+   crates.io and npm (`@quiver-dsp/wasm`) from the `v0.4.0` tag (RFC-008,
+   Open 1), and Auracle depends on it from crates.io.
+   - `AudioInput` and `AudioInputStream`: block-fed and multichannel. The
+     host writes each block before processing (`write`, planar, or
+     `write_interleaved`). A stream is read by cursor
+     (`AudioInputStream::new`, for voice-major hosts like `LivePoly`) or on
+     the host's clock (`with_host_clock` and `advance()` per frame, for a
+     frame-by-frame render like `render_phrase`, whose chord voices start
+     mid-block).
+   - Tests at block boundaries and with mismatched block sizes (quiver's
+     `io.rs`), and allocation-free on both sides (`tests/zero_alloc.rs`).
+   - The same release carries quiver's half of tasks 5 and 6: `PitchTracker`
+     (the Track module: pitch by YIN, gate and level) and `Capture`.
 2. **The AUDIO IN term:** knobs (`input`, `gain`, `channel`), `describe`, rare
    in the prior. Walks never change `input`.
 3. **Audition clips:**
@@ -50,9 +58,11 @@ measured with audition clips, from quiver to the PATCH plate.
    - the AUDIO IN plate: device select, level meter, live face;
    - monitoring off, with a headphones note.
 5. **Track** (pitch by YIN, gate, level) in quiver and the grammar. Play the
-   patch from a voice or an instrument.
+   patch from a voice or an instrument. quiver's half is done
+   (`PitchTracker`, 0.4.0).
 6. **Capture** (record and play back) in quiver and the grammar. A captured
-   buffer is saved with the sound.
+   buffer is saved with the sound. quiver's half is done (`Capture`, 0.4.0,
+   which saves its take with the patch).
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004).
 

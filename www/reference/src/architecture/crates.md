@@ -125,7 +125,7 @@ the parts that constrain the engine are in [The web runtime](../runtime.md).
 
 | | |
 |---|---|
-| `quiver-dsp` **0.3.3** | Modular DSP. Library name is `quiver` |
+| `quiver-dsp` **0.4.0** | Modular DSP. Library name is `quiver` |
 | `fugue-evo` **0.3.1** | Evolution as inference. `default-features = false`, because `checkpoint` and `parallel` do not compile on wasm32 |
 | `fugue-ppl` **0.2.2** | The probabilistic programming layer |
 
