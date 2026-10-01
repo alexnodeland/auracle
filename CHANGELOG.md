@@ -14,7 +14,8 @@ changelog that edits its own past is not a record.
   In PERFORM and EVOLVE, Space played the preset as it was saved: change a
   wave in PATCH, switch to PERFORM, press Space, and you heard the old wave.
   It now plays the edited sound there too, and waits for an edit still on
-  its way, as ▶ does in PATCH.
+  its way, as ▶ does in PATCH; while it waits, the sound’s name at the right
+  of the keybed says so.
 - **Space plays after a click on a setting or a control.** A click on a
   wave or filter-mode chip left it focused, and Space then changed the
   setting again; after a drag on a PERFORM control or a click on the XY

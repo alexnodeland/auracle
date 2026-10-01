@@ -222,6 +222,9 @@ let perform = null;          // from perform.js, once the voices exist
 let benchPending = null;
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
 let liveLabelText = "no sound";
+// A ▶ or Space waiting for the bench lane to settle (see `playBench`); the
+// dock's label says so outside PATCH (`paintLiveLabel`).
+let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
@@ -3497,13 +3500,27 @@ function refreshNames() {
   const text = `${nameOf(id)}${edited ? dirtySuffix() : ""}`;
   if (text === liveLabelText) return;
   liveLabelText = text;
-  $("live-label").textContent = text;
+  paintLiveLabel();
   if (perform) perform.relabel();
+}
+
+// The dock's label names what the keys play, and, outside PATCH, says when
+// Space is waiting for an edit to land (`playOnSettle`): there ▶ is out of
+// sight, and the press was otherwise answered by nothing until the phrase
+// began, which on a busy engine is seconds (ADR-009: acknowledged within
+// 100 ms, on what the player has). In PATCH the ▶'s dotted ring says it.
+const SPACE_WAITS = " · ▶ waits for the edit";
+function paintLiveLabel() {
+  const el = $("live-label");
+  const waits = playOnSettle && currentView !== "play";
+  el.textContent = waits ? `${liveLabelText}${SPACE_WAITS}` : liveLabelText;
+  if (waits) el.setAttribute("aria-busy", "true");
+  else el.removeAttribute("aria-busy");
 }
 
 function setLiveLabel(text) {
   liveLabelText = text;
-  $("live-label").textContent = text;
+  paintLiveLabel();
   // The tree reaches PERFORM first (`setLivePatchJson`) and its name second,
   // so PERFORM read the label while it still named the previous patch: a
   // sweep of twelve presets was off by one every time.
@@ -7451,10 +7468,12 @@ function livePending() {
 // patch and not the one leaving.
 //
 // The ▶ says it heard you at once (`.pending`, as a bank ▶ waiting for its
-// render does). It is a claim on the next phrase only while PATCH is the view
-// and nothing else has been asked to sound: a second press on it, Space, any
-// other ▶, an open, a failed open and leaving PATCH all take it back.
-let playOnSettle = false;
+// render does), and outside PATCH, where ▶ is out of sight and Space pressed
+// it, the dock's label does (`paintLiveLabel`). It is a claim on the next
+// phrase only while the view it was pressed in is shown and nothing else has
+// been asked to sound: a second press on it, Space, any other ▶, an open, a
+// failed open and any change of view all take it back. (`playOnSettle` is
+// declared beside `liveLabelText`, which the dock's label reads with it.)
 
 /** Nothing in the lane, nothing at the worker, no patch on its way. */
 function benchSettled() {
@@ -7467,6 +7486,7 @@ function playBench() {
     const b = $("rack-play");
     b.classList.add("pending");
     b.setAttribute("aria-busy", "true");
+    paintLiveLabel();
     return;
   }
   playWaitCancel();
@@ -7489,6 +7509,7 @@ function playWaitCancel() {
   const b = $("rack-play");
   b.classList.remove("pending");
   b.removeAttribute("aria-busy");
+  if (was) paintLiveLabel();
   return was;
 }
 

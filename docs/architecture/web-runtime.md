@@ -201,7 +201,9 @@ through one ordered lane in `main.js`:
   the bench (`toggleAudition`): PERFORM and EVOLVE play the edited patch and
   wait for an edit in flight as PATCH does, and with ▶ disabled Space says
   why rather than playing the bank's render of the patch from before any
-  edit. Outside PATCH nothing lights while it waits: ▶ is PATCH's.
+  edit. Outside PATCH, where ▶ is out of sight, the dock's label says Space
+  waits (`paintLiveLabel`: "· ▶ waits for the edit", `aria-busy`) within the
+  same frame as the press.
 - Space is the transport even with a drawn control focused (a rack knob, a
   PERFORM control, the XY pad): only a native button, or a control whose own
   handler used the key (`defaultPrevented`), keeps it. A rack setting's chip

@@ -35,7 +35,7 @@ are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>Space</kbd> | Hear the sound you’re playing, with your edits. Pressed while an edit is on its way, it plays once the edit lands. It plays with a knob or a PERFORM control focused. |
+| <kbd>Space</kbd> | Hear the sound you’re playing, with your edits. Pressed while an edit is on its way, it plays once the edit lands; outside PATCH the sound’s name at the right of the keybed reads *· ▶ waits for the edit* until then. It plays with a knob or a PERFORM control focused. |
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the sound you’re on |
 | <kbd>m</kbd> | Save the sound you’re on |
