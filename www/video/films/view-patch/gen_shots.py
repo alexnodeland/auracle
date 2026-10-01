@@ -25,7 +25,7 @@ BEAT = {b["id"]: b for b in tl["beats"]}
 BAR = 60 / tl["grid"]["bpm"] * tl["grid"]["meter"]
 PRE = 3.4  # a chapter's shot starts a bar before its beat: its card (cards.js) shows the rack at rest
 
-SETTLED = "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')"
+SETTLED = "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')"
 SUBJ = "document.getElementById('rack-subject').textContent"
 
 # The film's session: taught by the warm start (its first, fifth and eighth
