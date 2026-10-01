@@ -1076,12 +1076,21 @@ export function createPerform(host) {
   // set said "measuring…" again after every visitor reset. The wiring itself
   // is uid-free (its knobs are trace addresses), and the engine already
   // treats two trees that differ only in uids as the same patch.
+  //
+  // A sound with an AUDIO IN is measured with the session's audition clip
+  // (Plan-007), so under another clip the same patch measures differently:
+  // its key carries the clip. Only on a tree that parses, so a stored key that
+  // already carries one re-keys as itself; and only for a sound that listens,
+  // so a new clip leaves every other wiring where it was.
   function wireKey(json) {
+    let key;
     try {
-      return JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+      key = JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
     } catch {
       return json;
     }
+    const clip = host.clipTag ? host.clipTag() : null;
+    return clip && key.includes('"AudioIn"') ? `${key}|clip:${clip}` : key;
   }
   const wireCache = (() => {
     try {

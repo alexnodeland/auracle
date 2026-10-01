@@ -52,16 +52,16 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, Audition, CachedFeatures, Features, FeaturizeError, PhraseSpec, RenderMemo,
-    VetFailure,
+    featurize_memo, Audition, AuditionClip, CachedFeatures, ClipError, ClipSource, Features,
+    FeaturizeError, PhraseSpec, RenderMemo, VetFailure,
 };
 use auracle_grammar::{
     apply_struct_op, describe, presets, set_param, validate_tree, ParamValue, PatchGrammarPrior,
     PatchTree, StructOp,
 };
 use auracle_session::{
-    run_walk, BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy,
-    SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
+    run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, Origin, PreFeaturized,
+    Profile, RenderPolicy, SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -226,9 +226,34 @@ impl RenderJob {
 /// granularity: φ moving invalidates everything measured under the old φ.
 #[wasm_bindgen]
 pub fn cache_namespace(phrase_json: &str) -> String {
-    serde_json::from_str::<PhraseSpec>(phrase_json)
+    parsed_phrase(phrase_json)
         .map(|spec| auracle_features::cache_namespace(&spec))
         .unwrap_or_default()
+}
+
+thread_local! {
+    /// The last phrase this instance parsed, with the text it came from.
+    /// A phrase carrying an audition clip is ~600 KB of JSON, and the farm
+    /// hands the same text to every `farm_render` and `farm_key`; parsing it
+    /// once per instance, not once per render, is the difference. Matched on
+    /// the whole text, so a new clip is never mistaken for the last one.
+    static PHRASE: RefCell<Option<(String, Arc<PhraseSpec>)>> = const { RefCell::new(None) };
+}
+
+/// `phrase_json` parsed, through [`PHRASE`]; `None` if it does not parse.
+fn parsed_phrase(phrase_json: &str) -> Option<Arc<PhraseSpec>> {
+    let hit = PHRASE.with(|p| {
+        p.borrow()
+            .as_ref()
+            .filter(|(text, _)| text == phrase_json)
+            .map(|(_, spec)| Arc::clone(spec))
+    });
+    if hit.is_some() {
+        return hit;
+    }
+    let spec = Arc::new(serde_json::from_str::<PhraseSpec>(phrase_json).ok()?);
+    PHRASE.with(|p| *p.borrow_mut() = Some((phrase_json.to_owned(), Arc::clone(&spec))));
+    Some(spec)
 }
 
 /// The persistent render cache's key for `(tree_json, phrase_json)`,
@@ -240,9 +265,9 @@ pub fn cache_namespace(phrase_json: &str) -> String {
 /// inputs and is the one place allowed to reject them.
 #[wasm_bindgen]
 pub fn farm_key(tree_json: &str, phrase_json: &str) -> String {
-    let (Ok(tree), Ok(spec)) = (
+    let (Ok(tree), Some(spec)) = (
         serde_json::from_str::<PatchTree>(tree_json),
-        serde_json::from_str::<PhraseSpec>(phrase_json),
+        parsed_phrase(phrase_json),
     ) else {
         return String::new();
     };
@@ -289,9 +314,9 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
         cached: String::new(),
         samples: Vec::new(),
     };
-    let (Ok(tree), Ok(spec)) = (
+    let (Ok(tree), Some(spec)) = (
         serde_json::from_str::<PatchTree>(tree_json),
-        serde_json::from_str::<PhraseSpec>(phrase_json),
+        parsed_phrase(phrase_json),
     ) else {
         return rejected();
     };
@@ -373,6 +398,53 @@ pub fn farm_walk(context_json: &str, job_json: &str) -> String {
     };
     let result = WALK_MEMO.with(|memo| run_walk(&ctx, &job, memo));
     serde_json::to_string(&result).unwrap_or_default()
+}
+
+/// [`WasmEngine::audition_clip`]'s reply: the status, and the sentence the
+/// app shows for it. Serialized from this struct (ADR-002).
+#[derive(Serialize)]
+struct ClipView<'a> {
+    note: &'static str,
+    #[serde(flatten)]
+    clip: &'a ClipStatus,
+}
+
+/// [`WasmEngine::set_audition_clip`]'s reply. Ids are `u32` at the boundary.
+#[derive(Serialize)]
+struct ClipReply<'a> {
+    ok: bool,
+    note: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    clip: &'a ClipStatus,
+    remeasured: Vec<u32>,
+    unmeasured: Vec<u32>,
+}
+
+/// The sentence the app shows for which clip the model hears the sounds
+/// that listen through.
+fn clip_note(status: &ClipStatus) -> &'static str {
+    match (status.source, status.unreadable.is_some()) {
+        (ClipSource::Captured, _) => {
+            "The model hears sounds with an input through the clip captured from it."
+        }
+        (ClipSource::Reference, false) => {
+            "The model hears sounds with an input through a built-in phrase until your input is captured."
+        }
+        (ClipSource::Reference, true) => {
+            "The saved input clip didn't load, so the model hears sounds with an input through the built-in phrase. Capture your input again to replace it."
+        }
+    }
+}
+
+/// The sentence for a capture the engine would not take.
+fn refused_note(e: &ClipError) -> &'static str {
+    match e {
+        ClipError::Silent { .. } => {
+            "That capture was silent, so nothing changed. Check the input, then capture again."
+        }
+        _ => "That capture couldn't be used, so nothing changed. Try capturing again.",
+    }
 }
 
 /// A generation's jobs, as [`WasmEngine::refine_jobs`] replies: the context
@@ -2529,6 +2601,86 @@ impl WasmEngine {
         format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped}}}"#)
     }
 
+    // ------------------------------------------------------------------
+    // Audition clips (Plan-007 task 3, ADR-015)
+    // ------------------------------------------------------------------
+
+    /// Measure the sounds that listen with a clip captured from the player's
+    /// input: `samples` interleaved, `channels` per frame (1 or 2), at
+    /// `sample_rate` (the AudioContext's; the engine resamples it to the
+    /// phrase's, quantizes it to 16 bits and cuts it to the phrase's length).
+    /// The pool's members that listen are measured again with it, and it is
+    /// saved with the session from now on. Replies as JSON:
+    ///
+    /// ```json
+    /// {"ok":true,"note":"…","clip":{"source":"captured","id":"…","seconds":5.05,"channels":1},
+    ///  "remeasured":[3,9],"unmeasured":[]}
+    /// {"ok":false,"note":"…","error":"the clip is silent (rms 0.0e0)","clip":{…},
+    ///  "remeasured":[],"unmeasured":[]}
+    /// ```
+    ///
+    /// A refused clip changes nothing. `note` is the sentence the app shows;
+    /// `error` is for the console. An accepted clip changes
+    /// [`Self::phrase_json`], so the farm's handshake has to be sent again;
+    /// until it is, a farm render of a sound that listens carries the old
+    /// clip's key, and the engine measures that sound itself.
+    pub fn set_audition_clip(
+        &mut self,
+        samples: Vec<f32>,
+        channels: u32,
+        sample_rate: f64,
+    ) -> String {
+        match AuditionClip::from_interleaved(
+            &samples,
+            channels as usize,
+            sample_rate,
+            &self.engine.cfg.phrase,
+        ) {
+            Ok(clip) => {
+                let change = self.engine.set_audition_clip(Some(clip));
+                self.clip_reply(None, change)
+            }
+            Err(e) => self.clip_reply(Some(e), ClipChange::default()),
+        }
+    }
+
+    /// Go back to measuring the sounds that listen with the built-in
+    /// reference, and measure them again. Replies as
+    /// [`Self::set_audition_clip`] does.
+    pub fn clear_audition_clip(&mut self) -> String {
+        let change = self.engine.set_audition_clip(None);
+        self.clip_reply(None, change)
+    }
+
+    /// Which clip the sounds that listen are measured with, as JSON
+    /// `{"note":"…","source":"reference"|"captured","id":"…","seconds":…,
+    /// "channels":…,"unreadable":"…"?}`. `unreadable` is there after a
+    /// restore whose saved clip could not be read, which is why it is the
+    /// reference.
+    pub fn audition_clip(&self) -> String {
+        let status = self.engine.audition_clip_status();
+        serde_json::to_string(&ClipView {
+            note: clip_note(&status),
+            clip: &status,
+        })
+        .unwrap_or_default()
+    }
+
+    fn clip_reply(&self, refused: Option<ClipError>, change: ClipChange) -> String {
+        let status = self.engine.audition_clip_status();
+        let reply = ClipReply {
+            ok: refused.is_none(),
+            note: refused
+                .as_ref()
+                .map_or_else(|| clip_note(&status), refused_note),
+            error: refused.map(|e| e.to_string()),
+            clip: &status,
+            remeasured: change.remeasured.iter().map(|id| *id as u32).collect(),
+            unmeasured: change.unmeasured.iter().map(|id| *id as u32).collect(),
+        };
+        serde_json::to_string(&reply).unwrap_or_default()
+    }
+
     /// Export the portable profile (observation log + its standardizer — θ
     /// is only meaningful relative to the standardizer, so they travel
     /// together) as JSON.
@@ -2616,6 +2768,89 @@ mod tests {
             "a stored row's key must begin with the namespace it was measured in"
         );
         assert_eq!(farm_key("{", &phrase), "", "an unparsable tree is a miss");
+    }
+
+    /// The session's clip, through the boundary the worker uses. A capture is
+    /// taken (resampled from the context's rate), reported, carried in the
+    /// phrase the farm is handed, folded into a listening sound's stored key
+    /// and nobody else's, saved with the session and restored from it; a
+    /// silent capture is refused and changes nothing; and clearing it goes
+    /// back to the reference.
+    #[test]
+    fn the_session_clip_crosses_the_boundary() {
+        use auracle_grammar::term::{AudioNode, InputChannel};
+        let mut engine = WasmEngine::new(5, 4);
+        while engine.fill_step(4) > 0 {}
+        let status =
+            |e: &WasmEngine| serde_json::from_str::<serde_json::Value>(&e.audition_clip()).unwrap();
+        assert_eq!(status(&engine)["source"], "reference");
+        assert!(status(&engine)["note"]
+            .as_str()
+            .unwrap()
+            .contains("built-in"));
+        let before = engine.phrase_json();
+
+        // A second of a 48 kHz stereo capture.
+        let capture: Vec<f32> = (0..48_000 * 2)
+            .map(|i| {
+                let t = (i / 2) as f32 / 48_000.0;
+                0.3 * (t * 220.0 * std::f32::consts::TAU).sin()
+            })
+            .collect();
+        let silent = engine.set_audition_clip(vec![0.0; 48_000], 1, 48_000.0);
+        let silent: serde_json::Value = serde_json::from_str(&silent).unwrap();
+        assert_eq!(silent["ok"], false);
+        assert!(silent["error"].as_str().unwrap().contains("silent"));
+        assert_eq!(
+            silent["clip"]["source"], "reference",
+            "a refusal changes nothing"
+        );
+
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.set_audition_clip(capture, 2, 48_000.0)).unwrap();
+        assert_eq!(reply["ok"], true);
+        assert_eq!(reply["clip"]["source"], "captured");
+        assert_eq!(reply["clip"]["channels"], 2);
+        assert!((reply["clip"]["seconds"].as_f64().unwrap() - 1.0).abs() < 0.001);
+        let id = reply["clip"]["id"].as_str().unwrap().to_string();
+        assert_eq!(status(&engine)["id"].as_str().unwrap(), id);
+
+        // The farm's phrase now carries it: a listening sound keys apart,
+        // every other sound and the namespace do not move.
+        let after = engine.phrase_json();
+        assert!(after.contains("\"clip\"") && !before.contains("\"clip\""));
+        let mut listens = auracle_grammar::presets()[0].1.clone();
+        listens.root = AudioNode::AudioIn {
+            uid: auracle_grammar::Uid::NEW,
+            input: 0,
+            gain: auracle_grammar::INPUT_GAIN_UNITY,
+            channel: InputChannel::Both,
+        };
+        let listens = serde_json::to_string(&listens).unwrap();
+        let deaf = serde_json::to_string(&auracle_grammar::presets()[0].1).unwrap();
+        assert_ne!(farm_key(&listens, &before), farm_key(&listens, &after));
+        assert_eq!(farm_key(&deaf, &before), farm_key(&deaf, &after));
+        assert_eq!(cache_namespace(&before), cache_namespace(&after));
+        // And the farm renders with it: the row it returns is the engine's key.
+        let job = farm_render(&listens, &after, false);
+        assert!(job.ok());
+        let row: CachedFeatures = serde_json::from_str(&job.cached()).unwrap();
+        assert_eq!(
+            format!("{}/{}", cache_namespace(&after), row.key),
+            farm_key(&listens, &after)
+        );
+
+        // Saved with the session, and restored from it.
+        let saved = engine.export_session();
+        let mut back = WasmEngine::new(6, 4);
+        assert!(back.import_session(&saved) > 0);
+        assert_eq!(status(&back)["id"].as_str().unwrap(), id);
+        assert_eq!(back.phrase_json(), after);
+
+        let cleared: serde_json::Value =
+            serde_json::from_str(&engine.clear_audition_clip()).unwrap();
+        assert_eq!(cleared["clip"]["source"], "reference");
+        assert_eq!(engine.phrase_json(), before);
     }
 
     /// The menu bar's TAUGHT tooltip splits the count by kind from

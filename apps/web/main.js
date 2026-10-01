@@ -1120,6 +1120,11 @@ const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
 // stimulus, the featurizer's RENDER_EPOCH and the quiver version), from its
 // `ready`. Null until then, or from a binary too old to say.
 let renderNs = null;
+// The content id of the audition clip sounds with an AUDIO IN are measured
+// with (the built-in reference until an input is captured), from `ready` and
+// every `audition_clip` the worker posts. PERFORM keys a listening sound's
+// wiring by it. Null until then, or from a binary too old to say.
+let auditionClip = null;
 
 worker.onmessage = (e) => {
   const m = e.data;
@@ -1290,6 +1295,12 @@ worker.onmessage = (e) => {
     // Order matters here: the copy lands *before* anything else can write,
     // and autosave stays off until the player says "start fresh" or reloads
     // (with a newer build, the next boot reads the record where it is).
+    // Which clip sounds with an AUDIO IN are measured with: after a restore,
+    // and in reply to setting one. Capturing a clip is Plan-007 task 4's.
+    case "audition_clip": {
+      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
+      break;
+    }
     case "restore_failed": {
       saveBlocked = "unparseable";
       clearTimeout(saveTimer);
@@ -1973,6 +1984,7 @@ worker.onmessage = (e) => {
     // budget readout cannot restate a number the grammar has since moved.
     case "ready": {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
+      auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -3931,6 +3943,8 @@ async function bootPerform() {
     // …and in φ, as this binary renders it: a wiring measured under another
     // render namespace (a new quiver, a new featurizer) is re-measured.
     renderNs: () => renderNs,
+    // …and, for a sound with an AUDIO IN, the clip its φ was measured with.
+    clipTag: () => auditionClip,
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,
@@ -9648,8 +9662,10 @@ function buildRack(svg, rack, opts) {
       nbSocketClick(j);
       return true;
     };
-    // A `silence` leaf is a source with nothing in it: no input socket.
-    const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence";
+    // A `silence` leaf is a source with nothing in it: no input socket. An
+    // `audio_in` is a source too (its signal comes from outside the patch),
+    // though it has no palette entry until the app can capture an input.
+    const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence" || m.kind === "audio_in";
     if (m.is_mod) {
       // A modulator's output is a cable source too, but only the one sitting
       // *in* the slot: the deeper links of a CV chain are the chain's own

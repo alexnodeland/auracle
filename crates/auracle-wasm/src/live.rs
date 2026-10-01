@@ -3,15 +3,19 @@
 //!
 //! This is the "instrument" half of the app (the `WasmEngine` in the worker
 //! is the "brain"). It shares the exact compilation path evolution uses —
-//! `auracle_grammar::compile` with the mandatory ADSR → VCA → Limiter chain
-//! — so what you play is byte-for-byte the patch that was evolved, limiter
-//! included.
+//! `auracle_grammar::compile_with_input` with the mandatory ADSR → VCA →
+//! Limiter chain — so what you play is byte-for-byte the patch that was
+//! evolved, limiter included. Where evolution binds an AUDIO IN to the
+//! audition clip, the instrument binds it to the live input
+//! ([`LivePoly::write_input`]), one stream for every voice.
 //!
 //! ## Audio-thread discipline (no clicks, no zipper, no GC)
 //!
 //! - **Zero allocation per quantum**: [`LivePoly::process_ptr`] renders into
 //!   a persistent internal buffer and returns a pointer; the worklet views
-//!   wasm memory directly. The `Vec`-returning [`LivePoly::process`] exists
+//!   wasm memory directly. The live input goes the other way through a
+//!   persistent buffer of its own ([`LivePoly::input_ptr`]) and a stream
+//!   built once, in [`LivePoly::new`]. The `Vec`-returning [`LivePoly::process`] exists
 //!   for native tests only.
 //! - **Parameter smoothing**: [`LivePoly::set_param`] never jumps a value.
 //!   It sets a target; every quantum a one-pole ramp advances the live
@@ -57,12 +61,19 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile, ParamMap, PatchTree};
+use auracle_grammar::{compile_with_input, ParamMap, PatchTree};
 use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
-use quiver::AtomicF64;
+use quiver::{AtomicF64, AudioInputStream};
 use wasm_bindgen::prelude::*;
 
 const GATE_ON: f64 = 5.0;
+/// Channels of the live input every AUDIO IN reads: a stereo input, which a
+/// mono one fills on both sides.
+pub const LIVE_INPUT_CHANNELS: usize = 2;
+/// The most frames one write of the live input holds. Web Audio's render
+/// quantum is 128 frames; this leaves room for a host that renders larger
+/// blocks, and is all the stream allocates.
+pub const LIVE_INPUT_FRAMES: usize = 1024;
 /// |L|+|R| below this counts as silence for voice parking.
 const SILENCE_EPS: f64 = 1.0e-6;
 /// Consecutive silent frames (post-release) before a voice is parked.
@@ -537,6 +548,16 @@ pub struct LivePoly {
     beats: f64,
     /// One per `steps` module in the patch.
     sync_lanes: Vec<SyncLane>,
+    /// The live input every AUDIO IN in every voice reads (ADR-015). Built
+    /// once, in [`LivePoly::new`], in quiver's cursor mode: the voices render
+    /// a quantum one after another and start and resume at quantum
+    /// boundaries, which is the host that mode keeps in step. Every rebuilt
+    /// voice binds this same stream, so a patch swap needs no new one.
+    input: Arc<AudioInputStream>,
+    /// Where the worklet writes each quantum's input, interleaved, before
+    /// [`LivePoly::write_input`] publishes it: a view into wasm memory
+    /// ([`LivePoly::input_ptr`]), so a quantum's input costs no allocation.
+    input_buf: Vec<f32>,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -635,8 +656,12 @@ impl Meter {
     }
 }
 
-fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
-    let voice = compile(tree, sample_rate).map_err(|e| e.to_string())?;
+fn build_voice(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: &Arc<AudioInputStream>,
+) -> Result<Voice, String> {
+    let voice = compile_with_input(tree, sample_rate, Some(input)).map_err(|e| e.to_string())?;
     voice.gate.set(0.0);
     Ok(Voice {
         voice,
@@ -662,8 +687,12 @@ impl LivePoly {
         let tree: PatchTree =
             serde_json::from_str(tree_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let n = n_voices.max(1);
+        let input = Arc::new(AudioInputStream::new(
+            LIVE_INPUT_CHANNELS,
+            LIVE_INPUT_FRAMES,
+        ));
         let voices: Vec<Voice> = (0..n)
-            .map(|_| build_voice(&tree, sample_rate))
+            .map(|_| build_voice(&tree, sample_rate, &input))
             .collect::<Result<_, _>>()
             .map_err(|e| JsValue::from_str(&e))?;
         let param_slots = intern_params(&voices);
@@ -714,6 +743,8 @@ impl LivePoly {
             sync_on: false,
             beats: 0.0,
             sync_lanes: Vec::new(),
+            input,
+            input_buf: vec![0.0; LIVE_INPUT_FRAMES * LIVE_INPUT_CHANNELS],
         })
         .map(|mut p| {
             p.rebuild_sync_lanes();
@@ -1683,7 +1714,7 @@ impl LivePoly {
             };
             let mut built = built;
             if let Some(tree) = self.pending.clone() {
-                match build_voice(&tree, self.sample_rate) {
+                match build_voice(&tree, self.sample_rate, &self.input) {
                     Ok(v) => {
                         built.push(v);
                         if built.len() >= self.n_voices {
@@ -1785,6 +1816,45 @@ impl LivePoly {
     fn emit_silence(&mut self, frames: usize) {
         self.out_buf.clear();
         self.out_buf.resize(frames * 2, 0.0);
+    }
+
+    /// Where to write a quantum's live input, interleaved
+    /// (`[l0, r0, l1, r1, …]` for stereo, `[x0, x1, …]` for mono): a view
+    /// into wasm memory holding [`Self::input_capacity`] frames of
+    /// [`LIVE_INPUT_CHANNELS`] samples. Write it, call
+    /// [`Self::write_input`], then [`Self::process_ptr`], every quantum.
+    pub fn input_ptr(&mut self) -> *mut f32 {
+        self.input_buf.as_mut_ptr()
+    }
+
+    /// The most frames one quantum's input may hold.
+    pub fn input_capacity(&self) -> usize {
+        LIVE_INPUT_FRAMES
+    }
+
+    /// Publish the `frames` frames of `channels` interleaved samples just
+    /// written at [`Self::input_ptr`] as this quantum's input: every AUDIO IN
+    /// in every voice plays them over the next `frames` frames. Allocation
+    /// free; frames past the capacity are dropped, and a channel count of 0
+    /// (or above two) is read as the stream's own two.
+    ///
+    /// Write before each [`Self::process_ptr`]. Without a write the input is
+    /// silent (quiver never repeats a block), so a dropped or stopped capture
+    /// falls silent rather than looping.
+    pub fn write_input(&mut self, frames: usize, channels: usize) {
+        let channels = if (1..=LIVE_INPUT_CHANNELS).contains(&channels) {
+            channels
+        } else {
+            LIVE_INPUT_CHANNELS
+        };
+        let n = frames.min(LIVE_INPUT_FRAMES) * channels;
+        self.input.write_interleaved(&self.input_buf[..n], channels);
+    }
+
+    /// Silence the live input at once: the capture stopped or the device
+    /// went away.
+    pub fn clear_input(&mut self) {
+        self.input.clear();
     }
 
     /// Render `frames` frames into the internal interleaved-stereo buffer
@@ -2970,6 +3040,94 @@ mod tests {
         assert!(
             (ours - theirs).abs() < 0.05,
             "leveler reads {ours:.3} LUFS, the featurizer {theirs:.3}"
+        );
+    }
+
+    /// A patch that is its input through the voice stage.
+    fn input_patch() -> String {
+        use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel};
+        serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: auracle_grammar::PARAM_MAX,
+                release: 0.0,
+            },
+            root: AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: 0,
+                gain: auracle_grammar::INPUT_GAIN_UNITY,
+                channel: InputChannel::Left,
+            },
+        })
+        .unwrap()
+    }
+
+    /// Write one quantum of input (a tone on the left, the right silent) and
+    /// render it.
+    fn quantum_with_input(poly: &mut LivePoly, t0: usize, write: bool) -> f32 {
+        const Q: usize = 128;
+        if write {
+            let at = poly.input_ptr();
+            // The worklet's side of the contract: write wasm memory directly.
+            let buf = unsafe { std::slice::from_raw_parts_mut(at, Q * 2) };
+            for f in 0..Q {
+                let x = ((t0 + f) as f32 * 330.0 / 44_100.0 * std::f32::consts::TAU).sin();
+                buf[f * 2] = 0.5 * x;
+                buf[f * 2 + 1] = 0.0;
+            }
+            poly.write_input(Q, 2);
+        }
+        let out = poly.process(Q);
+        out.iter().fold(0.0f32, |m, s| m.max(s.abs()))
+    }
+
+    /// **The live voice hears its input.** An AUDIO IN patch played from the
+    /// keys plays the quantum written into it, every held voice reads the same
+    /// block (the cursor stream fans one capture out), and a quantum with no
+    /// write is silent: quiver never repeats a block, so a stalled capture
+    /// falls silent rather than looping.
+    #[test]
+    fn the_live_voice_hears_its_input() {
+        let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
+        assert!(poly.input_capacity() >= 128);
+        poly.set_leveler(false);
+        poly.note_on(60, 1.0);
+        let mut heard = 0.0f32;
+        for q in 0..40 {
+            heard = heard.max(quantum_with_input(&mut poly, q * 128, true));
+        }
+        assert!(heard > 0.05, "the input is heard ({heard})");
+        // The input's DC blocker rings down for a few quanta after the last
+        // write; past that, a replayed block would still be at full level.
+        for q in 40..48 {
+            quantum_with_input(&mut poly, q * 128, false);
+        }
+        let mut quiet = 0.0f32;
+        for q in 48..56 {
+            quiet = quiet.max(quantum_with_input(&mut poly, q * 128, false));
+        }
+        assert!(
+            quiet < heard / 100.0,
+            "a quantum with no input written replayed one ({quiet} against {heard})"
+        );
+
+        // Two held voices read the same block: twice the one voice.
+        let mut one = LivePoly::new(&input_patch(), 44_100.0, 4).unwrap();
+        let mut two = LivePoly::new(&input_patch(), 44_100.0, 4).unwrap();
+        for p in [&mut one, &mut two] {
+            p.set_leveler(false);
+            p.note_on(60, 1.0);
+        }
+        two.note_on(67, 1.0);
+        let (mut a, mut b) = (0.0f32, 0.0f32);
+        for q in 0..40 {
+            a = a.max(quantum_with_input(&mut one, q * 128, true));
+            b = b.max(quantum_with_input(&mut two, q * 128, true));
+        }
+        assert!(
+            b > 1.5 * a,
+            "the second voice did not hear the block: one voice {a}, two voices {b}"
         );
     }
 }
