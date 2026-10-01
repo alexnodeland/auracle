@@ -383,9 +383,11 @@ def deess(y, st):
     n = len(hi) // hop * hop
     lv = 20 * np.log10(np.sqrt(np.mean(hi[:n].reshape(-1, hop, hi.shape[1]) ** 2, axis=(1, 2))) + 1e-9)
     gr = np.clip((lv - st["threshold_dbfs"]) * (1 - 1 / st["ratio"]), 0, st["max_cut_db"])
-    active = float((gr > 0).mean() * 100) if len(gr) else 0.0
     gr = np.concatenate([np.repeat(gr, hop), np.zeros(len(hi) - n)])
     gr = follower(gr / st["max_cut_db"], st["attack_ms"], st["release_ms"]) * st["max_cut_db"]
+    # Its activity as SPEC section 6 measured it: the share of the time it
+    # cuts by more than half a decibel.
+    active = float((gr > 0.5).mean() * 100) if len(gr) else 0.0
     return rest + hi * (10 ** (-gr / 20))[:, None], active
 
 
