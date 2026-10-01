@@ -66,6 +66,8 @@ plugins work on it.
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
 | [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
+| 005 | reserved | The sonic floor: where the measurement lives, what it costs, and the first deals (named by RFC-004; not yet written) |
+| [006](proposals/006-the-sound-at-the-centre.md) | in-review | The sound at the centre: one space, shown as it works |
 
 ## Plans
 
@@ -89,6 +91,9 @@ plugins work on it.
   view by view, at rest and on request (measured; informed RFC-004)
 - [`plugin-lab/`](notes/plugin-lab/README.md): named controls measured on a
   third-party synth, a feasibility study for a plugin
+- [`vision-2026-09/`](notes/vision-2026-09/README.md): prototype v2 (the
+  sound at the centre), the maintainer's decisions round by round, and the
+  review of it on desktop and phones (informed RFC-006)
 
 ## Runbooks
 

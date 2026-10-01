@@ -1,0 +1,73 @@
+<div class="cap" style="color:var(--amber)">Prototype v2 · for approval</div>
+<h2>The sound at the centre</h2>
+<p>One space instead of four pages. The sound you are holding stays at the centre, and depth is literal: zoom out to see it among every sound, zoom in to see what it is made of, step aside to see what it could become. Every sound is a real preset rendered by the engine; every shape is computed from its audio.</p>
+
+<h3>Try</h3>
+<ul>
+  <li><b>Move through the space.</b> Pinch or ⌥-scroll, ⌥↑ and ⌥↓, or the rail on the right. Watch the sound's own vessel carry you between levels.</li>
+  <li><b>Press N for an offer.</b> It grows out of the sound in hand. Hold B to hear it, ⇧↵ to take it (it fills with green as it becomes yours), or pass. Either counts as a pick only once you have heard it.</li>
+  <li><b>⌥←, then keep a few with ← and →.</b> Six picks and it fits. Point at EVOLVE POOL to see which sounds will seed the walks and which may be replaced; press it, and watch each child grow out of its seed.</li>
+  <li><b>Drop a sound file on the well.</b> Its face appears, and the presets nearest it lean in.</li>
+  <li><b>⇧F</b> for stage mode: play, and each note lights its own pitch on the vessel.</li>
+  <li><b>Point at anything and press ?</b> (on a phone, hold it) to ask. A figure answers; <b>How it works</b> explains the control you last touched.</li>
+  <li><b>Arrange your controls</b> (or tap +): choose which controls sit on PERFORM, in what order. Each is a blend over the sound's own knobs, and its preview shows what it would do to this sound.</li>
+  <li><b>In PATCH on a phone, tap a module</b> to fine-tune it: every setting as a wide slider with steps. In a new patch, remove modules, skip a suggestion, or clear it all.</li>
+</ul>
+
+<h3>Show the mechanism</h3>
+<p>What happens under the hood is shown as faces moving, not as words, and only what the engine actually does. Built here:</p>
+<ul>
+  <li>An offer grows out of the sound it comes from and carries its parent's outline, so what changed shows. Taken, it fills with green from the base; passed, it folds back.</li>
+  <li>A kept sound flies to its place on the map, and the pick is drawn as what it teaches: a direction, from the sound passed to the sound kept. Every halo moves at once, because one pick moves every rating.</li>
+  <li>Breeding: the six sounds the model rates highest each seed a walk. Each child buds from its seed and flies into the bank's New group, or, rated below the weakest sound in the pool, fades beside its seed. When the walks are in, the lowest-rated sounds are replaced; a saved one never is.</li>
+  <li>Zooming carries the sound's own vessel between levels.</li>
+  <li>In stage mode, the vessel is a keyboard on its side: a note lights its pitch.</li>
+  <li>A control added to your panel flies from its preview into its slot; one removed shrinks away, and the rest close ranks.</li>
+  <li>A module removed from a new patch dissolves, and the vessel at OUT reshapes without it.</li>
+</ul>
+<p>Proposed next:</p>
+<ul>
+  <li><b>A face develops as it renders:</b> slice by slice, like a photograph, instead of a spinner, if the render reports its progress in time.</li>
+  <li><b>The warm start draws its eighteen answers:</b> threads from your three favourites to the six you passed.</li>
+  <li><b>Save drops the face onto the Saved shelf,</b> where no generation replaces it. <b>Cut</b> sinks it out of the bank as evidence against it (the engine keeps it as a pick), and undo lifts it back.</li>
+  <li><b>Wander leaves a trail of ghosts across the map:</b> where the model walks.</li>
+  <li><b>Each refit re-settles every halo at once,</b> and the map turns rather than mirrors: its axes are fitted again and pinned to the last ones.</li>
+  <li><b>Turning a named control turns its module's knob</b> in a small inset of the patch, in step.</li>
+  <li><b>Faces below the sonic floor are drawn hollow on the map,</b> and the first deals visibly come from the lit ground, once the floor exists (RFC-005).</li>
+  <li><b>A guess is blurred by how unsure it is,</b> and sharpens as the model learns.</li>
+  <li><b>A live input's face forms in real time</b> at its AUDIO IN plate; inputs shared by two plates are joined by a thread of light.</li>
+</ul>
+
+<h3>Checked against the engine</h3>
+<table>
+  <tr><th>Shown</th><th>What the engine does</th></tr>
+  <tr><td>An offer grows out of the sound in hand</td><td>An offer is a 20-step walk from the patch in hand. It is not drawn from the bank, and taking it never adds it to the pool.</td></tr>
+  <tr><td>A pick is a direction</td><td>The model rates a sound by weights on its features, so one pick moves every rating, along φ(kept) − φ(passed). It refits every six picks.</td></tr>
+  <tr><td>A random pair</td><td>Pairs are dealt uniformly from the pool, so each pick also tests the forecast.</td></tr>
+  <tr><td>Seeds, walks, New</td><td>A quarter of the pool (ten of forty), the best-rated, each walks 40 steps to one child. The engine records the child's seed and what changed.</td></tr>
+  <tr><td>Rated below the pool</td><td>A child gets in only if it beats the weakest sound it would displace.</td></tr>
+  <tr><td>Replaced</td><td>At the end, the lowest-rated sounds go (a child can too), saved ones never. Their sounds are dropped and only their names are kept, so they can't be played or brought back.</td></tr>
+  <tr><td>Exploring</td><td>A walk can step downhill: a child rated below its seed is marked exploring.</td></tr>
+</table>
+
+<h3>What changes from v1</h3>
+<table>
+  <tr><th></th><th>v1</th><th>v2</th></tr>
+  <tr><td>Structure</td><td>Four tabs</td><td>One space: zoom levels around the sound, EVOLVE beside it</td></tr>
+  <tr><td>Where you are</td><td>The active tab</td><td>The rail, and the level named in the header</td></tr>
+  <tr><td>The model's depth</td><td>The lens and the map</td><td>Plus LEARNING, the model room, above TASTE</td></tr>
+  <tr><td>A phone</td><td>Squeezed desktop</td><td>Its own layout: a bottom bar, the bank as a sheet, keys as a drawer, swipe to keep</td></tr>
+  <tr><td>An offer</td><td>A dashed outline</td><td>Its own face, grown from the sound in hand</td></tr>
+</table>
+
+<h3>Not real here</h3>
+<ul>
+  <li>The controls on your panel are blends of the prototype's six tone dimensions, applied after the preset; in the app each would map onto the patch's own knobs, measured for each sound. The model is a small stand-in for Auracle's; offers, breeding and "breed toward it" draw from the presets.</li>
+  <li>PATCH edits don't re-render, its cable levels aren't measured, and a new patch is silent. Audio input devices are illustrative: the artifact frame refuses microphone, MIDI and device access.</li>
+  <li>A dropped sound's place on the map and its features are estimated from its three nearest presets' spectra.</li>
+  <li>Module names come from the prototype's own label map. The map spreads crowded faces a little, and the words for its axes come from correlation with this 2-D projection.</li>
+  <li>A child is the unpooled preset nearest its seed, standing in for the seed's walk; in the app it is the seed with knobs nudged and now and then a module swapped, so its "what changed" is smaller than here. In stage mode, a played phrase lights no note bands: the data has no timings for its notes.</li>
+</ul>
+
+<h3>Still to decide</h3>
+<p>Draft 1's five choices (type ratio, label size, the primary action, depth, where hints go) are set to its recommendations here, to judge in context.</p>
