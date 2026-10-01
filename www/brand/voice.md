@@ -516,7 +516,6 @@ lens | player | style, the model view
 HELD | player | set aside
 measuring… | player | listening…
 MODEL'S GUESS | player | 59% · leaning
-crossover | all | (there is none)
 posterior | player | your taste, the model
 duel | player | pair, pick
 plate | player | module

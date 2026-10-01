@@ -107,7 +107,6 @@
   },
   "www/docs/src/introduction.md": {
     "catalogue": 1,
-    "crossover": 1,
     "duel": 3,
     "generate": 1,
     "lens": 1,
@@ -244,30 +243,8 @@
   "www/landing/index.html": {
     "em dash": 3
   },
-  "www/reference/src/architecture/addresses.md": {
-    "crossover": 1
-  },
   "www/reference/src/bibliography.md": {
-    "crossover": 2,
     "normalise": 1
-  },
-  "www/reference/src/design/lineage.md": {
-    "crossover": 2
-  },
-  "www/reference/src/design/open-questions.md": {
-    "crossover": 1
-  },
-  "www/reference/src/genome/grammar.md": {
-    "crossover": 1
-  },
-  "www/reference/src/introduction.md": {
-    "crossover": 1
-  },
-  "www/reference/src/search/refinement.md": {
-    "crossover": 1
-  },
-  "www/reference/src/search/target.md": {
-    "crossover": 1
   },
   "www/video/films/composing/script.json": {
     "duel": 1
