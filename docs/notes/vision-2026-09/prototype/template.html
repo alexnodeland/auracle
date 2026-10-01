@@ -1,0 +1,36 @@
+<title>Auracle Vision II</title>
+<meta name="description" content="A vision prototype of Auracle's interface">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Jost:wght@400;500;600&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&display=swap">
+<style>/*CSS*/</style>
+<div class="app">
+  <header class="bar" role="banner"></header>
+  <aside class="bank" aria-label="Bank"></aside>
+  <main class="stage" id="stage">
+    <section class="view" id="view-perform" role="region" aria-label="PERFORM"></section>
+    <section class="view" id="view-patch" role="region" aria-label="PATCH"></section>
+    <section class="view" id="view-evolve" role="region" aria-label="EVOLVE"></section>
+    <section class="view" id="view-taste" role="region" aria-label="TASTE"></section>
+    <section class="view" id="view-model" role="region" aria-label="LEARNING"></section>
+    <div class="guide" style="position:absolute;left:24px;bottom:16px;z-index:6"></div>
+  </main>
+  <footer class="keys" aria-label="Keys"></footer>
+</div>
+<div class="proto-tag"><span>Prototype for approval</span><button class="btn ghost" style="height:28px;padding-inline:10px" onclick="A.notes(true)">What to try</button></div>
+<div class="sheet-scrim" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+<div class="lens-veil" aria-hidden="true"></div>
+<div class="lens-tag" aria-hidden="true"><span class="lamp on"></span><span class="voice"></span></div>
+<div class="toasts" aria-live="polite"></div>
+<div class="scrim"></div>
+<div class="palette" role="dialog" aria-modal="true" aria-label="Search or do anything">
+  <div class="q"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--silk-mute)"><circle cx="10.8" cy="10.8" r="6"/><path d="M19.5 19.5l-4.4-4.4"/></svg><input type="text" placeholder="Search sounds and actions" aria-label="Search sounds and actions" role="combobox" aria-controls="pal-list" aria-expanded="true" autocomplete="off"></div>
+  <ul id="pal-list" role="listbox" aria-label="Results"></ul>
+  <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> choose</span><span><kbd>↵</kbd> do it</span><span><kbd>esc</kbd> close</span></div>
+</div>
+<aside class="notes" role="dialog" aria-label="About this prototype"><button class="iconbtn close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9"/></svg></button><!--NOTES--></aside>
+<script>/*DATA*/</script>
+<script>/*CORE*/</script>
+<script>/*VIEWS*/</script>
+<script>A.boot();</script>

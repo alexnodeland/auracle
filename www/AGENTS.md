@@ -36,6 +36,10 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   synthesizer that searches for your sound". Sizes and copy rules are moving
   into `www/brand/` (`voice.md`) under Plan-004; until then, match the brand
   spec (`www/brand/index.html`).
+- **Motion shows what the engine does**
+  ([ADR-012](../docs/decisions/012-motion-shows-what-the-engine-does.md)): a
+  figure or film that animates a mechanism shows what the engine does, and a
+  stand-in is labelled as one.
 - **Colours come from `www/brand/tokens.json`, never a literal**: a new colour
   is a token first, then `make tokens`. `make dev-check` fails on a colour
   written in the landing page, the docs theme, the brand page, the 404, the
