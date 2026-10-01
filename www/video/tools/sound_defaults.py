@@ -22,6 +22,7 @@ TEMPO = {
     "bar_s": 3.636364,
     "marks_bpm": 60,
     "cycle_bars": 8,
+    "bars_per_chord": 2,
 }
 
 # The generated scores (repo-relative), and their titles: the score example renders each into <out>/<slug(title)>/.
@@ -124,7 +125,8 @@ PAD_DIP = {
     "on": "the pad",
 }
 
-# The marks' own balance (SPEC section 3); LADDER['marks_lufs'] is their level in a film.
+# The marks' own balance (SPEC section 3), and how Bloom meets the bed and the bed hands over to Reach;
+# LADDER['marks_lufs'] is their level in a film.
 MARKS = {
     "length_s": 4.5,
     "lead_over_pad_db": 6,
@@ -132,6 +134,36 @@ MARKS = {
     "drone_fade_in": {
         "from_db": -12,
         "over_s": 1.5,
+    },
+    "into_the_bed": {
+        "bed_bar_1_at_s": 1.5,
+        "bed_e4_at_s": 4.5,
+        "burble_enters_bar": 2,
+        "pad_to_bed_level_s": 4.0,
+    },
+    "passing_chord_beats": [1, 2],
+}
+
+# The presets a film casts from, by role, and the measured limits they were shortlisted by (RFC-007).
+SHORTLIST = {
+    "roles": {
+        "pads_and_textures": ["Cathedral", "Long Room", "Rotor", "Morph Pad", "Tidal", "Slow Weather"],
+        "soft_leads": ["Wobble Board", "Falling Sign", "Solo Flight", "Telegraph", "Choirboy", "Fifth Wheel"],
+        "low_and_burbling": ["Held Under", "Heartbeat", "Ceiling", "Dub Echo"],
+    },
+    "criteria": {
+        "noise_share_max": 0.02,
+        "roughness_max": 6,
+    },
+}
+
+# The one room: Cathedral's reverb at its stock settings. No part turns these, and no outside reverb is added.
+ROOM = {
+    "preset": "Cathedral",
+    "stock": {
+        "node#rsize": 0.85,
+        "node#rdamp": 0.35,
+        "node#rmix": 0.5,
     },
 }
 

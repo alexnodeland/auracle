@@ -46,10 +46,16 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   - the N3 bed;
   - the ladder and the grammar in `docs/notes/sound-2026-09/SPEC.md`.
 
-  Plan-006 brings the tools to it. The values live in `www/brand/sound.json`:
-  change them there and run `make sound`, never in a generated score,
-  `tools/sound_defaults.py`, or a level written into `mix.py` or a pipeline
-  script (`make dev-check` fails on each).
+  Plan-006 brings the tools to it. The values live in `www/brand/sound.json`,
+  never in a generated score or `tools/sound_defaults.py`. `make sound`
+  writes the cast (each part's preset, voices, trim, transpose and knobs, the
+  lead's bend times, the drone's breath) into the scores, and the mix's
+  values into `sound_defaults.py`. The rest of its numbers and pitches (the
+  pedal, the lead's legato and swell, the bed's voicings, burble and sighs,
+  the demo) describe the record scores' notes: `make sound` does not change
+  the notes, and `make dev-check` fails while sound.json disagrees with them.
+  It also fails on a number as `mix.py`'s `--music-db` or `--duck-db`
+  default, or as a `MUSIC_DB`/`DUCK_DB` fallback in a pipeline's shell code.
 - **Rehearse before recording.** `tools/rehearse.sh <film>` dry-runs every
   shot and summarises lateness and errors. A film is ready when every shot
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`

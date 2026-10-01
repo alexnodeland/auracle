@@ -36,7 +36,7 @@ class Tree:
         self.root = tempfile.mkdtemp(prefix="sound-")
         src = S.load()
         files = {S.SOURCE, S.PRESETS, *S.outputs(src)}
-        files |= {block["score"] for _, block in S.scores(src)}
+        files |= {block["score"] for _, block in S.scores(src)} | {src["cast"]["parts"]["demo"]["heard_in"]}
         files |= {os.path.relpath(f, S.ROOT) for g in S.LEVEL_FILES for f in glob.glob(os.path.join(S.ROOT, g))}
         for rel in files:
             dst = os.path.join(self.root, rel)
@@ -142,6 +142,66 @@ class TheCheck(unittest.TestCase):
             self.assertEqual(t.problems(), [
                 f"{S.SOURCE}: `cast.parts.lead.knobs.node#cut.used` is not a knob value (0-1)"])
 
+    def test_a_breath_outside_its_range_fails_the_check(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["cast"]["parts"]["drone"]["breath"].update(low=0.6))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `cast.parts.drone.breath` must run 0 <= low <= stock <= high <= 1, low below high"])
+
+    def test_a_part_that_turns_the_rooms_knob_fails_the_check(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["cast"]["parts"]["bed_pad"]["knobs"].update(
+                {"node#rmix": {"stock": 0.5, "used": 0.3}}))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `cast.parts.bed_pad` turns node#rmix, but the room (`cast.room`) stays at its stock"])
+
+
+class WhatTheRecordsHold(unittest.TestCase):
+    """The values sound.json holds that describe the records' notes rather
+    than being written into them: each change the scores do not make fails."""
+
+    def fails(self, edit, *expect):
+        with Tree() as t:
+            t.edit_source(edit)
+            problems = t.problems()
+            self.assertTrue(problems, "the check passed")
+            for want in expect:
+                self.assertTrue(any(want in p for p in problems), f"{want!r} not in {problems}")
+            # Nothing is written while the source disagrees with the records.
+            self.assertEqual(t.generate(), problems)
+
+    def test_a_voicing(self):
+        self.fails(lambda s: s["bed"]["parts"]["pad"]["voicings"].update({"G6/F": ["B3", "D4", "E4", "A4"]}),
+                   "`bed.parts.pad.voicings.G6/F` is B3 D4 E4 A4, but docs/notes/sound-2026-09/scores/n3.json's "
+                   "pad sounds B3 D4 E4 G4 at bar 3")
+
+    def test_a_burble_cell_and_its_rhythm(self):
+        self.fails(lambda s: s["bed"]["parts"]["burble"]["cells"].update({"Bbm6/F": ["Db3", "Bb3", "F3"]}),
+                   "cell Db3 Bb3 F3 on Bbm6/F")
+        self.fails(lambda s: s["bed"]["parts"]["burble"].update(step_beats=0.5), "every 0.5 beat")
+        self.fails(lambda s: s["bed"]["parts"]["burble"]["velocity"].update(depth=0.2), "`bed.parts.burble.velocity`")
+
+    def test_a_sigh_and_its_shape(self):
+        self.fails(lambda s: s["bed"]["parts"]["melody"]["sighs"].update({"Fmaj9": ["G5", "E5"]}),
+                   "`bed.parts.melody.sighs.Fmaj9` is G5 E5")
+        self.fails(lambda s: s["bed"]["parts"]["melody"].update(shape_beats=[2, 2]), "`bed.parts.melody.shape_beats`")
+
+    def test_the_leads_legato_and_swell(self):
+        self.fails(lambda s: s["cast"]["parts"]["lead"]["legato"].update(s=0.1), "`cast.parts.lead.legato.s` is 0.1")
+        self.fails(lambda s: s["cast"]["parts"]["lead"]["swell"].update(marks_s=1.5), "m2_bloom.json's E5 (mel4)")
+        self.fails(lambda s: s["cast"]["parts"]["lead"]["swell"].update(bed_beats=2), "n3.json's E5 (mel2)")
+
+    def test_the_pedal_and_the_marks_length(self):
+        self.fails(lambda s: s["key"].update(pedal=["F2", "F3"]), "`key.pedal` is F2 F3")
+        self.fails(lambda s: s["marks"].update(length_s=5), "`marks.length_s` is 5")
+
+    def test_the_demo_against_the_reel(self):
+        self.fails(lambda s: s["cast"]["parts"]["demo"]["knobs"]["amp#release"].update(used=0.6),
+                   "`cast.parts.demo.knobs`")
+        self.fails(lambda s: s["cast"]["parts"]["demo"]["bright"].update(over_beats=4), "`cast.parts.demo.bright`")
+
+
+class ThePlantedLevels(unittest.TestCase):
     def test_a_level_written_into_a_pipeline_fails_the_check(self):
         # How the duck came to have three values: each pipeline passed its own.
         with Tree() as t:
@@ -158,6 +218,38 @@ class TheCheck(unittest.TestCase):
             problems = t.problems()
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --duck-db")
+
+    def test_a_negative_number_as_mix_pys_default_fails_the_check_however_it_is_written(self):
+        with Tree() as t:
+            t.edit("www/video/tools/mix.py",
+                   lambda s: s.replace('default=sound_defaults.MIX_NOW["music_db"]', "default = -(6)", 1))
+            problems = t.problems()
+            self.assertEqual(len(problems), 1, problems)
+            self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --music-db")
+
+    def test_a_level_quoted_in_a_docstring_help_string_or_comment_passes(self):
+        # Task 3 will write the new levels into prose like this.
+        with Tree() as t:
+            t.edit("www/video/tools/mix.py", lambda s: s.replace(
+                '"""Lay a film\'s sound in', '"""(The new mix: --music-db -3 --duck-db -2.) Lay a film\'s sound in', 1
+            ).replace(
+                'help="the music\'s duck under the voice (default: sound.json mix_now)"',
+                'help="the music\'s duck under the voice, e.g. --duck-db -2 (default: sound.json mix_now)"', 1))
+            t.edit("www/video/tools/walkthrough.sh", lambda s: s.replace(
+                '${DUCK_DB:+--duck-db "$DUCK_DB"})',
+                '${DUCK_DB:+--duck-db "$DUCK_DB"})  # the spec: --duck-db -2, DUCK_DB:--2', 1
+            ) + "# MUSIC_DB:--3 and --music-db -3 come with task 3\n")
+            self.assertIn("--music-db -3 --duck-db -2.)", t.read("www/video/tools/mix.py"))
+            self.assertIn("e.g. --duck-db -2", t.read("www/video/tools/mix.py"))
+            self.assertIn("# the spec: --duck-db -2", t.read("www/video/tools/walkthrough.sh"))
+            self.assertEqual(t.problems(), [])
+
+    def test_a_shell_comment_starts_a_word_outside_quotes(self):
+        self.assertEqual(S.shell_code('X=1 # --duck-db -9'), "X=1 ")
+        self.assertEqual(S.shell_code('echo "a # b" # c'), 'echo "a # b" ')
+        self.assertEqual(S.shell_code("echo 'a # b'"), "echo 'a # b'")
+        self.assertEqual(S.shell_code('n=${#A[@]} $# x\\#y'), 'n=${#A[@]} $# x\\#y')
+        self.assertEqual(S.shell_code('echo "say \\"#\\"" #c'), 'echo "say \\"#\\"" ')
 
 
 class TheScores(unittest.TestCase):
@@ -243,6 +335,9 @@ class EachScoreRenders(unittest.TestCase):
                 if part["preset"] == room["preset"]:
                     for knob, stock in room["stock"].items():
                         self.assertAlmostEqual(live[knob], stock, places=4, msg=f"{part['preset']} {knob}")
+                if "breath" in part:
+                    b = part["breath"]
+                    self.assertAlmostEqual(live[b["param"]], b["stock"], places=4, msg=f"{part['preset']} breath")
 
 
 if __name__ == "__main__":

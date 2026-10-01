@@ -19,10 +19,13 @@ case>/` (`bloom/`, `n3/`, `study/`). The format is in the header of
 | `analyze.py` | Measures a rendered score: loudness, peaks, DC, band balance and loop seams | By hand |
 
 The generated scores carry the auditioned notes exactly. Their cast comes from
-`sound.json`: each track's preset, voices, trim and knobs, the lead's bend,
-and the drone's breath. As committed they render bit for bit what was
-auditioned. Change a knob in `sound.json` and run `make sound`, and every
-score that plays it follows. `make dev-check` fails while one is stale.
+`sound.json`: each track's preset, voices, trim, transpose and knobs, the
+lead's bend times, and the drone's breath. As committed they render bit for
+bit what was auditioned. Change a knob in `sound.json` and run `make sound`,
+and every score that plays it follows; `make dev-check` fails while one is
+stale. The notes themselves (the voicings, the burble, the sighs, how the
+lead plays a line) are not generated: `sound.json` describes them, and
+`make dev-check` fails while the two disagree.
 
 The pipeline does not play them yet: `fit_score.py`, `mix.py` and the
 timeline are being brought to them

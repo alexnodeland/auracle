@@ -183,19 +183,38 @@ value was chosen in `docs/notes/sound-2026-09/SPEC.md`). Its keys:
     make sound
 
 runs `sound.py`, which writes the marks' and the bed's scores into
-`www/video/sound/` (the notes from the auditioned finals, the cast from here)
-and the mix's defaults into `www/video/tools/sound_defaults.py`. The generated
-files are committed and say so at their top; edit the JSON, never them.
+`www/video/sound/` and the mix's defaults into
+`www/video/tools/sound_defaults.py`. The generated files are committed and say
+so at their top; edit the JSON, never them.
 
-`make dev-check` runs `sound.py --check`. It fails when a generated file is
-stale, when a preset in the cast is not in the bank, when a knob is outside
-0–1, and when a mix level is written into the film tools instead of here: a
-number as `mix.py`'s `--music-db` or `--duck-db` default, or a numeric
-fallback for `MUSIC_DB` or `DUCK_DB` in a pipeline script. `test_sound.py`,
-also run by `make dev-check`, plants each in a copy of the tree and expects
-the check to fail on it. With `AURACLE_RENDER_SCORES=1` it also renders every
-generated score with the engine and checks each track sounds, and checks each
-knob's stock value against the preset's own.
+- **Into the scores** go the tempo and the cast: each part's preset, voices,
+  trim, transpose and used knobs, the lead's bend times, and the drone's
+  breath. The notes are the auditioned finals'.
+- **Into `sound_defaults.py`** go `mix`, `voice_chain`, `ladder`, `duck`, the
+  timings in `grammar`, the marks' levels and hand-overs, the shortlist, the
+  room, and `mix_now`.
+- **The rest describes the notes:** the pedal, the marks' length, the lead's
+  legato and swell, the bed's voicings, burble and sighs, and the demo (which
+  only the reel played). `make sound` leaves the notes as they are, so these
+  are checked against the record scores instead. Strings are prose.
+
+`make dev-check` runs `sound.py --check`. It fails when:
+- a generated file is stale;
+- a value that describes the notes is not what the records play;
+- a preset in the cast or the shortlist is not in the bank;
+- a knob is outside 0–1, the drone's breath does not run low ≤ stock ≤ high,
+  or a part turns the room's knobs;
+- a number is `mix.py`'s `--music-db` or `--duck-db` default, or a film
+  tool's shell code has a numeric `MUSIC_DB`/`DUCK_DB` fallback or a numeric
+  `--music-db`/`--duck-db` flag. These are the ways the duck came to have
+  three values; docstrings, help strings and comments may quote a level, and
+  the scan does not look for every other way to write one.
+
+`test_sound.py`, also run by `make dev-check`, makes each of these changes in
+a copy of the tree and expects the check to fail on it. With
+`AURACLE_RENDER_SCORES=1` it also renders every generated score with the
+engine and checks each track sounds, and checks each stock knob value against
+the preset's own.
 
 ## Regenerating the rasters
 
