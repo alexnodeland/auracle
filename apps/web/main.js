@@ -1059,7 +1059,9 @@ function performRestore(kind, burst) {
   restoreInFlight = true;
   structInFlight = true;
   beliefStale();
-  send({ type: "edit_set_tree", json: stack[stack.length - 1].json });
+  // `restore`: the worker hands the voices this tree before its render only
+  // at the makeup it was measured at, never the tree being left's.
+  send({ type: "edit_set_tree", json: stack[stack.length - 1].json, restore: true });
 }
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
@@ -3987,7 +3989,7 @@ async function bootPerform() {
     // the one undo step itself.
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
-    commitTree: (json, why) => {
+    commitTree: (json, why, makeup) => {
       // PERFORM plays a patch still on its way to the bench (`voiceEarly`),
       // and a tree sent now would land on the rack it replaces. PERFORM asks
       // `openLanding` before a Keep, Take or Back and refuses there, before
@@ -3997,7 +3999,9 @@ async function bootPerform() {
         return;
       }
       if (!wb.tree) return note("Open a sound first: there’s nothing to play yet.");
-      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
+      // `makeup`, when PERFORM knows it (a Take: the offer was measured as it
+      // grew), is what the voices take the tree at before its render.
+      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}), ...(makeup > 0 ? { makeup } : {}) }, null, { op: "perform" });
     },
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.

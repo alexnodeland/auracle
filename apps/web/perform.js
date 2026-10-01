@@ -2292,6 +2292,9 @@ export function createPerform(host) {
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
     const json = state.offer.json;
+    // Measured when the offer grew: A rebuilds as the offer at its own level,
+    // not the old sound's, and B hands over with no jump.
+    const makeup = state.offer.makeup;
     // B keeps sounding until A has rebuilt as the offer, then fades out: at
     // any Blend position the handover has no gap and no jump.
     state.offer = null;
@@ -2311,7 +2314,7 @@ export function createPerform(host) {
     if (state.wire) state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire };
     renderOffer();
     knobs.forEach(paintKnob);
-    host.commitTree(json, "taken offer");
+    host.commitTree(json, "taken offer", makeup);
     flash("take");
   }
 

@@ -80,7 +80,8 @@ its check fails:
 | Edit | Reaches the voices | A failed check |
 |---|---|---|
 | A knob, the octave, a wavetable position | At once, as a parameter written into the running voices | The voices are muted until a check passes, and the alarm says so |
-| A structural edit (a module placed, removed or rewired; an undo) | As a new tree, as soon as the engine has made the edit (`tree_json`), at the previous tree’s makeup until the check’s reply corrects it | The same mute |
+| A structural edit (a module placed, removed or rewired) | As a new tree, as soon as the engine has made the edit (`tree_json`), at the previous tree’s makeup until the check’s reply corrects it | The same mute |
+| An undo or a redo; PERFORM’s Take | As a tree before its render, at the makeup it was measured at (an undo or redo lands on a tree measured when it was made, `edit_known_makeup`; a Take on the offer, measured as it grew). An undo or redo of a tree no longer remembered waits for its render | The same mute |
 | Any other selector (a VCO’s wave, a filter’s mode) | With the check’s reply, after its render, at the makeup the render measured | Never reaches them: the voices keep the tree before it |
 
 So an unchecked edit can sound for as long as its render takes (a fraction
@@ -103,8 +104,9 @@ fitness makes avoidance something the search *learns*.
 
 ## Layer 3: the live path
 
-Only vetted patches are free-playable, and the compiled output chain is
-**mandatory**:
+The keys play an edit before its check
+([above](#the-live-keys-play-an-edit-before-its-check)), so what bounds the
+live path is the patch itself. The compiled output chain is **mandatory**:
 
 $$\langle\text{audio}\rangle \to \text{DC blocker} \to \text{VCA} \to \text{Limiter} \to \text{StereoOutput}$$
 

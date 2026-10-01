@@ -44,6 +44,11 @@
 //   taken back: by a second press, by Space (which also stops a phrase
 //   already sounding), by leaving PATCH, or by another ▶ (a bank row's, whose
 //   phrase it then does not cut off).
+// - An undo and a redo of a selector keep the held note's level: the voices
+//   take the restored tree before its render at the makeup it was measured
+//   at (the engine's memo of that tree), and the level while it renders is
+//   the level once it lands. They took it at the makeup of the tree being
+//   left: 11.8 dB off on this change, up to 27 dB hot on others.
 // - A knob whose check finds a runaway is muted, as the alarm says: a knob
 //   reaches the voices before its check, and its failed check used to raise
 //   "Muted" over voices still playing. A check that passes lifts the mute.
@@ -373,6 +378,23 @@ const median = (xs) => {
   return s.length ? s[Math.floor(s.length / 2)] : NaN;
 };
 
+/** The output's RMS once it is steady: polled until two successive reads (a
+ *  poll apart, each over the analyser's third of a second) agree within
+ *  0.5 dB, after a swap's fade-in and the leveler have settled. */
+async function steadyRms(page) {
+  let last = null;
+  let now = null;
+  await expect
+    .poll(async () => {
+      now = await page.evaluate(() => window.__pwRmsDb());
+      const ok = last != null && Number.isFinite(now) && Math.abs(now - last) < 0.5;
+      last = now;
+      return ok;
+    }, { timeout: 15_000, intervals: [250] })
+    .toBe(true);
+  return now;
+}
+
 /** The live output's spectrum at C4, the median of `n` reads 120 ms apart. */
 async function liveSpectrum(page, n = 5) {
   const reads = [];
@@ -568,16 +590,7 @@ test("a selector changed under a held note keeps its level: the voices wait for 
   const fk = page.locator('#rack-svg g[data-addr="node#fkind"]');
   await expect(fk.locator(".enum-text")).toHaveText("svf lp");
   await holdC4(page);
-  // Steady before the change: two reads a third of a second apart agree.
-  const rms = () => page.evaluate(() => window.__pwRmsDb());
-  await expect
-    .poll(async () => {
-      const a = await rms();
-      await page.waitForTimeout(350);
-      return Math.abs((await rms()) - a);
-    }, { timeout: 15_000 })
-    .toBeLessThan(1);
-  const before = await rms();
+  const before = await steadyRms(page);
   // The render behind the change takes a second and a half more on any
   // machine.
   await slowRender(page, 1500);
@@ -594,8 +607,7 @@ test("a selector changed under a held note keeps its level: the voices wait for 
   const inWindow = snaps.filter((x) => x.at > chip + 400 && x.at < landed - 50).map((x) => x.rms);
   const lo = Math.min(...inWindow), hi = Math.max(...inWindow);
   await settled(page);
-  await page.waitForTimeout(800); // the swap's fade-in and the leveler settle
-  const after = await rms();
+  const after = await steadyRms(page);
   console.log(
     `[patch_audible] svf lp → svf bp under a held note: ${before.toFixed(1)} dB before; ` +
       `${lo.toFixed(1)} to ${hi.toFixed(1)} dB over ${inWindow.length} reads while the engine rendered (reply at ` +
@@ -610,6 +622,52 @@ test("a selector changed under a held note keeps its level: the voices wait for 
   // exactly: band-pass sits 2.8 dB under low-pass here (the early tree played
   // it 14.6 dB under, for the length of the render).
   expect(Math.abs(after - before), "the new mode plays at its measured level").toBeLessThan(4);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("an undo and a redo of a selector keep the held note's level: the voices take the restored tree at its measured makeup", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const fk = page.locator('#rack-svg g[data-addr="node#fkind"]');
+  await expect(fk.locator(".enum-text")).toHaveText("svf lp");
+  // Low-pass to band-pass, measured; then each way back with the render
+  // slowed by 1.5 s, under a held C4.
+  await fk.locator(".enum-body").click();
+  await expect(fk.locator(".enum-text")).toHaveText("svf bp");
+  await settled(page);
+  await holdC4(page);
+  await steadyRms(page);
+  await slowRender(page, 1500);
+  for (const [key, want] of [["ControlOrMeta+z", "svf lp"], ["ControlOrMeta+Shift+z", "svf bp"]]) {
+    const n = await page.evaluate(() => window.__pwIO.replies.length);
+    await page.evaluate((w) => { window.__pwRec = window.__pwRecord(2600, w); }, C4);
+    const t0 = await pageNow(page);
+    await page.locator("#rack-subject").click();
+    await page.keyboard.press(key);
+    const snaps = await page.evaluate(() => window.__pwRec);
+    await expect.poll(() => page.evaluate((i) => window.__pwIO.replies.length > i, n), { timeout: 30_000 }).toBe(true);
+    const { reply, early } = await page.evaluate(([i, t]) => {
+      const reply = window.__pwIO.replies[i];
+      return { reply, early: window.__pwMakeups.filter((m) => m.t > t && m.t < reply.t && m.type === "patch") };
+    }, [n, t0]);
+    await expect(fk.locator(".enum-text")).toHaveText(want);
+    await settled(page);
+    const after = await steadyRms(page);
+    const inWindow = snaps.filter((x) => x.at > (early[0]?.t ?? t0) + 400 && x.at < reply.t - 50).map((x) => x.rms);
+    const lo = Math.min(...inWindow), hi = Math.max(...inWindow);
+    const db = (g) => (20 * Math.log10(g)).toFixed(1);
+    console.log(
+      `[patch_audible] ${key} → ${want}: the voices took it ${early.length ? Math.round(early[0].t - t0) + " ms" : "never"} after the key ` +
+        `at ${early.length ? db(early[0].makeup) : "?"} dB; the reply measured ${db(reply.makeup)} dB at ${Math.round(reply.t - t0)} ms; ` +
+        `${lo.toFixed(1)} to ${hi.toFixed(1)} dBFS while it rendered, ${after.toFixed(1)} dBFS once it landed`,
+    );
+    expect(early.length, `${key}: the voices took the restored tree before its render`).toBe(1);
+    expect(Math.abs(early[0].makeup / reply.makeup - 1), `${key}: at the makeup its render measures`).toBeLessThan(1e-9);
+    expect(inWindow.length, "reads while the engine rendered").toBeGreaterThanOrEqual(8);
+    expect(Math.max(hi - after, after - lo), `${key}: the level while it rendered is the level once it landed`).toBeLessThan(1.5);
+  }
   await page.keyboard.up("a");
   expect(errors).toEqual([]);
 });

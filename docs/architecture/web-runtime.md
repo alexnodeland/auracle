@@ -219,6 +219,12 @@ through one ordered lane in `main.js`:
   over the presets' 355 selector changes, and no estimate cheaper than the
   render came within 3 dB often enough
   (`crates/auracle-wasm/examples/selector_makeup.rs`).
+- A whole-tree edit (`edit_set_tree`) reaches the voices early at a makeup
+  that is known: the page's (`makeup`: a Take sends the offer's, measured as
+  it grew), or the engine's memo of that exact tree (`edit_known_makeup`: an
+  undo or a redo lands on a tree measured when it was made). An undo or a
+  redo with neither (`restore`) waits for its render; any other rewrite
+  still goes early at the previous tree's makeup, which the reply corrects.
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,

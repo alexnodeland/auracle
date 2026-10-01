@@ -928,7 +928,7 @@ function tasteViews() {
 // taken offer playable on the wiring it had until the offer's own measurement
 // lands, and centres that wiring on these values. `why` is echoed — see
 // `edit_set_tree`.
-function postLiveTree(edited, why) {
+function postLiveTree(edited, why, makeup) {
   const json = engine.edit_tree_json();
   let knobs;
   if (typeof engine.perform_knobs === "function") {
@@ -942,7 +942,7 @@ function postLiveTree(edited, why) {
     type: "tree_json",
     edited,
     json,
-    makeup: engine.edit_makeup(),
+    makeup: makeup != null ? makeup : engine.edit_makeup(),
     knobs,
     why: why || undefined,
   });
@@ -2510,7 +2510,21 @@ async function dispatch(m) {
       // `why` names what the new tree is when it is not a hand edit — "taken
       // offer", from PERFORM's Take — and rides back on both replies so every
       // label calls it that instead of "(edited)".
-      postLiveTree("restore", m.why);
+      //
+      // The voices take the tree before its render at a makeup that is
+      // known, not at `edit_makeup()`, which is still the tree being left's:
+      // that put a redone selector up to 27 dB hot until the reply. Known is
+      // the page's (an offer's, measured when it grew), or the engine's
+      // measurement of this exact tree from before (an undo or a redo lands
+      // on a tree measured when it was made: `edit_known_makeup`). An undo or
+      // a redo with neither waits for its render, as a selector does. Any
+      // other rewrite still goes early at the old makeup (a structural edit;
+      // the reply corrects it).
+      const knownMakeup = m.makeup != null
+        ? m.makeup
+        : typeof engine.edit_known_makeup === "function" ? engine.edit_known_makeup() : -1;
+      const known = knownMakeup > 0 ? knownMakeup : null;
+      if (known != null || !m.restore) postLiveTree("restore", m.why, known);
       engine.edit_revet();
       postBench({ edited: "restore", why: m.why || undefined });
       break;

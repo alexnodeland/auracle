@@ -27,6 +27,12 @@ changelog that edits its own past is not a record.
 - **A knob turned into a runaway is muted, as the alarm says.** The alarm
   read *Muted* while held notes went on playing what the knob had made; a
   module placed or removed was already muted when its check failed.
+- **An undo, a redo, or a Take plays at the sound's own level from the
+  start.** The keys take the sound back before the engine has rendered it
+  again, and they took it at the level of the sound being left: undoing a
+  filter-mode change on Falling Sign played a held note 11.8 dB too loud
+  until the render, and up to 27 dB on other presets. They now take it at
+  the level it was measured at.
 - **A preset opened while an edit is still rendering plays at its own
   level.** A remembered preset plays from the click, and the reply to an
   undo or a module change made just before set that edit's level on it, up
