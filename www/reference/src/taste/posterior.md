@@ -115,7 +115,8 @@ mixed modalities safe.
 The reweighted draws are the posterior the engine holds until the next fit,
 so the app is told what they say after every pick, not only after a refit.
 Each reply to a pick (a duel, a cut, stars, an answered offer in PERFORM)
-carries `WasmEngine::belief()`:
+carries the pool's ratings as they stand, a `ratings` field filled from
+`WasmEngine::belief()`:
 
 ```json
 {"ranked":[{"id":12,"mean":0.84,"std":0.31,"style":1}, …],
@@ -133,11 +134,15 @@ carries `WasmEngine::belief()`:
   ([refinement](../search/refinement.md#before-a-generation-its-seeds-and-what-it-may-replace)).
 
 One pass over the draws per member serves the mean, the std and the lens
-(`utility_mix_and_responsibilities`). In wasm that is under a millisecond
-per pick for a session of 30 picks (two lenses), and under 2 ms at five
-lenses (`examples/pick_belief.rs` in `auracle-wasm`). The rest of the map,
-its projection and the ghosts of earlier picks, costs 30 ms by 100 picks and
-grows with the history, so it still waits for a refit.
+(`utility_mix_and_responsibilities`). Measured in wasm under node on an
+Apple M3 Max (`examples/pick_belief.mjs` in `auracle-wasm`, beside its
+native twin `pick_belief.rs`), that is under a millisecond per pick for a
+session of 30 picks (two lenses) and under 2 ms at five lenses. While a
+generation is open with the pool over size, what its end would retire is
+ranked as well, under the posterior it opened with: 1.8 ms at two lenses and
+3.9 ms at five. The rest of the map, its projection and the ghosts of earlier
+picks, costs 28 ms by 100 picks and grows with the history, so it still waits
+for a refit.
 
 ### Effective sample size
 

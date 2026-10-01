@@ -1544,8 +1544,9 @@ impl WasmEngine {
     }
 
     /// The belief as it stands, as JSON: what the worker posts after every
-    /// pick, so the app's ratings and map can move per pick and not only on
-    /// a refit.
+    /// pick (as `ratings`, since `belief` in `main.js` is the bench's guess),
+    /// so the app's ratings and map can move per pick and not only on a
+    /// refit.
     ///
     /// ```json
     /// {"ranked":[{"id":12,"mean":0.84,"std":0.31,"style":1}, …],

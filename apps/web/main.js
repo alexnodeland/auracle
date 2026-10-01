@@ -186,13 +186,16 @@ let playingSrc = null;
 // {id, text(name)} — see `evolved_from` and the `bench` reply.
 let evolvedAnnounce = null;
 
-let views = null;          // {map, styles, lineage, ranked, belief, …} from the worker
-// `views.belief` is the engine's belief as it stands (`WasmEngine::belief`):
-// every pool member's posterior mean, std and lens in ranked order, the seeds
-// EVOLVE POOL would breed from, and what that generation may replace. A pick
-// reweights the posterior without a refit, so it is replaced on every reply to
-// a pick as well as with every views post; `views.ranked` and `views.map`
-// still change only when views are posted. Stored, not drawn yet (Plan-005).
+let views = null;          // {map, styles, lineage, ranked, ratings, …} from the worker
+// `views.ratings` is the model's ratings of the pool as they stand
+// (`WasmEngine::belief`; not `belief` below, the bench's guess): every pool
+// member's posterior mean, std and lens in ranked order, the seeds EVOLVE POOL
+// would breed from, and what that generation may replace. A pick reweights
+// the posterior without a refit, so it is replaced on every reply to a pick as
+// well as with every views post; `views.ranked` and `views.map` still change
+// only when views are posted. While a generation runs, what it will replace is
+// `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
+// so read it at rest. Stored, not drawn yet (Plan-005).
 let tasteTab = "map";
 let currentView = "play";
 
@@ -1437,8 +1440,8 @@ worker.onmessage = (e) => {
       // Taken or refused, the log has answered for this one: from here the
       // engine's count is the whole truth about it (see `taughtAhead`).
       if (m.vote) aheadDrop(aheadKey(m.vote));
-      // The posterior a taken pick left (`WasmEngine::belief`).
-      if (m.belief && views) views.belief = m.belief;
+      // The ratings a taken pick left (`WasmEngine::belief`).
+      if (m.ratings && views) views.ratings = m.ratings;
       applyStatus(m.status);
       send({ type: "calibration" });
       // The engine took nothing: the patch left the pool between the gesture
@@ -1510,7 +1513,7 @@ worker.onmessage = (e) => {
       applyViews({
         ...(views || {}),
         ranked: m.ranked,
-        belief: m.belief || null,
+        ratings: m.ratings || null,
         ...(m.lineage ? { lineage: m.lineage } : {}),
       });
       renderBank();
@@ -2246,7 +2249,7 @@ worker.onmessage = (e) => {
     }
     case "pinned": {
       if (m.ranked && views) views.ranked = m.ranked;
-      if (m.belief && views) views.belief = m.belief; // a save changes what may be replaced
+      if (m.ratings && views) views.ratings = m.ratings; // a save changes what may be replaced
       if (m.budget) pinBudget = m.budget;
       // A control that cannot act says so. `set_pinned` fails for exactly two
       // reasons and they need different sentences: the budget is full (the
