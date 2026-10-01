@@ -384,16 +384,20 @@ person. It is not a presenter addressing an audience.
 
 ### The shape of a film
 
-1. **The cold open:** 10 to 15 seconds of the film's most musical moment, with
-   no words. Then the first line says what you'll be able to do by the end, not
-   "This is…".
-2. **Each chapter:**
+1. **The cold open:** 10 to 15 seconds of the film's most musical moment, in
+   the app's own sound, with no words.
+2. **The entrance mark** with the title. The first line comes about two
+   seconds after the mark ends, and says what you'll be able to do by the end,
+   not "This is…".
+3. **Each chapter:**
    - a figure;
    - the voice explains;
    - a pause, the demo, its tail, and a pause;
    - the voice continues;
    - a few seconds without words.
-3. **The ending:** one thing to try, then the lockup and the sound mark.
+4. **The ending:** one thing to try, then the exit mark about two seconds after
+   the last word, with the lockup. The motif plays only as the two marks, never
+   in the bed, so it's heard where it's placed and nowhere else.
 
 ### Spoken, before and after
 
