@@ -46,25 +46,28 @@ scanned yet; `--check` lists them every time it runs.
 
 The sizes ratchet. Every SCANNED file is counted, outside its generated block,
 for four kinds of literal (units in any case: `PX` is `px`):
-- font: a font size in px, rem, em or % (`font-size`, the `font` shorthand);
-  an SVG `font-size="N"` attribute; and every assignment to a canvas's
-  `.font` that is not `canvasFont(…)`, whatever its form (a string, a
-  template, a sum, a variable);
+- font: a font size in px, rem, em or % (`font-size`, the `font` shorthand),
+  but not 100% or 1em, which are the parent's size; an SVG `font-size="N"`
+  attribute; and every assignment to a canvas context's `.font` (a name
+  ending in ctx or Ctx, or `context`) that is not `canvasFont(…)`, whatever
+  its form (a string, a template, a sum, a variable);
 - space: a px or rem `padding`, `margin` or `gap` of 4 px or more (under the
   first step is an optical nudge);
 - radius: a px or rem `border-radius` from 4 px up to 99 px (under it is a
   hairline's rounding, 999px is a pill and 50% a circle: shapes, not steps);
-- time: a `transition` or `animation` duration or delay; in a script, an
-  animation's `duration: N` and a number passed to `.animate()`.
+- time: a `transition` or `animation` duration or delay; in a script, a
+  `duration: N` or a bare number inside an `.animate(…)` call's arguments.
 These are read in stylesheets, `<style>` blocks and `style` attributes; in a
 script's string literals, its `.style.*` assignments, its style objects
 (`{ fontSize: "12px" }`) and its `style.setProperty()` calls; and through a
 custom property: a literal in `--x: 10px` (or `setProperty("--x", "10px")`)
-counts when `var(--x)` is used in one of the declarations above, in any
-scanned file. A `token-exempt: why` comment exempts only the declaration it
-trails, and the why is required. Not counted: a script's other millisecond
-constants (timers, dwells, settles: when something happens, not how long it
-moves), lengths that are not one of the four kinds (widths, heights,
+counts when `var(--x)` is used in one of the declarations above in a file
+of the same surface. A `token-exempt: why` comment exempts only the
+declaration it trails (past a string's closing quote or another comment),
+and the why is required. Not counted: a script's other durations (a
+`duration:` outside `.animate()`, timers, dwells, settles: when something
+happens, not how long it moves), a `.font` on anything but a canvas
+context, lengths that are not one of the four kinds (widths, heights,
 offsets, shadows), and spacing in em.
 
 Today's surfaces predate the scale, so this is a ratchet, as the voice check
@@ -781,12 +784,16 @@ JS_PROPS = (
 JS_STYLE_RE = re.compile(r"""\.style\.(%s)\s*=\s*(["'`])((?:(?!\2).)*)\2""" % JS_PROPS)
 JS_OBJ_STYLE_RE = re.compile(r"""(?<![\w$.-])(["']?)(%s)\1\s*:\s*(["'`])((?:(?!\3).)*)\3""" % JS_PROPS)
 SET_PROPERTY_RE = re.compile(r"""setProperty\(\s*(["'])(--[\w-]+|[a-z-]+)\1\s*,([^;)]*)\)""")
-# Any assignment to a canvas's font but the one sanctioned path. Its form does
-# not matter: a string, a template, a sum or a variable all set a size.
-CANVAS_FONT_RE = re.compile(r"""\.font\s*=(?!=)\s*([^;\n]*)""")
+# Any assignment to a canvas context's font (a name ending in ctx or Ctx, or
+# `context`) but the one sanctioned path. Its form does not matter: a
+# string, a template, a sum or a variable all set a size.
+CANVAS_FONT_RE = re.compile(r"""\b(?:\w*[cC]tx|context)\.font\s*=(?!=)\s*([^;\n]*)""")
 SVG_FONT_SIZE_RE = re.compile(r"""\bfont-size\s*=\s*\\?["']\s*(-?\d+(?:\.\d+)?)""")
+# Inside an `.animate(…)` call's arguments only: its options' `duration`, or a
+# number passed as the options. A `duration:` anywhere else is a toast's
+# dwell or a sound's length.
 JS_DURATION_RE = re.compile(r"""(?<![\w$.-])["']?duration["']?\s*:\s*(\d+(?:\.\d+)?)(?![\w.])""")
-JS_ANIMATE_RE = re.compile(r"""\.animate\((?:[^()]|\([^()]*\))*?,\s*(\d+(?:\.\d+)?)\s*\)""")
+JS_ANIMATE_LAST_RE = re.compile(r""",\s*(\d+(?:\.\d+)?)\s*$""")
 STRING_RE = re.compile(r""""(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`""")
 CUSTOM_DEF_RE = re.compile(r"(?<![\w-])(--[\w-]+)\s*:\s*([^;{}]*)")
 EXEMPT_RE = re.compile(r"(/\*|//)\s*token-exempt:(.*?)(?:\*/|$)", re.M)
@@ -811,6 +818,9 @@ def counted(kind: str, num: str, unit: str) -> bool:
     unit = unit.lower()
     v = abs(float(num)) * (16 if unit == "rem" else 1)
     if kind == "font":
+        # 100% and 1em are the parent's size: no size of their own.
+        if (unit, float(num)) in (("em", 1.0), ("%", 100.0)):
+            return False
         return unit in ("px", "rem", "em", "%")
     if kind == "space":
         return unit in ("px", "rem") and v >= 4
@@ -854,8 +864,10 @@ def js_size_hits(body: str, usage: dict | None = None) -> list[Hit]:
     assignments, style objects and setProperty() calls, its canvas fonts, an
     SVG `font-size` attribute in a template, and an animation's duration."""
     hits = []
+    # A string's own text, inside its quotes, so a declaration in it ends
+    # where its value does and an exemption after the string attaches.
     for m in STRING_RE.finditer(body):
-        hits += css_size_hits(m.group(0), m.start(), usage)
+        hits += css_size_hits(m.group(0)[1:-1], m.start() + 1, usage)
     for pat, p, v in ((JS_STYLE_RE, 1, 3), (JS_OBJ_STYLE_RE, 2, 4)):
         for m in pat.finditer(body):
             kind = kind_of(re.sub(r"[A-Z]", lambda c: "-" + c.group(0).lower(), m.group(p)))
@@ -871,9 +883,24 @@ def js_size_hits(body: str, usage: dict | None = None) -> list[Hit]:
         if rhs and not rhs.startswith("canvasFont("):
             hits.append((m.start(1), "font", rhs[:40], m.start(1) + len(m.group(1).rstrip())))
     hits += [(m.start(1), "font", m.group(1), m.end()) for m in SVG_FONT_SIZE_RE.finditer(body)]
-    for pat in (JS_DURATION_RE, JS_ANIMATE_RE):
-        hits += [(m.start(1), "time", m.group(1), m.end(1)) for m in pat.finditer(body) if float(m.group(1)) > 0]
+    for at, args in animate_args(body):
+        found = list(JS_DURATION_RE.finditer(args)) + list(JS_ANIMATE_LAST_RE.finditer(args))
+        hits += [(at + m.start(1), "time", m.group(1), at + m.end(1)) for m in found if float(m.group(1)) > 0]
     return hits
+
+
+def animate_args(body: str) -> list[tuple[int, str]]:
+    """Each `.animate(…)` call's argument text and where it starts, its
+    parentheses balanced (strings are not parsed: a paren inside one ends it
+    early, which only loses a count)."""
+    out = []
+    for m in re.finditer(r"\.animate\(", body):
+        i, depth = m.end(), 1
+        while i < len(body) and depth:
+            depth += {"(": 1, ")": -1}.get(body[i], 0)
+            i += 1
+        out.append((m.end(), body[m.end() : i - 1]))
+    return out
 
 
 def css_bodies(rel: str) -> list[tuple[str, str, int]]:
@@ -898,25 +925,29 @@ def css_bodies(rel: str) -> list[tuple[str, str, int]]:
     return [("css", strip_css(text), 0)]
 
 
-def custom_usage() -> dict[str, str]:
-    """Each custom property `var()`'d in a counted declaration, anywhere
-    scanned, and the kind of that declaration."""
-    usage: dict[str, str] = {}
+def custom_usage() -> dict[tuple[str, ...], dict[str, str]]:
+    """For each surface (the surface tuple SCANNED gives a file), each custom
+    property `var()`'d in a counted declaration in its files, and the kind of
+    that declaration. Per surface, so a name two pages happen to share (the
+    brand page's `--frame` is a width) cannot make one page's literal count
+    for the other's use; the app's stylesheet and scripts are one surface."""
+    usage: dict[tuple[str, ...], dict[str, str]] = {}
 
-    def from_css(body: str) -> None:
+    def from_css(u: dict, body: str) -> None:
         for m in PROP_RE.finditer(body):
             kind = None if m.group(1).startswith("-") else kind_of(m.group(1))
             if kind:
                 for v in VAR_RE.finditer(m.group(2)):
-                    usage.setdefault(v.group(1), kind)
+                    u.setdefault(v.group(1), kind)
 
-    for rel, _ in scanned_files():
+    for rel, surfaces in scanned_files():
+        u = usage.setdefault(surfaces, {})
         for kind, body, _ in css_bodies(rel):
             if kind == "css":
-                from_css(body)
+                from_css(u, body)
             elif kind == "js":
                 for s in STRING_RE.finditer(body):
-                    from_css(s.group(0))
+                    from_css(u, s.group(0)[1:-1])
     return usage
 
 
@@ -926,6 +957,7 @@ def size_hits(rel: str, usage: dict | None = None) -> tuple[list[tuple[int, str,
     text = read(rel)
     if usage is None:
         usage = custom_usage()
+    usage = usage.get(dict(scanned_files()).get(rel, ()), {})
     hits: list[Hit] = []
     for kind, body, at in css_bodies(rel):
         found = css_size_hits(body, 0, usage) if kind == "css" else js_size_hits(body, usage) if kind == "js" else []
@@ -934,13 +966,15 @@ def size_hits(rel: str, usage: dict | None = None) -> tuple[list[tuple[int, str,
             found = [(m.start(1), "font", m.group(1), m.end())]
         hits += [(at + o, k, t, at + e) for o, k, t, e in found]
     # An exemption trails the declaration it is for: what it covers ends where
-    # the comment's own line, back past `;`, `,`, `}` and quotes, stops.
+    # the comment's own line, back past `;`, `,`, `}`, quotes and any other
+    # comment, stops.
+    plain = strip_js(text) if rel.endswith(".js") else strip_html(text) if rel.endswith((".html", ".hbs")) else strip_css(text)
     problems, trailed = [], set()
     for m in EXEMPT_RE.finditer(text):
         if not m.group(2).strip():
             problems.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: a token-exempt says why")
         p = m.start()
-        while p > 0 and text[p - 1] in " \t;,}\"'`":
+        while p > 0 and plain[p - 1] in " \t;,}\"'`":
             p -= 1
         trailed.add(p)
     out = []

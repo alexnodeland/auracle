@@ -3169,8 +3169,8 @@ function dismissToast(t, immediate) {
   }
   clearTimeout(t.timer);
   // Retire the *action* on the window boundary, not when the animation
-  // finishes — the 300 ms fade kept a clickable undo on screen past the moment
-  // its commit had already fired.
+  // finishes — the fade (`--d-move`) kept a clickable undo on screen past the
+  // moment its commit had already fired.
   const b = t.el.querySelector(".toast-undo");
   if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
   t.el.classList.add("out");
@@ -3183,8 +3183,10 @@ function dismissToast(t, immediate) {
     toastLive = null;
     toastPump();
   };
+  // Removed when the fade (`.toast.out`, over `--d-move`) has played, and at
+  // once under reduced motion, where it is 0.
   if (immediate) gone();
-  else setTimeout(gone, 300);
+  else setTimeout(gone, motionMs("--d-move"));
 }
 
 // What the lane may never cover, in two kinds. STRIPS are stepped over — the

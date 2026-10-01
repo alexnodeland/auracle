@@ -188,20 +188,23 @@ expects the check to fail on it, and holds the two drifts the tokens closed
 **Sizes and durations are a ratchet.** The same files are counted, outside
 their blocks, for four kinds of literal, in any unit case:
 
-- a font size in px, rem, em or % (`font-size` and the `font` shorthand), an
-  SVG `font-size` attribute, and any assignment to a canvas's `.font` that
-  is not `canvasFont(…)`;
+- a font size in px, rem, em or % (`font-size` and the `font` shorthand; not
+  100% or 1em, which are the parent's size), an SVG `font-size` attribute,
+  and any assignment to a canvas context's `.font` (`ctx`, `…Ctx`,
+  `context`) that is not `canvasFont(…)`;
 - a `padding`, `margin` or `gap` of 4 px or more, in px or rem;
 - a `border-radius` from 4 to 99 px;
-- a `transition` or `animation` time, and in a script an animation's
-  `duration: N` or a number passed to `.animate()`.
+- a `transition` or `animation` time, and in a script a `duration: N` or a
+  bare number inside an `.animate(…)` call's arguments.
 
 They are read in stylesheets, `<style>` blocks and `style` attributes, and
 in a script's strings, `.style.*` assignments, style objects and
 `style.setProperty()` calls; a literal held in a custom property counts when
-that property is `var()`'d in one of the declarations above. A script's
-timers (when something happens, not how long it moves), widths, heights,
-offsets, shadows and spacing in em are not counted.
+that property is `var()`'d in one of the declarations above, in a file of
+the same surface. A script's other durations (a `duration:` outside
+`.animate()`, timers: when something happens, not how long it moves), a
+`.font` on anything but a canvas context, widths, heights, offsets, shadows
+and spacing in em are not counted.
 `sizes-baseline.json` holds each file's counts, and the check fails when one
 rises, when a file it does not list has any, or when one falls below it (a
 move lowers the baseline in the same change, so the floor only goes down):

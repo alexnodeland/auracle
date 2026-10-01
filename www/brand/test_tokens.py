@@ -303,6 +303,32 @@ class TheRatchetsHoles(unittest.TestCase):
         got = self.counts_in("apps/web/style.css", ".x { margin: var(--s8); }")
         self.assertTrue(any("var(--s8) belongs to" in p for p in got), got)
 
+    def test_two_surfaces_sharing_a_custom_property_name_do_not_count_for_each_other(self):
+        # The brand page's --frame is a width. The landing page padding with a
+        # --frame of its own must not make the brand page's count as a space.
+        with Tree() as t:
+            t.edit("www/landing/style.css", lambda s: s + "\n.x { padding: var(--frame); }\n")
+            got = t.problems()
+            self.assertFalse(any(p.startswith("www/brand/index.html") for p in got), got)
+        # Within one surface the app's script and stylesheet count together.
+        self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/main.js", 'el.style.setProperty("--gap-x", "10px"); const r = "gap: var(--gap-x)";')))
+
+    def test_a_duration_outside_animate_is_not_an_animation(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", "note(text, { duration: 4000 });\nconst clip = { duration: 2.5 };"), [])
+
+    def test_only_a_canvas_contexts_font_counts_and_a_style_font_counts_once(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", "label.font = fontFor(kind);"), [])
+        self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", 'this.ctx.font = "10px mono";')))
+        got = self.counts_in("apps/web/main.js", 'el.style.font = "12px mono";')
+        self.assertTrue(any(": 1 literal font sizes" in p for p in got), got)
+
+    def test_a_font_size_that_is_the_parents_is_not_counted(self):
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 100%; }\n.y { font-size: 1em; }\n.z { font: inherit; }"), [])
+
+    def test_an_exemption_attaches_past_a_strings_quote_and_another_comment(self):
+        self.assertEqual(self.counts_in("apps/web/main.js", 'el.style.cssText = "padding: 6px"; // token-exempt: geometry'), [])
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 13px; /* a note */ /* token-exempt: a glyph */ }"), [])
+
     def test_an_exemption_covers_only_the_declaration_it_trails(self):
         got = self.counts_in("apps/web/style.css", ".x { font-size: 13px; animation: spin 1.2s linear infinite; } /* token-exempt: a loop's period */")
         self.assertTrue(any("literal font sizes" in p for p in got), got)

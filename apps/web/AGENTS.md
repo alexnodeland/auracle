@@ -92,19 +92,21 @@ the long-form notes are this directory's `README.md`.
   `make dev-check` fails on a color written in `style.css`, any script here
   or `index.html`, which is all the app loads. It also counts literal sizes
   and durations there, and fails on a new one:
-  - a font size in px, rem, em or %, an SVG `font-size`, and any canvas
-    `.font` not set through `canvasFont()`;
+  - a font size in px, rem, em or % (not 100% or 1em, the parent's size),
+    an SVG `font-size`, and a canvas context's `.font` (`ctx`, `…Ctx`,
+    `context`) not set through `canvasFont()`;
   - a padding, margin or gap of 4 px or more, and a radius of 4 to 99 px;
-  - a transition or animation time, and in a script an animation's
-    `duration:` or a number passed to `.animate()`;
-  - any of these held in a custom property that one of them uses, or set
-    with `style.setProperty()`.
+  - a transition or animation time, and in a script a `duration:` or a
+    bare number inside `.animate(…)`'s arguments;
+  - any of these held in a custom property that one of them uses in the
+    same surface's files, or set with `style.setProperty()`.
 
-  It does not count a script's timers (when something happens, not how long
-  it moves), widths, heights, offsets, shadows or spacing in em. Where the
-  scale has no step (a loop's period, a glyph sized to its box), the
-  declaration says why with a trailing `/* token-exempt: … */`, which covers
-  that declaration only. What is not checked yet elsewhere is listed in
+  It does not count a script's other durations (a `duration:` outside
+  `.animate()`, timers: when something happens, not how long it moves), a
+  `.font` on anything but a canvas context, widths, heights, offsets,
+  shadows or spacing in em. Where the scale has no step (a loop's period, a
+  glyph sized to its box), the declaration says why with a trailing
+  `/* token-exempt: … */`, which covers that declaration only. What is not checked yet elsewhere is listed in
   [`www/brand/README.md`](../../www/brand/README.md#the-tokens). Two rules
   fighting over one element is usually a specificity mistake (the bank row's
   cut was invisible for that reason).
