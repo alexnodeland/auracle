@@ -426,16 +426,20 @@ pub enum StructOp {
 }
 
 /// Why a structural edit was rejected.
+///
+/// The text is player copy: PATCH's toast quotes it after "That edit to Glass
+/// Pad didn’t happen:", so each message is one lowercase clause in the house
+/// voice (`www/brand/voice.md`), which `make dev-check` reads here.
 #[derive(Debug, Error)]
 pub enum StructError {
     /// No node at that key.
-    #[error("no node at {0}")]
+    #[error("that module is not in the patch")]
     NoSuchNode(String),
     /// The operation does not apply to this node kind.
     #[error("{0}")]
     Invalid(String),
     /// The edit would exceed the size/depth ceilings.
-    #[error("patch would exceed limits ({0} nodes max, depth {1})")]
+    #[error("patch would exceed limits ({0} modules max, depth {1})")]
     TooBig(usize, usize),
     /// The edit would stack more CV processors on one cable than the realtime
     /// voice is willing to carry.
@@ -926,7 +930,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
         StructOp::Insert { key, kind } => {
             if kind.is_source() {
                 return Err(StructError::Invalid(
-                    "sources cannot be inserted into a wire — use replace, or insert a mix".into(),
+                    "sources cannot be inserted into a wire; use replace, or insert a mix".into(),
                 ));
             }
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
@@ -957,7 +961,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 Some(input) => *slot = input,
                 None => {
                     return Err(StructError::Invalid(
-                        "a lone source cannot be deleted — replace it instead".into(),
+                        "a lone source cannot be deleted; replace it instead".into(),
                     ))
                 }
             }
@@ -1048,7 +1052,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             }
             let Some((a, b)) = binary_children_mut(slot) else {
                 return Err(StructError::Invalid(
-                    "this module has only one input — there is nothing to swap".into(),
+                    "this module has only one input, so there is nothing to swap".into(),
                 ));
             };
             std::mem::swap(a, b);
