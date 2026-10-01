@@ -257,4 +257,5 @@ TIMINGS = {
         "max": 2.0,
         "reel": 1.75,
     },
+    "exit_ring_out_s": 2.6,
 }

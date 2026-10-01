@@ -330,12 +330,13 @@
     "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
   },
   "grammar": {
-    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used.",
+    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used, and the one www/video/tools/timeline.py lays a film out on. `exit_ring_out_s` is how long a film runs after the exit mark's last note, for the room to ring out: the reel's end (42.62 s) came 2.6 s after Reach's last note (40.02 s).",
     "first_word_after_entrance_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
     "demo_after_line_s": 0.7,
     "demo_tail_db": -30,
     "voice_after_tail_s": 0.8,
     "exit_after_last_word_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
+    "exit_ring_out_s": 2.6,
     "rules": [
       "The motif plays only as the two marks.",
       "The first word comes 1.5-2 s after the entrance mark's last note. The bed (the mark's last chord held on) carries the gap and does not wait for a bar or cycle boundary.",

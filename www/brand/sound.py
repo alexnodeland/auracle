@@ -140,7 +140,7 @@ NEEDED = (
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
-    "grammar",
+    "grammar.exit_ring_out_s",
 )
 
 
