@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mix.py: a cue with no WAV stops the mix.
+"""mix.py: a cue with no WAV stops the mix, and the levels have one source.
 
     python3 www/video/tools/test_mix.py      (run by `make dev-check`)
 
@@ -17,6 +17,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import sound_defaults  # noqa: E402
 
 HAVE_AUDIO = all(importlib.util.find_spec(m) for m in ("numpy", "scipy"))
 
@@ -49,6 +50,16 @@ class ACue(unittest.TestCase):
 
     def test_no_cues_need_no_wavs(self):
         self.assertEqual(self.mix.cue_files([], self.dir), {})
+
+
+class TheLevels(unittest.TestCase):
+    def test_the_films_keep_todays_bed_and_duck_until_the_new_mix(self):
+        # illustrated.sh and walkthrough.sh used to pass -6 and -9 themselves,
+        # and mix.py's own default duck was -8. They now all take sound.json's
+        # `mix_now`, which must stay at what the pipelines passed until
+        # Plan-006 task 3 moves the mix to the ladder (the bed at -3 LU, a 2 dB
+        # duck), so that no film's mix changes before then.
+        self.assertEqual(sound_defaults.MIX_NOW, {"music_db": -6, "duck_db": -9})
 
 
 if __name__ == "__main__":

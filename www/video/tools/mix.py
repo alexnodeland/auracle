@@ -28,9 +28,13 @@ Sources:
 
 The mix is plain arithmetic, so it is repeatable: narration at a fixed level,
 the music ducked under it by an envelope follower (80 ms attack, 450 ms
-release, -9 dB), effects on top, then one gain to the loudness target and a
+release), effects on top, then one gain to the loudness target and a
 look-ahead peak limiter. Loudness is ITU-R BS.1770-4 (K-weighted, gated),
 computed here rather than trusted to a filter's defaults.
+
+The music's level and its duck default to sound_defaults.MIX_NOW, generated
+from www/brand/sound.json (`make sound`). That is the one place they are set:
+illustrated.sh and walkthrough.sh leave them to this default.
 """
 import argparse
 import json
@@ -43,6 +47,8 @@ import sys
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import lfilter, resample_poly
+
+import sound_defaults
 
 
 # Arrays of numbers (word times, the picture's envelopes) on one line each: a
@@ -197,8 +203,14 @@ def main():
                     help="with --encode: also FILM-preview.mp4, 720p, small enough to send")
     ap.add_argument("--poster", type=float)
     ap.add_argument("--target", type=float, default=-16.0, help="integrated loudness, LUFS")
-    ap.add_argument("--music-db", type=float, default=-9.0, help="music level relative to the voice, before ducking")
-    ap.add_argument("--duck-db", type=float, default=-8.0)
+    # One source: www/brand/sound.json's `mix_now`, through sound_defaults.py.
+    # These are today's levels (the bed 6 dB under the voice, a 9 dB duck),
+    # kept until Plan-006 task 3 moves the mix to the spec's ladder (the bed at
+    # -3 LU, a 2 dB duck), so no film's mix changes before then.
+    ap.add_argument("--music-db", type=float, default=sound_defaults.MIX_NOW["music_db"],
+                    help="music level relative to the voice, before ducking (default: sound.json mix_now)")
+    ap.add_argument("--duck-db", type=float, default=sound_defaults.MIX_NOW["duck_db"],
+                    help="the music's duck under the voice (default: sound.json mix_now)")
     args = ap.parse_args()
 
     fdir = os.path.join(VIDEO, "films", args.film)

@@ -1,0 +1,348 @@
+{
+  "about": [
+    "The one source of the films' sound (ADR-014). The values are docs/notes/sound-2026-09/SPEC.md's, chosen by ear and by measurement over six rounds; each block names the section it comes from.",
+    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a mix level is written into the film tools instead of here.",
+    "Units: knob values are the engine's normalized knob values, the ones a score's `params` take. Pitches are as they sound. LUFS is ITU-R BS.1770-4, as www/video/tools/mix.py computes it. A pan is -1 (left) to +1 (right), the score renderer's equal-power pan.",
+    "Three things are stand-ins, marked `stand_in`, that a film made to this must replace: the demo, the lead's bend for portamento, and the bed's hand-placed sighs."
+  ],
+  "spec": "docs/notes/sound-2026-09/SPEC.md",
+  "key": {
+    "about": "SPEC section 1.",
+    "tonic": "F",
+    "pedal": ["F2", "C3"],
+    "mode": "F Lydian for the cycle's first half (G6/F carries the B natural); minor color in its second half (Bbm6/F carries the Db)"
+  },
+  "tempo": {
+    "about": "SPEC section 1. A beat at 66 BPM is 0.909 s and a bar 3.636 s. The marks are written at 60 BPM, so a beat is a second, and are placed into the 66 BPM grid by time.",
+    "bpm": 66,
+    "beats_per_bar": 4,
+    "marks_bpm": 60
+  },
+  "form": {
+    "about": "SPEC sections 1 and 9.",
+    "cycle_bars": 8,
+    "bars_per_chord": 2,
+    "cycle": ["Fmaj9", "G6/F", "Bbmaj7/F", "Bbm6/F"],
+    "length": "The cycle repeats for as long as the film needs. The drone is held, never re-struck, and the pad's ties carry across cycles.",
+    "film": [
+      "The entrance mark (Bloom) blooms into the bed, and the first word follows it closely.",
+      "Narration, with demos in the grammar (`grammar`).",
+      "The exit mark (Reach) follows the last word closely and resolves to F."
+    ],
+    "motif": "The motif plays only as the two marks. The bed never quotes it: not its head, its sequence or a variant."
+  },
+  "cast": {
+    "about": "SPEC section 2. Every note is a bank preset played by the engine. `knobs` are the tweaks the finals used, each with the preset's stock value; every other knob is stock. The generator writes each part's preset, voices, trim, transpose and `used` knobs into every track of the scores that plays it.",
+    "shortlist": {
+      "about": "The sixteen presets a film casts from, shortlisted in round 2 by a two-note probe of all 62 bank presets (RFC-007 part 2; SPEC section 2, 'Measured for casting'). Bells, tines and plucks are excluded by name.",
+      "source": "docs/proposals/007-the-sound-of-the-films.md",
+      "criteria": {
+        "noise_share_max": 0.02,
+        "roughness_max": 6,
+        "note": "Also a low spectral centroid, a round attack, nothing above 4 kHz worth naming, and no energy below 60 Hz worth naming (under 0.02%). White noise measures a noise share of 0.70."
+      },
+      "roles": {
+        "pads_and_textures": ["Cathedral", "Long Room", "Rotor", "Morph Pad", "Tidal", "Slow Weather"],
+        "soft_leads": ["Wobble Board", "Falling Sign", "Solo Flight", "Telegraph", "Choirboy", "Fifth Wheel"],
+        "low_and_burbling": ["Held Under", "Heartbeat", "Ceiling", "Dub Echo"]
+      }
+    },
+    "room": {
+      "about": "SPEC section 5, 'One room'. Only Cathedral exposes a reverb in this cast, and every Cathedral part shares these stock settings. Wobble Board, Held Under and Solo Flight have no reverb node and sit dry in front of it. No outside reverb.",
+      "preset": "Cathedral",
+      "stock": {
+        "node#rsize": 0.85,
+        "node#rdamp": 0.35,
+        "node#rmix": 0.5
+      }
+    },
+    "parts": {
+      "drone": {
+        "role": "The floor: F2 and C3, held for the whole piece.",
+        "preset": "Cathedral",
+        "voices": 4,
+        "trim_db": -6,
+        "knobs": {
+          "amp#attack": { "stock": 0.75, "used": 0.85 }
+        },
+        "breath": {
+          "about": "The cutoff breathes once per cycle, lowest at the cycle's start: stock plus and minus 10%. The generator writes `low` and `high` over the bed score's own automation points.",
+          "param": "node/0#cut",
+          "stock": 0.55,
+          "low": 0.495,
+          "high": 0.605
+        }
+      },
+      "bed_pad": {
+        "role": "The bed's chord pad, two bars a chord, voice-led.",
+        "preset": "Cathedral",
+        "voices": 8,
+        "trim_db": -6,
+        "knobs": {
+          "amp#attack": { "stock": 0.75, "used": 0.85, "effect": "10-90% rise 1.18 s to 2.2 s" }
+        }
+      },
+      "marks_pad": {
+        "role": "The marks' pad, under the lead.",
+        "preset": "Cathedral",
+        "voices": 6,
+        "trim_db": -6,
+        "knobs": {
+          "amp#attack": { "stock": 0.75, "used": 0.55, "effect": "10-90% rise 0.30 s, so a half-second chord can speak" }
+        }
+      },
+      "lead": {
+        "role": "The motif's one voice everywhere it plays (the marks), and the bed's melody. Two voices per note; one track per note.",
+        "preset": "Wobble Board",
+        "voices": 2,
+        "knobs": {
+          "amp#attack": { "stock": 0.04, "used": 0.25, "effect": "A round onset" },
+          "amp#sustain": { "stock": 0.7, "used": 0.8, "effect": "Holds 4.1 dB under its attack (6.4 dB at 0.70)" },
+          "amp#release": { "stock": 0.3, "used": 0.45, "effect": "Note-off to -30 dB in 0.11 s (0.025-0.030 s at 0.30)" },
+          "node#cut": { "stock": 0.74, "used": 0.58, "effect": "Darker" },
+          "node#res": { "stock": 0.34, "used": 0.2, "effect": "Less peak" },
+          "node/0/m#rate": { "stock": 0.78, "used": 0.73, "effect": "Vibrato 3.45 Hz (5.15 Hz at stock)" },
+          "node/0#mdepth": { "stock": 0.045, "used": 0.035, "effect": "About +/-21 cents" }
+        },
+        "bend": {
+          "stand_in": "Portamento: each note bends in from the previous pitch with the score's `pitch_drop` (semis = previous minus current), because the score example cannot set the instrument's glide.",
+          "tau_ms": 45,
+          "pre_ms": 12
+        },
+        "legato_beats": 0.06,
+        "swell": {
+          "about": "A line's last note swells by a fader from its onset.",
+          "from_db": -5,
+          "to_db": 0,
+          "marks_s": 1.2,
+          "bed_beats": 1.5
+        }
+      },
+      "burble": {
+        "role": "The bed's low burble. Transposed +12 because it sounds an octave below the key.",
+        "preset": "Held Under",
+        "voices": 4,
+        "transpose": 12,
+        "knobs": {
+          "amp#attack": { "stock": 0.05, "used": 0.12 },
+          "node/0#cut": { "stock": 0.45, "used": 0.38 }
+        }
+      },
+      "demo": {
+        "role": "The instrument played between lines.",
+        "stand_in": "The demo is the engine playing a score, not the app recorded, and its 'Bright' gesture is the cutoff automated.",
+        "preset": "Solo Flight",
+        "voices": 4,
+        "knobs": {
+          "amp#attack": { "stock": 0.3, "used": 0.4 },
+          "amp#release": { "stock": 0.45, "used": 0.7, "effect": "The demo rings out" }
+        },
+        "bright": { "param": "node/0#cut", "from": 0.4, "to": 0.78, "over_beats": 6 }
+      }
+    }
+  },
+  "marks": {
+    "about": "SPEC section 3. Each mark's score is the record named in `score`; the generator writes it to `out` with the cast from `cast`, mapping each track to a part by `tracks` (a trailing * matches any suffix).",
+    "length_s": 4.5,
+    "lead_over_pad_db": 6,
+    "drone_under_pad_lu": 6,
+    "drone_fade_in": { "from_db": -12, "over_s": 1.5 },
+    "in_a_film": "The lead and the marks' pad are scaled together so the mark's 4.5 s, with the drone and anything under it, is the ladder's `marks_lufs`.",
+    "bloom": {
+      "role": "entrance",
+      "title": "Bloom",
+      "score": "docs/notes/sound-2026-09/scores/m2_bloom.json",
+      "out": "www/video/sound/bloom.json",
+      "tracks": { "drone": "drone", "pad": "marks_pad", "mel*": "lead" },
+      "harmony": "Fmaj9 | G6/F, the Lydian B | Fmaj9 without E4, so E5 is alone on top. It ends open, on the major 7th.",
+      "into_the_bed": {
+        "bed_bar_1_at_s": 1.5,
+        "held": "Bloom's last chord (A3 C4 G4) is the bed's bar 1: those notes stay on the marks' pad until a voice moves (A3 and C4 at bar 3, G4 at bar 5). The bed pad plays only the voices that move.",
+        "bed_e4_at_s": 4.5,
+        "burble_enters_bar": 2,
+        "pad_to_bed_level_s": 4.0
+      }
+    },
+    "reach": {
+      "role": "exit",
+      "title": "Reach",
+      "score": "docs/notes/sound-2026-09/scores/m1_reach.json",
+      "out": "www/video/sound/reach.json",
+      "tracks": { "drone": "drone", "pad": "marks_pad", "mel*": "lead" },
+      "harmony": "Fmaj7 | Bbmaj9/F (the C5 is its 9th) | Bbm6/F (the sigh under the held C5) | Fmaj7: I IV iv I.",
+      "out_of_the_bed": {
+        "hand_over": "The bed's voices end on Reach's downbeat, each stepping to the nearest note of Reach's Fmaj7 (A3 C4 E4), so the hand-over takes about a beat on the bed's release, wherever the bed is in its cycle.",
+        "passing_chord_beats": [1, 2],
+        "passing_chord": "If a hand-over would be abrupt, one passing chord of a beat or two, voice-led.",
+        "burble": "Stops on Reach's downbeat.",
+        "drone": "Continues, and is released with Reach."
+      }
+    }
+  },
+  "bed": {
+    "about": "SPEC section 4: N3. The score is the record named in `score`, three cycles with one sigh; the generator writes it to `out` with the cast from `cast`. Each part's EQ, pan and level is in `mix.parts`.",
+    "name": "N3",
+    "title": "N3",
+    "score": "docs/notes/sound-2026-09/scores/n3.json",
+    "out": "www/video/sound/n3.json",
+    "tracks": { "drone": "drone", "pad": "bed_pad", "burble": "burble", "mel*": "lead" },
+    "parts": {
+      "drone": {
+        "pitches": ["F2", "C3"],
+        "held": "For the whole piece, never re-struck, its cutoff breathing once a cycle (`cast.parts.drone.breath`)."
+      },
+      "pad": {
+        "voicings": {
+          "Fmaj9": ["A3", "C4", "E4", "G4"],
+          "G6/F": ["B3", "D4", "E4", "G4"],
+          "Bbmaj7/F": ["Bb3", "D4", "F4", "A4"],
+          "Bbm6/F": ["Bb3", "Db4", "F4", "G4"]
+        },
+        "restrike": "Only voices that move are re-struck (soft attack); the rest are tied, not re-struck. The inner lines descend chromatically (B, Bb, A and D, Db, C), and the top goes G G A G."
+      },
+      "burble": {
+        "step_beats": 0.75,
+        "held_beats": 0.675,
+        "cells": {
+          "Fmaj9": ["C3", "A3", "F3"],
+          "G6/F": ["D3", "B3", "G3"],
+          "Bbmaj7/F": ["D3", "Bb3", "F3"],
+          "Bbm6/F": ["Bb2", "Bb3", "F3"]
+        },
+        "cell": "Dotted eighths cycling a three-note cell (low, high, middle). The cell restarts at each chord change; the last note before a change is shortened to fit.",
+        "velocity": { "base": 0.5, "depth": 0.1, "period_notes": 7, "note": "0.5 x (1 + 0.1 sin(2 pi k / 7)): it breathes +/-10%, with no accents." }
+      },
+      "melody": {
+        "stand_in": "The sighs were placed by hand. A film needs them placed in the narration's gaps automatically.",
+        "shape_beats": [1.5, 2.5],
+        "shape": "Falling two-note sighs on chord tones: a dotted quarter, then a held note, the second swelling.",
+        "sighs": {
+          "Fmaj9": ["F5", "E5"],
+          "G6/F": ["E5", "D5"],
+          "Bbmaj7/F": ["Bb4", "A4"],
+          "Bbm6/F": ["Db5", "Bb4"]
+        },
+        "where": "Only in the narration's gaps, never in the bar before the exit mark. A sigh that has no gap is skipped, not crowded.",
+        "no_doubling": "Where a sigh would double the pad, the pad's top voice rests and returns at its next move."
+      }
+    }
+  },
+  "mix": {
+    "about": "SPEC section 5, on stems. Filters are 2nd-order Butterworth, applied causally. Band splits for dynamic moves are zero-phase 4th-order and complementary, so they reconstruct exactly. Levels are re-checked after the EQ: drone, burble and melody against the pad, integrated over the bed (the melody: momentary median while it sounds).",
+    "filter_order": 2,
+    "band_split_order": 4,
+    "center_below_hz": 150,
+    "parts": {
+      "drone": {
+        "eq": { "lowpass_hz": 200 },
+        "stereo": "mono",
+        "pan": 0,
+        "level": { "vs": "pad", "lu": -6 },
+        "note": "The low-pass is at 200 Hz because the partial that beats against the pad's B3 and Db4 is F2's third harmonic, at 262 Hz."
+      },
+      "pad": {
+        "parts": ["bed_pad", "marks_pad"],
+        "eq": { "highpass_hz": 165 },
+        "stereo": { "side_above_hz": 150, "side_gain": 1.25 },
+        "pan": 0,
+        "level": "reference",
+        "under_speech": "The pad dip (`duck.pad_dip`)."
+      },
+      "burble": {
+        "eq": { "band_hz": [110, 400] },
+        "pan": -0.2,
+        "level": { "vs": "pad", "lu": -12 }
+      },
+      "melody": {
+        "eq": { "highpass_hz": 220 },
+        "pan": 0.15,
+        "level": { "vs": "pad", "db": -4, "while": "it sounds" }
+      },
+      "marks_lead": {
+        "eq": { "highpass_hz": 220 },
+        "pan": 0,
+        "level": { "vs": "pad", "db": 6, "while": "it sounds" }
+      },
+      "demo": {
+        "eq": null,
+        "pan": 0,
+        "level": { "lufs": -18, "over": "its window" }
+      },
+      "narration": {
+        "eq": "voice_chain",
+        "stereo": "mono",
+        "pan": 0,
+        "level": { "lufs": -18 }
+      }
+    }
+  },
+  "voice_chain": {
+    "about": "SPEC section 6. The narration stem passes through these stages in order, then is normalized to the ladder's `narration_lufs`. The voice is Kokoro af_heart (RFC-004). Peaking filters are RBJ.",
+    "stages": [
+      { "type": "highpass", "hz": 85, "order": 2, "when": "always" },
+      {
+        "type": "peaking",
+        "hz": 315,
+        "gain_db": -2,
+        "q": 1.2,
+        "when": { "band_hz": [250, 400], "over_band_hz": [500, 800], "by_db": 3 },
+        "note": "When the 250-400 Hz power density exceeds 500-800 Hz by more than 3 dB. It measured 3.5-4.8 dB on every narration used."
+      },
+      { "type": "peaking", "hz": 4000, "gain_db": 2, "q": 0.9, "when": "always" },
+      {
+        "type": "deesser",
+        "above_hz": 5000,
+        "split_order": 4,
+        "detector_rms_ms": 5,
+        "threshold_dbfs": -26,
+        "ratio": 3,
+        "max_cut_db": 3,
+        "attack_ms": 1,
+        "release_ms": 60,
+        "when": "always",
+        "note": "Split band: a 4th-order zero-phase high-pass, the rest untouched. The threshold is the 95th percentile of speech frames, which measured -25.3 to -26.9 dBFS at -18 LUFS. Measured activity: 6.9-9.8% of frames."
+      }
+    ]
+  },
+  "ladder": {
+    "about": "SPEC section 7. `bed_rest_lu` is against the narration (so -21 LUFS) and `bed_under_demo_lu` against the demo (about -27 LUFS); the bed under speech is the duck (`duck`). No cues: no whoosh, blip, shimmer or logo sting, and nothing in their place.",
+    "narration_lufs": -18,
+    "bed_rest_lu": -3,
+    "demo_lufs": -18,
+    "bed_under_demo_lu": -9,
+    "bed_under_demo_down_s": 0.5,
+    "bed_under_demo_up_s": 1.0,
+    "marks_lufs": -18,
+    "master_lufs": -16,
+    "limiter": { "ceiling_dbtp": -1.2, "lookahead_ms": 5, "release_ms": 80 }
+  },
+  "duck": {
+    "about": "SPEC section 8. Three moves on the bed under the voice, sharing one detector and one follower. The app's sound is not ducked: in this grammar the instrument never plays under the narration.",
+    "detector": { "rms_ms": 5, "above_dbfs": -45 },
+    "follower": { "attack_ms": 80, "release_ms": 450 },
+    "broadband_db": -2,
+    "carve": { "band_hz": [1000, 4000], "db": -3, "on": "the whole bed" },
+    "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
+  },
+  "grammar": {
+    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used.",
+    "first_word_after_entrance_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
+    "demo_after_line_s": 0.7,
+    "demo_tail_db": -30,
+    "voice_after_tail_s": 0.8,
+    "exit_after_last_word_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
+    "rules": [
+      "The motif plays only as the two marks.",
+      "The first word comes 1.5-2 s after the entrance mark's last note. The bed (the mark's last chord held on) carries the gap and does not wait for a bar or cycle boundary.",
+      "The voice explains; 0.7 s after its last word the demo starts, wherever the bed is. If a re-strike would dip under the demo, the pad is re-voiced in the pause rather than waiting.",
+      "The demo is never cut off: its notes ring out on their own release. If it must end sooner, its playing ends sooner.",
+      "The voice waits until the demo's tail has fallen 30 dB under its playing level, then 0.8 s more on the bed, then continues. The bed returns over 1.0 s from note-off and resumes its cycle.",
+      "The exit mark enters 1.5-2 s after the last word ends, wherever the bed is, handing over as in `marks.reach`."
+    ]
+  },
+  "mix_now": {
+    "about": "The bed's level and duck the films are mixed with today: mix.py's defaults, which illustrated.sh and walkthrough.sh use. Kept so that no film's mix changes before Plan-006 task 3 moves the mix to the ladder and the duck above (the bed at -3 LU, a 2 dB duck); task 3 removes this block.",
+    "music_db": -6,
+    "duck_db": -9
+  }
+}

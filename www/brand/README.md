@@ -1,11 +1,13 @@
 # Brand
 
-The marks and the color tokens live here once. Everything else in the repo is
-a copy (the marks copied at build time, the tokens generated into each
-stylesheet by `make tokens`), which is the point: before this directory existed
-there were three different Auracle icons in circulation (a ring-and-pip in the
-site favicon, an unrelated base64 PNG inlined in the app, and a `🎼` at the top
-of the README) and six hand copies of the palette that had begun to disagree.
+The marks and the color tokens live here once, and so does the films' sound
+(`sound.json`). Everything else in the repo is a copy (the marks copied at
+build time, the tokens generated into each stylesheet by `make tokens`, the
+sound into the films' scores and mix by `make sound`), which is the point:
+before this directory existed there were three different Auracle icons in
+circulation (a ring-and-pip in the site favicon, an unrelated base64 PNG
+inlined in the app, and a `🎼` at the top of the README) and six hand copies
+of the palette that had begun to disagree.
 
 `index.html` is the full specification: the lockups, the construction rules,
 the tracking ramp, the icon set, and the rule behind each. It builds to
@@ -158,6 +160,42 @@ and `docs/notes/` (dated records). A new color is a token first: add it to
 `make dev-check`, plants each kind of stray color in a copy of the tree and
 expects the check to fail on it, and holds the two drifts the tokens closed
 (the films' deep amber, the brand page's lamp) in place.
+
+## The sound
+
+`sound.json` is the one source of the films' sound, as `tokens.json` is of
+their colors ([ADR-014](../../docs/decisions/014-the-films-sound.md); every
+value was chosen in `docs/notes/sound-2026-09/SPEC.md`). Its keys:
+
+| Key | Holds |
+| --- | --- |
+| `key`, `tempo`, `form` | F over an F2/C3 pedal; 66 BPM (the marks at 60); the 8-bar cycle Fmaj9, G6/F, Bbmaj7/F, Bbm6/F |
+| `cast` | The sixteen presets a film casts from, by role (RFC-007); the one room (Cathedral's stock reverb); and each part (drone, bed pad, marks' pad, lead, burble, demo) with its preset, voices and every knob the finals turned, stock and used |
+| `marks` | Bloom and Reach: each one's record score, its generated file, which part plays each track, and how it meets the bed |
+| `bed` | N3: its record score and generated file, and its parts (voicings, burble cells, sighs) |
+| `mix` | Each part's EQ, pan and level, on stems |
+| `voice_chain` | The narration's four stages, from the 85 Hz high-pass to the de-esser |
+| `ladder` | Every element's loudness, from the narration at −18 LUFS to the master at −16 |
+| `duck` | The bed under the voice: the 2 dB duck, the 3 dB carve in 1–4 kHz, the pad's 2 dB dip in 300–600 Hz |
+| `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice |
+| `mix_now` | The bed's level and duck the films are mixed with today (−6 and −9 dB), until the new mix replaces them |
+
+    make sound
+
+runs `sound.py`, which writes the marks' and the bed's scores into
+`www/video/sound/` (the notes from the auditioned finals, the cast from here)
+and the mix's defaults into `www/video/tools/sound_defaults.py`. The generated
+files are committed and say so at their top; edit the JSON, never them.
+
+`make dev-check` runs `sound.py --check`. It fails when a generated file is
+stale, when a preset in the cast is not in the bank, when a knob is outside
+0–1, and when a mix level is written into the film tools instead of here: a
+number as `mix.py`'s `--music-db` or `--duck-db` default, or a numeric
+fallback for `MUSIC_DB` or `DUCK_DB` in a pipeline script. `test_sound.py`,
+also run by `make dev-check`, plants each in a copy of the tree and expects
+the check to fail on it. With `AURACLE_RENDER_SCORES=1` it also renders every
+generated score with the engine and checks each track sounds, and checks each
+knob's stock value against the preset's own.
 
 ## Regenerating the rasters
 

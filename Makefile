@@ -42,7 +42,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
         film-sounds film-voice film film-rehearse film-record film-publish \
-        film-record-all film-preview dev-check tokens help install-hooks
+        film-record-all film-preview dev-check tokens sound help install-hooks
 
 all: check
 
@@ -76,8 +76,10 @@ install-hooks:
 ## color tokens (every generated block current, no color written outside
 ## www/brand/tokens.json, and the check's own tests), the voice (each file's
 ## count of banned words, em dashes and British spellings exactly at
-## www/brand/voice-baseline.json, and the check's own tests), the Claude Code
-## hooks against inputs they must block and pass, the syntax of every film
+## www/brand/voice-baseline.json, and the check's own tests), the films' sound
+## (the scores and mix defaults generated from www/brand/sound.json current,
+## no mix level written outside it, and the check's own tests), the Claude
+## Code hooks against inputs they must block and pass, the syntax of every film
 ## tool, and the film tools' own tests (on .venv-voice when it exists)
 dev-check:
 	@python3 .claude/checks/check_docs.py
@@ -86,6 +88,8 @@ dev-check:
 	@python3 www/brand/test_tokens.py
 	@python3 www/checkwords.py
 	@python3 www/test_checkwords.py
+	@python3 www/brand/sound.py --check
+	@python3 www/brand/test_sound.py
 	@bash .claude/checks/test_hooks.sh
 	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
@@ -97,6 +101,12 @@ dev-check:
 ## every surface's stylesheet (the generated blocks are committed)
 tokens:
 	@python3 www/brand/tokens.py
+
+## sound: write the films' sound in www/brand/sound.json into the marks' and
+## the bed's scores (www/video/sound/) and the mix's defaults
+## (www/video/tools/sound_defaults.py); the generated files are committed
+sound:
+	@python3 www/brand/sound.py
 
 ## web-check: every web module parses (js-check), and the pure-logic modules'
 ## unit tests pass

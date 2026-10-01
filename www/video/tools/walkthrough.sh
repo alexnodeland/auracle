@@ -46,7 +46,11 @@ rm -rf "out/$F/music"
 (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
 node tools/render.mjs "$F" --cues | tail -1
 python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json" --music-db "${MUSIC_DB:--6}" --duck-db "${DUCK_DB:--9}")
+# The bed's level and its duck are mix.py's defaults, from www/brand/sound.json
+# (`mix_now`): today's levels, kept until Plan-006 task 3 moves the mix to the
+# spec's ladder, so no film's mix changes before then.
+MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json"
+     ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
 node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1
 python3 tools/mix.py "$F" "${MIX[@]}" --encode ${DRAFT[@]+"${DRAFT[@]}"} --preview --poster "$POSTER" | tail -5
