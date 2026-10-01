@@ -211,12 +211,11 @@
         },
         "restrike": "Only voices that move are re-struck (soft attack); the rest are tied, not re-struck. The inner lines descend chromatically (B, Bb, A and D, Db, C), and the top goes G G A G.",
         "under_demo": {
-          "about": "SPEC section 9, rules 3 and 5. In the pause before a demo the pad is re-voiced to `voicing` on `on` (the marks' pad, whose 0.30 s rise speaks within the 0.7 s pause) and held until the bed comes back after the demo's note-off; the burble plays `counts_as`'s cell under it. With the demo's notes it makes `counts_as`, so the cycle resumes on the chord after it. In the reel the pad went to A3 C4, so the demo's F3 E4 G4 A4 completed an Fmaj9 without doubling it, and the bed came back on G6/F.",
+          "about": "SPEC section 9, rules 3 and 5. In the pause before a demo the pad is re-voiced to `voicing` on `on` (the marks' pad, whose 0.30 s rise speaks within the 0.7 s pause) and held until the bed comes back after the demo's note-off; the burble plays `counts_as`'s cell under it. With the demo's notes it makes `counts_as`, so the cycle resumes on the chord after it. In the reel the pad went to A3 C4, so the demo's F3 E4 G4 A4 completed an Fmaj9 without doubling it, and the bed came back on G6/F. No chord is struck less than `hold_before_s` before a demo's pause: the previous chord holds into it. The bed's pad takes 2.2 s to rise (`cast.parts.bed_pad`), so a chord struck later would never bloom, and a sliver of one would set the burble's cell going again for a note or two, a flam against the demo's own cell. In the reel Bbmaj7/F was struck 2.22 s before the pause. If the bed would come back inside the bar before the exit mark (`marks.reach.out_of_the_bed.hold_bars`), it does not: this voicing and the burble's cell carry on to the exit mark's downbeat, and nothing sounds past it.",
           "voicing": ["A3", "C4"],
           "on": "marks_pad",
           "counts_as": "Fmaj9",
-          "hold_before_s": 2.2,
-          "hold": "No chord is struck less than `hold_before_s` before a demo's pause: the previous chord holds into it. The bed's pad takes 2.2 s to rise (`cast.parts.bed_pad`), so a chord struck later would never bloom, and a sliver of one would set the burble's cell going again for a note or two, a flam against the demo's own cell. In the reel Bbmaj7/F was struck 2.22 s before the pause. If the bed would come back inside the bar before the exit mark (`marks.reach.out_of_the_bed.hold_bars`), it does not: this voicing and the burble's cell carry on to the exit mark's downbeat, and nothing sounds past it."
+          "hold_before_s": 2.2
         }
       },
       "burble": {
@@ -276,7 +275,7 @@
         "stereo": { "side_above_hz": 150, "side_gain": 1.25 },
         "pan": 0,
         "level": "reference",
-        "under_speech": "The pad dip (`duck.pad_dip`)."
+        "about": "Under speech, the pad dips further (`duck.pad_dip`)."
       },
       "burble": {
         "eq": { "band_hz": [110, 400] },

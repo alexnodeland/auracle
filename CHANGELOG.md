@@ -8,6 +8,28 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: the films' sound
+
+- **The films are mixed the way their sound was chosen, with no sound
+  effects.**
+  - The narration is lightly equalized and softened on its "s" sounds, at a
+    steady level.
+  - The music sits a little under the voice. While the voice speaks, it
+    dips a little, and a little more in the range where speech is clearest.
+  - Each demo plays after its line, never under it, as loud as the voice,
+    with the music well under it.
+  - Two short themes open and close a film, just under two seconds from its
+    first and last words.
+  - The music under a film is written to fit its timing: a held low note,
+    chords that move one voice at a time, and short falling phrases only
+    where the narration pauses.
+
+  Before, the music sat lower under an untreated voice and dropped sharply
+  whenever it spoke. The app's own sound came in at whatever level it was
+  recorded, and whooshes, clicks and a logo sting played on top. Each film
+  changes when it is re-voiced and mixed again; until then it sounds as it
+  did, without the effects (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**
@@ -31,22 +53,6 @@ changelog that edits its own past is not a record.
   the end.
   Each phrase now repeats to the end of its section, and the films change
   when they are next rendered (`test_fit_score.py`).
-- **The films are mixed to the sound chosen for them, with no cues.**
-  - The narration goes through a voice chain at −18 LUFS.
-  - The music sits 3 LU under it, ducked 2 dB and carved 3 dB in 1–4 kHz
-    while the voice speaks.
-  - Each demo plays after its line, at −18 LUFS, with the music 9 LU under
-    it.
-  - The two marks, Bloom and Reach, open and close a film 1.75 s from the
-    voice.
-  - The music under a film is written to its timing: a held drone, the
-    chords tied across each cycle, and short sighs only in the narration's
-    gaps.
-
-  Before, the music sat 6 dB under an untreated voice, ducked 9 dB, the
-  app's sound came in at whatever level it was recorded, and whooshes, blips
-  and a logo sting played on top. The films change as each one is re-voiced
-  and mixed again (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
 
 ### Fixed: what a generation and ⚡ say
 

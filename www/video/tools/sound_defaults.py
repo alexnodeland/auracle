@@ -154,7 +154,6 @@ BED = {
         "on": "marks_pad",
         "counts_as": "Fmaj9",
         "hold_before_s": 2.2,
-        "hold": "No chord is struck less than `hold_before_s` before a demo's pause: the previous chord holds into it. The bed's pad takes 2.2 s to rise (`cast.parts.bed_pad`), so a chord struck later would never bloom, and a sliver of one would set the burble's cell going again for a note or two, a flam against the demo's own cell. In the reel Bbmaj7/F was struck 2.22 s before the pause. If the bed would come back inside the bar before the exit mark (`marks.reach.out_of_the_bed.hold_bars`), it does not: this voicing and the burble's cell carry on to the exit mark's downbeat, and nothing sounds past it.",
     },
     "burble": {
         "step_beats": 0.75,
@@ -249,7 +248,6 @@ PARTS = {
         },
         "pan": 0,
         "level": "reference",
-        "under_speech": "The pad dip (`duck.pad_dip`).",
     },
     "burble": {
         "eq": {

@@ -145,7 +145,9 @@ jobs:
   # PROCESSOR template literal, which leaves a blob that silently never
   # registers (CONTRIBUTING § Sharp edges). Its own job rather than a step in
   # `lint`, because `lint` is gated on Rust having changed and a JS-only PR is
-  # exactly the PR this check exists for. Seconds, no toolchain.
+  # exactly the PR this check exists for. It also runs `make dev-check`, whose
+  # film tools' tests need numpy and scipy (installed below): about a minute
+  # in all, with no Rust toolchain.
   web:
     name: Web
     needs: changes
