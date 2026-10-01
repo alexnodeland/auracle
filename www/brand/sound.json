@@ -255,6 +255,11 @@
     "filter_order": 2,
     "band_split_order": 4,
     "center_below_hz": 150,
+    "sounding": {
+      "about": "What `while it sounds` means, where a part is levelled against the pad sounding with it (the melody; the marks' lead) and where a demo window is checked for sound: momentary loudness (400 ms blocks, 100 ms apart) above `part_lufs`, with the pad above `pad_lufs`. These are the audition's own gates (its build scripts measured every `while it sounds` this way).",
+      "part_lufs": -60,
+      "pad_lufs": -70
+    },
     "parts": {
       "drone": {
         "eq": { "lowpass_hz": 200 },
@@ -348,10 +353,11 @@
     "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
   },
   "grammar": {
-    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used, and the one www/video/tools/timeline.py lays a film out on. `exit_ring_out_s` is how long a film runs after the exit mark's last note, for the room to ring out: the reel's end (42.62 s) came 2.6 s after Reach's last note (40.02 s).",
+    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used, and the one www/video/tools/timeline.py lays a film out on. `exit_ring_out_s` is how long a film runs after the exit mark's last note, for the room to ring out: the reel's end (42.62 s) came 2.6 s after Reach's last note (40.02 s). A demo's tail is measured, not assumed: its playing level is the median of the RMS of the mono sum (the two channels' mean) over `demo_tail_hop_s` frames between its first note and its last note-off, and the tail ends at the first frame after the note-off that is `demo_tail_db` under that level. The reel measured its stand-in demo this way at 1.08 s (it had assumed 1.12 s).",
     "first_word_after_entrance_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
     "demo_after_line_s": 0.7,
     "demo_tail_db": -30,
+    "demo_tail_hop_s": 0.05,
     "voice_after_tail_s": 0.8,
     "exit_after_last_word_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
     "exit_ring_out_s": 2.6,

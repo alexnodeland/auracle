@@ -88,7 +88,8 @@ def read_json(path):
 
 
 def on_n3(script):
-    return str(script["music"].get("bed", "")).lower() == "n3"
+    """Is the film on the bed sound.json names (N3), with the grammar and the marks?"""
+    return str(script["music"].get("bed", "")).lower() == sound_defaults.BED["name"].lower()
 
 
 def demo_slot(line_id, demo, t1, measured):

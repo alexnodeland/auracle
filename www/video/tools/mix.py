@@ -96,10 +96,10 @@ VOICE_CHAIN = sound_defaults.VOICE_CHAIN
 # the bed's dips under the voice, and only the marks' is scaled with a mark.
 ROLE_PART = {"drone": "drone", "pad": "pad", "mpad": "pad", "burble": "burble", "melody": "melody", "lead": "marks_lead"}
 BED_ROLES = ("drone", "pad", "mpad", "burble", "melody")
-# "While it sounds" (the melody and the lead against the pad): momentary
-# loudness above these, the audition's own gate.
-SOUNDING_LUFS = -60.0
-PAD_SOUNDING_LUFS = -70.0
+# "While it sounds" (the melody and the lead against the pad, and the app in
+# a demo window): momentary loudness above these (sound.json `mix.sounding`).
+SOUNDING_LUFS = MIX["sounding"]["part_lufs"]
+PAD_SOUNDING_LUFS = MIX["sounding"]["pad_lufs"]
 
 
 # Arrays of numbers (word times, the picture's envelopes) on one line each: a
@@ -551,11 +551,14 @@ def narrated(lines, demos):
     return segs
 
 
-def demo_tail(x, t0, off, floor_db=None, hop_s=0.05):
+def demo_tail(x, t0, off, floor_db=None, hop_s=None):
     """How long after `off` the sound in x falls `floor_db` (the grammar's
-    `demo_tail_db`, -30) under its playing level, the median of its 50 ms RMS
-    between t0 and off. None if it never does."""
+    `demo_tail_db`, -30) under its playing level: the median of the RMS of its
+    mono sum over `demo_tail_hop_s` (50 ms) frames between t0 and off. The tail
+    ends at the first frame after `off` under that level plus `floor_db`.
+    None if it never does."""
     floor_db = sound_defaults.TIMINGS["demo_tail_db"] if floor_db is None else floor_db
+    hop_s = sound_defaults.TIMINGS["demo_tail_hop_s"] if hop_s is None else hop_s
     h = int(hop_s * SR)
     m = x.mean(axis=1)
     k = len(m) // h
@@ -699,7 +702,7 @@ def main():
             slots = demo_slots(demos, lines, n / SR)
             for d, (s0, s1) in zip(demos, slots):
                 la = lufs(cut(app, d["t0"], d["off"]))
-                if la <= -60:
+                if la <= SOUNDING_LUFS:
                     print(f"  app: nothing plays in the demo at {d['t0']:.2f} s ({la:.1f} LUFS); left as it is", file=sys.stderr)
                     continue
                 i, j = int(round(s0 * SR)), min(n, int(round(s1 * SR)))

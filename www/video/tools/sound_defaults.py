@@ -140,6 +140,7 @@ MARKS = {
 # The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its
 # voicings, the pad under a demo, the burble, and the sighs with the rule that places them.
 BED = {
+    "name": "N3",
     "cycle": ["Fmaj9", "G6/F", "Bbmaj7/F", "Bbm6/F"],
     "pedal": ["F2", "C3"],
     "voicings": {
@@ -298,11 +299,16 @@ PARTS = {
     },
 }
 
-# Filter orders, and the frequency below which every stem's side signal is removed.
+# Filter orders, the frequency below which every stem's side signal is removed, and what `while it sounds`
+# means (momentary loudness above part_lufs, with the pad above pad_lufs).
 MIX = {
     "filter_order": 2,
     "band_split_order": 4,
     "center_below_hz": 150,
+    "sounding": {
+        "part_lufs": -60,
+        "pad_lufs": -70,
+    },
 }
 
 # The grammar's timings, in seconds and dB (SPEC section 9).
@@ -314,6 +320,7 @@ TIMINGS = {
     },
     "demo_after_line_s": 0.7,
     "demo_tail_db": -30,
+    "demo_tail_hop_s": 0.05,
     "voice_after_tail_s": 0.8,
     "exit_after_last_word_s": {
         "min": 1.5,

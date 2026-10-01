@@ -77,9 +77,10 @@ GENERATED = "generated from www/brand/sound.json by www/brand/sound.py (make sou
 
 # The two ways the duck came to have three values, looked for where they
 # happened: a number as an argparse default for --music-db or --duck-db in a
-# film tool's Python (mix.py reads them from LADDER and DUCK) (read from its syntax tree, so a docstring or a help
-# string that quotes a level is not read), and a numeric fallback or flag in
-# its shell scripts (read with their comments, inline ones too, taken out).
+# film tool's Python, read from its syntax tree so that a docstring or a help
+# string that quotes a level is not read (mix.py reads both from LADDER and
+# DUCK); and a numeric fallback or flag in its shell scripts, read with their
+# comments, inline ones too, taken out.
 # It does not try to catch every way a level could be planted.
 LEVEL_FILES = ["www/video/tools/*.py", "www/video/tools/*.sh"]
 LEVEL_FLAGS = ("--music-db", "--duck-db")
@@ -141,7 +142,8 @@ NEEDED = (
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
-    "grammar.exit_ring_out_s", "cast.parts.lead.release.tail_s", "marks.reach.out_of_the_bed.hold_bars",
+    "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "cast.parts.lead.release.tail_s",
+    "marks.reach.out_of_the_bed.hold_bars", "mix.sounding.part_lufs", "mix.sounding.pad_lufs", "bed.name",
     "bed.parts.pad.under_demo", "bed.parts.melody.placement",
 )
 
@@ -197,7 +199,25 @@ def validate(src: dict) -> list[str]:
     for k, v in strip(src["bed"]["parts"]["melody"]["placement"]).items():
         if not isinstance(v, (int, float)) or v < 0:
             errs.append(f"{SOURCE}: `bed.parts.melody.placement.{k}` should be a number, 0 or more")
+    # The film tools' numbers that no record checks: each within its sense.
+    checks = [
+        ("marks.reach.out_of_the_bed.hold_bars", lambda v: isinstance(v, int) and v >= 0, "a whole number of bars, 0 or more"),
+        ("grammar.exit_ring_out_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
+        ("grammar.demo_tail_hop_s", lambda v: _num(v) and 0 < v <= 1, "a frame length in seconds, over 0 and at most 1"),
+        ("grammar.demo_tail_db", lambda v: _num(v) and v < 0, "a negative number of dB"),
+        ("cast.parts.lead.release.tail_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
+        ("mix.sounding.part_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
+        ("mix.sounding.pad_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
+    ]
+    for dotted, ok, what in checks:
+        v = need(src, dotted)
+        if not ok(v):
+            errs.append(f"{SOURCE}: `{dotted}` is {v!r}; it should be {what}")
     return errs
+
+
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 # ─── the scores ──────────────────────────────────────────────────────────────
@@ -512,7 +532,8 @@ def defaults(src: dict) -> dict:
         "SHORTLIST": {"roles": src["cast"]["shortlist"]["roles"], "criteria": numbers(src["cast"]["shortlist"]["criteria"])},
         "ROOM": {"preset": src["cast"]["room"]["preset"], "stock": src["cast"]["room"]["stock"]},
         "PARTS": strip(src["mix"]["parts"]),
-        "MIX": {k: src["mix"][k] for k in ("filter_order", "band_split_order", "center_below_hz")},
+        "MIX": {**{k: src["mix"][k] for k in ("filter_order", "band_split_order", "center_below_hz")},
+                "sounding": strip(src["mix"]["sounding"])},
         "TIMINGS": {k: strip(v) for k, v in src["grammar"].items() if k not in ("about", "rules")},
     }
 
@@ -522,6 +543,7 @@ def bed_defaults(src: dict) -> dict:
     bed = src["bed"]["parts"]
     b = bed["burble"]
     return {
+        "name": src["bed"]["name"],
         "cycle": src["form"]["cycle"],
         "pedal": src["key"]["pedal"],
         "voicings": bed["pad"]["voicings"],
@@ -561,7 +583,8 @@ DEFAULTS_DOC = {
     "SHORTLIST": "The presets a film casts from, by role, and the measured limits they were shortlisted by (RFC-007).",
     "ROOM": "The one room: Cathedral's reverb at its stock settings. No part turns these, and no outside reverb is added.",
     "PARTS": "Each part's EQ, pan and level on stems (SPEC section 5). A level is against the pad unless it names LUFS.",
-    "MIX": "Filter orders, and the frequency below which every stem's side signal is removed.",
+    "MIX": "Filter orders, the frequency below which every stem's side signal is removed, and what `while it sounds`\n"
+           "means (momentary loudness above part_lufs, with the pad above pad_lufs).",
     "TIMINGS": "The grammar's timings, in seconds and dB (SPEC section 9).",
     "BED": "The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its\n"
            "voicings, the pad under a demo, the burble, and the sighs with the rule that places them.",

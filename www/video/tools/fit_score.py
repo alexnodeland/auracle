@@ -223,6 +223,10 @@ def fit_phrase(track, p, m, n, bpb, dropped, cut):
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
 STEPS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+# Not a musical rule: the score's one section runs this many bars past the
+# bar the exit mark ends in, as the reel's did, so the drone's release and the
+# room ring out inside the section before the render's own tail.
+SPARE_BARS = 1
 
 
 def midi(p):
@@ -232,16 +236,17 @@ def midi(p):
     return 12 * (int(p[-1]) + 1) + STEPS[p[0]] + (1 if acc == "#" else -1 if acc == "b" else 0)
 
 
-def _track(template, name, role, notes):
+def _track(template, name, role, notes, bpb):
     """A track of the film score: the template's cast (the generated score's
     preset, voices, trim, transpose, knobs), at unity: the mix levels each
-    part on its stem."""
+    part on its stem. Its notes in time order (`bpb` beats a bar), the
+    lowest first at the same time."""
     t = {"name": name, "role": role, "preset": template["preset"], "gain_db": 0.0}
     for k in ("voices", "trim_db", "transpose"):
         if k in template:
             t[k] = template[k]
     t["params"] = dict(template.get("params") or {})
-    t["notes"] = {"s": sorted(notes, key=lambda n: ((n[0] - 1) * 4 + n[1], midi(n[3])))}
+    t["notes"] = {"s": sorted(notes, key=lambda n: ((n[0] - 1) * bpb + n[1], midi(n[3])))}
     return t
 
 
@@ -409,8 +414,8 @@ def film_score(tl, bed, bloom, reach):
     v1, v2 = (t["notes"]["s"][0][4] for t in sigh_t[:2])
     for n, (a, ch) in enumerate(sighs, 1):
         p1, p2 = B["sighs"][ch]
-        one = _track(sigh_t[0], f"sigh{n}a", "melody", [note(a, shape[0] + legato, p1, v1)])
-        two = _track(sigh_t[1], f"sigh{n}b", "melody", [note(a + shape[0], shape[1], p2, v2)])
+        one = _track(sigh_t[0], f"sigh{n}a", "melody", [note(a, shape[0] + legato, p1, v1)], bpb)
+        two = _track(sigh_t[1], f"sigh{n}b", "melody", [note(a + shape[0], shape[1], p2, v2)], bpb)
         if midi(p1) != midi(p2):
             two["pitch_drop"] = {"semis": float(midi(p1) - midi(p2)), **LEAD["bend"]}
         sw = LEAD["swell"]
@@ -447,7 +452,7 @@ def film_score(tl, bed, bloom, reach):
             continue
         auto.append((x, v))
     fade = M["drone_fade_in"]
-    drone = _track(drone_t, "drone", "drone", [note(0, END, p, v) for _, _, _, p, v in drone_t["notes"]["s"]])
+    drone = _track(drone_t, "drone", "drone", [note(0, END, p, v) for _, _, _, p, v in drone_t["notes"]["s"]], bpb)
     drone["automation"] = [{"param": drone_t["automation"][0]["param"], "points": [["s", *pos(x), v] for x, v in auto]}]
     drone["fader"] = [["s", *pos(0), float(fade["from_db"])], ["s", *pos(b(te + fade["over_s"])), 0.0]]
 
@@ -457,7 +462,7 @@ def film_score(tl, bed, bloom, reach):
         for k, name in enumerate(names, 1):
             x = m[name]
             t = _track(x["track"], f"{prefix}{k}", "lead",
-                       [note(b(t_mark + t0), d / spb, p, v) for t0, d, p, v in x["notes"]])
+                       [note(b(t_mark + t0), d / spb, p, v) for t0, d, p, v in x["notes"]], bpb)
             if x["track"].get("pitch_drop"):
                 t["pitch_drop"] = dict(x["track"]["pitch_drop"])
             if x["fader"]:
@@ -465,12 +470,12 @@ def film_score(tl, bed, bloom, reach):
             out.append(t)
         return out
 
-    out_tracks = [drone, _track(m_in["pad"]["track"], "epad", "mpad", mpad_in),
-                  _track(pad_t, "pad", "pad", [note(a, z - a, p, pad_vel) for a, z, p in pad]),
-                  _track(burble_t, "burble", "burble", burble)]
+    out_tracks = [drone, _track(m_in["pad"]["track"], "epad", "mpad", mpad_in, bpb),
+                  _track(pad_t, "pad", "pad", [note(a, z - a, p, pad_vel) for a, z, p in pad], bpb),
+                  _track(burble_t, "burble", "burble", burble, bpb)]
     if tx is not None:
         out_tracks.append(_track(m_out["pad"]["track"], "xpad", "mpad",
-                                 [note(b(tx + t0), d / spb, p, v) for t0, d, p, v in m_out["pad"]["notes"]]))
+                                 [note(b(tx + t0), d / spb, p, v) for t0, d, p, v in m_out["pad"]["notes"]], bpb))
     out_tracks += lead("elead", m_in, te)
     if tx is not None:
         out_tracks += lead("xlead", m_out, tx)
@@ -484,7 +489,7 @@ def film_score(tl, bed, bloom, reach):
         "seed": bed.get("seed", 0),
         "render": dict(bed["render"]),
         "master": dict(bed["master"]),
-        "sections": [{"name": "s", "bars": int(math.ceil(END / bpb)) + 1}],
+        "sections": [{"name": "s", "bars": int(math.ceil(END / bpb)) + SPARE_BARS}],
         "_film": {
             "film": tl.get("film"),
             "t0": te,

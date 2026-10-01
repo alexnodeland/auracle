@@ -73,6 +73,13 @@ class TheLadder(unittest.TestCase):
         args = mix.parser().parse_args(["f"])
         self.assertEqual((args.music_db, args.duck_db, args.target), (-3, -2, -16))
 
+    def test_while_it_sounds_and_the_tails_frames_are_sound_jsons(self):
+        with open(SOUND_JSON, encoding="utf-8") as f:
+            src = json.load(f)
+        self.assertEqual((mix.SOUNDING_LUFS, mix.PAD_SOUNDING_LUFS),
+                         (src["mix"]["sounding"]["part_lufs"], src["mix"]["sounding"]["pad_lufs"]))
+        self.assertEqual(sound_defaults.TIMINGS["demo_tail_hop_s"], src["grammar"]["demo_tail_hop_s"])
+
     def test_there_is_no_cue_layer(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             mix.parser().parse_args(["f", "--sfx", "out/sound/stingers"])

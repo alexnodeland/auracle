@@ -161,6 +161,21 @@ class TheCheck(unittest.TestCase):
             self.assertEqual(t.problems(), [
                 f"{S.SOURCE}: `bed.parts.melody.placement.before_line_s` should be a number, 0 or more"])
 
+    def test_the_film_tools_numbers_that_no_record_checks_are_checked_for_sense(self):
+        cases = [
+            (lambda s: s["marks"]["reach"]["out_of_the_bed"].update(hold_bars=1.5), "`marks.reach.out_of_the_bed.hold_bars` is 1.5"),
+            (lambda s: s["grammar"].update(exit_ring_out_s=-1), "`grammar.exit_ring_out_s` is -1"),
+            (lambda s: s["grammar"].update(demo_tail_hop_s=0), "`grammar.demo_tail_hop_s` is 0"),
+            (lambda s: s["cast"]["parts"]["lead"]["release"].update(tail_s="0.11"), "`cast.parts.lead.release.tail_s` is '0.11'"),
+            (lambda s: s["mix"]["sounding"].update(part_lufs=-80), "`mix.sounding.part_lufs` is -80"),
+        ]
+        for edit, want in cases:
+            with self.subTest(want=want), Tree() as t:
+                t.edit_source(edit)
+                problems = t.problems()
+                self.assertEqual(len(problems), 1, problems)
+                self.assertIn(want, problems[0])
+
     def test_the_bed_and_the_lead_reach_the_film_tools(self):
         with Tree() as t:
             t.edit_source(lambda src: src["bed"]["parts"]["melody"]["placement"].update(bars_before_exit=2))
