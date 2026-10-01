@@ -116,7 +116,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - (b) The seed count, exposed (`refine_seeds`).
    - (c) The palette's twelve new directions. Define each in φ and measure
      how often each is reachable across the presets.
-   - (d) The module suggestion: a design note first (Open 2).
+   - (d) The module suggestion: a design note first (Open 2). The note is
+     [`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md),
+     waiting on the maintainer's decision.
    - (e) A cable-level probe.
    - (f) Keeping a generation's replaced trees until the next one (Open 1).
      Done only if the maintainer decides to keep them.

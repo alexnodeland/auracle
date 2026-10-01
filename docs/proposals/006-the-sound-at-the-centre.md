@@ -401,6 +401,11 @@ Each is decided as its task in Plan-005 comes up.
    heard and brought back. The cost is up to ten trees in memory and in the
    session save.
 2. **How the model suggests the next module** in an empty or growing patch.
+   *Design note (2026-10-01):* four designs measured on the engine, with a
+   recommendation (render the modules the output can take on the farm, and
+   rank them by a lower bound on the gain) and what is left to decide
+   ([`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md)).
+   Not yet decided.
 3. **The cost of posting the belief after every pick,** so TASTE and the
    bank's ratings move per pick.
    *Answered (2026-10-01):* under 2 ms per pick in wasm at five lenses

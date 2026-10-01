@@ -1,0 +1,18 @@
+suggest_cost.mjs at 7b43ef2 (quiver-dsp 0.3.3), Apple M3 Max, 2026-10-01, over the edits census.txt's run wrote with --ops
+node v26.3.0, apps/web/pkg build {"build": "9381145ec63bc053"}
+load before:  7:06  up 55 days, 22:53, 2 users, load averages: 36.39 31.69 31.95
+patch                       edits   median CPU ms   total CPU s   silent
+Sub & Sparkle                  19             233          4.40        0
+Hornet                         29             230          6.70        0
+Tine                           25             281          7.08        0
+Detune Dream                   25             231          5.92        0
+Dub Echo                       25             189          4.75        0
+Deadfall                       29             409         11.91        0
+Ceiling                        29             455         13.24        0
+Detune Dream, cleared           6             136          0.82        0
+Sub & Sparkle, cleared          6             136          0.80        0
+a saw (pad amp)                25             181          4.54        0
+saw → filter                   25             211          5.16        0
+
+one render: median 231 CPU ms (quartiles 198, 311) over 243; wall over CPU 1.53
+load after:  7:08  up 55 days, 22:55, 2 users, load averages: 41.02 34.80 33.14
