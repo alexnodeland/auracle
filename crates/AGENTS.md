@@ -41,10 +41,13 @@ each crate's own `AGENTS.md` has its rules.
   names and descriptions, the rack's labels, PERFORM's control words, the
   bank's sound names and the reasons an edit is refused follow
   [`www/brand/voice.md`](../www/brand/voice.md). `make dev-check` reads every
-  string literal (not comments, not `#[cfg(test)]` items) in the files they
-  come from, listed as the `engine` surface in `www/checkwords.py`. A new file
-  whose strings reach the screen joins that list; a line there that holds
-  names, codes or JSON keys ends in `// voice: name`.
+  string literal in the files they come from, listed as the `engine` surface
+  in `www/checkwords.py`; it skips comments and what builds only for tests
+  (`#[cfg(test)]`, `#[test]`, a `cfg` that implies `test`). A new file whose
+  strings reach the screen joins that list. A literal there that holds a
+  name, a code or a JSON key and trips the check is exempted by the comment
+  `// voice: name` on the line it starts on; a literal that runs over several
+  lines can't be marked, so keep such a value on one line.
 - **A Rust change the app uses needs `make wasm`** before any browser test or
   film rehearsal means anything.
 

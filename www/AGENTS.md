@@ -48,8 +48,10 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   `python3 www/checkwords.py --update`.
   The check also reads the app's words the engine writes (its `engine`
   surface): every string in the Rust files that send preset descriptions,
-  rack labels and edit refusals to the screen.
-  A script or Rust line that ends in `// voice: name` holds names, not copy.
+  rack labels and edit refusals to the screen, except what builds only for
+  tests.
+  In a script or Rust source, the comment `// voice: name` marks its line as
+  names, not copy: the check skips each literal that starts on that line.
   In Markdown, a quotation keeps its own words between
   `<!-- voice: quote -->` and `<!-- /voice -->`.
 - **Motion shows what the engine does**
