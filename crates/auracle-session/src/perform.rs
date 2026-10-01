@@ -2098,6 +2098,9 @@ mod tests {
         use crate::engine::{Engine, SessionConfig};
         let bank = preset_bank();
         let six = CONTROLS.len();
+        // Fitted once: a fit renders every preset, and each engine below
+        // needs only the same standardizer, not its own sixty renders.
+        let std = Arc::new(preset_standardizer(&SessionConfig::default().phrase));
         for (name, controls) in [
             ("First Bass", &PALETTE[..six]),
             ("Glass Pad", &PALETTE[..six]),
@@ -2109,7 +2112,7 @@ mod tests {
                     auracle_grammar::PatchGrammarPrior::default(),
                     SessionConfig::default(),
                 );
-                e.standardizer = Some(std::sync::Arc::new(preset_standardizer(&e.cfg.phrase)));
+                e.standardizer = Some(Arc::clone(&std));
                 e
             };
             let palette = controls.len() > six;
