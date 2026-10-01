@@ -111,7 +111,7 @@ const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, coun
   await import(`./taste-geom.js?v=${BUILD}`);
 // Sentences built from engine facts (a generation's outcome, a prediction's
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
-const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal } =
+const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal, leanSentence } =
   await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1690,7 +1690,7 @@ worker.onmessage = (e) => {
           // nothing is called a bench — was noise in a word the player never
           // meets. Only an open the player asked for that kept them waiting
           // is news, and it is said once, in place of any earlier one.
-          note(`Opened ${nameOf(m.subject)}`, { replace: "open" });
+          note(`Opened ${nameOf(m.subject)}.`, { replace: "open" });
         }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
@@ -15474,9 +15474,7 @@ function specParts(m) {
     belief =
       `<span class="sp-dim">In ${sup} of ${total} sounds.</span> ` +
       `<i class="sp-dot" style="background:${color}"></i>` +
-      `<span class="sp-belief">in ${esc(styleName(views.styles[t.style], t.style))} ` +
-      `(${Math.round(t.share * 100)}% of your pool) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
-      ` (θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)})</span>`;
+      `<span class="sp-belief">${esc(leanSentence(styleName(views.styles[t.style], t.style), t.share, t.mean, t.std))}</span>`;
   }
   if (shared.length > 1) {
     belief +=

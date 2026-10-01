@@ -126,3 +126,18 @@ test("Wander answers a second and a half after it is let go, and says what it is
   expect(said.some(([, w]) => /^drift · (walking…|gliding)/.test(w)), "it said it was moving").toBe(true);
   expect(errs).toEqual([]);
 });
+
+// A tap on Wander freezes it (#80 named the pad FREEZE and the state
+// *frozen*); its tooltip and HOW THIS WORKS said a tap would "hold" it.
+test("Wander's tooltip and HOW THIS WORKS say a tap freezes it", async ({ page }) => {
+  const errs = await boot(page);
+  await page.locator('.viewtab[data-view="perform"]').click();
+  const wander = page.locator('.pf-knob[data-i="7"]');
+  await expect(wander).toHaveAttribute("title", /Tap to freeze it\./);
+  await expect(wander).not.toHaveAttribute("title", /hold it/);
+  await page.locator(".pf-why-btn").click();
+  const body = page.locator(".pf-why-body");
+  await expect(body).toContainText("Tap Wander to freeze it;");
+  await expect(body).not.toContainText("to hold it");
+  expect(errs).toEqual([]);
+});

@@ -588,7 +588,7 @@ export function createPerform(host) {
     return [`${z} · next in ${Math.max(1, Math.ceil(left / 1000))} s`, Math.min(1, left / span)];
   }
   function wanderTitle() {
-    const base = "Wander: how alive the sound is. Still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to hold it.";
+    const base = "Wander: how alive the sound is. Still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to freeze it.";
     return state.wanderWhy ? `${base}\nLast move: ${state.wanderWhy}.` : base;
   }
   function renderWander() {
@@ -2421,7 +2421,7 @@ export function createPerform(host) {
     "<p>Each control is a direction in what the instrument can hear: <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, and <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a sound opens, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
     "<p>The amber dot on a control’s ring is where this sound measures on it, compared with the sounds in your session. A control that turns only one way on this sound says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the center on the other. One that reads <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>" +
     "<p>A control drawn in amber can’t be reached by this patch’s knobs (a patch with no drive can’t get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session’s sounds) or that it didn’t get there. Short of the notch it springs back and asks nothing.</p>" +
-    "<p><b>Wander</b> sets how alive the sound is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
+    "<p><b>Wander</b> sets how alive the sound is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to freeze it; touching any other control pauses it for a few seconds.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
     whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));

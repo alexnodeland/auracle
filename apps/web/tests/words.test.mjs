@@ -13,6 +13,7 @@ import {
   emptyGeneration,
   evolveRefusal,
   series,
+  leanSentence,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -162,4 +163,16 @@ test("lists take the serial comma", () => {
   assert.equal(series(["a"]), "a");
   assert.equal(series(["a", "b"]), "a and b");
   assert.equal(series(["a", "b", "c"]), "a, b, and c");
+});
+
+test("a module's lean on the spec card reads as a sentence", () => {
+  const s = leanSentence("analog sustain", 0.6, 0.62, 0.2);
+  assert.equal(s, "In analog sustain (60% of your pool), you lean toward it (θ +0.62 ± 0.20).");
+  assert.equal(leanSentence("Warm Wash", 0.35, -0.41, 0.12),
+    "In Warm Wash (35% of your pool), you lean away from it (θ −0.41 ± 0.12).");
+  for (const x of [s, leanSentence("b", 0.1, -1, 0.5)]) {
+    voiced(x);
+    assert.match(x, /^[A-Z]/, `a sentence starts with a capital: ${x}`);
+    assert.match(x, /\.$/, `a sentence ends with a period: ${x}`);
+  }
 });

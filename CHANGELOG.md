@@ -89,6 +89,12 @@ changelog that edits its own past is not a record.
 - **A MIDI knob that takes a control is announced in a sentence:** *CC 74
   now moves Bright, the first free control.*, or after LEARN *CC 21 now
   moves Snap.* It read *mapped: CC 74 → Bright*.
+- **Three more lines read as sentences.** A sound that kept you waiting to
+  open is announced as *Opened Glass Pad.*, with its period. A module’s spec
+  card says a lean the model is sure of in its own sentence: *In 12 of 40
+  sounds. In analog sustain (60% of your pool), you lean toward it.* It ran
+  on in lowercase after the count. Wander’s tooltip and HOW THIS WORKS say a
+  tap freezes it, as the FREEZE pad does; they said a tap held it.
 
 ### Changed: the guide
 

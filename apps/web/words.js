@@ -160,3 +160,14 @@ export function series(parts) {
 export function capital(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
+
+/** What the model makes of a module it is sure about, on the module rail's
+ *  spec card: a sentence after "In 12 of 40 sounds.", where it used to
+ *  run on in lowercase ("in analog sustain (60% of your pool) you lean
+ *  toward it"). `share` is the style's share of the pool (0..1), `mean` and
+ *  `std` the coefficient's posterior (θ). */
+export function leanSentence(style, share, mean, std) {
+  const sign = mean >= 0 ? "+" : "−";
+  return `In ${style} (${Math.round(share * 100)}% of your pool), you lean ` +
+    `${mean >= 0 ? "toward" : "away from"} it (θ ${sign}${Math.abs(mean).toFixed(2)} ± ${std.toFixed(2)}).`;
+}

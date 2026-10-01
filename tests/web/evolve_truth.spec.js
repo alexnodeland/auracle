@@ -342,7 +342,8 @@ test("opening a patch is not announced unless it kept you waiting", async ({ pag
   const name = (await slow.locator(".bi-name").textContent()).trim();
   const mark2 = await toastMark(page);
   await slow.locator(".bi-name").click();
-  await expect.poll(() => toastsSince(page, mark2), { timeout: 15_000 }).toContain(`Opened ${name}`);
+  // A sentence, so it ends in a period.
+  await expect.poll(() => toastsSince(page, mark2), { timeout: 15_000 }).toContain(`Opened ${name}.`);
   await page.evaluate(() => { window.__pwHold = {}; });
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
