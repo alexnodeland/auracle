@@ -76,7 +76,8 @@ Human-paced, and persistent across sessions.
    at most 500 retained draws (`KEEP`, in `auracle-taste`’s `model.rs`).
 
 The app paces refits by count: every sixth pick refits (`FIT_EVERY`, 6, in
-`apps/web/main.js`). The engine also reports when the cheap path has run out of
+`apps/web/main.js`), and so do the end of the warm start and opening a taste
+profile that holds picks. The engine also reports when the cheap path has run out of
 road, that is, when the reweighted posterior’s **effective sample size** has
 collapsed far enough to need resampling since the last fit
 (`Engine::needs_refit`). The app does not wait for that signal. See

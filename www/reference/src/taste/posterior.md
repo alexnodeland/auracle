@@ -163,16 +163,19 @@ pub fn needs_refit(&self) -> bool {
 
 The engine’s condition is not a count of picks. It is **“the weights have had
 to be resampled at least once since the last real fit”**, that is, the cheap
-path has provably run out of road. The engine reports it in its status.
+path has provably run out of road. With no posterior yet, it is true as soon as
+the log holds anything. The engine reports it in its status.
 
 The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
-`apps/web/main.js`), and PERFORM’s answered offers count as picks. The app used
+`apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other
+moments refit at once: the end of the warm start, and opening a taste profile
+that holds picks. The app used
 to require `needs_refit` as well, to save the seconds of a fit whose posterior
 had not gone stale. Which picks those were depended on how surprising they had
 been, so a run of agreeable picks ended with the teaching meter’s countdown and
 no refit: the meter promised something it then did not do. A fit costs a few
-seconds off the audio thread, at most once every six picks, and the pair stays
-audible through it.
+seconds off the audio thread, at most once every six picks outside those two
+moments, and the pair stays audible through it.
 
 ## Label alignment
 
