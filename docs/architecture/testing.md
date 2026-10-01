@@ -139,6 +139,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
 | `patch_audible.spec.js` | Measured at the output: a VCO's wave cycled in PATCH has each wave's harmonics under a held note and on ▶ and Space; a wave change reaches a held note before the engine has rendered it; a cutoff turned down lowers the centroid live and on ▶; ▶ or Space pressed while the edit is still at the engine plays the edit, not the sound before it; Space in PERFORM and EVOLVE plays the edited sound, waiting for an edit the same way; that waiting ▶ is lit within 100 ms, and a second press, Space, another ▶ or leaving PATCH takes it back; Space with ▶ disabled says why and plays nothing |
 | `space_after_a_click.spec.js` | Space plays after a click on the wave or filter-mode chip and leaves the chip alone; a chip focused from the keyboard cycles on Enter and back on ⇧Enter; in PERFORM, Space plays after a drag on a control, a click on the XY pad, and a click on a pad |
+| `midi_announced.spec.js` | A MIDI knob that claims or learns a control is announced in a sentence (*CC 74 now moves Bright, the first free control.*), the later replacing the earlier |
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |

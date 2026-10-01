@@ -86,6 +86,9 @@ changelog that edits its own past is not a record.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.
+- **A MIDI knob that takes a control is announced in a sentence:** *CC 74
+  now moves Bright, the first free control.*, or after LEARN *CC 21 now
+  moves Snap.* It read *mapped: CC 74 → Bright*.
 
 ### Changed: the guide
 

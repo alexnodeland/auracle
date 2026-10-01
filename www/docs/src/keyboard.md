@@ -177,7 +177,7 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
 1. Click the MIDI state at the right of the keybed (*midi ●* with a device
    connected).
 2. Press **LEARN** on a row, then move a knob: that knob now drives the row’s
-   control. Any knob it replaces is unbound.
+   control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
 The panel lists PERFORM’s eight controls and what drives each. A row with no
@@ -189,8 +189,8 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 
 With that switch on, the first eight different knobs you move take PERFORM’s
 controls in the order you move them: BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE,
-BLEND, and WANDER. Each is announced (*mapped: CC 74 → Bright*). The mod wheel
-is left out, because it already means something.
+BLEND, and WANDER. Each is announced (*CC 74 now moves Bright, the first free
+control.*). The mod wheel is left out, because it already means something.
 
 Some controllers are never taken, by the switch or by **LEARN**, because MIDI
 gives them a meaning of their own:
