@@ -48,9 +48,9 @@ changelog that edits its own past is not a record.
   a pair’s forecast reads *it guessed this · 72% · fairly sure*. The words
   come from one scale: a hunch, leaning, fairly sure.
 - **Toasts are sentences that name the sound.** They start with a capital,
-  carry no em dashes or ids, and are spelled the American way. *Saved Glass
-  Pad. No generation will replace it.* used to read *Saved Glass Pad — it
-  won't be replaced.*
+  carry no em dashes or ids, and are spelled the American way: *Saved Glass
+  Pad. No generation will replace it.* They used to start lowercase, run on
+  with dashes, and name some sounds by number.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states and the teaching line are set plain, so the italic face means the
   model is saying what it believes.

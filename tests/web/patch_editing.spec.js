@@ -635,7 +635,7 @@ test("Esc on the comparison card commits nothing, and its sides are A and B unti
   expect(errors).toEqual([]);
 });
 
-test("“my edit is better” skips the comparison once, then unticks itself", async ({ page }) => {
+test("“pick the edit” skips the comparison once, then unticks itself", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");
   await editAKnob(page);
