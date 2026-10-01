@@ -400,6 +400,8 @@ Each is decided as its task in Plan-005 comes up.
 1. **Keep a generation's replaced trees until the next one,** so they can be
    heard and brought back. The cost is up to ten trees in memory and in the
    session save.
+   *Decided (2026-10-01):* no. Replaced shows names only, as the approved
+   prototype does, and Plan-005 task 9(f) is not built.
 2. **How the model suggests the next module** in an empty or growing patch.
    *Design note (2026-10-01):* four designs measured on the engine, with a
    recommendation (render the modules the output can take on the farm, and
