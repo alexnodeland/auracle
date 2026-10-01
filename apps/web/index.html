@@ -589,10 +589,12 @@
             </div>
           </div>
           <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
-               beside it. Hovering it marks the rows a generation may replace
-               (the wrapper hears the pointer while the button is disabled). -->
+               beside it, and it says what each walk came back as. Pointing at
+               it marks, in the bank, the seeds a generation breeds from and
+               the sounds it may replace (the wrapper hears the pointer while
+               the button is disabled). -->
           <span class="evolve-wrap" id="evolve-wrap">
-            <button class="hw-btn small" id="evolve-btn" title="Breed new sounds toward your taste. The rows it may replace are marked while you hover: save one to keep it.">evolve pool</button>
+            <button class="hw-btn small" id="evolve-btn" title="Breed a generation from the seeds it marks">evolve pool</button>
             <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, the lowest unsaved sounds are replaced to bring the pool back to its size, and that can be a child bred early.">stop</button>
           </span>
         </div>
@@ -734,6 +736,21 @@
 
 <!-- structural-edit context menu -->
 <div class="ctx-menu hidden" id="ctx-menu"></div>
+
+<!-- Compare: a bred sound beside its seed, opened from its lineage line in
+     the bank (the seed's outline, the child growing out of it, what changed,
+     what the model rated each when it bred them, and both to play) -->
+<div class="compare hidden" id="compare" role="dialog" aria-modal="false" aria-labelledby="compare-title" tabindex="-1">
+  <div class="cmp-head">
+    <span class="cmp-title" id="compare-title"></span>
+    <button class="cmp-x" id="compare-x" type="button" aria-label="Close" title="Close · Esc">×</button>
+  </div>
+  <canvas class="cmp-fig" id="compare-fig" role="img"></canvas>
+  <p class="cmp-say" id="compare-say"></p>
+  <ul class="cmp-diff mono" id="compare-diff"></ul>
+  <p class="cmp-rated voice" id="compare-rated"></p>
+  <div class="cmp-play" id="compare-play"></div>
+</div>
 
 <!-- transient confirmations; persistent conditions go to #alarm -->
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>

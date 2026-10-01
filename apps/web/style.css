@@ -798,21 +798,80 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-top {
   display: flex;
   align-items: center;
-  gap: var(--s1);
+  gap: var(--s2);
   font-family: var(--font-mono);
   font-size: var(--t-value);
   color: var(--silk);
+}
+/* The mark column, left of the name on every row: the origin glyph, or NEW in
+   its place on the latest generation's children, and the unheard dot in the
+   gap after it. It has NEW's width whether a mark is there or not, so a name
+   starts at the same x, at the same width, with or without one: a mark never
+   moves or cuts a name (Plan-005, the rule for a mark on a row). */
+.bank-item .bi-mark {
+  position: relative;
+  flex: none;
+  width: 30px;
+  display: inline-flex;
+  align-items: center;
 }
 .bank-item .bi-origin { font-size: var(--t-label); }
 .bank-item .bi-origin.prior { color: var(--silk-dim); }
 .bank-item .bi-origin.refined { color: var(--phos-b); }
 .bank-item .bi-origin.edited { color: var(--phos-a); }
 .bank-item .bi-origin.preset { color: var(--phos-a-dim); }
-/* Just born this generation. */
-.bank-item.fresh .bi-origin.refined { text-shadow: 0 0 7px var(--phos-b-80); }
+/* The latest generation's children, said in a word, in the glyph's place:
+   every one of them is bred (⚡). */
+.bank-item .bi-new {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--phos-b);
+}
+/* Not heard yet: a green dot (the sound's color) centred in the gap between
+   the mark column and the name. */
+.bank-item .bi-dot {
+  position: absolute;
+  right: -6.5px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: var(--phos-a);
+  box-shadow: 0 0 6px var(--phos-a-60);
+  pointer-events: none;
+}
+/* A bred sound's lineage, under its name and aligned with it: the seed it
+   grew from and what changed. Pressed, it opens Compare. */
+.bank-item .bi-sub { display: flex; gap: var(--s2); }
+.bank-item .bi-from {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  line-height: 1.5;
+  color: var(--silk-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bank-item .bi-from:hover { color: var(--silk); }
 /* The bank's groups: the latest generation's children lead the pool under
    their own heading, and the rest keep their ranked order under theirs. */
 .bank-group {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
   font-family: var(--font-silk);
   font-size: var(--t-label);
   font-weight: 700;
@@ -822,38 +881,83 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: var(--s2) var(--s1) 3px;
 }
 .bank-group ~ .bank-group { color: var(--silk-dim); }
+/* New is the sounds just bred: the sound's green, as the specimen sets it. */
+.bank-group.new { color: var(--phos-a-dim); }
+.bank-group .bg-n {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--silk-dim);
+}
+/* Under New: what its generation bred that is not in it. */
+.bank-below {
+  padding: 0 var(--s1) var(--s1);
+  font-size: var(--t-value);
+  line-height: 1.4;
+  color: var(--silk-dim);
+}
+/* Replaced, at the foot of the pool: a heading that opens on names only. */
+.bank-group.replaced { padding: 0; color: var(--silk-dim); }
+.bank-group .bg-fold {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s1) 3px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+.bank-group .bg-fold:hover { color: var(--silk); }
+.replaced-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  padding: 0 var(--s1) var(--s3);
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  line-height: 1.4;
+  color: var(--silk-dim);
+}
 /* A child that has just landed glows once. */
 .bank-item.landed { animation: bank-landed 900ms ease-out; } /* token-exempt: a one-shot glow, held long enough to be seen; a move is 320 ms */
 @keyframes bank-landed {
   from { box-shadow: 0 0 14px var(--phos-b-45); border-color: var(--phos-b); }
 }
 @media (prefers-reduced-motion: reduce) { .bank-item.landed { animation: none; } }
-/* Hovering EVOLVE POOL: the rows a generation may replace. A dashed rail and
-   the words, so it is not only a colour. */
+/* Pointing at EVOLVE POOL marks what a generation does, as the model chose it
+   (amber): its seeds on a solid rail, what it may replace on a dashed one,
+   and each in a word on the row's second line, over the stars, so neither
+   moves the name. A seed whose bud is out (`.seeding`) is lit the same. */
+.bank-item.seed,
+.bank-item.seeding { border-left-color: var(--phos-b); }
 .bank-item.may-go { border-left-style: dashed; border-left-color: var(--phos-b-dim); }
-.bank-item.may-go .bi-top::after {
-  content: "may be replaced";
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-value);
-  color: var(--phos-b-dim);
-}
-/* The words sit after the name; the percentage keeps its place on the right. */
-.bank-item.may-go .bi-top .bi-pct,
-.bank-item.may-go .bi-top .bi-id { order: 1; }
-/* The latest generation's children, said in a word as well as a glow. */
-.bank-item .bi-new {
-  flex: 0 0 auto;
+.bank-item .bi-row { position: relative; }
+.bank-item .bi-flag {
+  display: none;
+  position: absolute;
+  left: 26px; /* past the ▶, where the stars start */
+  top: 50%;
+  transform: translateY(-50%);
   font-family: var(--font-silk);
   font-size: var(--t-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  line-height: 1;
+  white-space: nowrap;
   color: var(--phos-b);
-  border: 1px solid var(--phos-b-dim);
-  border-radius: 2px;
-  padding: 1px 3px;
+  pointer-events: none;
 }
+.bank-item.seed .bi-flag,
+.bank-item.may-go .bi-flag { display: block; }
+.bank-item.may-go .bi-flag { color: var(--phos-b-dim); }
+.bank-item.seed .bi-row .stars,
+.bank-item.may-go .bi-row .stars { visibility: hidden; }
+/* Its bud is on its way: the name arrives with it. */
+.bank-item.budding .bi-name { visibility: hidden; }
 
 /* The prediction meter is a full-width underline on the row's bottom edge.
    At 54px, 1% was 0.54px — the number beside it existed because the bar could
@@ -4021,7 +4125,126 @@ html:not(.engineer) .dn-sig { display: none; }
   transition: width var(--d-move) ease;
 }
 #evolve-btn.breeding .eb-text { position: relative; }
+/* What the last walk came back as, beside its count: plain, not a label. */
+#evolve-btn.breeding .eb-said {
+  position: relative;
+  margin-left: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--silk);
+}
 @media (prefers-reduced-motion: reduce) { #evolve-btn.breeding .eb-fill { transition: none; } }
+
+/* ---- a child buds from its seed (main.js `budFrom`, `fadeBeside`) ---- */
+.bud {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  transform-origin: left center;
+  white-space: nowrap;
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--phos-a);
+  background: var(--bezel);
+  border-radius: 2px;
+  box-shadow: 0 0 0 3px var(--bezel), 0 0 14px var(--phos-a-34);
+}
+/* A child the pool would not take: no name (the engine dropped it), only
+   why, in plain words, and gone. */
+.bud.refused {
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  font-weight: 400;
+  color: var(--silk-dim);
+  box-shadow: 0 0 0 3px var(--bezel), 0 0 0 4px var(--hairline);
+}
+
+/* ---- Compare: a bred sound beside its seed ---- */
+.compare {
+  position: fixed;
+  z-index: 60;
+  width: 340px;
+  max-width: calc(100vw - 2 * var(--s3));
+  padding: var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+}
+.compare:focus { outline: none; }
+.compare .cmp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.compare .cmp-title {
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk);
+}
+.compare .cmp-x {
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--t-body);
+  color: var(--silk-dim);
+}
+.compare .cmp-x:hover { color: var(--silk); }
+.compare .cmp-fig {
+  display: block;
+  width: 100%;
+  height: 112px;
+  margin-top: var(--s2);
+  border-radius: var(--r1);
+  background: var(--bezel);
+}
+.compare .cmp-say {
+  margin: var(--s2) 0 0;
+  font-size: var(--t-body);
+  color: var(--silk);
+}
+.compare .cmp-diff {
+  display: grid;
+  gap: 2px;
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-value);
+  color: var(--silk-dim);
+}
+/* The model's own words: what it rated each when it bred them. */
+.compare .cmp-rated {
+  margin: var(--s2) 0 0;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  line-height: 1.35;
+  color: var(--phos-b);
+}
+.compare .cmp-play {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+.compare .cmp-hear { flex: none; color: var(--phos-a); }
+.compare .cmp-hear.playing {
+  color: var(--phos-a);
+  box-shadow: inset 0 0 8px var(--phos-a-25);
+}
+.compare .cmp-gone { font-size: var(--t-value); color: var(--silk-dim); }
 .duel-mid.learning .teach-copy,
 .duel-mid.learned .teach-copy { color: var(--phos-b); }
 /* "● learning from your last 6 picks…": the full row breathes while the refit
