@@ -22,11 +22,11 @@ Swell* mean something.
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd>, or **▶ SAMPLE** | Play the standard five-second phrase; press again to stop it |
 | Click the card body | Load that candidate live on the keyboard |
-| <kbd>←</kbd> / <kbd>→</kbd>, or **CHOOSE A/B** | Vote |
-| **⌖ BENCH** | Send it to the workbench in [PATCH](./play.md) without voting |
-| **skip ↻** | Deal a new pair and record nothing |
+| <kbd>←</kbd> / <kbd>→</kbd>, or **PICK A/B** | Pick |
+| **OPEN IN PATCH** | Open it in [PATCH](./play.md) without picking |
+| **ANOTHER PAIR** | Deal a new pair without picking, and record nothing |
 
-A vote counts the moment you cast it: **PICKS** in the menu bar and the pips
+A pick counts the moment you make it: **TAUGHT** in the menu bar and the pips
 move at once. For seven seconds it can still be taken back, with
 <kbd>⌘Z</kbd> or *not what I meant* on its toast, and then it goes into the
 log and the button leaves the toast. That holds for every pick, the sixth
@@ -34,8 +34,8 @@ included. The toast always names the vote <kbd>⌘Z</kbd> would undo: vote again
 and the new pick's toast takes the old one's place.
 
 <kbd>⌘Z</kbd> in EVOLVE only ever takes back a pick (or a cut) still inside
-its seven seconds. With none left it changes nothing and says *nothing to undo
-here — PATCH edits undo in PATCH*: edits to the patch are undone in PATCH,
+its seven seconds. With none left it changes nothing and says *Nothing to undo
+here. PATCH edits undo in PATCH.*: edits to the patch are undone in PATCH,
 where you can see them.
 
 The next pair is already waiting. While a pair is on the table the engine
@@ -62,7 +62,7 @@ their buttons do nothing until the next pair is dealt, usually a few
 hundredths of a second, generation or not. A deal that takes longer says why
 on the cards: with no render farm (see [EVOLVE POOL](#evolve-pool)), a deal
 during a generation waits for the walk in progress, and the cards read, for
-example, *dealing — the engine is breeding (seed 4/10)*.
+example, *dealing: the engine is breeding (seed 4/10)*.
 
 Both sides play the *same* phrase. That is the point: audio features are only
 comparable across patches under an identical stimulus, so the sample is a fixed
@@ -77,7 +77,7 @@ often the faster way to tell two near-ties apart.
 A duel is a gut reaction. The model is built for noisy answers and averages over
 them; a carefully deliberated vote is not worth more than a quick one, and
 deliberating is how a session stops being fun. If you cannot tell, press
-**skip ↻**. A coin flip recorded as a preference is worse than no data.
+**ANOTHER PAIR**. A coin flip recorded as a pick is worse than no data.
 ```
 
 ## The teaching meter
@@ -96,7 +96,7 @@ while the sixth pick's seven seconds run out and the refit runs (pick again
 first and the refit goes out at once). During a generation, or while ⚡ evolve
 from this walks, it says *● it will learn from these 6 when breeding finishes*
 instead, because a refit waits for them. When the refit lands, the [TASTE](./taste.md) map is redrawn
-and the strip glows amber and says *● it just learned — see what changed ▸*;
+and the strip glows amber and says *● it just learned: see what changed ▸*;
 the link opens the map. It says so until your next pick.
 
 Between refits your votes still count: each one is folded into the model
@@ -108,21 +108,23 @@ evolve from this runs, the **job slot** in the menu bar, beside
 about 40 s*, *⚡ evolving Soft Pad*), and the **E** of the wordmark is lit
 exactly while the slot shows.
 
-**◇ random pair — a fair test**, beside **skip ↻**, says how pairs are
+**◇ random pair · a fair test**, beside **ANOTHER PAIR**, says how pairs are
 dealt: at random from the pool. The model does not choose what you hear, and
 that is what makes every pick a fair test of the forecast it makes before you
 vote. [TRUST](./taste.md#trust--is-its-confidence-honest) scores them all.
 The line holds its place from duel to duel; the forecast for the pick you
-just made appears above it.
+just made appears above it, in the model's words: the side it guessed, at the
+probability it gave that side, and how sure that reads (*it guessed this · 72%
+· fairly sure*, *it guessed the other · 62% · leaning*).
 
 ```admonish note title="Why the pair sometimes looks like a near-tie"
 Because it sometimes is one, and a random pairing asks those as often as any
 other. The default pairing is uniformly random over the pool, which makes
 *every* duel an unbiased calibration sample; measured, it teaches the model as
 fast as the information-seeking rule the engine also has, which deliberately
-serves near-ties. Under that rule the line reads *chosen where it's least
+serves near-ties. Under that rule the line reads *chosen where it’s least
 sure*, and about one duel in ten is still dealt at random as a check, marked
-**◇ unbiased probe — dealt at random**. Either way, "these two sound similar"
+**◇ fair test · dealt at random**. Either way, "these two sound similar"
 is a question worth answering.
 ```
 
@@ -135,9 +137,10 @@ Metropolis–Hastings walk from each, mutating structure and parameters with the
 proposal distribution tilted by what your taste model has learned, then injects
 the children. Each child appears the moment it is bred, at the top of the bank
 under **new · gen N**, in the order the walks were dealt, and can be played at
-once; the ranked rows below it do not move. The patches it likes least are
-replaced to make room when the generation ends, and the generation's toast
-names them (the first three, then *+N more*); anything you have **saved** by
+once; the ranked rows below it do not move. A child joins the pool only if
+the model rates it above the sound it would replace: the lowest unsaved one.
+Those lowest sounds are replaced when the generation ends, and the
+generation's toast names them (the first three, then *and N more*); anything you have **saved** by
 then is exempt, including a patch you save while the generation is still
 running. A child bred early can end up below the children bred after it;
 then it is the one not kept, and the toast says so. Hover **EVOLVE POOL** to see which rows it may replace: they get a
@@ -151,6 +154,12 @@ and a generation moves the pool rather than replacing it. The
 
 Nothing happens if there is no fitted model yet; there is no direction to climb
 in. Answer some duels first.
+
+A generation can end with nothing new in the pool, and its toast says why,
+walk by walk, from the engine's own reason: walks that came back unchanged,
+children that matched a sound the pool already holds, or children that did not
+rate above the sounds they would replace (*Generation 4: 3 were bred, but none
+rated above the sounds they would replace.*).
 
 A generation is a walk of a few dozen renders from each of ten seeds. The
 walks run side by side on the render farm, as many at once as your machine
@@ -175,8 +184,8 @@ menu bar says the same with the time left, in every view. The
 **generations** counter beside it counts a generation once its first child
 has landed in the bank, or once it has ended. **Stop** drops the
 walks still running and ends the generation with the children bred so far.
-As at any generation's end, the bank then goes back to its size by retiring
-its lowest-ranked unsaved patches, as many as the children need: usually
+As at any generation's end, the pool then goes back to its size: its
+lowest-rated unsaved sounds are replaced, as many as the children need: usually
 older members, but a child bred early can rank below one bred after it and
 go too. The toast says how many were kept and how many were not.
 
@@ -193,9 +202,9 @@ What each generation did, per step, newest first (the three most recent
 steps):
 
 ```text
-gen 1 ⚡ evolution on Soft Pad → Warm Drone 2 · release 398 ms → 759 ms, mod depth 25% → 4%,
+gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 398 ms → 759 ms, mod depth 25% → 4%,
       filter → delay, +1 more, +mix, +filter, −supersaw · liked −0.48 exploring
-gen 0 ✎ your edit on Glass Rain → Glass Rain 2 · cutoff 1.78 kHz → 20 kHz · liked −0.31
+gen 0 ✎ your edit from Glass Rain → Glass Rain 2 · cutoff 1.78 kHz → 20 kHz · liked −0.31
 ```
 
 Each step names the parent and the child it became, by the names the bank
@@ -214,8 +223,8 @@ a bred step and green for your edit. It is a record of the steps, not a score
 of the whole pool over time.
 
 A generation that bred nothing leaves no step. If no step has been made yet,
-the strip says the generation ran but *no move was accepted*, in the same
-words as that generation's toast.
+the strip says so (*2 generations ran, and none put a new sound in the
+pool*); each generation's own toast said why.
 
 Hand edits appear here too, tagged **✎** instead of **⚡**. The lineage records
 everything that produced a patch, not only what the machine did.

@@ -14,8 +14,8 @@ The rail on the left holds three of them:
 
 | Bank | What it is |
 |---|---|
-| **evolution** | The live pool the model reasons over and breeds from |
-| **my patches** | What you saved. Yours, permanent, never evicted |
+| **pool** | The sounds the model weighs and breeds from |
+| **saved** | What you saved. Yours, and no generation replaces them |
 | **presets** | The hand-made library, browsed in place |
 
 The **?** in the bank head walks you through what a generation is and what
@@ -35,14 +35,17 @@ Everything else on it is described below.</figcaption>
   joined, and it keeps that name as the bank changes around it. You can
   rename it: double-click it.
 - **new** beside the name marks a child of the latest generation. In the
-  **evolution** bank those children lead the list under **new · gen N**, in
+  **pool** bank those children lead the list under **new · gen N**, in
   the order they were bred, and the rest follow under **ranked by the
-  model**, the patches it thinks you would like most first. While a
+  model**, the sounds it rates highest first. While a
   generation breeds, each child joins the group the moment it is bred and
-  glows once; the rows below it do not move.
-- **The percentage** is the model's prediction: roughly, how likely you are to
-  prefer this patch in a duel. Before the model has been fitted it reads
-  **—**.
+  glows once; the rows below it do not move. A child of
+  [⚡ evolve from this](./rack.md#locks-and-evolving-from-here) joins the
+  group the same way: ⚡ is a generation of its own, so its one child is the
+  group until the next generation's first child replaces it.
+- **The percentage** is the model's guess: roughly, how likely you are to
+  pick this sound in a pair. Its tooltip adds the word for how sure that reads
+  (*59% · leaning*). Before the model has been fitted it reads **·**.
 - **The bar** along the row's bottom edge draws the prediction. The bright tick
   is the model's guess; the dimmer block around it spans one standard
   deviation either way, so its width is how sure the model is. Before a fit the
@@ -53,7 +56,7 @@ Everything else on it is described below.</figcaption>
 - **💾** saves it. This is storage and it teaches nothing.
 - **cut** teaches the model "not this one" and takes the row out of the bank.
   A cut patch is never dealt to you in a duel again; if it was on the cards,
-  a new pair is dealt. The message *Cut Soft Wash — it won't be dealt again*
+  a new pair is dealt. The message *Cut Soft Wash. It won’t be dealt again.*
   offers an **undo** for seven seconds (<kbd>⌘Z</kbd> does the same), and
   nothing is recorded until they are up. The patch stays in the pool until a
   generation replaces it. The cut shows when you hover the row or put the
@@ -66,8 +69,8 @@ Two controls, two unrelated jobs.
 **★ is a judgement.** It enters the observation log as an ordinal rating and
 moves the taste posterior. Rate honestly, including rating things low.
 
-**save is storage.** It lists the patch in **my patches** as well as in
-**evolution**, and exempts it from eviction. It records nothing about your
+**save is storage.** It lists the sound in **saved** as well as in
+**pool**, and exempts it from eviction. It records nothing about your
 preferences.
 
 Merging them is tempting and wrong. The pool evicts its lowest-utility members,
@@ -102,11 +105,11 @@ moment the app knows the cap.
 ## Presets
 
 Sixty-two hand-made patches across seven families — bass, lead, keys, pad,
-texture, perc, weird — browsed in place: clicking one opens it on the
-workbench. The engine can only play what it holds, so a preset you open or ▶
-joins the evolution pool and takes the place of the patch the model likes
-least; the toast names what it replaced, saved patches are never among them,
-and the row reads **in bank** from then on, so a second click opens the same
+texture, perc, weird — browsed in place: clicking one opens it as the sound
+you're playing. The engine can only play what it holds, so a preset you open or ▶
+joins the pool and takes the place of the unsaved sound the model rates
+lowest; the toast names what it replaced, saved sounds are never among them,
+and the row reads **in pool** from then on, so a second click opens the same
 copy instead of loading another.
 
 They are worth playing through early even if you intend to evolve everything.

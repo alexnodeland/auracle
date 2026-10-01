@@ -21,7 +21,7 @@ shares.
 From the top:
 
 **The header.** The patch's name, a status line, and a small scope. The status
-line says what PERFORM is doing: *listening to this patch…* (a new patch,
+line says what PERFORM is doing: *listening to this sound…* (a new patch,
 whose controls wait for it), *4 of 6 controls reach this patch*, with
 *re-checking* after it while the controls keep working on their last
 measurement (after a Take, or once Wander or your turns and a Keep have moved
@@ -114,7 +114,7 @@ measured. The line under its name lists the knobs.
 
 Measuring costs one render per knob, plus up to four more per control to check
 the result, so a large patch takes a moment. Meanwhile every control reads
-*listening…* and the status line *listening to this patch…*; the keys play
+*listening…* and the status line *listening to this sound…*; the keys play
 throughout. Until the session's pool has warmed up there is nothing to measure
 against, and the status line says so.
 
@@ -233,11 +233,11 @@ walking from where it stopped, up to three walks, which is why an aimed offer
 can take longer than one from the **Offer** pad.
 
 When it arrives, B says how far it went, in amber, after what changed:
-*grittier by 1.8σ*. σ is the spread of the patches in your session, the same unit the controls'
+*grittier by 1.8σ*. σ is the spread of the sounds in your session, the same unit the controls'
 reach is measured in, so *by 1σ* is about as far as a working control moves
 the sound at a full turn. When the walk did not get there, B says so instead
 of presenting the offer as the answer: *not grittier: this walk found no way
-there — turn it again to try another*.
+there. Turn it again to try another*.
 
 Measured over sixteen presets, Grit turned up came out grittier in about two
 offers of three before any picks, and in about half once the model had learned
@@ -274,7 +274,7 @@ Bright on the dial moves the dot too.
 
 Only an axis whose control reaches the patch moves. An amber control's end
 words are struck through on the pad and a note says so. An axis not measured
-yet is only dimmed, with *listening to this patch…*, and the pad keeps the
+yet is only dimmed, with *listening to this sound…*, and the pad keeps the
 axes you had through a Take until the taken sound has been measured. The pad
 has no "turn to ask" gesture; use the dial for that.
 
@@ -325,7 +325,7 @@ in 9 s* while it waits, with a thin amber arc inside the ring filling toward
 that move; *drift · walking…* while the walk looks for the next setting;
 *drift · gliding* while the knobs glide (*· no taste yet* before the model has
 been fitted); *ideas · one in B* while B holds an offer; *paused 3 s* while
-your hands are on other controls; *held*; and *staying — nothing better
+your hands are on other controls; *held*; and *staying: nothing better
 nearby* when the walk finds nothing it prefers, and the sound stays put.
 Wander only runs while PERFORM is on screen.
 
@@ -347,10 +347,10 @@ it is. The dial reads *held*. Tap again to release.
 
 | Pad | |
 |---|---|
-| **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it. The sound has not moved, so nothing is re-measured unless the knobs have travelled far from where they were measured, and then in the background |
+| **Keep** | Make the sound you hear home (*Kept: this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it. The sound has not moved, so nothing is re-measured unless the knobs have travelled far from where they were measured, and then in the background |
 | **Back** | Glide back to home, the last sound you kept or loaded |
 | **Offer** | Grow a variant from here into B. The first is usually there at once: PERFORM grows one ahead in the background once the patch has been steady for a few seconds and your hands have been off it for two. While B holds an offer the pad reads **NEXT** · *passes on B*: pressing it passes on B (B empties, Blend glides home) and brings the next one, which has been growing meanwhile, so it too is usually at once |
-| **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |
+| **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep it or keep it as new, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |
 | **Peek** | Hold to hear the offer alone |
 | **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
 
@@ -376,7 +376,7 @@ says which you are hearing:
 
 ```text
 drift · gliding · no taste yet
-drawn from the grammar — it has not learned your taste yet
+grown before it has learned your taste
 ```
 
 The first is the line under Wander while it glides, the second the B strip.
@@ -397,12 +397,12 @@ counts:
 
 "Heard" means Peek held, or Blend past half, for at least a second while notes
 were sounding. An offer you take or pass on without hearing it teaches
-nothing. A Take's toast has a **don't count it** button, and the Take counts
+nothing. A Take's toast has a **don’t count it** button, and the Take counts
 only when that button goes: taking a sound to hear it in place is not always a
-verdict. A pass is the same: *Passed on B — that counts as a pick for what you
+verdict. A pass is the same: *Passed on B. That counts as a pick for what you
 had.* carries **undo** for seven seconds, which brings B back and records
-nothing. A pass on a B you had not heard says so, *B skipped — not counted,
-you hadn't heard it*, and its **undo** brings B back too. Each window starts
+nothing. A pass on a B you had not heard says so, *Skipped B. Not counted,
+because you hadn’t heard it.*, and its **undo** brings B back too. Each window starts
 when its toast appears, not when you press the pad, so the button always works
 while you can see it.
 

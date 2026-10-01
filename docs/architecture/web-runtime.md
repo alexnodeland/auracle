@@ -150,7 +150,7 @@ through one ordered lane in `main.js`:
 - a value-only redraw repaints knobs in place, and no knob is rebuilt under a
   held pointer (`knobDragging`);
 - an undo retires the toast of what it undid;
-- COMMIT (`commitOnSettle`) and the bench's ▶ (`playOnSettle`) pressed while
+- KEEP AS NEW (`commitOnSettle`) and the bench's ▶ (`playOnSettle`) pressed while
   anything is in the lane wait for it to settle; ▶ also waits for a patch
   still opening (`benchSettled`). The bench's phrase buffer is replaced only
   by an edit's reply, so until then it is the sound from before the edit. A

@@ -12,8 +12,9 @@ vetting gate, which is why an unvetted patch can never reach your speakers.
 
 ### Bank
 
-One of three collections in the left rail: **evolution** (the live pool), **my
-patches** (what you saved), **presets** (the built-in library). See
+One of three collections in the left rail: **pool** (the sounds the model
+weighs and breeds from), **saved** (what you saved), **presets** (the built-in
+library). See
 [The patch bank](./bank.md).
 
 ### Belief row
@@ -45,9 +46,9 @@ feature vector and a lineage.
 
 A duel whose pair was drawn **at random** rather than chosen by the model.
 Under the default pairing that is every duel EVOLVE deals, and the meter says
-so of every pair: **◇ random pair — a fair test**. Under the
+so of every pair: **◇ random pair · a fair test**. Under the
 information-seeking pairing it is about one duel in ten, each marked
-**◇ unbiased probe — dealt at random**. Calibration measured on these is the
+**◇ fair test · dealt at random**. The app calls these **fair-test picks**. Calibration measured on these is the
 number without an asterisk.
 
 ### Duel
@@ -64,8 +65,9 @@ descriptors of the standard render, twenty-six structural counts of the term.
 
 One round of breeding. Takes the pool's best patches, walks each a short
 distance uphill on the current model, and injects the children as they are
-bred; when it ends (or you stop it) it replaces the patches it likes least to
-make room (the toast names them). The walks run in parallel on the render farm,
+bred (a child joins only if the model rates it above the sound it would
+replace); when it ends (or you stop it) the lowest-rated unsaved sounds are
+replaced (the toast names them). The walks run in parallel on the render farm,
 so the rest of the instrument keeps answering while it breeds.
 
 ### Genome / term
@@ -73,9 +75,9 @@ so the rest of the instrument keeps answering while it breeds.
 The patch's real representation: a **tree** in a typed grammar, not a parameter
 list. The rack you see is compiled from it.
 
-### HELD
+### Set aside
 
-The staging tray under the rack. Anything you unplug, delete or bypass goes
+The staging tray under the rack, labelled **SET ASIDE**. Anything you unplug, delete or bypass goes
 here rather than vanishing, and stays across a reload.
 
 ### Job slot
@@ -84,10 +86,6 @@ The place in the menu bar, beside **generations**, where long work shows while
 it runs: a generation (*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, a
 refit. It has **stop** where the job can be stopped. The wordmark's **E** is lit
 exactly while it shows.
-
-### Lens
-
-See **style**.
 
 ### Lineage
 
@@ -136,7 +134,7 @@ moved. See [soft takeover](./keyboard.md#soft-takeover).
 
 ### Pool
 
-The evolution bank: 40 vetted candidates the model reasons over and breeds
+The bank's **pool** tab: 40 vetted sounds the model weighs and breeds
 from. (The engine's own default is 48; the web app configures 40.)
 
 ### Posterior
@@ -147,8 +145,10 @@ comes from its spread.
 
 ### Prediction
 
-The percentage on a bank row: roughly how likely you are to prefer this patch
-in a duel. A posterior mean, so the number alone averages the uncertainty away.
+The percentage on a bank row: roughly how likely you are to pick this sound
+in a pair. Wherever the app prints one as a guess it gives a word beside it,
+from one scale: *a hunch* (46–54%), *leaning* (55–69% or 31–45%), *fairly
+sure* (70% and over, or 30% and under), as in *59% · leaning*. A posterior mean, so the number alone averages the uncertainty away.
 The bar under it shows the uncertainty: a tick at the mean inside a block one
 standard deviation wide on each side. The map's dot sizes show it too.
 
@@ -198,14 +198,15 @@ meaningless without it.
 
 ### Style
 
-One lens of your taste: a direction in feature space that explains some of your
-answers. A patch is scored by whichever lens likes it most, which is what lets
-you prefer several unrelated kinds of sound at once. Up to five; a lens
-claiming almost none of the bank is idle. Nameable, and worth naming.
+One cluster of your taste: a direction in feature space that explains some of your
+answers. A patch is scored by whichever style rates it highest, which is what lets
+you prefer several unrelated kinds of sound at once. Up to five; a style
+claiming almost none of the bank is idle. Named for what it leans on until you
+name it, and worth naming.
 
 ### Taste model
 
-The whole fitted object: style lenses, star cutpoints, session thresholds, and
+The whole fitted object: styles, star cutpoints, session thresholds, and
 their uncertainty.
 
 ### Trace address

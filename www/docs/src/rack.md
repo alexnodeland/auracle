@@ -82,32 +82,32 @@ last set, never an older one the engine is still catching up on, and never
 PERFORM's older copy of it: once you turn it here, PERFORM plays from your
 value too ([the circuit](./views/perform.md#opening-the-circuit)).
 
-Edits are staged. The toolbar's **commit** inserts the result as a new
-candidate, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
+Edits are staged. The toolbar's **keep as new** inserts the result as a new
+sound, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
 redo, and ⌘Z always undoes the last thing you did, even if the engine has not
 finished it yet. Each structural edit's message replaces the last one's, and
 undoing an edit takes down the message that announced it.
 
-**Commit asks first.** If the edit really changed the patch, a card opens:
-**WHICH ONE IS BETTER?** It holds the original and your edit as **A** and
+**Keep as new asks first.** If the edit really changed the patch, a card opens:
+**WHICH WOULD YOU REACH FOR?** It holds the original and your edit as **A** and
 **B**, in a random order and unlabelled, each with **▶ play** and **this one**.
 Either answer teaches the model; picking the original teaches it the most. The
-receipt says which side was yours: *"committed as patch #51 · B was your edit ·
-taught: your edit won the comparison."* <kbd>1</kbd> / <kbd>2</kbd> play,
+receipt names the new sound and says which side was yours: *"Kept Glass Pad 2
+as new: B was your edit, and you picked it."* <kbd>1</kbd> / <kbd>2</kbd> play,
 <kbd>←</kbd> / <kbd>→</kbd> pick. <kbd>Esc</kbd> or **cancel** closes the card
-and commits nothing: your edit stays on the bench. **commit without
-comparing** commits and teaches nothing. **⚡ evolve from this** on an edited
+and keeps nothing: your edit stays open. **keep as new without
+comparing** keeps it and teaches nothing. **⚡ evolve from this** on an edited
 patch asks the same question before it breeds, and cancelling it cancels the
 generation too.
 
-**my edit is better** is the shortcut past the card, for one commit. Tick it
-and the next commit files a claim that your edit won, without hearing the two
+**pick the edit** is the shortcut past the card, for one keep as new. Tick it
+and the next keep as new files a claim that your edit won, without hearing the two
 back to back; then it unticks itself. The
 [TRUST tab scores the two apart](./views/taste.md#trust--is-its-confidence-honest):
 answers you heard, and claims you filed.
 
-A commit's receipt takes the place of the edits' receipts it follows: once the
-edit is committed, their *take it out* buttons are gone.
+A keep as new's receipt takes the place of the edits' receipts it follows: once the
+edit is kept, their *take it out* buttons are gone.
 
 ```admonish tip title="Hit targets are bigger than they look"
 A knob's whole face is grabbable, including under its ticks and value arc, and a
@@ -133,7 +133,7 @@ Then:
 | **snap** | Pin everything where it currently sits, on the 24px grid. This is how you start hand-arranging an evolved patch |
 | **reset** | Throw away the hand positions and re-lay along the signal chain |
 | **detail** | `auto` drops knobs when plates get too small to grab; force it on or off |
-| **belief** | Tint each plate by what the model believes about its family: amber toward, red away, stronger where it is certain. Off by default |
+| **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
 Positions are kept **per patch**, survive a reload and a generation of ⚡, and
 travel inside an exported patch file. If a hand layout has spread past anything
@@ -184,19 +184,19 @@ Per module:
 | **insert before…** | A new module between this one's input and it. Greyed on a source, which has no input |
 | **insert after…** | A new module between this one and what it feeds |
 | **duplicate** | A second one in series, with the same settings. Greyed on a source |
-| **extract to HELD** | Leaves the socket [empty and silent](#empty-sockets); drag it back any time |
+| **set aside** | Leaves the socket [empty and silent](#empty-sockets); drag it back any time |
 | **bypass** | The input passes straight through. Greyed on a source |
-| **modulate → *destination*** | Arms the node bank at the modulators, for this module's mod slot. Only on a module that has one |
+| **modulate → *destination*** | Arms the module rail at the modulators, for this module's mod slot. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
 | **swap the two inputs** | On the six two-input modules only |
 | **delete** | Set apart below a rule, in red |
 
 The *replace*, *insert* and *modulate* rows hand off to the
-[node bank](./wiring.md) with the socket already chosen and lit, so there is one
+[module rail](./wiring.md) with the socket already chosen and lit, so there is one
 module inventory in one place. A modulator's own ⋯ has two rows: **replace
 with…** and **unplug this modulator**.
 
-Anything you bypass or delete goes to the **HELD** tray rather than
+Anything you bypass or delete goes to the **SET ASIDE** tray rather than
 disappearing, and stays there across a reload.
 
 ## Empty sockets
@@ -208,8 +208,8 @@ of a mix, only that side goes quiet. Under a module you insert after it, that
 module has nothing to process.
 
 If the empty socket was the patch's only source, the whole patch is silent.
-The caption under its name says *silent — nothing reaches the output*, ▶ and
-**commit** wait for a source, and the model's line says it has no guess. Arm
+The caption under its name says *silent: nothing reaches the output*, ▶ and
+**keep as new** wait for a source, and the model's line says it has no guess. Arm
 any source and the empty socket is the one already picked; place it, or press
 <kbd>⌘Z</kbd>, and you hear the patch again.
 
@@ -218,7 +218,7 @@ structural coordinates it weighs.
 
 ## Exporting a patch
 
-From **⋯** → *Export this patch* (JSON) or *Export as image…* (PNG or SVG, at a
+From **⋯** → *Download this patch* (JSON) or *Download as a picture…* (PNG or SVG, at a
 scale and background you choose). The exported image **contains the patch**: an
 Auracle PNG or SVG can be imported back, so a screenshot of a rack is also the
 rack.

@@ -33,11 +33,11 @@ as you choose, unless you are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>space</kbd> | Audition the current patch |
+| <kbd>space</kbd> | Hear the sound you’re playing |
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the patch you are on |
 | <kbd>m</kbd> | Save the patch you are on |
-| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *nothing to undo here — PATCH edits undo in PATCH* |
+| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | Key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, or put down an armed module |
@@ -47,7 +47,7 @@ as you choose, unless you are stepping through them with the arrow keys.
 | | |
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd> | Audition A / B |
-| <kbd>←</kbd> / <kbd>→</kbd> | Vote A / B, from the moment you click the EVOLVE tab |
+| <kbd>←</kbd> / <kbd>→</kbd> | Pick A / B, from the moment you click the EVOLVE tab |
 | <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
 
 Clicking a view's tab puts the keyboard in that view. A keyboard user who
@@ -94,7 +94,7 @@ In **presets** the cursor keys work the same, <kbd>Home</kbd> / <kbd>End</kbd>
 jump to the first and last row, <kbd>Enter</kbd> opens the preset, and
 <kbd>p</kbd> plays it.
 
-## The node bank
+## The module rail
 
 | | |
 |---|---|
@@ -116,9 +116,9 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 | Drag a knob | Change it; you hear it immediately |
 | Click an enum plate | Cycle it (`saw`, `square`, `−2 oct`) |
 | Drag from an **out** jack | Pull a cable; every legal input lights up |
-| Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** and the socket goes quiet |
-| Drag from **HELD** onto a lit ○ | Put it back |
-| Click **⋯** on a plate | replace with…, insert before…, insert after…, duplicate, extract to HELD, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
+| Drag a wired **in** jack off its socket | Unplug. The chain goes to **SET ASIDE** and the socket goes quiet |
+| Drag from **SET ASIDE** onto a lit ○ | Put it back |
+| Click **⋯** on a plate | replace with…, insert before…, insert after…, duplicate, set aside, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
 | Click **▢** on a plate | Lock the module so evolution cannot touch it |
 | Click a knob's lock dot | Lock just that knob |
 | Drag a plate by its faceplate | Move it (freeform mode); <kbd>shift</kbd> to ignore the grid |

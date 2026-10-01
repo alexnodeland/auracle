@@ -20,6 +20,41 @@ changelog that edits its own past is not a record.
   Each phrase now repeats to the end of its section, and the films change
   when they are next rendered (`test_fit_score.py`).
 
+### Fixed: what a generation and ⚡ say
+
+- **A generation that adds nothing to the pool says why, walk by walk.**
+  *Generation 4: 3 were bred, but none rated above the sounds they would
+  replace.*, or *every walk came back unchanged*, or a count of each. It used
+  to say *no move was accepted* whatever happened, even when children were
+  bred and refused, or landed on sounds the pool already held.
+- **A refused ⚡ child is held to the bar the engine uses: the sound it would
+  replace, the lowest unsaved one.** The toast said the child had to beat its
+  parent, which was never the rule.
+- **A ⚡ child joins the bank’s New group, tagged NEW, as a generation’s
+  children do.** It used to land among the ranked rows with nothing to mark
+  it (`evolve_from_new.spec.js`).
+
+### Changed: words
+
+- **The app says what it means in one set of words: a bank row is a sound,
+  files are downloaded and opened, and the menu bar counts everything you
+  TAUGHT.** The counter said PICKS while it counted stars and cuts too; its
+  tooltip now splits it (*52 picks · 4 stars · 2 cuts*), and EVOLVE’s meter
+  still counts picks. The bank’s tabs read POOL, SAVED and PRESETS; PATCH’s
+  COMMIT is KEEP AS NEW and its HELD tray is SET ASIDE; a pair’s ⌖ BENCH and
+  SKIP ↻ are OPEN IN PATCH and ANOTHER PAIR.
+- **A guess is a percentage and a word, never a bare number.** The line
+  above the rack reads *59% · leaning* where it read MODEL’S GUESS 0.59, and
+  a pair’s forecast reads *it guessed this · 72% · fairly sure*. The words
+  come from one scale: a hunch, leaning, fairly sure.
+- **Toasts are sentences that name the sound.** They start with a capital,
+  carry no em dashes or ids, and are spelled the American way. *Saved Glass
+  Pad. No generation will replace it.* used to read *Saved Glass Pad — it
+  won't be replaced.*
+- **Only the model speaks in italics.** Module and preset descriptions, empty
+  states and the teaching line are set plain, so the italic face means the
+  model is saying what it believes.
+
 ### Fixed — ▶ plays the edit
 
 - **▶ or Space in PATCH, pressed right after an edit, plays the edited patch.**

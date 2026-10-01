@@ -1,4 +1,4 @@
-# Wiring and the node bank
+# Wiring and the module rail
 
 <p class="lede">Forty-two modules, each one honest about what the model does and
 does not know about it.</p>
@@ -7,12 +7,12 @@ does not know about it.</p>
 
 <figure>
 <img src="./img/node-bank.webp" alt="The PATCH view with the node bank open on the right: ten groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
-<figcaption><strong>The node bank, with a card open.</strong> Every entry says
+<figcaption><strong>The module rail, with a card open.</strong> Every entry says
 what it does to a wave, what it takes and gives, and what the model makes of
 it.</figcaption>
 </figure>
 
-The rail on the right of PATCH is the instrument's inventory: **forty-two
+The rail on the right of PATCH, headed **MODULES**, is the instrument's inventory: **forty-two
 modules in ten groups**, ordered along the signal path: sources → shape →
 filter → space → motion → dynamics → combine, then the modulators: modulation
 → shape cv (what bends a modulator) → combine cv (two modulators, one cable).
@@ -178,12 +178,12 @@ rack will not let you wire it as though it were.
 Above the catalogue, what the current patch is made of. Clicking a pill jumps
 to that module in the rack.
 
-## The HELD tray
+## The SET ASIDE tray
 
 Anything you unplug, delete or bypass goes here, and **stays across a reload**.
 Drag it back onto any lit ○ to put it in. The socket it came out of is left
 [empty and silent](./rack.md#empty-sockets).
 
-Collapsed, the rail keeps its name and the count of what is held below it, so
+Collapsed, the rail keeps its name and the count of what is set aside below it, so
 staged work is never hidden silently. The rail's width, its collapsed state,
 and which groups are folded all persist.

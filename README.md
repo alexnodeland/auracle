@@ -91,7 +91,7 @@ it keeps what you teach it, across sessions, and breeds toward it.
   included, where it bends pitch.
 - **Modulation chains.** A cable can carry `s&h rand → quantize → slew` before
   it reaches a cutoff, with a depth bound so the grammar's parsimony still
-  applies. The node bank shows what each module does to a signal, where it can
+  applies. The module rail shows what each module does to a signal, where it can
   go, and, only where the evidence supports it, what the model has learned
   about it.
 
@@ -165,7 +165,7 @@ inference), all from crates.io.
 
 While the version is 0.x, the public API and the save format may change between
 commits. Sessions written by older builds are migrated on load, but migrations
-are code: **⋯ → Save taste profile** before updating is the only backup there
+are code: **⋯ → Download your taste** before updating is the only backup there
 is. See [Your data](https://auracle.alexnodeland.com/docs/your-data.html).
 
 ## Development
