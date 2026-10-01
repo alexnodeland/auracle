@@ -1844,7 +1844,11 @@ worker.onmessage = (e) => {
       if (early) earlyOpen = null;
       const openedEarly =
         !!early && !!liveTreeJson && !!m.treeJson && treeSound(liveTreeJson) === treeSound(m.treeJson);
-      const spokeEarly = openedEarly || (liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
+      // An edit's tree the voices took early is "spoken" only while they still
+      // play it: a preset opened from memory since (`voiceEarly`) took them,
+      // and this reply's makeup and pending knobs are not about that preset.
+      const spokeEarly = openedEarly ||
+        (!(earlyOpen && !subjectLoad) && liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
       liveOptimisticJson = null;
       if (openedEarly && liveTreeJson !== m.treeJson) {
         liveTreeJson = m.treeJson;
@@ -7178,6 +7182,8 @@ function voiceEarly(json, makeup, { id = null, index = null, label }) {
     ? earlyOpen.prev
     : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText, muted: liveMuted };
   earlyOpen = { json, id, index, label, prev, tick: ++openTick };
+  // An edit's tree the voices took early is not what they play any more.
+  liveOptimisticJson = null;
   livePatchId = id;
   if (!(liveTreeJson && treeSound(liveTreeJson) === treeSound(json))) {
     live.setPatch(json, makeup);

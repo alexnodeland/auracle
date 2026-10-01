@@ -23,6 +23,10 @@ changelog that edits its own past is not a record.
 - **A knob turned into a runaway is muted, as the alarm says.** The alarm
   read *Muted* while held notes went on playing what the knob had made; a
   module placed or removed was already muted when its check failed.
+- **A preset opened while an edit is still rendering plays at its own
+  level.** A remembered preset plays from the click, and the reply to an
+  undo or a module change made just before set that edit's level on it, up
+  to 40 dB too loud, until the preset's own reply landed.
 
 ### Fixed: a reload keeps what PERFORM just measured
 

@@ -48,6 +48,11 @@
 //   reaches the voices before its check, and its failed check used to raise
 //   "Muted" over voices still playing. A check that passes lifts the mute.
 //   (The failure is the engine's reply edited on its way to the page.)
+// - An edit's reply leaves alone the voices of a preset opened while the
+//   edit rendered. A structural edit (here a ⌘Z) reaches the voices before
+//   its render, and its reply sets their makeup; a remembered preset clicked
+//   in between plays from memory at once, and that reply used to set the
+//   edit's makeup on it (Pluck's, 24 dB over Held Under's).
 // - In PATCH, Space with ▶ disabled (nothing reaches the output) says so and
 //   plays nothing, rather than the bank's render of the patch before the edit;
 //   ▶'s tooltip gives the same reason.
@@ -72,7 +77,7 @@ const { test, expect } = require("@playwright/test");
 const INIT = `(() => {
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
-  const io = (window.__pwIO = { out: 0, in: 0, benchAt: [] });
+  const io = (window.__pwIO = { out: 0, in: 0, benchAt: [], replies: [], early: [] });
   const EDITS = new Set(["edit_param", "edit_structure", "edit_set_tree"]);
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
@@ -98,6 +103,8 @@ const INIT = `(() => {
           io.in += 1;
           io.benchAt.push(performance.now());
         }
+        if (d.type === "bench") io.replies.push({ t: performance.now(), edited: d.edited, subject: d.subject, makeup: d.makeup });
+        if (d.type === "tree_json" && d.edited !== undefined) io.early.push(performance.now());
       });
     }
     return w;
@@ -182,9 +189,12 @@ const INIT = `(() => {
   // Every tree handed to the voices (the worklet's \`patch\` message), by
   // time: when a change reached a held note, whatever the analyser's window.
   const voiced = (window.__pwVoiced = []);
+  // …and every makeup they were handed, with a patch or on its own.
+  const makeups = (window.__pwMakeups = []);
   const portPost = MessagePort.prototype.postMessage;
   MessagePort.prototype.postMessage = function (m, ...rest) {
     if (m && m.type === "patch") voiced.push(performance.now());
+    if (m && (m.type === "patch" || m.type === "makeup") && m.makeup != null) makeups.push({ t: performance.now(), type: m.type, makeup: m.makeup });
     return portPost.call(this, m, ...rest);
   };
 
@@ -632,6 +642,48 @@ test("a knob whose check finds a runaway is muted, as the alarm says, until a ch
   await expect(page.locator("#alarm")).not.toContainText("Muted");
   await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeGreaterThan(-60);
   await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("an edit's reply leaves alone the makeup of a preset opened while the edit rendered", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page, { slowable: true });
+  // Held Under opened once, so the page remembers it and plays it from the
+  // click next time; then Pluck on the rack, with a knob turned.
+  await openPreset(page, "Held Under");
+  await openPreset(page, "Pluck");
+  const k = await page.evaluate(() => window.__aur.wb.rack.modules.flatMap((m) => m.knobs).find((x) => x.kind.t === "continuous").addr);
+  await dragDown(page, await rackKnob(page, k), 20);
+  await settled(page);
+  // ⌘Z reaches the voices as a tree at once, and its render takes a second
+  // and a half more.
+  await slowRender(page, 1500);
+  const early = await page.evaluate(() => window.__pwIO.early.length);
+  await page.locator("#rack-subject").click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => page.evaluate(() => window.__pwIO.early.length), { timeout: 10_000 }).toBeGreaterThan(early);
+  const clicked = await pageNow(page);
+  await page.locator('.bf[data-f="preset"]').click();
+  await page.locator(".bank-item", { hasText: "Held Under" }).first().click();
+  await expect(page.locator("#rack-subject")).toContainText("Held Under", { timeout: 60_000 });
+  await settled(page);
+  const { undo, open, after } = await page.evaluate((t) => ({
+    undo: window.__pwIO.replies.find((r) => r.t > t && r.edited === "restore"),
+    open: window.__pwIO.replies.find((r) => r.t > t && r.subject !== undefined),
+    after: window.__pwMakeups.filter((m) => m.t > t),
+  }), clicked);
+  const db = (g) => (20 * Math.log10(g)).toFixed(1);
+  console.log(
+    `[patch_audible] the undo's reply (makeup ${undo ? db(undo.makeup) : "?"} dB) landed ` +
+      `${undo && open ? Math.round(undo.t - clicked) + " ms after the click, the open's" : "?"} at ${open ? Math.round(open.t - clicked) : "?"} ms ` +
+      `(${open ? db(open.makeup) : "?"} dB); the voices were handed ${after.map((m) => `${m.type} ${db(m.makeup)} dB`).join(", ")}`,
+  );
+  expect(undo, "the undo answered").toBeTruthy();
+  expect(open, "the open answered").toBeTruthy();
+  expect(Math.abs(Math.log10(undo.makeup / open.makeup)) * 20, "two makeups apart").toBeGreaterThan(6);
+  expect(after.filter((m) => Math.abs(m.makeup - undo.makeup) < 1e-9), "the undo's makeup never reached Held Under's voices").toEqual([]);
+  expect(after.length, "the voices took Held Under").toBeGreaterThan(0);
+  expect(Math.abs(after[after.length - 1].makeup - open.makeup), "and play it at its own makeup").toBeLessThan(1e-9);
   expect(errors).toEqual([]);
 });
 
