@@ -111,6 +111,13 @@ jobs:
           echo "browser=$browser" >> "$GITHUB_OUTPUT"
           printf '\n  rust=%s site=%s browser=%s\n' "$rust" "$site" "$browser"
 
+      # The voice check (www/brand/voice.md) reads the README and the
+      # changelog as well as the site and the app, and a PR that touches only
+      # those skips the web job's `make dev-check`. It takes a second, so it
+      # runs here, on every PR.
+      - name: The voice (www/checkwords.py)
+        run: python3 www/checkwords.py
+
   # Formatting and lints share a job: `cargo fmt --check` needs no dependency
   # graph and finishes in seconds, so giving it its own runner spent more on
   # scheduling overhead than on the work. It runs first, before clippy pays for

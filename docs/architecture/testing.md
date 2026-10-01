@@ -20,6 +20,7 @@ this table.
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
+| Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
 | Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
@@ -41,7 +42,7 @@ of the browser suite. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | Lint, Web, Wasm check, Site (with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` (five runners, against one wasm build per run) | Yes. The branch ruleset requires `CI`, unchanged; the fast browser shards are inside it |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint, Web, Wasm check, Site (with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` (five runners, against one wasm build per run) | Yes. The branch ruleset requires `CI`, unchanged; the fast browser shards are inside it |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners) | No |
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a

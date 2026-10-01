@@ -32,10 +32,12 @@ git diff --stat HEAD
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
 | `www/video/tools/**` | syntax (`node --check`, `py_compile`, `bash -n`) and a rehearsal of one shot that uses the tool |
+| Any copy: app strings, the site, the guide, the reference, a film's lines or on-screen text, the README, the changelog | `python3 www/checkwords.py` (or `make dev-check`); `make web-check` does not run it. A sweep that lowers a count runs `python3 www/checkwords.py --update` in the same change |
 
 ## 3. Before committing
 
-- `make check` when Rust changed; `make web-check` is enough for JS-only.
+- `make check` when Rust changed; `make web-check` is enough for JS-only,
+  unless a string changed: then `make dev-check` too, for the voice check.
 - A user-visible change also needs its descriptions updated (`truth-pass`)
   and a `CHANGELOG.md` entry (`changelog`).
 
