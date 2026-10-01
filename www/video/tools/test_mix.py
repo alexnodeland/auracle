@@ -240,7 +240,7 @@ class Film:
         roles = {"drone": "drone", "pad": "pad", "mpad": "mpad", "burble": "burble", "lead1": "lead", "lead2": "lead"}
         self.json("score.json", {"title": "F", "tempo": 66, "beats_per_bar": 4, "sections": [{"name": "s", "bars": 9}],
                                  "tracks": [{"name": k, "preset": "x", "role": r} for k, r in roles.items()],
-                                 "_film": {"t0": self.MARKS["entrance"]}})
+                                 "_film": {"t0": self.MARKS["entrance"], "exit": self.MARKS["exit"]}})
         demo = self.span(tone(174.6, 9.0, -20) + tone(329.6, 9.0, -22), 0, self.DEMO["off"] - self.DEMO["t0"])
         k = int((self.DEMO["off"] - self.DEMO["t0"]) * SR)
         demo[k:] = (tone(174.6, 9.0, -20) + tone(329.6, 9.0, -22))[k:] * np.exp(-np.arange(len(demo) - k) / (0.12 * SR))[:, None]
@@ -340,6 +340,49 @@ class AFilmMixedToTheLadder(unittest.TestCase):
             self.film.json("out/f/cues.json", [{"name": "whoosh", "t": 1.0}, {"name": "blip", "t": 2.0}])
         self.assertNotIn("cues:", log)
         self.assertTrue(np.array_equal(with_cues, without))
+
+
+@unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")
+class AMixThatWouldBeWrongStops(unittest.TestCase):
+    """A silent mark, a score written to another timeline, or a sample that is
+    not a number stops the mix, loudly, before mix.wav is written."""
+
+    def stops(self, change):
+        with Film() as film:
+            change(film)
+            with self.assertRaises(SystemExit) as stop:
+                film.mix()
+            self.assertFalse(os.path.exists(os.path.join(film.root, "out/f/mix.wav")), "a mix.wav was written")
+            return str(stop.exception.code)
+
+    def test_a_mark_moved_off_the_score(self):
+        def move(film):
+            with open(os.path.join(film.root, "films/f/timeline.json")) as f:
+                tl = json.load(f)
+            tl["marks"]["exit"] += 3.0
+            film.json("films/f/timeline.json", tl)
+        said = self.stops(move)
+        self.assertIn("the score puts the exit mark at 25.25 s and the timeline at 28.25 s", said)
+
+    def test_silent_marks(self):
+        def silence(film):
+            for name in ("lead1", "lead2", "mpad"):
+                path = os.path.join(film.root, "score/stems/s", f"{name}.wav")
+                mix.write(path, np.zeros_like(mix.load(path)))
+        said = self.stops(silence)
+        self.assertIn("the entrance mark's span (0.75-5.25 s) is silent in the score's stems", said)
+
+    def test_a_sample_that_is_not_a_number(self):
+        def poison(film):
+            path = os.path.join(film.root, "score/stems/s", "burble.wav")
+            x = mix.load(path)
+            x[SR] = np.nan
+            np.save(os.path.join(film.root, "nan.npy"), x)
+            saved = mix.load
+            mix.load = lambda p: np.load(os.path.join(film.root, "nan.npy")) if p == path else saved(p)
+            self.addCleanup(setattr, mix, "load", saved)
+        said = self.stops(poison)
+        self.assertIn("not numbers", said)
 
 
 @unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")

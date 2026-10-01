@@ -195,6 +195,8 @@ def lufs(x):
     ms, _ = _blocks(x, 0.4, 0.1)
     if not len(ms):
         return -70.0
+    if not np.isfinite(ms).all():
+        return float("nan")  # not "silent": a sample that is not a number has no loudness
     l = -0.691 + 10 * np.log10(ms + 1e-12)
     g = ms[l > -70]
     if not len(g):
@@ -479,15 +481,23 @@ def mark_gains(S, g, n, marks):
         _, mp = momentary(pad_all[a:b])
         _, ml = momentary(S["lead"][a:b])
         on = (ml > SOUNDING_LUFS) & (mp > PAD_SOUNDING_LUFS)
-        gl = 10 ** ((over - float(np.median(ml[on] - mp[on]))) / 20) if on.any() else 1.0
+        heard = lufs(S["lead"][a:b] + S["mpad"][a:b] * g.get("mpad", 1.0))
+        if heard <= SOUNDING_LUFS or not on.any():
+            # Scaling silence up to the ladder makes a silent or NaN film.
+            raise ValueError(f"the {name} mark's span ({t0:.2f}-{t0 + length:.2f} s) is silent in the score's stems "
+                             f"({heard:.1f} LUFS{'' if on.any() else ', its lead never sounding with its pad'}): "
+                             "render the score again, or write it again from this timeline (fit_score.py --film)")
+        gl = 10 ** ((over - float(np.median(ml[on] - mp[on]))) / 20)
         lead, mpad = S["lead"][a:b] * gl, S["mpad"][a:b] * g.get("mpad", 1.0)
         rest = others[a:b] if not np.isscalar(others) else 0
         m = 1.0
         for _ in range(20):
             step = 10 ** ((LADDER["marks_lufs"] - lufs(rest + m * (lead + mpad))) / 20)
             m *= step
-            if abs(20 * math.log10(step)) < 0.005:
+            if not math.isfinite(m) or abs(20 * math.log10(step)) < 0.005:
                 break
+        if not math.isfinite(m):
+            raise ValueError(f"the {name} mark's level is not a number: a stem under it holds samples that are not numbers")
         nxt = spans[k + 1][0] if k + 1 < len(spans) else t[-1] + 1
         here = (t >= (t0 if k else 0)) & (t < nxt)
         cl[here] = gl * m
@@ -677,6 +687,8 @@ def main():
         vo, did = voice_chain(vo)
         vo *= 10 ** ((target - lufs(vo)) / 20)
         print(f"voice: {lv:.1f} LUFS → {target:.1f}; {'; '.join(did)}")
+    if not np.isfinite(vo).all():
+        sys.exit("mix.py: the narration holds samples that are not numbers; nothing written")
     env = voice_env(vo) if np.any(vo) else np.zeros(n)
 
     # The app's own sound: each demo window to the demo's level.
@@ -719,9 +731,20 @@ def main():
     rest_at = LADDER["narration_lufs"] + args.music_db
     if args.score and args.music:
         score = read_json(args.score)
-        t0 = score.get("_film", {}).get("t0", marks.get("entrance", 0.0))
+        placed = score.get("_film")
+        if not placed:
+            sys.exit(f"mix.py: {args.score} is not a film's score (no `_film`): write it with fit_score.py --film")
+        # The score was written to a timeline; this must be that timeline.
+        for k, at in (("entrance", placed.get("t0")), ("exit", placed.get("exit"))):
+            want = marks.get(k)
+            if (at is None) != (want is None) or (at is not None and abs(at - want) > 0.0015):
+                sys.exit(f"mix.py: the score puts the {k} mark at {at} s and the timeline at {want} s: write the score "
+                         f"again from this timeline (fit_score.py --film films/{args.film} {args.score})")
+        t0 = placed["t0"]
         S = {}
         for r, x in score_stems(score, args.music).items():
+            if not np.isfinite(x).all():
+                sys.exit(f"mix.py: the score's {r} stems hold samples that are not numbers; nothing written")
             y = np.zeros((n, 2), np.float32)
             lay(y, place(r, x), t0)
             S[r] = y
@@ -732,7 +755,10 @@ def main():
         lb = lufs(np.concatenate([cut(static, a, b) for a, b in segs]))
         kb = 10 ** ((rest_at - lb) / 20)
         g = {r: v * kb for r, v in g.items()}
-        cl, cp, took["marks"] = mark_gains(S, g, n, marks)
+        try:
+            cl, cp, took["marks"] = mark_gains(S, g, n, marks)
+        except ValueError as e:
+            sys.exit(f"mix.py: {e}")
         if "pad" in S:
             pad_raw = S["pad"] * g["pad"]
             pad_dipped = dip(pad_raw, env)
@@ -797,9 +823,15 @@ def main():
     f = int(0.02 * SR)
     mix[:f] *= np.linspace(0, 1, f)[:, None]
     mix[-f:] *= np.linspace(1, 0, f)[:, None]
+    if not np.isfinite(mix).all():
+        sys.exit("mix.py: the mix has samples that are not numbers (NaN or infinite); nothing written")
     l0 = lufs(mix)
+    if l0 <= -70:
+        sys.exit("mix.py: the mix is silent (under the -70 LUFS gate); nothing written")
     master = 10 ** ((args.target - l0) / 20)
     mix = limiter(mix * master)
+    if not np.isfinite(mix).all():
+        sys.exit("mix.py: the mastered mix has samples that are not numbers; nothing written")
     l1 = lufs(mix)
     tp = true_peak_db(mix)
     write(os.path.join(odir, "mix.wav"), mix)
