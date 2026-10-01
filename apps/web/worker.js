@@ -1930,7 +1930,15 @@ async function dispatch(m) {
         try {
           ceilings = JSON.parse(mod.budget_ceilings());
         } catch (_) { /* older engine */ }
-        post({ type: "ready", ceilings });
+        // The render namespace this binary measures in (the stimulus, the
+        // featurizer's RENDER_EPOCH and the quiver version). PERFORM stamps
+        // the wirings it keeps with it, so a wiring measured by another
+        // build's DSP is re-measured rather than trusted.
+        let ns = null;
+        try {
+          ns = mod.cache_namespace(engine.phrase_json()) || null;
+        } catch (_) { /* older engine */ }
+        post({ type: "ready", ceilings, ns });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.

@@ -10,7 +10,10 @@
 //
 // The same holds for Offer: one offer is grown in the background once a patch
 // is steady, and pressing Offer hands it over instead of starting ~10 s of
-// renders.
+// renders. And a kept wiring from another build's DSP still plays at once, but
+// is re-measured rather than trusted.
+const fs = require("fs");
+const path = require("path");
 const { test, expect } = require("@playwright/test");
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
@@ -280,5 +283,81 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   });
   console.log(`Offer with a spare waiting: ${ms.toFixed(0)} ms`);
   expect(ms, "a spare offer is handed over, not grown").toBeLessThan(300);
+  expect(errs).toEqual([]);
+});
+
+// A kept wiring holds φ (`z`), and a new DSP or featurizer measures the same
+// patch differently: after an update that moved the render namespace (quiver
+// 0.4.0 did), a wiring from the player's cache is still played at once, but
+// the status line says *re-checking* until it is measured again and replaced,
+// never trusted as current. The entry seeded here is stamped the way builds
+// before the namespace joined the tag stamped one: the bare observation count,
+// which a fresh profile matches.
+test("a kept wiring from another build's DSP plays at once and is re-measured", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(240_000);
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const file = JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/perform-wirings.json"), "utf8"));
+  const acid = file.presets.find((p) => p.name === "Acid Line");
+  // The app's `wireKey`: the tree's JSON with its uids dropped.
+  const key = JSON.stringify(JSON.parse(acid.tree), (k, v) => (k === "uid" ? undefined : v));
+  await page.addInitScript(([key, data]) => {
+    localStorage.setItem("auracle-perform-wirings", JSON.stringify([[key, { data, rev: 0 }]]));
+  }, [key, acid.data]);
+  // Counts PERFORM's measurement requests to the engine.
+  await page.addInitScript(`(() => {
+    const Orig = window.Worker;
+    window.__wires = 0;
+    function Wrapped(url, opts) {
+      const w = new Orig(url, opts);
+      if (/worker\\.js/.test(String(url))) {
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m, t) => {
+          if (m && m.type === "perform_wire") window.__wires += 1;
+          return post(m, t);
+        };
+      }
+      return w;
+    }
+    Wrapped.prototype = Orig.prototype;
+    window.Worker = Wrapped;
+  })();`);
+  // The shipped file is blocked: the wiring under test is the player's own.
+  await page.route("**/perform-wirings.json*", (r) => r.abort());
+  await page.goto("/");
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await page.locator("#warm-skip").click();
+  await page.locator('.bf[data-f="preset"]').click();
+  await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
+  await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });
+  await page.waitForTimeout(800);
+  const ms = await page.evaluate(async () => {
+    const live = () =>
+      document.querySelector(".pf-name")?.textContent === "Acid Line" &&
+      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
+      ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired"));
+    const t0 = performance.now();
+    document.querySelector('.viewtab[data-view="perform"]').click();
+    while (!live() && performance.now() - t0 < 60_000) await new Promise((r) => setTimeout(r, 2));
+    return performance.now() - t0;
+  });
+  console.log(`a kept wiring from another build, wired in ${ms.toFixed(0)} ms`);
+  expect(ms, "played at once from the kept wiring").toBeLessThan(1500);
+  expect(await wiredHow(page, "Acid Line"), "wired from the player's cache").toBe("cached");
+  // …and the player is told it is being measured again, under this build,
+  // until the new measurement lands.
+  const status = page.locator(".pf-status");
+  await expect(status, "the status line says the wiring is re-checked").toHaveText(/re-checking/, { timeout: 60_000 });
+  await expect(status, "the re-check lands").not.toHaveText(/re-checking/, { timeout: 150_000 });
+  await expect(status).toHaveText(/controls reach/);
+  // Secondary, internal: the measurement was asked of the engine, and the
+  // re-measured wiring replaced the old one, stamped with this build's render
+  // namespace (the cache is written 1.5 s after it changes).
+  expect(await page.evaluate(() => window.__wires), "a measurement was asked for").toBeGreaterThan(0);
+  const keptRev = () =>
+    page.evaluate((key) => {
+      const kept = new Map(JSON.parse(localStorage.getItem("auracle-perform-wirings") || "[]"));
+      return String(kept.get(key)?.rev ?? "");
+    }, key);
+  await expect.poll(keptRev, { timeout: 150_000, intervals: [1000] }).toMatch(/^0@.+/);
   expect(errs).toEqual([]);
 });
