@@ -24,10 +24,13 @@ literals (not its comments, its names, or a literal used as a name: see
 `is_name`), a page's text and its `title`, `aria-label`, `placeholder` and
 `alt` (and a `<meta>` description or social-card title), Markdown's prose
 outside code (an admonish callout is prose), a film script's `text` lines,
-and a Rust file's string literals (not its comments or its `#[cfg(test)]`
-items; see `rs_raw`). Entities are decoded everywhere but in Rust. A script
-or Rust line that ends in the comment `// voice: name` holds names (or a
-code, or a key), and its literals are not read. In
+and a Rust file's string literals (not its comments, nor what builds only
+for tests: `#[cfg(test)]`, `#[test]` and the like; see `rs_raw`). Entities
+are decoded everywhere but in Rust. In a script or a Rust file, the comment
+`// voice: name` marks its line as names (or a code, or a key): a literal
+that starts on that line is not read. A literal that runs over several
+lines cannot carry the mark, because its first line ends inside it: put a
+name on one line. In
 Markdown, text between `<!-- voice: quote -->` and `<!-- /voice -->` quotes
 someone else's words (a standard's title, a label the app used to show), and
 is not read; the span can wrap a line, never a paragraph.
@@ -77,7 +80,8 @@ SURFACES = [
     # the bank's sound names; and the reasons an edit is refused, which the
     # app's toast quotes. A code, a JSON key or a panic's message in these
     # files is read too (a panic never reaches the screen: it traps in the
-    # browser), and one that trips the check ends its line `// voice: name`.
+    # browser), and one that trips the check gets `// voice: name` on the
+    # line it starts on.
     # Reason codes (`no_move`) and the status the worker posts are not copy,
     # and live in files not read here.
     (
@@ -530,8 +534,8 @@ def is_name(t: str, start: int, end: int, s: str) -> bool:
 def js_literals(t: str, rel: str = "") -> list[tuple[int, str]]:
     """A script's copy: its string and template literals, as (line, text),
     entities decoded. A literal that holds markup is read as a page; the
-    rest, less the names (`is_name`), the lines marked `// voice: name`, and
-    the code in NOT_COPY, are read whole."""
+    rest, less the names (`is_name`), the literals that start on a line
+    marked `// voice: name`, and the code in NOT_COPY, are read whole."""
     starts = [0] + [i + 1 for i, c in enumerate(t) if c == "\n"]
     line_of = lambda at: bisect.bisect_right(starts, at)  # noqa: E731
     raw, marks = js_raw(t)
@@ -567,9 +571,97 @@ RS_ESC = re.compile(r"\\(\n[ \t\r\n]*|u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)", re
 # A raw string's opener (`r"`, `r#"`, `br##"`), or a plain one's prefix.
 RS_RAW = re.compile(r"(?:b|c)?r(#*)\"")
 RS_PREFIX = re.compile(r"(?:b|c)?\"")
-# A test item: the attribute, then everything up to the end of the item it
-# marks (a `mod tests { … }`, a helper `fn`, or a `use …;`).
-RS_TEST = re.compile(r"#\[\s*cfg\s*\(\s*test\s*\)\s*\]")
+# What follows an attribute, before the thing it marks: space, comments and
+# more attributes (skipped by `rs_test_attr`), then a visibility.
+RS_GAP = re.compile(r"(?:\s+|//[^\n]*|/\*(?:(?!\*/).)*\*/)*", re.S)
+RS_VIS = re.compile(r"pub(?:\s*\([^()]*\))?\s+")
+# The words an item starts with. Anything else an attribute marks (a field, a
+# variant, a match arm, a statement) is one entry of a list, and ends at its
+# comma.
+RS_ITEM = {"mod", "fn", "use", "impl", "struct", "enum", "union", "const", "static", "type", "trait", "unsafe", "async", "extern", "default", "macro_rules"}
+RS_ATTR = re.compile(r"#(!?)\s*\[")
+RS_CFG_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|[A-Za-z_]\w*|[(),=]')
+
+
+def rs_attr(t: str, i: int) -> tuple[int, str, bool] | None:
+    """The attribute at `i` (`#[…]`, or `#![…]` for the item it sits in) as
+    (its end, what is between the brackets, whether it is inner), or None."""
+    m = RS_ATTR.match(t, i)
+    if not m:
+        return None
+    j, depth = m.end(), 1
+    while j < len(t) and depth:
+        if t[j] == '"':
+            j += 1
+            while j < len(t) and t[j] != '"':
+                j += 2 if t[j] == "\\" else 1
+        elif t[j] == "[":
+            depth += 1
+        elif t[j] == "]":
+            depth -= 1
+        j += 1
+    return j, t[m.end() : j - 1], m.group(1) == "!"
+
+
+def cfg_implies_test(pred: str) -> bool:
+    """Whether a `cfg` predicate holds only in a test build: `test`, an
+    `all(…)` with such an argument, or an `any(…)` whose every argument is
+    one. `any(test, feature = "x")` is not: it builds whenever the feature is
+    on, so what it marks can reach a player, and it is read."""
+    toks, pos = RS_CFG_TOKEN.findall(pred), 0
+
+    def one() -> bool:
+        nonlocal pos
+        name = toks[pos]
+        pos += 1
+        if pos < len(toks) and toks[pos] == "=":
+            pos += 2
+            return False
+        if pos < len(toks) and toks[pos] == "(":
+            pos += 1
+            args = []
+            while toks[pos] != ")":
+                args.append(one())
+                if toks[pos] == ",":
+                    pos += 1
+            pos += 1
+            return any(args) if name == "all" else bool(args) and all(args) if name == "any" else False
+        return name == "test"
+
+    try:
+        return one() and pos == len(toks)
+    except IndexError:
+        return False
+
+
+def rs_test_attr(t: str, i: int) -> tuple[int, str] | None:
+    """The attribute at `i`, as (its end, how far what it marks reaches),
+    when what it marks builds only for tests: `#[test]`, or a `cfg` that
+    implies `test` (`cfg_implies_test`). The reach is `inner` for `#![…]`
+    (the rest of the file or block it sits in), `item` for an item (to its
+    `;` or the `}` that closes its body), and `entry` for anything else (to
+    its comma, a field's or a variant's or an arm's)."""
+    a = rs_attr(t, i)
+    if not a:
+        return None
+    end, body, inner = a
+    body = body.strip()
+    if body != "test":
+        m = re.fullmatch(r"cfg\s*\((.*)\)", body, re.S)
+        if not (m and cfg_implies_test(m.group(1))):
+            return None
+    if inner:
+        return end, "inner"
+    k = end
+    while True:
+        k = RS_GAP.match(t, k).end()
+        more = rs_attr(t, k) if t.startswith("#", k) else None
+        if not more:
+            break
+        k = more[0]
+    v = RS_VIS.match(t, k)
+    word = JS_IDENT.match(t, v.end() if v else k)
+    return end, "item" if word and word.group(0) in RS_ITEM else "entry"
 
 
 def rs_unescape(s: str) -> str:
@@ -591,16 +683,24 @@ def rs_unescape(s: str) -> str:
 
 def rs_raw(t: str) -> tuple[list[tuple[int, int, str]], list[int], list[tuple[int, int]]]:
     """Every string literal in a Rust file, as (start, end, text), with the
-    offset of every `// voice: name` comment and the span of every
-    `#[cfg(test)]` item. Never its comments (nested ones too), its char
-    literals or its lifetimes. An attribute's literal is read: a refusal's
-    text lives in `#[error("…")]`."""
+    offset of every `// voice: name` comment and the span of everything that
+    builds only for tests (`rs_test_attr`). Never its comments (nested ones
+    too), its char literals or its lifetimes. An attribute's literal is read:
+    a refusal's text lives in `#[error("…")]`.
+
+    A test span ends where what its attribute marks ends, and never later: at
+    the `;` or the closing `}` of an item; at the comma after a field, a
+    variant or a match arm; and, for all of them, just before a `}` that
+    closes the block they sit in. A span that ends too early reads a test's
+    words (a false hit, which `// voice: name` answers); one that ends too
+    late would hide copy without a word."""
     raw: list[tuple[int, int, str]] = []
     marks: list[int] = []
     tests: list[tuple[int, int]] = []
-    # An open test item: where it starts, its brace depth, and its bracket and
-    # paren depth (so the `;` in `[u8; 4]` does not end it).
-    test_at, depth, nest = None, 0, 0
+    # An open test span: where it starts, how far it reaches (`rs_test_attr`),
+    # its brace depth, and its bracket and paren depth (so the `;` in
+    # `[u8; 4]` and the comma in `(a, b)` do not end it).
+    test_at, reach, depth, nest = None, "", 0, 0
     i, n = 0, len(t)
     while i < n:
         ch = t[i]
@@ -612,12 +712,12 @@ def rs_raw(t: str) -> tuple[list[tuple[int, int, str]], list[int], list[tuple[in
             i = j
             continue
         if t.startswith("/*", i):
-            j, nest = i + 2, 1
-            while j < n and nest:
+            j, open_ = i + 2, 1
+            while j < n and open_:
                 if t.startswith("/*", j):
-                    nest, j = nest + 1, j + 2
+                    open_, j = open_ + 1, j + 2
                 elif t.startswith("*/", j):
-                    nest, j = nest - 1, j + 2
+                    open_, j = open_ - 1, j + 2
                 else:
                     j += 1
             i = j
@@ -645,23 +745,30 @@ def rs_raw(t: str) -> tuple[list[tuple[int, int, str]], list[int], list[tuple[in
             i += len(c.group(0)) if c else 1
             continue
         if test_at is None and ch == "#":
-            m = RS_TEST.match(t, i)
-            if m:
-                test_at, depth, nest = i, 0, 0
-                i = m.end()
+            a = rs_test_attr(t, i)
+            if a:
+                test_at, reach, depth, nest = i, a[1], 0, 0
+                i = a[0]
                 continue
         if test_at is not None:
+            end = None
             if ch in "([":
                 nest += 1
             elif ch in ")]":
                 nest -= 1
             elif ch == "{":
                 depth += 1
-            elif ch == "}" or (ch == ";" and depth == 0 and nest == 0):
-                depth -= ch == "}"
-                if depth == 0:
-                    tests.append((test_at, i + 1))
-                    test_at = None
+            elif ch == "}" and depth == 0:
+                end = i  # the block it sits in closes, and the brace is not its own
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and reach != "inner":
+                    end = i + 1
+            elif depth == 0 and nest == 0 and ((ch == ";" and reach != "inner") or (ch == "," and reach == "entry")):
+                end = i + 1
+            if end is not None:
+                tests.append((test_at, end))
+                test_at = None
         i += 1
     if test_at is not None:
         tests.append((test_at, n))
@@ -669,8 +776,9 @@ def rs_raw(t: str) -> tuple[list[tuple[int, int, str]], list[int], list[tuple[in
 
 
 def rust_literals(t: str) -> list[tuple[int, str]]:
-    """A Rust file's copy: its string literals, as (line, text), less the
-    `#[cfg(test)]` items and the lines marked `// voice: name`."""
+    """A Rust file's copy: its string literals, as (line, text), less what
+    builds only for tests and the literals that start on a line marked
+    `// voice: name`."""
     starts = [0] + [i + 1 for i, c in enumerate(t) if c == "\n"]
     line_of = lambda at: bisect.bisect_right(starts, at)  # noqa: E731
     raw, marks, tests = rs_raw(t)

@@ -248,6 +248,63 @@ class WhatItReads(unittest.TestCase):
             [(3, "duel"), (5, "bench"), (7, "em dash"), (8, "bench"), (8, "vote"), (9, "duel"), (12, "bench"), (18, "em dash"), (18, "vote"), (19, "duel")],
         )
 
+    def test_a_mark_covers_the_literals_that_start_on_its_line(self):
+        self.assertEqual(rust('let a = "a duel"; let b = ("the bench", 1); // voice: name\nlet c = "a vote";'), [(2, "vote")])
+        # A literal that starts on the line before is read, mark or not.
+        self.assertEqual(rust('let s = "the bench, \\\n    and more"; // voice: name'), [(1, "bench")])
+        self.assertEqual(js('const s = `the bench,\n  and more`; // voice: name'), [(1, "bench")])
+
+    def test_a_nested_comment_hides_a_literal_until_its_last_close(self):
+        # Without nesting, the first `*/` would close it and "a bench" be read.
+        self.assertEqual(rust('/* outer /* inner */ "a bench" */ const A: &str = "a duel";'), [(1, "duel")])
+
+    def test_a_test_item_ends_where_what_it_marks_ends(self):
+        # Each case is a test-only thing with a test's words in it, then copy
+        # that must still be read: a span that ran past its end would hide it.
+        cases = {
+            # A `;` inside brackets or parens is not the item's end.
+            "fn with an array": "#[cfg(test)]\nfn f(x: [u8; 2]) -> &'static str { \"a bench\" }\nconst A: &str = \"a duel\";",
+            "fn": '#[cfg(test)]\nfn probe() -> &\'static str { "a bench" }\nfn f() -> &\'static str { "a duel" }',
+            # An item's comma (in its generics) is not its end, as an entry's is.
+            "generic fn": '#[cfg(test)]\n#[allow(dead_code)]\npub(crate) fn probe<A, B>(a: A, b: B) -> &\'static str { "a bench" }\nconst A: &str = "a duel";',
+            "field": 'struct S {\n    #[cfg(test)]\n    pub probe: u8,\n    a: u8,\n}\nconst A: &str = "a duel";',
+            "last field": 'struct S {\n    a: u8,\n    #[cfg(test)]\n    pub probe: u8\n}\nconst A: &str = "a duel";',
+            "field in a literal": 'Preset {\n    #[cfg(test)]\n    uid: Uid::NEW,\n    blurb: "a duel",\n}',
+            "generic field": 'struct S {\n    #[cfg(test)]\n    probe: HashMap<String, u8>,\n    a: &\'static str,\n}\nconst A: &str = "a duel";',
+            "variant": 'enum E {\n    #[cfg(test)]\n    #[error("the bench")]\n    Probe(u8, u8),\n    #[error("a duel")]\n    Real,\n}',
+            "struct variant": 'enum E {\n    #[cfg(test)]\n    Probe { a: u8, b: u8 },\n    #[error("a duel")]\n    Real,\n}',
+            "arm": 'match k {\n    #[cfg(test)]\n    0 => f("the bench", 1),\n    _ => "a duel",\n}',
+            "arm with a block and no comma": 'match k {\n    #[cfg(test)]\n    0 => { "the bench" }\n    _ => "a duel",\n}',
+            "last arm": 'let w = match k {\n    _ => "a duel",\n    #[cfg(test)]\n    0 => "the bench"\n};\nconst A: &str = "a duel";',
+            "statement": 'fn f() {\n    #[cfg(test)]\n    let s = g("the bench", 2);\n    let t = "a duel";\n}',
+        }
+        for name, src in cases.items():
+            got = [r for _, r in rust(src)]
+            self.assertNotIn("bench", got, name)
+            self.assertIn("duel", got, name)
+
+    def test_what_builds_only_for_tests_is_not_read(self):
+        skipped = [
+            "#[cfg(test)]",
+            "#[cfg(all(test, unix))]",
+            "#[cfg(all(unix, test))]",
+            "#[cfg(any(test))]",
+            "#[cfg(all(any(test), not(unix)))]",
+            "#[test]",
+        ]
+        for attr in skipped:
+            self.assertEqual(rust(f'{attr}\nfn f() -> &\'static str {{ "the bench" }}\nconst A: &str = "a duel";'), [(3, "duel")], attr)
+        # `any(test, …)` builds whenever its other arm holds (a feature a
+        # build turns on), so what it marks can reach a player: it is read.
+        read = ["#[cfg(any(test, feature = \"probe\"))]", "#[cfg(not(test))]", "#[cfg(unix)]", "#[cfg_attr(test, derive(Debug))]"]
+        for attr in read:
+            self.assertEqual(rust(f'{attr}\nfn f() -> &\'static str {{ "the bench" }}'), [(2, "bench")], attr)
+
+    def test_an_inner_test_attribute_hides_the_rest_of_its_file_or_block(self):
+        self.assertEqual(rust('//! Tests.\n#![cfg(test)]\nconst A: &str = "the bench";\nfn f() { g("a duel"); }\n'), [])
+        src = 'mod probe {\n    #![cfg(test)]\n    const A: &str = "the bench";\n    fn f() { g("a, duel"); }\n}\nconst B: &str = "a duel";'
+        self.assertEqual(rust(src), [(6, "duel")])
+
     def test_a_pages_text_and_shown_attributes(self):
         src = (
             '<head><title>A bench</title><meta name="description" content="the bench">'
