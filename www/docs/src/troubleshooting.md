@@ -6,7 +6,7 @@
 
 1. **The pool is still filling.** Boot runs about forty audio renders. The
    first duel is dealt at 8 patches; the rest arrive behind you.
-2. **No patch is loaded.** The subject block will say *no patch loaded*. Click
+2. **No sound is open.** The subject block will say *no sound open*. Click
    a row in the bank.
 3. **The browser has not granted audio.** Browsers require a user gesture
    before an audio context can start. Click anywhere or press a key.
@@ -82,7 +82,7 @@ anywhere in this one to play MIDI here. (The browser sends your controller to
 every tab that asks, so before this a second, older tab played every note too:
 a preset or a control changed in one tab seemed not to apply.)
 
-`midi —` means MIDI works and the browser sees no device: replug it, and it
+`midi ·` means MIDI works and the browser sees no device: replug it, and it
 appears without a reload. On Windows, a device another program has open cannot
 be opened by the browser too; close that program and replug.
 
@@ -90,13 +90,14 @@ be opened by the browser too; close that program and replug.
 
 While a generation breeds, **EVOLVE POOL** is its own progress bar
 (*breeding 3/10*), and when it ends a toast says what happened. Before the
-model has anything to aim at, that toast is *Nothing to breed toward yet —
-make a few picks first, then evolve.* Answer some duels first.
+model has anything to aim at, that toast is *Nothing to breed toward yet.
+Make a few picks first, then evolve.* Answer some duels first.
 
-**A generation can produce no new patch**, when every walk was rejected or
-landed on a patch the pool already holds. It says so: *Gen 4: no move was
-accepted. Teach it more, or ⚡ evolve one patch you like.* That is normal
-occasionally, and persistent when:
+**A generation can put no new sound in the pool**, and its toast says why, from
+each walk's reason: *Generation 4: every walk came back unchanged.*, *Generation
+4: 3 were bred, but none rated above the sounds they would replace.* (a child
+joins only if the model rates it above the lowest unsaved sound), or a count of
+each when the walks differ. That is normal occasionally, and persistent when:
 
 - The patch is at its **budget ceilings** (`24/24 modules`), leaving no room to
   grow. Check the budget line in PATCH.
@@ -106,15 +107,15 @@ occasionally, and persistent when:
   it is worth checking if you have been saving a lot.
 
 When every patch the model chose to breed from is out of evolution's reach, the
-message is different: *Gen 4: nothing could be bred — every seed the model
-picked is outside what evolution can reach (a knob on its stop, or a tree
-deeper than the model scores). Nudge those knobs off their stops.* More picks
+message is different: *Generation 4: nothing could be bred. Every seed it
+picked has a knob on its stop, or is deeper than the model scores: nudge those
+knobs off their stops.* More picks
 will not fix that one; moving those knobs will.
 
 ## An edit did not take
 
-- **Nothing to commit.** The commit button is disabled until you have changed
-  something.
+- **Nothing to keep as new.** The **keep as new** button is disabled until you
+  have changed something.
 - **The edit was refused** as out of domain. A value outside a knob's range is
   refused rather than recorded.
 - **The bench shows the previous patch.** Reload, and report it.
@@ -134,9 +135,9 @@ than your impression. Then:
   at random, which by default is every duel EVOLVE and PATCH deal. Overall
   skill also counts comparisons you chose (edits, PERFORM offers).
 
-If it has learned something wrong, **⋯** → *Reset taste profile…* downloads a
-copy of the profile, clears the log and the model, and leaves your saved
-patches alone.
+If it has learned something wrong, **⋯** → *Reset your taste…* downloads a
+copy of your taste, clears the log and the model, and leaves your saved
+sounds alone.
 
 ## Everything is broken / the engine crashed
 

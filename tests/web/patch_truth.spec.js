@@ -147,7 +147,7 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   await expect.poll(() => livePeakDb(page), { timeout: 20_000, message: "the held note sounds" }).toBeGreaterThan(-40);
 
   await page.locator(`#rack-svg g.mod-group[data-key="${key}"] .mod-menu-btn`).first().click();
-  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^extract to HELD/ }).first().click();
+  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^set aside/ }).first().click();
   const t0 = Date.now();
   // Quiet promptly. (A saw never goes quiet at all, so the margin here is
   // for a loaded machine, not for the behaviour.)

@@ -104,7 +104,7 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
   // Landed: B reports the move along Grit, in amber, in one of two sentences.
   await expect(strip).toHaveClass(/\bready\b/, { timeout: 180_000 });
   const aim = strip.locator(".pf-offer-aim");
-  await expect(aim).toHaveText(/^(grittier by \d+\.\dσ|not grittier: this walk found no way there — turn it again to try another)$/);
+  await expect(aim).toHaveText(/^(grittier by \d+\.\dσ|not grittier: this walk found no way there\. Turn it again to try another)$/);
   const colour = await aim.evaluate((e) => getComputedStyle(e).color);
   const amber = await page.evaluate(() => {
     const probe = document.createElement("span");

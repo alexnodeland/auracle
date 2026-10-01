@@ -124,7 +124,7 @@ Consequences worth stating in a reference: the hosted build and a
 locally-served copy are **different origins** and do not share storage;
 clearing site data destroys the session; and there is no server-side copy to
 recover from. The only backup of the taste is a downloaded profile (the menu’s
-Save taste profile item).
+Download your taste item).
 
 ## Restore is farmed
 
@@ -190,4 +190,6 @@ made
 Capped at `pool_size / 4` (`Engine::pin_cap`) so the pool can never be pinned
 solid. That state has
 no honest report, because it surfaces as `insert_candidate` returning `None`,
-which callers already render as “no move was accepted”.
+which the app reports as children that did not rate above the sounds they
+would replace (*3 were bred, but none rated above the sounds they would
+replace*).

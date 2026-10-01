@@ -15,7 +15,7 @@
 - [TASTE](./views/taste.md)
 - [The patch bank](./bank.md)
 - [Reading and editing the rack](./rack.md)
-- [Wiring and the node bank](./wiring.md)
+- [Wiring and the module rail](./wiring.md)
 - [Playing it](./playing.md)
 
 # Teaching it

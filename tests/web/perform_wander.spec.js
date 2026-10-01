@@ -100,7 +100,7 @@ test("Wander answers a second and a half after it is let go, and says what it is
   expect(firstMove).toBeLessThan(3_000);
 
   // After the move, it counts down to the next one, with its arc.
-  await expect(sub).toHaveText(/^(drift · next in \d+ s|staying — nothing better nearby)$/, { timeout: 120_000 });
+  await expect(sub).toHaveText(/^(drift · next in \d+ s|staying: nothing better nearby)$/, { timeout: 120_000 });
   await expect(sub).toHaveText(/^drift · next in \d+ s$/, { timeout: 30_000 });
   // The arc starts empty (the wait has barely begun) and fills as the
   // countdown repaints, so it is waited for rather than read the instant the

@@ -419,12 +419,12 @@ test("bypass pressed while a knob turn is still landing waits its turn, then hap
 test("⌘Z retires the toast that described the edit it undid", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");
-  const target = await plateWith(page, "extract to HELD");
-  await menuVerb(page, target.key, "extract to HELD");
+  const target = await plateWith(page, "set aside");
+  await menuVerb(page, target.key, "set aside");
   await settled(page);
   // The lane shows one toast at a time: this one may wait behind the
   // preset's own before it is on screen.
-  const toast = page.locator("#toasts .toast", { hasText: "held below" });
+  const toast = page.locator("#toasts .toast", { hasText: "set aside below" });
   await expect(toast).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Control+z");
   await settled(page);
@@ -433,9 +433,9 @@ test("⌘Z retires the toast that described the edit it undid", async ({ page })
   await expect(toast).toHaveCount(0, { timeout: 2_000 });
   // And a toast whose edit has another edit on top of it can no longer be
   // pressed to undo *that* one.
-  await menuVerb(page, target.key, "extract to HELD");
+  await menuVerb(page, target.key, "set aside");
   await settled(page);
-  const again = page.locator("#toasts .toast", { hasText: "held below" });
+  const again = page.locator("#toasts .toast", { hasText: "set aside below" });
   await expect(again).toBeVisible({ timeout: 20_000 });
   const [k] = await knobs(page);
   await dragKnob(page, k, 10, 3);
@@ -453,11 +453,11 @@ test("the newest edit's receipt replaces the last one's, and ⌘Z takes it down"
   const p = await plateWith(page, "bypass");
   await menuVerb(page, p.key, "bypass");
   await settled(page);
-  const q = await plateWith(page, "extract to HELD");
-  await menuVerb(page, q.key, "extract to HELD");
+  const q = await plateWith(page, "set aside");
+  await menuVerb(page, q.key, "set aside");
   await settled(page);
   await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toHaveCount(0, { timeout: 3_000 });
-  const receipt = page.locator("#toasts .toast", { hasText: "held below" });
+  const receipt = page.locator("#toasts .toast", { hasText: "set aside below" });
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   const seen = await page.evaluate(() => window.__pwToasts.length);
   await page.keyboard.press("Control+z");
@@ -613,7 +613,7 @@ test("Esc on the comparison card commits nothing, and its sides are A and B unti
     await expect(cell).not.toContainText(/your edit|the original/);
   }
   await expect(page.locator("#cduel .cd-hint")).toContainText("esc cancel");
-  await expect(page.locator("#cd-skip")).toHaveText("commit without comparing");
+  await expect(page.locator("#cd-skip")).toHaveText("skip comparing");
 
   // Esc: the card goes, nothing is committed, the edit is still on the bench.
   await page.keyboard.press("Escape");
@@ -629,13 +629,13 @@ test("Esc on the comparison card commits nothing, and its sides are A and B unti
   await page.keyboard.press("ArrowLeft");
   await expect.poll(commits, { timeout: 30_000 }).toBe(before + 1);
   await expect(page.locator("#toasts .toast-msg").first()).toHaveText(
-    /^committed as patch #\d+ · [AB] was your edit · taught: (your edit won the comparison|the original won — the model learns most from that)\./,
+    /^Kept .+ as new: [AB] was your edit, and you picked (it|the original \(it learns most from that\))\./,
     { timeout: 30_000 },
   );
   expect(errors).toEqual([]);
 });
 
-test("“my edit is better” skips the comparison once, then unticks itself", async ({ page }) => {
+test("“pick the edit” skips the comparison once, then unticks itself", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");
   await editAKnob(page);
@@ -669,7 +669,7 @@ test("a landed commit takes the edits' receipts down, and its own is said next",
   await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toBeVisible({ timeout: 20_000 });
   await page.locator("#improve-check").check();
   await page.locator("#rack-commit").click();
-  await expect(page.locator("#toasts .toast-msg").first()).toHaveText(/^committed as patch #\d+/, { timeout: 30_000 });
+  await expect(page.locator("#toasts .toast-msg").first()).toHaveText(/^Kept .+ as new/, { timeout: 30_000 });
   await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toHaveCount(0);
   const seen = await page.evaluate(() => window.__pwToasts.length);
   await page.waitForTimeout(3_000);

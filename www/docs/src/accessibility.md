@@ -10,7 +10,7 @@ Auracle is a dense expert tool. Coverage is uneven, and this page says where.
 
 The design principle is **one tab stop per region, arrows inside it**. Tabbing
 through several hundred rack controls would be unusable, so the bank is a
-single stop, the rack is a single stop, and the node bank is one stop per
+single stop, the rack is a single stop, and the module rail is one stop per
 group. Arrows move within.
 
 The full map is in [Keyboard and MIDI](./keyboard.md). The path most worth

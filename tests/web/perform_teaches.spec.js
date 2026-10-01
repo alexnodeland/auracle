@@ -40,7 +40,7 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   // NEXT: passing on the heard offer, said at once (its undo window runs
   // from then, so it is read before the next offer is waited for).
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
-  await expect(page.locator("#toasts")).toContainText("Passed on B — that counts as a pick for what you had.", { timeout: 10_000 });
+  await expect(page.locator("#toasts")).toContainText("Passed on B. That counts as a pick for what you had.", { timeout: 10_000 });
   await page.waitForSelector(".pf-offer.ready", { timeout: 90000 });
   // It counts once its seven-second undo window has run out.
   await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);

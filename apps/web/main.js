@@ -109,6 +109,10 @@ const BUILD = await (async () => {
 // worker exists, so no reply can arrive while it loads.
 const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
   await import(`./taste-geom.js?v=${BUILD}`);
+// Sentences built from engine facts (a generation's outcome, a prediction's
+// word), pure and unit-tested (words.js, tests/words.test.mjs).
+const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal } =
+  await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -170,9 +174,9 @@ let learnedShown = false;
 let breeding = null;
 let evolvingFrom = null;
 const EVOLVE_WAITS_FOR_ZAP =
-  "⚡ evolve from this is walking — EVOLVE POOL waits for it. The job slot in the menu bar shows it.";
+  "⚡ evolve from this is breeding, and EVOLVE POOL waits for it. The job slot in the menu bar shows it.";
 const ZAP_WAITS_FOR_GENERATION =
-  "EVOLVE POOL is breeding a generation — ⚡ waits for it. Stop it in the menu bar, or let it finish.";
+  "EVOLVE POOL is breeding a generation, and ⚡ waits for it. Stop it in the menu bar, or let it finish.";
 // The generation whose children the bank's "new" group holds (`lastBorn`).
 let bornGen = 0;
 // Children that landed since the last bank render: they glow once.
@@ -208,7 +212,7 @@ let perform = null;          // from perform.js, once the voices exist
 // the first `ranked`. (Up here with the other state a worker message reads.)
 let benchPending = null;
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
-let liveLabelText = "no patch";
+let liveLabelText = "no sound";
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
@@ -424,8 +428,8 @@ function saveFailed(err, key) {
   saveAlarmUp = true;
   const why =
     name === "QuotaExceededError"
-      ? "this browser's storage is full, so the session cannot be saved. It keeps running, but nothing since the last save will survive a reload — clear some site data, then"
-      : `the session could not be saved (${name}). It keeps running, but nothing since the last save will survive a reload —`;
+      ? "This browser’s storage is full, so the session can’t be saved. It keeps running, but nothing since the last save will survive a reload: clear some site data, then"
+      : `The session couldn’t be saved (${name}). It keeps running, but nothing since the last save will survive a reload:`;
   alarm(`${why} try again.`, {
     label: "try again",
     run: () => { alarm(null); saveAlarmUp = false; saveNow(); },
@@ -464,7 +468,7 @@ function startFresh() {
   saveBlocked = null;
   alarm(null);
   note(
-    `Starting fresh. The unreadable session is still in this browser under "${quarantineKey}" — a newer build may be able to read it.`,
+    `Starting fresh. The unreadable session is still in this browser under “${quarantineKey}”, where a newer build may be able to read it.`,
   );
   saveNow();
 }
@@ -557,15 +561,15 @@ function announceRepair() {
   pendingRepair = null;
   if (!r) return;
   const bits = [];
-  if (r.terms) bits.push(`${r.terms} patch${r.terms > 1 ? "es" : ""}`);
-  if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste log`);
-  if (r.dropped) bits.push(`${r.dropped} unreadable vote${r.dropped > 1 ? "s" : ""} dropped`);
+  if (r.terms) bits.push(`${r.terms} sound${r.terms > 1 ? "s" : ""}`);
+  if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste`);
+  if (r.dropped) bits.push(`${r.dropped} unreadable pick${r.dropped > 1 ? "s" : ""} dropped`);
   if (!bits.length) return;
   // `urgent`, because `toastPump` drops anything that went stale in the queue
   // behind the boot's own chatter, and a notice that saved evidence changed is
   // not allowed to lose that race.
   note(
-    `Repaired on load: ${bits.join(", ")}. Your taste model was re-fitted from the mended data.`,
+    `Repaired on load: ${series(bits)}. Your taste was refitted from what was mended.`,
     { urgent: true },
   );
 }
@@ -1023,7 +1027,7 @@ function performRestore(kind, burst) {
     // Nothing left to land on, so the rest of the burst has nothing to do
     // either — said once rather than once per press.
     if (burst && benchLane[0] === burst) benchLane.shift();
-    return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
+    return note(kind === "undo" ? "Nothing to undo." : "Nothing to redo.");
   }
   // The other side of the step, captured before the engine moves: the state a
   // redo would come back to, locks and all.
@@ -1167,16 +1171,16 @@ worker.onmessage = (e) => {
       // start the reset owes comes first.
       const taughtBefore = (m.status && m.status.observations) || 0;
       if (m.restored > 0 && taughtBefore > 0) {
-        note(`Welcome back — ${m.restored} patches and your taste restored.`);
+        note(`Welcome back: ${m.restored} sounds and your taste are where you left them.`);
       } else if (
         !localStorage.getItem("auracle-warmed") &&
         !localStorage.getItem("auracle-warm-deferred")
       ) {
         setTimeout(openWarmStart, 500);
       } else if (m.restored > 0) {
-        note(`Welcome back — ${m.restored} patch${m.restored === 1 ? "" : "es"} restored.`);
+        note(`Welcome back: ${plural(m.restored, "sound")} restored.`);
       } else if (fillTarget > fillPool) {
-        note(`Start picking — ${fillTarget - fillPool} more patches are still arriving.`);
+        note(`Start picking. ${plural(fillTarget - fillPool, "more sound")} ${fillTarget - fillPool === 1 ? "is" : "are"} still arriving.`);
       }
       showCoach();
       break;
@@ -1262,8 +1266,8 @@ worker.onmessage = (e) => {
       quarantineKey = `state-quarantine-${Date.now()}`;
       if (bootRecord) idbPut(quarantineKey, bootRecord);
       alarm(
-        `This build could not read your saved session (${m.status}), so nothing is being saved over it. ` +
-          `It is kept untouched in this browser's storage as "${quarantineKey}" (IndexedDB › auracle › kv). ` +
+        `This build couldn’t read your saved session (${m.status}), so nothing is being saved over it. ` +
+          `It is kept untouched in this browser’s storage as “${quarantineKey}” (IndexedDB › auracle › kv). ` +
           `Reload once a newer build is available to try again, or start fresh and keep the copy.`,
         { label: "start fresh", run: startFresh },
       );
@@ -1295,7 +1299,7 @@ worker.onmessage = (e) => {
       renderSubject(); // the rack stops saying "opening…"
       if (currentView === "taste") drawTaste(); // …and the map's dot stops waiting
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
-      note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
+      note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
       send({ type: "taste_views" });
       break;
     }
@@ -1311,7 +1315,7 @@ worker.onmessage = (e) => {
         const placed = adoptLayout(m.id, layout);
         quietBench.add(m.id); // the import's own toast names it
         openOnBench(m.id);
-        note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
+        note(`Opened the patch file as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
       } else if (m.duplicate > 0) {
         // The bank already holds this exact patch. That is not a failure —
@@ -1326,7 +1330,7 @@ worker.onmessage = (e) => {
         // their own for it: the patch is already theirs, and a dropped picture
         // is not a reason to move plates they placed by hand.
         if (!ffLayouts.has(String(m.duplicate))) adoptLayout(m.duplicate, layout);
-        note(`${nameOf(m.duplicate)} is already in the bank — opening it.`);
+        note(`${nameOf(m.duplicate)} is already in the pool. Opening it.`);
         quietBench.add(m.duplicate);
         openOnBench(m.duplicate);
         scheduleSave();
@@ -1334,7 +1338,7 @@ worker.onmessage = (e) => {
         // …and the other half of that old sentence, on its own and said
         // plainly. Nothing entered the bank and nothing was displaced.
         note(
-          "that patch did not pass the safety vet — what it renders is silent, runaway, or not audio at all — so the bank would not take it.",
+          "That patch didn’t pass the safety vet (it renders silence, runs away, or isn’t audio at all), so the pool didn’t take it.",
           { urgent: true },
         );
       }
@@ -1561,33 +1565,29 @@ worker.onmessage = (e) => {
       // that accepted nothing is worse than silence — it claims a result the
       // engine did not produce.
       if (m.untaught) {
-        note("Nothing to breed toward yet — make a few picks first, then evolve.");
-      } else if (wasStopped && m.born && m.born.length === 0) {
-        note(`Gen ${m.status.generation} stopped before it bred anything — the bank is as it was.${madeRoom(evicted)}`);
+        note("Nothing to breed toward yet. Make a few picks first, then evolve.");
       } else if (m.born && m.born.length === 0) {
-        // When every seed the model picked has zero mass under the prior, the
-        // advice is different: more teaching will not move a walk that never
-        // started. Any other mix keeps the old sentence.
+        // Each walk that bred nothing says why (`m.reasons`, the engine's
+        // `RefineOutcome` per walk): unchanged, a sound the pool holds, a new
+        // sound that did not rate above the one it would replace, or a seed
+        // it cannot start from. The sentence says which, and how many; it
+        // used to say "no move was accepted" for all of them.
         const reasons = Array.isArray(m.reasons) ? m.reasons : [];
-        if (reasons.length > 0 && reasons.every((r) => r === "outside_support")) {
-          note(
-            `Gen ${m.status.generation}: nothing could be bred — every seed the model picked is outside what evolution can reach (a knob on its stop, or a tree deeper than the model scores). Nudge those knobs off their stops.`,
-          );
-        } else {
-          note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
-        }
+        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }));
       } else if (m.born && kept.length === 0) {
-        note(`Gen ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} bred, but none ranked above the patches already in the bank, so the bank is as it was.`);
+        // Bred and admitted, then ranked below the rest at the finish.
+        note(`Generation ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} ${bred.length === 1 ? "was" : "were"} bred, but none rated above the sounds they would replace, so the pool is as it was.`);
       } else if (m.born) {
         const made = madeRoom(replaced);
         const n = kept.length;
+        // Two sentences at most: what joined, then what it replaced.
         const below = dropped
-          ? ` ${dropped} more ${dropped === 1 ? "was" : "were"} bred but ranked below the rest, and ${dropped === 1 ? "was" : "were"} not kept.`
+          ? ` (${dropped} more ${dropped === 1 ? "was" : "were"} bred, then replaced)`
           : "";
         note(
           wasStopped
-            ? `Gen ${m.status.generation} stopped: ${n} new patch${n > 1 ? "es" : ""} kept, at the top of the bank.${made}${below}`
-            : `Gen ${m.status.generation}: ${n} new patch${n > 1 ? "es" : ""} in the bank.${made}${below}`,
+            ? `Generation ${m.status.generation} stopped: ${plural(n, "new sound")} kept, at the top of the pool${below}.${made}`
+            : `Generation ${m.status.generation}: ${plural(n, "new sound")} in the pool${below}.${made}`,
           bankTourOffer(),
         );
       } else {
@@ -1665,7 +1665,7 @@ worker.onmessage = (e) => {
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
-          note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
+          note(evolved.text(row ? row.name : "a new sound"), { replace: "evolve-from" });
         } else if (!quietBench.delete(m.subject) && asked && !asked.auto &&
                    performance.now() - asked.at > OPEN_SAID_MS) {
           // No toast for an open: the header, the dock and the live row
@@ -1749,7 +1749,7 @@ worker.onmessage = (e) => {
         if (droppedLocks > 0 || settlingRestore) {
           locksRemember(); // the set that survived is the set to remember
           if (droppedLocks > 0 && !settlingRestore) {
-            note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
+            note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed. The rest stayed with their modules.`);
           }
         }
       }
@@ -1873,7 +1873,7 @@ worker.onmessage = (e) => {
       // ("silent") and the model's line already say what is going on.
       if (!wb.vetOk && !wb.vetSilent) {
         alarm(
-          "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
+          "Muted: this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
           { label: "undo", run: doUndo }
         );
         $("alarm").dataset.tag = "vet";
@@ -1935,7 +1935,7 @@ worker.onmessage = (e) => {
       if (m.fatal) {
         engineCrashed(m.message);
       } else if (m.request) {
-        note(`the engine could not finish "${m.request}": ${m.message}`, { urgent: true });
+        note(`The engine couldn’t finish “${m.request}”: ${m.message}`, { urgent: true });
       }
       break;
     }
@@ -1956,7 +1956,7 @@ worker.onmessage = (e) => {
         // player and a false belief about their own patch: they made a gesture,
         // and it did not happen. Queued behind ordinary confirmations it
         // arrived seconds late and, under a burst, not at all.
-        note(`edit rejected: ${m.error}`, { urgent: true });
+        note(`That edit to ${nameOrKnown(wb.subjectId) || "the sound you’re playing"} didn’t happen: ${m.error}`, { urgent: true });
         // Nothing happened, so nothing is owed to history — and nothing that
         // rode along with the edit is owed to HELD either. Without this the
         // next ⌘Z restored the patch the user is already looking at (a dead
@@ -1979,7 +1979,7 @@ worker.onmessage = (e) => {
         // the sound agree again.
         const label = addrLabel(m.addr);
         note(
-          `${label} isn't on this patch any more — that change did not land.`,
+          `${capital(label)} isn’t on this patch any more, so that change didn’t land.`,
           { urgent: true },
         );
         // Settled first, so the overlay does not paint the refused value
@@ -2039,7 +2039,7 @@ worker.onmessage = (e) => {
           pendingEvolve = false;
           if (wb.subjectId != null) startEvolveFrom(wb.subjectId);
         } else {
-          note(`nothing to commit — ${nameOf(wb.subjectId)} is exactly what it was.`);
+          note(`Nothing to keep as new: ${nameOf(wb.subjectId)} is exactly what it was.`);
         }
       } else if (!m.buffer || m.buffer.length === 0) {
         sendCommit("none", { evolving: m.then === "evolve" });
@@ -2086,17 +2086,17 @@ worker.onmessage = (e) => {
         // unsayable before the outcome had a direction.
         // The comparison was blind, so its receipt names the side that was
         // the edit (`cdPick`).
-        const was = commitReveal ? ` · ${commitReveal} was your edit` : "";
+        const was = commitReveal ? `: ${commitReveal} was your edit, and` : ", and";
         const taught =
-          m.outcome === "heard_edited" ? `${was} · taught: your edit won the comparison`
-          : m.outcome === "heard_original" ? `${was} · taught: the original won — the model learns most from that`
-          : m.outcome === "self_edited" ? " · taught: you say your edit is better"
+          m.outcome === "heard_edited" ? `${was} you picked it`
+          : m.outcome === "heard_original" ? `${was} you picked the original (it learns most from that)`
+          : m.outcome === "self_edited" ? ", and told it you’d pick the edit"
           : "";
         // A landed commit is the latest word on the bench: the receipts of the
         // edits it took in ("… TAKE IT OUT") are stale news about a patch that
         // is now committed, and this receipt used to queue behind them.
         retireEditReceipts();
-        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`, { replace: "commit" });
+        note(`Kept ${nameOf(m.id)} as new${taught}.${madeRoom(evicted)}`, { replace: "commit" });
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
@@ -2109,8 +2109,8 @@ worker.onmessage = (e) => {
         // against the twin rather than dropping it, and saying "failed" about
         // a vote that was recorded is the wrong sentence.
         note(m.outcome && m.outcome !== "none"
-          ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
-          : "commit failed (duplicate or unvetted state)", { replace: "commit" });
+          ? "That sound is already in the pool, so nothing new was added. Your pick was recorded."
+          : "Nothing was kept: the pool already holds that sound, or it didn’t pass the safety vet.", { replace: "commit" });
         // …and the generation still runs. ⚡ on an edited patch commits *and
         // then* evolves; a commit the bank had no room for is a reason to
         // evolve from the seed instead of a reason to swallow the gesture.
@@ -2149,10 +2149,23 @@ worker.onmessage = (e) => {
       renderNextStep();
       renderTeach();
       const evolveEvicted = applyViews(m.views);
+      const seedName = nameOrKnown(m.seedId);
+      if (m.childId > 0) {
+        // The child joins the bank's New group as a generation's children do
+        // (`refine_child`). ⚡ is a generation of its own in the engine (it
+        // opens one, and its child is stamped with it), so the group becomes
+        // that generation's, and the next generation's first child clears it.
+        if (bornGen !== m.status.generation) {
+          lastBorn.clear();
+          bornGen = m.status.generation;
+        }
+        lastBorn.add(m.childId);
+        landedNow.add(m.childId);
+      }
       applyStatus(m.status);
       refreshInstruments();
       if (m.reason === "stopped") {
-        note("⚡ stopped — nothing was added to the bank.", { replace: "evolve-from" });
+        note("⚡ stopped. Nothing was added to the pool.", { replace: "evolve-from" });
       } else if (m.childId > 0) {
         // ⚡ is a walk of about 20 s (23 s measured on a quiet machine; more
         // with many locks). It runs on the farm, and the player goes on
@@ -2163,9 +2176,10 @@ worker.onmessage = (e) => {
         // replaced. The bench is the player's: the child waits in the bank,
         // one click away.
         const editedSince = wb.dirty || editPending || !laneFree();
+        const from = seedName ? ` from ${seedName}` : "";
         if (editedSince) {
           note(
-            `⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — it is in the bank, and your edits are still on the bench.${madeRoom(evolveEvicted)}`,
+            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
             { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
           );
         } else {
@@ -2176,19 +2190,13 @@ worker.onmessage = (e) => {
           evolvedAnnounce = {
             id: m.childId,
             text: (name) =>
-              `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+              `⚡ bred ${name}${from}, and it’s ready to play.${madeRoom(evolveEvicted)}`,
           };
           openOnBench(m.childId, { auto: true });
         }
         scheduleSave();
       } else {
-        note(
-          refineReasonText(
-            m.reason,
-            "⚡ evolution found no accepted move — try again, or loosen some locks",
-          ),
-          { replace: "evolve-from" },
-        );
+        note(evolveRefusal(m.reason, seedName), { replace: "evolve-from" });
       }
       break;
     }
@@ -2232,17 +2240,17 @@ worker.onmessage = (e) => {
       // (they cannot).
       if (!m.ok) {
         if (rowOf(m.id)) {
-          note(`That would pass your limit of ${pinBudget[1]} saved patches. Release one first.`);
+          note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`);
         } else {
-          note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
+          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
         }
       } else if (m.pinned) {
-        note(`Saved ${nameOf(m.id)} — it won't be replaced. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
+        note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`);
       } else {
         // Releasing is destructive in slow motion: the patch goes back into
         // the pool and the next generation may breed it away. Silence made it
         // the one half of the toggle that reported nothing.
-        note(`Released ${nameOf(m.id)} — it can be replaced again. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
+        note(`Released ${nameOf(m.id)}. A generation can replace it again (${pinBudget[0]} of ${pinBudget[1]} saved).`);
       }
       renderPinBudget();
       renderBank();
@@ -2299,16 +2307,16 @@ worker.onmessage = (e) => {
           // The player opened something else while this was loading: it is in
           // the bank now, and the patch in their hands stays there.
           if (early) unvoiceEarly();
-          note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
+          note(`${nameOf(m.id)} is in the pool now. You had moved on, so it wasn’t opened.${madeRoom(evicted)}`);
         } else {
           // Voiced from memory at the click: now it has an id.
           if (early) {
             early.id = m.id;
             livePatchId = m.id;
           }
-          quietBench.add(m.id); // "Preset loaded as …" names it
+          quietBench.add(m.id); // "Opened the preset as …" names it
           openOnBench(m.id);
-          note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+          note(`Opened the preset as ${nameOf(m.id)}.${madeRoom(evicted)}`);
         }
         scheduleSave();
       } else {
@@ -2317,7 +2325,7 @@ worker.onmessage = (e) => {
         // all, with no message. The bank is still filling at that moment, so
         // this is the most likely moment for a new user to press it.
         if (earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index) unvoiceEarly();
-        note("The bank is still warming up — try that preset again in a moment.");
+        note("The pool is still filling. Try that preset again in a moment.");
       }
       break;
     }
@@ -2339,10 +2347,9 @@ worker.onmessage = (e) => {
       // downloads bar, and the app itself was silent. Counted from the file,
       // so the number is what it holds.
       if (!m.reason) {
-        let n = null;
-        try { n = JSON.parse(m.json).log.observations.length; } catch (_) { /* counted below */ }
-        n = n == null ? picksTaught() : n;
-        note(`Downloaded ${a.download} — ${n} pick${n === 1 ? "" : "s"}.`, { replace: "profile" });
+        let k = null;
+        try { k = kindsInLog(JSON.parse(m.json).log.observations); } catch (_) { /* counted below */ }
+        note(`Downloaded your taste (${a.download}): ${taughtSentence(k || taughtKinds())}.`, { replace: "profile" });
       }
       break;
     }
@@ -2363,11 +2370,11 @@ worker.onmessage = (e) => {
           send({ type: "fit" });
         }
         note(n > 0
-          ? `Profile loaded — ${n} pick${n === 1 ? "" : "s"}. Redrawing your taste map…`
-          : "Profile loaded — it has no picks yet.", { replace: "profile" });
+          ? `Opened that taste file: ${taughtSentence(taughtKinds())}. Redrawing your taste map…`
+          : "Opened that taste file. Nothing has been taught in it yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("Could not read that profile file — nothing was changed.", { urgent: true });
+        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true });
       }
       break;
     }
@@ -2518,8 +2525,8 @@ function engineCrashed(message) {
   engineDown = true;
   dropBootVeil(); // a crash behind the veil must not leave a blank screen up
   alarm(
-    `The engine crashed — reload to continue. Your session is as it was last saved; ` +
-      `nothing since then is being written. (${message})`,
+    `The engine crashed: reload to continue. Your session is as it was last saved, and ` +
+      `nothing since then is being written (${message}).`,
     { label: "reload", run: () => location.reload() },
   );
   $("alarm").dataset.tag = "crash";
@@ -2534,10 +2541,12 @@ worker.onmessageerror = () => {
 let status = { observations: 0, generation: 0 };
 let hasPlayed = !!localStorage.getItem("auracle-played");
 
-// ---------- what PICKS counts ----------
-// What you have taught it, from the moment you teach it. `status.observations`
-// is the engine's log, and the log sees a pick only once its undo window has
-// closed and the worker has answered — so PICKS read 18 for seven seconds
+// ---------- what TAUGHT counts ----------
+// What you have taught it, from the moment you teach it: picks, stars and
+// cuts (the menu bar's TAUGHT, its tooltip split by kind; EVOLVE's meter
+// counts the picks alone). `status.observations` is the engine's log, and
+// `status.picks`/`stars`/`cuts` split it. The log sees a pick only once its
+// undo window has closed and the worker has answered — so PICKS read 18 for seven seconds
 // after the nineteenth pick, read 22 after 23 picks made two seconds apart,
 // and disagreed with the pips beside it, which light at the click. Picks the
 // log has not answered for yet are counted here, keyed by the request they
@@ -2562,14 +2571,39 @@ function aheadDrop(key) {
   renderPicks();
   return true;
 }
-/** PICKS: the log, plus what it has not answered for yet. */
+/** The log by kind, plus what it has not answered for yet (each key in
+ *  `taughtAhead` names its kind). An engine from before the split reports
+ *  only the total, which is then counted as picks. */
+function taughtKinds() {
+  const split = status.picks != null;
+  const k = {
+    picks: split ? status.picks : status.observations || 0,
+    stars: split ? status.stars || 0 : 0,
+    cuts: split ? status.cuts || 0 : 0,
+  };
+  for (const [key, n] of taughtAhead) {
+    if (key.startsWith("stars:")) k.stars += n;
+    else if (key.startsWith("keep:")) k.cuts += n;
+    else k.picks += n;
+  }
+  return k;
+}
+/** TAUGHT: everything it learned from, the log plus what is on its way. */
 function picksTaught() {
-  let n = status.observations || 0;
-  for (const k of taughtAhead.values()) n += k;
-  return n;
+  const k = taughtKinds();
+  return k.picks + k.stars + k.cuts;
+}
+/** The picks alone: what EVOLVE's meter and the refit countdown count. */
+function picksMade() {
+  return taughtKinds().picks;
+}
+function renderTaught() {
+  $("duel-count").textContent = picksTaught();
+  const counter = $("taught");
+  if (counter) counter.title = taughtTitle(taughtKinds());
 }
 function renderPicks() {
-  $("duel-count").textContent = picksTaught();
+  renderTaught();
   renderTeach();
   renderNextStep();
 }
@@ -2591,7 +2625,7 @@ function renderGenCount() {
 
 function applyStatus(st) {
   status = st;
-  $("duel-count").textContent = picksTaught();
+  renderTaught();
   renderGenCount();
   renderTeach();
   renderNextStep();
@@ -2605,9 +2639,9 @@ function applyStatus(st) {
     !localStorage.getItem("auracle-warm-reoffered")
   ) {
     localStorage.setItem("auracle-warm-reoffered", "1");
-    note("Want the fast lane? Picking 3 favourites teaches it 18 picks at once.", {
+    note("Picking 3 sounds you’d reach for teaches it 18 picks at once.", {
       undo: openWarmStart,
-      undoLabel: "pick 3 favourites",
+      undoLabel: "pick 3",
     });
   }
 }
@@ -2660,7 +2694,7 @@ function renderTeach() {
     return;
   }
   if (learnedShown) {
-    copy.innerHTML = `● it just learned — <b class="teach-link" role="link" tabindex="0">see what changed ▸</b>`;
+    copy.innerHTML = `● it just learned: <b class="teach-link" role="link" tabindex="0">see what changed ▸</b>`;
     const link = copy.querySelector(".teach-link");
     link.onclick = showTasteMap;
     link.onkeydown = (e) => { if (e.key === "Enter") showTasteMap(); };
@@ -2668,15 +2702,16 @@ function renderTeach() {
   }
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
-  // refit schedule. The count is PICKS's own (`picksTaught`), so the line
-  // and the menubar move on the same click.
-  const n = picksTaught();
+  // refit schedule. The count is the picks alone (`picksMade`, the share of
+  // TAUGHT that pairs are), so the line and the menubar move on the same
+  // click, and stars and cuts never read as picks.
+  const n = picksMade();
   if (n === 0) {
-    copy.innerHTML = "Play both. Keep the one you’d reach for.";
+    copy.innerHTML = "Play both. Pick the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
     copy.innerHTML = left === FIT_EVERY
-      ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+      ? `<b>${n}</b> ${n === 1 ? "pick" : "picks"} in. Every ${FIT_EVERY} it redraws your taste map.`
       : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
@@ -2731,7 +2766,7 @@ function slotJob() {
   if (lampJobs.has("refine")) {
     const b = breeding || {};
     const total = b.total || 0;
-    if (b.stopping) return { kind: "refine", text: "⚡ stopping — ending with what's bred", fill: total ? b.done / total : 0 };
+    if (b.stopping) return { kind: "refine", text: "⚡ stopping, ending with what’s bred", fill: total ? b.done / total : 0 };
     const count = total ? ` ${b.done}/${total}` : "…";
     const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
     return {
@@ -2739,22 +2774,22 @@ function slotJob() {
       text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
       fill: total ? b.done / total : 0,
       stop: total > 0,
-      title: "EVOLVE POOL is breeding a generation. Keep playing — it runs beside you. Stop ends it with the children bred so far; the lowest unsaved patches then leave, as at any generation's end.",
+      title: "EVOLVE POOL is breeding a generation beside you, so keep playing. Stop ends it with the children bred so far, and the lowest unsaved sounds are replaced, as at any generation’s end.",
     };
   }
   if (lampJobs.has("refine_from")) {
     const e = evolvingFrom || {};
     return {
       kind: "refine_from",
-      text: `⚡ evolving ${e.name || "this patch"}`,
+      text: `⚡ evolving ${e.name || "this sound"}`,
       stop: !!e.stoppable,
       title: e.stoppable
-        ? "⚡ evolve from this is walking from the patch on the bench. Stop drops the walk; nothing is added."
-        : "⚡ evolve from this is walking from the patch on the bench. It is walking in the engine itself, where it cannot be stopped.",
+        ? "⚡ evolve from this is breeding from the sound you’re playing. Stop drops the walk, and nothing is added."
+        : "⚡ evolve from this is breeding from the sound you’re playing, in the engine itself, where it can’t be stopped.",
     };
   }
   if (lampJobs.has("fit")) {
-    return { kind: "fit", text: "refitting your taste map…", title: "Redrawing the taste model from every pick so far." };
+    return { kind: "fit", text: "refitting your taste map…", title: "Redrawing your taste from everything you taught it." };
   }
   return null;
 }
@@ -2804,7 +2839,7 @@ $("job-stop").onclick = () => {
 function renderNextStep() {
   const el = $("nextstep");
   if (!el) return;
-  const n = picksTaught();
+  const n = picksMade();
   let label, act;
   // Every state of this chip is now actionable. The previous "go play" branch
   // was inert *and* outranked the teaching guidance for votes 1–5, so the one
@@ -2813,13 +2848,13 @@ function renderNextStep() {
   // own empty state, which is where it belongs.
   if (n === 0 && !hasPlayed) {
     // A fresh profile is invited to make a sound before it is asked to vote.
-    label = "Play it first — press A, or tap a key below ▸";
+    label = "Play it first: press A, or tap a key below ▸";
     act = () => {
       document.activeElement?.blur?.();
       pulseOnce($("piano"));
     };
   } else if (n === 0) {
-    label = `Teach it your taste — ${FIT_EVERY} quick picks below ▸`;
+    label = `Teach it your taste: ${FIT_EVERY} quick picks below ▸`;
     act = () => {
       const strip = $("play-duel");
       if (currentView === "play" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
@@ -2831,13 +2866,17 @@ function renderNextStep() {
   } else if (gensBred() === 0) {
     // It starts the generation where the player is: the job slot shows it
     // from any view, and the children land at the top of the bank.
-    label = breeding || evolvingFrom ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
+    label = breeding || evolvingFrom ? "Breeding: keep playing ▸" : "It’s learned something. Breed a generation ▸";
     act = breeding || evolvingFrom ? null : () => $("evolve-btn").click();
   } else if (lastBorn.size > 0) {
-    label = `Gen ${bornGen || gensBred()} bred new patches — they're at the top of the bank ▸`;
+    // A generation's children, or ⚡'s one child (a generation of its own).
+    const g = bornGen || gensBred();
+    label = lastBorn.size === 1
+      ? `Generation ${g} bred a new sound: it’s at the top of the bank ▸`
+      : `Generation ${g} bred ${lastBorn.size} new sounds: they’re at the top of the bank ▸`;
     act = showNewGroup;
   } else {
-    label = `Gen ${gensBred()} bred — see what it thinks of your taste ▸`;
+    label = `Generation ${gensBred()} bred: see what it learned ▸`;
     act = () => showView("taste");
   }
   el.textContent = label;
@@ -2868,7 +2907,7 @@ function showCoach() {
   if (hasPlayed || localStorage.getItem("auracle-played") || coachEl) return;
   coachEl = document.createElement("div");
   coachEl.className = "coach";
-  coachEl.textContent = "Press A–L or tap a key — you’re already holding a synth.";
+  coachEl.textContent = "Press A–L, or tap a key: you’re already holding a synth.";
   document.body.appendChild(coachEl);
 }
 
@@ -3231,7 +3270,7 @@ const SKILL_MIN_N = 20;
 function skillLine(skill, n, tag) {
   const pct = Math.round(skill * 100);
   return pct <= 0
-    ? `not beating a coin flip yet (n=${n})`
+    ? `not beating a coin flip yet (${n} guesses)`
     : `${pct}% sharper than chance${tag ? ` · ${tag}` : ""}`;
 }
 
@@ -3241,19 +3280,19 @@ function renderSkill() {
   const E = engineCalib;
   const line = skillLine;
   if (E && E.check_n >= SKILL_MIN_N) {
-    el.textContent = line(E.check_skill, E.check_n, `${E.check_n} check picks`);
-    el.title = `Brier skill on unbiased check duels — the number to trust. All forecasts: ${Math.round(E.skill * 100)}% over ${E.n}. See TASTE → trust.`;
+    el.textContent = line(E.check_skill, E.check_n, `${E.check_n} fair-test picks`);
+    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. TRUST in TASTE shows them.`;
     return;
   }
   if (E && E.n >= SKILL_MIN_N) {
     el.textContent = line(E.skill, E.n);
-    el.title = `Brier skill over ${E.n} forecasts (selection-biased until enough check duels land). See TASTE → trust.`;
+    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). TRUST in TASTE shows them.`;
     return;
   }
   const n = E ? E.n : calib.n;
   if (n >= 1) {
     el.textContent = `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}`;
-    el.title = `The model forecasts each duel before your vote; after ${SKILL_MIN_N} it reports how much sharper than a coin flip it has been.`;
+    el.title = `It guesses each pick before you make it. After ${SKILL_MIN_N} it says how much sharper than a coin flip it has been.`;
   } else {
     el.textContent = "";
   }
@@ -3360,10 +3399,10 @@ function applyViews(next) {
   // apologise for.
   const lost = evicted.filter((id) => (starsById.get(id) || 0) >= 4);
   if (lost.length > 0) {
-    const names = lost.map((id) => prevNames.get(id) || "a patch").join(", ");
+    const names = series(lost.map((id) => prevNames.get(id) || "a sound"));
     alarm(
-      `Replaced ${names}, which you rated highly, to make room. Stars tell the model what you like; ` +
-        `saving is what stops a patch being replaced.`,
+      `${names} ${lost.length === 1 ? "was" : "were"} replaced, though you rated ${lost.length === 1 ? "it" : "them"} highly. ` +
+        `Stars teach the model; save a sound to keep it.`,
       { label: "ok", run: () => alarm(null) }
     );
   }
@@ -3377,14 +3416,12 @@ function applyViews(next) {
 const REPLACED_NAMED = 3;
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
-  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a patch");
+  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a sound");
   const more = evicted.length - names.length;
-  const list = more > 0
-    ? `${names.join(", ")} +${more} more`
-    : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  const list = series(more > 0 ? [...names, `${more} more`] : names);
   return evicted.length === 1
-    ? ` The patch it liked least was replaced: ${list}.`
-    : ` The ${evicted.length} it liked least were replaced: ${list}.`;
+    ? ` The sound it rated lowest was replaced: ${list}.`
+    : ` The ${evicted.length} it rated lowest were replaced: ${list}.`;
 }
 
 // id -> the last name its bank row had. Filled by `applyViews`; never pruned
@@ -3411,7 +3448,7 @@ function nameOf(id) {
  *  rows land it is simply not named yet. */
 function benchName(id) {
   if (rowOf(id)) return nameOf(id);
-  return views && views.ranked && views.ranked.length ? "unsaved patch" : "loading…";
+  return views && views.ranked && views.ranked.length ? "unsaved sound" : "loading…";
 }
 
 // The topology signature (`ssaw·lp·ladr`) is secondary metadata, not a name —
@@ -3745,7 +3782,7 @@ const renderAnnounced = new Set();
 function renderFailed(id, reason) {
   if (renderAnnounced.has(id)) return;
   renderAnnounced.add(id);
-  note(`Couldn't render ${nameOf(id)} — ${reason || "the engine returned no audio"}.`);
+  note(`Couldn’t render ${nameOf(id)}: ${reason || "the engine returned no audio"}.`);
 }
 
 // The worklet reporting that an address it was asked to write does not exist
@@ -3882,10 +3919,10 @@ async function bootPerform() {
       // `openLanding` before a Keep, Take or Back and refuses there, before
       // anything has changed; this is the backstop, and it says so too.
       if (earlyOpen) {
-        note(`That didn't stick — ${earlyOpen.label} is still opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
+        note(`That didn’t stick: ${earlyOpen.label} is still opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
         return;
       }
-      if (!wb.tree) return note("open a patch first — nothing is on the bench");
+      if (!wb.tree) return note("Open a sound first: there’s nothing to play yet.");
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
   });
@@ -3983,7 +4020,7 @@ function paintPerformedKnobs() {
     ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
-    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}) — Keep writes it in`;
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}): Keep writes it in`;
     kg.classList.add("performed");
   }
 }
@@ -4134,8 +4171,8 @@ async function bootLiveAudio() {
   scopeApply();
   live.onMessage((m) => {
     (window.__aurLog = window.__aurLog || []).push(m);
-    if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
-    if (m.type === "b_error") note(`the offer in B could not be played: ${m.error}`);
+    if (m.type === "patch_error") note(`The live patch didn’t compile: ${m.error}`);
+    if (m.type === "b_error") note(`The offer in B couldn’t be played: ${m.error}`);
     if (m.type === "param_miss") healParamMiss(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
@@ -4156,7 +4193,7 @@ async function bootLiveAudio() {
   applyPerfUi();
   live.node.onprocessorerror = (e) => {
     (window.__aurLog = window.__aurLog || []).push({ type: "processor_error", e: String(e) });
-    note("live audio engine crashed — reload to recover");
+    note("The live audio crashed. Reload to bring it back.");
   };
   // If a patch arrived before audio was ready, load it now.
   if (wb.subjectId != null) send({ type: "tree_json", id: wb.subjectId });
@@ -4399,8 +4436,8 @@ document.addEventListener("keydown", (e) => {
     if (currentView !== "play") {
       note(
         e.shiftKey
-          ? "nothing to redo here — PATCH edits redo in PATCH"
-          : "nothing to undo here — PATCH edits undo in PATCH",
+          ? "Nothing to redo here. PATCH edits redo in PATCH."
+          : "Nothing to undo here. PATCH edits undo in PATCH.",
         { urgent: true, replace: "undo-here" },
       );
       return;
@@ -4672,7 +4709,7 @@ function repaintSyncedRates() {
     const long = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null, true);
     kg.setAttribute("aria-valuetext", long);
     const tt = kg.querySelector(".knob-hit > title");
-    if (tt) tt.textContent = `${knob.label}: ${long} — drag up/down`;
+    if (tt) tt.textContent = `${knob.label}: ${long} · drag up or down`;
   }
 }
 
@@ -4795,14 +4832,14 @@ $("bigkeys-btn").onclick = () => {
   perf.bigKeys = !perf.bigKeys;
   applyKeybed();
   note(perf.bigKeys
-    ? "Tall keybed — narrow the keys with the octave selector beside it."
+    ? "Tall keybed. Narrow the keys with the octave selector beside it."
     : "Keybed back to a control strip.");
   scheduleSave();
 };
 $("key-span").onchange = (e) => {
   perf.keySpan = Number(e.target.value);
   applyKeybed();
-  note(`Keybed showing ${perf.keySpan / 12} octave${perf.keySpan === 12 ? "" : "s"} — z / x move it.`);
+  note(`Keybed showing ${perf.keySpan / 12} octave${perf.keySpan === 12 ? "" : "s"}. Z and X move it.`);
   scheduleSave();
 };
 $("arp-gate").oninput = (e) => { perf.arpGate = Number(e.target.value); renderArpVals(); sendArp(); scheduleSave(); };
@@ -4828,7 +4865,7 @@ $("rec-btn").onclick = () => {
   live.rec(recording);
   // One slot for the take's toasts, so "saved" replaces "recording" the moment
   // you stop, rather than waiting out its window (2–3 s late on camera).
-  if (recording) note("recording — play something; stop to download the take", { replace: "rec" });
+  if (recording) note("Recording. Play something, then stop to download the take.", { replace: "rec" });
 };
 
 // The film pipeline (www/video/tools/footage.mjs) records a walkthrough's
@@ -4908,7 +4945,7 @@ function downloadWav(samples, sampleRate, { quiet = false, name = null } = {}) {
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
-  if (!quiet) note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`, { replace: "rec" });
+  if (!quiet) note(`Downloaded a ${(nFrames / sampleRate).toFixed(1)} s take.`, { replace: "rec" });
 }
 
 // ---------- Web MIDI ----------
@@ -4960,27 +4997,27 @@ async function bootMidi() {
     // midi.js, "one tab plays"), and whether this one is in view.
     tabs: () => (typeof BroadcastChannel === "function" ? new BroadcastChannel("auracle-midi") : null),
     visible: () => document.visibilityState === "visible",
-    // A device (●), none plugged in (—), MIDI itself not reachable yet (?):
+    // A device (●), none plugged in (·), MIDI itself not reachable yet (?):
     // no Web MIDI in this browser, a permission prompt unanswered, access
     // refused — or another Auracle tab playing it (○). The panel says which,
     // and what to do about it.
     onDevices: (n, status = "ready") => {
       const ind = $("midi-ind");
       ind.textContent =
-        status === "elsewhere" ? "midi ○" : n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi —" : "midi ?";
+        status === "elsewhere" ? "midi ○" : n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi ·" : "midi ?";
       ind.classList.toggle("on", n > 0 && status !== "elsewhere");
       ind.title =
         status === "elsewhere"
-          ? "MIDI is playing another Auracle tab — click to play this one"
+          ? "MIDI is playing another Auracle tab. Click to play this one"
           : n > 0 || status === "ready"
           ? "MIDI: devices, knob mapping, clock"
           : status === "unsupported"
-            ? "MIDI: this browser has no Web MIDI — click for which ones do"
+            ? "MIDI: this browser has no Web MIDI. Click for which ones do"
             : status === "denied"
-              ? "MIDI: access refused — click for how to allow it"
+              ? "MIDI: access refused. Click for how to allow it"
               : status === "failed"
-                ? "MIDI: the browser couldn't open MIDI — click to try again"
-                : "MIDI: waiting for the browser's permission — click to connect";
+                ? "MIDI: the browser couldn’t open MIDI. Click to try again"
+                : "MIDI: waiting for the browser’s permission. Click to connect";
     },
   });
   midi.attachPanel($("midi-panel"));
@@ -5227,11 +5264,10 @@ function showForecast(pChosen) {
   if (!el) return;
   el.classList.toggle("hit", pChosen >= 0.65);
   el.classList.toggle("miss", pChosen <= 0.45);
-  el.textContent =
-    pChosen >= 0.65 ? `Expected — it's getting you. ${Math.round(pChosen * 100)}%`
-    : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
-    : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
-  el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
+  // The model's voice: the side it guessed, at the probability it gave that
+  // side, and how sure that reads (words.js `forecastLine`).
+  el.textContent = forecastLine(pChosen);
+  el.title = "Its guess for this pair, made before you picked. A wrong guess is where it learns most.";
   predHoldUntil = performance.now() + PRED_HOLD_MS;
   const pd = $("pd-pred");
   if (pd) {
@@ -5276,20 +5312,20 @@ let dealRule = null;
 
 const DEAL_RULE = {
   random: {
-    text: "◇ random pair — a fair test",
-    title: "The model doesn't choose what you hear: every pair is dealt at random from the pool. That is what makes every pick a fair test of the forecast it makes before you vote — TASTE → TRUST scores them all.",
+    text: "◇ random pair · a fair test",
+    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and TRUST in TASTE grades them all.",
   },
   bald: {
-    text: "chosen where it's least sure",
-    title: "The model dealt this pair where its forecast is closest to a coin flip: the question it learns most from. About one duel in ten is dealt at random instead, as a check (◇).",
+    text: "chosen where it’s least sure",
+    title: "The model dealt this pair where its guess is closest to a coin flip: the question it learns most from. About one pair in ten is dealt at random instead, as a fair test (◇).",
   },
   thompson: {
     text: "chosen from its best guesses",
-    title: "The model drew two plausible versions of your taste and dealt each one's favourite. About one duel in ten is dealt at random instead, as a check (◇).",
+    title: "The model drew two likely versions of your taste and dealt the sound each rates highest. About one pair in ten is dealt at random instead, as a fair test (◇).",
   },
   check: {
-    text: "◇ unbiased probe — dealt at random",
-    title: "About one duel in ten is dealt at random rather than chosen by the model. Picks like this one score its honesty without the chooser's bias — see TASTE → TRUST.",
+    text: "◇ fair test · dealt at random",
+    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in TRUST in TASTE.",
   },
 };
 
@@ -5374,14 +5410,14 @@ function applyBelief(m) {
   previewInvalidate();
 }
 
-/** "style 2" is the engine's name for an unnamed mixture component; on the
- *  surface it is the player's second style. Named ones keep their name. */
-function styleWord(lens) {
-  const m = /^style (\d+)$/.exec(lens);
-  if (!m) return lens;
-  const n = Number(m[1]);
-  const suf = n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th";
-  return `${n}${suf}`;
+/** The style judging the sound you're playing, by its name: the one the
+ *  player gave it, or the qualities it leans on (`styleName`), never "your
+ *  2nd style" (the word table's style). The engine's "style N" is the
+ *  fallback when there is no style row to name it from. */
+function styleClause() {
+  const s = belief.styleK != null && views && views.styles ? views.styles[belief.styleK] : null;
+  const name = s ? styleName(s, belief.styleK) : belief.lens;
+  return /^style \d+$/.test(name) ? `in ${esc(name)}` : `in your <b>${esc(name)}</b> style`;
 }
 
 function renderBelief() {
@@ -5399,13 +5435,14 @@ function renderBelief() {
     const why = !wb.vetOk && wb.vetSilent
       ? "no guess while nothing reaches the output"
       : fitting
-      ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
+      ? "fitting to what you taught it…"
       : n === 0 || !fitted
-        ? "not yet — it needs a few picks first"
-        : "no guess for this patch yet";
+        ? "no guess yet: it needs a few picks first"
+        : "no guess for this sound yet";
     el.innerHTML = wb.subjectId == null
       ? ""
-      : `<span class="ex-why">model's guess</span> <span class="bl-none">${why}</span>`;
+      : `<span class="bl-none">${why}</span>`;
+    el.title = "";
     return;
   }
   el.classList.toggle("stale", belief.stale);
@@ -5418,24 +5455,27 @@ function renderBelief() {
   const u = sq(belief.u);
   const prev = belief.prev == null ? null : sq(belief.prev);
   const d = prev == null ? null : u - prev;
-  // 0.005 is half a printed digit: below it the arrow would point at a change
-  // the number it sits next to does not show.
-  const arrow = d == null || Math.abs(d) < 0.005 ? "" :
+  // Printed as a whole percentage with its word (words.js `guessLabel`), never
+  // bare. The arrow shows only when the printed number moved: otherwise it
+  // would point at a change the number it sits next to does not show.
+  const [uPct, prevPct] = [Math.round(u * 100), prev == null ? null : Math.round(prev * 100)];
+  const arrow = prevPct == null || uPct === prevPct ? "" :
     `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
-  const was = prev == null ? "" :
-    `<span class="bl-was">(was ${prev.toFixed(2)})</span>`;
+  const was = prevPct == null ? "" :
+    `<span class="bl-was">(was ${prevPct}%)</span>`;
   const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
     return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
+  const [pctText, sure] = guessLabel(u).split(" · ");
   el.innerHTML =
-    `<span class="ex-why">model's guess</span> <b class="bl-u">${u.toFixed(2)}</b> ${was}${arrow}` +
+    `<b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span> ${was}${arrow}` +
     (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
-    (belief.lens ? ` <span class="ex-lens">in your <b>${esc(styleWord(belief.lens))}</b> style</span>` : "") +
-    (belief.stale ? ` <span class="bl-stale">· re-measuring…</span>` : "");
+    (belief.lens ? ` <span class="ex-lens">${styleClause()}</span>` : "") +
+    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
   el.title = belief.stale
-    ? "An edit is in flight — this describes the patch before it."
-    : `The same score the bank's bars draw. Posterior-mean utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}; the named features are its exact decomposition, in utility units.`;
+    ? "An edit is on its way. This is its guess for the sound before it."
+    : `Its guess for the sound you’re playing, the same one the bank’s bar draws (utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}). The qualities beside it add up to that utility.`;
 }
 
 // ---------- the structural budget ----------
@@ -5589,14 +5629,14 @@ let dealSayTimer = null;
  *  this machine), a deal waits for the walk in progress. */
 function dealingWhy() {
   if (breeding && !breeding.farm) {
-    if (!breeding.total) return "dealing — the engine is breeding";
+    if (!breeding.total) return "dealing: the engine is breeding";
     const seed = Math.min(breeding.done + 1, breeding.total);
     return breeding.done >= breeding.total
-      ? "dealing — the engine is placing a bred generation in the pool"
-      : `dealing — the engine is breeding (seed ${seed}/${breeding.total})`;
+      ? "dealing: the engine is placing a bred generation in the pool"
+      : `dealing: the engine is breeding (seed ${seed}/${breeding.total})`;
   }
-  if (evolvingFrom && !evolvingFrom.stoppable) return "dealing — the engine is ⚡ evolving a patch";
-  if (meterFitting && engineBusy) return "dealing — the engine is redrawing your taste map";
+  if (evolvingFrom && !evolvingFrom.stoppable) return "dealing: the engine is ⚡ evolving a sound";
+  if (meterFitting && engineBusy) return "dealing: the engine is redrawing your taste map";
   return "dealing…";
 }
 
@@ -5861,7 +5901,7 @@ function retractVote() {
   const gone = pair.find((id) => goneIds.has(id) || cutIds.has(id));
   if (gone !== undefined) {
     const who = nameOrKnown(gone) || "one of them";
-    note(`Pick taken back — ${who} has left the bank, so that pair is not asked again.`, { replace: "vote" });
+    note(`Pick taken back. ${who === "one of them" ? "One of them" : who} ${cutIds.has(gone) ? "was cut" : "was replaced"}, so that pair isn’t asked again.`, { replace: "vote" });
     renderPlayDuel();
     return true;
   }
@@ -6173,9 +6213,9 @@ const FLOPPY =
 
 const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎", preset: "▤" };
 const ORIGIN_TITLE = {
-  prior: "◇ dealt fresh from the grammar — nobody's taste in it yet",
-  refined: "⚡ bred by evolution toward your taste",
-  edited: "✎ committed from your bench edits",
+  prior: "◇ grown fresh, with no taste in it yet",
+  refined: "⚡ bred toward your taste",
+  edited: "✎ your edit, kept as new",
   preset: "▤ hand-made preset",
 };
 
@@ -6217,7 +6257,7 @@ function renderPinBudget() {
   // room you have left disappeared exactly when it changed.
   el.hidden = !cap;
   el.textContent = cap ? `${used}/${cap} saved` : "";
-  el.title = `${used} of ${cap} save slots used. A saved patch is never replaced to make room.`;
+  el.title = `${used} of ${cap} saved. No generation replaces a saved sound.`;
 }
 
 function renderBank() {
@@ -6269,8 +6309,8 @@ function renderBank() {
     // budget apologising that stars did not protect anything.
     const msg = {
       mine:
-        "Nothing saved yet. Press <b>save</b> on any patch to keep it here — a saved patch is never replaced to make room.",
-      pool: "The pool is empty. Load a preset, or press EVOLVE POOL to fill it again.",
+        "Nothing saved yet. Press <b>save</b> on any sound to keep it here, where no generation replaces it.",
+      pool: "The pool is empty. Open a preset, or press EVOLVE POOL to fill it again.",
     }[bankFilter] || "Nothing here yet.";
     list.innerHTML = `<div class="bench-empty">${msg}</div>`;
     return;
@@ -6285,7 +6325,7 @@ function renderBank() {
     }
     if (fresh.length && i === fresh.length) {
       frag.appendChild(bankGroup(fitted ? "ranked by the model" : "the rest",
-        fitted ? "The rest of the pool, the patches the model thinks you'd like most first" : ""));
+        fitted ? "The rest of the pool, the sounds it rates highest first" : ""));
     }
     frag.appendChild(bankRow(r, fitted));
   });
@@ -6351,11 +6391,10 @@ function bankRow(r, fitted) {
   el.tabIndex = -1;
   const said = [
     r.name,
-    `patch ${r.id}`,
     sig,
     r.pinned ? "saved" : "",
     stars ? `${stars} of 5 stars` : "unrated",
-    fitted ? `predicted ${Math.round(frac * 100)} percent` : "",
+    fitted ? `its guess ${guessLabel(frac).replace("% · ", " percent, ")}` : "",
   ].filter(Boolean);
   // setAttribute takes a string, not markup — no escaping here, and escaping
   // would put a literal `&amp;` into what a screen reader says.
@@ -6367,23 +6406,23 @@ function bankRow(r, fitted) {
         // ⚡ rows where the only thing marking the five was a glow on a glyph.
         lastBorn.has(r.id) ? `<span class="bi-new" title="Bred in the latest generation">new</span>` : ""
       }
-      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
-      <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
+      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} · ` : ""}Double-click to rename">${esc(r.name)}</span>
+      <span class="bi-pct mono" title="${fitted ? `Its guess: ${guessLabel(frac)}` : "No guess yet: teach it a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "·"}</span>
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
-        .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
+        .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">★</button>`)
         .join("")}
       </span>
       <button class="bi-save${r.pinned ? " on" : ""}" aria-pressed="${!!r.pinned}"
-        title="${r.pinned ? "Saved — this patch is never replaced to make room. Click to release it." : "Save this patch. Saved patches are never replaced to make room."}"
+        title="${r.pinned ? "Saved: no generation replaces it. Click to release it." : "Save it, and no generation replaces it"}"
         aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button>
-      <button class="bi-kill" title="Cut: teach the model you don't want this" aria-label="Cut ${esc(r.name)}">cut</button>
+      <button class="bi-kill" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">cut</button>
     </div>
-    <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? "The model's guess, and the block is how sure it is" : "No prediction yet"}">${
+    <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? "Its guess, and the block is how sure it is" : "No prediction yet"}">${
       fitted
         ? `<b style="left:${(lo * 100).toFixed(1)}%;width:${Math.max(1.5, (hi - lo) * 100).toFixed(1)}%"></b><i style="left:${(frac * 100).toFixed(1)}%"></i>`
         : ""
@@ -6482,7 +6521,7 @@ function cutRow(r) {
   });
   // By name, never "#9": ids are hidden everywhere else. And it says what the
   // cut does, which is now true: the patch is not dealt again.
-  toast = note(`Cut ${r.name} — it won't be dealt again`, { undo });
+  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo });
 }
 
 function wireRename(nameEl, r) {
@@ -6554,17 +6593,17 @@ function renderPresetBank(list) {
     el.setAttribute("role", "option");
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
-    el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your bank." : ""}`);
+    el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
     el.innerHTML = `
       <div class="bi-top">
         <span class="bi-origin preset" title="▤ hand-made preset">▤</span>
         <span class="bi-name">${esc(p.name)}</span>
-        ${inBank ? `<span class="pb-in" title="Already in your bank">in bank</span>` : ""}
+        ${inBank ? `<span class="pb-in" title="Already in your pool">in pool</span>` : ""}
       </div>
       <div class="pb-blurb">${esc(p.blurb)}</div>
       <div class="bi-row">
         <button class="bi-hear" aria-label="Hear ${esc(p.name)}"
-          title="Hear it. Hearing a preset loads it into the pool — the engine can only render what it holds.">▶</button>
+          title="Hear it. A preset you hear joins the pool, because the engine can only render what it holds.">▶</button>
         <span class="pb-sig mono">${esc(p.sig)}</span>
       </div>`;
     const hear = el.querySelector(".bi-hear");
@@ -6719,7 +6758,7 @@ function presetKeydown(e) {
 function saveCursorRow() {
   const id = rateTargetId();
   if (id == null) {
-    note("Nothing selected to save — click a bank row, or step to one with [ and ].");
+    note("Nothing selected to save. Click a bank row, or step to one with [ and ].");
     return false;
   }
   send({ type: "set_pinned", id, pinned: !(rowOf(id) || {}).pinned });
@@ -6741,14 +6780,14 @@ function rateTargetId() {
 function rateRow(rating, explicitId) {
   const id = explicitId != null ? explicitId : rateTargetId();
   if (id == null) {
-    note("Nothing selected to rate — click a bank row, or step to one with [ and ].");
+    note("Nothing selected to rate. Click a bank row, or step to one with [ and ].");
     return;
   }
   // Re-asserting a rating is not new evidence — logging it again would weight
   // one opinion twice. But returning in silence made a lit star a dead button,
   // so say what the state already is.
   if ((starsById.get(id) || 0) === rating) {
-    note(`${nameOf(id)} is already ${rating}★ — pick a different number to change it.`);
+    note(`${nameOf(id)} is already ${rating}★. Press a different number to change it.`);
     return;
   }
   kbdRowId = id; // rating something makes it the cursor, so 1-5 can correct it
@@ -6760,7 +6799,7 @@ function rateRow(rating, explicitId) {
   // Counted now: behind a generation, the reply can be tens of seconds away.
   aheadAdd(aheadKey({ kind: "stars", id }));
   renderBank();
-  note(`${nameOf(id)} rated ${rating}★`);
+  note(`Rated ${nameOf(id)} ${rating}★.`);
 }
 
 // A vote the engine did not take (`status.recorded === false`): the id left
@@ -6769,7 +6808,7 @@ function rateRow(rating, explicitId) {
 // assumption it would, then say so; "rated ★" over a vote that went nowhere is
 // the app stating something untrue about the model.
 function voteDropped(v) {
-  let what = "vote";
+  let what = "pick";
   if (v.kind === "stars") {
     what = "rating";
     if (v.prev > 0) starsById.set(v.id, v.prev);
@@ -6784,31 +6823,19 @@ function voteDropped(v) {
   } else if (v.kind === "keep") {
     what = "cut";
   }
-  note(`that patch is gone — a generation replaced it, so the ${what} was not recorded.`, {
+  const goneId = v.kind === "duel" ? [v.a, v.b].find((id) => !rowOf(id)) : v.id;
+  const who = (goneId != null && nameOrKnown(goneId)) || "That sound";
+  note(`${who} was replaced, so the ${what} wasn’t recorded.`, {
     urgent: true,
   });
 }
 
-// What to say when evolution produced nothing, from the engine's own reason
-// (`last_refine_reason`). Only `outside_support` changes the advice: no budget
-// or lock-loosening reaches a seed the prior gives zero mass, so "try again"
-// would be a lie there.
-function refineReasonText(reason, fallback) {
-  switch (reason) {
-    case "outside_support":
-      return "⚡ this patch is outside what evolution can reach — a knob is on its stop, or the tree is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.";
-    case "no_taste":
-      return "Nothing to breed toward yet — make a few picks first, then evolve.";
-    case "unknown_seed":
-      return "that patch isn't in the bank any more — a bred generation replaced it.";
-    case "duplicate":
-      return "⚡ evolution landed on a patch the bank already holds — try again.";
-    case "not_admitted":
-      return "⚡ evolution's proposal did not survive the vet or beat its parent — try again.";
-    default:
-      return fallback;
-  }
-}
+// What to say when ⚡ produced nothing, from the engine's own reason
+// (`last_refine_reason`), is `evolveRefusal` in words.js. Only
+// `outside_support` changes the advice: no budget or lock-loosening reaches a
+// seed the prior gives zero mass, so "try again" would be a lie there. A
+// refused child's bar is the sound it would replace (the lowest unsaved one,
+// `admit_refined`), never its seed.
 
 $("bank-list").addEventListener("keydown", (e) => {
   if (bankFilter === "preset") return presetKeydown(e);
@@ -6859,15 +6886,15 @@ $("bank-list").addEventListener("keydown", (e) => {
 // One line each. The depth lives in the walkthrough; this is a label, and at
 // three lines it was costing more of the rail than it was worth.
 const BANK_NOTES = {
-  pool: `Every patch the model is weighing.`,
-  mine: `Never replaced — but still in the pool, still being learned from.`,
-  preset: `Hand-made. <b>▶</b> loads one into the pool.`,
+  pool: `Every sound the model weighs and breeds from.`,
+  mine: `No generation replaces these. They stay in the pool, and it still learns from them.`,
+  preset: `Hand-made. <b>▶</b> puts one in the pool.`,
 };
 
 function renderBankNote() {
   const el = $("bank-note");
   if (!el) return;
-  el.innerHTML = `${BANK_NOTES[bankFilter] || ""} <button class="note-more" id="bank-note-more">what's this?</button>`;
+  el.innerHTML = `${BANK_NOTES[bankFilter] || ""} <button class="note-more" id="bank-note-more">what’s this?</button>`;
   const more = $("bank-note-more");
   if (more) more.onclick = () => startBankTour(BANKS.indexOf(bankFilter));
 }
@@ -6879,50 +6906,50 @@ const PIN_CAP_TOKEN = "%CAP%";
 const TOUR = [
   {
     bank: "preset",
-    title: "presets — where you start",
+    title: "presets: where you start",
     body:
-      `${PRESET_COUNT_TOKEN} hand-made patches that shipped with the instrument. ` +
-      `They never change and they are never lost. Press <b>▶</b> to hear one — ` +
-      `that also loads it into the pool, because the engine can only play what it holds.`,
+      `${PRESET_COUNT_TOKEN} hand-made sounds that came with the instrument. ` +
+      `They never change, and they are never lost. Press <b>▶</b> to hear one: ` +
+      `that also puts it in the pool, because the engine can only play what it holds.`,
   },
   {
     bank: "pool",
-    title: "evolution — the living bank",
+    title: "pool: what it breeds from",
     body:
-      `The pool holds a fixed number of patches. The model scores every one of ` +
-      `them for how much it thinks <i>you</i> would like it — that is the bar and ` +
-      `the % on each row. Rating with ★ and cutting with ✕ is how it learns.`,
+      `The pool holds a fixed number of sounds. The model rates every one ` +
+      `by how much it guesses <i>you</i> would like it: that is the bar and ` +
+      `the % on each row. A ★ rating and a cut each teach it.`,
   },
   {
     bank: "pool",
     title: "what a generation is",
     body:
-      `Press <b>EVOLVE POOL</b> and it breeds: it takes the patches it thinks you ` +
-      `like best and makes mutated children of them. Children that score better ` +
-      `than the worst patch in the pool get in. That round is a <b>generation</b>. ` +
-      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow ` +
+      `Press <b>EVOLVE POOL</b> and it breeds: it grows children from the sounds it ` +
+      `rates highest. A child joins the pool if it rates above the sound it would ` +
+      `replace, the lowest unsaved one. That round is a <b>generation</b>. ` +
+      `The ⚡ glyph marks every sound it has bred, and the newest ones glow ` +
       `and say <b>new</b>.`,
   },
   {
     bank: "pool",
-    title: "…and what it costs",
+    title: "and what it costs",
     body:
-      `The pool is a fixed size, so every child that gets in <b>replaces</b> the ` +
-      `patch the model rates lowest. That is deliberate — the pool is the model's ` +
-      `working set, not a hard drive. But it means a sound you loved can be bred ` +
-      `away before the model has learned why you loved it.`,
+      `The pool is a fixed size, so every child that joins <b>replaces</b> the ` +
+      `unsaved sound the model rates lowest. That is deliberate: the pool is what the ` +
+      `model works with, not a hard drive. But a sound you loved can be ` +
+      `replaced before the model has learned why you loved it.`,
   },
   {
     bank: "mine",
-    title: "my patches — how you keep one",
+    title: "saved: how you keep one",
     body:
-      `Press <b>save</b> on any row. A saved patch is <b>never</b> replaced, ` +
-      `however many generations you run. It stays in the pool — still played, ` +
-      `still duelled, still teaching the model — it just cannot be bred away. ` +
-      `You get ${PIN_CAP_TOKEN} slots: enough to keep what matters, few enough that the ` +
-      `pool still has room to evolve. ` +
+      `Press <b>save</b> on any row. <b>No</b> generation replaces a saved sound, ` +
+      `however many you run. It stays in the pool (still played, still in ` +
+      `pairs, still teaching the model), and only you can release it. ` +
+      `You get ${PIN_CAP_TOKEN} saves: enough to keep what matters, few enough that the ` +
+      `pool still has room to grow. ` +
       `<br><br>★ and <b>save</b> are different questions: stars tell the model what you ` +
-      `think of a patch, saving tells the bank what to hold on to.`,
+      `think of a sound, and saving tells the bank what to hold on to.`,
   },
 ];
 
@@ -7129,7 +7156,7 @@ function unvoiceEarly() {
   live.setPatch(back.json, back.makeup);
   setLivePatchJson(back.json, back.makeup);
   setLiveMuted(!!back.muted);
-  setLiveLabel(back.label || (wb.subjectId != null ? `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}` : "no patch"));
+  setLiveLabel(back.label || (wb.subjectId != null ? `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}` : "no sound"));
 }
 /** A preset the voices have played before, opened from the library: into
  *  the voices now, from memory. */
@@ -7249,13 +7276,13 @@ function syncCommitBtn() {
   const wrap = b.closest(".tt");
   if (wrap) {
     wrap.title = !b.disabled ? ""
-      : !hasRack ? "Pick a patch from the bank first"
-      : !edited ? "Nothing to commit — turn a knob first"
-      : wb.vetSilent ? "Nothing reaches the output — plug a source into the empty socket first"
-      : "This patch failed the safety vet";
+      : !hasRack ? "Pick a sound from the bank first"
+      : !edited ? "Nothing to keep yet: turn a knob first"
+      : wb.vetSilent ? "Nothing reaches the output: plug a source into the empty socket first"
+      : "This patch didn’t pass the safety vet";
   }
   b.title = b.disabled ? ""
-    : "Plays your version against the original and asks which you prefer (with “my edit is better” ticked, it takes your word for it). Either answer teaches the model, and “the original” teaches it most.";
+    : "Plays your edit against the original and asks which you’d reach for (with “pick the edit” ticked, it takes your word for it). Either answer teaches the model, and picking the original teaches it most.";
 }
 
 /** A knob write. `id` is the knob's identity as the gesture saw it (a drag
@@ -7394,8 +7421,8 @@ function playBench() {
   // A refusal of the press (Space reaches here with ▶ disabled): it jumps the
   // lane, and pressing again says it once.
   const said = { urgent: true, replace: "bench-play" };
-  if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output", said);
-  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld", said);
+  if (!wb.vetOk && wb.vetSilent) note("Nothing to play. No source reaches the output: plug one into the empty socket.", said);
+  else if (!wb.vetOk) note("⚠ Muted: this patch didn’t pass the safety vet.", said);
 }
 
 /** A ▶ still waiting for the lane is taken back. True if one was waiting. */
@@ -7535,7 +7562,7 @@ function paintStepBar(kg, knob) {
   }
   const text = knobUnit(knob.addr, v, kg.dataset.kind);
   const tt = kg.querySelector("title");
-  if (tt) tt.textContent = `${tt.dataset.label}: ${text} — drag up/down`;
+  if (tt) tt.textContent = `${tt.dataset.label}: ${text} · drag up or down`;
   // A picture of a lane (the duel minis, an export) is not a control.
   if (!kg.hasAttribute("role")) return;
   kg.setAttribute("aria-valuenow", v.toFixed(3));
@@ -8261,8 +8288,8 @@ function applyGrid() {
   if (stranded) fitAll(true);
   scheduleSave();
   note(stranded
-    ? `${store.size} modules re-laid from the signal chain and pinned — the old arrangement had spread past anything the frame could show.`
-    : `${store.size} modules pinned to the grid — drag any of them from here.`);
+    ? `${store.size} modules laid out again from the signal chain and pinned. The old arrangement had spread past anything the frame could show.`
+    : `${store.size} modules pinned to the grid. Drag any of them from here.`);
 }
 
 /** "Reset positions" — M3(b), the recovery verb the mode did not have.
@@ -8290,8 +8317,8 @@ function resetPositions() {
   fitAll(true);
   scheduleSave();
   note(n
-    ? `${n} hand position${n > 1 ? "s" : ""} cleared — the patch is back on the signal chain. Drag any plate to start again.`
-    : "nothing was hand-placed — the patch is already on the signal chain.");
+    ? `${n} hand position${n > 1 ? "s" : ""} cleared, and the patch is back on the signal chain. Drag any module to start again.`
+    : "Nothing was placed by hand: the patch is already on the signal chain.");
 }
 
 function moduleLockAddrs(mod) {
@@ -8803,7 +8830,7 @@ function paintKnobKept(kg, k) {
     val.textContent = sounding;
   }
   const tt = kg.querySelector(".knob-hit > title");
-  if (tt) tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, kg.dataset.kind, kg.dataset.variant || null, true)} — drag up/down`;
+  if (tt) tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, kg.dataset.kind, kg.dataset.variant || null, true)} · drag up or down`;
 }
 
 /** How fast a modulation cable breathes: roughly its modulator's own rate. */
@@ -8851,13 +8878,13 @@ function renderRack(rebuild = false) {
   // The same three reasons COMMIT gives (`syncCommitBtn`): a silent patch did
   // not fail for running away, and the vet's sentence about it was untrue.
   reason("rack-play",
-    !hasRack ? "Pick a patch from the bank first"
-    : wb.vetSilent ? "Nothing reaches the output — plug a source into the empty socket first"
-    : "This patch failed the safety vet and is muted");
-  reason("rack-evolve", evolveFromWhy() || "Pick a patch from the bank first");
-  reason("lock-knobs", "Pick a patch from the bank first");
-  reason("lock-structure", "Pick a patch from the bank first");
-  reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
+    !hasRack ? "Pick a sound from the bank first"
+    : wb.vetSilent ? "Nothing reaches the output: plug a source into the empty socket first"
+    : "This patch didn’t pass the safety vet, so it’s muted");
+  reason("rack-evolve", evolveFromWhy() || "Pick a sound from the bank first");
+  reason("lock-knobs", "Pick a sound from the bank first");
+  reason("lock-structure", "Pick a sound from the bank first");
+  reason("lock-clear", !hasRack ? "Pick a sound from the bank first" : "No locks set: click a lock dot or ▢ on a module first");
   // Locking the wiring now *teaches* as well as pins, and the copy is allowed
   // to say so. WS-8 §4 sequenced this deliberately: until φ_struct carried an
   // arrangement coordinate the model had no column in which "this branch is
@@ -8870,9 +8897,9 @@ function renderRack(rebuild = false) {
   // column that tried to say it again was thrown out.)
   const wiringTip = $("lock-structure").closest(".tt");
   if (wiringTip && hasRack) {
-    wiringTip.title = "Lock the wiring — evolution keeps this routing, and the model learns "
-      + "from it: how the branches are balanced and what is keyed off what are things it "
-      + "measures now.";
+    wiringTip.title = "Lock the wiring: breeding keeps this routing, and the model learns "
+      + "from it, because how the branches are balanced and what is keyed off what are things it "
+      + "measures.";
   }
   renderSubject();
   if (!hasRack) {
@@ -8976,16 +9003,16 @@ function renderSubject() {
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
     nameEl.classList.add("hearing");
-    nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · candidate ${hearingSide.toUpperCase()}`;
+    nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
     metaEl.textContent =
-      benchBeforeAudition != null ? `← bench returns to ${nameOf(benchBeforeAudition)}` : "";
+      benchBeforeAudition != null ? `← back returns to ${nameOf(benchBeforeAudition)}` : "";
     return;
   }
   nameEl.classList.remove("hearing");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   if (!hasRack || wb.subjectId == null) {
-    nameEl.textContent = "no patch loaded";
+    nameEl.textContent = "no sound open";
     nameEl.title = "";
     metaEl.textContent = "";
     return;
@@ -9007,7 +9034,7 @@ function renderSubject() {
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
-    wb.vetOk ? "" : wb.vetSilent ? "silent — nothing reaches the output" : "⚠ muted",
+    wb.vetOk ? "" : wb.vetSilent ? "silent: nothing reaches the output" : "⚠ muted",
     laneWaitingText(),
   ]
     .filter(Boolean)
@@ -9285,7 +9312,7 @@ function buildRack(svg, rack, opts) {
       g.setAttribute("tabindex", "-1");
       g.setAttribute(
         "aria-label",
-        isEmpty ? "empty socket — drop a source here" : `${m.title} module`,
+        isEmpty ? "empty socket: drop a source here" : `${m.title} module`,
       );
       g.appendChild(svgEl("rect", {
         x: -3, y: -3, width: p.w + 6, height: p.h + 6, rx: 8,
@@ -9429,8 +9456,8 @@ function buildRack(svg, rack, opts) {
         mlock.textContent = lockOn ? "▣" : "▢";
         const mtitle = svgEl("title", {});
         mtitle.textContent = lockOn
-          ? "Unlock this module (evolution may change it again)"
-          : "Lock this whole module (evolution keeps it exactly as-is)";
+          ? "Unlock this module (breeding may change it again)"
+          : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
         hitPad(lockG, lockX, 15, 24, 26);
@@ -9679,7 +9706,7 @@ function buildRack(svg, rack, opts) {
           // it so the dot still wins its own corner.
           const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} — drag up/down`;
+          tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} · drag up or down`;
           hit.appendChild(tt);
           kg.appendChild(hit);
           attachKnobDrag(hit, m, k);
@@ -9695,8 +9722,8 @@ function buildRack(svg, rack, opts) {
           const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
           tt.textContent = sweepable
-            ? `${k.label} — click to cycle, drag up/down to sweep (live)`
-            : `${k.label} — click to cycle`;
+            ? `${k.label} · click to cycle, drag up or down to sweep (live)`
+            : `${k.label} · click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
             // The click a sweep leaves behind on its way up is not a cycle.
@@ -9731,7 +9758,7 @@ function buildRack(svg, rack, opts) {
           `lock-dot${locked ? " on" : ""}`);
         dot.appendChild(svgEl("circle", { r: 3.4 }, ""));
         const dt = svgEl("title", {});
-        dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (evolution won't touch it)`;
+        dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (breeding won’t touch it)`;
         dot.appendChild(dt);
         dot.addEventListener("click", () => {
           setLock(k.addr, !locked);
@@ -10524,10 +10551,10 @@ function syncLodBtn() {
       // The number is read out rather than written in, because it is a
       // function of the frame now (`lodThreshold`) and a tooltip that says
       // 0.55 in a frame that switches at 0.34 is a tooltip that lies.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX}px) are left off, and plates lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and modules lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
       : lodMode === "full"
-        ? "Detail: full, at every zoom. Click for plates without knobs."
-        : "Detail: plates, titles and jacks only. Click to go back to automatic.";
+        ? "Detail: full, at every zoom. Click for modules without knobs."
+        : "Detail: modules, titles, and jacks only. Click to go back to automatic.";
 }
 $("rack-lod").onclick = () => {
   lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
@@ -10559,11 +10586,11 @@ function syncBeliefBtn() {
   if (!b) return;
   b.setAttribute("aria-pressed", String(beliefOverlay));
   b.closest(".tt").title = beliefOverlay
-    ? "Belief tint: on. Amber edge = you lean toward that family of module, red = away, "
-      + "stronger where the model is more certain. It is a family belief — φ counts how many "
+    ? "Leans: on. An amber edge means your taste leans toward that kind of module, red away, "
+      + "stronger where the model is surer. It reads the kind, not this module: φ counts how many "
       + "filters a patch has, not which filter. Click to turn it off."
-    : "Tint each plate by what the model believes about its family of module — amber toward, "
-      + "red away, stronger where it is certain. Off by default.";
+    : "Tint each module by which way your taste leans on its kind: amber toward, "
+      + "red away, stronger where the model is surer. Off by default.";
 }
 $("rack-belief").onclick = () => {
   beliefOverlay = !beliefOverlay;
@@ -10578,7 +10605,7 @@ $("rack-belief").onclick = () => {
     const sup = nbSupport();
     const lit = wb.rack.modules.filter((m) => beliefResolved(m, sup)).length;
     if (lit === 0) {
-      note("belief tint on — but the model has no resolved lean about anything in this patch yet. Make a few more picks.");
+      note("Leans is on, but the model has no settled lean on anything in this patch yet. Make a few more picks.");
     }
   }
 };
@@ -10615,12 +10642,12 @@ function beliefEdge(m, p, sup) {
   }, `belief-edge ${t.mean >= 0 ? "pos" : "neg"}`);
   const tt = svgEl("title", {});
   tt.textContent =
-    `Family belief, not this module: in ${styleName(views.styles[t.style], t.style)} ` +
-    `(${Math.round(t.share * 100)}% of your bank) you lean ` +
-    `${t.mean >= 0 ? "toward" : "away from"} ${niceName(spec.phi)} — ` +
-    `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
-    `from ${sup.byPhi[spec.phi] || 0} of ${sup.total} patches. The model counts how many of ` +
-    `these a patch has; it has no opinion about this one in particular.`;
+    `The kind, not this module: in ${styleName(views.styles[t.style], t.style)} ` +
+    `(${Math.round(t.share * 100)}% of your pool) you lean ` +
+    `${t.mean >= 0 ? "toward" : "away from"} ${niceName(spec.phi)} ` +
+    `(θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
+    `from ${sup.byPhi[spec.phi] || 0} of ${sup.total} sounds). The model counts how many of ` +
+    `these a patch has, and has no guess about this one in particular.`;
   r.appendChild(tt);
   return r;
 }
@@ -10853,7 +10880,7 @@ function fitBox(box, animate, coMotion) {
 function fitAll(animate) {
   if (!wb.rack) return;
   fitBox(contentBox(), animate);
-  nbAnnounce?.(`fit — ${Math.round(view.zoom * 100)}%`);
+  nbAnnounce?.(`fit: ${Math.round(view.zoom * 100)}%`);
 }
 /** Fit "the selection". There is no selection object yet (that arrives with
  *  node identity), so the honest reading is: whatever the keyboard is on. */
@@ -11025,7 +11052,7 @@ function bmChanged() {
 /** Store the point under a shift-click, or clear the pip it landed on. */
 function bmAdd(rx, ry) {
   const k = bmKey();
-  if (!k) return note("no patch on the bench — a bookmark is a place inside a patch");
+  if (!k) return note("Open a sound first: a bookmark is a place inside its patch.");
   const list = [...(bookmarks.get(k) || [])];
   // A pip is a target as well as a mark. Measured in *map* units, because the
   // thing being aimed at is 5.5 map units across whatever the patch's scale is.
@@ -11033,7 +11060,7 @@ function bmAdd(rx, ry) {
   if (near) {
     bookmarks.set(k, list.filter((b) => b !== near));
     bmChanged();
-    return note(`bookmark ${near.slot} cleared.`);
+    return note(`Bookmark ${near.slot} cleared.`);
   }
   const used = new Set(list.map((b) => b.slot));
   let slot = 0;
@@ -11043,7 +11070,7 @@ function bmAdd(rx, ry) {
   // guess from a map with nine numbers on it.
   if (!slot) {
     return note(
-      `all ${BM_MAX} bookmarks on this patch are taken — shift-click a numbered pip to clear one.`,
+      `All ${BM_MAX} bookmarks on this patch are taken. Shift-click a numbered pip to clear one.`,
       { urgent: true },
     );
   }
@@ -11051,16 +11078,16 @@ function bmAdd(rx, ry) {
   list.sort((a, b) => a.slot - b.slot);
   bookmarks.set(k, list);
   bmChanged();
-  note(`bookmark ${slot} set — shift+${slot} comes back here.`);
+  note(`Bookmark ${slot} set. ⇧${slot} comes back here.`);
 }
 
 function bmJump(slot) {
-  if (!wb.rack) return note("no patch on the bench");
+  if (!wb.rack) return note("Open a sound first.");
   const b = bmList().find((x) => x.slot === slot);
   // The empty slot is the commonest press of this key and it used to be the
   // one thing a keyboard shortcut can do that is indistinguishable from a
   // broken keyboard: nothing at all.
-  if (!b) return note(`no bookmark ${slot} on this patch — shift-click the minimap to set one.`);
+  if (!b) return note(`No bookmark ${slot} on this patch. Shift-click the minimap to set one.`);
   const { w, h } = frameSize();
   viewUserSet = true;
   // A bookmark can have been taken below the preference floor — a big patch
@@ -11072,8 +11099,8 @@ function bmJump(slot) {
     MOTION_MS,
     EASE_MOTION,
   );
-  if (!mapOn) note(`bookmark ${slot}.`);
-  nbAnnounce?.(`bookmark ${slot} — ${Math.round(b.zoom * 100)}%`);
+  if (!mapOn) note(`Bookmark ${slot}.`);
+  nbAnnounce?.(`bookmark ${slot}: ${Math.round(b.zoom * 100)}%`);
 }
 
 function syncMapBtn() {
@@ -11084,8 +11111,8 @@ function syncMapBtn() {
   el.classList.toggle("hidden", !show);
   b.setAttribute("aria-pressed", String(mapOn));
   b.closest(".tt").title = mapOn
-    ? "Hide the minimap. Shift-click it to bookmark a spot; shift+1–9 jumps to one."
-    : "Show the minimap (bottom-left of the rack). Shift-click it to bookmark a spot; shift+1–9 jumps to one.";
+    ? "Hide the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."
+    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.";
   if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
@@ -11458,8 +11485,8 @@ function laneStructCount() {
   return n;
 }
 const LANE_FULL =
-  `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one was not queued — ` +
-  "it is busy (a breed, or a heavy render); try again when they land.";
+  `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one wasn’t queued. ` +
+  "It’s busy (breeding, or a heavy render): try again when they land.";
 function queueStruct(msg, landed, tag, waiting) {
   if (!laneFree()) {
     if (laneStructCount() >= LANE_STRUCT_MAX) return note(LANE_FULL, { urgent: true });
@@ -11586,7 +11613,7 @@ function postParam(q) {
     // The module left the patch in an edit that landed ahead of this turn.
     const p = pendingKnobs.get(q.id);
     if (p && p.seq === q.seq) pendingKnobs.delete(q.id);
-    note("that knob's module left the patch before the turn could land — nothing changed.", { urgent: true });
+    note("That knob’s module left the patch before the turn could land, so nothing changed.", { urgent: true });
     return;
   }
   editInFlight = true;
@@ -11657,7 +11684,7 @@ function holdRewrite(keys, rerun, what) {
 function runRewrite(q) {
   const keys = q.aims.map(keyOfAim);
   if (keys.some((k) => k == null)) {
-    note(`the ${q.what} did not happen — the module it was for left the patch in the edit before it.`, { urgent: true });
+    note(`The ${q.what} didn’t happen: the module it was for left the patch in the edit before it.`, { urgent: true });
     return;
   }
   q.rerun(...keys);
@@ -11925,7 +11952,7 @@ function pruneLocks() {
 // message is only ever "here is a tree" and the intent behind it — duplicate,
 // bypass, reconnect, unplug — is exactly what a later model would want.
 function applyTreeRewrite(fn, tag) {
-  if (!wb.tree) { note("no patch on the bench"); return false; }
+  if (!wb.tree) { note("Open a sound first."); return false; }
   // Never queued as a tree. An op is a description of an edit; a whole-tree
   // replace *is* a tree, computed from the one on screen, and held until the
   // tree has moved on it would post a patch that silently discards the edit
@@ -11934,7 +11961,7 @@ function applyTreeRewrite(fn, tag) {
   // arriving with anything in front is a caller that skipped that, and
   // posting would be exactly the silent discard.
   if (!laneFree()) {
-    note("that edit could not wait its turn safely, so it was not made — try it again.", { urgent: true });
+    note("That edit couldn’t wait its turn safely, so it wasn’t made. Try it again.", { urgent: true });
     return false;
   }
   const tree = JSON.parse(JSON.stringify(wb.tree));
@@ -12172,7 +12199,7 @@ function openStructMenu(mod, x, y) {
       },
       {
         label: "unplug this modulator",
-        sub: "it goes to HELD; the knob stops moving",
+        sub: "it’s set aside, and the knob stops moving",
         danger: true,
         sep: true,
         run: () => unplugMod(parentKey),
@@ -12197,7 +12224,7 @@ function openStructMenu(mod, x, y) {
     label: "insert before…",
     sub: ins === 0 ? "" : `a new module between ${inNames[0]} and this`,
     disabled: ins === 0,
-    why: "a source has no input — there is no wire on this side of it",
+    why: "a source has no input: there is no wire on this side of it",
     run: () => armFromRack("insert", `${key}/0`, { verb: "insert before", aim: key }),
   });
   rows.push({
@@ -12209,19 +12236,19 @@ function openStructMenu(mod, x, y) {
     label: "duplicate",
     sub: ins === 0 ? "" : "a second one, in series, with the same settings",
     disabled: ins === 0,
-    why: "a source has nothing to chain into — branch from its out ○ instead",
+    why: "a source has nothing to chain into: branch from its out ○ instead",
     run: () => duplicateModule(key),
   });
   rows.push({
-    label: "extract to HELD",
-    sub: "leaves the socket empty; drag it back any time",
+    label: "set aside",
+    sub: "leaves the socket empty, and you can drag it back any time",
     run: () => extractModule(key),
   });
   rows.push({
     label: "bypass",
     sub: ins === 0 ? "" : `${inNames[0]} passes straight through`,
     disabled: ins === 0,
-    why: "a source generates the signal — there is nothing to pass through it",
+    why: "a source makes the signal: there is nothing to pass through it",
     run: () => bypassModule(key),
   });
   const port = kindModTarget(mod.kind);
@@ -12241,9 +12268,9 @@ function openStructMenu(mod, x, y) {
     label: tracedHere ? "stop probing this output" : "probe this output",
     sub: tracedHere
       ? "takes the little scope off the out ○"
-      : "a little scope on the out ○ — the patch rendered as if it ended here",
+      : "a little scope on the out ○: the patch rendered as if it ended here",
     disabled: isPlaceholderKey(key),
-    why: "this socket is empty — there is nothing here to listen to",
+    why: "this socket is empty: there is nothing here to listen to",
     run: () => togglePortTrace(mod),
   });
   if (ins === 2) {
@@ -12256,7 +12283,7 @@ function openStructMenu(mod, x, y) {
       // the undo that goes with it. Like every other confirmation here it is
       // said on the reply, so a refused swap stays silent.
       run: () => sendStruct({ op: "swap_mix", key }, {
-        text: `${plateTitle(key)}: ${inNames[0]} and ${inNames[1]} swapped.`,
+        text: `${capital(plateTitle(key))}: ${inNames[0]} and ${inNames[1]} swapped.`,
         opts: { undo: doUndo, undoLabel: "swap them back" },
       }),
     });
@@ -12282,13 +12309,13 @@ function deleteBlurb(key, node, fields, inNames) {
   if (fields.length === 2) {
     const a = subtreeSize(node[tag][fields[0]] || {});
     const b = subtreeSize(node[tag][fields[1]] || {});
-    return `two inputs — you choose which survives (${inNames[0]} ${a}, ${inNames[1]} ${b})`;
+    return `two inputs: you choose which survives (${inNames[0]} ${a}, ${inNames[1]} ${b})`;
   }
   const par = parentOfKey(key);
   if (par && par.binary) {
     return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
   }
-  return fields.length === 0 ? "a lone source cannot be deleted" : "one module; what it feeds moves up";
+  return fields.length === 0 ? "a lone source can’t be deleted" : "one module, and what it feeds moves up";
 }
 
 /** The parent of a trace key, and whether that parent is one of the six
@@ -12327,22 +12354,22 @@ function headFragment(node) {
  *  module (plus a binary's second branch), not a whole second chain. */
 function duplicateModule(key) {
   const here = nodeAtKey(key);
-  if (!here) return note("that module has moved");
+  if (!here) return note("That module has moved.");
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
   if (holdRewrite([key], duplicateModule, `duplicate of the ${name}`)) return;
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "that module has moved — try again";
+    if (!node) return "That module has moved. Try again.";
     const tag = nodeTag(node);
     const f = childFields(MOD_BY_TAG[tag] || {});
-    if (f.length === 0) return "a source has nothing to chain into — branch from its out ○ instead";
+    if (f.length === 0) return "A source has nothing to chain into. Branch from its out ○ instead.";
     const dup = JSON.parse(JSON.stringify(node));
     dup[tag][f[0]] = node;
-    if (!setNodeAtIn(tree, key, dup)) return "that module has moved — try again";
+    if (!setNodeAtIn(tree, key, dup)) return "That module has moved. Try again.";
     return null;
   }, { op: "duplicate", key, kind: rackKindAt(key) });
   if (!ok) return;
-  noteOnLanding(`a second ${name} now sits after the first, with the same settings.`,
+  noteOnLanding(`A second ${name} now sits after the first, with the same settings.`,
     { undo: doUndo, undoLabel: "take it out" });
 }
 
@@ -12350,7 +12377,7 @@ function duplicateModule(key) {
  *  leaving the socket visibly empty. The unplug gesture, from the menu. */
 function extractModule(key) {
   const here = nodeAtKey(key);
-  if (!here) return note("that module has moved");
+  if (!here) return note("That module has moved.");
   // Held as a gesture while anything is in front of it (see `holdRewrite`);
   // everything below runs when its turn comes, against the tree then.
   if (holdRewrite([key], extractModule, `unplug of the ${plateTitle(key)}`)) return;
@@ -12359,9 +12386,9 @@ function extractModule(key) {
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "that module has moved — try again";
+    if (!node) return "That module has moved. Try again.";
     const hole = placeholderNode();
-    if (!setNodeAtIn(tree, key, hole)) return "that module has moved — try again";
+    if (!setNodeAtIn(tree, key, hole)) return "That module has moved. Try again.";
     if (!marks.includes(node)) doomed = node;
     marks.push(hole);
     return null;
@@ -12370,8 +12397,8 @@ function extractModule(key) {
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
     doomed
-      ? `${what} is held below — the socket is empty.`
-      : "the socket is empty.",
+      ? `${capital(what)} is set aside below, and the socket is empty.`
+      : "The socket is empty.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
 }
@@ -12385,22 +12412,22 @@ function extractModule(key) {
  *  version; the shelf is what there is until a node has an identity.) */
 function bypassModule(key) {
   const here = nodeAtKey(key);
-  if (!here) return note("that module has moved");
+  if (!here) return note("That module has moved.");
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
   const f = childFields(MOD_BY_TAG[nodeTag(here)] || {});
-  if (f.length === 0) return note(`${name} generates the signal — there is nothing to pass through it.`);
+  if (f.length === 0) return note(`${capital(name)} makes the signal, so there is nothing to pass through it.`);
   if (holdRewrite([key], bypassModule, `bypass of the ${name}`)) return;
   const lost = f.length === 2 ? subtreeSize(here[nodeTag(here)][f[1]] || {}) : 0;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "that module has moved — try again";
+    if (!node) return "That module has moved. Try again.";
     const tag = nodeTag(node);
     const ff = childFields(MOD_BY_TAG[tag] || {});
     const through = node[tag][ff[0]];
-    if (!through) return "there is nothing plugged into it to pass through";
+    if (!through) return "Nothing is plugged into it to pass through.";
     head = headFragment(node);
-    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
     return null;
   }, { op: "bypass", key, kind: rackKindAt(key) });
   if (!ok) return;
@@ -12408,8 +12435,8 @@ function bypassModule(key) {
   const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
   noteOnLanding(
     lost > 1
-      ? `${name} bypassed — its ${inNames ? inNames[1] : "second"} branch (${lost} modules) is held with it.`
-      : `${name} bypassed — it is held below with its settings; drag it back onto a ○ to switch it in again.`,
+      ? `${capital(name)} bypassed. Its ${inNames ? inNames[1] : "second"} branch (${lost} modules) is set aside with it.`
+      : `${capital(name)} bypassed and set aside below with its settings. Drag it back onto a ○ to switch it in again.`,
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "switch it back in" },
   );
 }
@@ -12420,7 +12447,7 @@ function bypassModule(key) {
  *  knows `MODULES[kind].ins` and it knows the tree — named, and *chosen*. */
 function deleteModule(key, x, y) {
   const node = nodeAtKey(key);
-  if (!node) return note("that module has moved");
+  if (!node) return note("That module has moved.");
   const tag = nodeTag(node);
   const spec = MOD_BY_KIND[rackKindAt(key)] || MOD_BY_TAG[tag];
   const f = childFields(spec || {});
@@ -12428,7 +12455,7 @@ function deleteModule(key, x, y) {
 
   if (f.length === 2) {
     const names = spec?.inNames || ["a", "b"];
-    return openChooser(x, y, `delete ${name} — which input survives?`, [0, 1].map((i) => {
+    return openChooser(x, y, `delete ${name}: which input survives?`, [0, 1].map((i) => {
       // Both branches are plates on screen, so both are named the way the rack
       // names them — a survivor choice is exactly the wrong place to make the
       // player decode a label they have never been shown.
@@ -12436,8 +12463,8 @@ function deleteModule(key, x, y) {
       const dropSize = subtreeSize(node[tag][f[1 - i]] || {});
       return {
         label: `delete, keep ${names[i]}`,
-        sub: `${keepName} takes ${name}'s place · discards ${names[1 - i]} ` +
-             `(${dropSize} module${dropSize === 1 ? "" : "s"}) to HELD`,
+        sub: `${keepName} takes ${name}’s place · sets ${names[1 - i]} aside ` +
+             `(${dropSize} module${dropSize === 1 ? "" : "s"})`,
         run: () => deleteKeeping(key, i, name),
       };
     }));
@@ -12455,7 +12482,7 @@ function deleteModule(key, x, y) {
     return openChooser(x, y, `delete this branch?`, [{
       label: `delete ${name} and the ${pname}`,
       sub: `${sib} feeds straight through · this branch ` +
-           `(${subtreeSize(node)} module${subtreeSize(node) === 1 ? "" : "s"}) goes to HELD`,
+           `(${subtreeSize(node)} module${subtreeSize(node) === 1 ? "" : "s"}) is set aside`,
       danger: true,
       run: () => deleteKeeping(par.key, 1 - mine, pname),
     }]);
@@ -12476,23 +12503,23 @@ function deleteModule(key, x, y) {
  *  this, not as the menu's whole decision again. */
 function deletePlain(key) {
   const node = nodeAtKey(key);
-  if (!node) return note("that module has moved");
+  if (!node) return note("That module has moved.");
   const name = kindName(rackKindAt(key)) || fragLabel(node, false);
   if (holdRewrite([key], deletePlain, `delete of the ${name}`)) return;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
     const n = nodeAtIn(tree, key);
-    if (!n) return "that module has moved — try again";
+    if (!n) return "That module has moved. Try again.";
     const t = nodeTag(n);
     const through = n[t][childFields(MOD_BY_TAG[t] || {})[0]];
-    if (!through) return "a lone source cannot be deleted — replace it instead";
+    if (!through) return "A lone source can’t be deleted. Replace it instead.";
     head = headFragment(n);
-    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
     return null;
   }, { op: "delete_rewrite", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
-  noteOnLanding(`${name} deleted — it is held below.`,
+  noteOnLanding(`${capital(name)} deleted and set aside below.`,
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
 }
 
@@ -12506,23 +12533,23 @@ function deleteKeeping(key, keep, name) {
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "that module has moved — try again";
+    if (!node) return "That module has moved. Try again.";
     const tag = nodeTag(node);
     const f = childFields(MOD_BY_TAG[tag] || {});
-    if (f.length !== 2) return "that module no longer has two inputs";
+    if (f.length !== 2) return "That module no longer has two inputs.";
     const survivor = node[tag][f[keep]];
     const dropped = node[tag][f[1 - keep]];
-    if (!survivor) return "that module has moved — try again";
+    if (!survivor) return "That module has moved. Try again.";
     if (dropped && !marks.includes(dropped)) doomed = dropped;
-    if (!setNodeAtIn(tree, key, survivor)) return "that module has moved — try again";
+    if (!setNodeAtIn(tree, key, survivor)) return "That module has moved. Try again.";
     return null;
   }, { op: "delete_keeping", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
     doomed
-      ? `${name} deleted — ${droppedName} is held below.`
-      : `${name} deleted.`,
+      ? `${capital(name)} deleted, and ${droppedName} is set aside below.`
+      : `${capital(name)} deleted.`,
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
 }
@@ -12533,7 +12560,7 @@ function unplugMod(ownerKey) {
   const old = modAtKey(ownerKey);
   let uid = null;
   sendStruct({ op: "set_mod", key: ownerKey, kind: "none" }, {
-    text: old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
+    text: old ? `${capital(fragLabel(old, true))} unplugged and set aside below.` : "Modulation unplugged.",
     opts: { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
   });
   uid = old ? stageFragment(old, true) : null;
@@ -12767,7 +12794,7 @@ const KNOB_UNITS = {
   // louder one side actually is — "a 3%" at dead centre described neither the
   // position nor the levels.
   bal: (x) => {
-    if (Math.abs(x - 0.5) < 0.005) return "centre";
+    if (Math.abs(x - 0.5) < 0.005) return "center";
     // At the ends the other side is genuinely silent, so the difference is
     // infinite; printing the clamp artifact ("a +60.0 dB") states a number
     // where the honest answer is a word.
@@ -13201,7 +13228,7 @@ function focusPlate(el, say) {
     const m = wb.rack?.modules.find((x) => x.key === key);
     const plates = rackPlates();
     nbAnnounce(
-      `${isPlaceholderKey(key) ? "empty socket" : m?.title || key} — ` +
+      `${isPlaceholderKey(key) ? "empty socket" : m?.title || key}, ` +
       `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
       `Enter for the structure menu, right and left for its knobs.`,
     );
@@ -13227,7 +13254,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
       focusPlate(plates[Math.max(0, Math.min(plates.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]);
     } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       e.preventDefault();
-      if (knobs.length === 0) return nbAnnounce("this module has no knobs");
+      if (knobs.length === 0) return nbAnnounce("This module has no knobs.");
       const k = e.key === "ArrowRight" ? knobs[0] : knobs[knobs.length - 1];
       focusRackControl(rackControls().indexOf(k));
     } else if (e.key === "Enter" || e.key === "F2") {
@@ -13310,7 +13337,7 @@ function startEvolveFrom(id) {
   // but a commit's duel can end with "…then evolve" while one breeds: the
   // commit stands, and the ⚡ it was on its way to says why it did not go.
   if (breeding || evolvingFrom) {
-    note(`⚡ not started — ${breeding ? "EVOLVE POOL is breeding a generation" : "⚡ is already evolving a patch"}. Press ⚡ again when it finishes.`, { urgent: true, replace: "evolve-from" });
+    note(`⚡ didn’t start: ${breeding ? "EVOLVE POOL is breeding a generation" : "⚡ is already evolving a sound"}. Press ⚡ again when it finishes.`, { urgent: true, replace: "evolve-from" });
     return;
   }
   // Said in the job slot (and on the button), not a toast: a toast carries
@@ -13340,15 +13367,15 @@ function renderEvolveFrom() {
   const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
   btn.disabled = !!evolvingFrom || !!breeding || !hasRack;
   const wrap = btn.closest(".tt");
-  if (wrap) wrap.title = btn.disabled ? evolveFromWhy() || "Pick a patch from the bank first" : "";
+  if (wrap) wrap.title = btn.disabled ? evolveFromWhy() || "Pick a sound from the bank first" : "";
 }
 
 /** Why ⚡ cannot be pressed now for a job, or null. */
 function evolveFromWhy() {
   if (evolvingFrom) {
     return evolvingFrom.stoppable
-      ? "⚡ is evolving this patch — the job slot in the menu bar shows it, with stop"
-      : "⚡ is evolving this patch — the job slot in the menu bar shows it";
+      ? "⚡ is evolving this sound. The job slot in the menu bar shows it, with stop"
+      : "⚡ is evolving this sound. The job slot in the menu bar shows it";
   }
   if (breeding) return ZAP_WAITS_FOR_GENERATION;
   return null;
@@ -13444,7 +13471,7 @@ function settleCommit() {
 }
 
 function sendCommit(outcome, opts = {}) {
-  if (opts.evolving) note("committing your edits, then evolving…");
+  if (opts.evolving) note("Keeping your edit as new, then evolving…");
   logImplicit("commit", { outcome, dirty: wb.dirty }); // voice: name
   send({ type: "edit_commit", outcome });
 }
@@ -13470,7 +13497,7 @@ function openCommitDuel(m, then) {
     drawWave($(`cd-scope-${side}`), (isOrig ? orig : wb.buffer).getChannelData(0));
   }
   $(`cd-play-${commitDuel.origSide === "a" ? "a" : "b"}`).focus();
-  nbAnnounce("Which one is better? Play A and B, then pick one.");
+  nbAnnounce("Which would you reach for? Play A and B, then pick one.");
 }
 
 function closeCommitDuel() {
@@ -13496,8 +13523,8 @@ function cdPick(side) {
   sendCommit(editWon ? "heard_edited" : "heard_original", { evolving: then === "evolve" });
   // The reveal: the card was blind, so the receipt says which side was which.
   note(editWon
-    ? `${editSide} was your edit — taught: you heard both and your edit won.`
-    : `${editSide} was your edit — taught: you heard both and the original won, the more useful half.`,
+    ? `${editSide} was your edit, and you picked it.`
+    : `${editSide} was your edit, and you picked the original. It learns most from that.`,
   { replace: "commit" });
 }
 
@@ -13593,8 +13620,8 @@ $("lock-clear").onclick = () => {
 const LAYOUT_TIP = {
   chain: "Chain: the signal path on one baseline. Click to pack it tight.",
   compact: "Compact: layers packed tight. Click to place modules by hand.",
-  freeform: "Freeform: drag plates where you like — they snap to the grid, " +
-    "hold shift to place freely. Click for the straight signal chain.",
+  freeform: "Freeform: drag modules where you like. They snap to the grid, and " +
+    "⇧ places them freely. Click for the straight signal chain.",
 };
 function syncLayoutBtn() {
   const b = $("rack-layout");
@@ -13708,7 +13735,7 @@ const MODULES = [
     // pitch — no vibrato, no envelope drop, no siren.
     ins: 0, modTarget: "pitch", phi: "n_vco",
     tags: ["osc", "oscillator", "analog", "saw", "square", "sine", "basic", "vibrato"],
-    blurb: "The reference oscillator. One bandlimited shape at a time — sine, triangle, saw or square — tracking the keyboard. Cable its mod input and the pitch itself bends.",
+    blurb: "The reference oscillator. One bandlimited shape at a time (sine, triangle, saw, or square), tracking the keyboard. Cable its mod input and the pitch itself bends.",
     heard: "brightness and roughness, well.",
     glyph: `<path class="gl" d="M1 11.5 L7 2.5 L7 11.5 L13 2.5 L13 11.5 L19 2.5"/>`,
     frag: SEED_VCO,
@@ -13718,7 +13745,7 @@ const MODULES = [
     ins: 0, modTarget: "pitch", phi: "n_supersaw",
     tags: ["saw", "stack", "detune", "wide", "trance", "unison", "thick"],
     blurb: "Seven saws detuned against each other, plus a sub. The sound of a chord played by one note.",
-    heard: "brightness and roughness. The feature pipeline listens to the L/R sum, so the width collapses before the model hears it.",
+    heard: "brightness and roughness. The model hears left and right summed, so the width collapses before it hears it.",
     glyph:
       `<path class="gl-ghost" d="M0.5 9.5 L6 2 L6 9.5 L11.5 2 L11.5 9.5 L17 2"/>` +
       `<path class="gl-ghost" d="M2.5 13 L8 5.5 L8 13 L13.5 5.5 L13.5 13 L19 5.5"/>` +
@@ -13729,7 +13756,7 @@ const MODULES = [
     kind: "wavetable", tag: "Wavetable", name: "wavetable", sort: "source", group: "sources",
     ins: 0, modTarget: "morph", phi: "n_wavetable",
     tags: ["wt", "morph", "digital", "sweep", "table", "shape"],
-    blurb: "Eight bandlimited shapes on one dial. Morph sweeps between them while the note is still sounding — the first source here whose timbre moves.",
+    blurb: "Eight bandlimited shapes on one dial. Morph sweeps between them while the note is still sounding: the first source here whose timbre moves.",
     heard: "brightness, and the movement itself through the spectral change over the sample.",
     glyph:
       `<path class="gl" d="M1 3.4 q2.3 -2.8 4.6 0 t4.6 0 t4.6 0"/>` +
@@ -13745,8 +13772,8 @@ const MODULES = [
     // so it has to name the control the compiler actually cables.
     ins: 0, modTarget: "decay", phi: "n_pluck",
     tags: ["string", "karplus", "physical", "guitar", "harp", "mallet", "koto"],
-    blurb: "A string, modelled rather than sampled. Strike it and it rings — decay decides for how long, brightness decides what the pick was made of.",
-    heard: "its decay and its brightness. It has no sustain to speak of, which the amp envelope's shape cannot hide.",
+    blurb: "A string, modeled rather than sampled. Strike it and it rings: decay sets for how long, and brightness what the pick was made of.",
+    heard: "its decay and its brightness. It has no sustain to speak of, which the amp envelope’s shape can’t hide.",
     glyph: `<path class="gl" d="M1 7 C2.4 0.8, 4 13.2, 5.6 7 C6.9 2.4, 8.2 11.6, 9.5 7 C10.6 3.8, 11.7 10.2, 12.8 7 C13.7 4.9, 14.6 9.1, 15.5 7 C16.3 5.6, 17.1 8.4, 17.9 7 L19 7"/>`,
     frag: () => ({ Pluck: { octave: 0, damping: 0.45, brightness: 0.6, mod_depth: 0.3, modulation: "None" } }),
   },
@@ -13758,7 +13785,7 @@ const MODULES = [
     // movement, and spectral movement is what φ measures best.
     ins: 0, modTarget: "vowel", phi: "n_formant",
     tags: ["vowel", "voice", "vox", "throat", "talk", "choir", "ah", "oo"],
-    blurb: "A glottal pulse through five resonators. Sweep the vowel and it speaks — ah, eh, ee, oh, oo — without ever leaving the keyboard.",
+    blurb: "A glottal pulse through five resonators. Sweep the vowel and it speaks (ah, eh, ee, oh, oo) without ever leaving the keyboard.",
     heard: "as a moving centroid. The vowel itself is a formant pattern the model has no coordinate for; it hears the sweep, not the word.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
@@ -13771,7 +13798,7 @@ const MODULES = [
     kind: "noise", tag: "Noise", name: "noise", sort: "source", group: "sources",
     ins: 0, modTarget: null, phi: "n_noise",
     tags: ["white", "pink", "hiss", "wind", "percussion", "air", "snare"],
-    blurb: "Every frequency at once — white flat, pink weighted toward the bottom. Filter it and it becomes wind, breath or a snare.",
+    blurb: "Every frequency at once: white is flat, and pink weighted toward the bottom. Filter it and it becomes wind, breath, or a snare.",
     heard: "flatness, loudly. It is the one source φ can pick out on its own.",
     glyph: `<path class="gl" d="M1 7 L2.3 2.6 L3.6 10.8 L4.9 4 L6.2 12 L7.5 3.4 L8.8 9.6 L10.1 2.4 L11.4 11.4 L12.7 4.6 L14 12.2 L15.3 3 L16.6 10 L17.9 4.4 L19 7.4"/>`,
     frag: () => ({ Noise: { color: "White" } }),
@@ -13804,7 +13831,7 @@ const MODULES = [
     kind: "bitcrush", tag: "Bitcrush", name: "bitcrush", sort: "proc", group: "shape",
     ins: 1, modTarget: "bits", phi: "n_drive",
     tags: ["crush", "lo-fi", "digital", "8-bit", "aliasing", "sampler", "grit", "chiptune"],
-    blurb: "Throws away bits and sample rate. The sound of an early sampler running out of memory — and nothing like saturation, because the damage is quantisation, not clipping.",
+    blurb: "Throws away bits and sample rate. The sound of an early sampler running out of memory, and nothing like saturation, because the damage is quantization, not clipping.",
     heard: "roughness and flatness. Its aliasing sits above where the model listens most.",
     glyph: `<path class="gl" d="M1 10.6 h2.6 V8 h2.6 V5 h2.6 V3.4 h2.6 V5 h2.6 V8 h2.6 V10.6 h2"/>`,
     frag: () => ({ Bitcrush: { bits: 0.55, downsample: 0.3, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
@@ -13815,8 +13842,8 @@ const MODULES = [
     kind: "filter", tag: "Filter", name: "filter", sort: "proc", group: "filter",
     ins: 1, modTarget: "cutoff", phi: "n_filter",
     tags: ["lowpass", "highpass", "bandpass", "ladder", "svf", "cutoff", "resonance", "303", "sweep"],
-    blurb: "The identity of a subtractive synth. Four modes on one plate: three state-variable responses and a diode ladder that growls when you push it.",
-    heard: "brightness and rolloff — the coordinates φ measures best. Nothing you do here is invisible to the model.",
+    blurb: "The identity of a subtractive synth. Four modes on one module: three state-variable responses and a diode ladder that growls when you push it.",
+    heard: "brightness and rolloff, the coordinates φ measures best. Nothing you do here is invisible to the model.",
     glyph: `<path class="gl" d="M1 5 H8.6 C10.6 5, 10.9 3, 12.1 3 C13.4 3, 13.7 7.2, 15.2 10 C16.4 12.3, 17.7 13, 19 13"/>`,
     frag: () => ({ Filter: { kind: "SvfLp", cutoff: 0.6, resonance: 0.3, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
   },
@@ -13825,7 +13852,7 @@ const MODULES = [
     kind: "eq", tag: "Eq", name: "eq", sort: "proc", group: "filter",
     ins: 1, modTarget: "mid", phi: "n_filter",
     tags: ["tone", "tilt", "shelf", "bass", "treble", "boost", "cut", "presence"],
-    blurb: "Three bands of ±12 dB: a low shelf, a mid bell and a high shelf. It arrives flat and does nothing until you move it — that is what a tone control is.",
+    blurb: "Three bands of ±12 dB: a low shelf, a mid bell, and a high shelf. It arrives flat and does nothing until you move it: that is what a tone control is.",
     heard: "directly, as brightness and rolloff. The most legible thing in the palette to the model.",
     glyph: `<path class="gl" d="M1 4.6 H3.4 C5 4.6, 5.4 10.4, 7.6 10.4 C9.4 10.4, 10.2 10.4, 11.6 10.4 C13.6 10.4, 14 4.6, 16.2 4.6 H19"/>`,
     frag: () => ({ Eq: { low: 0.5, mid: 0.5, high: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
@@ -13836,7 +13863,7 @@ const MODULES = [
     kind: "delay", tag: "Delay", name: "delay", sort: "proc", group: "space",
     ins: 1, modTarget: "time", phi: "n_time",
     tags: ["echo", "repeat", "feedback", "tape", "slap", "dub", "flutter"],
-    blurb: "Repeats what it hears, quieter each time. Modulate the time and the repeats bend pitch — that is tape flutter.",
+    blurb: "Repeats what it hears, quieter each time. Modulate the time and the repeats bend pitch: that is tape flutter.",
     heard: "as a longer, more sustained sample. Its rhythm is not a coordinate φ has.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
@@ -13850,7 +13877,7 @@ const MODULES = [
     ins: 1, modTarget: "depth", phi: "n_mod_fx",
     tags: ["ensemble", "width", "thicken", "detune", "shimmer", "80s", "stereo"],
     blurb: "A copy of the signal drifting in and out of tune with itself. One voice becomes a section, and the two sides go different ways.",
-    heard: "as comb filtering, not as width — the pipeline sums L and R, so the model learns the artefact rather than the effect.",
+    heard: "as comb filtering, not as width: the model hears left and right summed, so it learns the artifact rather than the effect.",
     glyph:
       `<path class="gl-ghost" d="M1 7 q2.6 4.2 5.2 0 t5.2 0 t5.2 0"/>` +
       `<path class="gl" d="M1 7 q2.2 -4.2 4.4 0 t4.4 0 t4.4 0 t4.4 0"/>`,
@@ -13860,7 +13887,7 @@ const MODULES = [
     kind: "reverb", tag: "Reverb", name: "reverb", sort: "proc", group: "space",
     ins: 1, modTarget: "size", phi: "n_reverb",
     tags: ["room", "hall", "space", "tail", "ambient", "wash", "verb"],
-    blurb: "Puts the sound somewhere. Size is how far the walls are, damping is what they are made of — modulate size and the room breathes.",
+    blurb: "Puts the sound somewhere. Size is how far the walls are, and damping what they are made of. Modulate size and the room breathes.",
     heard: "as a longer tail and a flatter spectrum. Its stereo depth is not measured.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
@@ -13871,8 +13898,8 @@ const MODULES = [
     kind: "phaser", tag: "Phaser", name: "phaser", sort: "proc", group: "space",
     ins: 1, modTarget: "depth", phi: "n_mod_fx",
     tags: ["sweep", "notch", "jet", "allpass", "swirl", "phase", "funk"],
-    blurb: "Allpass stages sweeping a comb of notches through the sound. Where a chorus blurs, a phaser carves — and the feedback knob is what makes it whistle.",
-    heard: "as a moving rolloff. Its notches are shallower than φ's brightness coordinates resolve.",
+    blurb: "Allpass stages sweeping a comb of notches through the sound. Where a chorus blurs, a phaser carves, and the feedback knob is what makes it whistle.",
+    heard: "as a moving rolloff. Its notches are shallower than φ’s brightness coordinates resolve.",
     // Drawn as a response curve on the same axis convention as `filter`, so
     // SHAPE / FILTER / SPACE each read in their own domain and the phaser stops
     // colliding with the chorus's two-waveform picture.
@@ -13886,8 +13913,8 @@ const MODULES = [
     kind: "flanger", tag: "Flanger", name: "flanger", sort: "proc", group: "space",
     ins: 1, modTarget: "depth", phi: "n_mod_fx",
     tags: ["jet", "whoosh", "comb", "sweep", "metallic", "tape", "swirl"],
-    blurb: "A copy of the signal delayed by a millisecond or two and swept. Where the phaser carves four notches, a flanger carves a whole harmonic comb — that is the jet-plane sound.",
-    heard: "as a moving rolloff, and only weakly: the comb's teeth are finer than φ's brightness coordinates resolve.",
+    blurb: "A copy of the signal delayed by a millisecond or two and swept. Where the phaser carves four notches, a flanger carves a whole harmonic comb: that is the jet-plane sound.",
+    heard: "as a moving rolloff, and only weakly: the comb’s teeth are finer than φ’s brightness coordinates resolve.",
     // A dense comb — deliberately more teeth than the phaser's four, because
     // that is exactly what separates them to anyone who is not already an
     // expert, and the two sit in the same group.
@@ -13898,8 +13925,8 @@ const MODULES = [
     kind: "granular", tag: "Granular", name: "granular", sort: "proc", group: "space",
     ins: 1, modTarget: "position", phi: "n_time",
     tags: ["grains", "cloud", "texture", "smear", "stretch", "shimmer", "blur"],
-    blurb: "Chops what it hears into short grains and sprays them back. Position picks where in the recent past to read from, density how many at once — a sound scattered and reassembled.",
-    heard: "as a longer, flatter, less periodic sample. The scattering is exactly the kind of thing φ's flatness coordinate is for.",
+    blurb: "Chops what it hears into short grains and sprays them back. Position picks where in the recent past to read from, density how many at once: a sound scattered and put back together.",
+    heard: "as a longer, flatter, less periodic sample. The scattering is exactly the kind of thing φ’s flatness coordinate is for.",
     glyph:
       `<path class="gl" d="M2 5 v2 M4 8.4 v2 M5.6 3.6 v2 M7.2 9.6 v2 M8.8 6 v2 M10.4 3.4 v2 ` +
       `M12 8.6 v2 M13.6 5.4 v2 M15.2 10 v2 M16.8 6.8 v2 M18.4 4.4 v2"/>`,
@@ -13911,8 +13938,8 @@ const MODULES = [
     kind: "tremolo", tag: "Tremolo", name: "tremolo", sort: "proc", group: "motion",
     ins: 1, modTarget: "depth", phi: "n_mod_fx",
     tags: ["amplitude", "pulse", "throb", "chop", "surf", "helicopter", "am"],
-    blurb: "Level, moving on its own clock. Shape leans the LFO from a sine toward a triangle — gentle swell at one end, a hard chop at the other.",
-    heard: "as movement in loudness over the sample rather than in timbre — one of the few things φ measures that has nothing to do with brightness.",
+    blurb: "Level, moving on its own clock. Shape leans the LFO from a sine toward a triangle: a gentle swell at one end, a hard chop at the other.",
+    heard: "as movement in loudness over the sample rather than in timbre, one of the few things φ measures that has nothing to do with brightness.",
     glyph:
       `<path class="gl-ghost" d="M1 7 q2.5 5 5 0 t5 0 t5 0 t3 0"/>` +
       `<path class="gl" d="M1 7 q2.5 -5 5 0 t5 0 t5 0 t3 0"/>`,
@@ -13922,7 +13949,7 @@ const MODULES = [
     kind: "vibrato", tag: "Vibrato", name: "vibrato", sort: "proc", group: "motion",
     ins: 1, modTarget: "depth", phi: "n_mod_fx",
     tags: ["pitch", "wobble", "warble", "singer", "wow", "flutter", "tape"],
-    blurb: "Pitch, moving on its own clock — applied to a whole chain rather than one oscillator. Wet all the way, because a half-wet vibrato is a chorus.",
+    blurb: "Pitch, moving on its own clock, applied to a whole chain rather than one oscillator. Wet all the way, because a half-wet vibrato is a chorus.",
     heard: "barely on its own. φ has no pitch coordinate; what reaches the model is the smearing a swept delay line leaves behind.",
     // Lobes that widen and narrow: the wavelength itself is what moves.
     glyph: `<path class="gl" d="M1 7 q0.7 -4.4 1.4 0 q0.9 4.4 1.8 0 q1.3 -4.4 2.6 0 q1.7 4.4 3.4 0 q1.3 -4.4 2.6 0 q0.9 4.4 1.8 0 q0.7 -4.4 1.4 0"/>`,
@@ -13934,7 +13961,7 @@ const MODULES = [
     ins: 1, modTarget: "shift", phi: "n_time",
     tags: ["harmony", "transpose", "octave", "detune", "harmonizer", "semitone", "chipmunk"],
     blurb: "Transposes what it hears without changing its speed, then blends the shifted copy back in. Set it to a third or a fifth and one note becomes an interval.",
-    heard: "as a brighter or darker copy layered over the original — φ measures the sum, and has no coordinate for the interval itself.",
+    heard: "as a brighter or darker copy layered over the original: φ measures the sum, and has no coordinate for the interval itself.",
     glyph:
       `<path class="gl-ghost" d="M1 10.5 q1.6 -3.4 3.2 0 t3.2 0 t3.2 0 t3.2 0 t3.2 0"/>` +
       `<path class="gl" d="M1 4.2 q1.1 -3.4 2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0"/>`,
@@ -13950,7 +13977,7 @@ const MODULES = [
     ins: 2, inNames: ["in", "key"], modTarget: "threshold", phi: "n_dynamics", fields: ["input", "sidechain"],
     tags: ["squash", "glue", "level", "sustain", "punch", "sidechain", "dynamics"],
     blurb: "Turns down whatever passes a threshold, by the ratio you set. Feed its key input from another chain and it is a sidechain compressor.",
-    heard: "as a flatter, more sustained sample — φ's crest and RMS coordinates read this one directly.",
+    heard: "as a flatter, more sustained sample: φ’s crest and RMS coordinates read this one directly.",
     glyph:
       `<path class="gl-rule" d="M1 13 L19 1"/>` +
       `<path class="gl" d="M1 13 L8.5 5.5 C10.2 4, 11.6 3.6, 13.6 3.3 L19 2.8"/>`,
@@ -13994,8 +14021,8 @@ const MODULES = [
     kind: "mix", tag: "Mix", name: "mix", sort: "combine", group: "combine",
     ins: 2, modTarget: null, phi: null,
     tags: ["blend", "crossfade", "layer", "two", "sum", "branch", "parallel"],
-    blurb: "Crossfades two chains into one, at equal power. This is how a patch branches — everything else here is a straight line.",
-    heard: "as whichever side you favour. The balance knob moves every audio coordinate at once.",
+    blurb: "Crossfades two chains into one, at equal power. This is how a patch branches: everything else here is a straight line.",
+    heard: "as whichever side you favor. The balance knob moves every audio coordinate at once.",
     glyph: `<path class="gl" d="M1 2.8 L9.6 7 L19 7 M1 11.2 L9.6 7"/>`,
     frag: () => ({
       Mix: { balance: 0.5, a: SEED_VCO(), b: { Vco: { wave: "Triangle", octave: 0, detune: 0.5 } } },
@@ -14005,8 +14032,8 @@ const MODULES = [
     kind: "ringmod", tag: "RingMod", name: "ring mod", sort: "combine", group: "combine",
     ins: 2, inNames: ["carrier", "mod"], modTarget: null, phi: "n_drive",
     tags: ["am", "ring", "metallic", "bell", "inharmonic", "clang", "radio", "dalek"],
-    blurb: "Multiplies two chains together. What comes out is the sum and difference of their frequencies — inharmonic, so it reads as bell, metal or radio rather than as a note.",
-    heard: "as a jump in roughness and flatness. There is no ring-mod coordinate — the model hears the spectrum it produces, not the operation.",
+    blurb: "Multiplies two chains together. What comes out is the sum and difference of their frequencies: inharmonic, so it reads as bell, metal, or radio rather than as a note.",
+    heard: "as a jump in roughness and flatness. There is no ring-mod coordinate: the model hears the spectrum it produces, not the operation.",
     glyph:
       `<path class="gl-rule" d="M1 7 q4.5 -5.6 9 0 t9 0"/>` +
       `<path class="gl" d="M1 7 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0"/>`,
@@ -14024,7 +14051,7 @@ const MODULES = [
     ins: 2, inNames: ["carrier", "voice"], modTarget: "bands", phi: "n_filter", fields: ["carrier", "modulator"],
     tags: ["talk", "robot", "vox", "speech", "choir", "formant", "daft"],
     blurb: "Splits one chain into bands, measures how loud each is, and imposes that shape on another. The carrier supplies the pitch, the voice supplies the words.",
-    heard: "as the carrier's brightness following the voice's — a filter bank whose curve is drawn by a signal.",
+    heard: "as the carrier’s brightness following the voice’s: a filter bank whose curve is drawn by a signal.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
       `<path class="gl" d="M2 12 V6.2 M4.4 12 V3.6 M6.8 12 V7.8 M9.2 12 V4.6 M11.6 12 V9.2 ` +
@@ -14045,8 +14072,8 @@ const MODULES = [
     kind: "lfo", tag: "Lfo", name: "lfo", sort: "mod", group: "modulation",
     ins: 0, modTarget: null, phi: "n_lfo",
     tags: ["wobble", "sweep", "cycle", "vibrato", "tremolo", "slow", "movement"],
-    blurb: "A slow oscillator that never stops. Cabled anywhere, it makes that parameter breathe on its own clock.",
-    heard: "as movement across the sample — φ measures how much things change, not what changed them.",
+    blurb: "A slow oscillator that never stops. Cabled anywhere, it makes that knob breathe on its own clock.",
+    heard: "as movement across the sample: φ measures how much things change, not what changed them.",
     glyph: `<path class="gl" d="M1 10.6 L5.5 3.4 L10 10.6 L14.5 3.4 L19 10.6"/>`,
     frag: () => ({ Lfo: { wave: "Triangle", rate: 0.4 } }),
   },
@@ -14054,8 +14081,8 @@ const MODULES = [
     kind: "env", tag: "Env", name: "mod env", sort: "mod", group: "modulation",
     ins: 0, modTarget: null, phi: "n_env",
     tags: ["envelope", "ad", "attack", "decay", "per note", "sweep", "pluck"],
-    blurb: "Fires once per note and decays. This is the classic filter sweep — the shape that makes a note sound plucked, bowed or blown.",
-    heard: "clearly: it is the main thing shaping the sample's spectral contour over time.",
+    blurb: "Fires once per note and decays. This is the classic filter sweep: the shape that makes a note sound plucked, bowed, or blown.",
+    heard: "clearly: it is the main thing shaping the sample’s spectral contour over time.",
     glyph: `<path class="gl" d="M1 12 L5 2.4 L19 12"/>`,
     frag: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
   },
@@ -14064,7 +14091,7 @@ const MODULES = [
     ins: 0, modTarget: null, phi: "n_rand",
     tags: ["random", "sample and hold", "stepped", "wander", "burble", "chance", "glide"],
     blurb: "Holds a new random value at every tick. Glide smooths the steps, which is the difference between a burble and a wander.",
-    heard: "as instability. Two takes of the same patch differ, which is itself a thing to like.",
+    heard: "as instability. Two takes of the same sound differ, which is itself a thing to like.",
     glyph: `<path class="gl" d="M1 9 h3 V4 h3 V11.2 h3 V6 h3 V8.6 h3 V3.4 h2"/>`,
     frag: () => ({ Rand: { rate: 0.4, glide: 0.0 } }),
   },
@@ -14073,7 +14100,7 @@ const MODULES = [
     ins: 0, modTarget: null, phi: "n_follow",
     tags: ["envelope follower", "dynamic", "react", "duck", "auto", "responsive", "self"],
     blurb: "Listens to what is already going into this module and turns its loudness into modulation. The patch starts responding to itself.",
-    heard: "as a coupling between loudness and timbre — φ sees the result, not the cause.",
+    heard: "as a coupling between loudness and timbre: φ sees the result, not the cause.",
     glyph:
       `<path class="gl-ghost" d="M2 7 L3 3.6 L4 10.4 L5 4.2 L6 10 L7 4.8 L8 9.6 L9 5.4 L10 9 L11 5.9 L12 8.4 L13 6.3 L14 8 L15 6.6 L16 7.6 L17 6.9 L18 7.3"/>` +
       `<path class="gl" d="M1 12.4 C2.6 3, 3.4 2.6, 5.2 3.2 C8.6 4.2, 13 9.4, 19 11.8"/>`,
@@ -14083,7 +14110,7 @@ const MODULES = [
     kind: "euclid", tag: "Euclid", name: "euclid", sort: "mod", modSort: "leaf", group: "modulation",
     ins: 0, modTarget: null, phi: "n_mod_logic",
     tags: ["rhythm", "pattern", "clock", "pulse", "gate", "steps", "polyrhythm", "tick"],
-    blurb: "Spreads a number of pulses as evenly as it can across a number of steps — the pattern behind most drum machines. Cabled to a cutoff, a pad starts playing a rhythm.",
+    blurb: "Spreads a number of pulses as evenly as it can across a number of steps: the pattern behind most drum machines. Cabled to a cutoff, a pad starts playing a rhythm.",
     heard: "as movement on a grid. φ has no coordinate for rhythm; what reaches the model is that the sample stops sitting still.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
@@ -14097,7 +14124,7 @@ const MODULES = [
     // both are a value that jumps on a clock.
     ins: 0, modTarget: null, phi: "n_rand",
     tags: ["sequence", "sequencer", "step", "steps", "pattern", "rhythm", "stepped", "bars", "melody", "marbles"],
-    blurb: "Plays a short pattern of values on its own clock — up to eight steps, each one a bar you draw. Cabled to a cutoff or a fold, the timbre gets a rhythm of its own.",
+    blurb: "Plays a short pattern of values on its own clock: up to eight steps, each one a bar you draw. Cabled to a cutoff or a fold, the timbre gets a rhythm of its own.",
     heard: "as stepped movement, counted with s&h rand because the ear hears both as a value that jumps on a clock. φ cannot tell which values you drew.",
     glyph:
       `<path class="gl-rule" d="M0 12.5 H20"/>` +
@@ -14122,7 +14149,7 @@ const MODULES = [
     kind: "slew", tag: "Op", name: "slew", sort: "mod", modSort: "op", group: "cvshape", params: ["rise", "fall"],
     ins: 0, modTarget: null, phi: "n_mod_shape",
     tags: ["glide", "smooth", "portamento", "lag", "ramp", "soften", "sand"],
-    blurb: "Limits how fast its input can move, with separate times up and down. Every step becomes a ramp — the difference between a burble and a wander.",
+    blurb: "Limits how fast its input can move, with separate times up and down. Every step becomes a ramp: the difference between a burble and a wander.",
     heard: "as slower spectral movement. The steps it removes were the part φ noticed most.",
     glyph:
       `<path class="gl-ghost" d="M1 10.5 h4 V4 h5 V10.5 h4 V4 h5"/>` +
@@ -14157,22 +14184,22 @@ const MODULES = [
   // Six variants of one shape, so they share a glyph vocabulary: the two
   // inputs on the left, the decision on the right.
   ...[
-    ["min", "min", "the lower of the two, sample by sample — whichever modulator is quieter wins",
+    ["min", "min", "the lower of the two, sample by sample: whichever modulator is quieter wins",
      `<path class="gl-ghost" d="M1 4 L9 4"/><path class="gl-ghost" d="M1 10 L9 10"/><path class="gl" d="M9 4 L11 10 L19 10"/>`,
      ["low", "floor", "smaller", "whichever"]],
-    ["max", "max", "the higher of the two — the loudest modulator at each instant takes over",
+    ["max", "max", "the higher of the two: the loudest modulator at each instant takes over",
      `<path class="gl-ghost" d="M1 4 L9 4"/><path class="gl-ghost" d="M1 10 L9 10"/><path class="gl" d="M9 10 L11 4 L19 4"/>`,
      ["high", "ceiling", "larger", "whichever"]],
-    ["and", "and", "high only while both are high — the overlap of two patterns",
+    ["and", "and", "high only while both are high: the overlap of two patterns",
      `<path class="gl-ghost" d="M1 4 h5 v0 M1 10 h7"/><path class="gl" d="M6 11 h2 V4 h4 V11 h7"/>`,
      ["both", "overlap", "gate", "logic", "intersect"]],
-    ["or", "or", "high while either is high — two patterns laid over each other",
+    ["or", "or", "high while either is high: two patterns laid over each other",
      `<path class="gl-ghost" d="M1 4 h4 M1 10 h6"/><path class="gl" d="M1 11 h3 V4 h5 V11 h2 V4 h4 V11 h4"/>`,
      ["either", "union", "gate", "logic", "merge"]],
-    ["xor", "xor", "high while exactly one is — two rhythms that never land together",
+    ["xor", "xor", "high while exactly one is: two rhythms that never land together",
      `<path class="gl-ghost" d="M1 4 h4 M1 10 h6"/><path class="gl" d="M1 11 h3 V4 h3 V11 h3 V4 h3 V11 h6"/>`,
      ["exclusive", "either but not both", "polyrhythm", "logic", "cross"]],
-    ["switch", "switch", "passes one or the other depending on which is winning — a hard cut between two modulators",
+    ["switch", "switch", "passes one or the other depending on which is winning: a hard cut between two modulators",
      `<path class="gl-ghost" d="M1 4 h6 M1 10 h6"/><path class="gl" d="M7 4 L11 4 M7 10 L10 10 L11 4 M11 4 h8"/>`,
      ["route", "select", "either", "punch", "swap"]],
   ].map(([kind, name, what, glyph, tags]) => ({
@@ -14180,7 +14207,7 @@ const MODULES = [
     ins: 0, modTarget: null, phi: "n_mod_logic",
     tags: [...tags, "combine", "two"],
     blurb: `Takes two modulators and gives back ${what}.`,
-    heard: "as a modulation shape φ has no name for — it sees only the movement that results.",
+    heard: "as a modulation shape φ has no name for: it sees only the movement that results.",
     glyph,
     // `a` is the modulator already in the slot when you place this; `b` is a
     // second one it needs to be worth having, so it arrives with an LFO
@@ -14541,7 +14568,7 @@ function restoreTray(saved) {
     });
   }
   if (repaired > 0) {
-    note(`${repaired} out-of-range knob${repaired > 1 ? "s were" : " was"} repaired in the held tray.`);
+    note(`${repaired} out-of-range knob${repaired > 1 ? "s were" : " was"} repaired in the set-aside tray.`);
   }
   renderTray();
 }
@@ -14588,16 +14615,16 @@ function renderTray() {
   $("tray").classList.toggle("empty", tray.length === 0);
   if (tray.length === 0) {
     holder.innerHTML =
-      '<span class="tray-hint mono">Anything you unplug, delete or bypass is held here — and stays here across a reload. Drag it back onto a ○ to put it in.</span>';
+      '<span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span>';
     return;
   }
   for (const t of tray) {
     const el = document.createElement("div");
     el.className = "tray-item" + (t.isMod ? " mod" : "") + (t.pending ? " pending" : "");
     const jackTitle = t.pending
-      ? "going into the patch — waiting for the engine"
+      ? "Going into the patch, waiting for the engine"
       : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
-    const params = fragParamStrip(t.frag) || "—";
+    const params = fragParamStrip(t.frag) || "·";
     el.innerHTML = `
       <div class="ti-head">
         <span class="t-jack" title="${esc(jackTitle)}"></span>
@@ -14607,11 +14634,11 @@ function renderTray() {
       <div class="ti-params mono">${esc(params)}</div>`;
     // HELD is one line now, so the parameter strip is clipped; the whole of
     // it is one hover away.
-    el.title = `${t.label} — ${params}`;
+    el.title = `${t.label} · ${params}`;
     // Discarding something the engine is in the middle of accepting would race
     // its own reply, so the ✕ waits with it.
     el.querySelector(".t-x").onclick = () => {
-      if (t.pending) return note("that one is going into the patch — give it a moment");
+      if (t.pending) return note("That one is going into the patch. Give it a moment.");
       unstage(t.uid);
     };
     const tjack = el.querySelector(".t-jack");
@@ -14717,8 +14744,8 @@ const NB_SUPPORT_MIN = 5;
 function unfittedWhy() {
   const fitted = !!(views && views.styles && views.styles.length);
   return fitted
-    ? "No reading on this module yet — your picks haven't leaned on it."
-    : "The model hasn't been fitted yet — make a few picks.";
+    ? "No reading on this module yet: your picks haven’t leaned on it."
+    : "The model hasn’t fitted your taste yet. Make a few picks.";
 }
 
 function beliefState(t, support) {
@@ -14745,7 +14772,7 @@ function nbChip(m) {
   b.className = "nb-item" + (m.sort === "mod" ? " mod" : "");
   b.dataset.kind = m.kind;
   b.type = "button";
-  b.setAttribute("aria-label", `${m.name} — ${m.blurb}`);
+  b.setAttribute("aria-label", `${m.name}: ${m.blurb}`);
   // Port signature: green rings for audio, an amber one for a modulation slot.
   // Both phosphors are on the chip AT REST — hover intensifies them rather than
   // revealing them, which is the difference between a colour law being used
@@ -14797,8 +14824,8 @@ function buildNodeBank() {
       if (armed || pendingTarget) {
         return note(
           armed
-            ? `${kindName(armed.kind)} is in your hand — click a lit socket, or esc to put it down.`
-            : "A socket is waiting for a module — pick one, or esc to cancel.",
+            ? `${capital(kindName(armed.kind))} is in your hand. Click a lit socket, or press Esc to put it down.`
+            : "A socket is waiting for a module. Pick one, or press Esc to cancel.",
         );
       }
       const shut = sec.classList.toggle("folded");
@@ -14823,7 +14850,7 @@ function buildNodeBank() {
     if (chip.classList.contains("unavailable")) {
       // The same sentence the chip already carries on hover, so the two
       // channels cannot drift — and so a click is never answered with silence.
-      note(chip.title || "That module can't go here.");
+      note(chip.title || "That module can’t go here.");
       return;
     }
     pickModule(chip.dataset.kind);
@@ -14912,7 +14939,7 @@ function nbSetCollapsed(shut, silent) {
   nb.classList.toggle("collapsed", nbState.collapsed);
   const btn = $("nb-collapse");
   btn.textContent = nbState.collapsed ? "◂" : "▸";
-  btn.title = nbState.collapsed ? "Show the node bank" : "Collapse the node bank";
+  btn.title = nbState.collapsed ? "Show the module rail" : "Fold the module rail away";
   btn.setAttribute("aria-label", btn.title);
   btn.setAttribute("aria-expanded", String(!nbState.collapsed));
   if (nbState.collapsed) disarm();
@@ -15038,7 +15065,7 @@ function nbSetHolding() {
   groups.classList.toggle("armed", holding);
   for (const fold of groups.querySelectorAll(".nb-fold")) {
     fold.setAttribute("aria-disabled", String(holding));
-    fold.title = holding ? "Folding is off while a placement is armed — esc to put it down." : "";
+    fold.title = holding ? "Folding is off while a module is in your hand. Esc puts it down." : "";
   }
   return holding;
 }
@@ -15051,21 +15078,21 @@ function nbSetHolding() {
  *  every source chip dimmed by an insert socket was told it "moves knobs" and
  *  "does not carry audio", which is false about all six of them. */
 function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
-  if (!hasRack) return "No patch loaded — pick one from the bank on the left first.";
+  if (!hasRack) return "No sound open. Pick one from the bank on the left first.";
   if (mismatch) {
     if (pendingTarget.accepts.includes("mod")) {
-      return `${m.name} carries audio — that jack carries control voltage. Pick something amber.`;
+      return `${capital(m.name)} carries audio, and that jack carries control voltage. Pick something amber.`;
     }
     // A source has no input, so there is no wire to splice it into: it starts
     // the signal rather than passing one through. The socket already chosen is
     // an insert, and the only thing a source can do to a socket is take it.
     if (m.sort === "source") {
-      return `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. It can only replace what feeds something.`;
+      return `${capital(m.name)} has no input: it starts a signal rather than passing one through, so it can’t go into a wire. It can only replace what feeds something.`;
     }
-    return `${m.name} moves knobs; it does not carry audio, so it cannot sit in the signal path — it goes in a mod slot.`;
+    return `${capital(m.name)} moves knobs and carries no audio, so it can’t sit in the signal path. It goes in a mod slot.`;
   }
   if (m.sort === "mod" && !hasModSocket) {
-    return `Nothing in this patch takes modulation yet — add a filter and ${m.name} has somewhere to go.`;
+    return `Nothing in this patch takes modulation yet. Add a filter, and ${m.name} has somewhere to go.`;
   }
   return "";
 }
@@ -15096,7 +15123,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
       : state === "unfitted" ? unfittedWhy()
-      : `Too little to go on — ${sup} of ${total} patches carry this.`;
+      : `Too little to go on: ${sup} of ${total} sounds carry this.`;
     return;
   }
   // The catalogue cell is 34 px with the zero rule at 17; the in-patch pill's
@@ -15114,12 +15141,12 @@ function nbPaintTheta(cell, m, byPhi, total) {
       `style="left:${(zero + mark.lo).toFixed(1)}px;width:${Math.max(1, mark.hi - mark.lo).toFixed(1)}px"></i>` +
     `<i class="tb-bar" style="left:${barL.toFixed(1)}px;width:${barW.toFixed(1)}px;` +
       `${mark.guess ? `border-color:${color}` : `background:${color}`}"></i>`;
-  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank)`;
+  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your pool)`;
   const fig = `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}`;
   cell.title = mark.guess
     ? `Still a guess: in ${lens} it leans ${t.mean >= 0 ? "toward" : "away from"} this, but it could be ` +
-      `either way — ${fig}, an interval that crosses zero, from ${sup} of ${total} patches.`
-    : `In ${lens} you lean ${t.mean >= 0 ? "toward" : "away from"} this — ${fig}, from ${sup} of ${total} patches.`;
+      `either way (${fig}, an interval that crosses zero, from ${sup} of ${total} sounds).`
+    : `In ${lens} you lean ${t.mean >= 0 ? "toward" : "away from"} this (${fig}, from ${sup} of ${total} sounds).`;
 }
 
 /** Pixels per unit θ in a belief cell of `usable` px each side of zero: one
@@ -15190,8 +15217,8 @@ function renderNodeBank() {
     if (g.id === "modulation" && hasRack && !hasModSocket) {
       why.classList.remove("hidden");
       why.innerHTML =
-        `Nothing in this patch takes modulation yet — ` +
-        `<button class="nb-inline" type="button">add a filter</button> and its mod input appears.`;
+        `Nothing in this patch takes modulation yet. ` +
+        `<button class="nb-inline" type="button">Add a filter</button> and its mod input appears.`;
       why.querySelector(".nb-inline").onclick = () => pickModule("filter");
     } else {
       why.classList.add("hidden");
@@ -15240,7 +15267,7 @@ function nbRenderInPatch() {
       return (
         `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}${empty ? " empty" : ""}" type="button" ` +
         `data-key="${esc(m.key)}" data-kind="${esc(m.kind)}"${empty ? ` data-empty="1"` : ""} ` +
-        `title="${empty ? "An empty socket — jump to it in the rack, then drop a source in" : `${esc(d.name)} — jump to it in the rack`}" ` +
+        `title="${empty ? "An empty socket: jump to it in the rack, then drop a source in" : `${esc(capital(d.name))}: jump to it in the rack`}" ` +
         `aria-label="${empty ? "empty socket" : esc(d.name)}">` +
         `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${empty ? EMPTY_GLYPH : d.glyph}</svg>` +
         `<span>${empty ? "empty" : esc(d.name)}</span>` +
@@ -15292,10 +15319,10 @@ function nbRenderRail() {
   const rail = $("nb-rail");
   const held = tray.length;
   rail.innerHTML =
-    `<span class="rail-word">node bank</span>` +
+    `<span class="rail-word">modules</span>` +
     `<span class="rail-n mono">${MODULES.length}</span>` +
-    (held ? `<span class="rail-held mono" title="${held} module${held > 1 ? "s" : ""} held below">${held}</span>` : "");
-  rail.title = "Show the node bank";
+    (held ? `<span class="rail-held mono" title="${held} module${held > 1 ? "s" : ""} set aside below">${held}</span>` : "");
+  rail.title = "Show the module rail";
 }
 
 // ---- the spec card ----
@@ -15364,9 +15391,9 @@ function specParts(m) {
 
   const ports =
     m.sort === "mod"
-      ? "out — modulation"
-      : [m.ins === 2 ? "a, b — audio in" : m.ins === 1 ? "in — audio in" : null,
-         "out — audio",
+      ? "out: modulation"
+      : [m.ins === 2 ? "a, b: audio in" : m.ins === 1 ? "in: audio in" : null,
+         "out: audio",
          m.modTarget ? `mod → ${m.modTarget}` : null]
           .filter(Boolean).join(" · ");
 
@@ -15384,26 +15411,26 @@ function specParts(m) {
   } else if (state === "unfitted") {
     belief = `<span class="sp-dim">${unfittedWhy()}</span>`;
   } else if (state === "thin") {
-    belief = `<span class="sp-dim">In ${sup} of ${total} patches — too few for the model to have an opinion yet.</span>`;
+    belief = `<span class="sp-dim">In ${sup} of ${total} sounds: too few for the model to lean yet.</span>`;
   } else if (state === "flat") {
     belief =
-      `<span class="sp-dim">In ${sup} of ${total} patches. Still a guess: it could lean either way ` +
-      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that crosses zero.</span>`;
+      `<span class="sp-dim">In ${sup} of ${total} sounds. Still a guess: it could lean either way ` +
+      `(θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that crosses zero).</span>`;
   } else {
     const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
     belief =
-      `<span class="sp-dim">In ${sup} of ${total} patches.</span> ` +
+      `<span class="sp-dim">In ${sup} of ${total} sounds.</span> ` +
       `<i class="sp-dot" style="background:${color}"></i>` +
       `<span class="sp-belief">in ${esc(styleName(views.styles[t.style], t.style))} ` +
-      `(${Math.round(t.share * 100)}% of your bank) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
-      ` — θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}</span>`;
+      `(${Math.round(t.share * 100)}% of your pool) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
+      ` (θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)})</span>`;
   }
   if (shared.length > 1) {
     belief +=
-      `<br><span class="sp-dim">The model does not separate ${esc(shared.join(", "))} — ` +
-      `they share one coordinate, so this belief is about all of them.</span>`;
+      `<br><span class="sp-dim">The model doesn’t tell ${esc(series(shared))} apart: ` +
+      `they share one coordinate, so this lean is about all of them.</span>`;
   }
-  return { ports, belief, params: fragParamStrip(m.frag()) || "—" };
+  return { ports, belief, params: fragParamStrip(m.frag()) || "·" };
 }
 
 function specGlyph(m, cls) {
@@ -15472,7 +15499,7 @@ function renderSpecDock() {
     dock.className = "spec-dock armed";
     dock.innerHTML =
       `<div class="sd-line"><b>${esc(pendingTarget.prompt || "pick a module")}</b>` +
-      `<span class="sd-hint mono">the socket is already chosen — anything dimmed cannot go in it` +
+      `<span class="sd-hint mono">the socket is already chosen, and anything dimmed can’t go in it` +
       ` · <kbd>esc</kbd> to cancel</span></div>`;
     return;
   }
@@ -15485,8 +15512,8 @@ function renderSpecDock() {
     // longer have to be enumerated in advance while holding 120 px of the
     // patcher's vertical budget to say so.
     dock.innerHTML =
-      `<div class="sd-rest mono">Point at a module — in the catalogue or in this patch — ` +
-      `and this strip says what it does, where it can go, and what the model thinks of it.</div>`;
+      `<div class="sd-rest mono">Point at a module, in the catalog or in this patch, ` +
+      `and this strip says what it does, where it can go, and which way your taste leans on it.</div>`;
     return;
   }
   const p = specParts(m);
@@ -15618,10 +15645,10 @@ const PRICE_SIGN = (x) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(2)}`;
 /** The one sentence that keeps the figure from claiming more than it is. */
 function priceWhatNotWhere(p) {
   return (
-    `The model's structural features count modules; they do not record which cable a module sits on. ` +
-    `So this prices WHAT you are adding, not WHERE — it is the same number at every lit socket. ` +
-    `It covers the module count only: how it will actually sound is the ▶ beside it.` +
-    (p && p.lens ? `\n\nUnder the lens "${p.lens}", the same one the model's-guess line above the rack uses.` : "")
+    `The model’s structural features count modules; they don’t record which cable a module sits on. ` +
+    `So this prices what you are adding, not where: it is the same number at every lit socket. ` +
+    `It covers the module count only. How it will actually sound is the ▶ beside it.` +
+    (p && p.lens ? `\n\nIn the style “${p.lens}”, the same one the guess above the rack reads.` : "")
   );
 }
 
@@ -15639,20 +15666,20 @@ function priceHTML(p, long) {
     case "unmeasured":
       return `<span class="pr pr-mute">${long ? "not a coordinate the model measures" : "unmeasured"}</span>`;
     case "unfitted":
-      return `<span class="pr pr-mute">${long ? "no price yet — the model needs a few picks" : "no price yet"}</span>`;
+      return `<span class="pr pr-mute">${long ? "no price yet: it needs a few picks" : "no price yet"}</span>`;
     case "evicts":
       return `<span class="pr pr-mute">${
         long
-          ? `replaces ${esc(p.evicted)} — not priced, because that takes modules out too`
-          : "not priced — this takes modules out too"
+          ? `replaces ${esc(p.evicted)}, not priced, because that takes modules out too`
+          : "not priced: this takes modules out too"
       }</span>`;
     case "thin":
       return `<span class="pr pr-mute">${
-        long ? `in ${p.sup} of ${p.total} patches — too few to price` : "too few to price"
+        long ? `in ${p.sup} of ${p.total} sounds: too few to price` : "too few to price"
       }</span>`;
     case "flat":
       return long
-        ? `<span class="pr pr-flat">still a guess — it could go either way</span>` +
+        ? `<span class="pr pr-flat">still a guess: it could go either way</span>` +
             ` <span class="pr-dim">(${fig}, crossing zero)</span>` +
             ` <span class="pr-note">what, not where</span>`
         : `<span class="pr pr-flat">a guess</span> <span class="pr-dim">${fig}</span>`;
@@ -15870,7 +15897,7 @@ function previewStripHTML(target) {
   const away = target && pickHoverKey !== target.key;
   const where = away ? ` ${socketWhere(target.key)}` : "";
   const label = dead
-    ? `can't audition that${away ? where : " here"}`
+    ? `can’t hear that${away ? where : " here"}`
     : ready
       ? `hear it${away ? where : " here"}`
       : busy
@@ -15879,8 +15906,8 @@ function previewStripHTML(target) {
   return (
     `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
     `<button class="pv-play" id="pv-play" type="button" ${dead ? "disabled" : ""} ` +
-    `aria-label="Audition this patch with the module spliced in" ` +
-    `title="A 2-second render of THIS patch with the module spliced at the lit socket. Nothing is placed — the bench is untouched.">▶</button>` +
+    `aria-label="Hear this patch with the module spliced in" ` +
+    `title="A 2 s render of this patch with the module spliced at the lit socket. Nothing is placed, and the sound you’re playing is untouched.">▶</button>` +
     `<canvas class="pv-scope" id="pv-scope" width="312" height="76" aria-hidden="true"></canvas>` +
     `<span class="pv-label mono">${esc(label)}</span></span>`
   );
@@ -15937,7 +15964,7 @@ $("spec-dock")?.addEventListener("click", (ev) => {
 function pickModule(kind) {
   const m = MOD_BY_KIND[kind];
   if (!m) return;
-  if (!wb.rack) return note("No patch loaded — pick one from the bank on the left first.");
+  if (!wb.rack) return note("No sound open. Pick one from the bank on the left first.");
 
   // Straight from the rack's ⋯ menu: the socket is already chosen. The handoff
   // carries what it can accept, because "replace with…" on a filter cannot
@@ -15949,15 +15976,15 @@ function pickModule(kind) {
     if (!p.accepts.includes(m.sort)) {
       note(
         p.accepts.includes("mod")
-          ? `${m.name} is an audio module — that jack carries control voltage. Pick something from the amber groups, or esc to cancel.`
+          ? `${capital(m.name)} is an audio module, and that jack carries control voltage. Pick something from the amber groups, or press Esc to cancel.`
           : m.sort === "mod"
-            ? `${m.name} moves knobs; it does not carry audio, so it cannot ${p.mode === "replace" ? "replace" : "go after"} that. It goes in a mod ○.`
+            ? `${capital(m.name)} moves knobs and carries no audio, so it can’t ${p.mode === "replace" ? "replace" : "go after"} that. It goes in a mod ○.`
             // Same correction as `chipBlockedWhy`: telling someone holding a
             // vco to "pick an audio module" answers a question they did not
             // get wrong. What is missing is an input, not audio.
             : m.sort === "source"
-              ? `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. Replace something with it instead, or esc to cancel.`
-              : `${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`,
+              ? `${capital(m.name)} has no input: it starts a signal rather than passing one through, so it can’t go into a wire. Replace something with it instead, or press Esc to cancel.`
+              : `${capital(m.name)} can’t ${p.mode === "replace" ? "replace" : "go after"} that. Pick an audio module, or press Esc to cancel.`,
       );
       return;
     }
@@ -15986,7 +16013,7 @@ function arm(kind) {
     disarm();
     note(
       m.sort === "mod"
-        ? "Nothing in this patch takes modulation yet — add a filter first."
+        ? "Nothing in this patch takes modulation yet. Add a filter first."
         : "Nowhere to put that yet.",
     );
     return;
@@ -15997,7 +16024,7 @@ function arm(kind) {
   renderSpecDock();
   nbSetHolding();
   armStatus();
-  nbAnnounce(`${m.name} in hand. ${armedSockets.length} sockets available. Arrow keys to step, Enter to place.`);
+  nbAnnounce(`${capital(m.name)} in hand. ${armedSockets.length} sockets available. Arrow keys to step, Enter to place.`);
 }
 
 function armStatus() {
@@ -16005,7 +16032,7 @@ function armStatus() {
   const m = MOD_BY_KIND[armed.kind];
   const verb = m.sort === "mod" ? "cabling" : "placing";
   $("nb-status").innerHTML =
-    `<b>${verb} ${esc(m.name)}</b> — click a lit socket <span class="sp-dim">· esc to put it down</span>`;
+    `<b>${verb} ${esc(m.name)}</b>: click a lit socket <span class="sp-dim">· esc to put it down</span>`;
 }
 
 function lightSockets() {
@@ -16085,10 +16112,10 @@ function socketLabel(jack) {
     // not share a sentence: fill it, replace what is in it, or take what is
     // in it as an input.
     if (here && armed.modSort !== "leaf") {
-      return `${kindName(owner)} → ${dest} — put ${name} after the ${fragLabel(here, true)}`;
+      return `${kindName(owner)} → ${dest}: put ${name} after the ${fragLabel(here, true)}`;
     }
-    if (here) return `${kindName(owner)} → ${dest} — replaces the ${fragLabel(here, true)}`;
-    return `${kindName(owner)} — modulate ${dest} with ${name}`;
+    if (here) return `${kindName(owner)} → ${dest}: replaces the ${fragLabel(here, true)}`;
+    return `${kindName(owner)}: modulate ${dest} with ${name}`;
   }
   // A hole is not an occupant: nothing is displaced and nothing is held, so
   // the promise must not be worded as if something were about to be lost.
@@ -16145,25 +16172,25 @@ function disarm() {
 const NB_TOUR = [
   {
     lit: () => $("nb-groups"),
-    title: "a catalogue, not a shelf",
+    title: "a catalog, not a shelf",
     body:
       `Every module the instrument has, in the order a patch is built: what ` +
       `makes the sound, what dirties it, what filters it, where it sits, what ` +
-      `moves it. Each row says what it <b>does to a signal</b> — that is what ` +
-      `the drawing is — and how many cables it has.`,
+      `moves it. Each row says what it <b>does to a signal</b> (that is what ` +
+      `the drawing is) and how many cables it has.`,
   },
   {
     lit: () => $("nb-groups").querySelector('.nb-item[data-kind="filter"]'),
     title: "click one and it is in your hand",
     body:
       `Then every socket it can legally go into lights up <b>and says what will ` +
-      `happen there</b> — green inserts it in front of what is already in the ` +
-      `socket, amber replaces that. Click a lit ○ to place it, <kbd>esc</kbd> to ` +
+      `happen there</b>: green inserts it after what is already in the ` +
+      `socket, and amber replaces that. Click a lit ○ to place it, <kbd>esc</kbd> to ` +
       `put it down. Every placement is one undo, and the toast offers it.`,
   },
   {
     lit: () => $("nb-q"),
-    title: "search by sound, not just by name",
+    title: "search by sound, not only by name",
     body:
       `<kbd>/</kbd> from anywhere. Modules answer to how you would ask for them: ` +
       `<i>grit</i> finds the distortion and the bitcrusher, <i>vowel</i> the ` +
@@ -16174,20 +16201,20 @@ const NB_TOUR = [
     lit: () => $("nb-groups").querySelector('[data-group="modulation"]'),
     title: "modulation chains",
     body:
-      `Drop a <b>shape cv</b> module — quantize, slew — on a cable that already ` +
+      `Drop a <b>shape cv</b> module (quantize, slew) on a cable that already ` +
       `carries a modulator and it takes that modulator as its <i>input</i> ` +
       `rather than replacing it. That is how <i>s&amp;h rand → quantize → slew</i> ` +
       `gets built: three clicks, nothing lost.`,
   },
   {
     lit: () => $("nb-groups"),
-    title: "what the model thinks",
+    title: "which way your taste leans",
     body:
-      `The bar on the right of a row is the model's opinion of that module, with ` +
-      `its uncertainty. It is <b>a dash until there is evidence for it</b>, ` +
+      `The bar on the right of a row is which way your taste leans on that module, with ` +
+      `how unsure the model is. It is <b>a dash until there is evidence for it</b>, ` +
       `<b>hollow while it is still a guess</b> (the thin line, how far it could ` +
       `be off, crosses zero), and solid once it is sure. A short bar and ` +
-      `"I do not know" must not look alike.`,
+      `“no idea yet” never look alike.`,
   },
 ];
 
@@ -16227,7 +16254,7 @@ function cancelPending() {
   logLinkQuery(null); // an abandoned search is as informative as a chosen one
   pendingTarget = null;
   $("nb-status").textContent = "";
-  nbAnnounce("cancelled");
+  nbAnnounce("canceled");
   renderNodeBank(); // the compatibility filter comes off with the handoff
   renderSpecDock();
   pickFeedback();
@@ -16266,9 +16293,9 @@ function armFromRack(mode, key, opts) {
   const here = nodeAtKey(aimKey);
   const name = here ? (mode === "replace" ? chainTitle(aimKey) : plateTitle(aimKey)) : "the output";
   const what = o.verb || (mode === "replace" ? "replace" : "insert after");
-  pendingTarget.prompt = `${what} ${name} — pick a module`;
+  pendingTarget.prompt = `${what} ${name}: pick a module`;
   $("nb-status").innerHTML =
-    `<b>${esc(what)} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+    `<b>${esc(what)} ${esc(name)}</b>: pick a module <span class="sp-dim">· esc to cancel</span>`;
   nbAnnounce(`Choose a module to ${what} ${name}.`);
   renderSpecDock();
   pickFeedback();
@@ -16308,10 +16335,10 @@ function placeModule(kind, mode, key) {
     // agreed that any of it is true. See `landedNote`.
     sendStruct(placementOp(kind, mode, key), {
       text: wraps
-        ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
+        ? `${capital(m.name)} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
-          ? `${m.name} replaced the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest} — the old one is held below.`
-          : `${m.name} → ${dest} on ${kindName(owner)}`,
+          ? `${capital(m.name)} replaced the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}, and the old one is set aside below.`
+          : `${capital(m.name)} → ${dest} on ${kindName(owner)}.`,
       opts: undo,
     });
     if (old && !wraps) staged = stageFragment(old, true);
@@ -16320,14 +16347,14 @@ function placeModule(kind, mode, key) {
     const chain = old && subtreeSize(old) > 1;
     sendStruct(placementOp(kind, mode, key), {
       text: chain
-        ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
-        : `${m.name} took the socket.`,
+        ? `${capital(m.name)} took the socket, and the ${subtreeSize(old)}-module chain it replaced is set aside below.`
+        : `${capital(m.name)} took the socket.`,
       opts: undo,
     });
     if (chain) staged = stageFragment(old, false);
   } else {
     sendStruct(placementOp(kind, mode, key),
-      { text: `${m.name} patched into the wire.`, opts: undo });
+      { text: `${capital(m.name)} patched into the wire.`, opts: undo });
   }
   disarm();
   $("nb-status").textContent = "";
@@ -16410,7 +16437,7 @@ function connectTargets(srcKey, kind) {
     return {
       attr: "data-modkey",
       jacks,
-      reason: "nothing else in this patch takes modulation — add a filter, or a delay, and its mod input appears",
+      reason: "Nothing else in this patch takes modulation. Add a filter, or a delay, and its mod input appears.",
     };
   }
   // Cycle rejection, stated rather than silent: a module cannot feed itself,
@@ -16422,8 +16449,8 @@ function connectTargets(srcKey, kind) {
     attr: "data-childkey",
     jacks,
     reason: srcKey === "node"
-      ? "this is the last module in the chain — its output already goes to the amp, and there is nowhere further downstream"
-      : "every socket downstream of this module is fed by it — plugging it into its own chain would be a loop, and the patch is a tree",
+      ? "This is the last module in the chain: its output already goes to the amp, and there is nowhere further downstream."
+      : "Every socket downstream of this module is fed by it, so plugging it into its own chain would be a loop, and the patch is a tree.",
   };
 }
 
@@ -16435,13 +16462,13 @@ function attachOutJack(j, key, kind) {
       ev.preventDefault();
       // Pressing the source again puts the cable down; pressing a different
       // output re-aims it, which is what a hand at a patchbay does.
-      if (connectPick.srcKey === key) endConnectPick("cable put down");
+      if (connectPick.srcKey === key) endConnectPick("Cable put down.");
       else beginConnectPick(key, kind);
       return;
     }
     if (armed) {
       ev.preventDefault();
-      return note(`${kindName(armed.kind)} is in your hand — it goes in a lit ○, not an output. esc to put it down.`);
+      return note(`${capital(kindName(armed.kind))} is in your hand: it goes in a lit ○, not an output. Esc puts it down.`);
     }
     const t = connectTargets(key, kind);
     ev.preventDefault();
@@ -16487,7 +16514,7 @@ function bodyTarget(cx, cy, w) {
   });
   if (cands.length === 1) return cands[0];
   if (cands.length > 1) {
-    note(`${kindName(rackKindAt(mk))} has two inputs and they are not the same job — drop on one of the lit ○`);
+    note(`${capital(kindName(rackKindAt(mk)))} has two inputs, and they aren’t the same job. Drop on one of the lit ○.`);
     return "spoken";
   }
   // Over a plate, and none of its inputs will take this. That is a refusal,
@@ -16497,8 +16524,8 @@ function bodyTarget(cx, cy, w) {
   const name = kindName(rackKindAt(mk)) || "that module";
   note(
     w.attr === "data-modkey"
-      ? `${name} is where this modulator already is — drop it on another module's mod ○`
-      : `nothing on ${name} can take this cable — everything it feeds is downstream of the source, and the patch is a tree`,
+      ? `${capital(name)} is where this modulator already is. Drop it on another module’s mod ○.`
+      : `Nothing on ${name} can take this cable: everything it feeds is downstream of the source, and the patch is a tree.`,
   );
   return "spoken";
 }
@@ -16522,12 +16549,12 @@ function offerConnect(srcKey, targetKey, kind, cx, cy) {
   openChooser(cx, cy, `${srcName} → ${ownerName}`, [
     {
       label: "move it here",
-      sub: `${srcName} leaves where it is — its old socket becomes a hole — and ${hereChain} is held below.`,
+      sub: `${srcName} leaves where it is (its old socket becomes a hole), and ${hereChain} is set aside below.`,
       run: () => connectMove(srcKey, targetKey),
     },
     {
       label: "branch here",
-      sub: `a copy of ${srcName} joins ${hereName} through a mix. Nothing moves. (A copy: one output cannot feed two places.)`,
+      sub: `a copy of ${srcName} joins ${hereName} through a mix. Nothing moves (a copy, because one output can’t feed two places).`,
       run: () => connectBranch(srcKey, targetKey),
     },
   ]);
@@ -16550,18 +16577,18 @@ function connectMove(srcKey, targetKey) {
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     if (keyInside(targetKey, srcKey)) {
-      return "that socket is downstream of this module — plugging it in there would be a loop, and the patch is a tree";
+      return "That socket is downstream of this module, so plugging it in there would be a loop, and the patch is a tree.";
     }
     const src = nodeAtIn(tree, srcKey);
-    if (!src) return "that module has moved — try the cable again";
+    if (!src) return "That module has moved. Try the cable again.";
     // The hole goes in *first*, so that if the target is an ancestor of the
     // source the subtree being displaced is read with the hole already in it
     // — otherwise it would be held below with a second live copy of the very
     // module we just promoted inside it.
     const hole = placeholderNode();
-    if (!setNodeAtIn(tree, srcKey, hole)) return "that module has moved — try the cable again";
+    if (!setNodeAtIn(tree, srcKey, hole)) return "That module has moved. Try the cable again.";
     const victim = nodeAtIn(tree, targetKey);
-    if (!setNodeAtIn(tree, targetKey, src)) return "that socket has moved — try the cable again";
+    if (!setNodeAtIn(tree, targetKey, src)) return "That socket has moved. Try the cable again.";
     marks.push(hole);
     if (victim && !marks.includes(victim)) doomed = victim;
     return null;
@@ -16571,8 +16598,8 @@ function connectMove(srcKey, targetKey) {
   const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
   noteOnLanding(
     doomed
-      ? `${srcName} now feeds ${ownerName} — the ${hereChain} it displaced is held below, and its old socket is empty.`
-      : `${srcName} now feeds ${ownerName} — its old socket is empty.`,
+      ? `${capital(srcName)} now feeds ${ownerName}. The ${hereChain} it displaced is set aside below, and its old socket is empty.`
+      : `${capital(srcName)} now feeds ${ownerName}, and its old socket is empty.`,
     undo,
   );
 }
@@ -16588,21 +16615,21 @@ function connectBranch(srcKey, targetKey) {
   const hereName = plateTitle(targetKey); // the plate it will mix with
   const ok = applyTreeRewrite((tree) => {
     if (keyInside(targetKey, srcKey)) {
-      return "that socket is downstream of this module — branching into it would be a loop, and the patch is a tree";
+      return "That socket is downstream of this module, so branching into it would be a loop, and the patch is a tree.";
     }
     const src = nodeAtIn(tree, srcKey);
     const here = nodeAtIn(tree, targetKey);
-    if (!src || !here) return "that socket has moved — try the cable again";
+    if (!src || !here) return "That socket has moved. Try the cable again.";
     const spec = MOD_BY_KIND.mix;
     const mix = spec.frag();
     const f = childFields(spec);
     mix.Mix[f[0]] = here;
     mix.Mix[f[1]] = JSON.parse(JSON.stringify(src));
-    if (!setNodeAtIn(tree, targetKey, mix)) return "that socket has moved — try the cable again";
+    if (!setNodeAtIn(tree, targetKey, mix)) return "That socket has moved. Try the cable again.";
     return null;
   }, { op: "branch_here", key: srcKey, kind: rackKindAt(srcKey) });
   if (!ok) return;
-  noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
+  noteOnLanding(`A copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
 
 /** A cable pulled out of an input and dropped on nothing. The socket is left
@@ -16610,15 +16637,15 @@ function connectBranch(srcKey, targetKey) {
  *  `Silence` leaf there (it renders nothing), the plate says "empty", and the
  *  next module goes there by default. */
 function unplugCable(childKey) {
-  if (!nodeAtKey(childKey)) return note("that cable is no longer there");
+  if (!nodeAtKey(childKey)) return note("That cable is no longer there.");
   if (holdRewrite([childKey], unplugCable, "unplug")) return;
   const pulled = chainTitle(childKey); // while it is still in the rack
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const old2 = nodeAtIn(tree, childKey);
-    if (!old2) return "that cable is no longer there";
+    if (!old2) return "That cable is no longer there.";
     const hole = placeholderNode();
-    if (!setNodeAtIn(tree, childKey, hole)) return "that cable is no longer there";
+    if (!setNodeAtIn(tree, childKey, hole)) return "That cable is no longer there.";
     if (!marks.includes(old2)) doomed = old2;
     marks.push(hole);
     return null;
@@ -16627,8 +16654,8 @@ function unplugCable(childKey) {
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
     doomed
-      ? `unplugged — the ${pulled} is held below and the socket is empty.`
-      : "unplugged — the socket is empty.",
+      ? `Unplugged: the ${pulled} is set aside below, and the socket is empty.`
+      : "Unplugged, and the socket is empty.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
   );
 }
@@ -16636,7 +16663,7 @@ function unplugCable(childKey) {
 /** Modulation has one slot per module, so its only verb is move. */
 function connectMoveMod(srcKey, targetKey) {
   const srcMod = modAtKey(srcKey.replace(/\/m$/, ""));
-  if (!srcMod) return note("that modulator has moved — try the cable again");
+  if (!srcMod) return note("That modulator has moved. Try the cable again.");
   if (holdRewrite([srcKey, targetKey], connectMoveMod, "modulation move")) return;
   const from = srcKey.replace(/\/m$/, "");
   const dest = kindModTarget(rackKindAt(targetKey)) || "mod";
@@ -16644,10 +16671,10 @@ function connectMoveMod(srcKey, targetKey) {
   const ok = applyTreeRewrite((tree) => {
     const owner = nodeAtIn(tree, from);
     const target = nodeAtIn(tree, targetKey);
-    if (!owner || !target) return "that modulator has moved — try the cable again";
+    if (!owner || !target) return "That modulator has moved. Try the cable again.";
     const oTag = nodeTag(owner), tTag = nodeTag(target);
     const m = owner[oTag]?.modulation;
-    if (!m || m === "None") return "there is no modulator on that jack any more";
+    if (!m || m === "None") return "There is no modulator on that jack any more.";
     const had = target[tTag]?.modulation;
     if (had && had !== "None") doomed = had;
     owner[oTag].modulation = "None";
@@ -16657,8 +16684,8 @@ function connectMoveMod(srcKey, targetKey) {
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, true) : null;
   noteOnLanding(
-    `${fragLabel(srcMod, true)} → ${dest} on ${kindName(rackKindAt(targetKey))}` +
-    (doomed ? ` — the ${fragLabel(doomed, true)} it replaced is held below.` : ""),
+    `${capital(fragLabel(srcMod, true))} → ${dest} on ${kindName(rackKindAt(targetKey))}` +
+    (doomed ? `, and the ${fragLabel(doomed, true)} it replaced is set aside below.` : "."),
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
 }
@@ -16684,7 +16711,7 @@ function openLinkSearch(w) {
     mode: "insert",
     key,
     accepts: isMod ? ["mod"] : ["proc", "combine"],
-    prompt: `after ${srcName} — pick a module`,
+    prompt: `after ${srcName}: pick a module`,
     link: { srcKey: w.srcKey, kind: w.kind, at: Date.now() },
   };
   if (nbState.collapsed) nbSetCollapsed(false);
@@ -16693,7 +16720,7 @@ function openLinkSearch(w) {
   renderNodeBank();
   q.focus();
   $("nb-status").innerHTML =
-    `<b>after ${esc(srcName)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+    `<b>after ${esc(srcName)}</b>: pick a module <span class="sp-dim">· esc to cancel</span>`;
   nbAnnounce(`Cable dropped. Choose a module to put after ${srcName}.`);
   renderSpecDock();
   pickFeedback();
@@ -16741,7 +16768,7 @@ function beginConnectPick(srcKey, kind) {
     ? fragLabel(modAtKey(srcKey.replace(/\/m$/, "")) || {}, true)
     : kindName(rackKindAt(srcKey)) || "that";
   $("nb-status").innerHTML =
-    `<b>cable out of ${esc(name)}</b> — click a lit ○ <span class="sp-dim">· esc to put it down</span>`;
+    `<b>cable out of ${esc(name)}</b>: click a lit ○ <span class="sp-dim">· esc to put it down</span>`;
   nbAnnounce(`Cable out of ${name}. ${t.jacks.length} sockets available.`);
   pickFeedback();
 }
@@ -16762,7 +16789,7 @@ function connectSync() {
     return;
   }
   svg.classList.add("wiring");
-  if (!wb.rack) return endConnectPick("the patch went away — the cable is back on its hook");
+  if (!wb.rack) return endConnectPick("The patch went away, so the cable is back on its hook.");
   let lit = 0;
   for (const j of svg.querySelectorAll(`.jack[${connectPick.attr}]`)) {
     if (!connectPick.legalKeys.has(j.getAttribute(connectPick.attr))) continue;
@@ -16774,7 +16801,7 @@ function connectSync() {
   // A rebuild moved the patch out from under a held cable and nothing it could
   // reach survived. Dropping the gesture silently left the player clicking at
   // sockets that had stopped being targets between one frame and the next.
-  if (lit === 0) endConnectPick("that edit left the cable nowhere to go — it is back on its hook");
+  if (lit === 0) endConnectPick("That edit left the cable nowhere to go, so it is back on its hook.");
 }
 
 function endConnectPick(msg) {
@@ -17137,7 +17164,7 @@ function nbArmedKeys(ev) {
     // it left the canvas saying nothing for the one route that needs it most.
     pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
     pickFeedback();
-    nbAnnounce(`socket ${armedIdx + 1} of ${armedSockets.length} — ${socketLabel(j)}`);
+    nbAnnounce(`socket ${armedIdx + 1} of ${armedSockets.length}: ${socketLabel(j)}`);
     return true;
   }
   if (ev.key === "Enter" && armedIdx >= 0) { nbSocketClick(armedSockets[armedIdx]); return true; }
@@ -17268,7 +17295,7 @@ function onWireMove(ev) {
 }
 
 function onWireCancel() {
-  if (wire) note("cable dropped");
+  if (wire) note("Cable dropped.");
   endWireDrag();
 }
 
@@ -17297,8 +17324,8 @@ function onWireUp(ev) {
     // A missed drop used to be completely silent: the cable vanished, nothing
     // moved, and there was no way to tell a miss from a refusal.
     if (!childKey) {
-      if (w.item.uid) note(`nothing there — ${label} is still held below`);
-      else note(`nothing there — drop ${label} on a lit ○`);
+      if (w.item.uid) note(`Nothing there. ${capital(label)} is still set aside below.`);
+      else note(`Nothing there. Drop ${label} on a lit ○.`);
       return;
     }
     const frag = w.item.frag;
@@ -17316,7 +17343,7 @@ function onWireUp(ev) {
                    (!fromTray || w.item.rewrap || subtreeSize(frag) === 1);
     if (splice) {
       sendStruct({ op: "insert_tree", key: childKey, node: frag }, {
-        text: w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`,
+        text: w.item.rewrap ? `${capital(label)} is back in the wire, with its settings.` : `${capital(label)} patched into the wire.`,
         drop: w.item.uid ?? null,
       });
     } else {
@@ -17324,8 +17351,8 @@ function onWireUp(ev) {
       const chain = old && subtreeSize(old) > 1;
       sendStruct({ op: "replace_tree", key: childKey, node: frag }, {
         text: chain
-          ? `${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
-          : `${label} took the socket.`,
+          ? `${capital(label)} took the socket, and the ${subtreeSize(old)}-module chain it replaced is set aside below.`
+          : `${capital(label)} took the socket.`,
         drop: w.item.uid ?? null,
       });
       if (chain) stageFragment(old, false);
@@ -17334,13 +17361,13 @@ function onWireUp(ev) {
     const modKey = jack && jack.getAttribute("data-modkey");
     const label = w.item.kindId ? kindName(w.item.kindId) : fragLabel(w.item.frag, true);
     if (!modKey) {
-      if (w.item.uid) note(`nothing there — ${label} is still held below`);
-      else note(`nothing there — drop ${label} on a lit mod ○`);
+      if (w.item.uid) note(`Nothing there. ${capital(label)} is still set aside below.`);
+      else note(`Nothing there. Drop ${label} on a lit mod ○.`);
       return;
     }
     const old = modAtKey(modKey);
     sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag }, {
-      text: `${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`,
+      text: `${capital(label)} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}.`,
       drop: w.item.uid ?? null,
     });
     if (old) stageFragment(old, true);
@@ -17374,7 +17401,7 @@ function onWireUp(ev) {
     if (jack) {
       const to = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
       if (to && to !== w.childKey) {
-        note("a cable is moved from its out ○, not its in ○ — drag from the output you want to re-aim");
+        note("A cable moves from its out ○, not its in ○. Drag from the output you want to aim again.");
       }
       return;
     }
@@ -17383,7 +17410,7 @@ function onWireUp(ev) {
     if (jack) {
       const to = jack.getAttribute("data-modkey");
       if (to && to !== w.key) {
-        note("a modulator is moved from its own out ○ — drag from the modulator's plate, not from the slot it sits in");
+        note("A modulator moves from its own out ○. Drag from the modulator, not from the slot it sits in.");
       }
       return;
     }
@@ -17391,7 +17418,7 @@ function onWireUp(ev) {
     // Silence here left the player looking at a cable they had just pulled out
     // of a socket that no longer had anything in it.
     if (!modAtKey(w.key)) {
-      return note("that modulation slot is already empty");
+      return note("That modulation slot is already empty.");
     }
     // Staged *after* the post, not before: `stageFragment` binds the fragment
     // to the edit that is going out, so an op that the engine refuses takes
@@ -17624,10 +17651,10 @@ function portTraceArt(p, m) {
   const tt = svgEl("title", {});
   tt.textContent =
     `What leaves ${m.title || kindName(m.kind)}: the patch rendered with everything after this ` +
-    `module removed — ${PORT_TRACE_SECONDS}s of the same phrase through the same amp envelope, ` +
-    `scaled to its own peak. Rendered offline on demand, not a live tap: the analyser hangs off ` +
+    `module removed: ${PORT_TRACE_SECONDS} s of the same phrase through the same amp envelope, ` +
+    `scaled to its own peak. Rendered offline on demand, not a live tap: the analyzer hangs off ` +
     `the master and the compiled voice has no interior port to listen to.` +
-    (portTrace.stale || portTrace.inflight ? " The patch has moved — this is the previous render." : "");
+    (portTrace.stale || portTrace.inflight ? " The patch has moved, so this is the previous render." : "");
   gg.appendChild(tt);
   return gg;
 }
@@ -17642,8 +17669,8 @@ function togglePortTrace(m) {
   renderRack();
   note(
     portTraceOn
-      ? `probing ${m.title || kindName(m.kind)} — the window on its out ○ is an offline render of the patch cut off here, not a live tap.`
-      : "output probe off.",
+      ? `Probing ${m.title || kindName(m.kind)}: the window on its out ○ is an offline render of the patch cut off here, not a live tap.`
+      : "Output probe off.",
   );
 }
 
@@ -18192,7 +18219,7 @@ function renderStyleChips() {
       `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
       `<input class="sc-name" maxlength="24" value="${esc(s.name || "")}" placeholder="${esc(styleName(s, k))}" title="Name this style">` +
       `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
-      `<button class="sc-play" title="Audition this style's exemplar" aria-label="Hear this style">▶</button>`;
+      `<button class="sc-play" title="Hear the sound this style rates highest" aria-label="Hear this style">▶</button>`;
     const input = chip.querySelector(".sc-name");
     // Sized to its text (or placeholder): a fixed 168 px clipped an
     // auto-name like "env mods + sidechained" mid-word.
@@ -18218,7 +18245,7 @@ function renderStyleChips() {
     const scPlay = chip.querySelector(".sc-play");
     if (ex == null) {
       scPlay.disabled = true;
-      scPlay.title = "No exemplar for this style yet — it needs more patches on this lens";
+      scPlay.title = "Nothing to play for this style yet: it needs more sounds in it";
     } else {
       scPlay.onclick = () => awaitRender(ex, () => play(ex, scPlay));
     }
@@ -18232,17 +18259,17 @@ function renderStyleChips() {
 // were almost all guesses; it now says how a guess is drawn.
 const CAPTIONS = {
   map: "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
-  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid = it's sure; hollow, with a ?, = still a guess. Dim styles are idle.",
-  dir: "Where each style leans. Solid = it's sure. Hollow = still a guess — the thin line is how far it could be off.",
-  trust: "Should you believe it? Each dot is a bucket of forecasts: how confident it was, against how often it was right. On the line = honest.",
+  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid: it’s sure. Hollow, with a ?: still a guess. Dim styles are idle.",
+  dir: "Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how far it could be off.",
+  trust: "Should you believe it? Each dot is a bucket of guesses: how sure it was, against how often it was right. On the line: honest.",
 };
 // While a chart is empty, the caption must describe the state on screen —
 // a caption about bars over a void promises a chart that isn't there.
 const EMPTY_CAPTIONS = {
-  map: "Every patch you hear, placed by sound & structure. The dots light up when it first redraws your taste map.",
+  map: "Every sound you hear, placed by sound and structure. The dots light up when it first redraws your taste map.",
   styles: "Your taste as separate styles. None on record yet.",
-  dir: "The sound qualities that pull you — brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you'll choose; after 20 guesses it grades itself here.",
+  dir: "The sound qualities that pull you: brightness, roughness, attack. Nothing learned yet.",
+  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you’ll pick, and after 20 guesses it grades itself here.",
 };
 
 const TRUST_MIN_N = 20;
@@ -18263,7 +18290,7 @@ function picksToRefit() {
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
-  const n = picksTaught();
+  const n = picksMade();
   const cn = engineCalib ? engineCalib.n : 0;
   const left = picksToRefit();
   const skel = (rows, cls = "") =>
@@ -18279,9 +18306,9 @@ function renderEmptyState(tab) {
   const content = {
     map: `
       <div class="ce-title">nothing predicted yet</div>
-      <div class="ce-copy">Every patch you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
-      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it thinks
-      you'd like them.</div>
+      <div class="ce-copy">Every sound you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
+      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it guesses
+      you’d like them.</div>
       ${count}${pickCta}`,
     styles: `${skel(3)}
       <div class="ce-title">no style yet</div>
@@ -18292,15 +18319,15 @@ function renderEmptyState(tab) {
       ${count}${pickCta}`,
     dir: `${skel(4, "dir")}
       <div class="ce-title">nothing learned yet</div>
-      <div class="ce-copy">This shows which <i>qualities</i> pull you — brightness,
-      roughness, attack — not which knobs, and how sure it is of each: solid
-      when it's sure, hollow while it's still a guess.</div>
+      <div class="ce-copy">This shows which <i>qualities</i> pull you (brightness,
+      roughness, attack), not which knobs, and how sure it is of each: solid
+      when it’s sure, hollow while it’s still a guess.</div>
       ${count}${pickCta}`,
     trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
       <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
       <div class="ce-copy">${views && views.styles
-        ? "Before each pick it guesses which you'll choose."
-        : `From pick ${n + left} on, it guesses before each pick which you'll choose.`} After
+        ? "Before each pick it guesses which you’ll pick."
+        : `From pick ${n + left} on, it guesses before each pick which you’ll pick.`} After
       ${TRUST_MIN_N} guesses it grades itself here.</div>
       <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
   }[tab];
@@ -18426,14 +18453,14 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
   ctx.textAlign = "left";
   ctx.fillStyle = INK.silk;
   ctx.fillText(
-    `${E.n} forecasts · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`,
+    `${E.n} guesses · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`,
     x0, y0 + side + 48 * dpr
   );
   ctx.fillStyle = INK.amberDim;
   ctx.fillText(
     E.check_n >= SKILL_MIN_N
-      ? `on ${E.check_n} unbiased check duels: ${skillLine(E.check_skill, E.check_n)} — this is the number to trust`
-      : `check duels (picked at random) are the unbiased measure — ${E.check_n} of ${SKILL_MIN_N} so far`,
+      ? `on ${E.check_n} fair-test picks: ${skillLine(E.check_skill, E.check_n)}, the number to trust`
+      : `fair-test picks (pairs dealt at random) are the unbiased measure: ${E.check_n} of ${SKILL_MIN_N} so far`,
     x0, y0 + side + 66 * dpr
   );
   // Where the answers came from. Committing a hand edit after hearing it
@@ -18467,7 +18494,7 @@ function skillPct(s) {
 
 // How a preference reached the log, in the words the app uses for it.
 const PROVENANCE_NAME = {
-  duel: "dealt duels",
+  duel: "dealt pairs",
   heard_edit: "edits you heard",
   self_report: "edits you asserted",
   perform_offer: "offers you took or passed",
@@ -18574,7 +18601,7 @@ function drawMapTab(ctx, w, h, dpr) {
   // their difference a flat picture can hold — 29–32% in the sessions the
   // films measured, so "close" is a hint, not a promise.
   ctx.fillText(
-    `A flat view of ${pts.filter((p) => p.id != null).length} patches — close dots usually sound alike ` +
+    `A flat view of ${pts.filter((p) => p.id != null).length} sounds: close dots usually sound alike ` +
       `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`,
     10 * dpr, h - 8 * dpr
   );
@@ -18613,7 +18640,7 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = INK.silk;
     ctx.textAlign = "left";
-    ctx.fillText(`${styleName(s, s.k)} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
+    ctx.fillText(`${styleName(s, s.k)} · claims ${Math.round(s.share * 100)}% of the pool`, 30 * dpr, y0 + 24 * dpr);
 
     // The centre line a guess's whisker crosses, as in DIRECTIONS.
     const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
@@ -18765,7 +18792,7 @@ function drawPull(ctx, cx, yy, mark, color, dpr, thick) {
 /** The canvas's words for what it draws, for anyone who cannot see it: which
  *  pulls are settled and which are guesses, in the labels on screen. The map
  *  keeps its own label, which says how to walk it with the keys. */
-const TASTE_CANVAS_MAP_LABEL = "Taste map — arrow keys step between patches, Enter opens one on the bench";
+const TASTE_CANVAS_MAP_LABEL = "Taste map: arrow keys step between sounds, and Enter opens one";
 function describeTasteCanvas(what, rows) {
   const canvas = $("taste-crt");
   if (!canvas) return;
@@ -18871,7 +18898,7 @@ $("taste-crt").addEventListener("pointermove", (ev) => {
   // The signature is engine bookkeeping: on request (⋯ › Show measurements).
   mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
   mapTipEl.children[2].textContent =
-    best.u01 != null ? `would like: ${Math.round(best.u01 * 100)}%` : "no prediction yet";
+    best.u01 != null ? `would like: ${guessLabel(best.u01)}` : "no guess yet";
   // Clamp to the viewport — unclamped, the tooltip clips at the right edge.
   mapTipEl.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - 250)}px`;
   mapTipEl.style.top = `${Math.min(ev.clientY + 12, window.innerHeight - 90)}px`;
@@ -18914,7 +18941,7 @@ $("taste-crt").addEventListener("keydown", (e) => {
 // to print "#51 → #52", which named nothing a player could find — ids are
 // hidden everywhere else. A parent replaced since is named by the name it had.
 function lineageName(id) {
-  return nameOrKnown(id) || "an earlier patch";
+  return nameOrKnown(id) || "an earlier sound";
 }
 
 function drawLineage() {
@@ -18953,19 +18980,20 @@ function drawLineage() {
     });
   }
   canvas.title = lineage.length
-    ? "Each step's child as the model scored it when it was made, oldest to newest — amber bred, green your edits."
+    ? "Each step’s child as the model rated it when it was made, oldest to newest: amber bred, green your edits."
     : "";
 
   const log = $("lineage-log");
   if (lineage.length === 0) {
     // Don't keep telling the user to press a button they have already pressed.
-    // The toast of a generation that bred nothing says "no move was
-    // accepted"; this says the same thing in the same words.
+    // An empty lineage means no generation has put a sound in the pool; the
+    // toast of each one said why (`emptyGeneration`). This says only what is
+    // true of all of them.
     const ran = gensBred();
     log.innerHTML =
       ran > 0
-        ? `<span class="silk-dim">Generation ${ran} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
-        : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
+        ? `<span class="silk-dim">${plural(ran, "generation")} ran, and none put a new sound in the pool. More picks sharpen the next, and ⚡ on a sound you like aims it.</span>`
+        : '<span class="silk-dim">No generations yet. Make a few picks, then press EVOLVE POOL, or ⚡ on a sound you like.</span>';
     return;
   }
   log.innerHTML = lineage
@@ -18980,11 +19008,11 @@ function drawLineage() {
       // plainly, it is the search looking around.
       const explore = ev.kind !== "edit" && du < -0.05;
       const tag = explore
-        ? ` <span class="lin-explore" title="Evolution samples your taste rather than only climbing it: some steps go sideways or down so it does not get stuck. Your picks decide whether they were worth it.">exploring</span>`
+        ? ` <span class="lin-explore" title="Breeding samples your taste rather than only climbing it: some steps go sideways or down so it doesn’t get stuck. Your picks decide whether they were worth it.">exploring</span>`
         : "";
       return `<div><span class="gen-tag">gen ${ev.generation}</span>` +
-        `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on ${esc(lineageName(ev.parent_id))} → <b>${esc(lineageName(ev.child_id))}</b> · ` +
-        `${humanizeDiff(ev.diff)} · <span title="How much more (or less) the model expects you to like the child than its parent">liked ${sign}${Math.abs(du).toFixed(2)}</span>${tag}</div>`;
+        `${ev.kind === "edit" ? "✎ your edit" : "⚡ bred"} from ${esc(lineageName(ev.parent_id))} → <b>${esc(lineageName(ev.child_id))}</b> · ` +
+        `${humanizeDiff(ev.diff)} · <span title="How much more (or less) the model guesses you’d like the child than its seed">liked ${sign}${Math.abs(du).toFixed(2)}</span>${tag}</div>`;
     })
     .join("");
 }
@@ -19061,8 +19089,8 @@ $("import-input").onchange = async (e) => {
     return;
   }
   alarm(
-    `Replace your taste profile with ${file.name}? Your ${n} pick${n === 1 ? "" : "s"}, stars and cuts ` +
-      `are replaced by the file's. Your current profile is downloaded first, so nothing is lost.`,
+    `Replace your taste with ${file.name}? Your ${taughtSentence(taughtKinds())} ` +
+      `are replaced by the file’s. Your taste now downloads first, so nothing is lost.`,
     {
       label: "replace it",
       run: () => {
@@ -19099,17 +19127,18 @@ function resetQuestion() {
   const g = status.generation || 0;
   const saved = ((views && views.ranked) || []).filter((r) => r.pinned).length;
   const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  const forgotten = `Your ${plural(n, "pick", "picks")}, stars, cuts and ${plural(g, "generation", "generations")} are forgotten`;
+  const k = taughtKinds();
+  const forgotten = `Your ${plural(k.picks, "pick", "picks")}, ${plural(k.stars, "star", "stars")}, ${plural(k.cuts, "cut", "cuts")}, and ${plural(g, "generation", "generations")} are forgotten`;
   return saved > 0
-    ? `Reset your taste profile? ${forgotten}, with every patch you haven't saved. ` +
-        `Your ${plural(saved, "saved patch stays", "saved patches stay")}. A copy of the profile downloads first.`
-    : `Reset your taste profile? ${forgotten}, and the bank starts afresh. A copy of the profile downloads first.`;
+    ? `Reset your taste? ${forgotten}, with every sound you haven’t saved. ` +
+        `Your ${plural(saved, "saved sound stays", "saved sounds stay")}. A copy of your taste downloads first.`
+    : `Reset your taste? ${forgotten}, and the bank starts afresh. A copy of your taste downloads first.`;
 }
 $("taste-reset-btn").onclick = () => {
   if (saveBlocked === "crashed") {
     // No engine to export from or to ask for the bank: say what that costs.
-    alarm("Reset your taste profile? The engine has stopped, so no copy can be downloaded and nothing can " +
-      "be kept: every pick, star, saved patch and generation is forgotten.", {
+    alarm("Reset your taste? The engine has stopped, so no copy can be downloaded and nothing can " +
+      "be kept: every pick, star, saved sound, and generation is forgotten.", {
       label: "reset everything",
       run: async () => {
         clearTimeout(saveTimer);
@@ -19133,7 +19162,7 @@ $("taste-reset-btn").onclick = () => {
         // (`resetting` is still "exporting"), so the reload can never
         // overtake the download.
         resetting = "exporting";
-        note("Downloading a copy of your profile, then resetting…", { replace: "profile" });
+        note("Downloading a copy of your taste, then resetting…", { replace: "profile" });
         send({ type: "export", reason: "before-reset" });
         send({ type: "save" });
       },
@@ -19262,7 +19291,7 @@ function saveBlob(blob, filename) {
 
 $("patch-export-btn").onclick = () => {
   const body = patchSidecar();
-  if (!body) return note("nothing on the bench to export");
+  if (!body) return note("Open a sound first: there’s no patch to download.");
   saveBlob(
     new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }),
     `${patchFileStem(body)}.auracle.json`,
@@ -19292,7 +19321,7 @@ function loadPatchData(data) {
     tree.root && typeof tree.root === "object" && Object.keys(tree.root).length === 1;
   if (!looksLikeATerm) {
     pendingLayout = null;
-    return note("that file is JSON, but it isn't a patch this build understands.");
+    return note("That file is JSON, but it isn’t a patch this build understands.");
   }
   // Held until the engine says which id the patch landed as — that id is the
   // key the layout has to be filed under, and it does not exist yet. Cleared
@@ -19319,7 +19348,7 @@ async function readPatchFile(file) {
       if (json != null) break;
     }
     if (json == null) {
-      note("that PNG has no patch inside it — only images auracle exported carry one");
+      note("That PNG has no patch inside it. Only pictures Auracle downloaded carry one.");
       return null;
     }
   } else {
@@ -19327,7 +19356,7 @@ async function readPatchFile(file) {
     if (/^\s*</.test(text)) {
       json = svgReadPatch(text);
       if (json == null) {
-        note("that SVG has no patch inside it — only images auracle exported carry one");
+        note("That SVG has no patch inside it. Only pictures Auracle downloaded carry one.");
         return null;
       }
     } else {
@@ -19337,7 +19366,7 @@ async function readPatchFile(file) {
   try {
     return JSON.parse(json);
   } catch (_) {
-    note("that file isn't a patch");
+    note("That file isn’t a patch.");
     return null;
   }
 }
@@ -19947,7 +19976,7 @@ function imageSync() {
   const opt = panel.querySelector('#ix-scope option[value="sel"]');
   if (opt) {
     opt.disabled = !sel;
-    opt.textContent = sel ? `selection — ${sel.title.toLowerCase()}` : "selection — nothing selected";
+    opt.textContent = sel ? `selection: ${sel.title.toLowerCase()}` : "selection: nothing selected";
   }
   // A scope that has stopped existing (the module was deleted, or the bench
   // moved to another patch) silently falls back rather than exporting nothing.
@@ -19958,14 +19987,14 @@ function imageSync() {
   dims.classList.remove("busy");
   dims.textContent = d
     ? `${d.w} × ${d.h} px · ${d.n} module${d.n === 1 ? "" : "s"} · ${imageState.fmt.toUpperCase()}`
-    : "nothing on the bench";
+    : "no sound open";
   $("ix-go").disabled = !d;
 }
 
 async function runImageExport() {
   const body = patchSidecar();
   const rack = exportRack(imageState.scope === "sel");
-  if (!body || !rack || !rack.modules.length) return note("nothing on the bench to export");
+  if (!body || !rack || !rack.modules.length) return note("Open a sound first: there’s no patch to draw.");
   const go = $("ix-go");
   const dims = $("ix-dims");
   go.disabled = true;
@@ -19994,9 +20023,9 @@ async function runImageExport() {
       const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
       saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
     }
-    note(`exported ${stem} — the patch is inside the file`);
+    note(`Downloaded ${stem}. The patch is inside the picture.`);
   } catch (err) {
-    note(`the export failed: ${err.message || err}`, { urgent: true });
+    note(`That picture couldn’t be made: ${err.message || err}`, { urgent: true });
   } finally {
     imageSync();
   }
@@ -20143,7 +20172,7 @@ function renderFillHint() {
   const arriving = Math.max(0, fillTarget - fillPool);
   // The word is its own span so a narrow rail can drop it and keep the count.
   el.innerHTML = arriving ? `+${arriving}<span class="bc-word"> arriving</span>` : "";
-  el.title = arriving ? `${arriving} more patches are still being rendered` : "";
+  el.title = arriving ? `${plural(arriving, "more sound")} still rendering` : "";
 }
 
 function bootField(pool, target) {
@@ -20364,13 +20393,13 @@ function previewPreset(row, btn) {
 
 function warmPreviewLoaded(index, id, evicted) {
   if (id) presetIds.set(index, id);
-  if (evicted && evicted.length) note(`Loaded to play it.${madeRoom(evicted)}`);
+  if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`);
   if (bankFilter === "preset") renderBank(); // it can now say "in bank"
   const req = warmPreview;
   if (!req || req.index !== index) return; // superseded, taken back, or the card closed
   if (!id) {
     warmPreviewCancel();
-    return note("That preset wouldn't load.");
+    return note("That preset didn’t open. Try another.");
   }
   warmPreviewPlay(req, id);
 }
@@ -20412,7 +20441,7 @@ $("warm-go").onclick = () => {
   // Quiet: the warm start's result toast names it ("…and Acid Line is
   // under your fingers"), and a second word about it followed that result.
   if (known != null && rowOf(known)) { quietBench.add(known); openOnBench(known); }
-  else openExpect = { name: first ? first.name : "the patch you picked", at: performance.now() };
+  else openExpect = { name: first ? first.name : "the sound you picked", at: performance.now() };
   // Every chosen ≻ every unchosen, logged as a duel: same likelihood, same
   // log format, no new inference path. One worker turn does the inserts and
   // the votes together (see its `warm_start`), so nothing can be evicted
@@ -20430,7 +20459,7 @@ $("warm-go").onclick = () => {
   // The result replaces this when it lands (`replace`): it used to wait out
   // this toast's window, so PICKS read 18 beside "Loading those in…" for
   // seconds, and the result surfaced about fifteen seconds in.
-  note("Loading those in and teaching the model what you picked…", { replace: "warm" });
+  note("Opening those and teaching the model what you picked…", { replace: "warm" });
 };
 
 // The warm start's first pick, inserted, while its other eight are still
@@ -20479,7 +20508,7 @@ function warmStartDone(m) {
   const firstIdx = [...presetIds].find(([, id]) => id === m.first)?.[0];
   const firstName = m.first == null ? null
     : rowOf(m.first)?.name || (warmRows || presetRows || []).find((r) => r.index === firstIdx)?.name;
-  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
+  note(`Your three taught it ${m.n} picks, so it starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
     replace: "warm",
   });
 }

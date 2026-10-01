@@ -74,7 +74,7 @@ seconds; the default is a minute).
   spot. The visitor is holding whatever was playing, with Wander still and
   Blend home. Nothing attract does is logged or counted as a pick.
 - **Next visitor.** <kbd>shift</kbd>+<kbd>esc</kbd> (or **New visitor** in
-  the ⋯ menu) forgets the taste profile and starts again with the warm start.
+  the ⋯ menu) forgets the visitor’s taste and starts again with the warm start.
   Booth mode and PERFORM's measured controls are kept, so the demo set stays
   instant.
 - **Pre-warm.** As soon as booth mode is on, it measures the booth set's

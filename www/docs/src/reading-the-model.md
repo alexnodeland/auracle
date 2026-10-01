@@ -20,19 +20,19 @@ how the interface tries to stop you making them.
 ## Five states, and what each means
 
 The instrument distinguishes five, and never lets two of them look alike. A
-module's spec card in the node bank says them in these words:
+module's spec card in the module rail says them in these words:
 
 | The card says | It means |
 |---|---|
 | *Not a coordinate the taste model measures on its own.* | The feature vector has no coordinate for this. It never will |
-| *The model hasn't been fitted yet — make a few picks.* | No posterior yet. Answer some duels |
-| *In 3 of 40 patches — too few for the model to have an opinion yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
-| *In 6 of 40 patches. Still a guess: it could lean either way — θ 0.05 ± 0.17, an interval that crosses zero.* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
-| *In 12 of 40 patches. in drive & fold + chorus (60% of your bank) you lean toward it — θ +0.62 ± 0.20* | Here is the belief, and here is how much to trust it |
+| *The model hasn’t fitted your taste yet. Make a few picks.* | No posterior yet. Answer some duels |
+| *In 3 of 40 sounds: too few for the model to lean yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
+| *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
+| *In 12 of 40 sounds. in drive & fold + chorus (60% of your pool) you lean toward it (θ +0.62 ± 0.20)* | Here is the belief, and here is how much to trust it |
 
 A dash is not zero. "The model is not sure yet" and "the model has never had a
 chance to form a view" are different statements, and one grey bar cannot say
-both. On the node bank's θ bars, *still a guess* is a hollow bar whose whisker
+both. On the module rail's θ bars, *still a guess* is a hollow bar whose whisker
 crosses the zero line, the belief is a solid bar, and the three silences
 before them are a dash. TASTE's STYLES and DIRECTIONS draw the same two marks.
 
@@ -60,7 +60,7 @@ ones that have not, drawn as the app draws them.
 </figcaption>
 </figure>
 
-The same logic runs the node bank's θ bars, which is why they draw a dash below
+The same logic runs the module rail's θ bars, which is why they draw a dash below
 five supporting patches. A coefficient fitted from three examples would
 otherwise look exactly like one fitted from three hundred.
 
@@ -84,16 +84,16 @@ often capture a third or less of the variation in the feature space, so two
 dots close together *usually* sound alike and two far apart are *probably*
 different. It is a projection, not a map of the territory.
 
-## Styles are lenses, not genres
+## Styles are directions, not genres
 
-A style lens is a direction in feature space that explains some of your
+A style is a direction in feature space that explains some of your
 answers. It is not a genre and it is not a mood. The generated names (*drive &
 fold + chorus*, *dynamics + plucked strings*) describe coefficients, not music.
 
 Two things follow:
 
-- **A lens claiming almost none of the bank is idle.** The model fits up to
-  five and lets the data decide how many get used. Having two live lenses and
+- **A style claiming almost none of the bank is idle.** The model fits up to
+  five and lets the data decide how many get used. Having two live styles and
   three idle ones is not a failure; it means your taste, as measured by these
   coordinates, has two islands.
 - **You can rename them, and should.** Click a chip's name. Once *"drive & fold

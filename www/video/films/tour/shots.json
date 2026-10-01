@@ -115,7 +115,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
-        {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
+        {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
         {"op": "click", "sel": ".bf[data-f='pool']"},
         {"op": "eval", "js": "document.getElementById('bank-list').scrollTop = 0"},
         {"op": "wait", "ms": 1200},

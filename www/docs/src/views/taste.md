@@ -12,7 +12,7 @@ model reporting on itself.
 Before the first fit each tab says how far away it is, counted from where you
 are: *"1 more pick →"*, *"Your first style appears at pick 6; more split off as
 you teach it."* TRUST counts guesses instead of picks: before each pick the
-model guesses which you will choose, and after 20 guesses it grades itself
+model guesses which you will pick, and after 20 guesses it grades itself
 (*"14 to go →"*). Each button takes you to EVOLVE to make them.
 
 The **style chips** across the top are shared by all four tabs. Each carries a
@@ -50,7 +50,7 @@ are computed from the patches you have actually heard.
 |---|---|
 | **Glow** | Posterior mean utility — how much it thinks you would like it |
 | **Size** | Posterior *uncertainty* — how sure it is |
-| **Hue** | Which style lens claims it |
+| **Hue** | Which style claims it |
 
 The size channel is easy to miss and it is the useful one. A big dim dot is *"I
 have no idea about this"*. A small bright dot is *"I am confident you like
@@ -61,9 +61,9 @@ sure of every patch as of any other, the dots come out about the same size
 rather than a contrast drawn from noise. Before the first refit there is no
 uncertainty to draw, and every dot is the same middling size.
 
-The caption says the same in short: *"Brighter: it thinks you'd like it more.
-Bigger: it's less sure. Click a dot to open it."* Click any dot to open that
-patch on the workbench. A dotted ring marks the dot while it opens, and a
+The caption says the same in short: *"Brighter: it thinks you’d like it more.
+Bigger: it’s less sure. Click a dot to open it."* Click any dot to open that
+sound as the one you're playing. A dotted ring marks the dot while it opens, and a
 solid one the patch you are playing. Opening says nothing unless it keeps you
 waiting more than a second; then a toast says *Opened* and the patch's name
 when it arrives.
@@ -72,23 +72,23 @@ when it arrives.
 
 <figure>
 <img src="../img/taste-styles.webp" alt="Three named style lenses stacked vertically, each with a pool-share percentage and five horizontal amber bars naming its strongest coordinates." loading="lazy" width="1440" height="900">
-<figcaption><strong>STYLES.</strong> Each lens with the share of the pool it
-claims and the five coordinates it weights hardest. A lens at ≈0% is idle.</figcaption>
+<figcaption><strong>STYLES.</strong> Each style with the share of the pool it
+claims and the five coordinates it weights hardest. A style at ≈0% is idle.</figcaption>
 </figure>
 
-Your taste as separate lenses. Each shows its name, the share of the bank it
+Your taste as separate styles. Each shows its name, the share of the bank it
 claims, and the five coordinates it leans on hardest, drawn with the same mark
 as [DIRECTIONS](#directions): a solid bar when the model is sure, a hollow one,
 its label ending in **?**, while it is still a guess.
 
 This exists because **taste is not one direction.** You are allowed to like
 dark drones *and* bright plucks, and a single linear model would average them
-into a preference for neither. Auracle fits up to five lenses and scores every
-patch as *its best lens's opinion*, so a duel across two islands is still a
+into a preference for neither. Auracle fits up to five styles and scores every
+patch as *its best style's opinion*, so a duel across two islands is still a
 well-formed comparison.
 
-Lenses appear as evidence arrives. Early on you will have one; more separate
-out as the model finds structure it cannot explain with fewer. **A dim lens
+Styles appear as evidence arrives. Early on you will have one; more separate
+out as the model finds structure it cannot explain with fewer. **A dim style
 claiming almost none of the bank is idle.** Your taste has fewer islands than
 the model has capacity for, which is common and not a fault.
 
@@ -101,8 +101,8 @@ interval. A long bar whose whisker crosses the centre line is a guess, and the
 display says so.</figcaption>
 </figure>
 
-What each lens listens for, coordinate by coordinate. The caption reads
-*"Where each style leans. Solid = it's sure. Hollow = still a guess — the thin
+What each style listens for, coordinate by coordinate. The caption reads
+*"Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin
 line is how far it could be off."* Bar length is the weight; the thin whisker
 across its end is the credible interval, ±1σ, drawn on the same scale as the
 bar. The widest interval reaches the edge of the panel; a whisker that would
@@ -120,7 +120,7 @@ Every bar is one of two marks:
 **Read the whiskers, not the bars.** A long hollow bar is a guess that happens
 to be pointing somewhere. A short solid bar is a real, small preference. Early
 on nearly every bar is hollow; that is the model being honest about a few
-dozen picks. The node bank in PATCH draws its θ bars with the same two marks.
+dozen picks. The module rail in PATCH draws its θ bars with the same two marks.
 
 The coordinates are named in perceptual and structural terms: *chorus &
 sweeps*, *drive & fold*, *body*, *amp attack*, *mod density*. Where a
@@ -152,7 +152,7 @@ Underneath, the numbers:
 - **Brier score.** Mean squared error of the forecasts. Lower is better; `0.25`
   is what always saying "50/50" scores. Reported as **skill** against that
   baseline, so `0` means no better than a coin and `1` means perfect.
-- **check duels.** The same score on the duels that were dealt at random,
+- **fair-test picks.** The same score on the duels that were dealt at random,
   which under the default pairing is every duel EVOLVE and PATCH deal you:
   only the forecasts for your edits and for PERFORM's offers are left out,
   since you chose those comparisons yourself. This is the number without an
@@ -172,11 +172,11 @@ improves, which is what you want to watch.
 
 Split out at the right, the same scores by where the answer came from: dealt
 duels, edits you heard, edits you only asserted, and offers you took or passed
-in PERFORM. A hand edit you committed
-after listening and one you committed by ticking *my edit is better* make the
+in PERFORM. A hand edit you kept as new
+after listening and one you kept by ticking *pick the edit* make the
 same claim in the log, and there is no reason to assume they are equally
 reliable. This is how you find out.
 
-**"Not beating a coin flip yet (n=33)" is the correct thing to see early.** It
+**"Not beating a coin flip yet (33 guesses)" is the correct thing to see early.** It
 means the display is honest and you have not yet given it enough to work with.
 Keep duelling.

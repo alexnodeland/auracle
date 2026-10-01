@@ -154,7 +154,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // ⚡ takes turns with a generation: disabled while it breeds, and it says
   // why where a hover finds it (a disabled button shows no title).
   await expect(page.locator("#rack-evolve")).toBeDisabled();
-  await expect(page.locator(".evolve-slot")).toHaveAttribute("title", /EVOLVE POOL is breeding a generation — ⚡ waits for it/);
+  await expect(page.locator(".evolve-slot")).toHaveAttribute("title", /EVOLVE POOL is breeding a generation, and ⚡ waits for it/);
   // The button is its own progress bar, the slot names the job, the E is lit.
   await expect(page.locator("#evolve-btn")).toHaveClass(/\bbreeding\b/);
   await expect(page.locator("#job-slot")).toBeVisible();
@@ -210,13 +210,13 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   const survivors = born.filter((id) => after.includes(id));
   expect(after.slice(0, survivors.length)).toEqual(survivors);
   expect(after.length, "the pool is back to size").toBeLessThanOrEqual(40);
-  const receipt = (await toastsSince(page, mark)).find((t) => /^Gen \d+:/.test(t));
+  const receipt = (await toastsSince(page, mark)).find((t) => /^Generation \d+:/.test(t));
   const retired = (await page.evaluate(() => window.__pwLast.refined)).retired || [];
   console.log(`receipt: ${receipt} (retired ${JSON.stringify(retired)})`);
   expect(receipt).toBeTruthy();
   // It counts the children kept, names what they replaced, and only now did
   // those leave the bank.
-  expect(receipt).toContain(`Gen ${(await page.evaluate(() => window.__pwLast.refined)).status.generation}: ${survivors.length} new patch`);
+  expect(receipt).toContain(`Generation ${(await page.evaluate(() => window.__pwLast.refined)).status.generation}: ${survivors.length} new sound`);
   if (retired.some((id) => !born.includes(id))) expect(receipt).toMatch(/replaced: [^.]*\S\./);
   for (const id of retired) expect(after).not.toContain(id);
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 10_000 });
@@ -235,7 +235,7 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   await expect(page.locator("#gen-count")).toHaveText("0");
   await page.locator("#evolve-btn").click();
   await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^breeding \d+\/10$/, { timeout: 30_000 });
-  await expect(page.locator("#nextstep")).toHaveText("Breeding — keep playing ▸");
+  await expect(page.locator("#nextstep")).toHaveText("Breeding: keep playing ▸");
 
   // A pick while the first generation breeds. Its status comes back when its
   // undo window closes, and the engine has counted the open generation since
@@ -255,18 +255,18 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   expect(early.generation, "the pick's status predates the generation, so nothing was tested").toBe(1);
   if (!early.landed) {
     expect(early.count, "GENERATIONS counted a generation that has bred nothing").toBe("0");
-    expect(early.chip).toBe("Breeding — keep playing ▸");
+    expect(early.chip).toBe("Breeding: keep playing ▸");
   }
 
   // Its first child lands: now it counts, and the chip points at it.
   await expect.poll(async () => (await logOf(page)).some((e) => e.type === "refine_child" && e.child > 0), { timeout: 300_000 }).toBe(true);
   await expect(page.locator("#gen-count")).toHaveText("1");
-  await expect(page.locator("#nextstep")).toHaveText(/^Gen 1 bred new patches — they're at the top of the bank ▸$/);
+  await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred (a new sound: it’s|\d+ new sounds: they’re) at the top of the bank ▸$/);
 
   await page.locator("#evolve-stop").click();
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
   await expect(page.locator("#gen-count")).toHaveText("1");
-  await expect(page.locator("#nextstep")).toHaveText(/^Gen 1 bred/);
+  await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred/);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
@@ -297,12 +297,12 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   expect(ids.length, "the pool is back to size").toBeLessThanOrEqual(40);
   for (const id of refined.retired) expect(ids).not.toContain(id);
   const said = await toastsSince(page, mark);
-  const receipt = said.find((t) => /^Gen \d+/.test(t));
+  const receipt = said.find((t) => /^Generation \d+/.test(t));
   console.log(`receipt: ${receipt}`);
-  expect(receipt, "the receipt does not say it was stopped").toMatch(/^Gen \d+ stopped/);
+  expect(receipt, "the receipt does not say it was stopped").toMatch(/^Generation \d+ stopped/);
   // It counts what stayed: a child can rank below the rest and be retired.
   const kept = born.filter((id) => !refined.retired.includes(id));
-  if (kept.length) expect(receipt).toContain(`stopped: ${kept.length} new patch`);
+  if (kept.length) expect(receipt).toContain(`stopped: ${kept.length} new sound`);
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 10_000 });
   // Children that land after the stop are nobody's: nothing more arrives.
   const kids = await count(page, "refine_child");

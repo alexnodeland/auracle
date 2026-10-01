@@ -67,7 +67,7 @@ test("a player's ▶ is answered while PERFORM is still listening to a patch", a
   // A fresh profile has no wiring cached (and the shipped one is blocked):
   // the measurement is thirty-odd renders. Ask for a render of another patch
   // while it runs.
-  await page.waitForSelector(".pf-status:has-text('listening to this patch')", { timeout: 30_000 });
+  await page.waitForSelector(".pf-status:has-text('listening to this sound')", { timeout: 30_000 });
   await page.locator('.bf[data-f="pool"]').click();
   const target = await page.evaluate(() =>
     [...document.querySelectorAll("#bank-list .bank-item .bi-id")].map((e) => Number(e.textContent.slice(1))).find((x) => x > 0));
@@ -76,7 +76,7 @@ test("a player's ▶ is answered while PERFORM is still listening to a patch", a
   const measuringAtAsk = await page.evaluate((i) => {
     window.__pwAskedAt = performance.now();
     window.__pwEngine().postMessage({ type: "render", id: i });
-    return /listening to this patch/.test(document.querySelector(".pf-status").textContent);
+    return /listening to this sound/.test(document.querySelector(".pf-status").textContent);
   }, target);
   expect(measuringAtAsk, "the measurement was over before the render was asked for").toBe(true);
   // The render is answered, and before the measurement it was queued behind.
@@ -151,7 +151,7 @@ test("teach it opens PERFORM on the first pick, named at once", async ({ page })
       return name === pick || status.includes(`opening ${pick}`);
     }, { timeout: 3_000 })
     .toBe(true);
-  await expect(page.locator(".pf-status")).not.toContainText("opening the patch you picked");
+  await expect(page.locator(".pf-status")).not.toContainText("opening the sound you picked");
   await expect(page.locator(".pf-name")).toHaveText(pick, { timeout: 60_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   expect(errs).toEqual([]);

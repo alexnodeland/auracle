@@ -87,12 +87,14 @@ time between them, which two runners clear in about 2.5 min each after a
 
 Browser tests over 40 s, tagged `@slow`: every test in
 `evolve_breeds_beside_you.spec.js` (186, 168, 56, 47 and 44 s: each breeds a
-generation), `evolve_truth.spec.js`'s generation with no farm (186 s),
+generation), `evolve_from_new.spec.js` (20 s measured on a 16-core M3 Max,
+not yet on CI: six picks, a refit and a ⚡ walk, the walk alone about 23 s on a
+quiet four-core machine), `evolve_truth.spec.js`'s generation with no farm (186 s),
 `perform_next.spec.js` (78 s), `perform_truth.spec.js`'s drift re-check
 (72 s), all three tests in `perform_instant.spec.js` (66 and 44 s, and
 the held-engine reload test, which boots twice like them),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s) and `perform_teaches.spec.js` (54 s). Fourteen tests, ~18.5 min in one
+(54 s) and `perform_teaches.spec.js` (54 s). Fifteen tests, ~19 min in one
 worker; the other 80 take ~16.6 min, and the fast tier's five runners take
 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
@@ -112,15 +114,16 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `failure_flows.spec.js` | Bad save, engine error, refused vote, profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
-| `evolve_feedback.spec.js` | PICKS counts at once, vote toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
-| `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; COMMIT's blind card (Esc cancels), the one-shot *my edit is better*, a commit retiring the edits' receipts |
-| `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the node bank; TASTE's early states count what is left |
+| `evolve_feedback.spec.js` | TAUGHT counts at once, pick toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
+| `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; KEEP AS NEW's blind card (Esc cancels), the one-shot *pick the edit*, a commit retiring the edits' receipts |
+| `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the module rail; TASTE's early states count what is left |
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `narrow_gate.spec.js` | The narrow-window notice at any pointer under 1000 px, not over the handheld gate or "look around anyway" |
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
 | `evolve_truth.spec.js` | ⌘Z outside PATCH changes nothing unseen; the sixth pick is undoable; "it just learned" follows `fitted`; with no pair waiting, a skip or a slow deal is inert and says why; a cut patch is not dealt; opens are quiet unless slow; tab click then → picks; keys a list uses are not notes; with no farm (`?farm=0`) a deal during a generation names the seed it waits on |
 | `evolve_ahead.spec.js` | A pick or ↻ puts the pair dealt ahead up at once, sounds and all; a taken-back pick restores its pair and keeps the other as the next, even with the next deal still out; a patch cut while its pair waits ahead is never put up; pairs go up in the order they were dealt when a pick lands while the next deal is out |
 | `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation deals within 1 s; GENERATIONS and the next-step chip count a generation once a child has landed, not on a pick's status; PERFORM measures and a pressed Offer starts during a generation; stop ends with what's bred, retiring only at the finish; ⚡ leaves the engine free and its stop drops it; ⚡ and EVOLVE POOL take turns, each disabled with its reason while the other runs; the E and the job slot agree |
+| `evolve_from_new.spec.js` | A ⚡ child joins the bank's New group (*new · gen N*, tagged NEW) as a generation's children do, the next-step chip counts it, and its toast names the sound; a ⚡ that bred nothing never says "its parent" |
 | `budgets.spec.js` | The response-time budget: the timing marks exist; a preset's controls live ≤ 1 s from its click; a warm-start pick's ≤ 1 s from *teach it*; pick → next pair ≤ 0.3 s; duel ▶ ≤ 0.15 s |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_open_early.spec.js` | With the engine's messages held: a Keep while a patch is still opening is refused and says why; the preset clicked last is the one opened; an open that cannot complete puts the voices back on the rack |

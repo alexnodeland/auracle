@@ -39,7 +39,7 @@ C, AM, F, G = ["a", "d", "g"], ["h", "k", ";"], ["f", "h", "k"], ["g", "j", "l"]
 TAB = lambda v: ".viewtab[data-view='%s']" % v  # noqa: E731
 MIDI_DEV = {"op": "midi", "device": "MIDI keyboard"}
 TEACH = taught(picks=("bass", "pad", "texture")) + [MIDI_DEV]
-SETTLED = {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
+SETTLED = {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
 # The pad among My patches (the warm start saved one of each: bass, pad, texture).
 _PAD = ["#bank-list .bank-item:has(.bi-name:text-is('%s'))" % n for n in CATS["pad"]]
 PAD_ROW = ", ".join(_PAD)

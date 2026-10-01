@@ -115,6 +115,12 @@ struct Status {
     pool: usize,
     pool_target: usize,
     observations: usize,
+    /// The log split the way the menu bar's TAUGHT tooltip names it: picks
+    /// (every duel, whichever surface it came from), stars, and cuts. Their
+    /// sum is `observations` (a cut is the only keep/kill the app records).
+    picks: usize,
+    stars: usize,
+    cuts: usize,
     session: usize,
     has_posterior: bool,
     generation: usize,
@@ -805,10 +811,23 @@ impl WasmEngine {
 
     /// Engine status as JSON.
     pub fn status(&self) -> String {
+        let taught = self
+            .engine
+            .log
+            .observations
+            .iter()
+            .fold((0, 0, 0), |(p, s, c), o| match o.feedback {
+                auracle_taste::Feedback::Duel { .. } => (p + 1, s, c),
+                auracle_taste::Feedback::Stars { .. } => (p, s + 1, c),
+                auracle_taste::Feedback::KeepKill { .. } => (p, s, c + 1),
+            });
         serde_json::to_string(&Status {
             pool: self.engine.pool.len(),
             pool_target: self.engine.cfg.pool_size,
             observations: self.engine.log.len(),
+            picks: taught.0,
+            stars: taught.1,
+            cuts: taught.2,
             session: self.engine.session,
             has_posterior: self.engine.posterior.is_some(),
             generation: self.engine.generation,
@@ -2446,6 +2465,35 @@ mod tests {
         assert!(
             compared > 0,
             "neither a drift nor an offer grew, so nothing was checked"
+        );
+    }
+
+    /// The menu bar's TAUGHT tooltip splits the count by kind from
+    /// `status()`: a duel is a pick, a rating a star, a keep/kill a cut, and
+    /// the three add up to `observations`.
+    #[test]
+    fn status_counts_picks_stars_and_cuts_apart() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        assert!(engine.record_duel(ids[0], ids[1], true));
+        assert!(engine.record_stars(ids[2], 3));
+        assert!(engine.record_stars(ids[3], 1));
+        assert!(engine.record_keep(ids[4], false));
+        let st: serde_json::Value = serde_json::from_str(&engine.status()).unwrap();
+        assert_eq!(
+            (&st["picks"], &st["stars"], &st["cuts"], &st["observations"]),
+            (
+                &serde_json::json!(1),
+                &serde_json::json!(2),
+                &serde_json::json!(1),
+                &serde_json::json!(4)
+            ),
+            "status: {st}"
         );
     }
 

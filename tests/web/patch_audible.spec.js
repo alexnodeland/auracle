@@ -650,15 +650,15 @@ test("in PATCH, Space with nothing reaching the output says so, and does not pla
   // output, and ▶ is disabled.
   const key = await page.evaluate(() => window.__aur.wb.rack.modules.find((m) => m.kind === "vco")?.key);
   await page.locator(`#rack-svg g.mod-group[data-key="${key}"] .mod-menu-btn`).first().click();
-  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^extract to HELD/ }).first().click();
+  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^set aside/ }).first().click();
   await settled(page);
   await expect(page.locator("#rack-play")).toBeDisabled();
   // Its tooltip gives that reason, not the vet's sentence about a runaway.
   await expect(page.locator("span.tt:has(#rack-play)")).toHaveAttribute(
-    "title", "Nothing reaches the output — plug a source into the empty socket first");
+    "title", "Nothing reaches the output: plug a source into the empty socket first");
   await page.locator("#rack-subject").click();
   await page.keyboard.press(" ");
-  await expect(page.locator("#toasts .toast-msg", { hasText: "nothing to play" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("#toasts .toast-msg", { hasText: "Nothing to play" })).toBeVisible({ timeout: 5_000 });
   // The bank's render of the preset, which Space used to play here, would be
   // sounding by now.
   await page.waitForTimeout(1_000);

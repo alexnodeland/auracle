@@ -6,9 +6,9 @@ current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;
 everything is visible at once. The whole session **autosaves to IndexedDB**
 (bank, names, taste history, settings) and restores on reload.
 
-The sidebar is **three banks**, not one list with filters: **evolution** (the
-live pool the model reasons over and breeds from), **my patches** (what you
-saved), and **presets** (the hand-made library, browsed in place). A `?` in
+The sidebar is **three banks**, not one list with filters: **pool** (the
+sounds the model weighs and breeds from), **saved** (what you saved), and
+**presets** (the hand-made library, browsed in place). A `?` in
 the bank head walks through what a generation is and what evolving costs.
 
 - **PERFORM** — the sound under your hands: six named controls (Bright,

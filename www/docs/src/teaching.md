@@ -27,7 +27,7 @@ and there are three ways: a duel, stars and keep/kill.
 | **an offer answered** | PERFORM: **Take** an offer you heard, or ask for another | The same duel, between the sound you were playing and the model's offer |
 | **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
 | **keep / kill** | A bank row's **cut** (kills only) | This patch is above / below where I'm drawing the line today |
-| **edit against original** | **commit** on an edited patch: the **WHICH ONE IS BETTER?** card, or *my edit is better* to skip it | The same duel, between my edit and what I started from, whichever way I answered |
+| **edit against original** | **keep as new** on an edited patch: the **WHICH WOULD YOU REACH FOR?** card, or *pick the edit* to skip it | The same duel, between my edit and what I started from, whichever way I answered |
 
 **Duels are the primary signal.** They have the best statistical properties and
 the lowest cognitive load: people compare two things reliably, and assign
@@ -118,7 +118,7 @@ generation is breeding, or ⚡ evolve from this is walking, it reads **● it wi
 learn from these 6 when breeding finishes**, because a refit waits for them.
 The wordmark's **E**
 lights while the fit runs. When it lands, the TASTE map is redrawn and the
-meter reads **● it just learned — see what changed ▸** until your next pick;
+meter reads **● it just learned: see what changed ▸** until your next pick;
 the link opens the map.
 
 Reweighting alone would wear thin: as the weights concentrate on fewer and
@@ -153,10 +153,10 @@ Roughly in order:
    than a confirming one.
 4. **Stars, in volume.** Weaker per observation, but cheap, and they anchor the
    absolute scale that duels alone cannot pin down.
-5. **Hand edits, committed.** These carry a lot: a direction in genome space,
-   and your verdict on it. Answered on the **WHICH ONE IS BETTER?** card, the
-   verdict is heard, and "the original won" teaches it the most. Ticked
-   as *my edit is better*, it is a claim. TRUST scores the two apart, because an
+5. **Hand edits, kept as new.** These carry a lot: a direction in genome space,
+   and your verdict on it. Answered on the **WHICH WOULD YOU REACH FOR?** card, the
+   verdict is heard, and picking the original teaches it the most. Ticked
+   as *pick the edit*, it is a claim. TRUST scores the two apart, because an
    asserted improvement and a heard one may not be equally reliable.
 
 ## What it cannot learn

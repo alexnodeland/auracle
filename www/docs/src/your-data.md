@@ -25,13 +25,13 @@ Autosaved continuously as you work:
 
 | | |
 |---|---|
-| The evolution pool | Every candidate, with its features and lineage |
-| **my patches** | Everything you saved |
+| The pool | Every sound in it, with its features and lineage |
+| **saved** | Everything you saved |
 | Names | Patch names and style names you set |
 | The observation log | Every duel, star, keep/kill and edit claim |
 | The posterior | The fitted model, plus its standardizer |
 | Layout and settings | Rack positions, dock size, keybed width, scope config, node-bank state |
-| The HELD tray | What you unplugged, across reloads |
+| The SET ASIDE tray | What you unplugged, across reloads |
 
 Restore runs across background workers, so a large session comes back without a
 long stall.
@@ -40,9 +40,9 @@ long stall.
 
 All from the **⋯** menu.
 
-### Taste profile
+### Your taste
 
-**Save taste profile** writes a JSON file containing the observation log **and
+**Download your taste** writes a JSON file containing the observation log **and
 the standardizer it was recorded under**.
 
 Both, always, together. The model's coefficients are only meaningful relative
@@ -50,23 +50,24 @@ to the scaling that produced them, so a log without its standardizer has lost
 its units. The log is the source of truth; the fitted posterior can be
 recomputed from it.
 
-The app confirms the download: *"Downloaded auracle-profile.json — 58
-picks."* The count is the observations in the file.
+The app confirms the download, counting the file's observations by kind:
+*"Downloaded your taste (auracle-profile.json): 52 picks, 4 stars, and 2
+cuts."*
 
-**Load taste profile** brings one back. This is how you move a taught model to
-another machine or another browser. If you have picks of your own it asks
-first, and downloads your current profile before replacing it. Once loaded it
-redraws your taste map from the file: *"Profile loaded — 58 picks. Redrawing
-your taste map…"*
+**Open a taste file…** brings one back. This is how you move a taught model to
+another machine or another browser. If you have taught it anything yourself
+it asks first, and downloads your taste as it stands before replacing it. Once
+open it redraws your taste map from the file: *"Opened that taste file: 52
+picks, 4 stars, and 2 cuts. Redrawing your taste map…"*
 
 ### Individual patches
 
-**Export this patch** writes JSON. **Import a patch** accepts `.json`, and also
-`.png` and `.svg`.
+**Download this patch** writes JSON. **Open a patch file…** accepts `.json`,
+and also `.png` and `.svg`.
 
 ### Patches as images
 
-**Export as image…** renders the rack to PNG or SVG at a scale and background
+**Download as a picture…** renders the rack to PNG or SVG at a scale and background
 you choose. **The image contains the patch**: an exported Auracle PNG can be
 imported back and will produce the same patch, so a screenshot of a rack posted
 in a chat is a shareable patch.
@@ -85,16 +86,16 @@ file and nothing about it is Auracle-specific.
 
 ## Resetting
 
-**⋯** → *Reset taste profile…* clears the observation log and the fitted model.
-It asks first, with the counts: *"Reset your taste profile? Your 58 picks,
-stars, cuts and 4 generations are forgotten, with every patch you haven't
-saved. Your 3 saved patches stay. A copy of the profile downloads first."*
+**⋯** → *Reset your taste…* clears the observation log and the fitted model.
+It asks first, with the counts: *"Reset your taste? Your 52 picks, 4 stars,
+2 cuts, and 4 generations are forgotten, with every sound you haven’t
+saved. Your 3 saved sounds stay. A copy of your taste downloads first."*
 **download & reset** saves `auracle-profile-before-reset.json` and then resets;
 **keep it** leaves everything as it was.
 
 This is the right move when you have been teaching it something it cannot see,
 or when you want to start a different taste from the same pool. It does **not**
-clear **my patches**; saved patches are storage, not evidence, and they survive
+clear **saved**; saved sounds are storage, not evidence, and they survive
 a taste reset, with their pins and layout. So do the modules you set aside and
 the dock's settings. Everything else in the bank is replaced by a fresh one,
 and the three-pick warm start runs again.
@@ -112,6 +113,6 @@ instead of being mixed into a scale they were never comparable with.
 That said: migrations are code, and code has bugs.
 
 ```admonish tip title="Before updating, export"
-**Save taste profile** and export any patch you would be annoyed to lose. It takes
+**Download your taste**, and download any patch you would be annoyed to lose. It takes
 ten seconds, and it is the only backup that exists.
 ```

@@ -24,8 +24,8 @@ Nodes are addressed by [trace key](../architecture/addresses.md): `node`,
 `node/0`, `node/0/1`, `node/0/m`.
 
 The `*Tree` variants exist for the wiring gestures: “plug this staged chain in
-here”. Callers park the displaced subtree client-side, which is what the HELD
-tray is.
+here”. Callers park the displaced subtree client-side, which is what the SET
+ASIDE tray is.
 
 ## Wrap versus replace
 

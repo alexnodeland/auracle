@@ -11,7 +11,7 @@ you hear it on the next note you play.
 <figure>
 <img src="../img/play.webp" alt="The PATCH view, with the bank on the left, the rack centre, the node bank on the right and the keyboard docked below." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The bank on the left, the rack in the
-middle, the node bank on the right, the keyboard docked below. Everything
+middle, the module rail on the right, the keyboard docked below. Everything
 here is live while you edit it.</figcaption>
 </figure>
 
@@ -28,28 +28,34 @@ wears a dotted amber ring and plays once the edit lands; press it again, or
 (`#30 · wsqr·mix·cho`) are the engine's bookkeeping, shown only with **⋯ ›
 Show measurements**.
 
-**The toolbar.** The edit controls (*commit*, *my edit is better*), the layout
-and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *belief*,
+**The toolbar.** The edit controls (*keep as new*, *pick the edit*), the layout
+and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *leans*,
 *map*), the locks, and **⚡ evolve from this**. All covered in
 [Reading and editing the rack](../rack.md).
 
-**The next-step chip.** An amber line that always says what to do now (*"Gen 31
-bred new patches — they're at the top of the bank ▸"*). It is a suggestion,
+**The next-step chip.** An amber line that always says what to do now
+(*"Generation 31 bred 4 new sounds: they’re at the top of the bank ▸"*, or *a
+new sound* after a ⚡). It is a suggestion,
 and clicking it does the step it names: it points you at a key to play, opens
 EVOLVE for picks, starts a generation, scrolls the bank to the newest
 generation's patches, or (when that generation kept none) opens TASTE. While
 the first generation breeds and before any child of it has landed, it only
-says *Breeding — keep playing*, and clicking it does nothing.
+says *Breeding: keep playing*, and clicking it does nothing.
 
-**The belief row.** What the model thinks of *this* patch and why:
+**The belief row.** What the model guesses about the sound you're playing, and why:
 
 ```text
-MODEL'S GUESS 0.80 · chorus & sweeps +0.78 · body −0.09 ·
-drive & fold −0.08   under your style 2 lens
+80% · fairly sure · chorus & sweeps +0.78 · body −0.09 ·
+drive & fold −0.08   in your chorus & sweeps style
 ```
 
-That is a prediction (how likely you are to prefer it in a duel), the three
-coordinates contributing most, and which style lens is currently judging it.
+That is its guess as a percentage (the same one the bank row's bar draws) and
+a word for how sure that reads, on one scale: *a hunch* (46–54%), *leaning*
+(55–69% or 31–45%) or *fairly sure* (70% and over, or 30% and under). The word
+reads the percentage; how wide the model's own doubt is stays with the bank
+row's block. Then the three coordinates contributing most, and which style is
+judging it, by its name. While an edit is on its way the row dims and ends in
+*· rating…*: the model rating the edited sound again.
 When the model has no basis for a claim, this row says so instead of printing a
 number, and when nothing reaches the output (the patch's only source socket is
 [empty](../rack.md#empty-sockets)) it says *no guess while nothing reaches the
@@ -65,13 +71,13 @@ measurements** it shows all three all the time (`8/24 modules · 4/6 depth ·
 **The rack.** The patch itself. See [the rack chapter](../rack.md).
 
 **The scope.** Bottom right of the frame, tracing the output while you play.
-Configurable from **⋯** → *Scope & analyser…* (waveform or spectrum, tap point,
+Configurable from **⋯** → *Scope & analyzer…* (waveform or spectrum, tap point,
 FFT size, colour, corner, size, trigger, freeze).
 
 **The spec strip.** The line under the rack that describes whatever you are
 pointing at, in the catalogue or in the patch.
 
-**HELD.** The staging tray. Anything you unplug, delete or bypass lands here
+**SET ASIDE.** The staging tray. Anything you unplug, delete, or bypass lands here
 instead of vanishing, and stays across a reload. Drag it back onto any lit ○ to
 put it in. The socket an unplug leaves reads EMPTY and makes no sound.
 
@@ -103,8 +109,8 @@ last one, the next one waits its turn and then happens: its plate is outlined
 and the caption under the patch name says *1 edit waiting*. See
 [turning knobs](../rack.md#turning-knobs).
 
-Changes are *staged* until you **commit**. Committing inserts the edited patch
-into the bank as a new candidate, leaving the original alone.
+Changes are *staged* until you press **keep as new**, which inserts the edited
+patch into the bank as a new sound, leaving the original alone.
 
 ### Aiming the search
 
@@ -122,7 +128,7 @@ allowed them to.
 ## Getting a patch here
 
 - Click any row in the [bank](../bank.md).
-- Click the **⌖** on either side of a duel in [EVOLVE](./evolve.md).
+- Click **OPEN IN PATCH** on either side of a pair in [EVOLVE](./evolve.md).
 - Click any dot on the [taste map](./taste.md).
 
-All three land the patch on the workbench, live and editable.
+All three open it as the sound you're playing, live and editable.

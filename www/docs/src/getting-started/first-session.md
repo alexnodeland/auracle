@@ -35,7 +35,7 @@ picks, eighteen observations.</figcaption>
 </figure>
 
 On first run you are shown nine presets, drawn one per family from the built-in
-library and then filled out to nine, and asked to pick three.
+library and then filled out to nine, under **PICK THE THREE YOU’D REACH FOR**.
 
 Do it. It takes thirty seconds and it is worth **18 pairwise observations**:
 each of your three picks beats each of the six you passed over. That is the
@@ -47,7 +47,8 @@ anything; the model treats these like any other preference, and they fade with
 time like any other.
 
 Your three are also **saved**, so no generation can evict them, and the first
-one opens ready to play. The message says so (*Your three are saved*). They
+one opens ready to play. The message says so (*Your three taught it 18 picks,
+so it starts out pointed at you. Your three are saved…*). They
 take 3 of your 10 save slots; release any of them from its row if you want the
 room.
 
@@ -68,7 +69,7 @@ above counts down to the next refit.</figcaption>
   both, so you are comparing patches and not performances.
 - Click a card to play *that* candidate **live** on the keyboard instead, if
   the phrase is not telling you enough.
-- <kbd>←</kbd> / <kbd>→</kbd> choose.
+- <kbd>←</kbd> / <kbd>→</kbd> pick, or press **PICK A** / **PICK B**.
 
 Answer ten or fifteen, and go fast. A duel is a gut reaction and the model
 handles noise; deliberating does not make the data better.
@@ -76,10 +77,11 @@ handles noise; deliberating does not make the data better.
 ```admonish tip
 If neither is any good, that is still an answer: pick the less bad one. What the
 model learns from a duel is a *direction*, and "both mediocre but this one less
-so" is a real direction. There is also **skip** if a pair tells you nothing.
+so" is a real direction. There is also **ANOTHER PAIR** if a pair tells you nothing.
 ```
 
-Watch the strip above the cards. It counts your picks and says when the model
+Watch the strip above the cards. It counts your picks (*Play both. Pick the one
+you’d reach for.* before the first) and says when the model
 will next redraw its map. When it does, the **E** of the wordmark lights: that
 is the listening lamp, and it means a fit is running.
 
@@ -97,8 +99,8 @@ sure it is.</figcaption>
 Early on this will be sparse and the styles will be provisional. Two things are
 worth checking even now:
 
-- **STYLES.** Does any lens have a name that sounds like something you like?
-  The names are generated from what each lens weights, so "drive & fold +
+- **STYLES.** Does any style have a name that sounds like something you like?
+  The names are generated from what each style weights, so "drive & fold +
   chorus" means the model has noticed you leaning that way.
 - **TRUST.** It will probably say it is not beating a coin flip yet. Good. It
   is telling you the truth, and [that
@@ -117,7 +119,7 @@ whether they were worth it. The **EVOLUTION** strip below reports what each
 step did, in plain terms:
 
 ```text
-gen 1 ⚡ evolution on Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,
+gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,
 cutoff 1.78 kHz → 20 kHz, delay → chorus, +lfo · liked +0.62
 ```
 
@@ -134,8 +136,8 @@ teaches the model and tests its forecast.
 Anything worth keeping:
 
 - **★ stars** it. That is an *observation*, and it teaches the model.
-- **save** it. That is *storage*: the patch stays in **evolution**, is also
-  listed in **my patches**, and is exempt from eviction. It teaches the model
+- **save** it. That is *storage*: the sound stays in **pool**, is also
+  listed in **saved**, and is exempt from eviction. It teaches the model
   nothing.
 
 Two controls, two different jobs, and it is worth knowing
@@ -146,7 +148,7 @@ Two controls, two different jobs, and it is worth knowing
 You now have the loop. From here:
 
 - Turn some knobs → [Reading and editing the rack](../rack.md)
-- Rewire it → [Wiring and the node bank](../wiring.md)
+- Rewire it → [Wiring and the module rail](../wiring.md)
 - Play it properly → [Playing it](../playing.md)
 - Lock what you love and evolve around it → [`⚡ evolve from this`](../rack.md#locks-and-evolving-from-here)
 - Understand what the model is doing → [What it learns from](../teaching.md)

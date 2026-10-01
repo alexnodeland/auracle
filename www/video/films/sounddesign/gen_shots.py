@@ -17,7 +17,7 @@ BELIEF = {"op": "until", "sel": "#belief .bl-u", "ms": 90000}
 # The engine has caught up with the bench: the guess is no longer being
 # re-measured and nothing is thinking (a commit asked of a busy engine waits
 # behind it, past the end of a shot).
-SETTLED = {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
+SETTLED = {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
 def patch(name):
     return [{"op": "preset", "name": name}, {"op": "view", "v": "play"}, BELIEF, SETTLED, {"op": "wait", "ms": 1200}]
 LOCKS = [
@@ -130,7 +130,7 @@ spec = {
                     {"op": "log", "name": "amber", "js": "document.getElementById('nb-status').textContent + ' | ' + document.querySelector(\"#rack-svg .jack[data-childkey='node/0/0']\").getAttribute('class')"},
                 ]},
                 # What the strip said, every half second (the render's progress).
-                {"at": "bank3:Amber+0.8", "op": "eval", "js": "window.__pv = []; const t0 = performance.now(); window.__pvI = setInterval(() => window.__pv.push(((performance.now() - t0) / 1000).toFixed(1) + ' ' + (document.querySelector('#spec-dock .pv-label')?.textContent || '-') + (/re-measuring/.test(document.getElementById('belief').textContent) ? ' (re-measuring)' : '')), 500)"},
+                {"at": "bank3:Amber+0.8", "op": "eval", "js": "window.__pv = []; const t0 = performance.now(); window.__pvI = setInterval(() => window.__pv.push(((performance.now() - t0) / 1000).toFixed(1) + ' ' + (document.querySelector('#spec-dock .pv-label')?.textContent || '-') + (document.getElementById('belief').classList.contains('stale') ? ' (rating)' : '')), 500)"},
                 {"at": "bank4:play", "op": "seq", "steps": [
                     {"op": "mark", "name": "play", "sel": "#pv-play"},
                     {"op": "eval", "js": "document.getElementById('pv-play').click()"},
@@ -226,7 +226,7 @@ spec = {
                 # dragged, and a bypass after it resurrects the drag.
                 {"at": "undo1:change", "op": "seq", "steps": [
                     {"op": "drag", "sel": RES, "dy": -60, "ms": 600},
-                    {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent)", "ms": 60000, "stamp": "settled"},
+                    {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale')", "ms": 60000, "stamp": "settled"},
                     {"op": "wait", "until": "undo1:undo"},
                     {"op": "hold", "keys": ["Control", "z"], "ms": 150},
                     # Only after the press: the drag's first reply can show the

@@ -177,7 +177,7 @@ test("AU-S1: a save this build cannot parse is quarantined, not overwritten, unt
   // The pinned condition, tagged so a later save cannot wipe it.
   const alarm = alarmOf(page);
   await expect(alarm).not.toHaveClass(/\bhidden\b/);
-  await expect(alarm).toContainText("could not read your saved session");
+  await expect(alarm).toContainText("couldn’t read your saved session");
   await expect(alarm).toContainText("state-quarantine-");
   expect(await alarm.getAttribute("data-tag")).toBe("quarantine");
 
@@ -223,7 +223,7 @@ test("AU-S2: a request that throws is released and reported; a fatal error pins 
   // The worker's catch answers `engine_error`, non-fatal; main toasts and the
   // engine stays alive.
   await post(page, { type: "import" });
-  await sawToast(page, 'the engine could not finish "import"');
+  await sawToast(page, "The engine couldn’t finish “import”");
   const err = await page.evaluate(() => window.__pwLast.engine_error);
   expect(err.request).toBe("import");
   expect(err.fatal).toBe(false);
@@ -314,8 +314,8 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
   expect(dropped.vote).toEqual({ kind: "duel", a: pair[0], b: 4_000_000_000 });
   expect(dropped.status.observations).toBe(observationsBefore); // the log never saw it
   expect(await pips.innerHTML()).toBe(pipsBefore);
-  await sawToast(page, "that patch is gone", 2_000); // urgent: shown at once
-  await sawToast(page, "the pick was not recorded", 2_000);
+  await sawToast(page, "was replaced, so the", 2_000); // urgent: shown at once
+  await sawToast(page, "the pick wasn’t recorded", 2_000);
   await sawToast(page, "Picked "); // the pick's own toast carries the undo, so it is never trimmed
 
   // Stars: a real optimistic rating on a bank row, then the reply the worker
@@ -334,7 +334,7 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
     recorded: false,
     vote: { kind: "stars", id, rating: 3, prev: 0 },
   });
-  await sawToast(page, "the rating was not recorded", 2_000);
+  await sawToast(page, "the rating wasn’t recorded", 2_000);
   expect(await star3().getAttribute("aria-pressed")).toBe("false");
   expect(await row.locator(".star.lit").count()).toBe(0);
 
@@ -368,7 +368,7 @@ test("AU-S9: importing a profile over an existing log asks first, and exports th
   // "keep mine": nothing is sent, nothing is exported, the log stands.
   await page.setInputFiles("#import-input", file);
   await expect(alarm).not.toHaveClass(/\bhidden\b/);
-  await expect(alarm).toContainText("Replace your taste profile with someone-elses-profile.json?");
+  await expect(alarm).toContainText("Replace your taste with someone-elses-profile.json?");
   await expect(alarm).toContainText("Your 2 picks");
   await alarm.getByRole("button", { name: "keep mine" }).click();
   await expect(alarm).toHaveClass(/\bhidden\b/);
@@ -381,7 +381,7 @@ test("AU-S9: importing a profile over an existing log asks first, and exports th
   // says what it is and holding the two observations; then the file's one
   // observation is the log.
   await page.setInputFiles("#import-input", file);
-  await expect(alarm).toContainText("Replace your taste profile");
+  await expect(alarm).toContainText("Replace your taste");
   const [safetyCopy] = await Promise.all([
     page.waitForEvent("download"),
     alarm.getByRole("button", { name: "replace it" }).click(),

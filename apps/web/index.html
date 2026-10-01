@@ -64,8 +64,8 @@
 <div id="narrow-gate" class="narrow-gate" role="status" aria-live="polite">
   <div class="ng-card">
     <div class="ng-title">A little wider</div>
-    <p>Auracle's rack, controls and keybed need about 1000 px side by side.
-      Turn your tablet sideways, or widen the window — everything is where you left it.</p>
+    <p>Auracle’s rack, controls, and keybed need about 1000 px side by side.
+      Turn your tablet sideways, or widen the window: everything is where you left it.</p>
   </div>
 </div>
 <div class="app">
@@ -76,8 +76,8 @@
          light — see `.wordmark b` in style.css and `wm-lamp` in main.js. -->
     <div class="wordmark">AURACL<b id="wm-lamp">E</b></div>
     <nav class="viewtabs" role="tablist" aria-label="Views">
-      <button class="viewtab" data-view="perform" role="tab" aria-selected="false" aria-controls="view-perform" title="Play the sound: named controls, wander and pads">perform</button>
-      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules and knobs">patch</button>
+      <button class="viewtab" data-view="perform" role="tab" aria-selected="false" aria-controls="view-perform" title="Play the sound: named controls, wander, and pads">perform</button>
+      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules, and knobs">patch</button>
       <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
     </nav>
@@ -91,8 +91,10 @@
         <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
         <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
       </div>
-      <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
-      <!-- Named in full: "gen" beside "picks" said what it counted only in
+      <!-- TAUGHT: everything it learned from (picks, stars and cuts), its
+           tooltip split by kind (main.js, renderTaught). -->
+      <span class="counter" id="taught" title="0 picks · 0 stars · 0 cuts"><span class="counter-label">taught</span> <span id="duel-count">0</span></span>
+      <!-- Named in full: "gen" beside "taught" said what it counted only in
            its tooltip. -->
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
       <!-- The job slot: long work, only while it runs — a generation, ⚡
@@ -105,29 +107,29 @@
         <span class="job-text mono" id="job-text"></span>
         <button class="job-stop hidden" id="job-stop" type="button">stop</button>
       </div>
-      <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
-      <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
+      <span class="skill mono" id="skill" title="How much sharper than a coin flip its guesses have been (Brier skill). Blank until it has guessed something."></span>
+      <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
       <div class="ovf">
-        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help" aria-label="More: files, profile and help">⋯</button>
+        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, your taste &amp; help" aria-label="More: files, your taste, and help">⋯</button>
         <div class="ovf-menu hidden" id="ovf-menu" role="menu">
-          <button id="export-btn" class="ovf-item" role="menuitem">Save taste profile</button>
-          <label class="ovf-item" role="menuitem" tabindex="0">Load taste profile<input id="import-input" type="file" accept=".json" hidden></label>
+          <button id="export-btn" class="ovf-item" role="menuitem">Download your taste</button>
+          <label class="ovf-item" role="menuitem" tabindex="0">Open a taste file…<input id="import-input" type="file" accept=".json" hidden></label>
           <div class="ovf-sep"></div>
-          <button id="patch-export-btn" class="ovf-item" role="menuitem">Export this patch</button>
-          <button id="image-btn" class="ovf-item" role="menuitem">Export as image…</button>
+          <button id="patch-export-btn" class="ovf-item" role="menuitem">Download this patch</button>
+          <button id="image-btn" class="ovf-item" role="menuitem">Download as a picture…</button>
           <!-- One import for all three: the .json sidecar, and the .png/.svg
                that carry the very same sidecar inside them. There is no second
                "import an image" route because there is no second kind of
                file — an exported picture *is* an exported patch. -->
-          <label class="ovf-item" role="menuitem" tabindex="0">Import a patch<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
+          <label class="ovf-item" role="menuitem" tabindex="0">Open a patch file…<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
           <div class="ovf-sep"></div>
-          <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyser…</button>
+          <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyzer…</button>
           <div class="ovf-sep"></div>
           <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
-          <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset taste profile…</button>
-          <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM's controls in their tooltips — purity, reach in σ, the measured halves, the knob gains — and show the engine's own bookkeeping: patch ids, topology signatures and the full structural budget">Show measurements</button>
+          <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset your taste…</button>
+          <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget">Show measurements</button>
           <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
-          <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor's taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
+          <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor’s taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
           <a id="films-link" class="ovf-item" role="menuitem" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener">Watch the films <span aria-hidden="true">↗</span></a>
@@ -136,9 +138,9 @@
              app's settings do rather than growing a second gear icon on the
              rack, and everything in it is persisted: a scope you have to
              re-aim on every reload is a scope you stop configuring. -->
-        <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyser settings">
+        <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
           <div class="sp-head">
-            <span class="sp-title">scope &amp; analyser</span>
+            <span class="sp-title">scope &amp; analyzer</span>
             <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
           </div>
           <div class="sp-grid">
@@ -167,7 +169,7 @@
                 <option value="0.6">medium</option>
                 <option value="0.85">heavy</option>
               </select></label>
-            <label class="sp-row"><span>colour</span>
+            <label class="sp-row"><span>color</span>
               <select id="sp-colour">
                 <option value="green">phosphor</option>
                 <option value="amber">amber</option>
@@ -209,9 +211,9 @@
              get. It hangs off the same ⋯ as the scope panel and wears the
              same shell, because it is the same kind of thing: a preference
              you set once and a command you run often. -->
-        <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Export the patch as an image">
+        <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
           <div class="sp-head">
-            <span class="sp-title">export image</span>
+            <span class="sp-title">download a picture</span>
             <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
           </div>
           <div class="sp-grid">
@@ -240,8 +242,8 @@
           <!-- Figma's readout, and for the same reason: the one number you
                want before you press the button is the one you get afterwards
                by opening the file. -->
-          <div class="ix-dims mono" id="ix-dims">—</div>
-          <button class="ix-go" id="ix-go">export</button>
+          <div class="ix-dims mono" id="ix-dims">·</div>
+          <button class="ix-go" id="ix-go">download</button>
           <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
         </div>
       </div>
@@ -266,15 +268,15 @@
            that came with the instrument, the sounds it is breeding for them,
            and the sounds they decided to keep. -->
       <div class="bank-filters" role="group" aria-label="Which bank">
-        <button class="bf active" data-f="pool" title="The live pool — what evolution breeds from and the model reasons over">evolution<b class="bf-n" data-n="pool"></b></button>
-        <button class="bf" data-f="mine" title="Patches you saved. A saved patch is never replaced to make room.">my patches<b class="bf-n" data-n="mine"></b></button>
+        <button class="bf active" data-f="pool" title="The sounds the model weighs and breeds from">pool<b class="bf-n" data-n="pool"></b></button>
+        <button class="bf" data-f="mine" title="Sounds you saved. No generation replaces them.">saved<b class="bf-n" data-n="mine"></b></button>
         <button class="bf" data-f="preset" title="The hand-made preset library that came with the instrument">presets<b class="bf-n" data-n="preset"></b></button>
       </div>
       <!-- Each bank says what it is, in one line, in place. The three-bank
            split is only clearer than the old filters if the words "pool" and
            "generation" mean something, and nothing on screen ever said. -->
       <div class="bank-note" id="bank-note"></div>
-      <div class="bank-list" id="bank-list" role="listbox" aria-label="Patch bank" tabindex="0">
+      <div class="bank-list" id="bank-list" role="listbox" aria-label="Bank" tabindex="0">
         <div class="bench-empty">Warming up…</div>
       </div>
       <!-- The walkthrough. Anchored to the rail rather than centred in a
@@ -312,9 +314,9 @@
                button the eye finds without reading. Out of the row, seven
                equal pills become six, and the six that remain can be ranked. -->
           <div class="subject-block">
-            <span class="tt" title="Pick a patch from the bank first"><button class="xport" id="rack-play" aria-label="Play a sample of this patch" disabled>▶</button></span>
+            <span class="tt" title="Pick a sound from the bank first"><button class="xport" id="rack-play" aria-label="Play this sound" disabled>▶</button></span>
             <div class="subject-id">
-              <div class="subject-name" id="rack-subject">no patch loaded</div>
+              <div class="subject-name" id="rack-subject">no sound open</div>
               <div class="subject-meta" id="rack-meta"></div>
             </div>
           </div>
@@ -327,7 +329,7 @@
           </div>
           <!-- The act the whole app is for, on the name's row: beside the
                thing it breeds from, and above the locks that prepare it. -->
-          <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
+          <span class="tt evolve-slot" title="Pick a sound from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           <!-- Four groups, ranked, with real gutters between them. Seven
                equal pills in one run is zero hierarchy: teaching the model,
                aiming the camera, pinning what you like and breeding the next
@@ -343,10 +345,10 @@
                    One-shot: it unticks after the commit it skipped, because a
                    tick that stayed turned every later commit (and every ⚡ on an
                    edited patch) into a claim, without a word. -->
-              <label class="toggle seg-item" title="Skip the comparison once: the next commit tells the model your edit is better without hearing them back to back, and this unticks itself">
-                <input type="checkbox" id="improve-check"><span>my edit is better</span>
+              <label class="toggle seg-item" title="Skip the comparison once: the next keep as new tells the model you’d pick the edit, without hearing both, and this unticks itself">
+                <input type="checkbox" id="improve-check"><span>pick the edit</span>
               </label>
-              <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>commit</button></span>
+              <span class="tt" title="Nothing to keep yet: turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>keep as new</button></span>
             </div>
             <!-- Three camera controls in one group: which shape the rack is
                  drawn in, how much of each plate is drawn, and whether the
@@ -367,7 +369,7 @@
                    `snap` pins whatever is currently on screen to the 24px grid,
                    so a patch that arrived from evolution with no layout has one
                    to start dragging from. -->
-              <span class="tt held" title="Snap every module to the 24px grid and pin it there. If the hand layout has spread past anything the frame can show, this re-lays it from the signal chain instead."><button class="util-btn seg-item" id="rack-grid" disabled>snap</button></span>
+              <span class="tt held" title="Snap every module to the 24 px grid and pin it there. If the hand layout has spread past anything the frame can show, this lays it out again from the signal chain instead."><button class="util-btn seg-item" id="rack-grid" disabled>snap</button></span>
               <!-- The way back. Freeform never rearranges your plates — that is
                    its contract and the reason a recovery *verb* has to exist:
                    a persisted layout can strand the view completely, and
@@ -377,21 +379,21 @@
               <!-- The tooltip is rewritten by `syncLodBtn` on boot and on every
                    frame resize: the threshold is a function of the frame's
                    height now, so the only honest number is the live one. -->
-              <span class="tt" title="Detail: automatic. Plates lose their knobs once they are drawn too small to grab."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
+              <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
               <!-- A fourth way of reading the rack, and the only one that
                    draws the model onto it. Off by default: it is a second
                    colour law over the first, and it speaks about families of
                    module rather than about any one plate — its tooltip says
                    so, and so does every plate's. -->
-              <span class="tt" title="Tint each plate by what the model believes about its family of module — amber toward, red away, stronger where it is certain. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">belief</button></span>
-              <span class="tt" title="Show the minimap (bottom-left of the rack). Shift-click it to bookmark a spot; shift+1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
+              <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">leans</button></span>
+              <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
             </div>
             <!-- Quieter and smaller than the rest on purpose: locking is a
                  preparation for evolving, not an act of its own. -->
             <div class="seg seg-locks" role="group" aria-label="Locks">
-              <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-knobs" disabled>lock knobs</button></span>
-              <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
-              <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
+              <span class="tt" title="Pick a sound from the bank first"><button class="util-btn seg-item" id="lock-knobs" disabled>lock knobs</button></span>
+              <span class="tt" title="Pick a sound from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
+              <span class="tt" title="No locks set: click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
             </div>
           </div>
         </div>
@@ -402,7 +404,7 @@
              three gestures nothing else on screen teaches. -->
         <div class="bench-tour hidden" id="bench-tour">
           <span class="bt-copy">Live under your fingers: <b>drag a knob</b> and hear it change.
-            <b>Lock</b> what you love — a knob's dot, or a module's <b>▢</b> — then <b>⚡ evolve from this</b>.</span>
+            <b>Lock</b> what you love (a knob’s dot, or a module’s <b>▢</b>), then <b>⚡ evolve from this</b>.</span>
           <button class="util-btn" id="bt-close">got it</button>
         </div>
         <!-- What the model currently believes about the patch under your
@@ -418,7 +420,7 @@
              waiting. -->
         <div class="belief-row mono" id="belief-row">
           <div class="belief" id="belief" role="status"></div>
-          <div class="budget" id="budget" title="What evolution can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></div>
+          <div class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></div>
         </div>
         <div class="play-body">
           <div class="play-canvas">
@@ -431,7 +433,7 @@
                  scrolled with the patch and rode over modules. -->
             <div class="rack-frame" id="rack-frame">
               <div class="rack-scroll" id="rack-scroll">
-                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
+                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack: arrow keys move between controls, and up or down adjusts"></svg>
               </div>
               <!-- The scope, in a CRT bezel. A trace floating on the panel
                    with no housing reads as a decal; the bezel, the graticule
@@ -444,7 +446,7 @@
               </div>
               <!-- Where you are in the patch, and the fastest way to be
                    somewhere else. Bottom-left, out of the scope's corner. -->
-              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap — click to navigate"></svg>
+              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
               <!-- What is about to happen, pinned to the plate it will happen
                    to, named by the title silkscreened on that plate. The rail
                    1000px away used to be the only place this was said, and it
@@ -468,7 +470,7 @@
                 <span class="fh-copy">This layout has spread past the frame.</span>
                 <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
               </div>
-              <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
+              <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
             <!-- The final say on the split below, and the in-house pattern for
                  it: the node bank's rail is dragged the same way, on the other
@@ -477,7 +479,7 @@
                  shrinking it, and this is how tall it opens. -->
             <div class="dock-resize" id="dock-resize" role="separator"
                  aria-orientation="horizontal" tabindex="0"
-                 aria-label="Resize the spec strip — drag, or up and down arrows"
+                 aria-label="Resize the spec strip: drag, or press up and down"
                  title="Drag to set how tall the spec strip opens when it describes a module. It opens over the rack, so the rack never resizes under the pointer."></div>
             <!-- The spec card, docked. It used to float over the graph it was
                  describing — you could read what a module does or look at
@@ -495,32 +497,32 @@
                  and the strip says its own terms rather than implying they
                  are safe. -->
             <div class="tray" id="tray">
-              <span class="tray-label">held</span>
-              <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint mono">Anything you unplug, delete or bypass is held here — and stays here across a reload. Drag it back onto a ○ to put it in.</span></div>
+              <span class="tray-label">set aside</span>
+              <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span></div>
             </div>
           </div>
           <!-- The node bank: the instrument's catalogue, not a shelf. Every
                entry says what it does to a signal (the glyph), where it can
                legally go (the port pips), and — only once the pool carries
                enough evidence — what the model thinks of it (the θ bar). -->
-          <aside class="nodebank" id="nodebank" aria-label="Node bank">
-            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-label="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
+          <aside class="nodebank" id="nodebank" aria-label="Module rail">
+            <button class="nb-collapse" id="nb-collapse" title="Fold the module rail away" aria-label="Fold the module rail away" aria-expanded="true" aria-controls="nb-body">▸</button>
             <!-- Collapsed, the rail keeps its name and its held-count. A drawer
                  that can hide staged work without saying so is a trap. -->
-            <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the node bank"></button>
+            <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the module rail"></button>
             <div class="nb-resize" id="nb-resize" title="Drag to resize" aria-hidden="true"></div>
             <div class="nb-body" id="nb-body">
               <header class="nb-head">
-                <span class="panel-label">node bank</span>
+                <span class="panel-label">modules</span>
                 <span class="mono" id="nb-count"></span>
-                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalogue works" aria-label="Walk me through the node bank">?</button>
+                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalog works" aria-label="How the module rail works">?</button>
               </header>
               <div class="nb-search">
                 <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
-                       placeholder="search — grit, wander…" aria-label="Search modules">
+                       placeholder="search: grit, wander, vowel" aria-label="Search modules">
                 <kbd class="nb-slash" aria-hidden="true">/</kbd>
               </div>
-              <p class="nb-empty hidden" id="nb-empty">No patch loaded. Pick one from the bank on the left and the node bank wakes up.</p>
+              <p class="nb-empty hidden" id="nb-empty">No sound open. Pick one from the bank on the left, and the modules wake up.</p>
               <!-- What the patch on the bench is actually made of. The rail is
                    a legend for the canvas beside it, so it should be able to
                    answer "what am I looking at" as well as "what can I add". -->
@@ -529,7 +531,7 @@
                 <div class="nb-chips" id="nb-inpatch-list"></div>
               </section>
               <div id="nb-groups"></div>
-              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes — it is one voice you play.</p>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes: it is one voice you play.</p>
               <div class="nb-legend">
                 <span class="lg-row"><i class="lg-swatch"></i>audio</span>
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
@@ -557,13 +559,13 @@
         <div class="play-duel mono hidden" id="play-duel">
           <span class="pd-label amber">teach</span>
           <span class="teach-pips" id="pd-pips" aria-hidden="true"></span>
-          <button class="pd-side" id="pd-a" title="Load candidate A into the live synth — play it with the keys below"></button>
+          <button class="pd-side" id="pd-a" title="Play sound A on the keys below"></button>
           <span class="silk-dim">vs</span>
-          <button class="pd-side" id="pd-b" title="Load candidate B into the live synth — play it with the keys below"></button>
-          <button class="util-btn" id="pd-pick-a" title="Vote: A wins">pick a</button>
-          <button class="util-btn" id="pd-pick-b" title="Vote: B wins">pick b</button>
-          <button class="util-btn" id="pd-skip" title="Deal a different pair" aria-label="Deal a different pair">↻</button>
-          <button class="util-btn" id="pd-back" title="Stop auditioning — reload the bench patch">← bench</button>
+          <button class="pd-side" id="pd-b" title="Play sound B on the keys below"></button>
+          <button class="util-btn" id="pd-pick-a" title="Pick A">pick a</button>
+          <button class="util-btn" id="pd-pick-b" title="Pick B">pick b</button>
+          <button class="util-btn" id="pd-skip" title="Another pair" aria-label="Another pair">↻</button>
+          <button class="util-btn" id="pd-back" title="Back to the sound you were playing">← back</button>
           <span class="pd-pred" id="pd-pred"></span>
         </div>
       </section>
@@ -575,29 +577,29 @@
         <div class="duel-mid" id="duel-mid">
           <div class="teach">
             <div class="teach-pips" id="teach-pips" aria-hidden="true"></div>
-            <div class="teach-copy" id="teach-copy">Play both. Keep the one you’d reach for.</div>
+            <div class="teach-copy" id="teach-copy">Play both. Pick the one you’d reach for.</div>
           </div>
           <div class="duel-centre">
-            <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
+            <div class="mono duel-pred" id="duel-pred" title="Its guess for this pair, made before you picked"></div>
             <!-- How the pair on the table was chosen: its own line, so it
                  holds its place while forecasts come and go above it. -->
             <div class="duel-deal">
               <span class="mono duel-rule" id="duel-rule"></span>
-              <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+              <button class="inspect-btn" id="skip-duel" title="Deal a new pair without picking">another pair</button>
             </div>
           </div>
           <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
                beside it. Hovering it marks the rows a generation may replace
                (the wrapper hears the pointer while the button is disabled). -->
           <span class="evolve-wrap" id="evolve-wrap">
-            <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste. The rows it may replace are marked while you hover; save one to keep it.">evolve pool</button>
-            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation's end, the lowest unsaved patches leave to bring the bank back to its size, and that can be a child bred early.">stop</button>
+            <button class="hw-btn small" id="evolve-btn" title="Breed new sounds toward your taste. The rows it may replace are marked while you hover: save one to keep it.">evolve pool</button>
+            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, the lowest unsaved sounds are replaced to bring the pool back to its size, and that can be a child bred early.">stop</button>
           </span>
         </div>
         <div class="duel-row">
           <section class="duel-card" id="duel-a">
             <div class="panel-head">
-              <div class="duel-name" id="name-a">candidate a</div>
+              <div class="duel-name" id="name-a">sound a</div>
               <span class="style-badge mono" id="style-a"></span>
               <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
@@ -605,16 +607,16 @@
             <div class="mini-rack hidden" id="mini-a">
               <svg id="mini-svg-a" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
-            <div class="readout mono" id="readout-a">—</div>
+            <div class="readout mono" id="readout-a">·</div>
             <div class="duel-controls">
               <button class="hw-btn play" id="play-a">▶ sample <kbd>1</kbd></button>
-              <button class="hw-btn promote" id="promote-a" title="Open on the workbench to edit, lock, and evolve">⌖ bench</button>
-              <button class="hw-btn choose" id="choose-a">choose a <kbd>←</kbd></button>
+              <button class="hw-btn promote" id="promote-a" title="Open it in PATCH to edit, lock, and evolve">open in patch</button>
+              <button class="hw-btn choose" id="choose-a">pick a <kbd>←</kbd></button>
             </div>
           </section>
           <section class="duel-card" id="duel-b">
             <div class="panel-head">
-              <div class="duel-name" id="name-b">candidate b</div>
+              <div class="duel-name" id="name-b">sound b</div>
               <span class="style-badge mono" id="style-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
@@ -622,19 +624,19 @@
             <div class="mini-rack hidden" id="mini-b">
               <svg id="mini-svg-b" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
-            <div class="readout mono" id="readout-b">—</div>
+            <div class="readout mono" id="readout-b">·</div>
             <div class="duel-controls">
               <button class="hw-btn play" id="play-b">▶ sample <kbd>2</kbd></button>
-              <button class="hw-btn promote" id="promote-b" title="Open on the workbench to edit, lock, and evolve">⌖ bench</button>
-              <button class="hw-btn choose" id="choose-b">choose b <kbd>→</kbd></button>
+              <button class="hw-btn promote" id="promote-b" title="Open it in PATCH to edit, lock, and evolve">open in patch</button>
+              <button class="hw-btn choose" id="choose-b">pick b <kbd>→</kbd></button>
             </div>
           </section>
         </div>
         <div class="lineage-strip">
-          <div class="panel-label amber">evolution <span class="silk-dim">— what each generation actually did</span></div>
+          <div class="panel-label amber">evolution <span class="silk-dim">· what each generation did</span></div>
           <div class="lineage-body">
             <canvas id="lineage-spark"></canvas>
-            <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span></div>
+            <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet. Make a few picks, then press EVOLVE POOL, or ⚡ on a sound you like.</span></div>
           </div>
         </div>
       </section>
@@ -653,7 +655,7 @@
         </div>
         <div class="style-chips hidden" id="style-chips"></div>
         <div class="crt-wrap">
-          <canvas class="crt" id="taste-crt" tabindex="0" role="application" aria-label="Taste map — arrow keys step between patches, Enter opens one on the bench"></canvas>
+          <canvas class="crt" id="taste-crt" tabindex="0" role="application" aria-label="Taste map: arrow keys step between sounds, and Enter opens one"></canvas>
           <div class="map-legend hidden" id="map-legend" aria-hidden="true">
             <span class="ml-ramp-wrap">less <i class="ml-ramp"></i> would like</span>
             <span class="ml-ring"><i class="sm"></i> sure · <i class="lg"></i> unsure</span>
@@ -670,15 +672,15 @@
     <div class="key-side">
       <div class="ctl-grid">
         <button class="util-btn sq" id="oct-down" data-kbd="z" title="Octave down (Z)" aria-label="Octave down">−</button>
-        <span class="mono" id="oct-label" title="Octave shift — Z down, X up">a = C4</span>
+        <span class="mono" id="oct-label" title="Octave shift: Z down, X up">a = C4</span>
         <button class="util-btn sq" id="oct-up" data-kbd="x" title="Octave up (X)" aria-label="Octave up">+</button>
-        <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic — silence all voices">◼</button>
-        <button class="util-btn" id="bigkeys-btn" title="Taller keybed — worth it if you're playing with fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
+        <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic: silence all voices">◼</button>
+        <button class="util-btn" id="bigkeys-btn" title="Taller keybed, for fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
         <button class="util-btn" id="hold-btn" title="Latch held notes" aria-pressed="false">hold</button>
         <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide" aria-pressed="false">uni</button>
         <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern" aria-pressed="false">arp</button>
         <button class="util-btn" id="sync-btn" title="Tempo sync: step sequencers play the nearest division of the tempo, restarting with the first key (or MIDI start)" aria-pressed="false">sync</button>
-        <label class="keys-span mono" title="How much of the keybed to show — fewer octaves means wider keys">
+        <label class="keys-span mono" title="How much of the keybed to show: fewer octaves, wider keys">
           <span class="pc-cap">keys</span>
           <select id="key-span" class="perf-sel" aria-label="Keybed width in octaves">
             <option value="12">1 oct</option>
@@ -712,13 +714,13 @@
     <div class="piano" id="piano" role="group" aria-label="Musical keyboard"></div>
     <div class="key-side right">
       <div class="perf-ctl">
-        <label class="perf-glide mono" title="Glide — how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
+        <label class="perf-glide mono" title="Glide: how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
         <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
-        <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi —</button>
+        <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi ·</button>
         <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
-      <div class="live-label mono" id="live-label">no patch</div>
-      <label class="perf-glide mono" title="Master volume — live keys and every ▶ audition">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
+      <div class="live-label mono" id="live-label">no sound</div>
+      <label class="perf-glide mono" title="Master volume: live keys and every ▶">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
     </div>
   </footer>
 </div>
@@ -747,9 +749,9 @@
 <section id="warmstart" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="warm-title">
   <div class="warm-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="boot-title" id="warm-title">WHICH THREE DO YOU LIKE?</div>
-    <p class="warm-sub">Play them. Pick your three favourites — that’s eighteen A/B
-      votes in one go, and it means the model starts out already pointed at you.</p>
+    <div class="boot-title" id="warm-title">PICK THE THREE YOU’D REACH FOR</div>
+    <p class="warm-sub">Play them, then pick three. That’s 18 picks in one go,
+      so the model starts out pointed at you.</p>
     <div class="warm-grid" id="warm-grid"></div>
     <div class="warm-foot">
       <!-- The tour film, on "Your first session"; main.js sets the href and
@@ -777,10 +779,10 @@
 <section id="cduel" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="cd-title">
   <div class="warm-card panel cduel-card">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="boot-title" id="cd-title">WHICH ONE IS BETTER?</div>
-    <p class="warm-sub">You changed this patch. One of these is your edit, the other the
-      original — play both and pick the better one. It teaches the model either way,
-      and picking the original teaches it the most. You'll see which was which after.</p>
+    <div class="boot-title" id="cd-title">WHICH WOULD YOU REACH FOR?</div>
+    <p class="warm-sub">You changed this sound. One of these is your edit and the other the
+      original: play both and pick one. Either answer teaches the model,
+      and picking the original teaches it most. You’ll see which was which after.</p>
     <div class="cduel-grid">
       <div class="cduel-cell">
         <div class="cd-head"><span class="cd-letter">A</span><span class="cd-name" id="cd-name-a"></span></div>
@@ -800,8 +802,8 @@
       </div>
     </div>
     <div class="warm-foot">
-      <button class="util-btn" id="cd-cancel" title="Close this and commit nothing — your edit stays on the bench">cancel</button>
-      <button class="util-btn" id="cd-skip" title="Commit the edit without comparing — it teaches the model nothing">commit without comparing</button>
+      <button class="util-btn" id="cd-cancel" title="Close this and keep nothing: your edit stays open">cancel</button>
+      <button class="util-btn" id="cd-skip" title="Keep the edit as new without comparing. It teaches the model nothing.">skip comparing</button>
       <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc cancel</span>
     </div>
   </div>
@@ -815,42 +817,42 @@
     <div class="boot-title">HOW TO PLAY</div>
     <div class="help-cols">
       <div>
-        <div class="help-h">perform — play it</div>
-        <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>
+        <div class="help-h">perform: play it</div>
+        <p><b>Bright, Snap, Motion, Body, Grit</b>, and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> sound that do that job, measured when it opens, and the strip underneath shows them move. An <b>amber</b> control is one this sound’s knobs can’t reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>
         <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
-        <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, all the way roams; let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
+        <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller’s first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
-        <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
-        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
+        <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
+        <p><kbd>space</kbd> hear the sound you’re playing · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
+        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> hear A or B · <kbd>←</kbd>/<kbd>→</kbd> pick · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
-        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>snap</b> pins everything where it currently sits, on the grid, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>shift</kbd> to place it freely. <b>snap</b> pins everything where it sits now, on the grid, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file.</p>
         <div class="help-h">the keybed</div>
-        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
-        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>
-        <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
+        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
+        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
+        <p>A MIDI keyboard plays it, with velocity, pitch bend, and the sustain pedal.</p>
       </div>
       <div>
         <div class="help-h">the rack</div>
-        <p>Drag knobs — sound changes instantly. Click enum plates to cycle. ⋯ restructures a module; ▢ locks it so evolution can't touch it. <kbd>Tab</kbd> into the rack, then arrows to move and <kbd>↑</kbd>/<kbd>↓</kbd> to turn.</p>
-        <div class="help-h">the node bank</div>
-        <p>The rail on the right is the catalogue. <b>Click a module</b> and it's in your hand: every socket it can go into lights up and says what will happen there — green <b>inserts</b> before what's already in the socket, amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>esc</kbd> puts it down.</p>
-        <p><kbd>/</kbd> searches by sound as well as by name — <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and what the model has learned about it. Arrows walk the list; <kbd>enter</kbd> takes one; then arrows walk the lit sockets and <kbd>enter</kbd> places.</p>
-        <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module — quantize, slew, rectify, hold — on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill / replace / shape it is about to do.</p>
-        <p>Drag a wired <b>in</b> jack off its socket to unplug — the chain is <b>held</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
+        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. ⋯ restructures a module; ▢ locks it so breeding can’t touch it. <kbd>Tab</kbd> into the rack, then arrows to move and <kbd>↑</kbd>/<kbd>↓</kbd> to turn.</p>
+        <div class="help-h">the module rail</div>
+        <p>The rail on the right is the catalog. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>esc</kbd> puts it down.</p>
+        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and which way your taste leans on it. Arrows walk the list; <kbd>enter</kbd> takes one; then arrows walk the lit sockets and <kbd>enter</kbd> places.</p>
+        <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
+        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit an edit and it plays your edit against the original and asks which is better (tick “my edit is better” to skip that, once). Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
-        <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:
-        each bred patch replaces the one the model thinks you like <i>least</i>.
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). Watch TASTE learn your styles, and name them. The bank’s <b>?</b> walks you through what a generation is.</p>
+        <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
+        a bred sound that joins it replaces the unsaved one the model rates <i>lowest</i>.
         <b>presets</b> is the hand-made library that came with the instrument.
-        <b>my patches</b> is what you saved.</p>
+        <b>saved</b> is what you saved.</p>
         <p><b>★</b> and <b>save</b> are different questions. Stars tell the
-        model what you think of a patch; <b>save</b> tells the bank to keep it —
-        a saved patch is never replaced to make room. Press <kbd>m</kbd> on the
+        model what you think of a sound; <b>save</b> tells the bank to keep it,
+        and no generation replaces a saved sound. Press <kbd>m</kbd> on the
         row the bank cursor is on to save it.</p>
-        <p>Everything autosaves.</p>
+        <p>Your session is kept in this browser as you play.</p>
       </div>
     </div>
     <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
@@ -873,13 +875,13 @@
     <!-- The teaser is the loop in three words, not a feature list. -->
     <ol class="hg-loop mono" aria-label="What it does">
       <li><span class="hg-n">1</span> listen to two</li>
-      <li><span class="hg-n">2</span> keep one</li>
+      <li><span class="hg-n">2</span> pick one</li>
       <li><span class="hg-n">3</span> it breeds the next</li>
     </ol>
     <div class="hg-rule" aria-hidden="true"></div>
     <p class="hg-ask"><b>Open this on a desktop browser.</b> The instrument needs a
-      patch bank, a live rack and a keybed side by side — a phone can't hold it yet.</p>
-    <p class="hg-soon mono">a handheld version is coming</p>
+      bank, a live rack, and a keybed side by side, and a phone can’t hold them.</p>
+    <p class="hg-soon mono">no handheld version yet</p>
     <button class="hg-anyway mono" id="hg-anyway">look around anyway →</button>
   </div>
 </section>
@@ -909,7 +911,7 @@ document.getElementById("hg-anyway").addEventListener("click", function () {
   <div class="boot-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="boot-word">AURACL<b>E</b></div>
-    <div class="boot-sub">listening to forty patches — you start as soon as the first eight land</div>
+    <div class="boot-sub">listening to 40 sounds: you start as soon as the first 8 land</div>
     <canvas class="boot-field" id="boot-field"></canvas>
     <div class="boot-meter"><div id="boot-fill" class="boot-fill"></div></div>
     <div id="boot-status" class="boot-status mono">warming up the engine…</div>

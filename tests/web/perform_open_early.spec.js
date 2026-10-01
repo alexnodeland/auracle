@@ -92,7 +92,7 @@ async function remembered(page) {
   await page.waitForTimeout(2000); // the memory is written 1.5 s after it changes
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await expect(page.locator("#rack-subject")).not.toHaveText(/no patch/, { timeout: 60_000 });
+  await expect(page.locator("#rack-subject")).not.toHaveText(/no sound open/, { timeout: 60_000 });
   await expect(page.locator("#rack-meta")).not.toHaveText(/opening/, { timeout: 60_000 });
   await page.locator('.bf[data-f="preset"]').click();
   return errs;
@@ -148,7 +148,7 @@ test("an open that cannot complete puts the voices back on the rack", async ({ p
     window.__failBench = true;
     window.__release();
   });
-  await expect.poll(() => page.evaluate(() => window.__toasts.join("\n")), { timeout: 60_000 }).toContain("isn't in the bank any more");
+  await expect.poll(() => page.evaluate(() => window.__toasts.join("\n")), { timeout: 60_000 }).toContain("was replaced by a generation");
   // Back on the rack's patch (by the name it has now: a pool patch's name
   // follows the model, and the pool may still be filling).
   const same = () => page.evaluate(() => {
