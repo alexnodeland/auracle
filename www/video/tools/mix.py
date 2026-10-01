@@ -189,7 +189,7 @@ def follower(mask, attack_ms=80, release_ms=450):
 
 # ---- the film ---------------------------------------------------------------
 
-def main():
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("film")
     ap.add_argument("--voice")
@@ -211,7 +211,11 @@ def main():
                     help="music level relative to the voice, before ducking (default: sound.json mix_now)")
     ap.add_argument("--duck-db", type=float, default=sound_defaults.MIX_NOW["duck_db"],
                     help="the music's duck under the voice (default: sound.json mix_now)")
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = parser().parse_args()
 
     fdir = os.path.join(VIDEO, "films", args.film)
     odir = os.path.join(VIDEO, "out", args.film)

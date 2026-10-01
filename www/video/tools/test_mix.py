@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""mix.py: a cue with no WAV stops the mix, and the levels have one source.
+"""mix.py: a cue with no WAV stops the mix before any audio is read, and the
+bed's level and duck are read from one source.
 
     python3 www/video/tools/test_mix.py      (run by `make dev-check`)
 
@@ -10,7 +11,9 @@ runs this on .venv-voice when it exists.
 
 import importlib.util
 import io
+import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -50,6 +53,47 @@ class ACue(unittest.TestCase):
 
     def test_no_cues_need_no_wavs(self):
         self.assertEqual(self.mix.cue_files([], self.dir), {})
+
+    def test_the_mix_stops_on_a_missing_cue_before_it_reads_any_audio(self):
+        # A film with a line of narration and a cue whose WAV is missing, in a
+        # throwaway copy of www/video/. mix.py must stop before it loads the
+        # voice: a mix that died after minutes of loading would be the same
+        # bug, found late.
+        root = tempfile.mkdtemp(prefix="mix-")
+        voice = os.path.join(root, "voice")
+        for d in ("films/f", "out/f", "voice"):
+            os.makedirs(os.path.join(root, d))
+        with open(os.path.join(root, "films/f/timeline.json"), "w") as f:
+            json.dump({"duration": 2.0, "lines": [{"id": "l1", "t0": 0.0, "t1": 1.0, "text": "A line."}]}, f)
+        with open(os.path.join(voice, "manifest.json"), "w") as f:
+            json.dump({"lines": [{"id": "l1", "file": "l1.wav"}]}, f)
+        with open(os.path.join(root, "out/f/cues.json"), "w") as f:
+            json.dump([{"name": "whoosh", "t": 0.2, "gain": 0}, {"name": "render_glass_pad", "t": 0.5, "gain": -6}], f)
+        read = []
+        saved = self.mix.VIDEO, self.mix.load, sys.argv
+        self.mix.VIDEO = root
+        self.mix.load = read.append
+        sys.argv = ["mix.py", "f", "--voice", voice, "--sfx", self.dir]
+        try:
+            with self.assertRaises(SystemExit) as stop:
+                self.mix.main()
+        finally:
+            self.mix.VIDEO, self.mix.load, sys.argv = saved
+            shutil.rmtree(root)
+        self.assertIn("render_glass_pad", str(stop.exception.code))
+        self.assertEqual(read, [], "mix.py read audio before it checked the cues")
+
+    def test_the_bed_and_duck_defaults_are_read_from_mix_now(self):
+        # Not only equal to today's values: read from sound_defaults, so a
+        # change to sound.json's `mix_now` reaches mix.py.
+        saved = sound_defaults.MIX_NOW
+        sound_defaults.MIX_NOW = {"music_db": -1.25, "duck_db": -3.5}
+        try:
+            args = self.mix.parser().parse_args(["f"])
+        finally:
+            sound_defaults.MIX_NOW = saved
+        self.assertIs(self.mix.sound_defaults, sound_defaults)
+        self.assertEqual((args.music_db, args.duck_db), (-1.25, -3.5))
 
 
 class TheLevels(unittest.TestCase):
