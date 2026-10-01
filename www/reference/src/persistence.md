@@ -10,7 +10,7 @@ saying so is what makes migration tractable.</p>
 | `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts |
 | `BankEntry` | A patch's **tree**, id, origin, name, pinned flag. Renders and features are **re-derived** on import |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
-| `Profile` | The log **plus the standardizer** — the portable unit |
+| `Profile` | The log **plus the standardizer**: the portable unit |
 | `TastePosterior` | A snapshot. Recomputable from the log |
 
 Two of these choices carry the design.
@@ -67,18 +67,18 @@ to the log axis:
 | Coordinate | Conversion |
 |---|---|
 | `centroid_mean`, `rolloff_mean`, `zcr_mean` | Recover the frequency from the linear-Hz fraction, re-map onto the octave axis. **Exact** |
-| `centroid_std` | The spread of a linear quantity becoming the spread of a log one. No exact inverse for a spread, so the **delta method** — the local derivative of the axis map at that observation's own centroid. First-order, and honest about it |
+| `centroid_std` | The spread of a linear quantity becoming the spread of a log one. No exact inverse for a spread, so the **delta method**: the local derivative of the axis map at that observation's own centroid. First-order, and honest about it |
 | `crest`, `tail_ratio`, `attack_s` | Now logged. **Exact** |
 
 **Renamed coordinate, the silent failure.** When `n_delay` became `n_time`,
 by-name matching would have found no `n_time` in any historical row and imputed
-it at the mean for every vote ever cast. That reads as *"this user has no
+it at the mean for every vote ever cast. That reads as *"this player has no
 opinion about delays"* rather than as a rename, and nothing anywhere would have
 reported a problem.
 
 `RENAMES` carries the value across, and in this case it is **exact rather than
 a convenience**: `n_time` counts delays *and* granulators, and no observation
-predating that wave can contain a granulator — so the old `n_delay` count
+predating that wave can contain a granulator, so the old `n_delay` count
 **is** the new coordinate's value for every row being migrated.
 
 That reasoning is worth copying for the next rename. A rename table entry is
@@ -108,7 +108,7 @@ Individual fields use `#[serde(default)]` where a default is honest:
 | Field | Default | Reads as |
 |---|---|---|
 | `BankEntry::pinned` | `false` | Sessions saved before pinning existed had no pins |
-| `TastePosterior::weights` | empty | Uniform — posteriors written before reweighting existed were uniform |
+| `TastePosterior::weights` | empty | Uniform: posteriors written before reweighting existed were uniform |
 | `Forecast::provenance` | `Duel` | Every forecast already on disk was a dealt duel, which is what `Duel` means |
 | `TasteConfig::recency_half_life` | `None` | No forgetting |
 
@@ -123,22 +123,23 @@ IndexedDB, under the page's origin. No account, no server, nothing transmitted.
 Consequences worth stating in a reference: the hosted build and a
 locally-served copy are **different origins** and do not share storage;
 clearing site data destroys the session; and there is no server-side copy to
-recover from. The only backup is an exported profile.
+recover from. The only backup of the taste is a downloaded profile (the menu's
+Save taste profile item).
 
 ## Restore is farmed
 
 Restoring re-renders the saved bank, which is the single most expensive thing
 the app does on load. It runs through the same parallel path as the initial
-fill — `import_session_deferred` → `bank_absorb` → `restore_finish` — rather
+fill (`import_session_deferred` → `bank_absorb` → `restore_finish`) rather
 than serially. See [The web runtime](./runtime.md#the-render-farm).
 
 ## The persistent render cache
 
-$\varphi$ is a pure function of $(\text{term}, \text{spec})$ — that is the
-[determinism contract](./runtime.md) — so a featurization this browser has
+$\varphi$ is a pure function of $(\text{term}, \text{spec})$, which is the
+[determinism contract](./runtime.md), so a featurization this browser has
 already performed can be replayed instead of re-rendered. Without that, every
-reload re-renders the whole bank from nothing: ~48 candidates at ~0.5 s each,
-for numbers the machine computed yesterday.
+reload re-renders the whole bank from nothing: the app's 40 sounds at ~0.5 s
+each, for numbers the machine computed yesterday.
 
 Farm workers consult an IndexedDB store (`auracle-renders`) before rendering and
 write back on a miss. The engine reports the hit rate per wave into the app's own
@@ -149,9 +150,10 @@ log.
 `render_key` addresses $(\text{term}, \text{spec})$, which is everything
 $\varphi$ depends on *given a fixed featurizer*. It hashes the **inputs**, and a
 change to the normalizer or to a descriptor's formula is a change to the
-**function** — the same key would then name a different measurement.
+**function**: the same key would then name a different measurement.
 
-`RENDER_EPOCH` is that missing coordinate and `cache_namespace` combines the two.
+`RENDER_EPOCH` (3, in `auracle-features`' `cache.rs`) is that missing
+coordinate, and `cache_namespace` combines the two.
 A namespace mismatch orphans **every** stored row at once, which is the only
 correct granularity: a cache whose invalidation is anything less than total will
 one day serve a number from a featurizer that no longer exists. Bump the epoch on
@@ -159,7 +161,7 @@ any change to a $\varphi$ coordinate, to loudness normalization (including
 `PEAK_CEILING` and `TARGET_LUFS`), to the vetting thresholds, or to the compiler's
 term → module mapping. When in doubt, bump: the cost is one cold boot.
 
-A hit is **checked rather than trusted** — `pre_featurized` re-derives the key
+A hit is **checked rather than trusted**: `pre_featurized` re-derives the key
 from the tree the engine holds at that index and drops the row if it disagrees.
 
 ### Two deliberate limits
@@ -185,6 +187,7 @@ Holding pins in the UI beside the stars would rebuild exactly the split that
 made
 [the stars-are-saves bug](../docs/bank.html#stars-are-not-saves) possible.
 
-Capped at `pool_size / 4` so the pool can never be pinned solid. That state has
+Capped at `pool_size / 4` (`Engine::pin_cap`) so the pool can never be pinned
+solid. That state has
 no honest report, because it surfaces as `insert_candidate` returning `None`,
 which callers already render as "no move was accepted".

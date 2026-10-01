@@ -1,6 +1,6 @@
 # The web runtime
 
-<p class="lede">Three thread kinds, one wasm binary, and a set of constraints that shaped
+<p class="lede">Four thread kinds, one wasm binary, and a set of constraints that shaped
 the architecture more than any design preference did.</p>
 
 <!-- film:dsp -->
@@ -17,9 +17,9 @@ the architecture more than any design preference did.</p>
 
 | Thread | Holds | Runs |
 |---|---|---|
-| **Main** | UI, Web Audio graph | `main.js` — never in the audio or render data path |
-| **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js` — pool fill, fits, refinement, workbench |
-| **Render workers** ×N | A wasm instance, nothing else | `farm.js` — stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation's walks and ⚡ |
+| **Main** | UI, Web Audio graph | `main.js`, never in the audio or render data path |
+| **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js`: pool fill, fits, refinement, workbench |
+| **Render workers** ×N | A wasm instance, nothing else | `farm.js`: stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation's walks and ⚡ |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -81,20 +81,23 @@ rather than calling the tool.
 ## Progressive boot
 
 Boot costs ~40 renders. The bank is standardized and posted as **`playable` at
-8 patches**, which is when the first duel is dealt. The remaining ~32 fill in
+8 patches** (`PLAYABLE_AT`, in `worker.js`), which is when the first pair is
+dealt. The remaining ~32 fill in
 chunks that **yield to the message queue between batches**, so playing during
 the fill is real rather than cosmetic.
 
 `filled` still fires, and everything downstream of it still runs.
 `fill_progress` carries `stage`/`stages`, so a restore and a top-up fill each
-own a labelled share of one bar.
+own a labeled share of one bar.
 
 ## The render farm
 
 $$N = \mathrm{clamp}(\text{hardwareConcurrency} - 2,\; 0,\; 6)$$
 
-capped at **2** when `deviceMemory ≤ 4`. Override with `?farm=k` or
-`localStorage["auracle-renderers"]`; `0` is the serial path exactly.
+capped at **2** when `deviceMemory ≤ 4`, and a width of 1 is taken as 0:
+below two workers the serial path is as fast (`farmWidth`, in `main.js`).
+Override with `?farm=k` or `localStorage["auracle-renderers"]`, from 0 to 8;
+`0` is the serial path exactly.
 
 ### The pool is identical at every width, including 0
 
@@ -116,11 +119,13 @@ Gated natively by `farm_width_does_not_change_the_pool` and
 
 **Every degradation path falls back to the serial fill of the same draw
 stream**: a worker that never initializes, one killed mid-boot, a build-stamp
-mismatch, a browser that cannot structured-clone a `WebAssembly.Module`. So
+mismatch, and a browser that cannot structured-clone a `WebAssembly.Module`. So
 parallelism costs time and never content.
 
-The one loud exception: a job retired after two attempts logs a console
-warning. That degradation is meant to be visible.
+A draw retired after two attempts (`MAX_TRIES`, in `worker.js`) is recorded,
+not hidden, but in the app's own log (`window.__aurLog`) rather than as a
+console warning. It is a designed degradation, and the console gate holds a
+clean boot to zero warnings.
 
 ### Walks on the farm
 
@@ -133,9 +138,10 @@ nothing to walk. Main compiles the wasm module once and keeps it, so a crew is
 an instantiation per worker, not a compile: where boot had a farm (four cores
 or more) the module was compiled then, and on a two- or three-core machine,
 where boot fills serially, the first crew compiles it. A browser that cannot
-hand a compiled module to a worker has each worker compile its own. Its width is boot's rule with a floor of one
-worker wherever there are two cores, because even one worker takes the walk
-off the engine worker, which then answers everything else.
+hand a compiled module to a worker has each worker compile its own. A crew's
+width is boot's rule with a floor of one worker wherever there are two cores
+(`walkWidth`, in `main.js`), because even one worker takes the walk off the
+engine worker, which then answers everything else.
 
 The context (the tilted prior, the posterior's draws, the standardizer, the
 phrase: about 2.2 MB of JSON) goes to each worker once per generation, as one
@@ -150,8 +156,8 @@ copy of the same job.
 `refine` stream **before** it waits for a crew, so a generation asked for
 during a cold crew's handshake cannot draw first and change the child: a
 seeded session breeds the same ⚡ child however warm the crew was. With no
-crew the engine walks that very job (`refine_from_walk`). A generation and ⚡ take turns in the engine worker,
-and a refit waits for both, so a ⚡ child is never absorbed into a generation
+crew the engine walks that very job (`refine_from_walk`). A generation and ⚡
+take turns in the engine worker, and a refit waits for both, so a ⚡ child is never absorbed into a generation
 at whatever job count its walk finished on. The engine keeps a ⚡ seed out of
 every eviction until its walk is absorbed or stopped.
 
@@ -164,8 +170,8 @@ children are kept.
 
 ## Worker replies are load-bearing
 
-Every workbench edit message **must** get a reply — `bench` or `edit_rejected`
-— or the main thread's in-flight queue deadlocks.
+Every workbench edit message **must** get a reply (`bench` or `edit_rejected`),
+or the main thread's in-flight queue deadlocks.
 
 `bench_missing` is the sharpest case. The worker has always sent it when
 `edit_begin` fails, and because nothing handled it, the optimistic "it's on the
@@ -184,7 +190,7 @@ The dev server sends `Cache-Control: no-store` **and** the app version-stamps
 its worker and wasm URLs. Both are needed: a browser's heuristic cache ignores
 late `no-store` on an already-cached module worker.
 
-Get this wrong and you get a rebuild that appears to change nothing, or an
+Getting this wrong gives a rebuild that appears to change nothing, or an
 engine and a UI from two different commits.
 
 ## Verification beyond `make check`

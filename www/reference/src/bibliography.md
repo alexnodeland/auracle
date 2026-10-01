@@ -8,7 +8,7 @@ are the specific results the implementation relies on, not a survey.
 **Bradley, R. A. and Terry, M. E. (1952).** *Rank Analysis of Incomplete Block
 Designs: I. The Method of Paired Comparisons.* Biometrika 39(3–4), 324–345. →
 The duel likelihood, $P(A \succ B) = \sigma(u_A - u_B)$.
-[Used in](./taste/likelihoods.md#pairwise-duels--bradleyterry)
+[Used in](./taste/likelihoods.md#pairwise-duels-bradleyterry)
 
 **Chu, W. and Ghahramani, Z. (2005).** *Preference Learning with Gaussian
 Processes.* ICML. → The framing of preference data as observations of a latent
@@ -19,7 +19,7 @@ cold start.
 **McCullagh, P. (1980).** *Regression Models for Ordinal Data.* JRSS B 42(2),
 109–142. → The cumulative-logit model with learned cutpoints, which is how star
 ratings are treated as ordinal rather than as numbers.
-[Used in](./taste/likelihoods.md#star-ratings--a-cumulative-logit)
+[Used in](./taste/likelihoods.md#star-ratings-a-cumulative-logit)
 
 **Brochu, E., de Freitas, N. and Ghosh, A. (2007).** *Active Preference
 Learning with Discrete Choice Data.* NIPS. → Preferential Bayesian
@@ -81,7 +81,7 @@ mechanism, and
 **Kong, A., Liu, J. S. and Wong, W. H. (1994).** *Sequential Imputations and
 Bayesian Missing Data Problems.* JASA 89(425), 278–288. → Effective sample size
 $1/\sum w_s^2$, the degeneracy diagnostic that
-[triggers a refit](./taste/posterior.md#effective-sample-size).
+[signals a refit is due](./taste/posterior.md#effective-sample-size).
 
 **Douc, R. and Cappé, O. (2005).** *Comparison of Resampling Schemes for
 Particle Filtering.* ISPA. → Systematic resampling, chosen over multinomial for
@@ -110,9 +110,10 @@ every individual is valid: Auracle's representation decision, with types in
 place of production rules.
 
 **Koza, J. R. (1992).** *Genetic Programming: On the Programming of Computers
-by Means of Natural Selection.* MIT Press. → Tree-based GP, subtree crossover,
-and the bloat problem that
-[a prior rather than a penalty](./search/target.md#what-each-factor-does) addresses.
+by Means of Natural Selection.* MIT Press. → Tree-based GP, and the bloat
+problem that [a prior rather than a penalty](./search/target.md#what-each-factor-does)
+addresses. Auracle takes the tree representation and not Koza's subtree
+crossover: every child grows from one seed.
 
 **Takagi, H. (2001).** *Interactive Evolutionary Computation: Fusion of the
 Capabilities of EC Optimization and Human Evaluation.* Proc. IEEE 89(9),
@@ -131,7 +132,7 @@ audio signals.* → The practice around BS.1770 that makes −18 LUFS a sensible
 target.
 
 **Peeters, G. (2004).** *A large set of audio features for sound description.*
-CUIDADO project report, IRCAM. → Spectral centroid, spread, flatness, rolloff
+CUIDADO project report, IRCAM. → Spectral centroid, spread, flatness, rolloff,
 and flux, in the definitions
 [φ_audio uses](./features/audio.md#spectral-definitions).
 
@@ -147,7 +148,7 @@ bands](./features/audio.md#motion-bands) and not as one variance.
 
 **McDermott, J. H. & Simoncelli, E. P. (2011).** *Sound texture perception via
 statistics of the auditory periphery.* Neuron 71(5), 926–940. → Band-wise
-modulation power is much of what makes a texture recognisable; the grounding
+modulation power is much of what makes a texture recognizable; the grounding
 for treating motion rate as a first-class axis of taste.
 
 ## Statistics of the feature space
@@ -174,13 +175,13 @@ reasoning behind
 
 ## The libraries
 
-- **quiver** —
+- **quiver**:
   [github.com/alexnodeland/quiver](https://github.com/alexnodeland/quiver) ·
   [docs.rs](https://docs.rs/quiver-dsp)
-- **fugue-evo** —
+- **fugue-evo**:
   [github.com/alexnodeland/fugue-evo](https://github.com/alexnodeland/fugue-evo)
   · [docs.rs](https://docs.rs/fugue-evo)
-- **fugue-ppl** — [docs.rs](https://docs.rs/fugue-ppl)
+- **fugue-ppl**: [docs.rs](https://docs.rs/fugue-ppl)
 
 ## Lineage
 
@@ -189,9 +190,9 @@ knowing about because what each lacked is what this one is for:
 
 | Iteration | Year | Proved | Lacked |
 |---|---|---|---|
-| **neuralCompressor** (C++/Arduino pedal) | 2020 | The interaction model: human-driven GA, fit/unfit footswitch, mutate/crossover knobs | The engine — neither the EA nor the DSP was ever implemented |
+| **neuralCompressor** (C++/Arduino pedal) | 2020 | The interaction model: human-driven GA, fit/unfit footswitch, mutate/crossover knobs | The engine: neither the EA nor the DSP was ever implemented |
 | **evosynth v1** (Next.js/Tone.js + FastAPI/DEAP) | 2025 | A working interactive GA over a fixed ~30-parameter subtractive synth; parameter locking; lineage tracking | Preference **persistence** (ratings died each generation), topology evolution, principled inference |
-| **Auracle** | 2026– | — | — |
+| **Auracle** | 2026– | (open) | (open) |
 
 v0 had the interaction but no engine. v1 had an engine, but a naive one with no
 memory of the user.
