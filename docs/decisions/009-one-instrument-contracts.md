@@ -12,7 +12,9 @@ superseded_by: null
 
 ## Status
 
-Accepted
+Accepted. [ADR-016](016-space-plays-everywhere.md) supersedes one point:
+Space plays the sound you're playing in every view, and is not a PERFORM pad
+key.
 
 ## Context
 

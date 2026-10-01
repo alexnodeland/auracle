@@ -42,8 +42,9 @@ the long-form notes are this directory's `README.md`.
 - **One language across the views**
   ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
   words, colours (green sound, amber the model, red danger, silk you), undo,
-  message channels and keymap in RFC-003. New copy, colours and keys follow
-  them; an exception amends the ADR.
+  message channels and keymap in RFC-003, except that Space plays the sound
+  in every view ([ADR-016](../../docs/decisions/016-space-plays-everywhere.md)).
+  New copy, colours and keys follow them; an exception amends the ADR.
 - **One design system**
   ([ADR-011](../../docs/decisions/011-one-design-system.md)): views are
   rebuilt from one component set within a text budget. At rest a view shows
