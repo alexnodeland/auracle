@@ -1,21 +1,4 @@
 {
-  "CHANGELOG.md": {
-    "analyse": 2,
-    "behaviour": 2,
-    "cancelled": 1,
-    "catalogue": 6,
-    "centre": 19,
-    "colour": 11,
-    "em dash": 400,
-    "grey": 2,
-    "labelled": 3,
-    "marginalise": 1,
-    "maths": 1,
-    "modelling": 1,
-    "normalise": 2,
-    "recognise": 3,
-    "travelled": 3
-  },
   "www/docs/src/accessibility.md": {
     "catalogue": 1,
     "colour": 3,
