@@ -107,8 +107,10 @@ write, ask which belief it serves.
 3. **Quiet confidence.** No superlatives, no exclamation marks, no adjectives
    that sell. The sound is the drama; the words get out of its way.
 4. **Warm, not cute.** Second person, present tense, musical and natural images
-   (grow, lean, reach, ear) over machine ones (engine, algorithm, AI). No jokes
-   in copy.
+   (grow, lean, reach, ear) over machine ones (engine, algorithm, AI). The
+   warmth comes from precision and care, not from metaphor: use the growth
+   image lightly, and never stack images. No jokes and no whimsy in copy; the
+   play lives in the sound.
 5. **One idea a sentence.** Short sentences, and structure (headings, steps,
    tables) for everything else. Motion and sound explain mechanisms; words name
    them.
@@ -166,6 +168,10 @@ write, ask which belief it serves.
 
 ### How it works
 
+- **Layered.** In the app and the guide, say what something does first, in one
+  or two sentences. How it does it sits one step deeper, behind a "How it
+  works" that opens in place. The math lives in the reference, one link
+  further. Each layer is complete on its own; nobody needs the next one to act.
 - **Show, then name, then explain:** what you hear or see first, the term
   second, the reason third.
 - **One example before the rule.**
@@ -325,7 +331,9 @@ can't go back and reread.
 ### The narrator
 
 The narrator is a calm voice beside you at the instrument, talking to one
-person. It is not a presenter addressing an audience.
+person. It is not a presenter addressing an audience, a teacher filling the
+silence, or a friend selling the excitement. It says the least that lets you
+hear the most.
 
 - **Never** "Hey everyone", "In this video", "Let's dive in", "Without further
   ado", "Make sure to", "Don't forget to", "Thanks for watching".
@@ -645,6 +653,8 @@ levels follow the film sound's specification (RFC-007, to be written).
 
 ### The guide
 
+- **Each part is layered:** what it does first, then "How it works" for the
+  mechanism, then a link to the reference for the math.
 - **Each page opens with what it is for,** in one or two sentences. Then come:
   - how to do it, as numbered steps in the imperative ("Press EVOLVE POOL.");
   - what you see, with each part named in capitals as the panel shows it;
