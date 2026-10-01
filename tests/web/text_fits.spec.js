@@ -84,14 +84,25 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
       await expect(page.locator(".pf-deck")).toBeVisible();
       // Every caption state in every column, measured in the same task, so
       // nothing repaints between the write and the read. Twice: as this
-      // machine draws it, and with 0.6 px more to every character, because
-      // Linux's Chromium (CI) sets the same font wider than macOS's, and a
-      // caption that fits here by a hair took a fourth line there.
-      for (const spacing of ["normal", "0.6px"]) {
-        const out = await page.evaluate(([caps, spacing]) => {
+      // machine draws it, and with each character widened to 7.2 px.
+      // Linux's Chromium (CI) sets the same 11 px Plex Mono wider than
+      // macOS's 6.6 px, and a caption that fitted macOS by a hair took a
+      // fourth line there; 7.2 px is wider than either, so a caption passes
+      // on both renderers or fails on both.
+      for (const advance of [null, 7.2]) {
+        const out = await page.evaluate(([caps, advance]) => {
           const subs = [...document.querySelectorAll(".pf-knob .pf-k-sub")];
           const deck = document.querySelector(".pf-deck");
           const was = subs.map((s) => s.textContent);
+          // This renderer's advance: twenty digits of the caption's font.
+          const probe = document.createElement("span");
+          probe.className = subs[0].className;
+          Object.assign(probe.style, { position: "absolute", visibility: "hidden", whiteSpace: "pre", display: "inline", minHeight: "0" });
+          probe.textContent = "01234567890123456789";
+          document.body.appendChild(probe);
+          const own = probe.getBoundingClientRect().width / 20;
+          probe.remove();
+          const spacing = advance == null ? "normal" : `${Math.max(0, advance - own).toFixed(2)}px`;
           subs.forEach((s) => { s.style.letterSpacing = spacing; });
           const lineH = parseFloat(getComputedStyle(subs[0]).lineHeight);
           const lines = {};
@@ -118,11 +129,12 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
             }
           }
           subs.forEach((s, i) => { s.textContent = was[i]; s.style.letterSpacing = ""; });
-          return { bad, base: Math.round(base), tallest: Math.round(tallest), lines, width: Math.round(subs[0].getBoundingClientRect().width) };
-        }, [CAPTIONS, spacing]);
+          const column = subs[0].closest(".pf-knob").clientWidth;
+          return { bad, base: Math.round(base), tallest: Math.round(tallest), lines, column, own: own.toFixed(2), spacing };
+        }, [CAPTIONS, advance]);
         // On a miss, every caption's line count, so the one that ran long names itself.
         const counts = Object.entries(out.lines).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${n}  ${c}`).join("\n");
-        const say = `letter-spacing ${spacing}, a ${out.width} px column; lines per caption:\n${counts}`;
+        const say = `this renderer's advance ${out.own} px, letter-spacing ${out.spacing}, a ${out.column} px column; lines per caption:\n${counts}`;
         expect(out.bad, `captions cut (${say})`).toEqual([]);
         expect(Math.max(...Object.values(out.lines)), `a caption past three lines (${say})`).toBeLessThanOrEqual(3);
         expect(out.tallest, `the knob row's height with the longest captions, against the shortest (${say})`).toBe(out.base);
