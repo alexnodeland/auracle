@@ -2821,15 +2821,22 @@ impl Engine {
     /// generation still open, which retires [`Engine::retiring`]; those
     /// members are passed over here for the same reason.
     pub fn next_seeds(&self) -> Vec<u64> {
-        self.next_seed_rows(&self.ranked())
+        self.next_seed_rows(&self.ranked(), &self.retiring())
     }
 
-    /// [`Engine::next_seeds`] from a ranked list already computed.
-    pub(crate) fn next_seed_rows(&self, ranked: &[(usize, f64, f64)]) -> Vec<u64> {
+    /// [`Engine::next_seeds`] from a ranked list and [`Engine::retiring`]
+    /// already computed. While the pool is over size `retiring` is a whole
+    /// eviction order under the posterior the open generation started with,
+    /// the dearest part of [`Engine::belief`], so it is computed once there.
+    pub(crate) fn next_seed_rows(
+        &self,
+        ranked: &[(usize, f64, f64)],
+        retiring: &[u64],
+    ) -> Vec<u64> {
         if self.posterior.is_none() || self.standardizer.is_none() {
             return Vec::new();
         }
-        let gone: HashSet<u64> = self.retiring().into_iter().collect();
+        let gone: HashSet<u64> = retiring.iter().copied().collect();
         self.seed_rows(ranked, &gone)
             .into_iter()
             .map(|i| self.pool[i].id)
@@ -2854,21 +2861,23 @@ impl Engine {
     /// The engine does not know what the app has cut: a cut member is in the
     /// pool, ranks low, and is in this list like any other.
     pub fn may_replace(&self) -> Vec<u64> {
+        let retiring = self.retiring();
+        let walks = self.next_seed_rows(&self.ranked(), &retiring).len();
         let p = self.posterior.as_deref();
-        self.may_replace_after(self.next_seeds().len(), |i| {
-            mix_utility(p, &self.pool[i].phi_std)
-        })
+        self.may_replace_after(retiring, walks, |i| mix_utility(p, &self.pool[i].phi_std))
     }
 
-    /// [`Engine::may_replace`] for a generation of `walks` jobs, given each
-    /// member's utility under the current posterior by pool index (computed
-    /// once by a caller that already has it, as [`Engine::belief`] has).
+    /// [`Engine::may_replace`] given [`Engine::retiring`], the generation's
+    /// `walks`, and each member's utility under the current posterior by pool
+    /// index (all three computed once by a caller that already has them, as
+    /// [`Engine::belief`] has).
     pub(crate) fn may_replace_after(
         &self,
+        retiring: Vec<u64>,
         walks: usize,
         utility: impl Fn(usize) -> f64,
     ) -> Vec<u64> {
-        let mut out = self.retiring();
+        let mut out = retiring;
         if walks == 0 {
             return out;
         }

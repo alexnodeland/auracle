@@ -10,7 +10,8 @@
 //! [`Engine::taste_map`]'s pool points), computed the same way; what a refit
 //! adds beyond them (names, the map's projection and its history ghosts, the
 //! lenses' θ) is either unmoved by a pick or too dear to recompute per pick.
-//! `examples/pick_belief.rs` in `auracle-wasm` measures the cost.
+//! `examples/pick_belief.rs` in `auracle-wasm` measures the cost natively, and
+//! `pick_belief.mjs` beside it in wasm.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +53,9 @@ impl Engine {
     /// One pass over the draws per member serves the score, its std and its
     /// lens (`TastePosterior::utility_mix_and_responsibilities`), and the
     /// seeds and the eviction order are read off those scores rather than
-    /// computed again. Each piece equals its own call ([`Engine::ranked`],
+    /// computed again. While a generation is open with the pool over size,
+    /// one more pass ranks what its end would retire, under the posterior it
+    /// opened with ([`Engine::retiring`]); at rest there is nothing to rank. Each piece equals its own call ([`Engine::ranked`],
     /// [`Engine::taste_map`]'s pool points, [`Engine::next_seeds`],
     /// [`Engine::may_replace`]) number for number; the tests hold it to that.
     pub fn belief(&self) -> Belief {
@@ -71,12 +74,13 @@ impl Engine {
         // `ranked`'s order: best first, equals in pool order (a stable sort).
         rows.sort_by(|a, b| b.1.total_cmp(&a.1));
         let ranked: Vec<(usize, f64, f64)> = rows.iter().map(|&(i, m, s, _)| (i, m, s)).collect();
-        let seeds = self.next_seed_rows(&ranked);
+        let retiring = self.retiring();
+        let seeds = self.next_seed_rows(&ranked, &retiring);
         let mut utility = vec![0.0; self.pool.len()];
         for &(i, mean, _, _) in &rows {
             utility[i] = mean;
         }
-        let may_replace = self.may_replace_after(seeds.len(), |i| utility[i]);
+        let may_replace = self.may_replace_after(retiring, seeds.len(), |i| utility[i]);
         Belief {
             ranked: rows
                 .into_iter()
