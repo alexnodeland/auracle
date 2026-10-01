@@ -294,9 +294,9 @@ mod tests {
         }
     }
 
-    /// Two notes: one the clip is silent under, then (optionally) a dyad
-    /// whose chord voice is compiled at its onset, mid-render.
-    fn two_notes(dyad: bool) -> PhraseSpec {
+    /// Two notes: one the clip is silent under, then one with `chord`'s
+    /// voices, each compiled at its onset, mid-render.
+    fn two_notes(chord: &[f64]) -> PhraseSpec {
         PhraseSpec {
             notes: vec![
                 Note {
@@ -309,7 +309,7 @@ mod tests {
                     voct: 0.0,
                     on_s: 0.3,
                     off_s: 0.3,
-                    chord: if dyad { vec![7.0 / 12.0] } else { Vec::new() },
+                    chord: chord.to_vec(),
                 },
             ],
             ..PhraseSpec::default()
@@ -317,10 +317,11 @@ mod tests {
     }
 
     /// **Chord voices read the frame the main voice reads.** The clip is
-    /// silent until the dyad's onset and a tone after it, so both voices meet
-    /// the tone cold at the same sample. On the host's clock the chord voice,
-    /// compiled at that onset mid-render, reads exactly the frames the main
-    /// voice reads: the dyad's render is the mono render doubled, bit for bit.
+    /// silent until the second note's onset and a tone after it, so every
+    /// voice meets the tone cold at the same sample. On the host's clock the
+    /// chord voices, compiled at that onset mid-render (one for a dyad, two
+    /// for a triad), read exactly the frames the main voice reads: the dyad's
+    /// render is the mono render doubled and the triad's tripled, bit for bit.
     ///
     /// This fails both ways the render could get it wrong. Without an
     /// `advance()` per frame every voice reads frame 0 (silence) and the mono
@@ -329,7 +330,7 @@ mod tests {
     /// twice it.
     #[test]
     fn chord_voices_read_the_frame_the_main_voice_reads() {
-        let mono = two_notes(false);
+        let mono = two_notes(&[]);
         let onset = ((0.1 + 0.4) * mono.sample_rate) as usize;
         let held = (0.3 * mono.sample_rate) as usize;
         let clip: Vec<f32> = (0..mono.total_samples())
@@ -349,7 +350,10 @@ mod tests {
         };
         let tree = only_input();
         let one = render_phrase(&tree, &with_clip(mono)).unwrap().samples;
-        let two = render_phrase(&tree, &with_clip(two_notes(true)))
+        let two = render_phrase(&tree, &with_clip(two_notes(&[7.0 / 12.0])))
+            .unwrap()
+            .samples;
+        let three = render_phrase(&tree, &with_clip(two_notes(&[4.0 / 12.0, 7.0 / 12.0])))
             .unwrap()
             .samples;
         assert!(
@@ -368,6 +372,11 @@ mod tests {
                 two[i],
                 2.0 * one[i],
                 "frame {i}: the chord voice is not reading the main voice's frame"
+            );
+            assert_eq!(
+                three[i],
+                3.0 * one[i],
+                "frame {i}: the two chord voices are not reading the main voice's frame"
             );
         }
     }
