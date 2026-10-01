@@ -1,172 +1,184 @@
 # Troubleshooting
 
+<p class="lede">What to check when Auracle makes no sound, boots slowly, won’t
+breed, or seems not to learn, in the order the causes are most likely.</p>
+
 ## No sound
 
-**Check in this order.**
+Check in this order:
 
-1. **The pool is still filling.** Boot runs about forty audio renders. The
-   first duel is dealt at 8 patches; the rest arrive behind you.
-2. **No sound is open.** The subject block will say *no sound open*. Click
-   a row in the bank.
-3. **The browser has not granted audio.** Browsers require a user gesture
-   before an audio context can start. Click anywhere or press a key.
-4. **The patch is muted as unvetted.** A pinned strip says so and stays until
-   resolved. A render that came back non-finite, silent or DC-dominated is
-   never played. Load a different patch.
-5. **Voices are stuck.** Press **◼** in the dock.
-6. **The output level is down.** The **vol** slider at the far right of the dock.
-7. **The tab is muted**, or the OS is sending audio somewhere else. Check both.
+1. **The pool is still filling.** Boot renders 40 sounds, and the first pair
+   is dealt at eight; the rest arrive while you play.
+2. **No sound is open.** PATCH says *no sound open*. Click a row in the bank.
+3. **The browser hasn’t allowed audio yet.** Browsers need a gesture before
+   they start audio. Click anywhere, or press a key.
+4. **The sound is muted because it failed its check.** A pinned strip says so,
+   and stays until it’s resolved. A render that came back broken, silent, or
+   mostly DC offset is never played. Open another sound.
+5. **Voices are stuck.** Press **◼** on the keybed.
+6. **The level is down.** Check **VOL** at the far right of the keybed.
+7. **The tab is muted**, or your computer is sending sound somewhere else.
+   Check both.
 
 ## It asks for a desktop
 
-A touch screen whose window is under 620px on its **shorter** side does not
-boot the engine. That is deliberate; see
-[browser support](./getting-started/running-locally.md#handheld-devices). The
-*look around anyway* link sets a session flag and reloads past the gate, but
-there is no handheld layout behind it.
+A touch screen whose window is under 620 px on its shorter side doesn’t start
+the engine. That is deliberate; see [handheld
+devices](./getting-started/running-locally.md#handheld-devices). *look around
+anyway →* reloads past the screen for this tab, but there is no phone
+layout behind it.
 
-Rotating to landscape does not help: turning the device swaps the window's
-width and height, and the shorter side stays the same. A tablet whose shorter
-side is 620px or more boots in either orientation.
+Turning the device sideways doesn’t help: the shorter side stays the same. A
+tablet whose shorter side is 620 px or more starts in either orientation.
 
-## Boot is very slow, or stalls
+## Boot is slow, or stalls
 
-- **First load compiles WebAssembly.** Once. Subsequent loads are much faster.
-- **Restoring a large session** re-renders your saved bank. This runs across
-  workers and the bar moves; a big session can take tens of seconds.
-- **Safari caps the render workers** and boots more slowly than Chromium. Expected.
-- **A worker that fails** falls back to the serial path over the *same* draws,
-  so it costs time and not content.
-- **A render that times out twice is retired.** That draw is skipped, which
-  is the one way a boot can end with different patches from a clean run. It
-  is noted in `window.__aurLog` (*[auracle] draw 12 retired after 2
-  attempts*), not in the console, because it is a sign of a busy machine
-  rather than a fault.
+- **The first load compiles the engine.** Once; later loads are much faster.
+- **Restoring a large session** renders your saved sounds again. This runs
+  across workers and the bar moves, but a big session can take tens of
+  seconds.
+- **Safari limits the render workers**, and boots more slowly than Chrome.
+  That’s expected.
+- **A worker that fails** hands its work to the engine, over the same draws,
+  so it costs time and not sounds.
+- **A render that times out twice is dropped.** That draw is skipped, which
+  is the one way a boot can end with different sounds from a clean run. It is
+  noted in `window.__aurLog` (`[auracle] draw 12 retired after 2 attempts`),
+  not the console, because it is a sign of a busy machine rather than a fault.
 
-To force the single-threaded path, add `?farm=0` to the URL.
+Add `?farm=0` to the address to boot without the render workers.
 
 ## A rebuild changed nothing
 
-You are almost certainly serving with a cache. Use `make serve` (which sends
-`Cache-Control: no-store`) rather than `python3 -m http.server`. A browser's
-heuristic cache will keep serving a stale `worker.js` or `.wasm`, and late
-`no-store` headers do not dislodge an already-cached module worker.
+You are almost certainly serving with a cache. Use `make serve`, which tells
+the browser not to cache, rather than `python3 -m http.server`. A browser’s
+cache will keep serving an old `worker.js` or `.wasm`, and changing the
+headers later doesn’t dislodge a module worker it has already cached.
 
-Worse than "nothing changed": you can end up with an engine and a UI from two
-different commits.
+Worse than “nothing changed”: you can end up with an engine and a page from two
+different builds.
 
-## Audio dropouts and clicks
+## Dropouts and clicks
 
 The instrument runs on a real-time audio thread.
 
-- **Another tab doing heavy work** can starve it. Close it.
-- **A refit is running.** A few seconds of inference. It runs off the audio
-  thread and should not cause dropouts; if it does, that is worth reporting.
-- **Clicks on patch change** should not happen. If you hear one, that is a bug.
-- **Unison ×4 with the arpeggiator at a fast division** is the heaviest
-  configuration available, and the first place to look.
+- **Another tab doing heavy work** can starve it. Close that tab.
+- **A refit is running.** A few seconds of work, off the audio thread; it
+  shouldn’t cause dropouts, and if it does, that’s worth reporting.
+- **A click when a sound changes** shouldn’t happen. If you hear one, it’s a
+  bug.
+- **UNI with the arpeggiator at a fast rate** is the heaviest setting there
+  is, and the first place to look.
 
-## A MIDI controller does not play
+## A MIDI controller doesn’t play
 
-The dock's right side reads `midi ●` when a device is connected. `midi ?`
-means the page cannot reach MIDI at all; click it, and the panel says why:
+The right of the keybed reads *midi ●* when a device is connected. *midi ?*
+means the page can’t reach MIDI at all; click it, and the panel says why:
 
-- **Safari** has no Web MIDI. Use a Chromium browser or Firefox.
-- **Firefox** asks whether to add a site permission for MIDI. Answer the
-  prompt; if it never appeared, press **connect midi** in the panel.
-- **Access was refused** earlier. Allow MIDI for the site in the browser's
-  site settings (the icon left of the address), then press **connect midi**.
+- **Safari** has no Web MIDI. Use Chrome, Edge, or Firefox.
+- **Firefox** asks whether to add a site permission for MIDI. Answer it; if it
+  never appeared, press **CONNECT MIDI** in the panel.
+- **You refused access** earlier. Allow MIDI for the site in the browser’s site
+  settings (the icon left of the address), then press **CONNECT MIDI**.
 
-`midi ○` means another Auracle tab is playing MIDI. Close it, or click
-anywhere in this one to play MIDI here. (The browser sends your controller to
-every tab that asks, so before this a second, older tab played every note too:
-a preset or a control changed in one tab seemed not to apply.)
+*midi ○* means another Auracle tab is playing MIDI. Close it, or click
+anywhere in this one to play MIDI here.
 
-`midi ·` means MIDI works and the browser sees no device: replug it, and it
-appears without a reload. On Windows, a device another program has open cannot
-be opened by the browser too; close that program and replug.
+*midi ·* means MIDI works and the browser sees no device: plug it in again,
+and it appears without a reload. On Windows, a device another program has open
+can’t be opened by the browser too; close that program and plug it in again.
 
 ## Evolution does nothing
 
 While a generation breeds, **EVOLVE POOL** is its own progress bar
-(*breeding 3/10*), and when it ends a toast says what happened. Before the
-model has anything to aim at, that toast is *Nothing to breed toward yet.
-Make a few picks first, then evolve.* Answer some duels first.
+(**BREEDING 3/10**), and when it ends, a toast says what happened.
 
-**A generation can put no new sound in the pool**, and its toast says why, from
-each walk's reason: *Generation 4: every walk came back unchanged.*, *Generation
-4: 3 were bred, but none rated above the sounds they would replace.* (a child
-joins only if the model rates it above the lowest unsaved sound), or a count of
-each when the walks differ. That is normal occasionally, and persistent when:
+**Before the model has anything to aim at,** the toast says *Nothing to breed
+toward yet. Make a few picks first, then evolve.* Make a few picks in EVOLVE,
+then press it again.
 
-- The patch is at its **budget ceilings** (`24/24 modules`), leaving no room to
-  grow. Check the budget line in PATCH.
-- **Everything is locked.** Locks are exact, and locking every address leaves
-  the search nothing to do.
-- **The pool is pinned solid.** Pins are capped at a quarter of the pool, but
-  it is worth checking if you have been saving a lot.
+**A generation can put no new sound in the pool,** and its toast says why,
+from each walk’s outcome:
 
-When every patch the model chose to breed from is out of evolution's reach, the
-message is different: *Generation 4: nothing could be bred. Every seed it
-picked has a knob on its stop, or is deeper than the model scores: nudge those
-knobs off their stops.* More picks
-will not fix that one; moving those knobs will.
+- *Generation 4: every walk came back unchanged.*
+- *Generation 4: 3 were bred, but none rated above the sounds they would
+  replace.* A child joins only if the model rates it above the lowest unsaved
+  sound.
+- A count of each, when the walks differ.
 
-## An edit did not take
+That happens now and then. When it keeps happening:
 
-- **Nothing to keep as new.** The **keep as new** button is disabled until you
-  have changed something.
-- **The edit was refused** as out of domain. A value outside a knob's range is
-  refused rather than recorded.
-- **The bench shows the previous patch.** Reload, and report it.
+- **The patch is at its ceilings** (*24/24 modules*), with no room to grow.
+  Check the budget beside the guess in PATCH.
+- **Everything is locked.** Locks are exact, and locking every place in the
+  patch leaves breeding nothing to change.
+- **The pool is nearly all saved.** Saves are capped at a quarter of the pool,
+  but it’s worth checking if you have been saving a lot.
 
-## The model is not learning
+When every sound the model chose to breed from is out of breeding’s reach, the
+toast is different:
 
-First, check [TRUST](./views/taste.md#trust--is-its-confidence-honest) rather
+> *Generation 4: nothing could be bred, because every seed it picked has a
+> knob on its stop or is deeper than the model scores. Nudge those knobs off
+> their stops.*
+
+More picks won’t fix that one; moving those knobs will.
+
+## An edit didn’t take
+
+- **KEEP AS NEW is disabled** until you have changed something. Its tooltip
+  says *Nothing to keep yet: turn a knob first*.
+- **The edit was refused,** and the toast says why: *That edit to Glass Pad
+  didn’t happen*, then the reason.
+- **The rack still shows the sound before.** Reload, and report it.
+
+## The model isn’t learning
+
+First check [TRUST](./views/taste.md#trust-is-its-confidence-honest), rather
 than your impression. Then:
 
-- **Fewer than ~20 picks.** It is genuinely too early.
-- **Your preference may not be in the feature space.** The clearest case is
-  stereo width, which has no coordinate at all. Read the **heard** line on
-  the modules involved; it will tell you outright. See [what it cannot
+- **Fewer than about 20 picks.** It is too early.
+- **Your taste may not show in what it measures.** The clearest case is
+  stereo width, which it can’t hear at all. Read the **heard** line on the
+  modules involved; it will tell you. See [what it cannot
   learn](./teaching.md#what-it-cannot-learn).
 - **You have been saving instead of starring.** Saving teaches nothing.
-- **Check-duel skill is the honest number.** Check duels are the pairs dealt
-  at random, which by default is every duel EVOLVE and PATCH deal. Overall
-  skill also counts comparisons you chose (edits, PERFORM offers).
+- **Watch the fair-test number.** The line that ends *the number to trust* is
+  the skill on the pairs dealt at random, which is every pair EVOLVE and PATCH
+  deal. The overall number also counts comparisons you chose (edits, PERFORM
+  offers).
 
-If it has learned something wrong, **⋯** → *Reset your taste…* downloads a
-copy of your taste, clears the log and the model, and leaves your saved
+If it has learned something you don’t mean, **⋯** › **Reset your taste…**
+downloads a copy of your taste, clears what it learned, and leaves your saved
 sounds alone.
 
-## Everything is broken / the engine crashed
+## The engine stopped
 
-A crashed engine shows a **pinned alert strip** rather than a toast, and it
-stays until resolved. Reload the page; your session is autosaved and will
-restore.
+An engine that has stopped shows a pinned alert rather than a toast, and the
+alert stays until it’s resolved. Reload the page; your session is kept, and it
+comes back.
 
-If it crashes again on the same session, that is worth
-[an issue](https://github.com/alexnodeland/auracle/issues). Include the console
+If it stops again on the same session, that is worth [an
+issue](https://github.com/alexnodeland/auracle/issues). Include the console
 output.
 
 ## I lost work
 
-Your session is in your browser's IndexedDB and autosaves continuously. It is
+Your session is in your browser’s storage, and it’s kept as you play. It is
 gone if:
 
-- Site data was cleared, by you or by a browser cleanup.
-- It was a private / incognito window.
-- You are on a different browser, machine, or origin. The hosted build and a
-  local copy do not share storage.
+- the site’s data was cleared, by you or by a browser cleanup;
+- it was a private window;
+- you’re on a different browser, machine, or address. The hosted app and a
+  copy you serve yourself don’t share storage.
 
-There is no server-side copy; there is nothing to recover from. The only backup
-is the one you exported. See [Your
-data](./your-data.md#exporting-and-importing).
+There is no copy on a server, and nothing to recover from. The only backup is
+one you downloaded: see [your data](./your-data.md#download-and-open).
 
 ## Reporting something
 
 [github.com/alexnodeland/auracle/issues](https://github.com/alexnodeland/auracle/issues).
 
-Useful to include: browser and version, what you did, the console output, and
-the patch exported if it is about a specific one. Debug hooks live at
-`window.__aur` and `window.__aurLog`.
+Include your browser and its version, what you did, the console output, and
+the patch file if it’s about one sound. `window.__aur` and `window.__aurLog`
+hold what the app logs for debugging.

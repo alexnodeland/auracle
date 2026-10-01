@@ -1,7 +1,8 @@
 # Reading what it learned
 
-<p class="lede">How to tell a real preference from a coefficient that happens to
-be pointing somewhere.</p>
+<p class="lede">This page is about telling a real lean in your taste from a
+bar that happens to point somewhere. It covers the habits that read the model
+well, and what the app does to keep a guess looking like a guess.</p>
 
 <!-- film:math -->
 <figure class="film" id="film-math">
@@ -13,148 +14,153 @@ be pointing somewhere.</p>
 </figure>
 <!-- /film:math -->
 
-The [TASTE view](./views/taste.md) documents what each tab shows. This page is
-about reading it well: the interpretation mistakes that are easy to make, and
-how the interface tries to stop you making them.
+[TASTE](./views/taste.md) says what each tab shows. This page is about reading
+it well.
 
 ## Five states, and what each means
 
-The instrument distinguishes five, and never lets two of them look alike. A
-module's spec card in the module rail says them in these words:
+The app tells five states apart, and never lets two of them look alike. A
+module’s spec card in the module rail says them in these words:
 
 | The card says | It means |
 |---|---|
-| *Not a coordinate the taste model measures on its own.* | The feature vector has no coordinate for this. It never will |
-| *The model hasn’t fitted your taste yet. Make a few picks.* | No posterior yet. Answer some duels |
-| *In 3 of 40 sounds: too few for the model to lean yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
-| *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
-| *In 12 of 40 sounds. in drive & fold + chorus (60% of your pool) you lean toward it (θ +0.62 ± 0.20)* | Here is the belief, and here is how much to trust it |
+| *Not a coordinate the taste model measures on its own.* | The model has no measurement for this, and never will |
+| *The model hasn’t fitted your taste yet. Make a few picks.* | Nothing learned yet. Make some picks |
+| *In 3 of 40 sounds: too few for the model to lean yet.* | Fewer than five sounds in the pool use it: too few to learn from |
+| *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough sounds use it, and the model has looked, but it can’t yet tell which way you lean |
+| *In 12 of 40 sounds.* in *analog sustain (60% of your pool) you lean toward it (θ +0.62 ± 0.20)* | Here is the lean, and how far to trust it |
 
-A dash is not zero. "The model is not sure yet" and "the model has never had a
-chance to form a view" are different statements, and one grey bar cannot say
-both. On the module rail's θ bars, *still a guess* is a hollow bar whose whisker
-crosses the zero line, the belief is a solid bar, and the three silences
-before them are a dash. TASTE's STYLES and DIRECTIONS draw the same two marks.
+A dash is not zero. “The model isn’t sure yet” and “the model has had no
+chance to form a view” are different statements, and one gray bar can’t say
+both.
 
-## Read the interval, not the bar
+On the module rail, *still a guess* is a hollow bar whose whisker crosses
+zero, and a lean it’s sure of is a solid bar. The three silences before them
+are a dash. TASTE’s STYLES and DIRECTIONS draw the same two marks.
 
-The single most useful habit.
+## Read the whisker, not the bar
 
-In [DIRECTIONS](./views/taste.md#directions), every coefficient is drawn with a
-credible interval behind it. **If the interval crosses the centre line, the
-model has not established that coordinate**: the bar is a guess that happens to
-point somewhere, and it will likely point elsewhere after ten more duels. The
-app draws such a bar hollow, with its whisker at full strength, and ends the
-row's label with **?**; only an interval clear of zero gets a solid bar.
+This is the one habit worth keeping.
 
-A short bar with a tight interval is worth more than a long bar with a wide
-one. The former is a small preference the model is sure of; the latter is noise
+In [DIRECTIONS](./views/taste.md#directions), every bar has a whisker for how
+far it could be off. **If the whisker crosses the center line, the model hasn’t
+settled that lean.** The bar is a guess that happens to point somewhere, and it
+will likely point elsewhere after ten more picks. The app draws such a bar
+hollow, with its whisker at full strength, and ends the row’s label with **?**.
+Only a whisker clear of the center line gets a solid bar.
+
+A short bar with a tight whisker is worth more than a long bar with a wide
+one. The first is a small lean the model is sure of; the second is noise drawn
 with confidence.
 
 <figure class="viz" data-viz="interval">
-<figcaption><strong>Drag the evidence slider.</strong> Early on every interval
-straddles zero, and the individual bars mean nothing even though they point
-somewhere. As observations accumulate the intervals narrow and coefficients
-start clearing zero one at a time. Hollow bars, labelled with a **?**, are the
-ones that have not, drawn as the app draws them.
+<figcaption><strong>Drag the evidence slider.</strong> Early on every whisker
+crosses zero, and the bars mean nothing even though they point somewhere. As
+answers come in, the whiskers narrow and the leans clear zero one at a time.
+Hollow bars, labeled with a <strong>?</strong>, are the ones that haven’t,
+drawn as the app draws them.
 </figcaption>
 </figure>
 
-The same logic runs the module rail's θ bars, which is why they draw a dash below
-five supporting patches. A coefficient fitted from three examples would
-otherwise look exactly like one fitted from three hundred.
+The module rail’s bars follow the same logic, which is why they draw a dash
+below five sounds that use the module. A lean learned from three examples
+would otherwise look the same as one learned from three hundred.
 
-## Size on the map is uncertainty
+## On the map, size is doubt
 
-On the [MAP](./views/taste.md#map), **glow** is how much it thinks you would
-like a patch and **size** is how unsure it is. People read glow and ignore
+On the [MAP](./views/taste.md#map), **glow** is how much it guesses you’d like
+a sound, and **size** is how unsure it is. People read the glow and miss the
 size.
 
-- **Small and bright.** Confident it is good. Worth playing.
-- **Big and bright.** It *might* be excellent. This is where to explore.
-- **Small and dim.** Confident it is not for you.
-- **Big and dim.** It knows nothing. Also worth exploring, for a different
-  reason.
+- **Small and bright:** it’s sure you’d like it. Play it.
+- **Big and bright:** you might love it. This is where to look.
+- **Small and dim:** it’s sure it isn’t for you.
+- **Big and dim:** it has no guess. Also worth a look, for another reason.
 
-Early in a session everything is big. That is what a cold start looks like, and
-it is why the first generation you breed is not very targeted.
+Early in a session every dot is big. That is what a cold start looks like, and
+it’s why the first generation you breed isn’t very targeted.
 
-Also read the footer (*"it shows 29% of how they differ"*): the two axes
-often capture a third or less of the variation in the feature space, so two
-dots close together *usually* sound alike and two far apart are *probably*
-different. It is a projection, not a map of the territory.
+Read the footer too (*it shows 29% of how they differ*). The two axes often
+hold a third or less of how the sounds differ, so two dots close together
+*usually* sound alike, and two far apart are *probably* different. It’s a
+flat picture of something with more sides.
 
-## Styles are directions, not genres
+## Styles are leanings, not genres
 
-A style is a direction in feature space that explains some of your
-answers. It is not a genre and it is not a mood. The generated names (*drive &
-fold + chorus*, *dynamics + plucked strings*) describe coefficients, not music.
+A style is one direction your picks lean in. It isn’t a genre or a mood. Its
+name (*analog sustain*, *driven sweeps*) describes what it leans toward in the
+measurements, not the music.
 
 Two things follow:
 
-- **A style claiming almost none of the bank is idle.** The model fits up to
-  five and lets the data decide how many get used. Having two live styles and
-  three idle ones is not a failure; it means your taste, as measured by these
-  coordinates, has two islands.
-- **You can rename them, and should.** Click a chip's name. Once *"drive & fold
-  + chorus"* is *"the mean one"*, every place the style appears becomes
-  readable at a glance. The name is yours and it persists.
+- **A style claiming almost none of the pool is idle.** The model has room for
+  up to five and lets your answers decide how many it uses. Two live styles and
+  three idle ones isn’t a fault: your taste, as these measurements hear it, has
+  two sides.
+- **You can rename them, and it helps.** Click a chip’s name and type. Once a
+  style is called what you’d call it, every place it appears reads at a
+  glance, and the name is kept.
 
-## The prediction on a bank row
+## The guess on a bank row
 
-The percentage is roughly "how likely you are to prefer this patch in a duel
-against an average pool member". It is a posterior mean, so on its own a
-confident 80% and an unsure 80% print the same number.
+The percentage is roughly how likely you are to pick this sound in a pair. On
+its own, a sure 80% and an unsure 80% print the same number.
 
-The bar under the row tells them apart. Its bright tick is the same mean, and
-the dimmer block around the tick spans one standard deviation either way: a
-narrow block is a sure guess, a wide one an unsure guess. The map's size channel
-and the belief row's interval say the same thing at more length. The row is
-still a ranking aid, not a measurement.
+The bar under the row tells them apart. Its bright tick is the same guess, and
+the dimmer block around it shows the doubt: a narrow block is a sure guess, a
+wide one an unsure guess. The map’s dot sizes say the same at more length. The
+row is a way to rank sounds, not a measurement.
 
-## Trust, and what to expect over time
+## TRUST, over time
 
-[TRUST](./views/taste.md#trust--is-its-confidence-honest) is the tab that decides
-whether any of the others deserve belief. A realistic trajectory:
+[TRUST](./views/taste.md#trust-is-its-confidence-honest) is the tab that says
+whether the others deserve belief. A realistic course:
 
 | Stage | What TRUST says |
 |---|---|
-| First session, < 20 picks | *Not beating a coin flip.* Correct and expected |
-| 20–60 picks | Skill crosses zero and wobbles. Buckets too small to read |
-| Beyond that | Skill climbs; dots settle near the diagonal |
+| A first session, under 20 picks | It counts toward 20 guesses, then *not beating a coin flip yet*. That is expected |
+| 20 to 60 picks | Skill crosses zero and wobbles. The buckets are too small to read |
+| Beyond that | Skill climbs, and the dots settle near the diagonal |
 
-Two failure shapes worth recognising:
+Two shapes are worth recognizing:
 
-- **Dots consistently below the diagonal on the right.** It is overconfident:
-  when it says 80% it is right less often than that. Usually a sign it has
-  locked onto a coordinate that was coincidental. More duels, especially ones
-  you expect to surprise it, is the fix.
-- **Skill stuck near zero with many observations.** Either your preference is
-  not visible in the feature space (see [what it cannot
-  learn](./teaching.md#what-it-cannot-learn)), or your answers are
-  inconsistent, which happens: some days you are not choosing on one axis.
+- **Dots below the diagonal on the right.** It is overconfident: when it says
+  80%, it’s right less often than that. It has usually latched onto a quality
+  that was a coincidence. More picks fix it, especially ones you expect to
+  surprise it.
+- **Skill stuck near zero after many picks.** Either your taste doesn’t show in
+  what the model measures (see [what it can’t
+  learn](./teaching.md#what-it-cannot-learn)), or your answers vary, which
+  happens: some days you aren’t choosing on one quality.
 
-The number to watch is **check-duel skill** rather than overall skill. Check
-duels are the ones dealt at random, which under the default pairing is every
-duel EVOLVE and PATCH deal you. The overall number also counts comparisons you
-chose yourself (an edit against its original, a PERFORM offer), and those are
-not a fair sample.
+The number to watch is the skill on **fair-test picks**, the line that ends
+*the number to trust*. Fair-test picks are the pairs dealt at random, which is
+every pair EVOLVE and PATCH deal you. The overall number also counts
+comparisons you chose yourself (an edit against its original, a PERFORM
+offer), and those aren’t a fair sample.
 
 ```admonish note title="Why a low score early is the honest one"
-Auracle forecasts every duel *before* you answer it, then reports its own error
-against a proper scoring rule. A number produced that way can come out badly, and
-early on it does. That is what makes it worth reading later.
+Auracle makes its guess about every pick before you pick, then grades its own
+error. A score made that way can come out badly, and early on it does. That is
+what makes it worth reading later.
 ```
 
-## When it is working
+## When it’s working
 
-You will notice it before the numbers say so:
+You’ll hear it before the numbers say so:
 
-- More pairs hold **two patches you like**. The pairs are still dealt at
-  random; it is the pool that has moved toward you.
-- Generations produce children you want to keep rather than children you want
-  to skip.
-- The belief row's explanation matches your own reason for liking a patch.
-- A style chip's name is one you would have written yourself.
+- More pairs hold two sounds you’d reach for. The pairs are still dealt at
+  random; it’s the pool that has grown toward you.
+- Generations bring children you want to keep, not ones you skip.
+- The guess above the rack in PATCH names your own reason for liking a sound.
+- A style’s name is one you’d have written yourself.
 
 That last one is the real milestone.
+
+## What to try next
+
+- Open DIRECTIONS, and count the solid bars. Those are the leans the model is
+  sure of.
+- Open a big, bright dot from the map.
+- [Calibration](../reference/taste/calibration.html) in the reference has the
+  scoring in full.

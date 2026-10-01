@@ -1,160 +1,170 @@
 # Playing it
 
-<p class="lede">Four voices, three ways in, and an arpeggiator.</p>
+<p class="lede">The sound you’re playing is always live, in every view. This
+page is about the three ways to play it, the controls on the keybed, the
+arpeggiator, and recording what you play.</p>
 
 <!-- film:playing --><!-- /film:playing -->
 
-The current patch is always live: four-voice polyphony, with oldest-note
-stealing and silent-tail voice parking. Every edit you make on the rack
-re-patches the running instrument, so held chords survive a patch change
-without a click.
+The instrument has four voices. A new note past four takes the oldest one, and
+a voice whose tail has gone quiet is parked until it’s needed. Every edit you
+make on the rack changes the running instrument, so a held chord keeps
+sounding through it.
 
 ## Three ways in
 
-### The on-screen keys
+### The keybed on screen
 
-Mouse or touch, with glissando — press and slide. The keybed shows the computer
-keymap on the keys it covers.
+Click or touch a key, and slide across the keys for a glissando. The keybed
+shows the computer keyboard’s letters on the keys they play.
 
 ### The computer keyboard
 
-An Ableton-style layout:
+The home row plays the white keys, and the row above it the black keys:
 
 ```text
 white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`. At the
-bottom <kbd>a</kbd> plays C0; at the top <kbd>'</kbd> plays F8, five notes past
-an 88-key piano's C8. The on-screen keybed stops at C8, so the last few letters
-sound without a key lighting. The left of the dock always shows the current
-anchor (`a = C4`).
+<kbd>z</kbd> and <kbd>x</kbd> shift the octave, from `a = C0` to `a = C7`. At
+the bottom, <kbd>a</kbd> plays C0; at the top, <kbd>'</kbd> plays F8, five
+notes past an 88-key piano’s C8. The keybed on screen stops at C8, so the last
+few letters sound without a key lighting. The left of the keybed always shows
+where <kbd>a</kbd> sits (`a = C4`).
 
-```admonish note title="Letters play unless you are typing"
-Note letters are blocked only while a text field (or a drop-down) has focus, so
-naming a patch does not play a melody. A focused button, knob or tab keeps just
-the keys it uses (Space, Enter, the arrows) and lets the letters through. That
-is why <kbd>m</kbd> saves a patch instead of the obvious <kbd>s</kbd>:
-<kbd>s</kbd> is a note, so binding save to it would have played a D every time.
+```admonish note title="Letters play unless you’re typing"
+Note letters stop only while a text field or a drop-down has focus, so naming
+a sound doesn’t play a melody. A focused button, knob, or tab keeps the keys
+it uses (Space, Enter, and the arrows) and lets the letters through. That is
+why <kbd>m</kbd> saves a sound, not <kbd>s</kbd>: <kbd>s</kbd> is a note.
 ```
 
 ### MIDI
 
-Plug in a keyboard and it works: **velocity**, **pitch bend** and the
-**sustain pedal**. The dock's right side shows the MIDI state; click **midi**
-there for the mapping panel.
+Plug in a keyboard and it plays, with velocity, pitch bend, and the sustain
+pedal. The right of the keybed shows the MIDI state (*midi ●* with a device
+connected); click it for the mapping panel.
 
 A controller with knobs works too, with nothing to set up. The first eight
-knobs you turn claim [PERFORM](./views/perform.md)'s eight controls in the
-order you turn them, and the panel's **learn** remaps any of them. Endless
-encoders are recognised from what they send. Ordinary pots pick a control up
-as they pass through its position rather than snapping it, which matters
-because the mouse and the keys move the controls under a pot that has not
-moved; when PERFORM re-centres a control, a pot in use keeps working from
-where it is. Channel
-pressure brightens the sound and the mod wheel drives Motion. Incoming MIDI
-clock sets the tempo. The mapping is remembered per device.
+knobs you turn take [PERFORM](./views/perform.md)’s eight controls, in the
+order you turn them, and the panel’s **LEARN** remaps any of them. Channel
+pressure brightens the sound, the mod wheel drives MOTION, and incoming MIDI
+clock sets the tempo. The mapping is remembered for each device.
 
 **The sustain pedal sustains.** A note you release while the pedal is down
-keeps ringing until the pedal lifts, and lifting it releases exactly those
-notes. Notes still under your fingers keep sounding. Strike a sustained note
-again and it belongs to your finger again. The pedal is separate from
-**HOLD**, the dock's latch; it used to be wired to it.
+rings until the pedal lifts, and lifting it releases exactly those notes.
+Notes still under your fingers keep sounding, and a sustained note you strike
+again belongs to your finger again. The pedal is separate from **HOLD**, the
+keybed’s latch.
 
-The whole map, including bend range and how encoders are detected, is in
-[Keyboard and MIDI](./keyboard.md#midi).
-
-Web MIDI works in Chrome, Edge and the other Chromium browsers, and in
+Web MIDI works in Chrome, Edge, and the other Chromium browsers, and in
 Firefox, which asks the first time whether to add a site permission for it.
-Safari has none; there the other two ways in still play. Whenever MIDI is not
-available the dock reads `midi ?`, and the MIDI panel says why, with a
-**connect midi** button that asks again.
+Safari has none; there the other two ways in still play. When MIDI isn’t
+available the keybed reads *midi ?*, and the panel says why, with **CONNECT
+MIDI** to ask again.
 
-**MIDI plays one tab.** The browser hands your controller to every tab that
-asks for it, so with Auracle open twice, the tab you used last plays MIDI and
-the other stands aside: its dock reads `midi ○`, and a click anywhere in it
-takes MIDI back. The computer keyboard already worked that way.
+**MIDI plays one tab.** With Auracle open twice, the tab you used last plays
+MIDI, and the other reads *midi ○*. A click anywhere in it takes MIDI back.
 
-## The dock
+[Keyboard and MIDI](./keyboard.md#midi) has the whole map, including the bend
+range, endless encoders, and soft takeover.
 
-| Control | |
+## The keybed’s controls
+
+| Control | What it does |
 |---|---|
-| **HOLD** | Latch: every note you play stays on until you switch HOLD off or press **◼**. Playing a held note again restrikes it |
-| **◼** | Panic. Kills every voice immediately |
-| **⇕ tall** | Grow the dock; the rack re-zooms into what is left |
-| **keys** | Keybed width, 1–4 octaves |
+| **HOLD** | Latches every note you play until you switch HOLD off or press **◼**. Playing a held note again strikes it again |
+| **◼** | Silences every voice at once |
+| **⇕ TALL** | A taller keybed, for fingers. The rack zooms to fit what is left |
+| **KEYS** | How many octaves the keybed shows, one to four: fewer octaves, wider keys |
 | **ARP** | The arpeggiator, below |
-| **UNI ×4** | Unison — stack detuned copies per note, trading polyphony for width |
-| **gld** | Glide (portamento) between notes |
-| **● REC** | Bounce your playing to a WAV |
-| **vol** | Output level |
+| **SYNC** | Puts the patch’s step sequencers on the tempo, below |
+| **UNI** | Unison: all four voices on one note, detuned wide |
+| **GLD** | Glide: how long a note takes to slide into the next when you play a line. Chords stay clean |
+| **● REC** | Records your playing to a WAV |
+| **VOL** | The output level, for live keys and every ▶ |
 
-The keybed width defaults by input device: three octaves for a mouse, two for a
-finger. The narrow sizes anchor on the computer keymap's octave, so what you
-see matches what your keyboard plays. Both height and width persist.
+The keybed’s width starts at three octaves for a mouse and two for a finger.
+The narrow sizes center on the computer keyboard’s octave, so what you see
+matches what your keys play. The height and width persist.
 
 ## The arpeggiator
 
+1. Press **ARP**. Its settings open in a drawer above the keybed.
+2. Hold a chord, or latch one with **HOLD**.
+3. Set the pattern and rate against it.
+
 | | |
 |---|---|
-| **PATTERN** | up / down / up-down / random |
-| **RATE** | Division: 1/4, 1/8, 1/16 or 1/8 triplet |
+| **PATTERN** | up, down, up and down (*up·dn*), or random (*rnd*) |
+| **RATE** | 1/4, 1/8, 1/16, or 1/8 triplet (*1/8t*) |
 | **TEMPO** | BPM |
-| **RANGE** | How many octaves it walks |
-| **GATE** | Note length as a fraction of the division |
+| **RANGE** | How many octaves it walks, one to four |
+| **GATE** | Note length, as a share of the step |
 | **SWING** | Shuffle |
 
-It is **sample-accurate**: it runs inside the audio engine rather than on a
-page timer, so it does not drift and it does not stutter when the interface is
-busy.
+The drawer folds to a chip under the buttons (`arp 1/8 · 120`) when you click
+outside the keybed or press <kbd>Esc</kbd>; the chip opens it again. Playing,
+HOLD, and the keybed’s other controls leave it open.
 
-The settings open in a drawer above the dock when you switch ARP or SYNC on,
-and fold to a chip under the buttons (`arp 1/8 · 120`) when you click outside
-the dock or press <kbd>Esc</kbd>; the chip opens it again. Playing, HOLD and
-the dock's other controls leave it open, so you can latch a chord and set the
-rate against it.
+The arpeggiator runs inside the audio engine rather than on a page timer, so
+it doesn’t drift, and it doesn’t stutter when the screen is busy.
 
-**SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
-one plays the musical division nearest the speed it was evolved at, so a
-pattern that ran at 3.7 steps a second becomes 8ths at 120 BPM, and all of
-them restart together with the first key you press, on the same beat the arp
-starts. MIDI start restarts them too, and from then until a MIDI stop the
-clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
-the bar; that is the point of it. Turning a sequencer's rate knob with sync on
-moves it between divisions rather than off the grid, and the knob reads the
-rate it plays (`2.1 Hz sync`); its tooltip gives the free-running rate. Sync
-changes only what you hear live: the model still auditions every patch
-free-running.
+### SYNC
+
+**SYNC** puts the patch’s step sequencers on the arpeggiator’s tempo. Each
+plays the musical division nearest the speed it was bred at: a pattern that ran
+at 3.7 steps a second becomes eighths at 120 BPM. All of them restart together
+with the first key you press, on the same beat the arpeggiator starts.
+
+A five-step pattern still cycles against the bar; that’s the point of it.
+Turning a sequencer’s rate knob with SYNC on moves it between divisions, and
+the knob reads the rate it plays (`2.1 Hz sync`). SYNC changes only what you
+hear: the model still hears every sound free-running.
+
+```admonish info collapsible=true title="How it works: MIDI start and stop"
+MIDI start restarts the synced sequencers too, and from then until a MIDI
+stop, the clock pulls them back onto its beat once a beat. [The
+clock](./keyboard.md#clock) has the rest.
+```
 
 ## Recording
 
-**● REC** captures your playing to a WAV: the real output, post-limiter, at the
-session sample rate. Press it again to stop; the file downloads.
+1. Press **● REC**.
+2. Play.
+3. Press it again to stop. The WAV downloads.
 
-This records *performance*, not the standard sample, and it is the right way to
-capture a patch you like. The five-second audition phrase exists to make
-patches comparable to each other.
+It records the real output, after the limiter, at the session’s sample rate.
+This records what you play, not the standard phrase, and it’s the way to
+capture a sound you like. The five-second phrase is there to make sounds
+comparable, not to show them off.
 
-## Per-patch loudness
+## Every sound at one loudness
 
-Every patch is loudness-normalized (to −18 LUFS) before you hear it, in
-audition *and* in feature extraction.
+Every sound is normalized to −18 LUFS before you hear it, in its phrase and in
+what the model measures.
 
-Louder reliably wins A/B tests, so without normalization the taste model would
-learn "I like loud" and dress it up as a preference about timbre. If a patch
-seems quieter than you expect, that is the normalization working.
+A louder sound reliably wins a comparison, so without that the model would
+learn “I like loud” and pass it off as a taste in timbre. If a sound seems
+quieter than you expect, that’s the normalization at work.
 
-## If it does not make sound
+## If it makes no sound
 
-In order of likelihood:
+Check in this order:
 
-1. **The pool is still warming up.** The first duel is dealt at 8 patches.
-2. **No patch is loaded.** Click a row in the bank.
-3. **The browser has not granted audio.** Browsers require a gesture before
-   starting an audio context. Click anywhere, or press a key.
-4. **The patch is muted as unvetted.** A pinned strip says so, and stays
-   visible until it is resolved.
+1. **The pool is still filling.** The first pair is dealt at eight sounds.
+2. **No sound is open.** Click a row in the bank.
+3. **The browser hasn’t allowed audio yet.** Browsers need a gesture before
+   they start audio. Click anywhere, or press a key.
+4. **The sound is muted because it failed its check.** A pinned strip says so,
+   and stays until it’s resolved.
 5. **Voices are stuck.** Press **◼**.
 
-More in [Troubleshooting](./troubleshooting.md).
+[Troubleshooting](./troubleshooting.md) has more.
+
+## What to try next
+
+- Latch a chord with **HOLD**, turn **ARP** on, and set the rate against it.
+- Turn **SYNC** on with a patch that has a step sequencer.
+- Play a sound in [PERFORM](./views/perform.md) with the named controls.

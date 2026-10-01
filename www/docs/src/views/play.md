@@ -1,134 +1,153 @@
-# PATCH — the patch
+# PATCH: the patch, opened up
 
-<p class="lede">One patch, in full, playable while you take it apart.</p>
+<p class="lede">PATCH opens one sound as its whole patch: every module, cable,
+and knob, live while you change it. Use it to hear a sound properly, change
+it, and aim the next breeding at it.</p>
 
 <!-- film:view-patch --><!-- /film:view-patch -->
 
-PATCH shows a single patch as its whole rack: every module, every cable, every
-knob at its true position. It is running live the entire time. Turn a knob and
-you hear it on the next note you play.
+PATCH shows the sound you’re playing as its rack, with every knob at its true
+position. It runs live the whole time: turn a knob and you hear it on the next
+note you play.
 
 <figure>
-<img src="../img/play.webp" alt="The PATCH view, with the bank on the left, the rack centre, the node bank on the right and the keyboard docked below." loading="eager" width="1440" height="900">
+<img src="../img/play.webp" alt="The PATCH view, with the bank on the left, the rack in the center, the module rail on the right, and the keybed docked below." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The bank on the left, the rack in the
-middle, the module rail on the right, the keyboard docked below. Everything
-here is live while you edit it.</figcaption>
+middle, the module rail on the right, the keybed below. Everything here is
+live while you edit it.</figcaption>
 </figure>
 
-## What is on screen
+## Open a sound and change it
+
+1. Click a row in the [bank](../bank.md). It opens as the sound you’re playing.
+2. Play it from the keybed. Hold a chord, or run the arpeggiator.
+3. Drag a knob, and hear it change.
+4. Press **KEEP AS NEW** to add your edit to the pool as a new sound. The
+   original stays as it was.
+
+You can also open a sound with **OPEN IN PATCH** on either side of a pair in
+[EVOLVE](./evolve.md), or by clicking a dot on the [TASTE map](./taste.md#map).
+
+## What you see
 
 From the top:
 
-**The subject block.** The patch's name, *(edited)* once you have changed it,
-and a caption for what you did to it (*2 locked*). The **▶** (or
-<kbd>Space</kbd>) plays the standard sample of the patch as it stands, or says
-why it cannot. Pressed while an edit is still on its way to the engine, it
-wears a dotted amber ring and plays once the edit lands; press it again, or
-<kbd>Space</kbd>, to take that back. Its id and a short structural summary
-(`#30 · wsqr·mix·cho`) are the engine's bookkeeping, shown only with **⋯ ›
-Show measurements**.
+**The name.** The sound’s name, *(edited)* once you have changed it, and a
+caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
+the standard phrase on the sound as it stands. Pressed while an edit is still on
+its way to the engine, ▶ wears a dotted amber ring and plays once the edit
+lands; press it again to take that back.
 
-**The toolbar.** The edit controls (*keep as new*, *pick the edit*), the layout
-and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *leans*,
-*map*), the locks, and **⚡ evolve from this**. All covered in
-[Reading and editing the rack](../rack.md).
+**The next-step chip.** An amber line that always says what to do now, and
+clicking it does the step it names:
 
-**The next-step chip.** An amber line that always says what to do now
-(*"Generation 31 bred 4 new sounds: they’re at the top of the bank ▸"*, or *a
-new sound* after a ⚡). It is a suggestion,
-and clicking it does the step it names: it points you at a key to play, opens
-EVOLVE for picks, starts a generation, scrolls the bank to the newest
-generation's patches, or (when that generation kept none) opens TASTE. While
-the first generation breeds and before any child of it has landed, it only
-says *Breeding: keep playing*, and clicking it does nothing.
+- *Play it first: press A, or tap a key below ▸* on a fresh session;
+- *Teach it your taste: 6 quick picks below ▸* before your first pick;
+- *It’s learned something. Breed a generation ▸* once it has;
+- *Breeding: keep playing ▸* while the first generation breeds (this one does
+  nothing when clicked);
+- *Generation 3 bred 4 new sounds: they’re at the top of the bank ▸* after one.
 
-**The belief row.** What the model guesses about the sound you're playing, and why:
+**⚡ EVOLVE FROM THIS**, on the name’s row: breeding from this sound alone. See
+[locks, and evolving from here](../rack.md#locks-and-evolving-from-here).
+
+**The toolbar.** **PICK THE EDIT** and **KEEP AS NEW**; the layout and view
+controls (**CHAIN**, **SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and
+the locks (**LOCK KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and
+editing the rack](../rack.md) covers them all.
+
+**The guess.** What the model guesses about the sound you’re playing, and why:
 
 ```text
-80% · fairly sure · chorus & sweeps +0.78 · body −0.09 ·
-drive & fold −0.08   in your chorus & sweeps style
+79% · fairly sure · even branches +0.39 · plucked strings +0.18 ·
+mod chaining +0.17   in your analog sustain style
 ```
 
-That is its guess as a percentage (the same one the bank row's bar draws) and
-a word for how sure that reads, on one scale: *a hunch* (46–54%), *leaning*
-(55–69% or 31–45%) or *fairly sure* (70% and over, or 30% and under). The word
-reads the percentage; how wide the model's own doubt is stays with the bank
-row's block. Then the three coordinates contributing most, and which style is
-judging it, by its name. While an edit is on its way the row dims and ends in
-*· rating…*: the model rating the edited sound again.
-When the model has no basis for a claim, this row says so instead of printing a
-number, and when nothing reaches the output (the patch's only source socket is
-[empty](../rack.md#empty-sockets)) it says *no guess while nothing reaches the
-output*. See [Reading what it learned](../reading-the-model.md).
+That is how likely it guesses you’d pick this sound, and a word for how sure
+that reads. The words come from one scale: *a hunch* (46–54%), *leaning*
+(55–69%, or 31–45%), or *fairly sure* (70% and over, or 30% and under). Then the three qualities that count most,
+and the style that rates it highest, by name. While an edit is on its way, the
+line dims and ends in *· rating…*: the model rating the edited sound again.
 
-Beside it, the **budget**: the ceilings evolution searches within, `24
-modules · 6 depth · 3 mod depth`. It speaks up only when one is close
-(`5/6 depth`, amber) or reached (red), because a patch *at* a ceiling has no
-room left to grow and a hand-built patch past one is refused. With **⋯ › Show
-measurements** it shows all three all the time (`8/24 modules · 4/6 depth ·
-1/3 mod depth`).
+When the model has no basis for a guess, the line says so instead of printing a
+number. When nothing reaches the output (the patch’s only source socket is
+[empty](../rack.md#empty-sockets)), it says *no guess while nothing reaches the
+output*. [Reading what it learned](../reading-the-model.md) says how to read
+it.
 
-**The rack.** The patch itself. See [the rack chapter](../rack.md).
+**The budget,** beside the guess: the ceilings breeding searches within (24
+modules, a depth of 6, and a modulation depth of 3). It shows a ceiling only
+when the patch is close to it (*5/6 depth*, in amber) or at it (red): a patch
+at a ceiling has no room to grow, and a hand-built patch past one is refused.
 
-**The scope.** Bottom right of the frame, tracing the output while you play.
-Configurable from **⋯** → *Scope & analyzer…* (waveform or spectrum, tap point,
-FFT size, colour, corner, size, trigger, freeze).
+**The rack.** The patch itself. See [reading and editing the rack](../rack.md).
 
-**The spec strip.** The line under the rack that describes whatever you are
-pointing at, in the catalogue or in the patch.
+**The scope,** at the bottom right of the frame, tracing the output while you
+play. Set it up from **⋯** › *Scope & analyzer…*: waveform or spectrum, where
+it listens, FFT size, color, corner, size, trigger, and freeze.
 
-**SET ASIDE.** The staging tray. Anything you unplug, delete, or bypass lands here
-instead of vanishing, and stays across a reload. Drag it back onto any lit ○ to
-put it in. The socket an unplug leaves reads EMPTY and makes no sound.
+**The spec strip,** under the rack. It describes whatever you point at, in the
+module rail or in the patch.
 
-**The quick-pick strip.** <kbd>TEACH</kbd> plus the current duel pair, so you
-can vote without leaving PATCH.
+**SET ASIDE,** under that. Anything you unplug, delete, or bypass lands here
+instead of vanishing, and stays across a reload. Drag it back onto a lit ○ to
+put it in. The socket it left reads *empty* and makes no sound.
 
-**The keyboard dock.** [Playing it](../playing.md).
+**MODULES,** on the right: [the module rail](../wiring.md).
+
+**TEACH,** along the bottom: the same pair EVOLVE deals, so you can pick
+without leaving PATCH. **▶ A** and **▶ B** put each sound under your keys, and
+then **PICK A**, **PICK B**, or **↻** for another pair.
+
+**The keybed,** docked below: [playing it](../playing.md).
+
+```admonish info collapsible=true title="How it works: edits in order"
+Every knob is live, and every structural edit is a grammar operation, so you
+can’t break the patch into something unplayable. Edits reach the engine in
+the order you make them. If the engine is still working on the last one, the
+next waits its turn and then happens: its module is outlined, and the caption
+under the name says *1 edit waiting*.
+
+<kbd>⌘Z</kbd> (Ctrl Z) undoes the last thing you did, even while the engine
+is still catching up. **⋯** › **Show measurements** adds the sound’s id and a
+short structural summary to the caption, and all three budget ceilings to the
+budget (*8/24 modules · 4/6 depth · 1/3 mod depth*).
+```
 
 ## The three things PATCH is for
 
-### Hearing a patch properly
+### Hearing a sound properly
 
-The standard sample is five seconds and identical for every patch, which is
-what makes candidates comparable. It is not a performance, though. Play the
-patch from the keyboard. Hold a chord. Run the arpeggiator. A patch that sounds
-thin on the sample can be excellent under your hands, and the sample cannot
-tell you that.
+The standard phrase is five seconds and the same for every sound, which is
+what makes two sounds comparable. It isn’t a performance, though. Play the
+sound from the keybed: hold a chord, run the arpeggiator. A sound that seems
+thin on the phrase can be the one you’d reach for under your hands.
 
 ### Changing it
 
-Every knob is live and every structural edit is a grammar operation, so you
-cannot break the patch into something unplayable. Drag knobs, click selectors,
-drag cables between typed jacks, arm a module from the catalogue and place it.
-Undo with <kbd>⌘Z</kbd>: it undoes the last thing you did, even while the
-engine is still catching up.
-
-Edits happen in the order you make them. If the engine is still working on the
-last one, the next one waits its turn and then happens: its plate is outlined
-and the caption under the patch name says *1 edit waiting*. See
-[turning knobs](../rack.md#turning-knobs).
-
-Changes are *staged* until you press **keep as new**, which inserts the edited
-patch into the bank as a new sound, leaving the original alone.
+Drag knobs, click a named setting to cycle it, drag cables between jacks, and
+place modules from the rail. Your changes stay on the sound you’re playing
+until you press **KEEP AS NEW**. That adds the edit to the pool as a new sound,
+and leaves the original alone. [Turning knobs](../rack.md#turning-knobs)
+has the details.
 
 ### Aiming the search
 
-This is the part that is easy to miss. Lock the knobs or the wiring you like,
-then press **⚡ evolve from this**: refinement mutates everything *except* what
-you locked. Locked addresses are excluded from the search outright. See
+1. Lock the knobs or the wiring you like.
+2. Press **⚡ EVOLVE FROM THIS**.
+
+Breeding then changes everything except what you locked. See
 [locks](../rack.md#locks-and-evolving-from-here).
 
 ```admonish tip title="An example"
-Find a patch whose *character* you like but whose envelope is wrong. Lock every
-knob except the envelope. Evolve. You get variations that differ only where you
-allowed them to.
+Find a sound whose character you like but whose envelope is wrong. Lock every
+knob except the envelope’s, and press ⚡ EVOLVE FROM THIS. You get variations
+that differ only where you allowed them to.
 ```
 
-## Getting a patch here
+## What to try next
 
-- Click any row in the [bank](../bank.md).
-- Click **OPEN IN PATCH** on either side of a pair in [EVOLVE](./evolve.md).
-- Click any dot on the [taste map](./taste.md).
-
-All three open it as the sound you're playing, live and editable.
+- [Rewire it](../wiring.md) from the module rail.
+- Turn **LEANS** on, and see which modules your taste leans toward.
+- Open the sound in [PERFORM](./perform.md), and play it with the named
+  controls.

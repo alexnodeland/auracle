@@ -1,158 +1,197 @@
 # Your first session
 
-<p class="lede">Fifteen minutes, start to a model that proposes.</p>
+<p class="lede">This page takes you from the first sound to a generation bred
+toward your taste, in about fifteen minutes. Each step is one thing to do, and
+what you’ll see when you’ve done it.</p>
 
 <!-- film:tour --><!-- /film:tour -->
 
-[Open the instrument](../../play/). Nothing to install. Everything below happens
-in one browser tab, and it all persists when you close it.
+[Open the instrument](../../play/). There is nothing to install, and
+everything below happens in one browser tab. Your session is kept in this
+browser as you play, and it’s there when you come back.
 
-## 0. Boot
+## 1. Let it listen
 
-The engine compiles, then fills a pool of candidate patches. Each one is
-generated, compiled, rendered as a fixed five-second phrase, checked for
-pathology and measured. That is about forty renders, so the boot bar takes a
-moment.
+1. Open the instrument.
+2. Wait for the boot card to fill.
 
-You do not have to wait for all of it. At **8 patches** the first duel is
-dealt; the rest fill in behind you while you play. On a machine with cores to
-spare the renders run in parallel.
+The card reads *listening to 40 sounds: you start as soon as the first 8 land*.
+Each of the 40 is drawn from the grammar, rendered on one five-second phrase,
+checked, and measured. Once eight have landed the instrument opens, and the
+rest arrive while you play.
 
-```admonish note title="Nothing plays unvetted"
-Every candidate is rendered and inspected *before* it can reach your speakers:
-finite samples, a peak ceiling, not silent, not DC-dominated. Evolution does
-produce screaming resonance and silent duds; the gate is why you never hear
-them. A patch that fails is quarantined, and the search is told to avoid that
-region.
+```admonish info collapsible=true title="How it works: nothing plays unchecked"
+Every sound is rendered and checked before it can reach your speakers. Its
+samples must be finite, its peak under a ceiling, and it must be neither
+silent nor mostly DC offset. Breeding does produce screaming resonance and
+silent duds, and this check is why you never hear them.
+
+A sound that fails is quarantined, and the search learns to avoid that
+region. On a machine with cores to spare, the renders run side by side.
+[The vetting gate](../../reference/audition/vetting.html) in the reference
+has the thresholds.
 ```
 
-## 1. The warm start: pick 3 of 9
+## 2. Pick the three you’d reach for
+
+The warm start opens over the instrument. It teaches the model 18 picks in
+about thirty seconds, which is the difference between a model that has a
+guess by the end of this session and one that doesn’t.
 
 <figure>
-<img src="../img/warm-start.webp" alt="A card headed WHICH THREE DO YOU LIKE?, with nine named presets in a three-by-three grid — First Bass, Acid Line, Solo Flight, Coin Toss, Ghost Bell, Morph Pad, Long Room, Ricochet, Wrong Number — each with a one-line description, and SKIP and PICK ANY THREE buttons below." loading="lazy" width="760" height="464">
-<figcaption><strong>The warm start.</strong> Nine presets, one per family. Three
-picks, eighteen observations.</figcaption>
+<img src="../img/warm-start.webp" alt="The warm-start card: nine named presets in a three-by-three grid, each with a one-line description and a play button, and two buttons below." loading="lazy" width="760" height="464">
+<figcaption><strong>The warm start.</strong> Nine presets, one per family
+first. The screenshot predates the current wording: the card now reads PICK
+THE THREE YOU’D REACH FOR.</figcaption>
 </figure>
 
-On first run you are shown nine presets, drawn one per family from the built-in
-library and then filled out to nine, under **PICK THE THREE YOU’D REACH FOR**.
+1. Press **▶** on a card to hear it. Press it again to stop.
+2. Click the three you’d reach for. Pick on sound alone: there is no wrong
+   answer.
+3. Press **TEACH IT**.
 
-Do it. It takes thirty seconds and it is worth **18 pairwise observations**:
-each of your three picks beats each of the six you passed over. That is the
-difference between a model that has an opinion by the end of your first session
-and one that does not.
+The card is headed **PICK THE THREE YOU’D REACH FOR**, over nine presets drawn
+one per family from the library. The button under them counts down as you
+pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then reads **TEACH IT**.
 
-Pick on sound alone. There is no wrong answer and you are not committing to
-anything; the model treats these like any other preference, and they fade with
-time like any other.
+When you press it, PERFORM opens on your first pick, and **TAUGHT** in the
+menu bar reads 18. The toast says what happened: *Your three taught it 18
+picks, so it starts out pointed at you. Your three are saved, and Glass Pad is
+under your fingers.*
 
-Your three are also **saved**, so no generation can evict them, and the first
-one opens ready to play. The message says so (*Your three taught it 18 picks,
-so it starts out pointed at you. Your three are saved…*). They
-take 3 of your 10 save slots; release any of them from its row if you want the
-room.
+Your three are **saved**, so no generation will replace them. They take 3 of
+your 10 save slots; release any of them from its row if you want the room.
 
-You can re-run it at any time from the **⋯** menu → *Re-run the three-pick warm
-start*.
-
-## 2. Answer some duels
-
-Go to **EVOLVE**. You get two candidates, A and B.
-
-<figure>
-<img src="../img/evolve.webp" alt="The EVOLVE view: two duel cards side by side, each with a name, a rendered waveform and SAMPLE, BENCH and CHOOSE buttons, under a teaching meter reading 44 picks in." loading="lazy" width="1440" height="900">
-<figcaption><strong>EVOLVE.</strong> Two candidates and one question. The strip
-above counts down to the next refit.</figcaption>
-</figure>
-
-- <kbd>1</kbd> / <kbd>2</kbd> play the **sample**: the same fixed phrase for
-  both, so you are comparing patches and not performances.
-- Click a card to play *that* candidate **live** on the keyboard instead, if
-  the phrase is not telling you enough.
-- <kbd>←</kbd> / <kbd>→</kbd> pick, or press **PICK A** / **PICK B**.
-
-Answer ten or fifteen, and go fast. A duel is a gut reaction and the model
-handles noise; deliberating does not make the data better.
-
-```admonish tip
-If neither is any good, that is still an answer: pick the less bad one. What the
-model learns from a duel is a *direction*, and "both mediocre but this one less
-so" is a real direction. There is also **ANOTHER PAIR** if a pair tells you nothing.
+```admonish info collapsible=true title="How it works: why three picks are worth 18"
+Each of your three picks is recorded as a pick over each of the six you passed
+over: three times six. These picks fade with time like any other, so the warm
+start points the model at you without holding it there.
 ```
 
-Watch the strip above the cards. It counts your picks (*Play both. Pick the one
-you’d reach for.* before the first) and says when the model
-will next redraw its map. When it does, the **E** of the wordmark lights: that
-is the listening lamp, and it means a fit is running.
+**SKIP** goes straight to the instrument. A few picks later it offers the warm
+start once more, and you can run it again any time from **⋯** › *Re-run the
+three-pick warm start*.
 
-## 3. Look at what it thinks
+## 3. Pick between pairs
 
-Go to **TASTE**.
+EVOLVE is where you teach the model most. It plays you two sounds, A and B,
+on the same phrase, and you pick the one you’d reach for.
 
 <figure>
-<img src="../img/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and glow, three named style chips above it, and a legend reading less / would like and sure / unsure." loading="lazy" width="1440" height="900">
-<figcaption><strong>The map.</strong> Every patch you have heard, placed by
-sound and structure. Glow is how much it thinks you would like it; size is how
-sure it is.</figcaption>
+<img src="../img/evolve.webp" alt="The EVOLVE view: two cards side by side, each with a name and a rendered waveform and three buttons below it, a teaching line above them, and a strip of recent generations below." loading="lazy" width="1440" height="900">
+<figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
+above them counts down to the next refit.</figcaption>
 </figure>
 
-Early on this will be sparse and the styles will be provisional. Two things are
-worth checking even now:
+1. Open **EVOLVE**.
+2. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ SAMPLE** on each card) to hear A
+   and B.
+3. Click a card’s body to play that sound live on the keys, if the phrase
+   doesn’t tell you enough.
+4. Press <kbd>←</kbd> or <kbd>→</kbd> (or **PICK A**, **PICK B**) for the one
+   you’d reach for.
+5. Press **ANOTHER PAIR** when a pair tells you nothing.
 
-- **STYLES.** Does any style have a name that sounds like something you like?
-  The names are generated from what each style weights, so "drive & fold +
-  chorus" means the model has noticed you leaning that way.
-- **TRUST.** It will probably say it is not beating a coin flip yet. Good. It
-  is telling you the truth, and [that
-  page](../views/taste.md#trust--is-its-confidence-honest) explains why a plain
-  hit-rate would have lied to you here.
+Ten or fifteen picks is a good first batch. If neither sound is one you’d
+reach for, pick the nearer one: what the model learns from a pick is a
+direction, and that’s still one. The model expects answers to waver, and
+averages over them.
 
-## 4. Breed a generation
+What you see:
 
-Back in **EVOLVE**, press **EVOLVE POOL**.
+- **The line above the cards.** Before your first pick it reads *Play both.
+  Pick the one you’d reach for.* After that it counts down to the next redraw
+  (*3 more picks and it redraws your taste map.*), and six pips fill as you go.
+- **The forecast.** After each pick, the model says what it guessed before you
+  picked: *it guessed this · 72% · fairly sure*, or *it guessed the other · 62%
+  · leaning*. Its misses are how it learns.
+- **The toast.** *Picked Glass Pad over Soft Wash.*, with **NOT WHAT I MEANT**
+  for seven seconds. <kbd>⌘Z</kbd> (Ctrl Z) does the same.
+- **The refit.** On the sixth pick the line reads *● learning from your last 6
+  picks…*, and the **E** of the wordmark lights while the model fits. Then it
+  reads *● it just learned: see what changed ▸*, and the link opens TASTE.
 
-The model takes your best patches, walks each one a short distance on what it
-now believes, and injects the children into the pool. The walk samples your
-taste rather than only climbing it, so most children land above their parent
-and some land below: those are marked *exploring*, and your next picks decide
-whether they were worth it. The **EVOLUTION** strip below reports what each
-step did, in plain terms:
+## 4. See what it learned
+
+1. Open **TASTE**.
+2. Open **STYLES**, and read each style’s name.
+3. Open **TRUST**, and see how close it is to grading the model.
+
+<figure>
+<img src="../img/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and glow, named style chips above it, and a legend below." loading="lazy" width="1440" height="900">
+<figcaption><strong>MAP.</strong> Every sound you have heard, placed by sound
+and structure. Brighter means it thinks you’d like it more; bigger means it’s
+less sure.</figcaption>
+</figure>
+
+Early on the map is sparse, and the styles are a first guess. A style is
+named for what it leans toward until you rename it, so a style called *analog
+sustain* means the model has heard you leaning that way.
+
+TRUST grades the model once it has made 20 guesses, one before each pick,
+and until then it counts toward them (4 OF 20 GUESSES, **16 TO GO →**). Once
+it has 20, it will likely say *not beating a coin flip yet*. That is the
+honest answer this early, and [the TASTE guide](../views/taste.md#trust-is-its-confidence-honest)
+says why a plain hit rate would have flattered it.
+
+## 5. Breed a generation
+
+1. Open **EVOLVE**.
+2. Press **EVOLVE POOL**.
+3. Play the new sounds as they land at the top of the bank.
+
+The model takes the ten sounds it rates highest and walks a short way from
+each, toward what it has learned. **EVOLVE POOL** becomes its own progress
+bar (**BREEDING 3/10**), with **STOP** beside it, and the job slot in the menu
+bar says the same in every view. A generation takes from under a minute to a
+few, depending on the machine, and the instrument keeps answering while it
+breeds.
+
+Each child appears the moment it’s bred, at the top of the bank under **NEW ·
+GEN 1**, tagged **NEW**. The **EVOLUTION** strip under the cards says what each
+step changed:
 
 ```text
 gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,
 cutoff 1.78 kHz → 20 kHz, delay → chorus, +lfo · liked +0.62
 ```
 
-*liked* is how much more the model expects you to like the child than its
-parent.
+*liked* is how much more the model guesses you’d like the child than its
+seed. A step it rated lower is tagged *exploring*: the walk sometimes steps
+sideways or down so it doesn’t get stuck, and your next picks say whether it
+was worth it.
 
-The bank marks the new generation's children ⚡ **new**.
+```admonish info collapsible=true title="How it works: what a generation does"
+There is no crossover: every child grows from one seed. Each walk is about 40
+small changes to the seed’s knobs and modules, each one rendered, measured, and
+kept or refused by how the model rates it.
 
-Then keep duelling. New candidates are in the mix now, and every pick still
-teaches the model and tests its forecast.
+A child joins the pool only if the model rates it above the sound it would
+replace: the lowest-rated unsaved one. When the generation ends, those sounds
+are replaced and the toast names them. [Refinement](../../reference/search/refinement.html)
+in the reference has the walk in full.
+```
 
-## 5. Keep what you like
+Then go back to picking. The new sounds are in the pairs now, and every pick
+still teaches the model and tests its forecast.
 
-Anything worth keeping:
+## 6. Keep what you’d reach for again
 
-- **★ stars** it. That is an *observation*, and it teaches the model.
-- **save** it. That is *storage*: the sound stays in **pool**, is also
-  listed in **saved**, and is exempt from eviction. It teaches the model
-  nothing.
+A bank row has two ways to keep a sound, and they do different jobs:
 
-Two controls, two different jobs, and it is worth knowing
-[which one you want](../bank.md#stars-are-not-saves).
+- **★** rates it. That teaches the model.
+- **save** keeps it. The sound stays in **POOL**, is listed in **SAVED** too,
+  and no generation will replace it. It teaches the model nothing.
 
-## Then what
+[Stars are not saves](../bank.md#stars-are-not-saves) says when you want
+which.
 
-You now have the loop. From here:
+## What to try next
 
-- Turn some knobs → [Reading and editing the rack](../rack.md)
-- Rewire it → [Wiring and the module rail](../wiring.md)
-- Play it properly → [Playing it](../playing.md)
-- Lock what you love and evolve around it → [`⚡ evolve from this`](../rack.md#locks-and-evolving-from-here)
-- Understand what the model is doing → [What it learns from](../teaching.md)
+- Turn some knobs: [reading and editing the rack](../rack.md).
+- Rewire it: [wiring and the module rail](../wiring.md).
+- Play it: [playing it](../playing.md) and [PERFORM](../views/perform.md).
+- Lock what you love and breed around it: [⚡ evolve from this](../rack.md#locks-and-evolving-from-here).
+- See what the model learns from: [what the model learns from](../teaching.md).
 
-Your whole session (bank, names, taste history, style names, layout) autosaves
-as you go and restores when you come back. Press <kbd>?</kbd> in the app at any
-point for the full key map.
+Press <kbd>?</kbd> in the app at any point for the full key map.

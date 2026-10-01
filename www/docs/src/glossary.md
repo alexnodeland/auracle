@@ -1,248 +1,249 @@
 # Glossary
 
-Terms the interface uses, in the sense it uses them. The
-[Reference](../reference/) defines the same things formally; this page is for
-reading the app.
-
-### Audition
-
-Playing a candidate's **pre-rendered, loudness-normalized** buffer, rather than
-the live patch. Everything you hear in a duel has already been through the
-vetting gate, which is why an unvetted patch can never reach your speakers.
+<p class="lede">The words the app uses, in the sense it uses them. The
+[reference](../reference/) defines the same things in full; this page is for
+reading the app.</p>
 
 ### Bank
 
-One of three collections in the left rail: **pool** (the sounds the model
-weighs and breeds from), **saved** (what you saved), **presets** (the built-in
-library). See
-[The patch bank](./bank.md).
-
-### Belief row
-
-The line under the toolbar in PATCH saying what the model thinks of the current
-patch and which coordinates drove that. It reports a silence rather than a
-number when it has no basis for one.
+The rail on the left, with three tabs: **POOL** (the sounds the model weighs
+and breeds from), **SAVED** (what you saved), and **PRESETS** (the hand-made
+library). See [the bank](./bank.md).
 
 ### Brier skill
 
-How much better than a coin flip the model's duel forecasts have been. `0` is
-chance, `1` is perfect and certain, negative is worse than guessing. Shown in
-the menu bar and on [TRUST](./views/taste.md#trust--is-its-confidence-honest).
+How much better than a coin flip the model’s guesses have been. 0 is a coin
+flip, 1 is perfect, and below 0 is worse than guessing. The menu bar shows it
+(*13% sharper than chance*), and so does
+[TRUST](./views/taste.md#trust-is-its-confidence-honest).
 
 ### Budget
 
-The ceilings evolution searches inside: modules, tree depth, modulation depth.
-PATCH shows a cell only when it is tight (one short of its ceiling) or full,
-such as `23/24 modules`; **⋯ → Show measurements** shows all three
-(`8/24 modules · 4/6 depth · 1/3 mod depth`). A patch at its ceilings has no
-room to grow.
+The ceilings breeding searches within: 24 modules, a depth of 6, and a
+modulation depth of 3. PATCH shows a ceiling only when the patch is one short
+of it or at it (*23/24 modules*). **⋯** › **Show measurements** shows all
+three (*8/24 modules · 4/6 depth · 1/3 mod depth*). A patch at a ceiling has
+no room to grow.
 
-### Candidate
+### Child, NEW
 
-A patch in the evolution pool. Has a stable id, a rendered audition buffer, a
-feature vector and a lineage.
+A sound a generation bred. The children of the latest generation lead the
+**POOL** tab under **NEW · GEN 3**, each tagged **NEW**.
 
-### Check duel
+### Control
 
-A duel whose pair was drawn **at random** rather than chosen by the model.
-Under the default pairing that is every duel EVOLVE deals, and the meter says
-so of every pair: **◇ random pair · a fair test**. Under the
-information-seeking pairing it is about one duel in ten, each marked
-**◇ fair test · dealt at random**. The app calls these **fair-test picks**. Calibration measured on these is the
-number without an asterisk.
+One of PERFORM’s eight round controls: the six named controls, **BLEND**, and
+**WANDER**.
 
-### Duel
+### EVOLUTION strip
 
-Two candidates, pick one. The primary teaching signal.
+The strip under EVOLVE’s cards: what each generation did, step by step. Each
+step names the seed and the child, what changed, and how much more the model
+guessed you’d like the child than its seed (*liked +0.06*). See [the EVOLUTION
+strip](./views/evolve.md#the-evolution-strip).
 
-### Feature vector (φ)
+### Fair-test picks
 
-The forty-four numbers the model sees each patch through: eighteen perceptual
-descriptors of the standard render, twenty-six structural counts of the term.
-**If a preference is not visible in these, it cannot be learned.**
+The pairs dealt at random, which is every pair EVOLVE and PATCH deal you; the
+line beside **ANOTHER PAIR** says so (*◇ random pair · a fair test*). TRUST
+grades the model on them apart, as *the number to trust*, because you didn’t
+choose them.
 
 ### Generation
 
-One round of breeding. Takes the pool's best patches, walks each a short
-distance uphill on the current model, and injects the children as they are
-bred (a child joins only if the model rates it above the sound it would
-replace); when it ends (or you stop it) the lowest-rated unsaved sounds are
-replaced (the toast names them). The walks run in parallel on the render farm,
-so the rest of the instrument keeps answering while it breeds. **⚡ evolve from
-this** is one walk from the sound you're playing, and the engine counts it as a
-generation of its own: its child leads the bank under *new · gen N* the same way.
+One round of breeding. **EVOLVE POOL** walks a short way from each of the ten
+sounds the model rates highest, and adds each child that rates above the sound
+it would replace. When the generation ends (or you stop it), the lowest-rated
+unsaved sounds are replaced, and the toast names them. There is no crossover:
+every child grows from one seed.
 
-### Genome / term
+**⚡ evolve from this** is one walk from the sound you’re playing, and counts
+as a generation of its own.
 
-The patch's real representation: a **tree** in a typed grammar, not a parameter
-list. The rack you see is compiled from it.
+### Guess
 
-### Set aside
-
-The staging tray under the rack, labeled **SET ASIDE**. Anything you unplug, delete, or bypass goes
-here rather than vanishing, and stays across a reload.
+The model’s guess about a sound: roughly how likely you are to pick it in a
+pair. It is always a percentage and a word, from one scale: *a hunch*
+(46–54%), *leaning* (55–69%, or 31–45%), or *fairly sure* (70% and over, or 30%
+and under), as in *59% · leaning*. A bank row draws it as a bar, with a block
+around the guess for how unsure it is, and PATCH shows it above the rack with
+the qualities that count most.
 
 ### Job slot
 
-The place in the menu bar, beside **generations**, where long work shows while
-it runs: a generation (*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, a
-refit. It has **stop** where the job can be stopped. The wordmark's **E** is lit
+The place in the menu bar where long work shows while it runs: a generation
+(*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, or a refit. It has
+**STOP** where the job can be stopped. The **E** of the wordmark is lit
 exactly while it shows.
 
-### Lineage
+### Keep as new
 
-The record of what produced a patch: which parent, which step, what changed,
-and how much more the model expected you to like the child than its parent
-(*liked +0.06*). Shown in the EVOLUTION strip, by name.
+PATCH’s way to keep an edit: it joins the pool as a new sound, and the
+original stays as it was. It asks first, **WHICH WOULD YOU REACH FOR?**, and
+your answer teaches the model. **PICK THE EDIT** skips the question once.
+
+### Leans
+
+PATCH’s toggle that tints each module by which way your taste leans on its
+kind: amber toward, red away.
 
 ### Lock
 
-Freezing a knob, a module or the whole structure so refinement cannot touch it.
-A locked address cannot be changed, deleted **or created**.
+Holding a knob, a module, or the whole wiring, so breeding can’t touch it. A
+locked place in the patch can’t be changed, deleted, or created.
 
 ### LUFS
 
-The loudness unit every render is normalized to (−18 LUFS). Louder reliably
-wins A/B tests, so without it the model would learn "I like loud" and present
-it as a preference about timbre.
+The loudness unit every sound is normalized to (−18 LUFS). A louder sound
+reliably wins a comparison, so without it the model would learn “I like loud”
+and pass it off as a taste in timbre.
+
+### Measurements (φ)
+
+The 44 numbers the model hears each sound through: 18 of the standard render’s
+sound, and 26 counts of how the patch is built. **If a taste of yours doesn’t
+show in these, it can’t be learned.**
+
+### Module, module rail
+
+A module is one part of a patch: a VCO, a filter, a reverb. The module rail,
+headed **MODULES**, is the list on PATCH’s right that you add them from. See
+[wiring and the module rail](./wiring.md).
 
 ### Named control
 
-One of PERFORM's six controls: **Bright, Snap, Motion, Body, Grit, Space**. Each
-is a fixed direction in what the instrument can hear, with the same name and
-the same two end words on every patch. What it turns is measured per patch: at
-most four of that patch's knobs, chosen because they move the sound most purely
-in that direction. Until it has been measured on a patch it reads *listening…*
-and does nothing. See [PERFORM](./views/perform.md#the-named-controls).
+One of PERFORM’s six controls named for what you hear: **BRIGHT**, **SNAP**,
+**MOTION**, **BODY**, **GRIT**, and **SPACE**. Each has the same name and the
+same two end words on every sound. What it turns is measured for each sound: up
+to four of that patch’s knobs, the ones that move the sound most purely that
+way. Until it’s measured, it reads *listening…* and does nothing.
 
-### Offer / B slot
+See [the named controls](./views/perform.md#the-named-controls).
 
-A variant grown from the sound you are playing, held in a second voice set
-called **B** that plays every note you play. You hear it by crossfading with
-**Blend** or holding **Peek**, at matched loudness, and it replaces your sound
-only if you press **Take**. An offer from the **Offer** pad or Wander is grown
-toward your taste; one a search control asks for is also aimed the way it was
-turned. An offer may change structure. The only other
-thing in PERFORM that can is a **search control** that grafts a tone EQ on (see
-below); Wander never does. See [Blend, Peek and the B
-slot](./views/perform.md#blend-peek-and-the-b-slot).
+### Offer, B
+
+A variant grown from the sound you’re playing, held in a second set of voices
+called **B** that plays every note you play. You hear it with **BLEND** or
+**PEEK**, at matched loudness, and it becomes your sound only if you press
+**TAKE**. An offer may add or change a module; Wander never does. See [Blend,
+Peek, and the B slot](./views/perform.md#blend-peek-and-the-b-slot).
+
+### Pair
+
+The two sounds you pick between, A and B. EVOLVE deals them, and so does the
+TEACH strip in PATCH. **ANOTHER PAIR** deals a new one without picking.
+
+### Patch, sound, preset
+
+A **sound** is what you hear, pick, save, and breed. A **patch** is how it’s
+built: its modules, knobs, and cables. A **preset** is a sound from the
+library, made by hand. Open a sound in PATCH to see its patch.
+
+### Phrase, sample
+
+The standard five seconds every sound is heard on: the same notes for every
+sound, so sounds can be compared. **▶ SAMPLE** plays it. It is a measuring
+instrument, not a demo: play the sound from the keybed to judge it.
+
+### Pick
+
+Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass, the
+warm start, or keep as new. **TAUGHT** counts picks, stars, and cuts.
 
 ### Pickup
 
-Soft takeover for a MIDI pot: it does nothing until it passes through the
-control's current position, then follows your hand. It stops a pot left in one
-place from snapping a control that Wander, the mouse or the keys have since
-moved. See [soft takeover](./keyboard.md#soft-takeover).
+Soft takeover for a MIDI knob: it does nothing until it passes through the
+control’s current position, and then follows your hand. See [soft
+takeover](./keyboard.md#soft-takeover).
 
 ### Pool
 
-The bank's **pool** tab: 40 vetted sounds the model weighs and breeds
-from. (The engine's own default is 48; the web app configures 40.)
-
-### Posterior
-
-The fitted model *with its uncertainty*: a distribution over possible tastes
-rather than a single best guess. Everything the app shows about confidence
-comes from its spread.
-
-### Prediction
-
-The percentage on a bank row: roughly how likely you are to pick this sound
-in a pair. Wherever the app prints one as a guess it gives a word beside it,
-from one scale: *a hunch* (46–54%), *leaning* (55–69% or 31–45%), *fairly
-sure* (70% and over, or 30% and under), as in *59% · leaning*. A posterior mean, so the number alone averages the uncertainty away.
-The bar under it shows the uncertainty: a tick at the mean inside a block one
-standard deviation wide on each side. The map's dot sizes show it too.
+The **POOL** tab: the 40 sounds the model weighs and breeds from. The engine’s
+own default is 48; the app asks for 40.
 
 ### Quarantine
 
-What happens to a candidate that fails vetting: never played, never shown, and
-scored so badly that the search learns to avoid that region.
+What happens to a sound that fails its check: it is never played or shown, and
+the search learns to avoid where it came from.
+
+### Rating…
+
+What the guess above the rack in PATCH ends with while the model rates an
+edited sound again.
 
 ### Refit
 
-Full inference over the whole observation log: seconds of work, off the audio
-thread. Between refits, votes are folded in by the cheaper **reweighting**
-path. The wordmark's **E** lights while a refit runs. The sixth pick's refit
-goes out when that pick's seven-second undo window closes; the teaching meter
-says *● learning from your last 6 picks…* until it lands, then *● it just
-learned*.
+The model fitting again from everything you have taught it: a few seconds of
+work, off the audio thread, every sixth pick. Between refits each answer is
+folded in at once. The **E** of the wordmark lights while a refit runs, and
+EVOLVE’s line says *● learning from your last 6 picks…* until it lands, then
+*● it just learned*.
 
-### Sample
+### Replaced
 
-The standard five-second audition phrase, identical for every patch. Audio
-measurements are only comparable under an identical stimulus, which is what
-makes it fixed. It is a measuring instrument, not a demo. Play the patch from
-the keyboard to judge it.
+What happens to the pool’s lowest-rated unsaved sounds when a generation ends,
+or when a preset joins the pool. The toast names them.
 
 ### Search control
 
-A named control drawn in amber with a dashed ring: this patch's knobs cannot
-honestly make the change it names (no drive to make it rougher, no reverb to
-make it farther). It always springs back when let go. Turn it past the notch
-(three tenths of the way to either end) and let go, and it does one of two
-things. **Bright** and **Body** can be given something
-to turn: a flat tone EQ grafted onto the patch. So can **Space** turned up: a
-longer release. The graft
-goes in as one undo step, the patch is measured again, and the control is set
-where your hand left it (*Bright now turns …*). Otherwise, or when the graft
-does not reach, the control springs back and asks for an offer in B, aimed the
-way you turned it: the walk that grows it counts a variant for more the further
-it goes that way, and B says how far it went (*grittier by 1.8σ*), or that it
-did not get there. See
+A named control drawn in amber with a dashed ring: this patch’s knobs can’t
+make the change it names. Turn it past the notch and let go. Either the patch
+gets something to turn (a tone EQ for BRIGHT and BODY, a longer release for
+SPACE turned up), or an offer grows in B, aimed the way you turned it. See
 [search controls](./views/perform.md#amber-dashed-search-controls).
+
+### Seed
+
+The sound a child grew from. (A random number generator’s seed is always
+called a random seed.)
+
+### Set aside
+
+The strip under the rack, labeled **SET ASIDE**. Anything you unplug, delete,
+or bypass goes there instead of vanishing, and stays across a reload.
 
 ### Standardizer
 
-The scaling that puts the forty-four raw feature values on a common footing. Saved
-**with** the taste profile, always, because the model's coefficients are
-meaningless without it.
+The scaling that puts the 44 measurements on a common footing. It is saved
+with your taste, always, because what the model learned means nothing
+without it.
 
 ### Style
 
-One cluster of your taste: a direction in feature space that explains some of your
-answers. A patch is scored by whichever style rates it highest, which is what lets
-you prefer several unrelated kinds of sound at once. Up to five; a style
-claiming almost none of the bank is idle. Named for what it leans on until you
-name it, and worth naming.
+One side of your taste, named for what it leans toward (*analog sustain*)
+until you name it. A sound is rated by the style that likes it most, which is
+how you can like several unrelated kinds of sound at once. Up to five; a style
+claiming almost none of the pool is idle.
 
-### Taste model
+### TAUGHT
 
-The whole fitted object: styles, star cutpoints, session thresholds, and
-their uncertainty.
-
-### Trace address
-
-The name of one site in the genome: `node/0#cut`, `amp#attack`,
-`node/0/m#rate`. Panel knobs, hand edits, locks, live parameter handles and
-search proposals all use the same scheme, so the rack and the genome cannot
-drift apart.
-
-### Utility
-
-The latent quantity everything conditions: how much the model thinks you would
-like a patch. It is a function it infers rather than a score stored per patch,
-which is why it can rank a patch it has never shown you.
+The counter in the menu bar: everything the model learned from. Its tooltip
+splits it (*52 picks · 4 stars · 2 cuts*).
 
 ### Vetting
 
-The gate every render passes before it can be heard or measured: all-finite,
-under a peak ceiling, not silent, not DC-dominated. Evolution does produce
-screaming resonance and silent duds; this is why you never hear them.
+The check every sound passes before it can be heard or measured: finite
+samples, a peak under a ceiling, not silent, and not mostly DC offset. Breeding
+does produce screaming resonance and silent duds; this is why you never hear
+them.
 
 ### Wander
 
-PERFORM's dial for how alive the patch is on its own: **still**, **ideas**
-(variants appear in B), **drift** (the knobs glide through nearby settings the
-search prefers), **roam** (bigger and faster). It answers a second and a half
-after you let go of it in a new region, the line under it says what it is
-doing and when it moves next, it never changes structure, it pauses while
-your hands are on the other controls, and a tap holds it. See
+PERFORM’s dial for how alive the sound is on its own: *still*, *ideas*
+(variants appear in B), *drift* (the knobs glide through nearby settings), and
+*roam* (bigger and faster). It never changes the patch’s structure, it pauses
+while your hands are on the other controls, and a tap freezes it. See
 [Wander](./views/perform.md#wander).
 
 ### Warm start
 
-The three-of-nine preset pick on first run. Worth 18 pairwise observations for
-about thirty seconds of work, which is how the model gets past a cold start
-that otherwise takes hundreds of duels. Your three picks are saved. Re-run it
-from **⋯** at any time.
+Picking three of nine presets on a first visit, under **PICK THE THREE YOU’D
+REACH FOR**. It teaches the model 18 picks in half a minute, and your three are
+saved. Run it again from **⋯** › *Re-run the three-pick warm start*.
+
+### Your taste, the model
+
+Your taste is what the model has learned; the model is what learns it. It
+guesses how much you’d like any sound, including ones it has never played you,
+and how sure it is of each guess. The reference has [what the model
+holds](../reference/taste/posterior.html) in full.

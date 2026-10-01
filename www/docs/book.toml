@@ -8,7 +8,7 @@
 
 [book]
 title = "Auracle | Guide"
-description = "Play Auracle: the three views, teaching it your taste, and reading what it learned."
+description = "Play Auracle: the four views, teaching it your taste, and reading what it learned."
 authors = ["Alex Nodeland"]
 language = "en"
 src = "src"

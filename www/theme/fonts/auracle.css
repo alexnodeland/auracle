@@ -546,6 +546,17 @@ pre > code {
     display: inline;
 }
 
+/* A "How it works" that opens in place (`collapsible=true`): admonish wraps
+   the title in a block <div>, which put the disclosure triangle on a line of
+   its own above it. */
+.admonition > summary.admonition-title {
+    cursor: pointer;
+}
+
+.admonition > summary.admonition-title > div {
+    display: inline;
+}
+
 .admonition > :last-child {
     padding: 0.2rem 1.2rem 0.9rem;
 }
