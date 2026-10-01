@@ -1238,6 +1238,14 @@ fn mod_slot_mut(n: &mut AudioNode) -> Result<&mut ModNode, StructError> {
         | AudioNode::Duck { modulation, .. }
         | AudioNode::Gate { modulation, .. }
         | AudioNode::Vocoder { modulation, .. } => Ok(modulation),
+        // The three sources without a slot, named so the refusal gives the
+        // right reason: noise has only a color, an empty socket has nothing,
+        // and an audio in's one continuous knob is a level.
+        AudioNode::Noise { .. } | AudioNode::Silence { .. } | AudioNode::AudioIn { .. } => {
+            Err(StructError::Invalid(
+                "noise, audio in and an empty socket have no modulation slot".into(),
+            ))
+        }
         _ => Err(StructError::Invalid(
             "mixers and ring modulators have no modulation slot".into(),
         )),
