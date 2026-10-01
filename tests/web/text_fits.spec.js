@@ -55,17 +55,18 @@ for (const width of [390, 360]) {
 }
 
 // Every state a control's caption can be in (perform.js `paintKnob`), with
-// the longest words each can carry.
+// the longest words each can carry. A knob list is what `knobCaption` makes:
+// two names while they fit 24 characters, else one and how many more.
 const WORDS = ["dark", "bright", "bloom", "snap", "still", "restless", "thin", "full", "smooth", "rough", "close", "far"];
 const CAPTIONS = [
   "turn to ask for it", "turn further to ask", "let go to add a wavefolder", "let go to add a distortion",
   ...WORDS.map((w) => `let go to ask for ${w}`),
   ...WORDS.map((w) => `turns toward ${w} only`),
   "listening…", "no offer yet", "100% offer",
-  "env / out attack · sustain +2", "mod depth · chorus rate +2", "ladder cutoff · env / out decay +1",
-  "wavefolder threshold · mod depth",
+  "resonance · threshold +1", "env / out attack · decay", "cutoff · resonance +3", "wavefolder mod depth +2",
+  "env / out attack +2", "wavefolder threshold",
   "frozen", "still", "paused 3 s", "drift · gliding · no taste yet", "roam · gliding · no taste yet", "roam · walking…",
-  "ideas · one in B", "ideas · growing…", "staying: nothing better nearby", "drift · next in 12 s",
+  "ideas · one in B", "ideas · growing…", "nothing better nearby", "drift · next in 12 s",
 ];
 
 for (const [width, height] of [[1000, 800], [1280, 800]]) {
@@ -82,34 +83,50 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
       await expect(page.locator(".pf-knob .pf-k-sub")).toHaveCount(8);
       await expect(page.locator(".pf-deck")).toBeVisible();
       // Every caption state in every column, measured in the same task, so
-      // nothing repaints between the write and the read.
-      const out = await page.evaluate((caps) => {
-        const subs = [...document.querySelectorAll(".pf-knob .pf-k-sub")];
-        const deck = document.querySelector(".pf-deck");
-        const was = subs.map((s) => s.textContent);
-        const height = () => deck.getBoundingClientRect().height;
-        subs.forEach((s) => { s.textContent = "still"; });
-        const base = height();
-        const bad = [];
-        let tallest = base;
-        for (const c of caps) {
-          subs.forEach((s) => { s.textContent = c; });
-          tallest = Math.max(tallest, height());
-          for (const s of subs) {
-            const cs = getComputedStyle(s);
-            const cut = s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1;
-            const clamped = cs.webkitLineClamp !== "none" && cs.webkitLineClamp !== "" && cs.overflow !== "visible";
-            if (cut || clamped || cs.textOverflow === "ellipsis") {
-              bad.push(`"${c}" in ${Math.round(s.getBoundingClientRect().width)} px: ${s.scrollWidth}×${s.scrollHeight} in ${s.clientWidth}×${s.clientHeight}`);
-              break;
+      // nothing repaints between the write and the read. Twice: as this
+      // machine draws it, and with 0.6 px more to every character, because
+      // Linux's Chromium (CI) sets the same font wider than macOS's, and a
+      // caption that fits here by a hair took a fourth line there.
+      for (const spacing of ["normal", "0.6px"]) {
+        const out = await page.evaluate(([caps, spacing]) => {
+          const subs = [...document.querySelectorAll(".pf-knob .pf-k-sub")];
+          const deck = document.querySelector(".pf-deck");
+          const was = subs.map((s) => s.textContent);
+          subs.forEach((s) => { s.style.letterSpacing = spacing; });
+          const lineH = parseFloat(getComputedStyle(subs[0]).lineHeight);
+          const lines = {};
+          const height = () => deck.getBoundingClientRect().height;
+          subs.forEach((s) => { s.textContent = "still"; });
+          const base = height();
+          const bad = [];
+          let tallest = base;
+          for (const c of caps) {
+            subs.forEach((s) => { s.textContent = c; });
+            tallest = Math.max(tallest, height());
+            // Lines the words take, unwrapped from the reserved height.
+            subs[0].style.minHeight = "0";
+            lines[c] = Math.round(subs[0].getBoundingClientRect().height / lineH);
+            subs[0].style.minHeight = "";
+            for (const s of subs) {
+              const cs = getComputedStyle(s);
+              const cut = s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1;
+              const clamped = cs.webkitLineClamp !== "none" && cs.webkitLineClamp !== "" && cs.overflow !== "visible";
+              if (cut || clamped || cs.textOverflow === "ellipsis") {
+                bad.push(`"${c}" in ${Math.round(s.getBoundingClientRect().width)} px: ${s.scrollWidth}×${s.scrollHeight} in ${s.clientWidth}×${s.clientHeight}`);
+                break;
+              }
             }
           }
-        }
-        subs.forEach((s, i) => { s.textContent = was[i]; });
-        return { bad, base: Math.round(base), tallest: Math.round(tallest) };
-      }, CAPTIONS);
-      expect(out.bad, "captions cut").toEqual([]);
-      expect(out.tallest, "the knob row's height with the longest captions, against the shortest").toBe(out.base);
+          subs.forEach((s, i) => { s.textContent = was[i]; s.style.letterSpacing = ""; });
+          return { bad, base: Math.round(base), tallest: Math.round(tallest), lines, width: Math.round(subs[0].getBoundingClientRect().width) };
+        }, [CAPTIONS, spacing]);
+        // On a miss, every caption's line count, so the one that ran long names itself.
+        const counts = Object.entries(out.lines).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${n}  ${c}`).join("\n");
+        const say = `letter-spacing ${spacing}, a ${out.width} px column; lines per caption:\n${counts}`;
+        expect(out.bad, `captions cut (${say})`).toEqual([]);
+        expect(Math.max(...Object.values(out.lines)), `a caption past three lines (${say})`).toBeLessThanOrEqual(3);
+        expect(out.tallest, `the knob row's height with the longest captions, against the shortest (${say})`).toBe(out.base);
+      }
       // Nothing else in a knob cuts its words either.
       const ends = await page.evaluate(() =>
         [...document.querySelectorAll(".pf-knob .pf-k-ends, .pf-knob .pf-k-name")]

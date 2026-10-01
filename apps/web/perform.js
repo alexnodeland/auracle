@@ -581,7 +581,7 @@ export function createPerform(host) {
       if (inFlight("perform_offer")) return ["ideas · growing…", null];
     }
     if (!state.cur || !state.wire) return [z, null];
-    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying: nothing better nearby", null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["nothing better nearby", null];
     const [from, at] = wanderDue();
     const left = Math.max(0, at - now);
     const span = Math.max(1, at - from);
@@ -855,12 +855,17 @@ export function createPerform(host) {
   }
 
   // The caption under a control: at most two knobs by name, then how many
-  // more ("mod depth · lfo rate +1"). Three long names were clipped
-  // mid-word by the two-line clamp, which reads as broken; the tooltip and
-  // the under-the-hood strip list them all.
+  // more ("mod depth · lfo rate +1"), and one when two would run past
+  // CAPTION_CHARS (two names that need their modules, "wavefolder mod depth ·
+  // vco mod depth"). The caption wraps in three lines, and three lines of
+  // the narrowest column (1000 px) hold 24 characters on any renderer; the
+  // tooltip and the under-the-hood strip list every knob.
+  const CAPTION_CHARS = 24;
   function knobCaption(addrs) {
-    if (addrs.length <= 2) return knobWords(addrs);
-    return `${knobWords(addrs).split(" · ").slice(0, 2).join(" · ")} +${addrs.length - 2}`;
+    const names = knobWords(addrs).split(" · ");
+    const two = names.length <= 2 ? names.join(" · ") : `${names.slice(0, 2).join(" · ")} +${names.length - 2}`;
+    if (names.length < 2 || two.length <= CAPTION_CHARS) return two;
+    return `${names[0]} +${names.length - 1}`;
   }
 
   function onKnob(k, fromMidi) {
