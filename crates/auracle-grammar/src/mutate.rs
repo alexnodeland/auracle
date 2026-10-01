@@ -188,6 +188,57 @@ impl NodeKind {
     }
 }
 
+// `ALL` lists every kind once, in declaration order, checked when the crate
+// compiles. Nothing else ties a fixed array to the enum, so a new kind could be
+// declared and never swept by the edit gate. The match is exhaustive, so a new
+// kind does not compile until it is named here, which is the moment to put it
+// in `ALL`. Each entry's discriminant must be its index: no repeats, no gaps,
+// and a kind declared between two others moves every index after it. A kind
+// declared after the last entry is the one case a const cannot see, and
+// `node_kind_all_names_every_kind` catches it by asking serde for every name.
+const _: () = {
+    const fn named(k: NodeKind) {
+        match k {
+            NodeKind::Vco
+            | NodeKind::Supersaw
+            | NodeKind::Noise
+            | NodeKind::Mix
+            | NodeKind::Filter
+            | NodeKind::Fold
+            | NodeKind::Delay
+            | NodeKind::Chorus
+            | NodeKind::Reverb
+            | NodeKind::Wavetable
+            | NodeKind::Pluck
+            | NodeKind::Distortion
+            | NodeKind::Bitcrush
+            | NodeKind::Phaser
+            | NodeKind::RingMod
+            | NodeKind::Formant
+            | NodeKind::Flanger
+            | NodeKind::Tremolo
+            | NodeKind::Vibrato
+            | NodeKind::Eq
+            | NodeKind::Granular
+            | NodeKind::Shift
+            | NodeKind::Comp
+            | NodeKind::Duck
+            | NodeKind::Gate
+            | NodeKind::Vocoder
+            | NodeKind::Silence => {}
+        }
+    }
+    let mut i = 0;
+    while i < NodeKind::ALL.len() {
+        named(NodeKind::ALL[i]);
+        assert!(
+            NodeKind::ALL[i] as usize == i,
+            "NodeKind::ALL must list every kind once, in declaration order"
+        );
+        i += 1;
+    }
+};
+
 /// A modulation choice for [`StructOp::SetMod`].
 ///
 /// `Lfo` through `Euclid`, and `Steps`, are **sources**: they replace
@@ -480,7 +531,7 @@ pub enum StructError {
 /// the vocoder's arm built a fresh carrier instead, so an `Insert` of a vocoder
 /// threw away the whole chain below it while `InsertTree` kept it. With one
 /// splice there is nothing left for the two to disagree about.
-fn default_fragment(kind: NodeKind) -> AudioNode {
+pub(crate) fn default_fragment(kind: NodeKind) -> AudioNode {
     let socket = || Box::new(AudioNode::Silence { uid: Uid::NEW });
     match kind {
         NodeKind::Vco => saw_vco(0),

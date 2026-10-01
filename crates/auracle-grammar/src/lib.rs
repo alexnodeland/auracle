@@ -526,6 +526,17 @@ mod tests {
         out
     }
 
+    /// The module at `key`, with its `/0` unplugged: what an edit placed
+    /// there, apart from the chain it seated. Its knobs and its own `/1` are
+    /// what a placement brings, so this is the part to compare with the
+    /// kind's default module.
+    fn placed_at(tree: &PatchTree, key: &str) -> term::AudioNode {
+        let mut m = node_at(&tree.root, key).expect("a module there").clone();
+        *m.children_mut().into_iter().next().expect("a /0") =
+            term::AudioNode::Silence { uid: Uid::NEW };
+        m
+    }
+
     /// Every module identity in a subtree, audio and modulation, in walk
     /// order, as numbers: `Uid`'s own equality is blind on purpose.
     fn identities(n: &term::AudioNode, out: &mut Vec<u64>) {
@@ -555,7 +566,10 @@ mod tests {
     /// moves nothing else; a processor `Replace` keeps the replaced node's
     /// primary input there (the node itself, when it was a source). A
     /// vocoder used to be built with a fresh carrier of its own, so both
-    /// edits threw away the chain they landed on.
+    /// edits threw away the chain they landed on. Apart from that `/0`, the
+    /// module placed is the kind's default one, its knobs and its own `/1`
+    /// included, so a splice that took the chain for a sidechain would fail
+    /// here too.
     #[test]
     fn presets_and_struct_ops_stay_in_grammar() {
         use mutate::{ModKind, NodeKind, StructOp};
@@ -627,41 +641,58 @@ mod tests {
                 ops.push(StructOp::SwapMix { key: key.clone() });
             }
             for op in ops {
-                // Invalid ops are allowed to reject — but never panic.
-                if let Ok(next) = mutate::apply_struct_op(&tree, &op) {
-                    assert!(
-                        compile(&next, SR).is_ok(),
-                        "sample {i}: op {op:?} produced uncompilable tree"
-                    );
-                    assert!(next.root.size() <= mutate::MAX_SIZE);
-                    let back = PatchTree::from_trace(&next.to_trace()).unwrap();
-                    assert_eq!(back, next, "trace roundtrip after {op:?}");
-                    describe::describe(&next); // must not panic
-                    match &op {
-                        StructOp::Insert { key, .. } => {
-                            assert_eq!(
-                                node_at(&next.root, &format!("{key}/0")),
-                                node_at(&tree.root, key),
-                                "sample {i}: {op:?} dropped the chain it landed on"
-                            );
-                            assert_eq!(
-                                lift(&next, key),
-                                tree,
-                                "sample {i}: {op:?} changed more than its own module"
-                            );
-                            inserts += 1;
-                        }
-                        StructOp::Replace { key, kind } if !kind.is_source() => {
-                            let old = node_at(&tree.root, key).expect("the replaced node");
-                            let chain = old.children().first().copied().unwrap_or(old);
-                            assert_eq!(
-                                node_at(&next.root, &format!("{key}/0")),
-                                Some(chain),
-                                "sample {i}: {op:?} dropped the input it should keep"
-                            );
-                        }
-                        _ => {}
+                // Invalid ops may refuse, but never panic, and never by losing
+                // a key `describe` has just named: that refusal would let the
+                // checks below skip an op silently.
+                let next = match mutate::apply_struct_op(&tree, &op) {
+                    Ok(next) => next,
+                    Err(StructError::NoSuchNode(k)) => {
+                        panic!("sample {i}: {op:?} found no node at {k}, a key describe named")
                     }
+                    Err(_) => continue,
+                };
+                assert!(
+                    compile(&next, SR).is_ok(),
+                    "sample {i}: op {op:?} produced uncompilable tree"
+                );
+                assert!(next.root.size() <= mutate::MAX_SIZE);
+                let back = PatchTree::from_trace(&next.to_trace()).unwrap();
+                assert_eq!(back, next, "trace roundtrip after {op:?}");
+                describe::describe(&next); // must not panic
+                match &op {
+                    StructOp::Insert { key, kind } => {
+                        assert_eq!(
+                            node_at(&next.root, &format!("{key}/0")),
+                            node_at(&tree.root, key),
+                            "sample {i}: {op:?} dropped the chain it landed on"
+                        );
+                        assert_eq!(
+                            lift(&next, key),
+                            tree,
+                            "sample {i}: {op:?} changed more than its own module"
+                        );
+                        assert_eq!(
+                            placed_at(&next, key),
+                            mutate::default_fragment(*kind),
+                            "sample {i}: {op:?} did not place the kind's own module"
+                        );
+                        inserts += 1;
+                    }
+                    StructOp::Replace { key, kind } if !kind.is_source() => {
+                        let old = node_at(&tree.root, key).expect("the replaced node");
+                        let chain = old.children().first().copied().unwrap_or(old);
+                        assert_eq!(
+                            node_at(&next.root, &format!("{key}/0")),
+                            Some(chain),
+                            "sample {i}: {op:?} dropped the input it should keep"
+                        );
+                        assert_eq!(
+                            placed_at(&next, key),
+                            mutate::default_fragment(*kind),
+                            "sample {i}: {op:?} did not place the kind's own module"
+                        );
+                    }
+                    _ => {}
                 }
             }
         }
@@ -738,8 +769,9 @@ mod tests {
     /// `Insert` and `Replace` built the vocoder with a supersaw carrier of its
     /// own and dropped the chain they were handed: on First Bass the ladder
     /// and its saw were thrown away, and the patch became a stock vocoder.
-    /// `InsertTree`, which the app's placements use, always seated the chain
-    /// as the carrier. The two now place the same patch.
+    /// `InsertTree`, which the app sends to place a module into a wire,
+    /// always seated the chain as the carrier. The two now place the same
+    /// patch.
     #[test]
     fn a_vocoder_placed_on_a_chain_keeps_it_as_its_carrier() {
         use mutate::{NodeKind, StructOp};
@@ -964,6 +996,39 @@ mod tests {
             },
         )
         .is_err());
+    }
+
+    /// **`NodeKind::ALL` names every kind once, in declaration order.**
+    ///
+    /// `ALL` is what the edit gate sweeps, so a kind missing from it is a kind
+    /// no gate ever places. The compile-time check beside `ALL` sees every kind
+    /// declared before its last entry; this sees the rest. serde's derive
+    /// refuses an unknown name by listing every variant it knows, in
+    /// declaration order, so that list is the enum read without a second copy
+    /// to keep.
+    #[test]
+    fn node_kind_all_names_every_kind() {
+        use mutate::NodeKind;
+        let refusal = serde_json::from_str::<NodeKind>("\"no such kind\"")
+            .expect_err("an unknown name is refused")
+            .to_string();
+        let (_, listed) = refusal
+            .split_once("expected one of")
+            .unwrap_or_else(|| panic!("serde's refusal changed its wording: {refusal}"));
+        let declared: Vec<&str> = listed.split('`').skip(1).step_by(2).collect();
+        let all: Vec<String> = NodeKind::ALL
+            .iter()
+            .map(|k| {
+                serde_json::to_string(k)
+                    .unwrap()
+                    .trim_matches('"')
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            all, declared,
+            "NodeKind::ALL is not every kind, once, in order"
+        );
     }
 
     /// `NodeKind::Silence` is spelled `silence` on the wire, which is also
