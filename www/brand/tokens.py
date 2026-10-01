@@ -108,9 +108,9 @@ NOT_YET = [
     # and Paper defines no --bezel, so on Paper the literal is what shows (on
     # purpose: films stay dark). Needs a token that says so on both palettes.
     ("www/theme/fonts/auracle.css", "a literal fallback for --bezel, which Paper lacks"),
-    # The raster source of lockup.png and og.png: a hand copy of six tokens and
+    # The raster source of lockup.png and og.png: a hand copy of seven tokens and
     # a grey workbench. Belongs with the marks work (Plan-004 task 3).
-    ("www/brand/render.html", "a hand copy of six tokens; rasterises the lockup and the social card"),
+    ("www/brand/render.html", "a hand copy of seven tokens; rasterises the lockup and the social card"),
 ]
 
 # CSS's named colours. A name in a declaration's value, an SVG colour

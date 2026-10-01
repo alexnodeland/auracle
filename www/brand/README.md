@@ -137,7 +137,7 @@ time it runs), each waiting on a token decision rather than a substitution:
   wrong on the docs' Paper theme, and their `var()` fallbacks are literals;
 - `www/theme/fonts/auracle.css`: a film's ground is `var(--bezel, #07080a)`,
   and Paper defines no `--bezel`, so on Paper the literal is what shows;
-- `render.html`: a hand copy of six tokens, with the marks work (Plan-004
+- `render.html`: a hand copy of seven tokens, with the marks work (Plan-004
   task 3).
 
 Never scanned: the marks (`*.svg`, assets a favicon slot reads without CSS)
