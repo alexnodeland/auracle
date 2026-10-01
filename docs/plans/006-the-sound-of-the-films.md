@@ -4,7 +4,7 @@ number: 6
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 originating_proposal: 7
 related_adrs: [4, 13, 14]
 ---
@@ -89,6 +89,24 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    a shot grows (the tour's cold open).
 8. **The words:** every script follows `www/brand/voice.md`'s spoken voice, and
    is re-voiced and re-timed.
+   - **Known stale in the published films, fixed by re-voicing** (each line
+     was true when recorded; the app changed under it, ADR-004):
+     - the DSP film says *What fails is never played.* The keys now play an
+       edit before its check, and a failed check mutes them
+       (`www/video/films/dsp/script.json` ~141; published in
+       `www/docs/src/films.md` ~158, `www/landing/assets/film/dsp.vtt` ~78
+       and `www/landing/assets/film/films.json` ~356);
+     - the playing film's storyboard quotes the MIDI toast
+       *mapped: CC 74 → Bright*, which now reads *CC 74 now moves Bright,
+       the first free control.* (`www/video/films/playing/storyboard.md`
+       ~215);
+     - the PERFORM view film's callout *learn: CC 20 → Space* mirrors the old
+       learn toast, now *CC 20 now moves Space.*
+       (`www/video/films/view-perform/film.js` ~268);
+     - the callouts *Freeze: held* (`www/video/films/playing/film.js` ~109,
+       `www/video/films/view-perform/film.js` ~229) and both storyboards'
+       *held* for Wander's state (`playing/storyboard.md` ~45 and ~143, and
+       `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80).
 9. **The re-mix:**
    - films that need no new footage are re-mixed and published after review;
    - the walkthroughs are re-recorded on a quiet machine (Plan-004 task 8).

@@ -638,6 +638,24 @@ impl WasmEngine {
         self.bench_makeup
     }
 
+    /// The makeup of the tree on the bench if the engine has measured that
+    /// exact tree before (a feature-memo hit, no render), else −1. After
+    /// `edit_set_tree_apply`, `edit_makeup` is still the makeup of the tree
+    /// being left; an undo or a redo lands on a tree measured when it was
+    /// made, and the worker hands the voices that tree at this makeup
+    /// before its render, or waits for the render when it is unknown. The
+    /// tree being left's makeup put a redone selector up to 27 dB hot.
+    pub fn edit_known_makeup(&self) -> f64 {
+        let Some(tree) = &self.bench_tree else {
+            return -1.0;
+        };
+        let key = auracle_features::render_key(tree, &self.phrase());
+        match self.engine.memo().get(&key) {
+            Some(hit) => live_makeup(&hit.features),
+            None => -1.0,
+        }
+    }
+
     /// Add up to `max_new` vetted candidates. Returns how many were added,
     /// so the worker can post fill progress between calls.
     ///
@@ -1927,8 +1945,25 @@ impl WasmEngine {
     /// Write one knob on the workbench tree (`value` is the normalized
     /// continuous value, or the index when `is_index`), then re-render and
     /// re-vet. Returns false if the edit was rejected (structural site,
-    /// unknown address, no workbench).
+    /// unknown address, no workbench). A failed vet keeps the edit (the user
+    /// asked for it) but flags it: the buffer is withheld, never played
+    /// unvetted.
     pub fn edit_param(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
+        let ok = self.edit_param_apply(addr, value, is_index);
+        if ok {
+            self.edit_revet();
+        }
+        ok
+    }
+
+    /// Write one knob on the workbench tree **without** re-rendering: the
+    /// cheap half of [`Self::edit_param`], which [`Self::edit_revet`]
+    /// completes, as [`Self::edit_structure_apply`] and `edit_revet` make a
+    /// structural edit. Not exported: no caller posts a selector's tree ahead
+    /// of its render, because only the render measures the makeup it plays
+    /// at (`examples/selector_makeup.rs`). Returns false, changing nothing,
+    /// where `edit_param` would.
+    fn edit_param_apply(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
         // `f64::clamp` passes NaN through, and a NaN knob would then be
         // written into the tree, featurized, and logged. Refuse it here, where
         // it is still a rejected gesture and not evidence.
@@ -1943,26 +1978,8 @@ impl WasmEngine {
         } else {
             ParamValue::Continuous(value)
         };
-        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match set_param(tree, addr, v) {
             Ok(edited) => {
-                match featurize_memo(&edited, &phrase, &memo, true) {
-                    Ok((cf, audio)) => {
-                        self.bench_makeup = live_makeup(&cf.features);
-                        self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
-                        self.bench_vet_ok = true;
-                        self.bench_vet_silent = false;
-                        self.set_bench_phi(Some(cf.features.phi()));
-                    }
-                    Err(e) => {
-                        // Keep the edit (the user asked for it) but flag it:
-                        // the buffer is withheld, never played unvetted.
-                        self.bench_render = None;
-                        self.bench_vet_ok = false;
-                        self.bench_vet_silent = is_silent(&e);
-                        self.set_bench_phi(None);
-                    }
-                }
                 self.bench_tree = Some(edited);
                 true
             }
@@ -3498,6 +3515,183 @@ mod tests {
             !engine.edit_differs_from_original(),
             "returning to the original tree still read as an edit"
         );
+    }
+
+    /// A selector's tree reaches the voices with the makeup its own render
+    /// measured, never the previous tree's: on a sample of the presets'
+    /// selector changes (every enum site but `table` and `oct`, every other
+    /// option; `examples/selector_makeup.rs` walks all 355), the makeup that
+    /// comes back with the edited tree is the one a full measurement of that
+    /// tree gives. The previous tree's makeup was off by more than 3 dB on
+    /// almost half of the changes, up to 27 dB hot.
+    #[test]
+    fn a_selector_change_comes_back_at_its_measured_makeup() {
+        use auracle_grammar::describe::KnobKind;
+        let phrase = PhraseSpec::default();
+        let mut changes = Vec::new();
+        for (name, tree) in presets() {
+            for module in describe(&tree).modules {
+                for knob in module.knobs {
+                    let KnobKind::Enum { options } = &knob.kind else {
+                        continue;
+                    };
+                    let site = knob.addr.rsplit('#').next().unwrap_or("");
+                    if site == "table" || site == "oct" {
+                        continue;
+                    }
+                    let cur = knob.value.round() as usize;
+                    for v in (0..options.len()).filter(|&v| v != cur) {
+                        changes.push((name, tree.clone(), knob.addr.clone(), v));
+                    }
+                }
+            }
+        }
+        assert!(changes.len() > 300, "{} selector changes", changes.len());
+        let mut engine = WasmEngine::new(0x5E1E, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let mut far = 0;
+        let sample: Vec<_> = changes.iter().step_by(25).collect();
+        for (name, tree, addr, v) in &sample {
+            assert_eq!(
+                engine.edit_set_tree(&serde_json::to_string(tree).unwrap()),
+                ""
+            );
+            let before = engine.edit_makeup();
+            assert!(engine.edit_param(addr, *v as f64, true), "{name} {addr}");
+            let edited = set_param(tree, addr, ParamValue::Index(*v)).unwrap();
+            let measured = live_makeup(
+                &auracle_features::featurize(&edited, &phrase)
+                    .expect("presets' selector changes vet")
+                    .features,
+            );
+            assert!(engine.edit_vet_ok(), "{name} {addr} → {v}");
+            assert!(
+                (engine.edit_makeup() - measured).abs() < 1e-9 * measured,
+                "{name} {addr} → {v}: makeup {} where its render measures {measured}",
+                engine.edit_makeup()
+            );
+            if (20.0 * (before / measured).log10()).abs() > 3.0 {
+                far += 1;
+            }
+        }
+        // Why the tree waits: the sample holds changes the previous makeup
+        // would have played more than 3 dB off.
+        assert!(far > 0, "no change in the sample moved the level 3 dB");
+    }
+
+    /// An undo or a redo lands on a tree the engine measured when it was made,
+    /// and `edit_known_makeup` gives that measurement before the render: the
+    /// makeup the revet then measures. A tree never measured has none.
+    #[test]
+    fn an_undone_selector_has_its_measured_makeup_before_its_render() {
+        let mut engine = WasmEngine::new(0x5E1E, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
+        let wave = rack["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|m| m["knobs"].as_array().unwrap().iter())
+            .find(|k| k["addr"].as_str().unwrap().ends_with("#wave"))
+            .expect("the patch has an oscillator with a wave selector");
+        let addr = wave["addr"].as_str().unwrap().to_string();
+        let n = wave["kind"]["options"].as_array().unwrap().len();
+        let next = ((wave["value"].as_f64().unwrap().round() as usize + 1) % n) as f64;
+        let (tree0, makeup0) = (engine.edit_tree_json(), engine.edit_makeup());
+        assert!(engine.edit_param(&addr, next, true));
+        let (tree1, makeup1) = (engine.edit_tree_json(), engine.edit_makeup());
+        assert_ne!(makeup1, makeup0);
+        // Undo: the tree being left is measured as makeup1, the one landed
+        // on as makeup0, before any render.
+        assert_eq!(engine.edit_set_tree_apply(&tree0), "");
+        assert_eq!(engine.edit_makeup(), makeup1, "the makeup moved unmeasured");
+        assert_eq!(engine.edit_known_makeup(), makeup0);
+        engine.edit_revet();
+        assert_eq!(engine.edit_makeup(), makeup0);
+        // Redo, the same way.
+        assert_eq!(engine.edit_set_tree_apply(&tree1), "");
+        assert_eq!(engine.edit_known_makeup(), makeup1);
+        // A tree never measured: no makeup to go on.
+        assert!(engine.edit_param_apply("amp#attack", 0.123_456_7, false));
+        assert_eq!(engine.edit_known_makeup(), -1.0);
+    }
+
+    /// `edit_param` is its write and `edit_revet`: the tree moves at once and
+    /// the render, the makeup, the vet and φ wait for the revet, which lands
+    /// exactly where `edit_param` does. A refused write moves nothing.
+    #[test]
+    fn a_selector_written_before_its_render_lands_where_edit_param_does() {
+        let mut engine = WasmEngine::new(0x5E1E, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
+        let (addr, next) = rack["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|m| m["knobs"].as_array().unwrap().iter())
+            .find(|k| k["addr"].as_str().unwrap().ends_with("#wave"))
+            .map(|k| {
+                let n = k["kind"]["options"].as_array().unwrap().len();
+                let v = k["value"].as_f64().unwrap().round() as usize;
+                (
+                    k["addr"].as_str().unwrap().to_string(),
+                    ((v + 1) % n) as f64,
+                )
+            })
+            .expect("the patch has an oscillator with a wave selector");
+        let (tree0, render0) = (engine.edit_tree_json(), engine.edit_render());
+        let (makeup0, phi0) = (engine.edit_makeup(), engine.bench_phi.clone());
+        assert!(engine.edit_vet_ok() && phi0.is_some());
+
+        assert!(!engine.edit_param_apply(&addr, f64::NAN, true));
+        assert!(!engine.edit_param_apply("node/9/9#nowhere", next, true));
+        assert_eq!(
+            engine.edit_tree_json(),
+            tree0,
+            "a refused write moved the tree"
+        );
+
+        assert!(engine.edit_param_apply(&addr, next, true));
+        let tree1 = engine.edit_tree_json();
+        assert_ne!(tree1, tree0, "the write did not reach the tree");
+        assert_eq!(
+            engine.edit_render(),
+            render0,
+            "the render moved before it was asked for"
+        );
+        assert_eq!(engine.edit_makeup(), makeup0, "the makeup moved unmeasured");
+        assert_eq!(engine.bench_phi, phi0, "φ moved unmeasured");
+        engine.edit_revet();
+        let (render1, makeup1, phi1) = (
+            engine.edit_render(),
+            engine.edit_makeup(),
+            engine.bench_phi.clone(),
+        );
+        assert!(engine.edit_vet_ok());
+        assert_ne!(render1, render0, "another wave rendered the same phrase");
+        assert_ne!(phi1, phi0, "another wave measured the same φ");
+        assert_ne!(makeup1, makeup0, "another wave measured the same makeup");
+
+        assert_eq!(engine.edit_set_tree(&tree0), "");
+        assert_eq!(engine.edit_makeup(), makeup0);
+        assert!(engine.edit_param(&addr, next, true));
+        assert_eq!(engine.edit_tree_json(), tree1);
+        assert_eq!(engine.edit_render(), render1);
+        assert_eq!(engine.edit_makeup(), makeup1);
+        assert_eq!(engine.bench_phi, phi1);
+        assert!(engine.edit_vet_ok());
     }
 
     /// The readout above the rack describes the tree under the player's

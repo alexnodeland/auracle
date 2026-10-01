@@ -1,7 +1,8 @@
 // Sentences the instrument builds from what the engine reports, rather than
-// writes once. Pure (no DOM, no state), so tests/words.test.mjs holds them to
-// www/brand/voice.md: plain sentences, digits, no em dashes, a word beside
-// every percentage, and each outcome said as what actually happened.
+// writes once, and the platform's own names for its keys. Pure (no DOM, no
+// state), so tests/words.test.mjs holds them to www/brand/voice.md: plain
+// sentences, digits, no em dashes, a word beside every percentage, each
+// outcome said as what actually happened, and each platform's own key.
 
 /** n and its noun, singular or plural: "1 pick", "52 picks". */
 export function count(n, one, many = `${one}s`) {
@@ -159,4 +160,38 @@ export function series(parts) {
 /** The first letter capitalized: toasts are sentences. */
 export function capital(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/** What the model makes of a module it is sure about, on the module rail's
+ *  spec card: a sentence after "In 12 of 40 sounds.", where it used to
+ *  run on in lowercase ("in analog sustain (60% of your pool) you lean
+ *  toward it"). `share` is the style's share of the pool (0..1), `mean` and
+ *  `std` the coefficient's posterior (θ). */
+export function leanSentence(style, share, mean, std) {
+  const sign = mean >= 0 ? "+" : "−";
+  return `In ${style} (${Math.round(share * 100)}% of your pool), you lean ` +
+    `${mean >= 0 ? "toward" : "away from"} it (θ ${sign}${Math.abs(mean).toFixed(2)} ± ${std.toFixed(2)}).`;
+}
+
+/** Whether this browser is on an Apple platform, whose keyboards say ⌘. */
+export function onApple(nav = globalThis.navigator) {
+  const p = (nav && (nav.userAgentData?.platform || nav.platform)) || "";
+  return /mac|iphone|ipad|ipod/i.test(p);
+}
+
+/** Every key chord in `s` written with the Mac's symbols (⌘Z, ⇧⌘Z, ⌘0,
+ *  ⇧Esc, ⇧1–9, a lone ⇧), in the platform's own words: unchanged on an Apple
+ *  platform, and elsewhere Ctrl, Alt and Shift in that order, spelled as
+ *  the guide spells them (voice.md: "⌘K (Ctrl K)"): Ctrl Z, Ctrl Shift Z,
+ *  Shift Esc. The app accepts Ctrl wherever it accepts ⌘. */
+export function platformKeys(s, apple = onApple()) {
+  if (apple || !s) return s;
+  return s.replace(/([⌃⌥⇧⌘]+)([A-Za-z0-9]+(?:–[0-9]+)?|[^\sA-Za-z0-9])?/g, (_, mods, key) => {
+    const names = [];
+    if (/[⌘⌃]/.test(mods)) names.push("Ctrl");
+    if (mods.includes("⌥")) names.push("Alt");
+    if (mods.includes("⇧")) names.push("Shift");
+    // A modifier on its own ("⇧ places them freely") is just its name.
+    return key ? `${names.join(" ")} ${key}` : names.join(" ");
+  });
 }

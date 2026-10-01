@@ -258,7 +258,9 @@ export function createMidi(host) {
   const slotName = (i) => (host.controlNames()[i] || `control ${i + 1}`);
   const usedSlots = () => new Set([...state.map.values()].map((m) => m.slot));
 
-  function assign(key, slot, why) {
+  // `how` is "learned" (LEARN, onto the row the player chose) or "claimed"
+  // (the first free control, taken by a knob turned with the switch on).
+  function assign(key, slot, how) {
     for (const [k, m] of state.map) if (m.slot === slot) state.map.delete(k);
     state.map.set(key, { slot, mode: "abs" });
     state.pickups.delete(key);
@@ -266,7 +268,13 @@ export function createMidi(host) {
     // The latest mapping replaces the last one's toast: turning four knobs,
     // or learning one after three were mapped, used to queue a toast each, and
     // the one about the knob in your hand arrived last.
-    host.note(`${why}: CC ${key.split(":")[1]} → ${slotName(slot)}`, { replace: "midi-map" });
+    const cc = key.split(":")[1];
+    host.note(
+      how === "claimed"
+        ? `CC ${cc} now moves ${slotName(slot)}, the first free control.`
+        : `CC ${cc} now moves ${slotName(slot)}.`,
+      { replace: "midi-map" },
+    );
     renderPanel();
   }
 
@@ -287,7 +295,7 @@ export function createMidi(host) {
       const used = usedSlots();
       const free = [...Array(SLOTS).keys()].find((i) => !used.has(i));
       if (free != null) {
-        assign(key, free, "mapped");
+        assign(key, free, "claimed");
         m = state.map.get(key);
       }
     }

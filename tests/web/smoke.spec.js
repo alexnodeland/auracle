@@ -60,7 +60,8 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // are the walk surface of RFC-001 — a generation's jobs, the farm's stateless
 // walk, ordered absorption, stop, and ⚡ as one farm job. `belief` is the
 // ratings each pick's reply carries (Plan-005); its seeds are the next jobs'
-// parents.
+// parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
+// voices at before its render.
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -70,7 +71,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
     const methods = [
       "refine_jobs", "refine_absorb", "refine_finish", "refine_retired", "refine_retiring",
       "refine_from_job", "refine_from_absorb", "refine_from_walk", "refine_from_cancel",
-      "refine_seed", "last_refine_reason", "belief",
+      "refine_seed", "last_refine_reason", "belief", "edit_known_makeup",
     ];
     return {
       farm_walk: typeof mod.farm_walk,

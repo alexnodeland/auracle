@@ -16,6 +16,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/pick_belief.mjs` | The same loop against the built package under node, for the wasm figures (`make wasm` first) |
 | `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
+| `examples/selector_makeup.rs` | Measures the level a selector change (a wave, a filter mode) would play at if its tree reached the voices before its render, against what cheaper renders would estimate, over every preset's selector changes: why selectors wait for theirs |
 | `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
 | `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only) |
 

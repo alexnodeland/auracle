@@ -196,10 +196,35 @@ through one ordered lane in `main.js`:
   by an edit's reply, so until then it is the sound from before the edit. A
   waiting ▶ is lit `.pending` at once, and is taken back by a second press,
   any stop or other ▶ (`stopAudition`, `awaitRender`, `cdPlay`, the node
-  bank's preview), an open or a failed one, and leaving PATCH. In PATCH,
-  Space is the bench's ▶ whenever a patch is on the bench, so with ▶
-  disabled it says why rather than playing the bank's render of the patch
-  from before any edit.
+  bank's preview), an open or a failed one, and leaving the view it was
+  pressed in. In every view, Space is the bench's ▶ whenever a patch is on
+  the bench (`toggleAudition`): PERFORM and EVOLVE play the edited patch and
+  wait for an edit in flight as PATCH does, and with ▶ disabled Space says
+  why rather than playing the bank's render of the patch from before any
+  edit. Outside PATCH, where ▶ is out of sight, the dock's label says Space
+  waits (`paintLiveLabel`: "▶ waiting for the edit…" in `#live-wait`, a
+  polite live region over the name, outside its ellipsis) within the
+  same frame as the press.
+- Space is the transport even with a drawn control focused (a rack knob, a
+  PERFORM control, the XY pad): only a native button, or a control whose own
+  handler used the key (`defaultPrevented`), keeps it. A rack setting's chip
+  is a button: reached with the keyboard it cycles on Space or Enter (⇧
+  back), and a pointer click leaves no focus on it (the document's click
+  handler blurs it as it does a native button), so Space after a click plays.
+- A selector the voices cannot take as a parameter (`wave`, `fkind`, `dmode`,
+  `rmode`; `LIVE_INDEX_SITES` are live) reaches them with the bench reply,
+  after its render, not early as a structural edit does: only the render
+  measures the makeup the new tree plays at. Sent early, it could carry only
+  the previous tree's, which put a held note up to 27 dB hot or 29 dB quiet
+  over the presets' 355 selector changes, and no estimate cheaper than the
+  render came within 3 dB often enough
+  (`crates/auracle-wasm/examples/selector_makeup.rs`).
+- A whole-tree edit (`edit_set_tree`) reaches the voices early at a makeup
+  that is known: the page's (`makeup`: a Take sends the offer's, measured as
+  it grew), or the engine's memo of that exact tree (`edit_known_makeup`: an
+  undo or a redo lands on a tree measured when it was made). An undo or a
+  redo with neither (`restore`) waits for its render; any other rewrite
+  still goes early at the previous tree's makeup, which the reply corrects.
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,

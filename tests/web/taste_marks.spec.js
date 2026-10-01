@@ -182,6 +182,14 @@ test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the module rai
   expect(geo.filter.lo, "a settled whisker sits clear of zero").toBeGreaterThan(17);
   expect(geo.filter.fill).not.toBe("rgba(0, 0, 0, 0)");
 
+  // The filter's spec card says the settled lean in sentences: the count,
+  // then the lean, capitalized and ending in a period. It ran on in
+  // lowercase after the count's period.
+  await page.locator('#nb-groups .nb-item[data-kind="filter"]').hover();
+  await expect(page.locator("#spec-dock .sp-dim").first()).toHaveText(/^In \d+ of \d+ sounds\.$/);
+  await expect(page.locator("#spec-dock .sp-belief")).toHaveText(
+    /^In .+ \(100% of your pool\), you lean toward it \(θ \+0\.50 ± 0\.10\)\.$/);
+
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 

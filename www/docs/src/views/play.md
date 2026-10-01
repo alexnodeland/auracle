@@ -36,7 +36,11 @@ From the top:
 caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
 the standard phrase on the sound as it stands. Pressed while an edit is still on
 its way to the engine, ▶ wears a dotted amber ring and plays once the edit
-lands; press it again to take that back.
+lands; press it again to take that back. Space plays the same phrase from
+PERFORM and EVOLVE: the sound as it stands here, which in PERFORM is what you
+kept or took, without a control turned since or Wander’s drift. It waits for an
+edit the same way, and there *▶ waiting for the edit…* stands in for the
+sound’s name at the right of the keybed until it lands.
 
 **The next-step chip.** An amber line that always says what to do now, and
 clicking it does the step it names:
@@ -125,11 +129,12 @@ thin on the phrase can be the one you’d reach for under your hands.
 
 ### Changing it
 
-Drag knobs, click a named setting to cycle it, drag cables between jacks, and
-place modules from the rail. Your changes stay on the sound you’re playing
-until you press **KEEP AS NEW**. That adds the edit to the pool as a new sound,
-and leaves the original alone. [Turning knobs](../rack.md#turning-knobs)
-has the details.
+Drag knobs, click a named setting (or, from the keyboard, press
+<kbd>Space</kbd> or <kbd>Enter</kbd> on it) to cycle it, drag cables between
+jacks, and place modules from the rail. Your changes
+stay on the sound you’re playing until you press **KEEP AS NEW**. That adds
+the edit to the pool as a new sound, and leaves the original alone. [Turning
+knobs](../rack.md#turning-knobs) has the details.
 
 ### Aiming the search
 
