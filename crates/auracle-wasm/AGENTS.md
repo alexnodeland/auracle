@@ -37,6 +37,13 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
   recurses with large modules by value, and the default 1 MB overflows as
   "memory access out of bounds". Build through `make wasm`, never wasm-pack
   directly.
+- **An edit's refusal is copy.** `edit_structure_apply` and
+  `edit_set_tree_apply` return the reason PATCH's toast quotes, so
+  `make dev-check` reads `lib.rs`'s strings against `www/brand/voice.md`
+  ([`../AGENTS.md`](../AGENTS.md)). A JSON shape or a code there that trips
+  the check gets the comment `// voice: name` on the line the literal starts
+  on (as `edit_utility`'s shape does); the comment exempts only literals that
+  start on its line.
 - **Every new binding needs its caller.** Add the method, call it from
   `worker.js`, and let `tests/web/smoke.spec.js` prove the binary exports it.
 

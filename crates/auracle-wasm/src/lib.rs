@@ -1984,11 +1984,11 @@ impl WasmEngine {
     /// edit.
     pub fn edit_structure_apply(&mut self, op_json: &str) -> String {
         let Some(tree) = &self.bench_tree else {
-            return "no patch on the bench".into();
+            return "there is no sound open to edit".into();
         };
         let op: StructOp = match serde_json::from_str(op_json) {
             Ok(op) => op,
-            Err(e) => return format!("bad op: {e}"),
+            Err(e) => return format!("the engine couldn’t read that edit ({e})"),
         };
         match apply_struct_op(tree, &op) {
             Ok(edited) => {
@@ -2013,11 +2013,11 @@ impl WasmEngine {
     /// disappears on the next evolve with nothing ever having said no.
     pub fn edit_set_tree_apply(&mut self, tree_json: &str) -> String {
         if self.bench_tree.is_none() {
-            return "no patch on the bench".into();
+            return "there is no sound open to edit".into();
         }
         let mut tree: PatchTree = match serde_json::from_str(tree_json) {
             Ok(t) => t,
-            Err(e) => return format!("bad tree: {e}"),
+            Err(e) => return format!("the engine couldn’t read that patch ({e})"),
         };
         // Domains are repaired, ceilings are refused, and the split is the same
         // one `finish()` makes: a knob outside its range has one obviously
@@ -2279,7 +2279,7 @@ impl WasmEngine {
             .and_then(|phi| self.engine.explain_phi(phi));
         match ex {
             Some(ex) => format!(
-                r#"{{"ok":true,"u":{},"sd":{},"lens":{}}}"#,
+                r#"{{"ok":true,"u":{},"sd":{},"lens":{}}}"#, // voice: name
                 ex.mix_utility,
                 ex.utility_std,
                 serde_json::to_string(&if ex.style_name.is_empty() {
