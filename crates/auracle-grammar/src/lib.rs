@@ -494,9 +494,68 @@ mod tests {
         assert!(d[0].before.is_some() && d[0].after.is_some());
     }
 
+    /// The audio node at a rack key (`node`, `node/0/1`). `children()` is in
+    /// key order, so this is the node `describe` names at that key.
+    fn node_at<'a>(root: &'a term::AudioNode, key: &str) -> Option<&'a term::AudioNode> {
+        let mut cur = root;
+        for seg in key.strip_prefix("node")?.split('/').skip(1) {
+            cur = *cur.children().get(seg.parse::<usize>().ok()?)?;
+        }
+        Some(cur)
+    }
+
+    /// `tree` with the module at `key` lifted out and its `/0` spliced up in
+    /// its place: the inverse of an insert there.
+    fn lift(tree: &PatchTree, key: &str) -> PatchTree {
+        let mut out = tree.clone();
+        let mut cur = &mut out.root;
+        for seg in key
+            .strip_prefix("node")
+            .expect("a node key")
+            .split('/')
+            .skip(1)
+        {
+            let i: usize = seg.parse().expect("a child index");
+            cur = cur
+                .children_mut()
+                .into_iter()
+                .nth(i)
+                .expect("a child there");
+        }
+        *cur = cur.children()[0].clone();
+        out
+    }
+
+    /// Every module identity in a subtree, audio and modulation, in walk
+    /// order, as numbers: `Uid`'s own equality is blind on purpose.
+    fn identities(n: &term::AudioNode, out: &mut Vec<u64>) {
+        fn of_mod(m: &ModNode, out: &mut Vec<u64>) {
+            if let Some(u) = m.uid() {
+                out.push(u.0);
+            }
+            for c in m.children() {
+                of_mod(c, out);
+            }
+        }
+        out.push(n.uid().0);
+        if let Some(m) = n.modulation() {
+            of_mod(m, out);
+        }
+        for c in n.children() {
+            identities(c, out);
+        }
+    }
+
     /// Every preset compiles, and structural edits (replace / insert /
     /// delete / set-mod / swap) always yield compilable, describable,
     /// trace-roundtrippable trees — hand rewiring cannot leave the grammar.
+    ///
+    /// And a splice loses nothing it was not asked to remove. An `Insert`
+    /// seats the whole subtree it lands on as the new module's `/0` and
+    /// moves nothing else; a processor `Replace` keeps the replaced node's
+    /// primary input there (the node itself, when it was a source). A
+    /// vocoder used to be built with a fresh carrier of its own, so both
+    /// edits threw away the chain they landed on.
     #[test]
     fn presets_and_struct_ops_stay_in_grammar() {
         use mutate::{ModKind, NodeKind, StructOp};
@@ -506,33 +565,14 @@ mod tests {
         }
         let prior = PatchGrammarPrior::default();
         let mut rng = StdRng::seed_from_u64(21);
-        let kinds = [
-            NodeKind::Vco,
-            NodeKind::Supersaw,
-            NodeKind::Noise,
-            NodeKind::Wavetable,
-            NodeKind::Pluck,
-            NodeKind::Mix,
-            NodeKind::RingMod,
-            NodeKind::Filter,
-            NodeKind::Fold,
-            NodeKind::Delay,
-            NodeKind::Chorus,
-            NodeKind::Distortion,
-            NodeKind::Bitcrush,
-            NodeKind::Phaser,
-            // Wave 2B, and the four binaries are the point: every structural
-            // op has to survive a node with two audio subtrees *and* a
-            // modulation slot, which nothing but mix and ring mod ever had.
-            NodeKind::Shift,
-            NodeKind::Comp,
-            NodeKind::Duck,
-            NodeKind::Gate,
-            NodeKind::Vocoder,
-            // The unplug: every node replaced by a hole must still compile,
-            // describe and round-trip, wherever the hole lands.
-            NodeKind::Silence,
-        ];
+        // Every kind a hand can place. The four sidechain binaries are the
+        // point: every structural op has to survive a node with two audio
+        // subtrees *and* a modulation slot, which nothing but mix and ring mod
+        // ever had. So is the unplug: every node replaced by a hole must still
+        // compile, describe and round-trip, wherever the hole lands. This was
+        // a hand-kept list, and it had fallen seven kinds behind the palette.
+        let kinds = NodeKind::ALL;
+        let mut inserts = 0usize;
         for i in 0..30 {
             let (tree, _) = draw(&prior, &mut rng);
             let keys: Vec<String> = describe::describe(&tree)
@@ -597,9 +637,194 @@ mod tests {
                     let back = PatchTree::from_trace(&next.to_trace()).unwrap();
                     assert_eq!(back, next, "trace roundtrip after {op:?}");
                     describe::describe(&next); // must not panic
+                    match &op {
+                        StructOp::Insert { key, .. } => {
+                            assert_eq!(
+                                node_at(&next.root, &format!("{key}/0")),
+                                node_at(&tree.root, key),
+                                "sample {i}: {op:?} dropped the chain it landed on"
+                            );
+                            assert_eq!(
+                                lift(&next, key),
+                                tree,
+                                "sample {i}: {op:?} changed more than its own module"
+                            );
+                            inserts += 1;
+                        }
+                        StructOp::Replace { key, kind } if !kind.is_source() => {
+                            let old = node_at(&tree.root, key).expect("the replaced node");
+                            let chain = old.children().first().copied().unwrap_or(old);
+                            assert_eq!(
+                                node_at(&next.root, &format!("{key}/0")),
+                                Some(chain),
+                                "sample {i}: {op:?} dropped the input it should keep"
+                            );
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
+        assert!(inserts > 500, "the gate checked only {inserts} inserts");
+    }
+
+    /// **An insert keeps every module of the chain it lands on**, by
+    /// identity: every kind a hand can insert, at every key of every preset.
+    ///
+    /// Identity rather than content, because a lock, a hand position and a
+    /// selection all ride on a module staying the module it was. The chain
+    /// arrives at `{key}/0` module for module, and nothing anywhere in the
+    /// patch loses its identity.
+    #[test]
+    fn an_insert_keeps_every_module_of_the_chain_it_lands_on() {
+        use mutate::{NodeKind, StructOp};
+        let processors: Vec<NodeKind> = NodeKind::ALL
+            .into_iter()
+            .filter(|k| !k.is_source())
+            .collect();
+        // The largest chain each kind was inserted onto.
+        let mut largest = vec![0usize; processors.len()];
+        for (name, mut tree) in presets::presets() {
+            tree.ensure_uids();
+            let mut before = Vec::new();
+            identities(&tree.root, &mut before);
+            let keys: Vec<String> = describe::describe(&tree)
+                .modules
+                .iter()
+                .filter(|m| m.key != "amp" && !m.is_mod)
+                .map(|m| m.key.clone())
+                .collect();
+            for key in &keys {
+                let chain = node_at(&tree.root, key).expect("a module at its own key");
+                let mut want = Vec::new();
+                identities(chain, &mut want);
+                for (k, &kind) in processors.iter().enumerate() {
+                    let op = StructOp::Insert {
+                        key: key.clone(),
+                        kind,
+                    };
+                    // The ceilings may refuse an insert; nothing else may.
+                    let next = match mutate::apply_struct_op(&tree, &op) {
+                        Ok(next) => next,
+                        Err(StructError::TooBig(..)) => continue,
+                        Err(e) => panic!("{name}: {op:?} refused: {e}"),
+                    };
+                    let mut after = Vec::new();
+                    identities(&next.root, &mut after);
+                    let lost = before.iter().filter(|u| !after.contains(u)).count();
+                    assert_eq!(lost, 0, "{name}: {op:?} lost {lost} modules");
+                    let below = node_at(&next.root, &format!("{key}/0")).expect("a /0");
+                    let mut seated = Vec::new();
+                    identities(below, &mut seated);
+                    assert_eq!(
+                        seated, want,
+                        "{name}: {op:?} did not seat the chain at {key}/0"
+                    );
+                    assert_eq!(below, chain, "{name}: {op:?} changed the chain");
+                    largest[k] = largest[k].max(chain.size());
+                }
+            }
+        }
+        // Not vacuous: every kind landed on a real chain somewhere.
+        for (kind, n) in processors.iter().zip(&largest) {
+            assert!(*n >= 4, "{kind:?} never landed on a chain of 4+ modules");
+        }
+    }
+
+    /// **A vocoder placed on a chain speaks through it.** The chain is its
+    /// carrier, the branch whose waveform reaches the output, and the vocoder
+    /// brings a formant voice as its modulator.
+    ///
+    /// `Insert` and `Replace` built the vocoder with a supersaw carrier of its
+    /// own and dropped the chain they were handed: on First Bass the ladder
+    /// and its saw were thrown away, and the patch became a stock vocoder.
+    /// `InsertTree`, which the app's placements use, always seated the chain
+    /// as the carrier. The two now place the same patch.
+    #[test]
+    fn a_vocoder_placed_on_a_chain_keeps_it_as_its_carrier() {
+        use mutate::{NodeKind, StructOp};
+        let (_, seed) = presets::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "First Bass")
+            .expect("First Bass is in the library");
+        let insert = |t: &PatchTree, key: &str| {
+            mutate::apply_struct_op(
+                t,
+                &StructOp::Insert {
+                    key: key.into(),
+                    kind: NodeKind::Vocoder,
+                },
+            )
+            .expect("a vocoder inserts")
+        };
+
+        let placed = insert(&seed, "node");
+        let term::AudioNode::Vocoder {
+            carrier, modulator, ..
+        } = &placed.root
+        else {
+            panic!("no vocoder at the output: {}", placed.to_sexpr());
+        };
+        assert_eq!(
+            **carrier,
+            seed.root,
+            "the ladder and its saw are the carrier: {}",
+            placed.to_sexpr()
+        );
+        assert!(
+            matches!(**modulator, term::AudioNode::Formant { .. }),
+            "the voice is a formant oscillator: {}",
+            placed.to_sexpr()
+        );
+
+        // The same module as a fragment, the way the app places one.
+        let grafted = mutate::apply_struct_op(
+            &seed,
+            &StructOp::InsertTree {
+                key: "node".into(),
+                node: placed.root.clone(),
+            },
+        )
+        .expect("the fragment grafts");
+        assert_eq!(
+            grafted, placed,
+            "Insert and InsertTree place the same patch"
+        );
+
+        // A replace keeps the replaced module's input: the ladder goes, and
+        // its saw is the carrier.
+        let swapped = mutate::apply_struct_op(
+            &seed,
+            &StructOp::Replace {
+                key: "node".into(),
+                kind: NodeKind::Vocoder,
+            },
+        )
+        .expect("a vocoder replaces the ladder");
+        let term::AudioNode::Vocoder { carrier, .. } = &swapped.root else {
+            panic!("no vocoder at the output: {}", swapped.to_sexpr());
+        };
+        assert_eq!(
+            **carrier,
+            *seed.root.children()[0],
+            "the saw is the carrier"
+        );
+
+        // Over an empty socket a vocoder has nothing to speak through, like
+        // every processor. It used to bring a supersaw of its own and sound.
+        let unplugged = mutate::apply_struct_op(
+            &seed,
+            &StructOp::Replace {
+                key: "node/0".into(),
+                kind: NodeKind::Silence,
+            },
+        )
+        .expect("the saw unplugs");
+        let quiet = held_peak_dbfs(&insert(&unplugged, "node/0"));
+        assert!(
+            quiet < -90.0,
+            "a vocoder over an empty socket plays at {quiet:.1} dBFS"
+        );
     }
 
     /// The loudest sample of `tree` over half a second of a held C4.
@@ -768,7 +993,7 @@ mod tests {
     }
 
     /// **The finite-prior gate.** Every term a hand can reach — every shipped
-    /// preset, every `default_node` the palette places, every result of every
+    /// preset, every `default_fragment` the palette places, every result of every
     /// structural op over a sweep of prior draws, and every knob at either end
     /// of its range — must have a finite log-prior under the default grammar.
     ///
@@ -801,14 +1026,14 @@ mod tests {
                 kind,
             };
             let t = mutate::apply_struct_op(&base, &op).expect("replace root is always legal");
-            finite(&format!("default_node({kind:?}) as root"), &t);
+            finite(&format!("default_fragment({kind:?}) as root"), &t);
             if !kind.is_source() {
                 let op = StructOp::Insert {
                     key: "node".into(),
                     kind,
                 };
                 let t = mutate::apply_struct_op(&base, &op).expect("insert over a preset root");
-                finite(&format!("default_node({kind:?}) inserted"), &t);
+                finite(&format!("default_fragment({kind:?}) inserted"), &t);
             }
         }
         // Every modulation choice, set on the root and then wrapped again, so

@@ -1505,7 +1505,7 @@ fn decode_new_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
 /// [`crate::term`]: a v1 save has no modulation source either, so the depth
 /// knob's value is inaudible, and the one thing that matters is that the
 /// **two decode routes agree**. This used to be `0.3` (to match
-/// `mutate::default_node`), so the same v1 save decoded to two different
+/// `mutate::default_fragment`), so the same v1 save decoded to two different
 /// terms depending on whether it arrived as JSON or as a trace — and the
 /// pool's dedup, `distance()` and refinement's "did it move" test are all
 /// `PatchTree` equality.
