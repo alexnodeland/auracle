@@ -77,13 +77,6 @@
     "duel": 3
   },
   "www/viz/viz.js": {
-    "duel": 5,
-    "em dash": 19,
-    "generate": 2,
-    "lens": 7,
-    "penalise": 1,
-    "posterior": 4,
-    "preference": 1,
-    "vote": 2
+    "posterior": 3
   }
 }

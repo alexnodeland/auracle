@@ -268,8 +268,8 @@
       readout.innerHTML =
         `One octave, <b>${Math.round(fLow)} → ${Math.round(fHigh)} Hz</b>. ` +
         `On the linear axis it moves the coordinate by <b>${dLin.toFixed(3)}</b>; ` +
-        `on the log axis, by <i>${dLog.toFixed(3)}</i> — the same, everywhere, ` +
-        `which is what makes the coordinate mean something a model can weight.`;
+        `on the log axis, by <i>${dLog.toFixed(3)}</i>, and by the same everywhere. ` +
+        `That is what makes the coordinate mean something a model can weight.`;
     }
 
     const sl = slider(controls, 'low note', {
@@ -292,7 +292,7 @@
   VIZ['max-experts'] = (root) => {
     const { stage, controls, readout } = scaffold(root);
     const W = 520, H = 300, PAD = 26;
-    const s = svg(W, H, 'A two-dimensional feature space with two taste lenses and the candidates each one claims');
+    const s = svg(W, H, 'A two-dimensional feature space with two styles of taste and the sounds each one claims');
     stage.appendChild(s);
 
     const cx = W / 2, cy = H / 2, S = (Math.min(W, H) - PAD * 2) / 2;
@@ -327,7 +327,7 @@
     const handles = thetas.map((t, k) => {
       const [hx, hy] = toPx(t);
       return handle(s, {
-        x: hx, y: hy, r: 6, label: `Lens ${k + 1} direction`,
+        x: hx, y: hy, r: 6, label: `Style ${k + 1} direction`,
         onDelta: (p) => {
           const u = toUnit(clamp(p.x, PAD, W - PAD), clamp(p.y, PAD, H - PAD));
           thetas[k] = u; draw();
@@ -378,12 +378,12 @@
         (Math.hypot(...thetas[0]) * Math.hypot(...thetas[1]) + 1e-9), -1, 1)) * 180 / Math.PI);
 
       readout.innerHTML = single
-        ? `<b>K = 1.</b> One direction has to explain every answer. With two islands of ` +
-          `taste in the data it lands between them and scores both mediocre — which is ` +
-          `a preference the listener never had.`
-        : `Two lenses, <b>${angle}°</b> apart. Lens 1 claims <b>${claimed[0]}</b> candidates, ` +
-          `lens 2 claims <i>${claimed[1]}</i>. Every candidate is scored by whichever lens ` +
-          `likes it most, so a duel <em>across</em> the two is still a well-formed question.`;
+        ? `<b>K = 1.</b> One direction has to explain every answer. With two sides of ` +
+          `taste in the data, it lands between them and rates both in the middle: ` +
+          `a taste the listener never had.`
+        : `Two styles, <b>${angle}°</b> apart. Style 1 claims <b>${claimed[0]}</b> sounds, and ` +
+          `style 2 claims <i>${claimed[1]}</i>. Every sound is rated by whichever style ` +
+          `likes it most, so a pair <em>across</em> the two is still a well-formed question.`;
     }
 
     button(controls, 'compare K = 1', (b) => {
@@ -392,7 +392,7 @@
       b.textContent = single ? 'back to K = 2' : 'compare K = 1';
       draw();
     });
-    button(controls, 'pull the lenses apart', () => {
+    button(controls, 'pull the styles apart', () => {
       thetas = [[0.85, -0.3], [-0.5, 0.85]];
       single = false;
       draw();
@@ -411,7 +411,7 @@
   VIZ['likelihoods'] = (root) => {
     const { stage, controls, readout } = scaffold(root);
     const W = 720, H = 268, L = 96, R = 92;
-    const s = svg(W, H, 'The same latent utility observed three ways: a duel, a keep or kill, and a star rating');
+    const s = svg(W, H, 'The same latent utility observed three ways: a pair, a keep or kill, and a star rating');
     stage.appendChild(s);
 
     const sig = (v) => 1 / (1 + Math.exp(-v));
@@ -426,7 +426,7 @@
     for (const [name, y] of Object.entries(ROWS)) {
       s.appendChild(el('line', { class: 'v-rule', x1: L, y1: y, x2: W - R, y2: y }));
       const t = el('text', { x: 4, y: y + 4, class: 'v-axis' });
-      t.textContent = { duel: 'duel  σ(uA−uB)', keep: 'keep  σ(u−τ)', star: 'stars  cutpoints' }[name];
+      t.textContent = { duel: 'pair  σ(uA−uB)', keep: 'keep  σ(u−τ)', star: 'stars  cutpoints' }[name];
       s.appendChild(t);
     }
     for (const g of [-4, -2, 0, 2, 4]) {
@@ -534,15 +534,15 @@
 
       const best = probs.indexOf(Math.max(...probs));
       readout.innerHTML =
-        `At <i>u = ${fmt(u)}</i>: the duel says A wins <b>${(p * 100).toFixed(0)}%</b> of the time, ` +
+        `At <i>u = ${fmt(u)}</i>: the pair says A is picked <b>${(p * 100).toFixed(0)}%</b> of the time, ` +
         `keep/kill says keep with probability <b>${(pk * 100).toFixed(0)}%</b> against τ = ${fmt(tau)}, ` +
         `and the most likely rating is <b>${best}★</b> at <b>${(probs[best] * 100).toFixed(0)}%</b>. ` +
         `One latent quantity, three ways of asking about it.`;
     }
 
-    const su = slider(controls, 'u (candidate A)', { min: -4, max: 4, step: 0.05, value: u });
+    const su = slider(controls, 'u (sound A)', { min: -4, max: 4, step: 0.05, value: u });
     su.addEventListener('input', () => { u = parseFloat(su.value); draw(); });
-    const sb = slider(controls, 'u (candidate B)', { min: -4, max: 4, step: 0.05, value: uB });
+    const sb = slider(controls, 'u (sound B)', { min: -4, max: 4, step: 0.05, value: uB });
     sb.addEventListener('input', () => { uB = parseFloat(sb.value); draw(); });
     draw();
   };
@@ -749,9 +749,9 @@
 
       const n = sel >= 0 ? NOTES[sel] : null;
       readout.innerHTML = n
-        ? `<b>${n.name}</b> — ${n.on.toFixed(2)} s gate-on, ${n.off.toFixed(2)} s after. ` +
+        ? `<b>${n.name}</b>: ${n.on.toFixed(2)} s gate-on, ${n.off.toFixed(2)} s after. ` +
           `Reveals ${n.reveals}, and feeds <i>${n.feat}</i>.`
-        : `Four notes, ${total.toFixed(2)} s, one fixed RNG seed. Every candidate is measured ` +
+        : `Four notes, ${total.toFixed(2)} s, one fixed random seed. Every sound is measured ` +
           `under exactly this, because an audio feature is only comparable across patches ` +
           `under an identical stimulus. <b>Click a segment</b> to see what it is for.`;
     }
@@ -857,10 +857,9 @@
 
       readout.innerHTML = beta < 0.15
         ? `<b>β = ${fmt(beta, 1)}.</b> The target <i>is</i> the grammar prior. The search browses, ` +
-          `and simple terms dominate — not because anything penalises size, but because that is ` +
-          `what the prior says.`
-        : `<b>β = ${fmt(beta, 1)}.</b> The target's mode has moved to <i>${fmt(mode, 2)}</i> — ` +
-          `${mode > 0.5 ? 'out into the complex region the taste model likes' : 'still near the simple end'}. ` +
+          `and simple terms dominate. Nothing penalizes size: that is what the prior says.`
+        : `<b>β = ${fmt(beta, 1)}.</b> The target’s mode has moved to <i>${fmt(mode, 2)}</i>, ` +
+          `${mode > 0.5 ? 'out into the complex region the taste model rates higher' : 'still near the simple end'}. ` +
           `Parsimony and taste are pulling against each other, and β is the only dial between them.`;
     }
 
@@ -943,15 +942,15 @@
       readout.innerHTML = !clampOn
         ? `<b>Clamp off</b>, η = ${fmt(eta, 2)}. Multipliers run from ×${fmt(lo, 3)} to ×${fmt(hi, 2)}. ` +
           (lo < 0.25 || hi > 4
-            ? `A kind the model currently dislikes is now barely proposed at all — and a prior that ` +
-              `cannot <i>generate</i> an option can never be argued back into it by evidence, because ` +
+            ? `A kind the model leans away from is now barely proposed at all. A prior that ` +
+              `cannot <i>propose</i> an option can never be argued back into it by evidence, because ` +
               `the evidence would have to come from proposing it.`
-            : `Still a mild tilt at this η — <b>raise it</b> and watch the extremes run away.`)
+            : `Still a mild tilt at this η. <b>Raise it</b>, and watch the extremes run away.`)
         : `<b>η = ${fmt(eta, 2)}</b>, every multiplier clamped to [¼, 4]. ` +
           (clampedCount
             ? `<b>${clampedCount}</b> ${clampedCount === 1
-                ? 'kind is at a bound right now — its coefficient is'
-                : 'kinds are at a bound right now — their coefficients are'} strong enough that, ` +
+                ? 'kind is at a bound right now: its coefficient is'
+                : 'kinds are at a bound right now: their coefficients are'} strong enough that, ` +
               `unclamped, the search would stop exploring ${clampedCount === 1 ? 'it' : 'them'}.`
             : `Nothing is at a bound yet; raise η and watch the strongest opinions hit one.`);
     }
@@ -1057,13 +1056,13 @@
       readout.innerHTML =
         `Brier skill <b>${skill >= 0 ? '+' : ''}${fmt(skill, 3)}</b> · hit rate <b>${(acc * 100).toFixed(0)}%</b>` +
         (nearTies
-          ? ` — and there it is: asking only near-ties pins the hit rate near 50% <i>however good the model is</i>. ` +
+          ? `. There it is: asking only near-ties pins the hit rate near 50% <i>however good the model is</i>. ` +
             `The skill score still moves, because it scores sharpness rather than a coin-flip tally.`
           : sharpness > 1.4
-            ? ` — overconfident. The dots sit below the line on the right: when it says 80% it is right less often than that.`
+            ? `: overconfident. The dots sit below the line on the right: when it says 80%, it is right less often than that.`
             : sharpness < 0.7
-              ? ` — underconfident. It knows more than it is willing to claim.`
-              : ` — honest. The dots sit on the diagonal, which is the only thing that makes the number above worth reading.`);
+              ? `: underconfident. Its guesses are better than it claims.`
+              : `: honest. The dots sit on the diagonal, which is what makes the number above worth reading.`);
     }
 
     const ss = slider(controls, 'confidence', { min: 0.3, max: 2.6, step: 0.05, value: 1,
@@ -1136,11 +1135,11 @@
         ? `A fresh fit: <b>${S}</b> draws, uniform weights, <i>ESS ${e.toFixed(1)}</i>. ` +
           `Every draw is still contributing.`
         : frac < 0.25
-          ? `<b>${folded}</b> observations folded in. <b>ESS ${e.toFixed(1)}</b> — the weights have ` +
-            `collapsed onto a handful of draws, and a "posterior" of a few points would tell the ` +
+          ? `<b>${folded}</b> observations folded in. <b>ESS ${e.toFixed(1)}</b>: the weights have ` +
+            `collapsed onto a handful of draws, and a “posterior” of a few points would tell the ` +
             `acquisition rule it is <i>certain</i> when it is merely exhausted. This is the state ` +
             `<code>needs_refit</code> is watching for.`
-          : `<b>${folded}</b> observations folded in by reweighting — exact, and O(S). ` +
+          : `<b>${folded}</b> observations folded in by reweighting: exact, and O(S). ` +
             `<i>ESS ${e.toFixed(1)}</i> and falling.`;
     }
 
@@ -1178,7 +1177,7 @@
       const distinct = new Set(out).size;
       draw();
       readout.innerHTML =
-        `Resampled. Weights are uniform again and <b>ESS ${S}.0</b> — but only ` +
+        `Resampled. Weights are uniform again and <b>ESS ${S}.0</b>, but only ` +
         `<b>${distinct}</b> of the ${S} draws are distinct. The sample is impoverished ` +
         `rather than informative, which is why this is a stopgap between real fits ` +
         `and not a substitute for one.`;
@@ -1276,10 +1275,10 @@
         }
       });
       readout.innerHTML =
-        `The patch loop runs continuously and silently; the taste loop runs at the pace you answer ` +
-        `questions, and its posterior re-fits at most every six duels. That asymmetry is the design: ` +
-        `the machine evaluates thousands of candidates against a learned surrogate and surfaces a ` +
-        `curated few, which is the answer to interactive evolution's user-fatigue problem.`;
+        `The patch loop runs at the machine’s pace, with no one in it. The taste loop runs at the pace ` +
+        `you pick, and the model refits every sixth pick. That difference is the design: the machine ` +
+        `weighs thousands of sounds against what the model learned and plays you a few, which is the ` +
+        `answer to interactive evolution’s user-fatigue problem.`;
       return;
     }
 
@@ -1324,10 +1323,10 @@
     io.observe(stage);
 
     readout.innerHTML =
-      `<i>Green</i> is the fast loop — candidates generated, vetted and scored continuously, with no ` +
-      `human in it. <b>Amber</b> is the slow one, moving at the pace you answer questions. The machine ` +
-      `evaluates thousands of candidates against the learned surrogate and surfaces a curated few, ` +
-      `which is the answer to interactive evolution's user-fatigue problem.`;
+      `<i>Green</i> is the fast loop: sounds drawn, checked, and scored at the machine’s pace, with ` +
+      `no one in it. <b>Amber</b> is the slow one, moving at the pace you pick. The machine weighs ` +
+      `thousands of sounds against what the model learned and plays you a few, which is the answer ` +
+      `to interactive evolution’s user-fatigue problem.`;
   };
 
   /* =======================================================================
@@ -1340,13 +1339,13 @@
   VIZ['interval'] = (root) => {
     const { stage, controls, readout } = scaffold(root);
     const W = 660, H = 168, L = 128, R = 78, T = 22;
-    const s = svg(W, H, 'Three coefficients with credible intervals that narrow as evidence accumulates');
+    const s = svg(W, H, 'Three leans, each with a whisker that narrows as answers come in');
     stage.appendChild(s);
 
     let n = 8;   // observations
     const COEF = [
       { name: 'chorus & sweeps', truth: 0.62 },
-      { name: 'bass weight', truth: -0.30 },
+      { name: 'body', truth: -0.30 },
       { name: 'drive & fold', truth: 0.05 },
     ];
 
@@ -1408,12 +1407,12 @@
       });
 
       readout.innerHTML =
-        `After <b>${n}</b> observations, <b>${claims}</b> of ${COEF.length} coefficients have an interval ` +
-        `that clears zero. The others, hollow and marked ?, are pointing somewhere, but the bar is a guess. ` +
+        `After <b>${n}</b> answers, <b>${claims}</b> of ${COEF.length} leans have a whisker ` +
+        `that clears zero. The others, hollow and marked ?, point somewhere, but the bar is a guess. ` +
         `<i>A short bar with a tight whisker is worth more than a long bar with a wide one.</i>`;
     }
 
-    const sn = slider(controls, 'observations', { min: 3, max: 300, step: 1, value: 8, format: (v) => Math.round(v) });
+    const sn = slider(controls, 'answers', { min: 3, max: 300, step: 1, value: 8, format: (v) => Math.round(v) });
     sn.addEventListener('input', () => { n = parseFloat(sn.value); draw(); });
     draw();
   };
@@ -1427,7 +1426,7 @@
   VIZ['recency'] = (root) => {
     const { stage, controls, readout } = scaffold(root);
     const W = 660, H = 190, L = 46, R = 22, T = 18, B = 36;
-    const s = svg(W, H, 'The recency weight of an observation against how far back in the log it sits');
+    const s = svg(W, H, 'How much an answer counts, against how far back in the log it sits');
     stage.appendChild(s);
 
     let hl = 150;   // TasteConfig::recency_half_life default
@@ -1448,7 +1447,7 @@
       s.appendChild(t);
     }
     const xl = el('text', { x: (L + W - R) / 2, y: H - 6, 'text-anchor': 'middle', class: 'v-axis' });
-    xl.textContent = 'observations ago';
+    xl.textContent = 'answers ago';
     s.appendChild(xl);
     const yl = el('text', { x: 4, y: T + 8, class: 'v-axis' });
     yl.textContent = 'weight';
@@ -1476,9 +1475,9 @@
 
       const at300 = Math.pow(0.5, 300 / hl);
       readout.innerHTML =
-        `At a half-life of <b>${Math.round(hl)}</b>, a vote from <b>300</b> observations ago still ` +
-        `carries <b>${(at300 * 100).toFixed(0)}%</b> of a fresh one's weight. Your taste is allowed to ` +
-        `change, and a model that weighted a vote from three sessions ago equally with one from a ` +
+        `With a half-life of <b>${Math.round(hl)}</b>, an answer from <b>300</b> answers ago still ` +
+        `carries <b>${(at300 * 100).toFixed(0)}%</b> of a new one’s weight. Your taste is allowed to ` +
+        `change, and a model that weighed an answer from three sessions ago the same as one from a ` +
         `minute ago would fight you when it did.`;
     }
 
@@ -1626,12 +1625,12 @@
       const size = nAudio;
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
       readout.innerHTML =
-        `<i>${plural(nAudio, 'audio node')}</i>, <b>${plural(nMod, 'modulation node')}</b>, depth ${maxD} — ` +
+        `<i>${plural(nAudio, 'audio module')}</i>, <b>${plural(nMod, 'modulator')}</b>, depth ${maxD}: ` +
         `${size}/24 modules against the budget. ` +
         `Every one of these compiles and plays: the sorts are Rust types, so an ` +
         `<b>ill-sorted term cannot be constructed</b>, and there is no repair step ` +
-        `anywhere. Resample a few times and notice small terms winning — that is ` +
-        `the prior's parsimony, not a size penalty.`;
+        `anywhere. Resample a few times, and notice small terms winning: that is ` +
+        `the prior’s parsimony, not a size penalty.`;
     }
 
     function resample() {
