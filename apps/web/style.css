@@ -4460,6 +4460,16 @@ input[type="range"]::-moz-range-thumb {
 .xport:disabled { color: var(--silk-mute); border-color: var(--hairline); cursor: default; box-shadow: none; }
 .xport.playing { color: var(--xport-lo); background: var(--phos-a); border-color: var(--phos-a); }
 .xport:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+/* Pressed while an edit is still on its way to the engine: it plays once the
+   edit lands, and says it heard you at once with the dotted amber ring a bank
+   ▶ waiting for its render wears. An outline, which hover does not touch. */
+.xport.pending { outline: 1px dotted var(--phos-b); outline-offset: 2px; color: var(--phos-b); }
+/* Playing and waiting at once: the glyph keeps the playing ink, or it is amber
+   on the green face. */
+.xport.playing.pending { color: var(--xport-lo); }
+/* Focused from the keyboard while it waits: the focus ring stays where it is,
+   and the dotted amber cue moves onto the button's own edge. */
+.xport.pending:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; border: 1px dotted var(--phos-b); }
 .subject-name {
   font-size: var(--t-title);
   font-weight: 500;

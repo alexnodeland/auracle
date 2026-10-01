@@ -62,11 +62,16 @@ Drag a knob, or focus it and use <kbd>↑</kbd>/<kbd>↓</kbd>; hold
 cycle it. A step sequencer's bars are knobs too: press one where you want the
 step to sit and drag ([more on the step sequencer](./wiring.md#the-step-sequencer)).
 
-Every edit is a **one-site write at that knob's trace address**. The patch is
-re-rendered and re-vetted before it can be auditioned, and the live instrument
-is re-patched immediately so held notes keep sounding. While you drag you hear
-every value the knob passes through; the engine re-renders the one you let go
-on. A run of <kbd>↑</kbd>/<kbd>↓</kbd> presses on one knob is one turn.
+Every edit is a **one-site write at that knob's trace address**. Knobs, and
+the octave and wavetable selectors, reach the live instrument as you move them.
+A structural edit re-patches it as soon as the engine has made the edit. Any
+other selector, such as a VCO's wave, re-patches it once the engine has
+re-rendered the patch: a fraction of a second, longer while the engine is busy.
+Held notes keep sounding through a re-patch. The patch is re-rendered and
+re-vetted before it can be auditioned: a **▶** pressed before then waits for
+it, then plays the edit. While you drag you hear every value the knob passes
+through; the engine re-renders the one you let go on. A run of
+<kbd>↑</kbd>/<kbd>↓</kbd> presses on one knob is one turn.
 
 Edits reach the engine **in the order you make them**. On a busy machine the
 engine can still be working on the last one when you make the next: a bypass
