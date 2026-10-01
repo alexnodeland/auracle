@@ -26,6 +26,18 @@ here, and keep new text in that register.
 - the word table and the banned list the check reads;
 - the mechanics: American spelling and no em dashes.
 
+| File | What it is |
+| --- | --- |
+| `voice.md` | **The guide.** Its `banned` block is the list the check reads. |
+| `voice-baseline.json` | The voice check's floor: each file's count of each banned word, em dash and British spelling. Written by `python3 www/checkwords.py --update`, which only lowers a count (`--allow-rise` raises one). |
+
+`make dev-check` and CI run `www/checkwords.py`, which fails when a file's
+count rises above `voice-baseline.json`, a file it does not list has any hit,
+or a count falls below it (a sweep lowers the baseline in the same change).
+Its tests are `www/test_checkwords.py`. How the check reads each surface is
+in the script's docstring; why it is a ratchet is in voice.md's "How this is
+kept".
+
 Where a lockup carries words, they are the line: `lockup.png` sets the tagline
 under the wordmark, and `og.png` sets the tagline with the descriptor under it.
 

@@ -2498,7 +2498,7 @@ function releaseRequest(request, id) {
 function releaseEverything() {
   for (const r of [
     "edit_param", "edit_structure", "fit", "refine", "refine_from",
-    "edit_commit", "duel", "preview_render", "import_patch",
+    "edit_commit", "duel", "preview_render", "import_patch", // voice: name
   ]) {
     try { releaseRequest(r, null); } catch (_) {}
   }
@@ -8041,7 +8041,7 @@ let ffLast = null;        // the subject whose layout was most recently written
 let pendingLayout = null;
 
 function ffKey() {
-  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+  return wb.subjectId == null ? "bench" : String(wb.subjectId); // voice: name
 }
 
 // How much of the current rack a stored layout has to actually place before it
@@ -11769,7 +11769,7 @@ const lockStore = new Map();
 const LOCK_KEEP = 60; // same order as the layout store; the bank holds 40
 
 function lockKey() {
-  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+  return wb.subjectId == null ? "bench" : String(wb.subjectId); // voice: name
 }
 
 /** Write the bench's locks back to the store, and ask for a save. Every
@@ -13445,7 +13445,7 @@ function settleCommit() {
 
 function sendCommit(outcome, opts = {}) {
   if (opts.evolving) note("committing your edits, then evolving…");
-  logImplicit("commit", { outcome, dirty: wb.dirty });
+  logImplicit("commit", { outcome, dirty: wb.dirty }); // voice: name
   send({ type: "edit_commit", outcome });
 }
 
@@ -15577,7 +15577,7 @@ function socketPrice(kind, mode, key) {
     : !t
       ? "unfitted"
       : evicts
-        ? "evicts"
+        ? "evicts" // voice: name
         : sup < NB_SUPPORT_MIN
           ? "thin"
           : Math.abs(t.mean) >= t.std

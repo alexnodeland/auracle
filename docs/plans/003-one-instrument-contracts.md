@@ -44,8 +44,9 @@ rebuilt views, rather than applied to views about to be replaced. Tasks 1, 3,
    RFC-003 table to UI copy and the guide in one pass; TAUGHT counter with the
    pick/star/cut breakdown tooltip; EVOLVE's meter sentence uses the pick
    count; "keep as new" for COMMIT; "set aside" for HELD; "pool" for the
-   EVOLUTION tab; "replaced" everywhere. Add a banned-words list to
-   `www/checknames.py` (UI copy and guide), run by `make dev-check`.
+   EVOLUTION tab; "replaced" everywhere. Add a banned-words check
+   (`www/checkwords.py`, reading the list in `www/brand/voice.md`), run by
+   `make dev-check`.
 2. **Colour**: moved to Plan-004 task 6 (CO3, CO10, PA-08, TA6 partly, SH8, EV-07 item 1): write the
    contract as `style.css`'s header; dock toggles get a green LED + silk label;
    active tabs silk; alarms red; locks silk (pin + hatched halo); your names

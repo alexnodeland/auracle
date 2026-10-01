@@ -516,7 +516,6 @@ lens | player | style, the model view
 HELD | player | set aside
 measuring… | player | listening…
 MODEL'S GUESS | player | 59% · leaning
-crossover | all | (there is none)
 posterior | player | your taste, the model
 duel | player | pair, pick
 plate | player | module
@@ -529,6 +528,8 @@ plate | player | module
 The spelling is **American**: color, center, toward, math, catalog, dialog,
 analyze, normalize, gray, license, modeling, canceled. "Synthesizer" is spelled
 with a z. Quoted names keep their own spelling.
+
+The check counts the British spellings listed in `BRITISH` in `www/checkwords.py`.
 
 ### Punctuation
 
@@ -710,9 +711,24 @@ Lines from the app and the site, rewritten to this guide.
 
 ## How this is kept
 
-- **The check:** `make dev-check` runs the banned-words check (Plan-003 task 1)
-  against the `banned` block above, over the app's copy, the landing page, the
-  guide, and the film scripts.
+- **The check:** `make dev-check` and CI run `www/checkwords.py` (Plan-003
+  task 1). It reads the `banned` block above each time it runs, so this guide
+  stays the one list. It counts three things: the banned words, em dashes,
+  and British spellings. It reads each surface the block names, with the
+  figures and the films' on-screen text, and the script lists the files. It
+  reads only what a reader sees or hears: comments and code don't count.
+- **Names:** a script line that ends in `// voice: name` holds names, not
+  copy, so the check skips its strings.
+- **The ratchet:** the copy is older than this guide, so the check holds it
+  to a floor, not a wall. `www/brand/voice-baseline.json` holds each file's
+  count for each rule. The check fails when a count rises, or when a new file
+  has any hit. It also fails when a count falls and the floor stays where it
+  was: a sweep lowers the floor in the same change, with
+  `python3 www/checkwords.py --update`. The floor only moves down. Raising a
+  count takes `--allow-rise`.
+- **The sweeps:** `python3 www/checkwords.py --summary` gives each surface's
+  count, rule by rule, so a sweep can show its drop. `--where FILE` lists
+  every hit in one file.
 - **The pointers:** the `AGENTS.md` files, the docs-writer and film-producer
   agents, the changelog skill, `VIEWS.md`, and `SCRIPTS.md` point here and
   don't restate these rules.
