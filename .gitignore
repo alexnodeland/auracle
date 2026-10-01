@@ -53,4 +53,4 @@ __pycache__/
 .claude/settings.local.json
 
 # The voice and film tools environment (make film-setup)
-.venv-voice/
+.venv-voice

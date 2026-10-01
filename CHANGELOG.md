@@ -31,6 +31,22 @@ changelog that edits its own past is not a record.
   the end.
   Each phrase now repeats to the end of its section, and the films change
   when they are next rendered (`test_fit_score.py`).
+- **The films are mixed to the sound chosen for them, with no cues.**
+  - The narration goes through a voice chain at −18 LUFS.
+  - The music sits 3 LU under it, ducked 2 dB and carved 3 dB in 1–4 kHz
+    while the voice speaks.
+  - Each demo plays after its line, at −18 LUFS, with the music 9 LU under
+    it.
+  - The two marks, Bloom and Reach, open and close a film 1.75 s from the
+    voice.
+  - The music under a film is written to its timing: a held drone, the
+    chords tied across each cycle, and short sighs only in the narration's
+    gaps.
+
+  Before, the music sat 6 dB under an untreated voice, ducked 9 dB, the
+  app's sound came in at whatever level it was recorded, and whooshes, blips
+  and a logo sting played on top. The films change as each one is re-voiced
+  and mixed again (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
 
 ### Fixed: what a generation and ⚡ say
 
