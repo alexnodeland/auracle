@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# The shared sound: the three scores in sound/ (signal, study, stingers),
-# played by Auracle's own engine into www/video/out/sound/. The stingers are
-# every film's effects (mix.py --sfx www/video/out/sound/stingers); the
-# explainers fit study to their own arrangement instead (illustrated.sh).
-# Renders are deterministic, so this runs once.
+# The shared sound of the films not yet moved to N3: the three old scores in
+# sound/ (signal, study, stingers), played by Auracle's own engine into
+# www/video/out/sound/. No mix lays the stingers now (ADR-014: the films have
+# no cues; Plan-006 task 6 removes them). The explainers fit study to their own
+# arrangement instead (illustrated.sh), and a film on N3 renders its own score
+# (fit_score.py --film). Renders are deterministic, so this runs once.
 #
 #   www/video/tools/sounds.sh
 set -euo pipefail

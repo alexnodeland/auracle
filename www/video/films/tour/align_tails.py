@@ -21,14 +21,15 @@ FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 FILM = os.path.basename(FDIR)
 MANIFEST = os.path.join(VIDEO, "out", FILM, "voice", "manifest.json")
+DEMOS = os.path.join(VIDEO, "out", FILM, "demos.json")  # the demos' measured tails (tools/demo_tail.py)
 # Each beat's own tail, before the gap is filled: the cold open is its lead,
 # the title holds the map a moment, the outro rings out under the end card.
 BASE = {"open": 0.0, "title": 1.2, "views": 0.5, "bank": 0.5, "dock": 0.6, "header": 0.5, "first": 0.6, "next": 3.2}
 
 
 def timeline():
-    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FDIR, "--voice", MANIFEST],
-                   check=True, capture_output=True)
+    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FDIR, "--voice", MANIFEST]
+                   + (["--demos", DEMOS] if os.path.exists(DEMOS) else []), check=True, capture_output=True)
     return json.load(open(os.path.join(FDIR, "timeline.json")))
 
 

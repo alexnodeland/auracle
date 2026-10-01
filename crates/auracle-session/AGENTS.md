@@ -49,4 +49,6 @@ loop (observe, refit). Rules shared by all crates are in
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
-`AIM_WALKS`) and the loops.
+`AIM_WALKS`) and the loops. `suggest_census` measures ways the model could
+suggest the next module in PATCH, their cost and their quality against
+synthetic listeners (`docs/notes/suggest-2026-10/`).

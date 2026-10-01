@@ -400,7 +400,19 @@ Each is decided as its task in Plan-005 comes up.
 1. **Keep a generation's replaced trees until the next one,** so they can be
    heard and brought back. The cost is up to ten trees in memory and in the
    session save.
+   *Decided (2026-10-01):* no. Replaced shows names only, as the approved
+   prototype does, and Plan-005 task 9(f) is not built.
 2. **How the model suggests the next module** in an empty or growing patch.
+   *Design note (2026-10-01):* four designs measured on the engine, with a
+   recommendation (render the modules the output can take on the farm, and
+   rank them by a lower bound on the gain) and what is left to decide
+   ([`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md)).
+   *Decided (2026-10-01):* the recommendation. The modules the output can
+   take are rendered on the farm and ranked by the lower bound, eight in the
+   structural order when there is no farm, and nothing before the warm start.
+   The app calls it the model's guess (GUESS · FILTER, with its reason in the
+   model's italic). A skip keeps that family away from that socket for the
+   patch, and undoing a taken guess counts as a skip.
 3. **The cost of posting the belief after every pick,** so TASTE and the
    bank's ratings move per pick.
    *Answered (2026-10-01):* under 2 ms per pick in wasm at five lenses

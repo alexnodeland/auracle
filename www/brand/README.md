@@ -230,13 +230,12 @@ value was chosen in `docs/notes/sound-2026-09/SPEC.md`). Its keys:
 | `key`, `tempo`, `form` | F over an F2/C3 pedal; 66 BPM (the marks at 60); the 8-bar cycle Fmaj9, G6/F, Bbmaj7/F, Bbm6/F |
 | `cast` | The sixteen presets a film casts from, by role (RFC-007); the one room (Cathedral's stock reverb); and each part (drone, bed pad, marks' pad, lead, burble, demo) with its preset, voices and every knob the finals turned, stock and used |
 | `marks` | Bloom and Reach: each one's record score, its generated file, which part plays each track, and how it meets the bed |
-| `bed` | N3: its record score and generated file, and its parts (voicings, burble cells, sighs) |
+| `bed` | N3: its record score and generated file, and its parts (voicings, the pad under a demo, burble cells, sighs and the rule that places them) |
 | `mix` | Each part's EQ, pan and level, on stems |
 | `voice_chain` | The narration's four stages, from the 85 Hz high-pass to the de-esser |
 | `ladder` | Every element's loudness, from the narration at −18 LUFS to the master at −16 |
 | `duck` | The bed under the voice: the 2 dB duck, the 3 dB carve in 1–4 kHz, the pad's 2 dB dip in 300–600 Hz |
-| `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice |
-| `mix_now` | The bed's level and duck the films are mixed with today (−6 and −9 dB), until the new mix replaces them |
+| `grammar` | The timings: 0.7 s to a demo, its tail to −30 dB plus 0.8 s, the marks 1.5–2 s from the voice (1.75 s in a film), and 2.6 s for the room after the exit mark |
 
     make sound
 
@@ -249,8 +248,10 @@ so at their top; edit the JSON, never them.
   trim, transpose and used knobs, the lead's bend times, and the drone's
   breath. The notes are the auditioned finals'.
 - **Into `sound_defaults.py`** go `mix`, `voice_chain`, `ladder`, `duck`, the
-  timings in `grammar`, the marks' levels and hand-overs, the shortlist, the
-  room, and `mix_now`.
+  timings in `grammar`, the marks' levels and hand-overs, the shortlist and
+  the room. `mix.py` reads every level it sets from there. The bed's parts
+  and how the lead plays a line go there too (`BED`, `LEAD`), for
+  `fit_score.py --film` to write a film's bed from.
 - **The rest describes the notes:** the pedal, the marks' length, the lead's
   legato and swell, the bed's voicings, burble and sighs, and the demo (which
   only the reel played). `make sound` leaves the notes as they are, so these
@@ -262,11 +263,12 @@ so at their top; edit the JSON, never them.
 - a preset in the cast or the shortlist is not in the bank;
 - a knob is outside 0–1, the drone's breath does not run low ≤ stock ≤ high,
   or a part turns the room's knobs;
-- a number is `mix.py`'s `--music-db` or `--duck-db` default, or a film
-  tool's shell code has a numeric `MUSIC_DB`/`DUCK_DB` fallback or a numeric
-  `--music-db`/`--duck-db` flag. These are the ways the duck came to have
-  three values; docstrings, help strings and comments may quote a level, and
-  the scan does not look for every other way to write one.
+- a number is a film tool's `--music-db`, `--duck-db` or `--gain-db`
+  default, or a film tool's shell code has a numeric `MUSIC_DB`, `DUCK_DB`
+  or `APP_DB` fallback or a numeric `--music-db`/`--duck-db`/`--gain-db`
+  flag. These are the ways the duck came to have three values; docstrings,
+  help strings and comments may quote a level, and the scan does not look
+  for every other way to write one.
 
 `test_sound.py`, also run by `make dev-check`, makes each of these changes in
 a copy of the tree and expects the check to fail on it. With

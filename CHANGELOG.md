@@ -42,6 +42,28 @@ changelog that edits its own past is not a record.
   shorter: *Point at a module, here or in the module rail: this strip says
   what it does, where it can go, and how your taste leans.*
 
+### Changed: the films' sound
+
+- **The films are mixed the way their sound was chosen, with no sound
+  effects.**
+  - The narration is lightly equalized and softened on its "s" sounds, at a
+    steady level.
+  - The music sits a little under the voice. While the voice speaks, it
+    dips a little, and a little more in the range where speech is clearest.
+  - Each demo plays after its line, never under it, as loud as the voice,
+    with the music well under it.
+  - Two short themes open and close a film, just under two seconds from its
+    first and last words.
+  - The music under a film is written to fit its timing: a held low note,
+    chords that move one voice at a time, and short falling phrases only
+    where the narration pauses.
+
+  Before, the music sat lower under an untreated voice and dropped sharply
+  whenever it spoke. The app's own sound came in at whatever level it was
+  recorded, and whooshes, clicks and a logo sting played on top. Each film
+  changes when it is re-voiced and mixed again; until then it sounds as it
+  did, without the effects (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**

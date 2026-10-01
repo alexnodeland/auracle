@@ -80,8 +80,8 @@ install-hooks:
 ## count of banned words, em dashes and British spellings exactly at
 ## www/brand/voice-baseline.json, and the check's own tests), the films' sound
 ## (the scores and mix defaults generated from www/brand/sound.json current,
-## its description of the record scores' notes true, no number as mix.py's bed
-## or duck default or a pipeline's fallback, and the check's own tests), the
+## its description of the record scores' notes true, no number as a film
+## tool's level default or a pipeline's fallback, and the check's own tests), the
 ## Claude Code hooks against inputs they must block and pass, the syntax of
 ## every film tool, and the film tools' own tests (on .venv-voice when it
 ## exists)
