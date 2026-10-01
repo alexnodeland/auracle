@@ -28,7 +28,8 @@
 //! data and is within [`MAX_CLIP_SECONDS`] at that rate, and the data's length
 //! checked **before** it is decoded, so nothing allocates beyond what the
 //! file's own bytes already occupy. Anything else is refused, and the session
-//! measures with the reference instead and says so.
+//! measures with the reference instead and says so. A silent clip is refused
+//! too, made or loaded: every patch that listens would fail the vet over it.
 
 use std::sync::{Arc, Mutex};
 
@@ -36,6 +37,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 use crate::phrase::PhraseSpec;
+use crate::vet::VetConfig;
 
 /// The longest clip kept, in seconds. The audition phrase is about five
 /// seconds and a clip is only ever read for the length of the phrase, so this
@@ -87,6 +89,13 @@ pub enum ClipError {
     /// A sample handed in is not a finite number.
     #[error("a sample is not a finite number")]
     NonFinite,
+    /// The clip is silent: below the vet's silence floor
+    /// ([`VetConfig::rms_floor`]) over its whole length.
+    #[error("the clip is silent (rms {rms:.1e})")]
+    Silent {
+        /// The clip's RMS over every channel.
+        rms: f64,
+    },
 }
 
 /// Where a clip came from: what the session says when it reports which clip
@@ -185,6 +194,7 @@ impl AuditionClip {
                 at_rate
             })
             .collect();
+        check_heard(&planar)?;
         Ok(Self::assemble(
             planar,
             spec.sample_rate,
@@ -228,6 +238,7 @@ impl AuditionClip {
             let q = i16::from_le_bytes([pair[0], pair[1]]);
             planar[i % saved.channels].push(q as f32 / FULL_SCALE);
         }
+        check_heard(&planar)?;
         Ok(Self::assemble(planar, saved.sample_rate, saved.source))
     }
 
@@ -339,6 +350,25 @@ impl<'de> Deserialize<'de> for AuditionClip {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let saved = SavedClip::deserialize(d)?;
         AuditionClip::from_saved(&saved).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Refuse a silent clip. Every patch that listens would render silent over
+/// it and fail the vet, so a capture of nothing (a muted input, the wrong
+/// device) would take every such patch out of measurement at once; refusing
+/// it keeps the clip the session had.
+fn check_heard(planar: &[Vec<f32>]) -> Result<(), ClipError> {
+    let n: usize = planar.iter().map(Vec::len).sum();
+    let energy: f64 = planar
+        .iter()
+        .flat_map(|c| c.iter())
+        .map(|s| (*s as f64) * (*s as f64))
+        .sum();
+    let rms = (energy / n.max(1) as f64).sqrt();
+    if rms < VetConfig::default().rms_floor {
+        Err(ClipError::Silent { rms })
+    } else {
+        Ok(())
     }
 }
 
@@ -788,7 +818,8 @@ mod tests {
     }
 
     /// A clip made from samples that are not numbers is refused, not silently
-    /// zeroed: a broken capture should be heard about.
+    /// zeroed: a broken capture should be heard about. So is an empty one, and
+    /// a silent one, which every patch that listens would fail the vet over.
     #[test]
     fn a_capture_with_a_non_finite_sample_is_refused() {
         let spec = PhraseSpec::default();
@@ -802,6 +833,10 @@ mod tests {
             AuditionClip::from_interleaved(&x[..0], 1, 44_100.0, &spec),
             Err(ClipError::Empty)
         );
+        assert!(matches!(
+            AuditionClip::from_interleaved(&[0.0; 4410], 1, 44_100.0, &spec),
+            Err(ClipError::Silent { .. })
+        ));
     }
 
     /// The reference is deterministic, the phrase's length, peaks where it

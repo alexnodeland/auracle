@@ -39,10 +39,10 @@ pub mod walk;
 pub use belief::{Belief, BeliefRow};
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
-    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
-    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
-    RefineOutcome, RenderPolicy, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
-    MIN_SESSION_OBS,
+    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
+    Contribution, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent,
+    Origin, Profile, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig, SessionState,
+    EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
@@ -4008,5 +4008,157 @@ mod tests {
         let vx: f64 = xs.iter().map(|x| (x - mx) * (x - mx)).sum();
         let vy: f64 = ys.iter().map(|y| (y - my) * (y - my)).sum();
         cov / (vx.sqrt() * vy.sqrt() + 1e-12)
+    }
+
+    // ---- audition clips (Plan-007 task 3) ----
+
+    /// A patch that listens: the input through a lowpass.
+    fn listening_patch() -> auracle_grammar::PatchTree {
+        use auracle_grammar::term::{AmpEnv, AudioNode, FilterKind, InputChannel, ModNode};
+        auracle_grammar::PatchTree {
+            amp: AmpEnv {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: auracle_grammar::Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: auracle_grammar::Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+                modulation: ModNode::None,
+            },
+        }
+    }
+
+    /// A captured clip: a falling sweep, the phrase's length.
+    fn sweep_clip(spec: &auracle_features::PhraseSpec) -> auracle_features::AuditionClip {
+        let x: Vec<f32> = (0..spec.total_samples())
+            .map(|i| {
+                let t = i as f64 / spec.sample_rate;
+                let hz = 1200.0 * (-t / 2.5).exp() + 80.0;
+                (0.4 * (std::f64::consts::TAU * hz * t).sin()) as f32
+            })
+            .collect();
+        auracle_features::AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
+    }
+
+    /// An engine with one patch that listens and one that does not.
+    fn listening_engine() -> (Engine, u64, u64) {
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        // A fill gives the session its standardizer; then room for two more,
+        // so neither insert evicts anything.
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0xC11F));
+        engine.cfg.pool_size += 2;
+        let listens = engine
+            .insert_preset(listening_patch(), "listens")
+            .expect("a listening patch vets on the reference");
+        let deaf = engine
+            .insert_preset(auracle_grammar::presets()[0].1.clone(), "deaf")
+            .expect("a preset vets");
+        (engine, listens, deaf)
+    }
+
+    /// Setting a clip measures again the members that listen, and only them:
+    /// the listener's key and φ move, the other's do not.
+    #[test]
+    fn a_new_clip_remeasures_only_the_patches_that_listen() {
+        let (mut engine, listens, deaf) = listening_engine();
+        // What a measurement wrote on a member: its key and its raw φ.
+        let at = |e: &Engine, id: u64| {
+            let c = &e.pool[e.find(id).unwrap()];
+            (c.key.clone(), c.features.phi())
+        };
+        let (before_l, before_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_eq!(
+            engine.audition_clip_status().source,
+            auracle_features::ClipSource::Reference
+        );
+        let clip = sweep_clip(&engine.cfg.phrase);
+        let change = engine.set_audition_clip(Some(clip.clone()));
+        assert_eq!(change.remeasured, vec![listens]);
+        assert!(change.unmeasured.is_empty());
+        let (after_l, after_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_ne!(
+            before_l.0, after_l.0,
+            "the listener's key names the new clip"
+        );
+        assert_ne!(before_l.1, after_l.1, "and its φ was measured with it");
+        assert_eq!(
+            before_d, after_d,
+            "a patch that does not listen is untouched"
+        );
+        let status = engine.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Captured);
+        assert_eq!(status.id, clip.id());
+        // Setting the same clip again changes nothing.
+        assert_eq!(engine.set_audition_clip(Some(clip)), ClipChange::default());
+    }
+
+    /// The clip is saved with the session and restored before the bank is
+    /// measured, so a reload measures a listening patch exactly as before.
+    #[test]
+    fn a_clip_is_saved_with_the_session_and_restored() {
+        let (mut engine, listens, _) = listening_engine();
+        let clip = sweep_clip(&engine.cfg.phrase);
+        engine.set_audition_clip(Some(clip.clone()));
+        let phi = engine.pool[engine.find(listens).unwrap()].features.phi();
+        let saved = serde_json::to_string(&engine.export_state()).unwrap();
+        // The bound, in the file: 16-bit samples, five seconds of mono.
+        let state: SessionState = serde_json::from_str(&saved).unwrap();
+        let data = state.audition_clip.as_ref().unwrap()["data"]
+            .as_str()
+            .unwrap()
+            .len();
+        assert_eq!(data, (clip.frames() * 2).div_ceil(3) * 4);
+        assert!(
+            clip.seconds() <= auracle_features::MAX_CLIP_SECONDS,
+            "a clip is never longer than the bound"
+        );
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.cfg.phrase.clip = None;
+        back.import_state(state);
+        let status = back.audition_clip_status();
+        assert_eq!(status.id, clip.id());
+        assert_eq!(status.unreadable, None);
+        assert_eq!(back.pool[back.find(listens).unwrap()].features.phi(), phi);
+    }
+
+    /// A clip the session file holds but that cannot be read costs the
+    /// session its clip and nothing else: the bank and the log come back, the
+    /// patches that listen are measured with the reference, and the status
+    /// says why.
+    #[test]
+    fn an_unreadable_clip_restores_as_the_reference_and_says_so() {
+        let (mut engine, listens, _) = listening_engine();
+        engine.set_audition_clip(Some(sweep_clip(&engine.cfg.phrase)));
+        let mut state = engine.export_state();
+        state.audition_clip.as_mut().unwrap()["channels"] = 7.into();
+        let text = serde_json::to_string(&state).unwrap();
+        let state: SessionState = serde_json::from_str(&text).expect("the session still parses");
+        let mut back = Engine::new(PatchGrammarPrior::default(), fast());
+        assert_eq!(back.import_state(state), engine.pool.len());
+        let status = back.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Reference);
+        assert!(status.unreadable.is_some(), "the fallback is reported");
+        let c = &back.pool[back.find(listens).unwrap()];
+        assert_eq!(
+            c.key,
+            auracle_features::render_key(&c.tree, &auracle_features::PhraseSpec::default()),
+            "measured with the reference"
+        );
     }
 }

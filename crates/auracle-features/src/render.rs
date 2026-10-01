@@ -394,8 +394,10 @@ mod tests {
         assert_eq!(plain, clipped);
     }
 
-    /// The vet hears the clip: a patch that listens to the reference passes,
-    /// and the same patch over a silent clip is refused as silent.
+    /// The vet judges the render made with the clip: a patch that listens to
+    /// the reference passes, and the same patch over a clip that only sounds
+    /// in the phrase's first gap (while its amp is closed) is refused as
+    /// silent.
     #[test]
     fn the_vet_hears_the_clip() {
         let spec = PhraseSpec::default();
@@ -404,16 +406,20 @@ mod tests {
             crate::featurize(&tree, &spec).is_ok(),
             "the reference is heard"
         );
-        let silent =
-            AuditionClip::from_interleaved(&[0.0f32; 4410], 1, spec.sample_rate, &spec).unwrap();
+        let gap = (1.85 * spec.sample_rate) as usize..(1.95 * spec.sample_rate) as usize;
+        let between: Vec<f32> = (0..spec.total_samples())
+            .map(|i| if gap.contains(&i) { 0.5 } else { 0.0 })
+            .collect();
+        let between = AuditionClip::from_interleaved(&between, 1, spec.sample_rate, &spec)
+            .expect("a clip that is not silent");
         let err = crate::featurize(
             &tree,
             &PhraseSpec {
-                clip: Some(silent),
+                clip: Some(between),
                 ..spec
             },
         )
-        .expect_err("a patch over a silent clip is silent");
+        .expect_err("the patch is silent over it");
         assert!(
             matches!(
                 err,
