@@ -57,6 +57,18 @@ changelog that edits its own past is not a record.
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.
 
+### Changed: the guide
+
+- **The guide speaks the app’s words, and each page opens with what it is
+  for.** Steps are numbered, each part is named as the panel shows it (KEEP AS
+  NEW, SET ASIDE, ANOTHER PAIR), and how a thing works sits behind a “How it
+  works” that opens in place. It used to describe duels, lenses, COMMIT, and
+  HELD, and quoted toasts the app no longer shows.
+- **The guide says only what the app does.** Its introduction said breeding
+  crosses patches over, and its TASTE page said TRUST shows a hit rate. There
+  is no crossover: every child grows from one seed. TRUST grades the model by
+  its Brier skill.
+
 ### Fixed: ▶ plays the edit
 
 - **▶ or Space in PATCH, pressed right after an edit, plays the edited patch.**

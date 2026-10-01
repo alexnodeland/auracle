@@ -1,98 +1,99 @@
 # Accessibility
 
-<p class="lede">What works, how, and what does not yet.</p>
-
-Auracle is a dense expert tool. Coverage is uneven, and this page says where.
+<p class="lede">What works from the keyboard, with a screen reader, by touch,
+and with reduced motion, and where Auracle still falls short. Coverage is
+uneven, and this page says where.</p>
 
 ## Keyboard
 
-**Everything structural is reachable from the keyboard**, including wiring.
+**Everything about the patch can be reached from the keyboard,** wiring
+included.
 
-The design principle is **one tab stop per region, arrows inside it**. Tabbing
-through several hundred rack controls would be unusable, so the bank is a
-single stop, the rack is a single stop, and the module rail is one stop per
-group. Arrows move within.
+Each region is one tab stop, and the arrows move inside it. Tabbing through
+several hundred rack controls would be unusable, so the bank is one stop, the
+rack is one stop, and the module rail is one stop per group.
 
-The full map is in [Keyboard and MIDI](./keyboard.md). The path most worth
-knowing is placing a module without a mouse:
+To place a module without a mouse:
 
-<kbd>Tab</kbd> to the catalogue → <kbd>↑</kbd><kbd>↓</kbd> to a module →
-<kbd>Enter</kbd> to arm it → <kbd>↑</kbd><kbd>↓</kbd> walks the **legal sockets,
-each one announced** → <kbd>Enter</kbd> places it.
+1. Press <kbd>Tab</kbd> until you reach the module rail.
+2. Press <kbd>↑</kbd> and <kbd>↓</kbd> to choose a module.
+3. Press <kbd>Enter</kbd> to pick it up.
+4. Press <kbd>↑</kbd> and <kbd>↓</kbd> to walk the sockets it can go into.
+   Each one is announced.
+5. Press <kbd>Enter</kbd> to place it.
 
-Focus is always visible, and dialogs return focus to whatever opened them.
+Focus is always visible, and a dialog returns focus to whatever opened it.
+[Keyboard and MIDI](./keyboard.md) has the full map.
 
 ## Screen readers
 
-- **The bank announces its cursor.** Rows carry ids and the list carries
+- **The bank announces its cursor.** The list follows it with
   `aria-activedescendant`.
-- **Rows carry their whole state in the label** (name, id, saved, rating,
-  prediction), because the row's buttons sit outside the tab order and the
-  label has to encode what they would have said.
-- **Sockets announce what will happen** when you arrow onto them: whether
-  placing here inserts, replaces or wraps.
-- **Transient messages** go to an `aria-live` toast region.
-- **Persistent conditions** such as a muted unvetted patch or a crashed engine
-  go to a pinned `role="alert"` strip that stays until the condition is
-  resolved, rather than a toast that vanishes before it is read.
+- **A bank row says its whole state:** its name, whether it’s saved, its
+  rating, and the model’s guess. The row’s buttons sit outside the tab order,
+  so the label carries what they show.
+- **A socket says what will happen** when you arrow onto it: whether placing
+  the module there inserts it, replaces what’s there, or shapes it.
+- **Toasts** are read from a live region.
+- **A lasting condition,** such as a sound muted because it failed its check,
+  or an engine that has stopped, goes to a pinned alert that stays until it’s
+  resolved, rather than a toast that might vanish before it’s read.
 
-## Touch and coarse pointers
+## Touch
 
 Every rack gesture works under a finger on a tablet: knob drags, cable pulls,
-locks, the ⋯ menus.
+locks, and the ⋯ menus.
 
-Two rules carry it. Controls that own a drag **claim the gesture** before the
-browser can, which lets the rack frame keep its own panning. And affordances a
-mouse reveals by hovering (knob lock dots, the bank's stars and cut) are
-**shown outright** on a coarse pointer, because hover-to-reveal on a tablet
-means never. Small glyphs get an invisible finger pad, created only for coarse
-pointers, so desktop hit areas are unchanged.
+Two rules make that work. Controls that own a drag claim the gesture before
+the browser can, which leaves the rack’s frame its own panning. And whatever a
+mouse finds by hovering (knob lock dots, a bank row’s stars and cut) is shown
+outright on a touch screen, because on a tablet, hover-to-reveal means never.
+Small glyphs get an invisible pad for a finger, only on touch screens, so the
+desktop is unchanged.
 
 ## Hit targets
 
-Hit areas are measured with `elementFromPoint` rather than eyeballed. A knob's
-whole face is grabbable, including under its ticks, track and value arc, and a
-jack responds across its full ring diameter rather than only where its outline
-is painted.
+Hit areas are measured, not eyeballed. A knob’s whole face is grabbable,
+including under its ticks, track, and value arc, and a jack answers across its
+whole ring rather than only where its outline is drawn.
 
-## Colour and contrast
+## Color and contrast
 
 Text meets **4.5:1** against its background. The palette has two tiers for
-this: a text tier that clears the ratio, and a separate stroke tier for wire
-glow and jack rings, where contrast rules do not apply.
+this: a text tier that clears the ratio, and a stroke tier for cable glow and
+jack rings, where contrast rules don’t apply.
 
-**Colour is never the only channel.** Green versus amber distinguishes audio
-from modulation, but modulation cables also terminate in a *named* destination,
-and signal kinds are carried by jack labels as well as colour. Style islands
-are hue-coded on the taste map *and* named in text everywhere they appear.
+**Color is never the only signal.** Green and amber tell audio from
+modulation, but every modulation cable also ends in a named destination, and
+each jack is labeled as well as colored. The styles are colored on the taste
+map, and named in words everywhere they appear.
 
 ## Motion
 
-The rack pulses modulation cables at their modulator's rate, which carries
-information rather than decorating.
+The rack pulses modulation cables at their modulator’s rate. That pulse is
+information, not decoration.
 
-The instrument honours `prefers-reduced-motion`, and follows the setting live
-if you change it with the app open. With it on, the cable pulses, glows and
-transitions stop, the rack jumps to a new layout or view instead of gliding
-there, and a duel card waiting for its render stops sweeping. The live scope
-still moves, because what it shows is the sound, but it redraws ten times a
-second instead of every frame. The documentation site
-honours the setting too.
+Auracle follows your system’s reduced-motion setting, and follows it live if
+you change it with the app open. With it on, the cable pulses, glows, and
+transitions stop; the rack jumps to a new layout or view instead of gliding;
+and a card waiting for its sound stops sweeping. The scope still moves,
+because what it shows is the sound, but it redraws ten times a second rather
+than every frame. The guide and the reference follow the setting too.
 
 ## Known gaps
 
-- **No handheld layout.** A touch screen under 620px on its shorter side gets
-  a stand-in screen instead of the instrument. Deliberate for now: boot costs ~40 renders that a
-  phone would pay for and have nowhere to display. It does mean Auracle is
-  unusable on a phone.
-- **The taste map is visual only.** The STYLES and DIRECTIONS tabs carry the
-  same information as named coefficients and are the accessible route to it,
-  but the map's spatial reading is not available another way.
-- **Screen-reader coverage is deepest where it was tested.** The bank and the
-  wiring path were built and verified against a screen reader. The scope
-  configuration and the image exporter were not.
-- **No high-contrast theme.** The palette clears AA but there is no AAA mode
+- **No phone layout.** A touch screen under 620 px on its shorter side gets a
+  stand-in screen instead of the instrument. That is deliberate for now: a
+  phone would pay for about 40 renders at boot and have nowhere to show them.
+  It does mean Auracle can’t be played on a phone.
+- **The taste map is visual only.** STYLES and DIRECTIONS carry the same
+  information as named qualities, and are the accessible way to it, but the
+  map’s spatial reading has no other form.
+- **Screen-reader support is deepest where it was tested.** The bank and the
+  wiring path were built and checked with a screen reader. The scope’s
+  settings and the picture download were not.
+- **No high-contrast theme.** The palette clears AA, but there is no AAA mode
   and no way to raise contrast beyond it.
 
-If you hit something not listed here,
-[an issue](https://github.com/alexnodeland/auracle/issues) is genuinely useful.
+If you find something not listed here, [an
+issue](https://github.com/alexnodeland/auracle/issues) helps.

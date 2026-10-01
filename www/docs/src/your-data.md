@@ -1,118 +1,125 @@
 # Your data
 
-<p class="lede">It is in your browser, it is yours, and it never leaves unless you
-export it.</p>
+<p class="lede">Your sounds and your taste stay in your browser, and they are
+yours. This page says where they live, how to download them, and how to start
+over.</p>
 
 ## Where it lives
 
-Everything is in your browser's **IndexedDB**, under the origin you loaded the
-app from. There is no account, no server and nothing to sign into. The engine
-is WebAssembly running in your tab; no audio, no patch and no vote is
-transmitted anywhere.
+Everything is in your browser’s storage (IndexedDB), under the address you
+opened the app from. There is no account, no server, and nothing to sign in
+to. The engine is WebAssembly running in your tab: no sound, patch, or pick is
+sent anywhere.
 
-Practical consequences:
+So:
 
-- A different browser, or a different machine, is a **different session**.
-- The hosted build and a locally-served copy are **different origins**, so they
-  do not share a session.
-- Clearing site data clears your session. So does a browser "clear browsing
-  data" sweep that includes site storage.
-- Private / incognito windows get a session that dies with the window.
+- A different browser, or a different machine, is a different session.
+- The hosted app and a copy you serve yourself are different addresses, so
+  they don’t share a session.
+- Clearing the site’s data clears your session. So does a browser cleanup that
+  includes site storage.
+- A private window gets a session that ends with the window.
 
-## What is saved
+## What is kept
 
-Autosaved continuously as you work:
+It is kept as you play:
 
 | | |
 |---|---|
-| The pool | Every sound in it, with its features and lineage |
-| **saved** | Everything you saved |
-| Names | Patch names and style names you set |
-| The observation log | Every duel, star, keep/kill and edit claim |
-| The posterior | The fitted model, plus its standardizer |
-| Layout and settings | Rack positions, dock size, keybed width, scope config, node-bank state |
-| The SET ASIDE tray | What you unplugged, across reloads |
+| The pool | Every sound in it, with its measurements and where it came from |
+| **SAVED** | Everything you saved |
+| Names | The names you gave sounds and styles |
+| The log | Every pick, star, cut, and kept edit |
+| Your taste | What the model learned, with its standardizer |
+| Layout and settings | Rack positions, the keybed’s size and width, the scope, and the module rail |
+| **SET ASIDE** | What you unplugged, across reloads |
 
-Restore runs across background workers, so a large session comes back without a
-long stall.
+A large session comes back without a long stall: restoring it runs across the
+background workers.
 
-## Exporting and importing
+## Download and open
 
-All from the **⋯** menu.
+Everything here is in the **⋯** menu.
 
 ### Your taste
 
-**Download your taste** writes a JSON file containing the observation log **and
-the standardizer it was recorded under**.
+1. Choose **Download your taste**.
+2. Keep the file somewhere safe.
 
-Both, always, together. The model's coefficients are only meaningful relative
-to the scaling that produced them, so a log without its standardizer has lost
-its units. The log is the source of truth; the fitted posterior can be
-recomputed from it.
+The file holds the log of everything you taught it, and the standardizer it
+was recorded under: both, always, together. What the model learned only means
+something relative to the scaling that produced it, so a log without its
+standardizer has lost its units. The log is the source; the model can be
+fitted again from it.
 
-The app confirms the download, counting the file's observations by kind:
-*"Downloaded your taste (auracle-profile.json): 52 picks, 4 stars, and 2
-cuts."*
+The toast counts what the file holds: *Downloaded your taste
+(auracle-profile.json): 52 picks, 4 stars, and 2 cuts.*
 
-**Open a taste file…** brings one back. This is how you move a taught model to
-another machine or another browser. If you have taught it anything yourself
-it asks first, and downloads your taste as it stands before replacing it. Once
-open it redraws your taste map from the file: *"Opened that taste file: 52
-picks, 4 stars, and 2 cuts. Redrawing your taste map…"*
+To bring it back, or to move a taught model to another machine:
 
-### Individual patches
+1. Choose **Open a taste file…**, and pick the file.
+2. If you have taught it anything yourself, it asks first: *Replace your taste
+   with auracle-profile.json? Your 52 picks, 4 stars, and 2 cuts are replaced
+   by the file’s. Your taste now downloads first, so nothing is lost.* Press
+   **REPLACE IT**.
 
-**Download this patch** writes JSON. **Open a patch file…** accepts `.json`,
-and also `.png` and `.svg`.
+Once it’s open, the model fits from the file: *Opened that taste file: 52
+picks, 4 stars, and 2 cuts. Redrawing your taste map…*
 
-### Patches as images
+### A patch
 
-**Download as a picture…** renders the rack to PNG or SVG at a scale and background
-you choose. **The image contains the patch**: an exported Auracle PNG can be
-imported back and will produce the same patch, so a screenshot of a rack posted
-in a chat is a shareable patch.
+**Download this patch** writes the sound you’re playing as a patch file.
+**Open a patch file…** opens one, and accepts `.json`, `.png`, and `.svg`.
+You can also drop a file on the window.
 
-```admonish warning title="Imported files are content, not code"
-A patch file names things: its own name, its module labels. Those names are
-escaped everywhere they are displayed, including when they arrive from an
-imported file, so opening a patch someone sent you cannot run anything in your
-session.
+### A patch as a picture
+
+**Download as a picture…** draws the rack as a PNG or SVG, at a size and
+background you choose. **The picture carries the patch:** open an Auracle PNG
+and you get the same patch back, so a picture of a rack posted in a chat is a
+patch someone else can play.
+
+```admonish warning title="Opened files are content, not code"
+A patch file names things: its own name, and its modules’ labels. Those names
+are escaped everywhere they’re shown, including when they come from an opened
+file, so opening a patch someone sent you can’t run anything in your session.
 ```
 
 ### Recordings
 
-**● REC** in the dock bounces your playing to a WAV. That is a normal audio
-file and nothing about it is Auracle-specific.
+**● REC** on the keybed records your playing to a WAV: an ordinary audio file,
+with nothing Auracle’s in it.
 
-## Resetting
+## Start over
 
-**⋯** → *Reset your taste…* clears the observation log and the fitted model.
-It asks first, with the counts: *"Reset your taste? Your 52 picks, 4 stars,
-2 cuts, and 4 generations are forgotten, with every sound you haven’t
-saved. Your 3 saved sounds stay. A copy of your taste downloads first."*
-**download & reset** saves `auracle-profile-before-reset.json` and then resets;
-**keep it** leaves everything as it was.
+1. Choose **Reset your taste…** from the **⋯** menu.
+2. Read the question, which has your counts: *Reset your taste? Your 52 picks,
+   4 stars, 2 cuts, and 4 generations are forgotten, with every sound you
+   haven’t saved. Your 3 saved sounds stay. A copy of your taste downloads
+   first.*
+3. Press **DOWNLOAD & RESET** to download `auracle-profile-before-reset.json`
+   and reset, or **KEEP IT** to leave everything as it was.
 
-This is the right move when you have been teaching it something it cannot see,
-or when you want to start a different taste from the same pool. It does **not**
-clear **saved**; saved sounds are storage, not evidence, and they survive
-a taste reset, with their pins and layout. So do the modules you set aside and
-the dock's settings. Everything else in the bank is replaced by a fresh one,
-and the three-pick warm start runs again.
+A reset is the right move when you have been teaching it something it can’t
+hear, or want to start a different taste from your saved sounds. It doesn’t
+clear **SAVED**: saved sounds are storage, not evidence, and they stay, with
+their layouts. So do the modules you set aside and the keybed’s settings.
+Everything else in the pool is replaced by a fresh one, and the warm start
+runs again.
 
-To clear everything, clear the site's data in your browser.
+To clear everything, clear the site’s data in your browser.
 
-## Version changes
+## When the app updates
 
-Auracle is pre-1.0 and the save format **may change between versions**. There
-is a migration path: sessions written by older builds are upgraded on load, and
-observations recorded under an older audition phrase keep their structural
-coordinates while their old-stimulus audio coordinates are marked "no evidence"
-instead of being mixed into a scale they were never comparable with.
+Auracle is pre-1.0, and the format it saves in may change between versions.
+Sessions saved by older builds are upgraded when they load. Picks recorded
+under an older audition phrase keep what they say about how the patch is
+built. Their old sound measurements are marked as no evidence, rather than
+mixed with ones they were never comparable with.
 
-That said: migrations are code, and code has bugs.
+Upgrades are code, and code has bugs.
 
-```admonish tip title="Before updating, export"
-**Download your taste**, and download any patch you would be annoyed to lose. It takes
-ten seconds, and it is the only backup that exists.
+```admonish tip title="Before updating, download"
+Choose **Download your taste**, and download any patch you’d hate to lose. It
+takes ten seconds, and it’s the only backup there is.
 ```

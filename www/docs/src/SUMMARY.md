@@ -13,7 +13,7 @@
 - [PATCH](./views/play.md)
 - [EVOLVE](./views/evolve.md)
 - [TASTE](./views/taste.md)
-- [The patch bank](./bank.md)
+- [The bank](./bank.md)
 - [Reading and editing the rack](./rack.md)
 - [Wiring and the module rail](./wiring.md)
 - [Playing it](./playing.md)

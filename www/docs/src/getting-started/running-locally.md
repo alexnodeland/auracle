@@ -1,22 +1,29 @@
 # Running it yourself
 
-<p class="lede">Hosted in a browser, from a release bundle, or from source.</p>
+<p class="lede">Auracle runs in a browser: the hosted app, a release bundle you
+serve yourself, or a build from source. This page covers all three, a booth
+set-up, and what it asks of your machine.</p>
 
 ## In the browser, hosted
 
-[**auracle.alexnodeland.com/play/**](../../play/) is the live build. It
-tracks `main`: every push to `main` deploys it. A tagged release does not
-deploy on its own; it is cut from a `main` that has already deployed.
+1. Open [**auracle.alexnodeland.com/play/**](../../play/).
 
-Nothing to install, and nothing leaves your machine: the engine is WebAssembly
-running in your tab, and your bank and taste model live in your browser's
-storage. There is no account and no server to send anything to.
+That’s the live build. It tracks `main`: every push to `main` deploys it. A
+tagged release doesn’t deploy on its own; it is cut from a `main` that has
+already deployed.
+
+There is nothing to install, and nothing leaves your machine. The engine is
+WebAssembly running in your tab, and your sounds and taste live in your
+browser’s storage. There is no account, and no server to send anything to.
 
 ## From a release bundle, offline
 
-Every [release](https://github.com/alexnodeland/auracle/releases) attaches
-`auracle-vX.Y.Z-web.zip`, the prebuilt instrument, no toolchain required. Unzip
-it and serve the directory over HTTP:
+Every [release](https://github.com/alexnodeland/auracle/releases) carries
+`auracle-vX.Y.Z-web.zip`: the instrument, built, with no tools needed.
+
+1. Unzip it.
+2. Serve the folder over HTTP.
+3. Open the address it prints.
 
 ```bash
 unzip auracle-vX.Y.Z-web.zip
@@ -24,18 +31,22 @@ cd auracle-vX.Y.Z-web
 python3 serve.py        # → http://localhost:8642
 ```
 
-Any static server works (`npx serve`, `php -S`, …), but it must be **HTTP, not
-`file://`**. The instrument uses module workers, and browsers refuse to load
-those from a file URL.
+Any static server works (`npx serve`, `php -S`, and others), but it must be
+HTTP, not `file://`. The instrument uses module workers, and browsers won’t
+load those from a file.
 
-The bundle is pinned to its tag. The live site tracks `main`, so it is the same
-build on the day a release is cut and may be newer after that.
+The bundle is pinned to its tag. The live site tracks `main`, so it’s the same
+build on the day a release is cut, and may be newer after.
 
 ## From source
 
-Auracle's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
-[`fugue-ppl`](https://crates.io/crates/fugue-ppl),
-[`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io:
+Auracle’s foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
+[`fugue-ppl`](https://crates.io/crates/fugue-ppl), and
+[`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io.
+
+1. Install a Rust toolchain with the `wasm32-unknown-unknown` target, and
+   [`wasm-pack`](https://rustwasm.github.io/wasm-pack/).
+2. Clone the repository, build the engine, and serve it:
 
 ```bash
 git clone https://github.com/alexnodeland/auracle.git
@@ -44,103 +55,107 @@ make wasm     # build the engine into apps/web/pkg
 make serve    # → http://localhost:8642
 ```
 
-You need a Rust toolchain with the `wasm32-unknown-unknown` target and
-[`wasm-pack`](https://rustwasm.github.io/wasm-pack/). `make wasm` puts
-`~/.cargo/bin` first in `PATH`: a Homebrew `rustc` earlier in the path lacks
-the wasm standard library and fails confusingly.
+`make wasm` puts `~/.cargo/bin` first in `PATH`: a Homebrew `rustc` earlier in
+the path lacks the wasm standard library, and fails in confusing ways.
 
-To work *on* Auracle rather than with it, see
+To work on Auracle rather than with it, see
 [`CONTRIBUTING.md`](https://github.com/alexnodeland/auracle/blob/main/CONTRIBUTING.md).
 
-```admonish warning title="Use the bundled dev server"
+```admonish warning title="Use the bundled server"
 `make serve` runs `apps/web/serve.py`, which sends `Cache-Control: no-store`.
-Plain `python3 -m http.server` does not, and a browser's heuristic cache will
-keep serving a stale `worker.js` or `.wasm` across rebuilds. That looks like a
-rebuild that changed nothing, or an engine and a UI from two different commits.
+Plain `python3 -m http.server` doesn’t, and the browser’s cache will keep
+serving an old `worker.js` or `.wasm` across rebuilds. That looks like a
+rebuild that changed nothing, or an engine and a page from two different
+builds.
 ```
 
 ## At a booth
 
-For a kiosk or a show floor, turn on **Booth mode** in the **⋯** menu, or open
-the app with `?booth` on the URL (`?booth=30` sets the idle time to thirty
-seconds; the default is a minute).
+For a kiosk or a show floor:
 
-- **Attract.** With nobody at the keys, the instrument plays itself in
-  PERFORM, cycling through a curated set of patches. It holds a chord
-  progression, moves two named controls under an invisible hand (the XY pad
-  follows), lets Wander turn the knobs, then grows an offer in B and blends it
-  in.
-- **Hand over.** Any key, click, touch, wheel or MIDI note stops it on the
-  spot. The visitor is holding whatever was playing, with Wander still and
-  Blend home. Nothing attract does is logged or counted as a pick.
-- **Next visitor.** <kbd>shift</kbd>+<kbd>esc</kbd> (or **New visitor** in
-  the ⋯ menu) forgets the visitor’s taste and starts again with the warm start.
-  Booth mode and PERFORM's measured controls are kept, so the demo set stays
-  instant.
-- **Pre-warm.** As soon as booth mode is on, it measures the booth set's
-  patches for PERFORM in the background (Glass Pad, Acid Line, Loom, Undertow, Sub &
-  Sparkle, Detune Dream, Wobble Board, Cathedral), one at a time and only in a
-  quiet moment. PERFORM keeps each measurement across reloads, so after the
-  machine's first boot no visitor waits for one. Nothing to do by hand.
+1. Turn on **Booth mode** in the **⋯** menu, or open the app with `?booth` on
+   the address (`?booth=30` sets the idle time to thirty seconds; the default
+   is a minute).
+2. Leave it. With nobody at the keys, it plays itself.
 
-A MIDI controller with eight knobs is picked up automatically: the first eight
-knobs you turn claim the six named controls, Blend and Wander.
+What happens:
+
+- **It plays itself.** With nobody at the keys, the instrument plays itself in
+  PERFORM, through a set of presets. It holds a chord progression, moves two
+  named controls under an invisible hand (the XY pad follows), lets Wander turn
+  the knobs, then grows an offer in B and blends it in.
+- **It hands over.** Any key, click, touch, wheel, or MIDI note stops it on
+  the spot. The visitor is holding whatever was playing, with Wander still and
+  BLEND home. Nothing it did while playing itself is logged or counted as a
+  pick.
+- **The next visitor.** <kbd>⇧Esc</kbd> (or **New visitor** in the ⋯ menu)
+  forgets the visitor’s taste and starts again with the warm start. Booth mode
+  and PERFORM’s measured controls are kept, so the set stays instant.
+- **It measures ahead.** As soon as booth mode is on, it measures the set’s
+  presets for PERFORM in the background (Glass Pad, Acid Line, Loom, Undertow,
+  Sub & Sparkle, Detune Dream, Wobble Board, and Cathedral), one at a time and
+  only in a quiet moment. PERFORM keeps each measurement across reloads, so
+  after the machine’s first boot no visitor waits for one.
+
+A MIDI controller with eight knobs is picked up with nothing to set: the first
+eight knobs you turn take the six named controls, BLEND, and WANDER.
 
 ## Browser support
 
-Auracle needs a current desktop browser. Specifically it needs AudioWorklet,
-WebAssembly, module workers and IndexedDB, all of which have been standard for
-years. It uses them hard.
+Auracle needs a current desktop browser, with AudioWorklet, WebAssembly, module
+workers, and IndexedDB. All have been standard for years, and Auracle uses
+them hard.
 
 | | |
 |---|---|
-| **Chrome / Edge** | Recommended. Best worker throughput, and Web MIDI works |
-| **Firefox** | Fully supported. Web MIDI works once you allow its site permission |
-| **Safari** | Supported. No Web MIDI. Boot is slower; render workers are capped |
+| **Chrome, Edge** | Recommended. The fastest render workers, and Web MIDI works |
+| **Firefox** | Supported. Web MIDI works once you allow its site permission |
+| **Safari** | Supported. No Web MIDI; boot is slower, and render workers are limited |
 
-**Web MIDI** works in Chromium browsers and in Firefox. Without it everything
-still works from the computer keyboard and the on-screen keys; see
-[Playing it](../playing.md).
+Without Web MIDI, everything still works from the computer keyboard and the
+keybed on screen; see [playing it](../playing.md).
 
 ### Handheld devices
 
-A touch screen whose window is under 620px on its shorter side **does not boot
-the engine**. Rotating does not change that. You get a stand-in screen asking for a desktop, with a *look around
-anyway* link if you want to see the interface.
+A touch screen whose window is under 620 px on its shorter side doesn’t start
+the engine, and turning it sideways doesn’t change that. You get a screen
+asking for a desktop, with *look around anyway →* if you want to see the
+interface.
 
-This is deliberate. Boot costs about forty audio renders, and a phone would pay
-for all of them and then have nowhere to draw a rack, a bank and a keyboard at
-once. A real handheld layout is still to be designed.
+This is deliberate. Boot costs about 40 renders, and a phone would pay for all
+of them and then have nowhere to draw a rack, a bank, and a keybed at once. A
+phone layout is still to be designed.
 
-**Tablets are supported** if the viewport is big enough. Every rack gesture
-works under a finger: knob drags, cable pulls, locks, the ⋯ menus. Anything a
-mouse reveals by hovering is shown outright on a touch device, because
-hover-to-reveal on a tablet means never.
+**Tablets work** if the window is big enough. Every rack gesture works under a
+finger: knob drags, cable pulls, locks, and the ⋯ menus. Whatever a mouse finds
+by hovering is shown outright on a touch screen, because on a tablet,
+hover-to-reveal means never.
 
-## What it costs your machine
+## What it asks of your machine
 
-- **CPU on boot.** Around forty renders, spread across `min(cores − 2, 6)`
-  background workers, or two if the device reports 4 GB of memory or less. Set
-  `?farm=0` in the URL to force the single-threaded path.
-- **CPU while playing.** Four voices of modular DSP on a real-time audio
-  thread. Modest, but a browser doing heavy work in another tab can cause
-  dropouts.
-- **CPU on a refit.** Seconds of Markov-chain inference, off the audio thread.
-  You can keep playing through it.
-- **Storage.** Your session in IndexedDB. Tens of megabytes at most, dominated
-  by the observation log.
+- **At boot:** about 40 renders, spread across `min(cores − 2, 6)` background
+  workers, or two if the device reports 4 GB of memory or less. Add `?farm=0`
+  to the address to boot without them.
+- **While you play:** four voices of modular sound on a real-time audio thread.
+  Modest, but heavy work in another tab can cause dropouts.
+- **At a refit:** seconds of work, off the audio thread. You can keep playing
+  through it.
+- **Storage:** your session, in IndexedDB. Tens of megabytes at most, mostly
+  the log of what you taught it.
 
 ## Overrides
 
-A few knobs, for when the defaults are wrong for your machine:
+For when the defaults are wrong for your machine:
 
 | | |
 |---|---|
-| `?farm=k` | Use exactly `k` render workers. `0` is the serial path |
-| `localStorage["auracle-renderers"]` | The same, persisted |
+| `?farm=k` | Use exactly `k` render workers. `0` boots without them |
+| `localStorage["auracle-renderers"]` | The same, kept |
 
-The candidate pool is **identical at every worker count, including zero**: the
-draw stream is indexed and absorbed in index order. If a worker dies mid-boot,
-the fill falls back to the serial path over the same draws. The one exception is
-a render that times out twice: that draw is retired and skipped, and the note
-goes to `window.__aurLog` rather than the console.
+```admonish info collapsible=true title="How it works: the same pool at any worker count"
+The pool is identical at every worker count, including zero: the draws are
+numbered, and folded in by number. If a worker dies mid-boot, the engine takes
+over the same draws. The one exception is a render that times out twice: that
+draw is dropped and skipped, and the note goes to `window.__aurLog` rather
+than the console.
+```

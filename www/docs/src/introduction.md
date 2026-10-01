@@ -13,92 +13,81 @@ for. It learns your ear, and every generation grows a little closer.</p>
 </figure>
 <!-- /film:launch -->
 
-Auracle generates patches by evolutionary search, plays them to you, and asks
-which one you prefer. From your answers it fits a model of your taste, with
-uncertainty you can inspect, and uses it to steer the search. Over a session it
-stops guessing and starts proposing.
+Auracle is a modular synthesizer you play in the browser. Pick between two
+sounds, and it learns what you like, breeds new sounds toward it, and shows you
+what it learned. Every sound is a patch you can open and change.
 
-It is also just a synthesizer. Four-voice polyphony, a keyboard, MIDI, an
-arpeggiator, a patchable rack with typed cables and forty-two modules. You can
-ignore the model entirely and play it like an instrument.
+This guide is for playing it: each page is one view or one task, and says what
+to do and what you’ll see. The [reference](../reference/) is for how it works,
+with the math.
+
+It’s a synthesizer first. Four voices, a keybed, MIDI, an arpeggiator, and a
+rack of 42 modules with typed cables. You can play it without teaching it
+anything.
 
 <figure>
-<img src="./img/play.webp" alt="The PATCH view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." loading="eager" width="1440" height="900">
-<figcaption><strong>PATCH.</strong> The current patch as a rack you can turn,
-rewire and lock, running live while you edit it.</figcaption>
+<img src="./img/play.webp" alt="The PATCH view: the bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the module rail on the right, and a keybed along the bottom." loading="eager" width="1440" height="900">
+<figcaption><strong>PATCH.</strong> The sound you’re playing, opened as a rack
+you can turn, rewire, and lock, live while you edit it.</figcaption>
 </figure>
 
-## What makes it different
+## What it does
 
-Sound design tools usually make you choose. **Presets and randomizers** are
-fast and shallow: you audition until something works, and nothing accumulates.
-**Patching from scratch** is deep and slow. Genetic-algorithm synths tried to
-bridge the gap with star-a-generation workflows, but they forget everything
-between sessions and cannot tell you why they suggest what they suggest.
+- **Every sound is a real patch.** Each one is built from typed modules and
+  cables, so every change breeding or your hands make leaves a patch that still
+  plays. There is no crossover: every child grows from one seed.
+- **It learns your taste, and says how sure it is.** Your taste can have
+  several sides, each a *style*, so you can like unrelated sounds at once.
+  Before every pick it guesses which you’ll pick, and
+  [TRUST](./views/taste.md#trust-is-its-confidence-honest) grades those
+  guesses.
+- **New sounds grow toward you.** What the model learns shapes where breeding
+  steps, not only what it keeps. Lock the parts you love, and breeding leaves
+  them alone.
+- **What you play is what it heard.** The patch you play live is the same one
+  that was bred, checked, and measured.
 
-Auracle treats the problem as inference instead:
-
-- **Every patch is a term in a typed grammar**: a tree whose types are signal
-  kinds. Every mutation, every crossover and every edit you make by hand
-  produces a patch that is still valid and still playable.
-- **Your taste is a model with a posterior.** It is built from a handful of
-  independent *style lenses*, so you are allowed to like several unrelated
-  things. It carries uncertainty, and it predicts every vote before you cast
-  it, so you can check whether it was right. The [TRUST
-  tab](./views/taste.md#trust--is-its-confidence-honest) is where it reports on
-  itself.
-- **The search proposes toward you.** What the model learns reshapes how
-  evolution *proposes*, not only how it scores. Lock the parts you love and
-  refinement leaves them alone.
-- **One compiler serves both.** The patch you play live is the same one that
-  was evolved, vetted and measured. There is no separate "render version".
-
-For the machinery rather than the workflow, see the
-[Reference](../reference/), which carries the math.
-
-## The shape of a session
-
-Four views, one loop between them.
+## The four views
 
 | View | Shows | What you do there |
 |---|---|---|
-| **PERFORM** | the sound | Play it with controls named for what they do; let it wander; hear offers |
-| **PATCH** | the patch | Hear it, play it, turn its knobs, rewire it, lock what you like |
-| **EVOLVE** | the question | Two candidates; pick one. This is what teaches it |
-| **TASTE** | the answer | What it thinks your taste is, how sure it is, whether it has been right |
+| **PERFORM** | The sound | Play it with controls named for what you hear, let it wander, and hear offers |
+| **PATCH** | The patch | Hear it, play it, turn its knobs, rewire it, and lock what you like |
+| **EVOLVE** | The question | Pick the one of two sounds you’d reach for, and breed |
+| **TASTE** | What it learned | Your styles, how sure it is, and whether its guesses have been right |
 
-PERFORM is where you play; EVOLVE is where you teach; PATCH is where you
-open the hood. TASTE is where you go to find out whether it is working.
+PERFORM is where you play, EVOLVE is where you teach, and PATCH is where you
+open the sound up. TASTE is where you see whether it’s learning.
 
-```admonish tip title="The shortest version"
-Open it, pick 3 of 9 presets when it asks, then answer duels in EVOLVE. After a
-dozen or so picks press **EVOLVE POOL** and listen to what it bred. That is the
-whole loop.
+```admonish tip title="The whole loop"
+1. Pick the three you’d reach for when the warm start asks.
+2. Pick between pairs in EVOLVE, a dozen or so.
+3. Press **EVOLVE POOL**, and play what it bred.
 ```
 
 ## What to expect
 
-Auracle is **pre-1.0**. The instrument is finished enough to play for hours and
-the taste loop is closed end to end, but:
+Auracle is pre-1.0. The instrument plays for hours, and the taste loop runs end
+to end, but:
 
-- **It takes real evidence to learn anything.** A handful of duels is not a
-  taste model. Expect the first useful proposals after a dozen or two picks,
-  and confident ones considerably later. From a cold start it takes hundreds of
-  duels, which is why the [three-pick warm start](./teaching.md#the-warm-start)
-  exists.
-- **It will tell you when it does not know.** Early on, TRUST will say the
-  model is not beating a coin flip. That is the display working, not failing.
-- **The save format may change between versions.** Your session lives in your
-  browser and there is a migration path, but [export anything you care
-  about](./your-data.md#exporting-and-importing).
-- **Desktop only, for now.** A phone or small tablet gets a stand-in screen
+- **It takes picks to learn.** A handful of picks isn’t a taste yet. The first
+  useful generations come after a dozen or two, and sure ones later. From
+  nothing it would take hundreds, which is why the [warm
+  start](./teaching.md#the-warm-start) exists.
+- **It says when it doesn’t know.** Early on, TRUST will say *not beating a
+  coin flip yet*. That is the grading working.
+- **The saved format may change between versions.** Your session lives in your
+  browser and older ones are upgraded, but [download anything you care
+  about](./your-data.md#download-and-open).
+- **Desktop only, for now.** A phone gets a screen asking for a desktop
   instead; see [browser
   support](./getting-started/running-locally.md#browser-support).
 
 ## Where to go next
 
-- Never used it → [Your first session](./getting-started/first-session.md)
-- Want it running locally or offline → [Running it yourself](./getting-started/running-locally.md)
-- Already playing, want the key map → [Keyboard and MIDI](./keyboard.md)
-- Want to know how it works → [the Reference](../reference/)
-- Something is wrong → [Troubleshooting](./troubleshooting.md)
+- New to it: [your first session](./getting-started/first-session.md).
+- Running it yourself, or offline: [running it
+  yourself](./getting-started/running-locally.md).
+- Already playing, and want the keys: [keyboard and MIDI](./keyboard.md).
+- How it works: [the reference](../reference/).
+- Something’s wrong: [troubleshooting](./troubleshooting.md).

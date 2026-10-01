@@ -1,140 +1,160 @@
-# The patch bank
+# The bank
 
-<p class="lede">Three separate collections, each with its own rules.</p>
+<p class="lede">The bank, on the left of every view, holds your sounds in
+three tabs. This page is about finding a sound, keeping it, and knowing which
+sounds a generation may replace.</p>
 
 <!-- film:composing --><!-- /film:composing -->
 
 <figure>
-<img src="./img/bank.webp" alt="The bank rail: three bank tabs — evolution, my patches and presets, each with its count — above a list of rows, each with a name, prediction percentage, play button, five stars and a save icon." loading="eager" width="252" height="720">
-<figcaption><strong>The bank rail.</strong> Three collections, and a row for
-each patch carrying what the model predicts you would say about it.</figcaption>
+<img src="./img/bank.webp" alt="The bank rail: three tabs with counts above a list of rows, each with a name, a percentage, a play button, five stars, and a save icon." loading="eager" width="252" height="720">
+<figcaption><strong>The bank.</strong> Three tabs, and a row for each sound
+carrying the model’s guess about it. The screenshot predates the current tab
+names: POOL, SAVED, and PRESETS.</figcaption>
 </figure>
 
-The rail on the left holds three of them:
-
-| Bank | What it is |
+| Tab | What it holds |
 |---|---|
-| **pool** | The sounds the model weighs and breeds from |
-| **saved** | What you saved. Yours, and no generation replaces them |
-| **presets** | The hand-made library, browsed in place |
+| **POOL** | The sounds the model weighs and breeds from |
+| **SAVED** | The sounds you saved. No generation replaces them |
+| **PRESETS** | The hand-made library that came with the instrument |
 
-The **?** in the bank head walks you through what a generation is and what
-evolving costs.
+Each tab has a line under it saying what it holds, with **WHAT’S THIS?**,
+which walks you through the three tabs and what a generation is. The head
+counts your saves (*3/10 saved*).
+
+## Find and keep a sound
+
+1. Click a row to open it as the sound you’re playing. **▶** plays the
+   standard phrase without opening it.
+2. Rate it with **★** (one to five) if you want to teach the model what you
+   think of it.
+3. Press the save icon (a disk) to keep it: no generation will replace it.
+4. Press **cut** to tell the model “not this one” and take the row out of the
+   pairs.
+
+From the keyboard, <kbd>[</kbd> and <kbd>]</kbd> step through the bank in any
+view; [the keys](#the-bank-from-the-keyboard) are below.
 
 ## Reading a row
 
-Each row carries a name, an id, a prediction, stars, a save control and a cut:
-
 <figure>
-<img src="./img/bank-row.webp" alt="One bank row, outlined in green because it is the row the cursor is on: a diamond glyph, the name Round Wash, the prediction 80% and the id #35 on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar drawn at the same 80%." loading="lazy" width="252" height="70">
-<figcaption><strong>One row.</strong> The green outline is the row you are on.
-Everything else on it is described below.</figcaption>
+<img src="./img/bank-row.webp" alt="One bank row, outlined in green: a glyph, a name, a percentage and an id on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar." loading="lazy" width="252" height="70">
+<figcaption><strong>One row.</strong> The green outline is the row you’re on.
+The id at the right shows only with Show measurements now.</figcaption>
 </figure>
 
-- **The name** is generated from what the patch is, next to the bank it
-  joined, and it keeps that name as the bank changes around it. You can
-  rename it: double-click it.
-- **new** beside the name marks a child of the latest generation. In the
-  **pool** bank those children lead the list under **new · gen N**, in
-  the order they were bred, and the rest follow under **ranked by the
-  model**, the sounds it rates highest first. While a
-  generation breeds, each child joins the group the moment it is bred and
-  glows once; the rows below it do not move. A child of
-  [⚡ evolve from this](./rack.md#locks-and-evolving-from-here) joins the
-  group the same way: ⚡ is a generation of its own, so its one child is the
-  group until the next generation's first child replaces it.
-- **The percentage** is the model's guess: roughly, how likely you are to
-  pick this sound in a pair. Its tooltip adds the word for how sure that reads
+- **The glyph** says where the sound came from: **◇** grown fresh, with no
+  taste in it yet; **⚡** bred toward your taste; **✎** your edit, kept as new;
+  **▤** a hand-made preset.
+- **The name** comes from what the sound is, and it keeps that name as the
+  bank changes around it. Double-click it to rename it.
+- **NEW**, beside the name, marks a child of the latest generation. In
+  **POOL**, those children lead the list under **NEW · GEN 3**, in the order
+  they were bred, and the rest follow under **RANKED BY THE MODEL**, highest
+  rated first. A child of [⚡ evolve from this](./rack.md#locks-and-evolving-from-here)
+  joins the group the same way, since ⚡ counts as a generation of its own.
+- **The percentage** is the model’s guess: roughly how likely you are to pick
+  this sound in a pair. Its tooltip adds the word for how sure that reads
   (*59% · leaning*). Before the model has been fitted it reads **·**.
-- **The bar** along the row's bottom edge draws the prediction. The bright tick
-  is the model's guess; the dimmer block around it spans one standard
-  deviation either way, so its width is how sure the model is. Before a fit the
-  bar is an empty hatched track.
-- **▶** plays the standard sample. If the sample has to be rendered first, a
-  dotted amber ring says it is on its way.
-- **★★★★★** rates it. This is an observation and it teaches the model.
-- **💾** saves it. This is storage and it teaches nothing.
-- **cut** teaches the model "not this one" and takes the row out of the bank.
-  A cut patch is never dealt to you in a duel again; if it was on the cards,
-  a new pair is dealt. The message *Cut Soft Wash. It won’t be dealt again.*
-  offers an **undo** for seven seconds (<kbd>⌘Z</kbd> does the same), and
-  nothing is recorded until they are up. The patch stays in the pool until a
-  generation replaces it. The cut shows when you hover the row or put the
-  cursor on it, and always on a touch screen.
+- **The bar** along the row’s bottom edge draws the same guess. The bright
+  tick is the guess, and the dimmer block around it shows how unsure it is: a
+  narrow block is a sure guess, a wide one an unsure guess.
+- **▶** plays the standard phrase. If it has to be rendered first, a dotted
+  amber ring says it’s on its way.
+- **★★★★★** rates it, and teaches the model.
+- **The save icon** keeps it, and teaches nothing: *Saved Glass Pad. No generation will
+  replace it (3 of 10 saved).*
+- **cut** teaches the model “not this one”. The sound is never dealt to you in
+  a pair again; if it was on the cards, a new pair is dealt. The toast, *Cut
+  Soft Wash. It won’t be dealt again.*, carries **UNDO** for seven seconds
+  (<kbd>⌘Z</kbd>, or Ctrl Z, does the same), and nothing is recorded until
+  they’re up. The cut shows when you hover the row or put the cursor on it,
+  and always on a touch screen.
+
+A cut sound stays in the pool until a generation replaces it.
 
 ## Stars are not saves
 
-Two controls, two unrelated jobs.
+The two controls do different jobs.
 
-**★ is a judgement.** It enters the observation log as an ordinal rating and
-moves the taste posterior. Rate honestly, including rating things low.
+**★ teaches.** A star rating goes into what the model learns from, and moves
+its guess about your taste. Rate the sounds you wouldn’t reach for, too: that
+is information.
 
-**save is storage.** It lists the sound in **saved** as well as in
-**pool**, and exempts it from eviction. It records nothing about your
-preferences.
+**save keeps.** It lists the sound in **SAVED** as well as **POOL**, and no
+generation replaces it. It records nothing about your taste.
 
-Merging them is tempting and wrong. The pool evicts its lowest-utility members,
-so the moment a rating decides what survives, people rate strategically to
-protect patches, and every protective over-rating is a preference you never
-held.
+They are kept apart on purpose. The pool replaces the sounds the model rates
+lowest. If a star decided what stayed, a high rating would become a way to
+protect a sound, and every protective rating would teach the model a taste you
+don’t have.
 
-```admonish warning title="If you like it, save it"
-The evolution pool is a working set with a fixed size, and breeding a generation
-evicts its weakest members. A patch you starred but did not save can be evicted.
-Stars are for teaching; **save** is what keeps.
+```admonish warning title="If you want to keep it, save it"
+The pool has a fixed size, and each generation replaces its lowest-rated
+unsaved sounds. A sound you starred but didn’t save can be replaced. Stars are
+for teaching; **save** is what keeps.
 ```
 
-## Eviction and pins
+## Which sounds a generation replaces
 
-The pool holds **40** vetted candidates. A generation's children join it as
-they are bred, and when the generation ends (or you stop it) the weakest
-unsaved members, by posterior utility, are removed to bring it back to 40. So
-a patch you save while a generation is still breeding is safe. Hovering
-**EVOLVE POOL** marks the rows it may replace with a dashed rail and *may be
-replaced*.
+The pool holds 40 sounds. A generation’s children join it as they are bred,
+and when the generation ends (or you stop it), the lowest-rated unsaved sounds
+are replaced to bring it back to 40. The toast names them: *Generation 3: 4
+new sounds in the pool. The 4 it rated lowest were replaced: Bell Jar, Soft
+Wash, Glass Rain, and 1 more.*
 
-(The engine's library default is 48; the web app asks for 40. If you see 48
-quoted in the [reference](../reference/architecture/two-loops.html), that is
-why.)
+1. Hover **EVOLVE POOL** in EVOLVE. The rows it may replace get a dashed rail
+   and *may be replaced*.
+2. Save any of them you want to keep, even while the generation is running.
 
-Saving pins a patch so eviction skips it. Pins are capped at a quarter of the
-pool, so it can never be pinned solid and leave the search nowhere to put new
-candidates. The head shows how many you have used, `3/10 saved`, from the
-moment the app knows the cap.
+Saves are capped at a quarter of the pool, 10 of 40, so the pool always has
+room for new sounds. The engine’s own default pool is 48; the app asks for 40,
+which is why the [reference](../reference/architecture/two-loops.html) quotes
+48.
 
 ## Presets
 
-Sixty-two hand-made patches across seven families — bass, lead, keys, pad,
-texture, perc, weird — browsed in place: clicking one opens it as the sound
-you're playing. The engine can only play what it holds, so a preset you open or ▶
-joins the pool and takes the place of the unsaved sound the model rates
-lowest; the toast names what it replaced, saved sounds are never among them,
-and the row reads **in pool** from then on, so a second click opens the same
-copy instead of loading another.
+Sixty-two hand-made sounds in seven families (bass, lead, keys, pad, texture,
+perc, and weird), browsed in place.
 
-They are worth playing through early even if you intend to evolve everything.
-They are what the [warm start](./teaching.md#the-warm-start) samples from, and
-they cover the palette's range more evenly than the prior does.
+1. Open **PRESETS**.
+2. Press **▶** to hear one, or click its row to open it as the sound you’re
+   playing.
 
-## Keyboard
+The engine can only play what it holds, so a preset you hear or open joins
+the pool and replaces the unsaved sound the model rates lowest. The toast names
+what it replaced, and saved sounds are never among them. From then on the row
+reads **IN POOL**, and a second click opens the same copy.
 
-The bank is a **single tab stop**. Reach it with <kbd>Tab</kbd>, then:
+The presets are worth playing through early. They are what the [warm
+start](./teaching.md#the-warm-start) draws from, and they cover the range of
+modules more evenly than the fresh sounds do.
+
+## The bank from the keyboard
+
+The bank is a single tab stop. Reach it with <kbd>Tab</kbd>, then:
 
 | | |
 |---|---|
 | <kbd>↑</kbd> <kbd>↓</kbd> | Move the cursor |
-| <kbd>Enter</kbd> | Open the patch |
-| <kbd>1</kbd>–<kbd>5</kbd> | Rate |
-| <kbd>m</kbd> | Save |
+| <kbd>Enter</kbd> | Open the sound |
+| <kbd>1</kbd>–<kbd>5</kbd> | Rate it |
+| <kbd>m</kbd> | Save it |
 
-In **presets**, <kbd>Enter</kbd> opens the preset under the cursor and
+In **PRESETS**, <kbd>Enter</kbd> opens the preset under the cursor and
 <kbd>p</kbd> plays it. <kbd>p</kbd> is also a note (D♯), but not while the
-presets list has focus: there it only plays the preset.
+presets list has focus.
 
 The save key is <kbd>m</kbd> rather than <kbd>s</kbd> because <kbd>s</kbd> is a
-note in the computer keymap, and note letters get through even when a control
-has focus. Binding save to it would have played a D every time.
+note, and note letters get through even when a control has focus.
 
-Rows announce their full state to a screen reader (name, id, saved, rating,
-prediction), because the row's buttons sit outside the tab order and the label
-has to carry what they encode.
+A screen reader hears each row’s whole state (name, saved, rating, and the
+model’s guess), because the row’s buttons sit outside the tab order.
+
+## What to try next
+
+- Save the sounds you’d reach for again, before your next generation.
+- Rate a few sounds you wouldn’t reach for: low stars teach too.
+- [What the model learns from](./teaching.md) says how stars, picks, and cuts
+  differ.

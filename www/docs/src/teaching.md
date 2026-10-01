@@ -1,8 +1,8 @@
 # What the model learns from
 
-<p class="lede">Four kinds of answer, one model, and a few things that feel like
-teaching but are not. A duel can be dealt in EVOLVE or answered while you play
-in PERFORM.</p>
+<p class="lede">The model learns your taste from what you tell it: picks,
+stars, cuts, and the edits you keep. This page says what each one teaches, when
+it learns, and what it can’t learn at all.</p>
 
 <!-- film:taste -->
 <figure class="film" id="film-taste">
@@ -14,171 +14,177 @@ in PERFORM.</p>
 </figure>
 <!-- /film:taste -->
 
-## The four signals
+## What teaches it
 
-Everything you tell Auracle enters **one observation log** and conditions **one
-latent quantity**: a utility $u(x)$, "how much this person would like patch
-$x$". The signals differ only in how they connect an answer to that utility,
-and there are three ways: a duel, stars and keep/kill.
+Everything you tell Auracle goes into one log, and the model learns one thing
+from all of it: how much you’d like each sound. The kinds of answer differ only
+in what they say about that.
 
-| Signal | Where | What it says |
+| You | Where | What it says |
 |---|---|---|
-| **A/B duel** | EVOLVE, or the quick-pick strip in PATCH | $A$ scores higher than $B$ |
-| **an offer answered** | PERFORM: **Take** an offer you heard, or ask for another | The same duel, between the sound you were playing and the model's offer |
-| **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
-| **keep / kill** | A bank row's **cut** (kills only) | This patch is above / below where I'm drawing the line today |
-| **edit against original** | **keep as new** on an edited patch: the **WHICH WOULD YOU REACH FOR?** card, or *pick the edit* to skip it | The same duel, between my edit and what I started from, whichever way I answered |
+| **Pick** between two sounds | EVOLVE, or the TEACH strip in PATCH | You’d reach for A over B |
+| **Take** or **pass** on an offer you heard | PERFORM | The same, between the sound you were playing and the offer |
+| **★** a sound | Any bank row | Where it sits on your scale, one to five |
+| **cut** a sound | Any bank row | Not this one |
+| **Keep as new** an edit | PATCH: the **WHICH WOULD YOU REACH FOR?** card, or **PICK THE EDIT** to skip it | Your edit over the original, or the original over your edit |
 
-**Duels are the primary signal.** They have the best statistical properties and
-the lowest cognitive load: people compare two things reliably, and assign
-absolute numbers to one thing inconsistently, including against themselves an
-hour later.
-
-If you only ever do one thing, do duels.
+**Picks teach the most.** People compare two sounds reliably, and give one
+sound a number much less reliably, even against themselves an hour later. If
+you do one thing, pick between pairs.
 
 ### About stars
 
-A star rating is **not** treated as the number three. It is treated as *"this
-patch's utility sits between two learned cutpoints"*, and the cutpoints are
-fitted alongside everything else. That is what makes the scale survive drift:
-if you go through a generous phase and then a harsh one, the model can move the
-cutpoints instead of concluding your taste changed.
+A star rating isn’t read as the number three. It’s read as “this sound sits
+between two points on your scale”, and the model learns where those points are
+along with everything else. So if you go through a generous phase and then a
+harsh one, the model can move the points instead of deciding your taste
+changed.
 
-Rate honestly, including low. A star is a judgement, and rating things you
-dislike is information.
+Rate the sounds you wouldn’t reach for, too. A low star is information.
 
-### About keep / kill
+### About cuts
 
-Keep/kill is modelled against a **per-session threshold** the model also fits.
-"Feeling picky today" is represented rather than treated as noise, so a session
-where you kill almost everything is read as a strict session rather than a
-change in your taste.
+A cut is read against a line the model also learns: how picky you are being
+today. A session where you cut almost everything reads as a strict session,
+not as a change in your taste.
 
-A bank row's **cut** records a kill once its seven-second undo window closes;
-undo inside it and nothing is recorded. Nothing records a keep yet: the triage
-screens that would emit one have not been built.
+A cut is recorded once its seven seconds to take it back have passed; take it
+back and nothing is recorded. The other half of that answer, a keep, has
+nothing in the app that records it yet.
 
-### What is *not* a signal
+### What doesn’t teach it
 
-Listen time, replays, exports and how long you hovered are not recorded as
-preferences. They are cheap to collect and easy to misread: a long listen can
-mean fascination or confusion.
+Listening time, replays, downloads, and hovering aren’t recorded as answers.
+They are cheap to collect and hard to read right: a long listen can mean you love
+it or that you’re puzzled by it.
 
-**Saving a patch is also not a signal.** See
-[stars are not saves](./bank.md#stars-are-not-saves).
+**Saving a sound teaches nothing.** See [stars are not
+saves](./bank.md#stars-are-not-saves).
 
-**In PERFORM, only an answered offer is a signal.** Taking an offer you heard,
-or asking for another after hearing it, is a duel (above). Keep, Back and
-control turns are logged with your session and not fitted. See [what PERFORM
-teaches the model](./views/perform.md#what-perform-teaches-the-model).
+**In PERFORM, only an answered offer teaches.** KEEP, BACK, and control turns
+are logged with your session, and the model doesn’t learn from them. See
+[what PERFORM teaches the model](./views/perform.md#what-perform-teaches-the-model).
 
 ## The warm start
 
-On first run you pick **3 of 9** presets.
+On a first visit you pick three of nine presets, under **PICK THE THREE YOU’D
+REACH FOR**. That half minute teaches the model 18 picks: each of your three
+over each of the six you passed over. From nothing, the model needs hundreds of
+picks, and those 18 are the difference between a model that has a guess by the
+end of your first session and one that doesn’t.
 
-That single ~30-second interaction is worth **18 pairwise observations**: each
-of your three picks is recorded as beating each of the six you did not pick. It
-exists because the cold start is severe. From nothing it takes hundreds of
-duels, and eighteen observations before you have answered a single one is the
-difference between a model that has an opinion by the end of your first session
-and one that does not.
+The nine are drawn one per family first from the 62 presets, then filled from
+the rest, so the first half minute spans the range instead of one corner. Only
+those nine are loaded, which keeps most of the pool free for what breeding
+finds.
 
-The nine are drawn **one per family first** from the 62-patch library, then
-filled from what is left, so the first thirty seconds span the space rather than
-landing in one corner. Only those nine are loaded, which keeps the first run
-short and most of the pool free for what the search finds.
+Your three are saved, so no generation replaces them: they take 3 of your 10
+saves, and the toast that ends the warm start says so. The first of them opens
+in PERFORM, ready to play.
 
-Your three picks are also **saved**, so no generation can evict them: they take
-3 of the pool's 10 save slots, and the message that ends the warm start says
-*Your three are saved*. The first of them is opened, ready to play.
-
-Re-run it any time from **⋯** → *Re-run the three-pick warm start*.
+1. Open **⋯**.
+2. Choose *Re-run the three-pick warm start*, any time, to teach it 18 more.
 
 ## When it learns
 
-Two mechanisms, at two speeds.
+It learns at two speeds.
 
-**Between refits: reweighting.** Every vote is folded in immediately by
-importance sampling, where the draws the model already has get reweighted by
-how well each one predicted your answer. It costs almost nothing, and it is
-what lets the model's next forecast, and its read of the patch in front of you,
-answer your last pick instead of waiting for the next full fit.
+**After every pick, a little.** Each answer is folded in at once, so the
+model’s next guess, and its guess about the sound you’re playing, answer your
+last pick. This costs almost nothing.
 
-**At a refit: inference.** Full Markov-chain inference over the entire log, a
-few seconds of work off the audio thread. This is where the model can change
-its mind, discover a new style lens, or re-fit the star cutpoints.
+**Every sixth pick, a refit.** The model fits again from the whole log: a few
+seconds of work, off the audio thread. This is where it can change its mind,
+find a new style, or move the points on your star scale.
 
-**Every sixth pick refits.** The teaching meter counts down to it in six pips
-(*3 more picks and it redraws your taste map*). A pick is a duel answered in
-EVOLVE or in PATCH's pick strip, or an offer answered in PERFORM. On the sixth
-the row fills and the meter reads **● learning from your last 6 picks…**: the
-sixth pick keeps its seven seconds to be taken back like any other, and the
-refit goes out when they are up (or at once, if you pick again first). While a
-generation is breeding, or ⚡ evolve from this is walking, it reads **● it will
-learn from these 6 when breeding finishes**, because a refit waits for them.
-The wordmark's **E**
-lights while the fit runs. When it lands, the TASTE map is redrawn and the
-meter reads **● it just learned: see what changed ▸** until your next pick;
-the link opens the map.
+In EVOLVE, the teaching line counts down to the refit in six pips (*3 more
+picks and it redraws your taste map.*). A pick counts from EVOLVE, the TEACH
+strip in PATCH, or an offer answered in PERFORM. Then:
 
-Reweighting alone would wear thin: as the weights concentrate on fewer and
-fewer draws, the model starts claiming more certainty than it has. Refitting on
-a fixed count keeps that from building up, and keeps the meter's promise every
-time.
+1. On the sixth pick, the pips fill and the line reads *● learning from your
+   last 6 picks…*. The sixth pick keeps its seven seconds to be taken back
+   like any other, and the refit goes out when they’re up, or at once if you
+   pick again first.
+2. The **E** of the wordmark lights while the refit runs.
+3. When it lands, the TASTE map is redrawn, and the line reads *● it just
+   learned: see what changed ▸* until your next pick.
+
+While a generation or a ⚡ walk is breeding, the line reads *● it will learn
+from these 6 when breeding finishes* instead, because the refit waits for it.
+
+```admonish info collapsible=true title="How it works: reweighting between refits"
+The model holds 500 draws of your taste, each a full guess at it, and each new
+answer reweights them by how well each one predicted it. As the weight
+gathers on fewer and fewer of them, the model would start to claim more
+certainty than it has, so it refits on a fixed count before that builds up.
+The reference has [the fit and the reweighting](../reference/taste/posterior.html)
+in full.
+```
 
 ## Recency
 
-Old votes fade. An observation `h` places back in the log carries weight
+Old answers fade, so your taste is allowed to change. An answer from about 150
+answers ago counts half as much as your latest. A model that weighed an answer
+from three sessions ago the same as one from a minute ago would fight you when
+your taste moved.
+
+<figure class="viz" data-viz="recency">
+<figcaption><strong>How long what you told it keeps mattering.</strong> With a
+half-life of 150, an answer from 300 answers back still carries a quarter of a
+new one’s weight.</figcaption>
+</figure>
+
+```admonish info collapsible=true title="How it works: the half-life"
+An answer $h$ places back in the log carries weight
 
 $$w_h = 0.5^{\,h / 150}$$
 
-so about 150 observations ago is worth half as much as your latest. Your taste
-is allowed to change, and a model that weighted a vote from three sessions ago
-equally with one from a minute ago would fight you when it did.
-
-<figure class="viz" data-viz="recency">
-<figcaption><strong>How long what you told it keeps mattering.</strong> At a
-half-life of 150, a vote from three hundred observations back still carries a
-quarter of a fresh one's weight.</figcaption>
-</figure>
+so the weight halves every 150 answers.
+```
 
 ## What moves the model most
 
 Roughly in order:
 
-1. **Duels between genuinely different patches.** The most information per answer.
-2. **The warm start.** Eighteen observations for thirty seconds. Re-running it
-   adds eighteen more.
-3. **Duels the model got wrong.** A surprising answer moves a posterior further
-   than a confirming one.
-4. **Stars, in volume.** Weaker per observation, but cheap, and they anchor the
-   absolute scale that duels alone cannot pin down.
-5. **Hand edits, kept as new.** These carry a lot: a direction in genome space,
-   and your verdict on it. Answered on the **WHICH WOULD YOU REACH FOR?** card, the
-   verdict is heard, and picking the original teaches it the most. Ticked
-   as *pick the edit*, it is a claim. TRUST scores the two apart, because an
-   asserted improvement and a heard one may not be equally reliable.
+1. **Picks between sounds that differ a lot.** The most information in one
+   answer.
+2. **The warm start.** Eighteen picks in half a minute. Running it again adds
+   18 more.
+3. **Picks it guessed wrong.** A surprise moves the model further than a
+   confirmation.
+4. **Stars, in volume.** Each one says less, but they are quick, and they set
+   the scale that picks alone can’t pin down.
+5. **Edits, kept as new.** These carry a lot: a change to the patch, and your
+   verdict on it. Answered on the **WHICH WOULD YOU REACH FOR?** card, the
+   verdict is heard, and picking the original teaches the most. Ticked as
+   **PICK THE EDIT**, it is a claim. TRUST grades the two apart.
 
 ## What it cannot learn
 
-Worth knowing, so you do not spend a session teaching something that cannot be
-received.
+Worth knowing, so you don’t spend a session teaching something it can’t hear.
 
-The model sees each patch through a fixed set of measurements: eighteen
-perceptual descriptors of a standard render plus twenty-six structural counts.
-**If a preference is not visible in those coordinates, no amount of voting will
-convey it.** The clearest case is stereo width: the feature vector has no
-coordinate for it, so the model will never learn that you like chorus for its
-width. The chorus module's [spec card](./wiring.md#the-spec-card) says so in
-its **heard** line.
+The model hears each sound through a fixed set of 44 measurements: 18 of the
+standard render’s sound, and 26 counts of how the patch is built. **If a taste
+of yours doesn’t show in those, no number of picks will teach it.** The
+clearest case is stereo width. The model hears left and right summed, so it
+will never learn that you like chorus for its width. The chorus module’s [spec
+card](./wiring.md#the-spec-card) says so on its **heard** line.
 
-Preferences about *performance* are largely invisible too — how a patch
-responds to velocity, how it behaves in a fast run — because the audition
-phrase is fixed and modest. What the phrase does and does not reveal is
-[spelled out in the reference](../reference/audition/phrase.html).
+Tastes about playing are mostly out of its hearing too: how a sound answers
+velocity, or how it behaves in a fast run, because the phrase it hears is fixed
+and modest. The reference spells out [what the phrase does and doesn’t
+reveal](../reference/audition/phrase.html).
 
-```admonish tip title="How to check"
-Before spending a session teaching a preference, read the **heard** line on the
-modules involved. If it says the model cannot pick it up, believe it, and use
-**save** and your own naming instead.
+```admonish tip title="Check before you teach"
+Before you spend a session teaching a taste, read the **heard** line on the
+modules involved. If it says the model can’t hear it, believe it, and use
+**save** and your own names instead.
 ```
+
+## What to try next
+
+- Rate a handful of sounds you wouldn’t reach for.
+- Keep an edit as new, and pick the original when you prefer it: that teaches
+  the most.
+- [Reading what it learned](./reading-the-model.md) says how to read what all
+  this taught it.
