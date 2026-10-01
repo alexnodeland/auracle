@@ -91,7 +91,9 @@ The tilt is the part that makes this more than a scored search. The fitted
 structural coefficients reshape the *categorical weights* of the grammar the
 search draws new modules from. Because the tilted grammar is installed as the
 prior, they also reshape the target the search climbs (see
-[Proposals](../search/proposals.md)):
+[Proposals](../search/proposals.md)). Kind $i$’s weight $w_i$ is multiplied by
+$e^{\eta t_i}$, where $t_i$ is the fitted coefficient for that kind and $\eta$
+is the tilt strength (`proposal_tilt`, 0.6, in `engine.rs`):
 
 $$w'_i \;\propto\; w_i \exp(\eta\, t_i)$$
 
