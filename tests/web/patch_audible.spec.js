@@ -49,6 +49,10 @@
 //   at (the engine's memo of that tree), and the level while it renders is
 //   the level once it lands. They took it at the makeup of the tree being
 //   left: 11.8 dB off on this change, up to 27 dB hot on others.
+// - A selector whose check fails is not applied: the voices keep the sound
+//   from before it, and the alarm says so ("Not applied"), not "Muted". A
+//   knob turned after it is not muted for a check of a tree the voices do
+//   not hold.
 // - A knob whose check finds a runaway is muted, as the alarm says: a knob
 //   reaches the voices before its check, and its failed check used to raise
 //   "Muted" over voices still playing. A check that passes lifts the mute.
@@ -729,6 +733,36 @@ test("a knob whose check finds a runaway is muted, as the alarm says, until a ch
   await pastReply(page, m, 0);
   await expect(page.locator("#alarm")).not.toContainText("Muted");
   await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeGreaterThan(-60);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("a selector whose check fails is not applied and says so, and a knob turned after it is not muted for it", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page);
+  await openPreset(page, "Falling Sign");
+  await holdC4(page);
+  const alarm = page.locator("#alarm");
+  // The wave's check fails: the voices keep the square, and the alarm says
+  // the setting was not applied, not that anything was muted.
+  let n = await replies(page);
+  const t0 = await pageNow(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await clickWave(page);
+  await pastReply(page, n, 0);
+  await expect(alarm).toContainText("Not applied");
+  await expect(alarm).not.toContainText("Muted");
+  expect(await page.evaluate((t) => window.__pwVoiced.filter((x) => x > t).length, t0), "the voices never took it").toBe(0);
+  expectWave(await liveSpectrum(page), "sqr", "the keys play the sound from before the setting");
+  // A knob turned now has its check fail too (the bench still holds the
+  // wave), but the voices hold the tree from before the wave, never judged
+  // with it: they are not muted for it.
+  n = await replies(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await dragDown(page, await rackKnob(page, "node#cut"), 6);
+  await pastReply(page, n, 0);
+  await expect(alarm).toContainText("Not applied");
+  expect(await peakDb(page), "still sounding").toBeGreaterThan(-60);
   await page.keyboard.up("a");
   expect(errors).toEqual([]);
 });

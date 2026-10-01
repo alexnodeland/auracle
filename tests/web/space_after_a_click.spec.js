@@ -17,7 +17,9 @@
 //   and Space again stops it (quiet while the phrase's first note would still
 //   be sounding).
 // - A chip reached with the keyboard follows ARIA's button pattern: Space and
-//   Enter cycle it, and with Shift they go back. Neither plays.
+//   Enter cycle it, and with Shift they go back. Neither plays. Its name
+//   carries its value ("VCO wave, sin"), and each cycle is said on the rack's
+//   live region.
 // - In PERFORM, Space plays after a drag on a control, a click on the XY pad,
 //   and a click on a pad (FREEZE stays frozen).
 // - The ⋯ menu's two file items (<label>s) open their file dialog on Enter and
@@ -151,10 +153,15 @@ test("a setting's chip reached with the keyboard cycles on Space and Enter, and 
   await expect(chip.g).toHaveAttribute("role", "button");
   await expect(chip.g).toHaveAttribute("aria-keyshortcuts", "Shift+Enter Shift+Space");
   await expect(chip.text).toHaveText("sqr");
+  // Its name carries its value, and a cycle is said on the rack's live
+  // region, so a screen reader hears what it is set to.
+  await expect(chip.g).toHaveAttribute("aria-label", /wave, sqr$/);
   await chip.g.focus();
   for (const [key, want] of [[" ", "sin"], ["Enter", "tri"], ["Shift+ ", "sin"], ["Shift+Enter", "sqr"]]) {
     await page.keyboard.press(key === "Shift+ " ? "Shift+Space" : key);
     await expect(chip.text, `${key.trim() || "Space"} on the focused chip`).toHaveText(want);
+    await expect(chip.g).toHaveAttribute("aria-label", new RegExp(`wave, ${want}$`));
+    await expect(page.locator("#nb-live")).toHaveText(new RegExp(`wave: ${want}$`));
     await expect(page.locator("#rack-play"), "cycling does not play").not.toHaveClass(/\bplaying\b|\bpending\b/);
   }
   expect(await focused(page)).toContain(chip.addr);

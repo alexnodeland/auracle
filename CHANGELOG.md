@@ -26,7 +26,12 @@ changelog that edits its own past is not a record.
   goes back).
 - **A knob turned into a runaway is muted, as the alarm says.** The alarm
   read *Muted* while held notes went on playing what the knob had made; a
-  module placed or removed was already muted when its check failed.
+  module placed or removed was already muted when its check failed. A
+  setting that fails its check is never played, and the alarm now says
+  *Not applied* for it, where it said *Muted* over the sound from before.
+- **A screen reader hears what a setting on the rack is set to.** Its name
+  carries its value (*VCO wave, sin*), and each change is read out; it was
+  the name alone, so cycling it said nothing.
 - **An undo, a redo, or a Take plays at the sound's own level from the
   start.** The keys take the sound back before the engine has rendered it
   again, and they took it at the level of the sound being left: undoing a

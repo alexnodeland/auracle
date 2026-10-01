@@ -25,7 +25,8 @@ To place a module without a mouse:
 A setting on the rack (a wave, a filter mode) is a button: reached with the
 keyboard, <kbd>Space</kbd> or <kbd>Enter</kbd> cycles it, and with
 <kbd>Shift</kbd> it goes back. A click leaves no focus on it, so Space after a
-click plays the sound you’re playing, as it does with a knob focused.
+click plays the sound you’re playing, as it does with a knob focused. Its name
+says what it is set to (*VCO wave, sin*), and each change is read out.
 
 Focus is always visible, and a dialog returns focus to whatever opened it.
 [Keyboard and MIDI](./keyboard.md) has the full map.

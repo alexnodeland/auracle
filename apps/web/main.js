@@ -1901,9 +1901,13 @@ worker.onmessage = (e) => {
       const vetIsVoices = !voicesLater && !(earlyOpen && !subjectLoad);
       // A knob is in the voices already too (written as a parameter, before
       // any check), so a knob whose check finds a runaway is muted as well:
-      // the alarm below says "Muted", and for a knob it was not. A selector
-      // that fails never reached them; a silent failure needs no mute.
-      const knobRanAway = m.edited !== undefined && !structural && !paramNonLive && !wb.vetSilent;
+      // the alarm below says "Muted", and for a knob it was not. Only while
+      // the voices hold the tree that was checked (`voicesHadBench`): after
+      // a selector that failed, they keep the tree from before it, which was
+      // never judged with this knob. A selector that fails never reached
+      // them; a silent failure needs no mute.
+      const knobRanAway =
+        voicesHadBench && m.edited !== undefined && !structural && !paramNonLive && !wb.vetSilent;
       if (vetIsVoices && wb.vetOk) setLiveMuted(false);
       else if (vetIsVoices && (spokeEarly || knobRanAway)) setLiveMuted(true);
       // The strip is one slot (see `alarm`), and this owns it only while the
@@ -1918,8 +1922,13 @@ worker.onmessage = (e) => {
       // runaway sentence over it was untrue, and the EMPTY plate, the caption
       // ("silent") and the model's line already say what is going on.
       if (!wb.vetOk && !wb.vetSilent) {
+        // Said as it is: muted, or, where the voices never took the setting
+        // (a selector that failed waits for its check, and they keep the
+        // sound from before it), not applied.
         alarm(
-          "Muted: this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
+          liveMuted
+            ? "Muted: this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo."
+            : "Not applied: this setting can run away (self-oscillation or runaway feedback), so the keys play the sound from before it. Choose another, or undo.",
           { label: "undo", run: doUndo }
         );
         $("alarm").dataset.tag = "vet";
@@ -9843,6 +9852,7 @@ function buildRack(svg, rack, opts) {
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
             k.value = next;
             txt.textContent = enumDisplay(k);
+            nameSetting(kg, k);
             sendEdit(k.addr, next, true);
           });
           // A live categorical site is worth dragging. `table` is a crossfade
@@ -9886,7 +9896,11 @@ function buildRack(svg, rack, opts) {
         kg.setAttribute("role", k.kind.t === "continuous" ? "slider" : "button");
         // Space and Enter cycle a setting, as for any button; with ⇧, back.
         if (k.kind.t !== "continuous") kg.setAttribute("aria-keyshortcuts", "Shift+Enter Shift+Space");
-        kg.setAttribute("aria-label", `${m.title} ${k.label}`);
+        kg.dataset.name = `${m.title} ${k.label}`;
+        // A setting's name carries its value ("VCO wave, sin"), so cycling
+        // it says what it is now (`nameSetting`).
+        if (k.kind.t === "continuous") kg.setAttribute("aria-label", kg.dataset.name);
+        else nameSetting(kg, k);
         kg.dataset.addr = k.addr;
         kg.dataset.kind = m.kind;
         if (variant) kg.dataset.variant = variant;
@@ -13266,6 +13280,8 @@ function attachEnumSweep(el, txt, knob) {
       last = next;
       knob.value = next;
       txt.textContent = enumDisplay(knob);
+      const g = el.closest("[data-addr]");
+      if (g) nameSetting(g, knob);
       sendEdit(knob.addr, next, true, id);
     };
     const onUp = () => {
@@ -13443,6 +13459,12 @@ $("rack-svg").addEventListener("keydown", (e) => {
     pushUndo();
     const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
     knob.value = (Math.round(knob.value) + (e.shiftKey ? n - 1 : 1)) % n;
+    const shown = kg.querySelector(".enum-text");
+    if (shown) shown.textContent = enumDisplay(knob);
+    nameSetting(kg, knob);
+    // A focused element's new name is not always read out: the rack's live
+    // region says it.
+    nbAnnounce(`${kg.dataset.name}: ${enumDisplay(knob)}`);
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
@@ -14818,6 +14840,14 @@ let pendingTarget = null;
 function nbAnnounce(text) {
   const el = $("nb-live");
   if (el) el.textContent = text;
+}
+
+/** A rack setting's accessible name: the module and the setting, then what
+ *  it is set to ("VCO wave, sin"). It was the name alone, so a screen
+ *  reader heard nothing change when the setting cycled. */
+function nameSetting(kg, knob) {
+  if (!kg || !kg.dataset.name) return;
+  kg.setAttribute("aria-label", `${kg.dataset.name}, ${enumDisplay(knob)}`);
 }
 
 // ---- pool support: how often the model has actually seen a module ----
