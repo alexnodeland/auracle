@@ -1048,7 +1048,10 @@ export function createPerform(host) {
   // pool — and a player flicking between presets asks for the same few again
   // and again, so every first measurement (no knob overrides yet) is kept,
   // tagged with how much the model had seen when it was taken (a refit moves
-  // the standardizer the wiring is expressed in).
+  // the standardizer the wiring is expressed in) and with the render
+  // namespace it was measured in (`cache_namespace`: the stimulus, the
+  // featurizer's RENDER_EPOCH and the quiver version), because a wiring holds
+  // φ (`z`) and a new DSP or featurizer measures the same patch differently.
   //
   // Stale-while-revalidate: a patch measured before is playable *at once*
   // from its last measurement, whatever the tag, and re-measured in the
@@ -1061,6 +1064,10 @@ export function createPerform(host) {
   const WIRE_CACHE_MAX = 48;
   const WIRE_STORE = "auracle-perform-wirings";
   const tasteRev = () => (host.tasteRev ? host.tasteRev() : 0);
+  // The tag a wiring is kept under and compared with. One written before the
+  // namespace was part of it is a bare number, which never matches: it is
+  // played at once and re-measured, like any stale one.
+  const wireRev = () => `${tasteRev()}@${(host.renderNs && host.renderNs()) || ""}`;
   // Keyed by what the patch *is*, not by the bytes it arrived as. A tree's
   // JSON carries its node uids, and the pool mints those per session
   // (`Uid::mint`, one process-wide counter), so the same preset loaded after
@@ -1207,7 +1214,7 @@ export function createPerform(host) {
       markWired(hit.shipped ? "shipped" : "cached");
       knobs.forEach(paintKnob);
       renderHood();
-      if (!hit.shipped && hit.rev === tasteRev()) return;
+      if (!hit.shipped && hit.rev === wireRev()) return;
       // Playable now; the fresh measurement lands when it lands.
       if (!heldForOpen("revalidate")) revalidate();
       return;
@@ -1224,7 +1231,7 @@ export function createPerform(host) {
     // under that tree's text; knobs turned in PATCH since are laid over it
     // when it lands (`applyWired`).
     const req = request("perform_wire", { tree: state.cur.json, overrides: first ? [] : overrides() });
-    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev() };
+    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev() };
   }
 
   function revalidate() {
@@ -1233,7 +1240,7 @@ export function createPerform(host) {
     // Background (`bg`): the patch is already playable from its last
     // measurement, so this waits behind anything the player asks for.
     const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true };
   }
 
   // The sound has moved a long way from where its wiring was measured (a
@@ -1251,7 +1258,7 @@ export function createPerform(host) {
     state.revalidating = true;
     renderStatus();
     const req = request("perform_wire", { tree: state.cur.json, overrides: overrides(), bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true, nocache: true };
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true, nocache: true };
   }
 
   // A patch on its way out is not measured. A measurement is thirty-odd
@@ -2020,7 +2027,7 @@ export function createPerform(host) {
       sendTouch();
       state.revalidating = true;
       const req = request("perform_wire", { tree: json, overrides: [] });
-      state.pending.get(req).cacheAs = { json, rev: tasteRev(), quiet: true, carried: true };
+      state.pending.get(req).cacheAs = { json, rev: wireRev(), quiet: true, carried: true };
       renderStatus();
     } else if (state.visible) wire();
     knobs.forEach(paintKnob);
@@ -2766,17 +2773,18 @@ export function createPerform(host) {
     // not disturbed by a measurement of something else.
     //
     // `fresh`: a shipped wiring, or one measured before the model's last
-    // refit, is not enough — measure it under this session's model (the warm
-    // start's cards, while the player is choosing).
+    // refit or under another render namespace, is not enough — measure it
+    // under this session's model (the warm start's cards, while the player is
+    // choosing).
     prewarm(json, { fresh = false } = {}) {
       const key = wireKey(json);
       const hit = fresh ? wireCache.get(key) : knownWiring(key);
-      if (hit && (!fresh || hit.rev === tasteRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
+      if (hit && (!fresh || hit.rev === wireRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
         const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
         p.gen = -1;
-        p.cacheAs = { json, rev: tasteRev() };
+        p.cacheAs = { json, rev: wireRev() };
         p.prewarm = resolve;
       });
     },

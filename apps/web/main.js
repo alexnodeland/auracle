@@ -1111,6 +1111,10 @@ function settleRestore() {
 
 // ---------- worker protocol ----------
 const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
+// The render namespace the engine measures in (`cache_namespace`: the
+// stimulus, the featurizer's RENDER_EPOCH and the quiver version), from its
+// `ready`. Null until then, or from a binary too old to say.
+let renderNs = null;
 
 worker.onmessage = (e) => {
   const m = e.data;
@@ -1945,6 +1949,7 @@ worker.onmessage = (e) => {
     // The engine is up. It says what the structural ceilings are so the
     // budget readout cannot restate a number the grammar has since moved.
     case "ready": {
+      renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -3877,6 +3882,9 @@ async function bootPerform() {
     // Wirings are measured against the taste model; a new observation can
     // move the standardizer they were measured in, so it keys their cache.
     tasteRev: () => status.observations,
+    // …and in φ, as this binary renders it: a wiring measured under another
+    // render namespace (a new quiver, a new featurizer) is re-measured.
+    renderNs: () => renderNs,
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,

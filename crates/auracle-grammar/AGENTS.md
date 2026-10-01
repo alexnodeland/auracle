@@ -25,6 +25,13 @@ in [`../AGENTS.md`](../AGENTS.md).
   app (`SITE_NAMES` in `apps/web/main.js`), `www/docs` and `www/video/films`
   for the old word. Labels must say what turning the knob up does (the
   wavefolder's knob is "threshold", because up folds *less*).
+- **So are a preset's name and description, and a `StructError`'s text.**
+  The bank and the warm start show the first two, and PATCH's toast quotes the
+  third ("That edit to Glass Pad didn’t happen: …"). `make dev-check` reads
+  the strings in `presets.rs`, `describe.rs`, `term.rs`, `prior.rs`,
+  `diff.rs` and `mutate.rs` against `www/brand/voice.md`
+  ([`../AGENTS.md`](../AGENTS.md)). A preset's name is fingerprinted by
+  `apps/web/perform-wirings.json`; its description is not.
 - **Every structural op must leave a compilable tree.** The edit gate applies
   every op at every node of random trees. A new module or op is not done until
   it passes that gate.

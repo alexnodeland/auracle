@@ -226,6 +226,11 @@ wirings by tree text (`wireKey`), keeps the old wiring working while a new one
 is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
+A kept wiring is stamped with the observation count and the render namespace
+the worker reports in its `ready` (`cache_namespace`: the stimulus,
+`RENDER_EPOCH` and the quiver version), because it holds φ; a stamp that no
+longer matches (a refit, or a new build whose DSP or featurizer measures
+differently) is played at once and re-measured.
 
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when
@@ -250,7 +255,8 @@ standardizer, not the session's). A stale file wires controls to the wrong
 knobs until that re-check lands, and the re-check then re-centres them, so
 `make test` guards it two ways. `shipped_preset_wirings_are_current` compares
 fingerprints of each preset and of the measurement's named inputs (phrase,
-feature names, controls, PERFORM's constants), rendering nothing.
+render namespace, feature names, controls, PERFORM's constants), rendering
+nothing.
 `shipped_preset_wirings_measure_the_same_today` covers what no fingerprint
 sees (feature maths, loudness normalization, vetting, compiler and DSP, the
 standard pool's fill, PERFORM's solver): it boots the standard engine and

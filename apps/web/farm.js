@@ -45,11 +45,16 @@ let port = null;
 // untouched, and N farm workers get N parallel caches for free.
 //
 // **Correctness rests on the namespace, not on this file.** `cache_namespace`
-// pins the stimulus *and* `RENDER_EPOCH`, the featurizer's own generation, and
-// the engine re-verifies each row's key against the tree before folding it in
-// (`WasmEngine::pre_featurized`). A build whose φ differs cannot read rows
-// written by another: the namespace does not match, so there is no stale-row
-// path to get wrong.
+// pins the stimulus, `RENDER_EPOCH` (the featurizer's own generation) *and*
+// the quiver version the binary renders with, and every row is stored under a
+// key that begins with it (`farm_key`: the namespace, then the content
+// address). The engine re-verifies the content address against the tree
+// before folding a row in (`WasmEngine::pre_featurized`). A build whose φ
+// differs cannot read rows written by another: their keys carry another
+// namespace, so they are never a hit, and there is no stale-row path to get
+// wrong. The store's stamp (`cacheOpen`) is checked only when it opens, so on
+// its own it could not keep them out: a tab still on an older build writes on
+// into a store a newer tab has cleared and re-stamped.
 const CACHE_DB = "auracle-renders";
 const CACHE_STORE = "rows";
 const CACHE_META = "meta";
@@ -89,8 +94,10 @@ async function cacheOpen(ns) {
     const count = await idbReq(
       db.transaction(CACHE_STORE, "readonly").objectStore(CACHE_STORE).count()
     );
-    // The whole invalidation policy, in one condition. φ moving orphans every
-    // row measured under the old φ, and nothing finer is correct.
+    // The whole eviction policy, in one condition. φ moving orphans every row
+    // measured under the old φ (their keys carry the old namespace, so they
+    // could never be read), and nothing finer is correct; clearing them is
+    // for the disk quota.
     if (prev !== ns || count > CACHE_MAX_ROWS) {
       await idbReq(db.transaction(CACHE_STORE, "readwrite").objectStore(CACHE_STORE).clear());
       await idbReq(
@@ -145,10 +152,10 @@ async function onJob(m) {
     // with itself. What can differ is the binary each instance actually
     // loaded, when the compiled module could not be shared and each fetched
     // its own. So the engine sends the namespace *its* binary computes for
-    // this phrase (the stimulus and the featurizer's `RENDER_EPOCH`), and a
-    // worker whose binary computes another refuses rather than render or walk
-    // under a measurement the engine does not make. The engine sees a worker
-    // that never accepts work and falls back.
+    // this phrase (the stimulus, the featurizer's `RENDER_EPOCH` and the quiver
+    // version), and a worker whose binary computes another refuses rather than
+    // render or walk under a measurement the engine does not make. The engine
+    // sees a worker that never accepts work and falls back.
     if (m.ns != null && cacheNs != null && m.ns !== cacheNs) {
       cacheNs = null;
       port.postMessage({ type: "refused", reason: `render namespace ${m.ns} is not this binary's` });

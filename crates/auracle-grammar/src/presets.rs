@@ -200,7 +200,7 @@ pub fn preset_bank() -> Vec<Preset> {
         Preset {
             name: "First Bass",
             category: "bass",
-            blurb: "the plain correct one — measure the others against it",
+            blurb: "the plain one: measure the others against it",
             tree: PatchTree {
                 amp: amp(0.03, 0.35, 0.55, 0.2),
                 root: Filter {
@@ -498,7 +498,7 @@ pub fn preset_bank() -> Vec<Preset> {
             // a singer's vibrato rather than a siren. The taper reaches ±0.5
             // octave at 1.0, so the musical corner is the bottom tenth — small
             // to dial, and the alternative was not having pitch modulation.
-            blurb: "a lead that sings — the first patch here that can vibrato",
+            blurb: "a lead that sings: the first sound here that can vibrato",
             tree: PatchTree {
                 amp: amp(0.04, 0.4, 0.7, 0.3),
                 root: Filter {
@@ -849,7 +849,7 @@ pub fn preset_bank() -> Vec<Preset> {
         Preset {
             name: "Cathedral",
             category: "pad",
-            blurb: "slow, sacred and wide",
+            blurb: "slow, sacred, and wide",
             tree: PatchTree {
                 // Was 0.4 — 40 ms, an organ stab into a hall. 0.75 is ~1 s,
                 // which is what "slow" claimed all along.
@@ -1526,7 +1526,7 @@ pub fn preset_bank() -> Vec<Preset> {
             // ladder does not click on the edges and the contour reads as a
             // phrase, not a gate. The three steps past `length` are latent —
             // lengthen the pattern and they join in.
-            blurb: "a pad whose brightness walks a five-step pattern — rhythm woven into the tone",
+            blurb: "a pad whose brightness walks a five-step pattern: rhythm woven into the tone",
             tree: PatchTree {
                 amp: amp(0.3, 0.5, 0.85, 0.5),
                 root: Reverb {
@@ -1754,7 +1754,7 @@ pub fn preset_bank() -> Vec<Preset> {
             // which block. Brightness high and decay low is a small hard
             // object — the string's loop filter opens as `damping` rises, so
             // 0.2 is a short, dry ring rather than a long one.
-            blurb: "small, hard and hollow; struck once",
+            blurb: "small, hard, and hollow; struck once",
             tree: PatchTree {
                 amp: amp(0.0, 0.3, 0.0, 0.2),
                 root: Filter {

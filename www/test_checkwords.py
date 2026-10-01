@@ -48,6 +48,7 @@ VOICE = f"# Voice\n\nThe guide quotes the bench, the AI and an em dash — and i
 FIXTURES = {
     "apps/web/index.html": "<!doctype html>\n<title>Auracle</title>\n<p>Back on the bench.</p>\n</body>\n",
     "apps/web/main.js": 'const bench = 1;\nnote("Back on the bench: play it.");\n$("bench-tour");\n',
+    "crates/auracle-grammar/src/presets.rs": '//! The library — never read.\npub const BLURB: &str = "a grey pad — wide";\n',
     "www/landing/index.html": "<body>\n<p>Every duel grows closer — to you.</p>\n</body>\n",
     "www/landing/hero.js": 'const line = "Every duel is two sounds.";\n',
     "www/viz/viz.js": 'cap.textContent = "Each duel, forecast first.";\n',
@@ -75,6 +76,10 @@ def rules(text, kind="md", entries=LIST):
 
 def js(src):
     return words(W.js_literals(src), "js")
+
+
+def rust(src):
+    return words(W.rust_literals(src), "rust")
 
 
 class Tree:
@@ -213,6 +218,92 @@ class WhatItReads(unittest.TestCase):
 
     def test_code_held_in_a_literal_by_name_is_not_copy(self):
         self.assertEqual(W.js_literals('const POLYFILL = `note("a bench")`;\nconst y = "a bench";', "apps/web/live-audio.js"), [(2, "a bench")])
+
+    def test_a_crates_literals_not_its_comments_tests_or_names(self):
+        src = "\n".join(
+            [
+                "//! The bench, in a module's doc.",  # 1
+                "/// The bench, in an item's doc.",  # 2
+                '/* a bench /* nested */ still a bench */ const A: &str = "a duel";',  # 3: nested comment, then a literal
+                "#[derive(Debug, Error)]",  # 4
+                '#[error("no patch on the bench")]',  # 5: a refusal's text is copy
+                "Bench(String),",  # 6: a name, not a literal
+                'blurb: "a pad — wide",',  # 7
+                'let r = r#"a "raw" bench"#; let b = br"a vote";',  # 8: raw strings
+                "let c = '\"'; let q = '\\''; fn f<'a>(s: &'a str) -> &'static str { \"a duel\" }",  # 9: chars, lifetimes
+                'name: "Duel", // voice: name',  # 10
+                '"a long line that \\',  # 11: a line continuation
+                '    reaches the bench"',  # 12
+                "#[cfg(test)]",  # 13
+                "mod tests {",  # 14
+                '    fn f() -> [u8; 2] { let s = "the bench"; [0; 2] }',  # 15
+                '    const T: &str = "}";',  # 16: a brace in a literal does not close the item
+                "}",  # 17
+                'const Z: &str = "\\u{2014} and a vote";',  # 18: read again after the test item
+                '#[cfg(test)] use crate::bench; const Y: &str = "a duel";',  # 19: a test `use` ends at its `;`
+            ]
+        )
+        self.assertEqual(
+            rust(src),
+            [(3, "duel"), (5, "bench"), (7, "em dash"), (8, "bench"), (8, "vote"), (9, "duel"), (12, "bench"), (18, "em dash"), (18, "vote"), (19, "duel")],
+        )
+
+    def test_a_mark_covers_the_literals_that_start_on_its_line(self):
+        self.assertEqual(rust('let a = "a duel"; let b = ("the bench", 1); // voice: name\nlet c = "a vote";'), [(2, "vote")])
+        # A literal that starts on the line before is read, mark or not.
+        self.assertEqual(rust('let s = "the bench, \\\n    and more"; // voice: name'), [(1, "bench")])
+        self.assertEqual(js('const s = `the bench,\n  and more`; // voice: name'), [(1, "bench")])
+
+    def test_a_nested_comment_hides_a_literal_until_its_last_close(self):
+        # Without nesting, the first `*/` would close it and "a bench" be read.
+        self.assertEqual(rust('/* outer /* inner */ "a bench" */ const A: &str = "a duel";'), [(1, "duel")])
+
+    def test_a_test_item_ends_where_what_it_marks_ends(self):
+        # Each case is a test-only thing with a test's words in it, then copy
+        # that must still be read: a span that ran past its end would hide it.
+        cases = {
+            # A `;` inside brackets or parens is not the item's end.
+            "fn with an array": "#[cfg(test)]\nfn f(x: [u8; 2]) -> &'static str { \"a bench\" }\nconst A: &str = \"a duel\";",
+            "fn": '#[cfg(test)]\nfn probe() -> &\'static str { "a bench" }\nfn f() -> &\'static str { "a duel" }',
+            # An item's comma (in its generics) is not its end, as an entry's is.
+            "generic fn": '#[cfg(test)]\n#[allow(dead_code)]\npub(crate) fn probe<A, B>(a: A, b: B) -> &\'static str { "a bench" }\nconst A: &str = "a duel";',
+            "field": 'struct S {\n    #[cfg(test)]\n    pub probe: u8,\n    a: u8,\n}\nconst A: &str = "a duel";',
+            "last field": 'struct S {\n    a: u8,\n    #[cfg(test)]\n    pub probe: u8\n}\nconst A: &str = "a duel";',
+            "field in a literal": 'Preset {\n    #[cfg(test)]\n    uid: Uid::NEW,\n    blurb: "a duel",\n}',
+            "generic field": 'struct S {\n    #[cfg(test)]\n    probe: HashMap<String, u8>,\n    a: &\'static str,\n}\nconst A: &str = "a duel";',
+            "variant": 'enum E {\n    #[cfg(test)]\n    #[error("the bench")]\n    Probe(u8, u8),\n    #[error("a duel")]\n    Real,\n}',
+            "struct variant": 'enum E {\n    #[cfg(test)]\n    Probe { a: u8, b: u8 },\n    #[error("a duel")]\n    Real,\n}',
+            "arm": 'match k {\n    #[cfg(test)]\n    0 => f("the bench", 1),\n    _ => "a duel",\n}',
+            "arm with a block and no comma": 'match k {\n    #[cfg(test)]\n    0 => { "the bench" }\n    _ => "a duel",\n}',
+            "last arm": 'let w = match k {\n    _ => "a duel",\n    #[cfg(test)]\n    0 => "the bench"\n};\nconst A: &str = "a duel";',
+            "statement": 'fn f() {\n    #[cfg(test)]\n    let s = g("the bench", 2);\n    let t = "a duel";\n}',
+        }
+        for name, src in cases.items():
+            got = [r for _, r in rust(src)]
+            self.assertNotIn("bench", got, name)
+            self.assertIn("duel", got, name)
+
+    def test_what_builds_only_for_tests_is_not_read(self):
+        skipped = [
+            "#[cfg(test)]",
+            "#[cfg(all(test, unix))]",
+            "#[cfg(all(unix, test))]",
+            "#[cfg(any(test))]",
+            "#[cfg(all(any(test), not(unix)))]",
+            "#[test]",
+        ]
+        for attr in skipped:
+            self.assertEqual(rust(f'{attr}\nfn f() -> &\'static str {{ "the bench" }}\nconst A: &str = "a duel";'), [(3, "duel")], attr)
+        # `any(test, …)` builds whenever its other arm holds (a feature a
+        # build turns on), so what it marks can reach a player: it is read.
+        read = ["#[cfg(any(test, feature = \"probe\"))]", "#[cfg(not(test))]", "#[cfg(unix)]", "#[cfg_attr(test, derive(Debug))]"]
+        for attr in read:
+            self.assertEqual(rust(f'{attr}\nfn f() -> &\'static str {{ "the bench" }}'), [(2, "bench")], attr)
+
+    def test_an_inner_test_attribute_hides_the_rest_of_its_file_or_block(self):
+        self.assertEqual(rust('//! Tests.\n#![cfg(test)]\nconst A: &str = "the bench";\nfn f() { g("a duel"); }\n'), [])
+        src = 'mod probe {\n    #![cfg(test)]\n    const A: &str = "the bench";\n    fn f() { g("a, duel"); }\n}\nconst B: &str = "a duel";'
+        self.assertEqual(rust(src), [(6, "duel")])
 
     def test_a_pages_text_and_shown_attributes(self):
         src = (
@@ -381,7 +472,7 @@ class TheRatchet(unittest.TestCase):
         with Tree() as t:
             code, out, err = t.run()
             self.assertEqual((code, err), (0, ""))
-            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 14 hits under baseline, 0 rises\n")
+            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 16 hits under baseline, 0 rises\n")
 
     def test_a_new_hit_fails_and_says_where(self):
         with Tree() as t:
@@ -402,6 +493,7 @@ class TheRatchet(unittest.TestCase):
         planted = {
             "apps/web/index.html": ("vote", lambda s: s.replace("</body>", "<p>A vote.</p></body>", 1)),
             "apps/web/main.js": ("bench", lambda s: s + 'note("back on the bench");\n'),
+            "crates/auracle-grammar/src/presets.rs": ("duel", lambda s: s + 'pub const W: &str = "a duel";\n'),
             "www/landing/index.html": ("colour", lambda s: s.replace("</body>", '<img alt="the colour of it"></body>', 1)),
             "www/landing/hero.js": ("AI", lambda s: s + 'const x = "an AI";\n'),
             "www/viz/viz.js": ("commit", lambda s: s + 'cap.textContent = "Commit it.";\n'),
@@ -512,8 +604,26 @@ class TheSurfaces(unittest.TestCase):
         read = W.files()
         for surface, _, _ in W.SURFACES:
             self.assertTrue(any(s == surface for _, s, _, _ in read), surface)
-        for rel in ("www/viz/viz.js", "README.md", "CHANGELOG.md", "apps/web/index.html", "www/landing/index.html"):
+        for rel in (
+            "www/viz/viz.js",
+            "README.md",
+            "CHANGELOG.md",
+            "apps/web/index.html",
+            "www/landing/index.html",
+            "crates/auracle-grammar/src/presets.rs",
+            "crates/auracle-grammar/src/mutate.rs",
+            "crates/auracle-wasm/src/lib.rs",
+        ):
             self.assertIn(rel, {f for f, *_ in read})
+
+    def test_every_file_a_surface_names_exists(self):
+        # A glob finds nothing for a file that moved, and the ratchet cannot
+        # miss a file with no hits: the engine's surface names its files, so a
+        # renamed one would drop out of the check without a word.
+        for surface, _, globs in W.SURFACES:
+            for pattern, _ in globs:
+                if not any(c in pattern for c in "*?["):
+                    self.assertTrue(os.path.isfile(os.path.join(REAL_ROOT, pattern)), f"{surface}: {pattern}")
 
     def test_the_guide_and_this_check_are_never_read(self):
         read = {f for f, *_ in W.files()}

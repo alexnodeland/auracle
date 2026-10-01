@@ -42,6 +42,20 @@ changelog that edits its own past is not a record.
   shorter: *Point at a module, here or in the module rail: this strip says
   what it does, where it can go, and how your taste leans.*
 
+### Changed: quiver 0.4.0
+
+- **Plucked strings and delays sound slightly different.** Auracle now runs
+  on quiver 0.4.0, whose plucked string was rebuilt to stay stable at every
+  pitch, and whose delay no longer lags its input by one sample. Sounds with
+  neither render exactly as before: of the 62 presets, the 12 with a Pluck or
+  a Delay changed, and the other 50 are the same bit for bit.
+- **Your sounds are measured again, once.** The first boot after the update
+  is slower, because every sound in your bank is measured again instead of
+  read from the browser's saved measurements. The first time you open a sound
+  in PERFORM, it plays from its last measurement and measures again in the
+  background (*re-checking*): a measurement from the old version is never
+  kept as current.
+
 ### Changed: the films' sound
 
 - **The films are mixed the way their sound was chosen, with no sound
@@ -121,6 +135,12 @@ changelog that edits its own past is not a record.
   carry no em dashes or ids, and are spelled the American way: *Saved Glass
   Pad. No generation will replace it.* They used to start lowercase, run on
   with dashes, and name some sounds by number.
+- **The words the engine writes follow the same rules: the preset
+  descriptions, and the reason a refused edit gives.** Six of them ran on
+  with an em dash, two lists lacked the serial comma, and First Bass was *the
+  plain correct one*. A refused edit could name a module by its address (*no
+  node at node/0/1*) or say *no patch on the bench*; it now says *that module
+  is not in the patch* or *there is no sound open to edit*.
 - **Only the model speaks in italics.** Module and preset descriptions, empty
   states, and the teaching line are set plain, so the italic face means the
   model is saying what it believes.
