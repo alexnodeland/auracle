@@ -78,10 +78,11 @@ reel played). `make sound` leaves the notes as they are, and
 
 Each generated file says so at its top; edit `sound.json`, never them.
 `make dev-check` fails when one is stale. It also fails on the two ways the
-duck came to have three values in three places: a number as `mix.py`'s
-`--music-db` or `--duck-db` default, and a numeric `MUSIC_DB`/`DUCK_DB`
-fallback (or `--music-db`/`--duck-db` flag) in a film tool's shell code.
-Docstrings, help strings and comments may quote a level.
+duck came to have three values in three places: a number as a film tool's
+`--music-db`, `--duck-db` or `--gain-db` default, and a numeric
+`MUSIC_DB`/`DUCK_DB`/`APP_DB` fallback (or `--music-db`/`--duck-db`/`--gain-db`
+flag) in a film tool's shell code. Docstrings, help strings and comments may
+quote a level.
 
 The mix is the spec's (`tools/mix.py`):
 - the voice through its chain, at −18 LUFS;

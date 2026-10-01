@@ -5,7 +5,7 @@
     python3 www/brand/sound.py --check    fail on a stale file, an unknown
                                           preset, a value the records'
                                           notes do not bear out, or a
-                                          number as the mix's bed or duck
+                                          number as a film tool's level
                                           default
 
 `www/brand/sound.json` holds the films' sound as ADR-014 and
@@ -47,12 +47,14 @@ generated file.
   generator cannot map;
 - a value that describes the records' notes is not what they play;
 - a generated file differs from what sound.json makes (run `make sound`);
-- a number is the default of `mix.py`'s `--music-db` or `--duck-db` (read
-  from its syntax tree, so a docstring or help string may quote one), or a
-  film tool's shell code (comments, inline ones too, left out) has a numeric
-  fallback for `MUSIC_DB` or `DUCK_DB` or a numeric `--music-db`/`--duck-db`.
-  Those are the ways the duck came to have three values in three places; the
-  scan does not try to catch every way a level could be written.
+- a number is the default of a film tool's `--music-db`, `--duck-db` or
+  `--gain-db` (read from its syntax tree, so a docstring or help string may
+  quote one), or a film tool's shell code (comments, inline ones too, left
+  out) has a numeric fallback for `MUSIC_DB`, `DUCK_DB` or `APP_DB` or a
+  numeric `--music-db`/`--duck-db`/`--gain-db`. Those are the ways the duck
+  came to have three values in three places, and the app's gain to live in a
+  pipeline; the scan does not try to catch every way a level could be
+  written.
 
 Python 3 standard library only.
 """
@@ -76,19 +78,19 @@ PRESETS = "crates/auracle-grammar/src/presets.rs"
 GENERATED = "generated from www/brand/sound.json by www/brand/sound.py (make sound); do not edit"
 
 # The two ways the duck came to have three values, looked for where they
-# happened: a number as an argparse default for --music-db or --duck-db in a
-# film tool's Python, read from its syntax tree so that a docstring or a help
-# string that quotes a level is not read (mix.py reads both from LADDER and
-# DUCK); and a numeric fallback or flag in its shell scripts, read with their
-# comments, inline ones too, taken out.
+# happened: a number as an argparse default for --music-db, --duck-db or
+# --gain-db in a film tool's Python, read from its syntax tree so that a
+# docstring or a help string that quotes a level is not read (mix.py and
+# app_audio.py read them from sound_defaults); and a numeric fallback or flag
+# in its shell scripts, read with their comments, inline ones too, taken out.
 # It does not try to catch every way a level could be planted.
 LEVEL_FILES = ["www/video/tools/*.py", "www/video/tools/*.sh"]
-LEVEL_FLAGS = ("--music-db", "--duck-db")
+LEVEL_FLAGS = ("--music-db", "--duck-db", "--gain-db")
 SHELL_RULES = [
-    (re.compile(r"\b(MUSIC|DUCK)_DB:-\s*[\"']?[-+]?\d"),
-     "a numeric fallback for {0}_DB; leave it to mix.py's default (sound.json `ladder` and `duck`)"),
-    (re.compile(r"--(music|duck)-db[\s=]+[\"']?[-+]?\d"),
-     "a numeric --{0}-db; leave it to mix.py's default (sound.json `ladder` and `duck`)"),
+    (re.compile(r"\b(MUSIC|DUCK|APP)_DB:-\s*[\"']?[-+]?\d"),
+     "a numeric fallback for {0}_DB; leave it to the tool's default (sound.json)"),
+    (re.compile(r"--(music|duck|gain)-db[\s=]+[\"']?[-+]?\d"),
+     "a numeric --{0}-db; leave it to the tool's default (sound.json)"),
 ]
 
 
@@ -142,7 +144,8 @@ NEEDED = (
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
-    "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "cast.parts.lead.release.tail_s",
+    "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "before_the_grammar.app_gain_db",
+    "before_the_grammar.app_duck_db", "cast.parts.lead.release.tail_s",
     "marks.reach.out_of_the_bed.hold_bars", "mix.sounding.part_lufs", "mix.sounding.pad_lufs", "bed.name",
     "bed.parts.pad.under_demo.hold_before_s", "bed.parts.melody.placement",
 )
@@ -206,6 +209,8 @@ def validate(src: dict) -> list[str]:
         ("grammar.demo_tail_hop_s", lambda v: _num(v) and 0 < v <= 1, "a frame length in seconds, over 0 and at most 1"),
         ("grammar.demo_tail_db", lambda v: _num(v) and v < 0, "a negative number of dB"),
         ("cast.parts.lead.release.tail_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
+        ("before_the_grammar.app_gain_db", lambda v: _num(v) and v <= 0, "a gain in dB, 0 or less"),
+        ("before_the_grammar.app_duck_db", lambda v: _num(v) and v <= 0, "a duck in dB, 0 or less"),
         ("bed.parts.pad.under_demo.hold_before_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
         ("mix.sounding.part_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
         ("mix.sounding.pad_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
@@ -536,6 +541,7 @@ def defaults(src: dict) -> dict:
         "MIX": {**{k: src["mix"][k] for k in ("filter_order", "band_split_order", "center_below_hz")},
                 "sounding": strip(src["mix"]["sounding"])},
         "TIMINGS": {k: strip(v) for k, v in src["grammar"].items() if k not in ("about", "rules")},
+        "BEFORE_THE_GRAMMAR": numbers(src["before_the_grammar"]),
     }
 
 
@@ -587,6 +593,8 @@ DEFAULTS_DOC = {
     "MIX": "Filter orders, the frequency below which every stem's side signal is removed, and what `while it sounds`\n"
            "means (momentary loudness above part_lufs, with the pad above pad_lufs).",
     "TIMINGS": "The grammar's timings, in seconds and dB (SPEC section 9).",
+    "BEFORE_THE_GRAMMAR": "A film laid out before the grammar (no demos): the app's gain (app_audio.py's --gain-db) and\n"
+                          "its duck under the voice, as mixed before ADR-014, until the film is re-timed.",
     "BED": "The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its\n"
            "voicings, the pad under a demo, the burble, and the sighs with the rule that places them.",
     "LEAD": "How the lead plays a line (SPEC section 2): held into the next note, the last note swelling, each note\n"
@@ -698,7 +706,7 @@ def scan_python(rel: str) -> list[str]:
         for kw in node.keywords:
             if kw.arg == "default" and _number(kw.value):
                 errs.append(f"{rel}:{node.lineno}: a number as the default of {flag}; "
-                            "read it from sound_defaults (sound.json `ladder` and `duck`)")
+                            "read it from sound_defaults (sound.json)")
     return errs
 
 
@@ -775,7 +783,7 @@ def main(argv: list[str]) -> int:
     if check:
         n = len(outputs(load()))
         print(f"  sound: {n} generated files current, the records' notes as sound.json describes them, "
-              "no number as mix.py's bed or duck default or a pipeline's fallback")
+              "no number as a film tool's level default or a pipeline's fallback")
     return 0
 
 

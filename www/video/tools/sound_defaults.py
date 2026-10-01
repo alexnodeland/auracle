@@ -331,3 +331,10 @@ TIMINGS = {
     },
     "exit_ring_out_s": 2.6,
 }
+
+# A film laid out before the grammar (no demos): the app's gain (app_audio.py's --gain-db) and
+# its duck under the voice, as mixed before ADR-014, until the film is re-timed.
+BEFORE_THE_GRAMMAR = {
+    "app_gain_db": -3,
+    "app_duck_db": -4.5,
+}

@@ -23,10 +23,11 @@
 # shots are pinned to the narration's measured words). This never re-times
 # the narration. The mix takes the ladder and the duck from
 # www/brand/sound.json (mix.py's defaults), brings each demo window to the
-# demo's level, and lays no cues (ADR-014). MUSIC_DB / DUCK_DB override the
-# bed's level and its duck for a trial mix, and APP_DB the app's gain outside
-# the demo windows; JOBS sets the render's parallel pages (default: one per
-# core).
+# demo's level, and lays no cues (ADR-014). A film laid out before the grammar
+# (no demos) keeps the app at its gain and ducked under the voice, as before
+# (sound.json `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's
+# level and its duck for a trial mix, and APP_DB the app's gain; JOBS sets the
+# render's parallel pages (default: one per core).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"; shift 2
@@ -59,7 +60,7 @@ else
   MUSIC=(--music "out/$F/music/study")
 fi
 node tools/render.mjs "$F" --cues | tail -1
-python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
+python3 tools/app_audio.py "$F" ${APP_DB:+--gain-db "$APP_DB"} > "out/$F/app.json"
 MIX=(--voice "out/$F/voice" "${MUSIC[@]}" --app "out/$F/app.json"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4

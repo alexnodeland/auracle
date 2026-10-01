@@ -53,7 +53,9 @@ docs/notes/sound-2026-09/SPEC.md sections 5 to 8). None is written here:
   LADDER['demo_lufs'] over its window (first note to last note-off), and the
   bed goes down to LADDER['bed_under_demo_lu'] under it from the first note
   and comes back from the note-off. The app's sound is never ducked: in this
-  grammar the instrument never plays under the voice.
+  grammar the instrument never plays under the voice. A film laid out before
+  the grammar (no `demos`) plays the app under the voice, so until it is
+  re-timed it keeps the duck it had (BEFORE_THE_GRAMMAR['app_duck_db']).
 - **Under the voice** one detector and one follower (DUCK) drive three moves:
   the whole bed ducks DUCK['broadband_db'], a further CARVE['db'] in
   CARVE['band_hz'], and the pad a further PAD_DIP['db'] in PAD_DIP['band_hz'].
@@ -89,6 +91,7 @@ PARTS = sound_defaults.PARTS
 MIX = sound_defaults.MIX
 MARKS = sound_defaults.MARKS
 VOICE_CHAIN = sound_defaults.VOICE_CHAIN
+BEFORE_THE_GRAMMAR = sound_defaults.BEFORE_THE_GRAMMAR
 
 # A film score's tracks each carry a role (fit_score.py --film); the role
 # names the part whose EQ, pan and level it takes (sound.json `mix.parts`).
@@ -511,6 +514,13 @@ def mark_gains(S, g, n, marks):
     return cl, cp, took
 
 
+def app_under_voice(app, env):
+    """The app's sound in a film laid out before the grammar: ducked
+    BEFORE_THE_GRAMMAR['app_duck_db'] times the follower, as it was mixed
+    before ADR-014 (half the old bed's duck)."""
+    return (app * (10 ** (BEFORE_THE_GRAMMAR["app_duck_db"] * env / 20))[:, None]).astype(np.float32)
+
+
 def under_voice(bed, env, duck_db):
     """The duck and the carve on the whole bed: DUCK's broadband cut, and a
     further CARVE in its band, each times the follower."""
@@ -721,6 +731,12 @@ def main():
                 app[i:j] *= 10 ** ((LADDER["demo_lufs"] - la) / 20)
             print(f"app: {len(demos)} demo window{'s' if len(demos) != 1 else ''} → {LADDER['demo_lufs']:.1f} LUFS; "
                   "elsewhere at its gain_db")
+        elif np.any(app):
+            # Laid out before the grammar: the app plays under the voice, so
+            # it keeps the duck it had until the film is re-timed.
+            app = app_under_voice(app, env)
+            print(f"app: no demos (laid out before the grammar): at its gain_db, ducked "
+                  f"{-BEFORE_THE_GRAMMAR['app_duck_db']:g} dB under the voice as before")
 
     # The music: the bed and the marks, on stems; or a bed as one sound.
     bed = np.zeros((n, 2), np.float32)

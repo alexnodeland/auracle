@@ -1,7 +1,7 @@
 {
   "about": [
     "The one source of the films' sound (ADR-014). The values are docs/notes/sound-2026-09/SPEC.md's, chosen by ear and by measurement over six rounds; each block names the section it comes from.",
-    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is mix.py's bed or duck default or a pipeline's fallback for them: mix.py reads both from the ladder (`ladder.bed_rest_lu`) and the duck (`duck.broadband_db`).",
+    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is a film tool's level default or a pipeline's fallback for it: mix.py reads the bed's level and duck from the ladder (`ladder.bed_rest_lu`) and the duck (`duck.broadband_db`), and app_audio.py the app's gain from `before_the_grammar`.",
     "Strings are prose. Every number and pitch is either written into a generated file, or describes the record scores' notes and is checked against them by `--check` (the pedal, the marks' length, the lead's legato and swell, the bed's voicings, burble and sighs, and the demo), so a change here that the scores do not make fails the check. The `stock` knob values are checked against the bank by test_sound.py's render test.",
     "Units: knob values are the engine's normalized knob values, the ones a score's `params` take. Pitches are as they sound. LUFS is ITU-R BS.1770-4, as www/video/tools/mix.py computes it. A pan is -1 (left) to +1 (right), the score renderer's equal-power pan.",
     "Two things are stand-ins, marked `stand_in`, that a film made to this must replace: the demo and the lead's bend for portamento. The bed's sighs, placed by hand in the audition, are placed by www/video/tools/fit_score.py --film (`bed.parts.melody.placement`)."
@@ -353,6 +353,11 @@
     "broadband_db": -2,
     "carve": { "band_hz": [1000, 4000], "db": -3, "on": "the whole bed" },
     "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
+  },
+  "before_the_grammar": {
+    "about": "A film laid out before the grammar (its timeline has no `demos`) plays the app's recorded sound under the narration, which the grammar never does. Until it is re-voiced and re-timed (Plan-006 task 8), a re-finish keeps the app as it was mixed before ADR-014: at `app_gain_db` (tools/app_audio.py's --gain-db, walkthrough.sh's APP_DB) and ducked `app_duck_db` under the voice, on the duck's own detector and follower. That is half the old 9 dB duck on the bed. A film on the grammar lays its demos after its lines instead, each at the ladder's `demo_lufs`, and never ducks the app.",
+    "app_gain_db": -3,
+    "app_duck_db": -4.5
   },
   "grammar": {
     "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used, and the one www/video/tools/timeline.py lays a film out on. `exit_ring_out_s` is how long a film runs after the exit mark's last note, for the room to ring out: the reel's end (42.62 s) came 2.6 s after Reach's last note (40.02 s). A demo's tail is measured, not assumed: its playing level is the median of the RMS of the mono sum (the two channels' mean) over `demo_tail_hop_s` frames between its first note and its last note-off, and the tail ends at the first frame after the note-off that is `demo_tail_db` under that level. The reel measured its stand-in demo this way at 1.08 s (it had assumed 1.12 s).",

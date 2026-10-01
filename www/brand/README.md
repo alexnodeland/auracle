@@ -205,11 +205,12 @@ so at their top; edit the JSON, never them.
 - a preset in the cast or the shortlist is not in the bank;
 - a knob is outside 0–1, the drone's breath does not run low ≤ stock ≤ high,
   or a part turns the room's knobs;
-- a number is `mix.py`'s `--music-db` or `--duck-db` default, or a film
-  tool's shell code has a numeric `MUSIC_DB`/`DUCK_DB` fallback or a numeric
-  `--music-db`/`--duck-db` flag. These are the ways the duck came to have
-  three values; docstrings, help strings and comments may quote a level, and
-  the scan does not look for every other way to write one.
+- a number is a film tool's `--music-db`, `--duck-db` or `--gain-db`
+  default, or a film tool's shell code has a numeric `MUSIC_DB`, `DUCK_DB`
+  or `APP_DB` fallback or a numeric `--music-db`/`--duck-db`/`--gain-db`
+  flag. These are the ways the duck came to have three values; docstrings,
+  help strings and comments may quote a level, and the scan does not look
+  for every other way to write one.
 
 `test_sound.py`, also run by `make dev-check`, makes each of these changes in
 a copy of the tree and expects the check to fail on it. With

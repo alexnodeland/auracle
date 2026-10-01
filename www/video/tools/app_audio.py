@@ -3,6 +3,11 @@
 
 usage: app_audio.py FILM [--gain-db G] > out/FILM/app.json
 
+Each window's `gain_db` defaults to www/brand/sound.json's
+`before_the_grammar.app_gain_db` (-3). mix.py uses it as it is for a film laid
+out before the grammar; for a film with demos it brings each demo window to
+the ladder's level instead, and keeps it only outside them (a cold open).
+
 Each shot in films/FILM/shots.json was recorded from `pre` seconds before its
 beat (tools/footage.mjs), and the app's own recorder started `audio_offset`
 seconds after the picture (the shot's sidecar JSON; negative if before). So
@@ -23,6 +28,8 @@ import json
 import os
 import re
 import sys
+
+import sound_defaults
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(HERE)
@@ -87,7 +94,8 @@ def windows(shot, beat, meta, lines):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("film")
-    ap.add_argument("--gain-db", type=float, default=-3.0)
+    ap.add_argument("--gain-db", type=float, default=sound_defaults.BEFORE_THE_GRAMMAR["app_gain_db"],
+                    help="the app's gain (default: sound.json before_the_grammar.app_gain_db)")
     args = ap.parse_args()
     fdir = os.path.join(VIDEO, "films", args.film)
     sdir = os.path.join(VIDEO, "out", args.film, "shots")
@@ -104,7 +112,7 @@ def main():
             continue
         meta = json.load(open(meta_f))
         for a, z, t in windows(shot, b, meta, lines):
-            out.append({"file": wav, "t": round(t, 4), "from": round(a, 4), "to": round(z, 4), "gain_db": args.gain_db})
+            out.append({"file": wav, "t": round(t, 4), "from": round(a, 4), "to": round(z, 4), "gain_db": float(args.gain_db)})
     print(json.dumps(out, indent=1))
 
 

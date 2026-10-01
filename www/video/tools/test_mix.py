@@ -326,6 +326,10 @@ class AFilmMixedToTheLadder(unittest.TestCase):
         self.assertAlmostEqual(t["last_word_to_exit_s"], 1.75, places=3)
         self.assertEqual(t["demos"][0]["line_end_to_demo_s"], 0.7)
 
+    def test_on_the_grammar_the_app_is_never_ducked(self):
+        said = [l for l in self.log.splitlines() if l.startswith("app:")]
+        self.assertEqual(said, ["app: 1 demo window → -18.0 LUFS; elsewhere at its gain_db"])
+
     def test_the_cues_are_not_laid_and_the_mix_says_so_once(self):
         said = [l for l in self.log.splitlines() if l.startswith("cues:")]
         self.assertEqual(said, ["cues: 2 in cues.json (blip, whoosh) not laid: the films have no cues (ADR-014)"])
@@ -435,6 +439,20 @@ class AFilmNotYetOnN3(unittest.TestCase):
         self.assertLess(level_db(mixed[int(14.5 * SR):int(18.5 * SR)]), level_db(mixed[int(0.5 * SR):int(6.5 * SR)]) - 40,
                         "the bed is out where its level says -60")
         self.assertEqual(report["marks"], [])
+
+    def test_its_app_keeps_the_duck_it_had_under_the_voice(self):
+        btg = sound_defaults.BEFORE_THE_GRAMMAR
+        self.assertEqual((btg["app_gain_db"], btg["app_duck_db"]), (-3, -4.5))
+        x = tone(440, 2.0)
+        mid = slice(SR // 2, -SR // 2)
+        self.assertAlmostEqual(level_db(mix.app_under_voice(x, np.ones(len(x)))[mid]) - level_db(x[mid]), -4.5, delta=0.01)
+        self.assertAlmostEqual(level_db(mix.app_under_voice(x, np.zeros(len(x)))[mid]) - level_db(x[mid]), 0.0, delta=0.01)
+        # In the film: no demos, so the app is ducked, and says so.
+        app = os.path.join(self.film.root, "app", "steady.wav")
+        mix.write(app, tone(330, Film.DURATION, -24))
+        self.film.json("steady.json", [{"file": app, "t": 0.0, "gain_db": btg["app_gain_db"]}])
+        _, log = self.run_mix("--app", os.path.join(self.film.root, "steady.json"))
+        self.assertIn("app: no demos (laid out before the grammar): at its gain_db, ducked 4.5 dB under the voice as before", log)
 
     def test_a_mix_with_no_bed_still_runs_and_says_what_it_has(self):
         report, log = self.run_mix()

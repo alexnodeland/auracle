@@ -52,7 +52,8 @@ The sound's values live in `www/brand/sound.json`
 marks and the N3 bed into `www/video/sound/` and the mix's defaults into
 `www/video/tools/sound_defaults.py`. `make dev-check` fails when one of them
 is stale, when `sound.json` disagrees with the record scores' notes, and when
-a number is `mix.py`'s bed or duck default or a pipeline's fallback for them.
+a number is a film tool's level default (the bed's, the duck's, the app's
+gain) or a pipeline's fallback for one.
 `mix.py` mixes to the ladder and lays no cues. A film on the N3 bed is laid
 out to the grammar (`timeline.py`: each demo after its line, the marks 1.75 s
 from the voice) and scored to its timeline (`fit_score.py --film`: the held

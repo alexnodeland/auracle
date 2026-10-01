@@ -54,8 +54,9 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   pedal, the lead's legato and swell, the bed's voicings, burble and sighs,
   the demo) describe the record scores' notes: `make sound` does not change
   the notes, and `make dev-check` fails while sound.json disagrees with them.
-  It also fails on a number as `mix.py`'s `--music-db` or `--duck-db`
-  default, or as a `MUSIC_DB`/`DUCK_DB` fallback in a pipeline's shell code.
+  It also fails on a number as a film tool's `--music-db`, `--duck-db` or
+  `--gain-db` default, or as a `MUSIC_DB`/`DUCK_DB`/`APP_DB` fallback in a
+  pipeline's shell code.
 - **Rehearse before recording.** `tools/rehearse.sh <film>` dry-runs every
   shot and summarises lateness and errors. A film is ready when every shot
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`

@@ -246,6 +246,20 @@ class ThePlantedLevels(unittest.TestCase):
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/walkthrough\.sh:\d+: a numeric fallback for DUCK_DB")
 
+    def test_the_apps_gain_planted_in_a_pipeline_or_as_a_default_fails_the_check(self):
+        with Tree() as t:
+            t.edit("www/video/tools/walkthrough.sh",
+                   lambda s: s.replace('${APP_DB:+--gain-db "$APP_DB"}', '--gain-db "${APP_DB:--3}"', 1))
+            problems = t.problems()
+            self.assertEqual(len(problems), 1, problems)
+            self.assertRegex(problems[0], r"^www/video/tools/walkthrough\.sh:\d+: a numeric fallback for APP_DB")
+        with Tree() as t:
+            t.edit("www/video/tools/app_audio.py",
+                   lambda s: s.replace('default=sound_defaults.BEFORE_THE_GRAMMAR["app_gain_db"]', "default=-3.0", 1))
+            problems = t.problems()
+            self.assertEqual(len(problems), 1, problems)
+            self.assertRegex(problems[0], r"^www/video/tools/app_audio\.py:\d+: a number as the default of --gain-db")
+
     def test_a_number_as_mix_pys_default_fails_the_check(self):
         with Tree() as t:
             t.edit("www/video/tools/mix.py",
