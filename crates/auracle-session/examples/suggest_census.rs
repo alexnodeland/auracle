@@ -304,9 +304,11 @@ fn candidates(tree: &PatchTree) -> (Vec<Cand>, usize) {
     let mut ops: Vec<(StructOp, String, Sort, String)> = Vec::new();
     for (key, n) in &nodes {
         if matches!(n, AudioNode::Silence { .. }) {
+            // Not AUDIO IN either: the input is the player's to plug in, not a
+            // timbre the model could suggest.
             for k in NodeKind::ALL
                 .iter()
-                .filter(|k| k.is_source() && **k != NodeKind::Silence)
+                .filter(|k| k.is_source() && !matches!(**k, NodeKind::Silence | NodeKind::AudioIn))
             {
                 ops.push((
                     StructOp::Replace {
@@ -696,6 +698,7 @@ fn kind_weight(prior: &PatchGrammarPrior, c: &Cand) -> f64 {
                 NodeKind::Pluck,
                 NodeKind::Formant,
                 NodeKind::Silence,
+                NodeKind::AudioIn,
             ];
             let j = order.iter().position(|k| k == kind).unwrap_or(0);
             norm(&prior.source_weights, j)

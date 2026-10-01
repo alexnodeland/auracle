@@ -125,6 +125,29 @@
 //! `mod_depth_mean` 3.8, with `mod_density` rising from 2.7 to 4.1 as the one
 //! visible cost of adding a second modulation-shape coordinate beside it.
 //!
+//! # Audio in: counted, and not a column
+//!
+//! An AUDIO IN is a source leaf, so the shape numbers count it with no help
+//! (`chain_balance` and `frac_sidechained` read arity from
+//! `AudioNode::children`, where it is childless), and it has a raw counter,
+//! `n_audio_in`, so `size ≡ Σ n_*` still holds. It is not a column of φ, on
+//! three arguments:
+//!
+//! - **The proposal said φ keeps its shape** (RFC-008). A column is a change
+//!   to every saved profile's feature list and a migration.
+//! - **It would be a near-indicator.** The prior draws it into about one tree
+//!   in a hundred; its prevalence, like a hole's, is set by players patching
+//!   one in, and until they can, the column would be zero in nearly every row.
+//! - **No dependency comes back without it.** The leaf identity above gains a
+//!   term, but that identity cannot be reconstructed from the retained columns
+//!   in the first place: it needs each binary count separately, and ring mod
+//!   and the vocoder are only ever visible summed into families. An uncounted
+//!   leaf leaves it exactly as unreachable.
+//!
+//! What the model hears of an input patch it hears through φ_audio: the patch
+//! is rendered with the session's audition clip, so what its effects do to a
+//! signal is measured like any other sound.
+//!
 //! # The families, and why each one is one column
 //!
 //! - `n_filter` = filter + eq + vocoder. Spectral tilt: a resonant filter and
@@ -359,6 +382,16 @@ pub struct StructFeatures {
     /// edits and not by the prior — the one kind in the grammar of which that
     /// is true.
     pub n_silence: f64,
+    /// Number of AUDIO IN sources. **Not a φ coordinate**, which keeps φ's
+    /// shape what it was ([RFC-008](../../../docs/proposals/008-audio-in.md):
+    /// the structural features count the new kind, φ does not grow); see the
+    /// module doc's *Audio in* section. Kept for display, and so that every
+    /// arm of the walk still bumps exactly one counter.
+    ///
+    /// `#[serde(default)]` for the reason [`Self::n_steps`] gives: a cached
+    /// row written before the field existed came from a term without one.
+    #[serde(default)]
+    pub n_audio_in: f64,
     /// Number of Mix nodes. **Not a φ coordinate** — see the module doc's
     /// exact identity. Kept for display.
     pub n_mix: f64,
@@ -946,6 +979,10 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
         }
         AudioNode::Silence { .. } => {
             f.n_silence += 1.0;
+            (None, None)
+        }
+        AudioNode::AudioIn { .. } => {
+            f.n_audio_in += 1.0;
             (None, None)
         }
         AudioNode::Wavetable { modulation, .. } => {

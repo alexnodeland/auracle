@@ -1994,6 +1994,11 @@ impl Engine {
             // amplifying holes into the pool is a failure a listener notices
             // immediately.
             0.0,
+            // `AudioIn` is not tilted either, and for the reason the grammar
+            // gives it a Silence-sized weight: the input is the player's.
+            // Whether a patch listens is a choice they make by patching one
+            // in, and it has no φ column a coefficient could be read from.
+            0.0,
         ];
         let src = tilt_weights(&prior.source_weights, &sources, eta);
         prior.source_weights = src.try_into().expect("source weight arity");
@@ -2015,7 +2020,13 @@ impl Engine {
         // maps onto a single production's weight, so none of them belongs
         // here: a tilt is a claim about one categorical outcome, and
         // "asymmetric" is not an outcome any one production produces.
-        let binary_tilt = sources.iter().sum::<f64>() / sources.len() as f64;
+        //
+        // Averaged over the seven kinds the table had before AUDIO IN, not
+        // all eight: the input's untilted zero joining the mean would shift
+        // every session's mixer tilt by an eighth without anything about the
+        // listener having changed. (Silence's zero has been in the mean since
+        // it arrived, so leaving it there moves nothing.)
+        let binary_tilt = sources[..7].iter().sum::<f64>() / 7.0;
         let (drive, mod_fx) = (g("n_drive"), g("n_mod_fx"));
         // `n_filter` and `n_time` are families now too — the eq and the
         // vocoder are counted under the first, the granulator and the pitch

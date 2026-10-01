@@ -18,8 +18,8 @@ use rand::Rng;
 
 use crate::prior::{PatchGrammarPrior, STEPS_SITES};
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Uid, Waveform,
+    AmpEnv, AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp,
+    PatchTree, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 impl EvolutionaryGenome for PatchTree {
@@ -253,6 +253,24 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 + (*oa as f64 - *ob as f64).abs() / 4.0
                 + (mda - mdb).abs()
                 + mod_distance(moda, modb)
+        }
+        (
+            AudioIn {
+                input: ia,
+                gain: ga,
+                channel: ca,
+                ..
+            },
+            AudioIn {
+                input: ib,
+                gain: gb,
+                channel: cb,
+                ..
+            },
+        ) => {
+            (if ia == ib { 0.0 } else { 1.0 })
+                + (ga - gb).abs()
+                + (if ca == cb { 0.0 } else { 1.0 })
         }
         (Noise { color: ca, .. }, Noise { color: cb, .. }) => {
             if ca == cb {
@@ -978,6 +996,20 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 6);
         }
+        // Index 7, appended after `Silence`. Draw order: input, gain, channel,
+        // as `prior` samples them.
+        AudioIn {
+            input,
+            gain,
+            channel,
+            ..
+        } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 7);
+            put_usize(t, key, "input", *input as usize);
+            put_f64(t, key, "gain", *gain);
+            put_usize(t, key, "channel", channel.index());
+        }
         Wavetable {
             table,
             octave,
@@ -1562,6 +1594,17 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_mod(t, &mod_key(key))?,
             }),
             6 => Ok(AudioNode::Silence { uid: Uid::NEW }),
+            7 => Ok(AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: get_index(t, key, "input", INPUT_SLOTS)? as u8,
+                gain: get_f64(t, key, "gain")?,
+                channel: InputChannel::from_index(get_index(
+                    t,
+                    key,
+                    "channel",
+                    InputChannel::ALL.len(),
+                )?),
+            }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "source kind {k} out of range at {key}"
             ))),

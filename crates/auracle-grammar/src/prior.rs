@@ -45,16 +45,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::rng::gen_index;
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Uid, Waveform,
+    AmpEnv, AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp,
+    PatchTree, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 /// Source-kind categorical order: Vco, Supersaw, Noise, Wavetable, Pluck,
-/// Formant.
+/// Formant, Silence, AudioIn.
 ///
 /// These three counts are the **persisted wire format** — [`crate::genome`]
 /// writes the chosen index into the trace — so the orders are append-only.
-pub const N_SOURCES: usize = 7;
+pub const N_SOURCES: usize = 8;
 /// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus,
 /// Reverb, Distortion, Bitcrush, Phaser, RingMod, Flanger, Tremolo, Vibrato,
 /// Eq, Granular, Shift, Comp, Duck, Gate, Vocoder.
@@ -111,6 +111,7 @@ pub const SOURCE_LABELS: [&str; N_SOURCES] = [
     "pluck",
     "formant",
     "silence",
+    "audio in",
 ];
 
 /// Display labels for the `#op` categorical, in index order; sized by
@@ -179,7 +180,7 @@ pub struct PatchGrammarPrior {
     /// wrap at most two processors before it bottoms out in a leaf.
     pub max_mod_depth: usize,
     /// Weights over source kinds
-    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence]`.
+    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, AudioIn]`.
     pub source_weights: [f64; N_SOURCES],
     /// Weights over processor kinds
     /// `[Mix, Filter, Fold, Delay, Chorus, Reverb, Distortion, Bitcrush,
@@ -221,7 +222,16 @@ impl Default for PatchGrammarPrior {
             // player's edits, not by this number, which is unusual among kinds
             // and is the reason a rate this small is not a reason to leave it
             // out of φ.
-            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005],
+            //
+            // `AudioIn` is last and rare on the same argument. The input is
+            // the player's: a node that reads it arrives because a player
+            // patched one in, and the prior's job is to keep such a patch
+            // scoreable and breedable, not to fill the pool with inputs. At
+            // Silence's 0.5% a drawn tree reads an input about one time in a
+            // hundred, so a generation can still breed one, and its
+            // measurement is the audition clip either way. Like Silence it is
+            // not tilted by taste (`Engine::biased_prior`).
+            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005, 0.005],
             // Filter carries subtractive identity and stays dominant — half
             // again the next-largest weight, and three to sixteen times any
             // of the colour and movement modules. Mix keeps branching alive;
@@ -304,6 +314,47 @@ impl Default for PatchGrammarPrior {
             // [none, lfo, env, rand, follow, euclid, op, pair, steps]
             mod_weights: [0.40, 0.18, 0.20, 0.055, 0.08, 0.03, 0.04, 0.015, 0.03],
         }
+    }
+}
+
+/// The distribution of an AUDIO IN's `#input` site: which of the player's
+/// inputs the node reads.
+///
+/// Not a choice the grammar makes. The input belongs to the player
+/// ([ADR-015](../../../docs/decisions/015-audio-in.md)), so this has two jobs
+/// that no stock distribution does together:
+///
+/// - **A drawn node reads the first input.** `sample` always returns slot 0,
+///   so neither a fill nor a node born during a walk ever picks a device.
+/// - **Every slot carries the same mass.** `log_prob` is `0` on every slot in
+///   `0..INPUT_SLOTS` (and `−∞` outside), so a player's choice of input 3
+///   scores exactly as input 0 does: no slot is favoured, no hand-set input
+///   puts a patch outside the prior's support, and removing a node reading
+///   slot 3 is no cheaper than removing one reading slot 0.
+///
+/// It is unnormalized (each slot has mass 1), which is harmless: a constant
+/// cancels from every ratio the walks and the scoring take. The mismatch
+/// between what `sample` draws and what `log_prob` scores matters only to a
+/// proposal *on* this site, and a walk never accepts one: it locks every
+/// `#input` its seed holds (`auracle_session`'s `walk_on`).
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerInput;
+
+impl fugue::Distribution<usize> for PlayerInput {
+    fn sample(&self, _rng: &mut dyn rand::RngCore) -> usize {
+        0
+    }
+
+    fn log_prob(&self, x: &usize) -> f64 {
+        if *x < INPUT_SLOTS {
+            0.0
+        } else {
+            f64::NEG_INFINITY
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
+        Box::new(*self)
     }
 }
 
@@ -469,12 +520,32 @@ impl PatchGrammarPrior {
                     })
                 })
             }
-            // Index 6. A catch-all rather than `6 =>` because the match is on
+            // Index 6. It samples no sites at all, which is what makes a hole
+            // the cheapest leaf in the grammar.
+            6 => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
+            // Index 7. A catch-all rather than `7 =>` because the match is on
             // a `usize` and needs one; `weighted_cat` cannot return anything
-            // above `N_SOURCES - 1`, so this arm is reached for 6 and nothing
-            // else. It samples no sites at all, which is what makes a hole the
-            // cheapest leaf in the grammar.
-            _ => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
+            // above `N_SOURCES - 1`, so this arm is reached for 7 and nothing
+            // else. `#input` is drawn from `PlayerInput`, which never picks a
+            // device: a node the grammar draws reads the first input.
+            _ => {
+                let k = key.clone();
+                sample(addr!(k.clone(), "input"), PlayerInput).bind(move |input| {
+                    let k2 = k.clone();
+                    sample(addr!(k2.clone(), "gain"), u01()).bind(move |gain| {
+                        sample(
+                            addr!(k2.clone(), "channel"),
+                            uniform_cat(InputChannel::ALL.len()),
+                        )
+                        .map(move |c| AudioNode::AudioIn {
+                            uid: Uid::NEW,
+                            input: input as u8,
+                            gain,
+                            channel: InputChannel::from_index(c),
+                        })
+                    })
+                })
+            }
         })
     }
 
@@ -1152,7 +1223,15 @@ impl PatchGrammarPrior {
                 // two samplers are documented as agreeing, and
                 // `the_two_samplers_agree_on_kind_frequencies` now holds them
                 // to it.
-                _ => AudioNode::Silence { uid: Uid::NEW },
+                6 => AudioNode::Silence { uid: Uid::NEW },
+                // Index 7, and only 7. No draw for `input`: the prior never
+                // chooses a device ([`PlayerInput`]), so neither does this.
+                _ => AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: rng.gen(),
+                    channel: InputChannel::from_index(rng.gen_range(0..InputChannel::ALL.len())),
+                },
             }
         } else {
             match weighted_choice(rng, &self.op_weights) {

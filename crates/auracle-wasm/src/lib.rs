@@ -3097,6 +3097,8 @@ mod tests {
             (NodeKind::Vocoder, "vocoder"),
             // The empty socket, which `describe` reports as `silence`.
             (NodeKind::Silence, "silence"),
+            // The player's input, which `describe` reports as `audio_in`.
+            (NodeKind::AudioIn, "audio_in"),
         ] {
             assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
         }
@@ -3148,6 +3150,7 @@ mod tests {
             NodeKind::Gate,
             NodeKind::Vocoder,
             NodeKind::Silence,
+            NodeKind::AudioIn,
         ] {
             let tree = auracle_grammar::apply_struct_op(
                 &auracle_grammar::presets()[0].1,

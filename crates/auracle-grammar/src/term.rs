@@ -127,9 +127,9 @@ impl Hash for Uid {
 macro_rules! audio_variants {
     ($mac:ident) => {
         $mac!(
-            Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, Mix, Filter, Fold, Delay,
-            Chorus, Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq, Granular,
-            RingMod, Shift, Comp, Duck, Gate, Vocoder
+            Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, AudioIn, Mix, Filter, Fold,
+            Delay, Chorus, Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq,
+            Granular, RingMod, Shift, Comp, Duck, Gate, Vocoder
         )
     };
 }
@@ -360,6 +360,54 @@ impl DriveMode {
             DriveMode::Soft => "soft",
             DriveMode::Hard => "hard",
             DriveMode::Tube => "tube",
+        }
+    }
+}
+
+/// How many inputs an [`AudioNode::AudioIn`] can name: its `input` is a slot
+/// `0..INPUT_SLOTS` in the player's list of inputs, and the `#input` site is a
+/// categorical of this arity.
+///
+/// A slot, not a device. Which microphone or line input a slot means is the
+/// host's to say (the web app lists the devices it detects), so a saved patch
+/// keeps its slot when the hardware changes. Eight covers any desk the app
+/// will meet; it is part of the wire format only as an upper bound, so it may
+/// grow and never shrink.
+pub const INPUT_SLOTS: usize = 8;
+
+/// Which channel of an input an [`AudioNode::AudioIn`] reads. Index order
+/// matches the `#channel` categorical and quiver's `InputChannel::index`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InputChannel {
+    /// Channel 0.
+    Left,
+    /// Channel 1 (channel 0 on a mono input).
+    Right,
+    /// Both channels summed at equal gain, `(left + right) / 2`.
+    Both,
+}
+
+impl InputChannel {
+    /// All channels, in categorical-site index order.
+    pub const ALL: [InputChannel; 3] =
+        [InputChannel::Left, InputChannel::Right, InputChannel::Both];
+
+    /// Categorical-site index.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|c| *c == self).expect("in table")
+    }
+
+    /// From a categorical-site index.
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL[i % Self::ALL.len()]
+    }
+
+    /// Silkscreen label; also the s-expression tag.
+    pub fn label(self) -> &'static str {
+        match self {
+            InputChannel::Left => "left",
+            InputChannel::Right => "right",
+            InputChannel::Both => "both",
         }
     }
 }
@@ -853,6 +901,43 @@ pub enum AudioNode {
     /// added at the end. Inserting one here would silently re-point every
     /// persisted genome at a different oscillator.
     Silence {
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
+    },
+    /// AUDIO IN: the player's own signal, from one of the host's inputs (a
+    /// microphone, a line input), as a source
+    /// ([ADR-015](../../../docs/decisions/015-audio-in.md)).
+    ///
+    /// What it is for comes from where it is patched, not from a mode: into a
+    /// filter or a delay it is processed, into a follower it modulates. It
+    /// compiles to quiver's `AudioInput`, bound to whatever stream the caller
+    /// hands [`crate::compile_with_input`]: the session's **audition clip** in
+    /// a measurement render (so a patch that listens is measured, rated and
+    /// bred like any other; see `auracle_features::clip`), and the live input
+    /// in the instrument.
+    ///
+    /// **`input` belongs to the player.** It is a trace site (`#input`), so the
+    /// rack, a knob edit, a lock and the diff all address it the way they
+    /// address any other knob. But the prior never chooses it (a node the
+    /// grammar draws reads the first input, and every slot carries the same
+    /// prior mass; see `prior`'s `PlayerInput`), and a refinement walk never
+    /// changes it (`auracle_session`'s walk locks every `#input` it starts
+    /// with, so the node stays where the player put it). A walk may change the
+    /// gain, the channel and everything the signal goes through.
+    ///
+    /// No modulation slot, like `Noise`: its one continuous knob is a level,
+    /// and a level under a moving CV is what a tremolo is for.
+    ///
+    /// Source index **7**, appended after `Silence`: `#src` is a categorical
+    /// whose index is what a saved trace stores, so it is append-only.
+    AudioIn {
+        /// Which of the player's inputs it reads, `0..INPUT_SLOTS`.
+        input: u8,
+        /// Normalized gain (0-1 → −24..+12 dB, unity at 2/3).
+        gain: f64,
+        /// Which channel of that input.
+        channel: InputChannel,
         /// Stable identity for this node; see [`Uid`].
         #[serde(default, skip_serializing_if = "Uid::is_new")]
         uid: Uid,
@@ -1508,7 +1593,8 @@ impl AudioNode {
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
             | AudioNode::Formant { .. }
-            | AudioNode::Silence { .. } => Vec::new(),
+            | AudioNode::Silence { .. }
+            | AudioNode::AudioIn { .. } => Vec::new(),
         }
     }
 
@@ -1557,7 +1643,8 @@ impl AudioNode {
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
             | AudioNode::Formant { .. }
-            | AudioNode::Silence { .. } => Vec::new(),
+            | AudioNode::Silence { .. }
+            | AudioNode::AudioIn { .. } => Vec::new(),
         }
     }
 
@@ -1568,13 +1655,14 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The four productions with nothing worth modulating:
+                    // The five productions with nothing worth modulating:
                     // `Noise` has only a colour, `Silence` has nothing at all,
-                    // and `Mix`/`RingMod` have two audio inputs and a blend.
-                    // Named rather than wildcarded so a new module with a slot
-                    // cannot silently land here.
+                    // `AudioIn` has only a level, and `Mix`/`RingMod` have two
+                    // audio inputs and a blend. Named rather than wildcarded so
+                    // a new module with a slot cannot silently land here.
                     AudioNode::Noise { .. }
                     | AudioNode::Silence { .. }
+                    | AudioNode::AudioIn { .. }
                     | AudioNode::Mix { .. }
                     | AudioNode::RingMod { .. } => None,
                 }
@@ -1589,13 +1677,14 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The four productions with nothing worth modulating:
+                    // The five productions with nothing worth modulating:
                     // `Noise` has only a colour, `Silence` has nothing at all,
-                    // and `Mix`/`RingMod` have two audio inputs and a blend.
-                    // Named rather than wildcarded so a new module with a slot
-                    // cannot silently land here.
+                    // `AudioIn` has only a level, and `Mix`/`RingMod` have two
+                    // audio inputs and a blend. Named rather than wildcarded so
+                    // a new module with a slot cannot silently land here.
                     AudioNode::Noise { .. }
                     | AudioNode::Silence { .. }
+                    | AudioNode::AudioIn { .. }
                     | AudioNode::Mix { .. }
                     | AudioNode::RingMod { .. } => None,
                 }
@@ -1629,6 +1718,12 @@ impl AudioNode {
         }
     }
 
+    /// Does this subtree read an input? See [`PatchTree::listens`].
+    pub fn listens(&self) -> bool {
+        matches!(self, AudioNode::AudioIn { .. })
+            || self.children().into_iter().any(AudioNode::listens)
+    }
+
     /// The deepest modulation term anywhere in this subtree — this node's own
     /// slot and every descendant's, by [`ModNode::depth`]. 0 when nothing is
     /// modulated.
@@ -1649,7 +1744,8 @@ impl AudioNode {
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
             | AudioNode::Formant { .. }
-            | AudioNode::Silence { .. } => 1,
+            | AudioNode::Silence { .. }
+            | AudioNode::AudioIn { .. } => 1,
             AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => {
                 1 + a.depth().max(b.depth())
             }
@@ -1700,7 +1796,8 @@ impl AudioNode {
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
             | AudioNode::Formant { .. }
-            | AudioNode::Silence { .. } => 1,
+            | AudioNode::Silence { .. }
+            | AudioNode::AudioIn { .. } => 1,
             AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => {
                 1 + a.size() + b.size()
             }
@@ -1756,6 +1853,8 @@ impl AudioNode {
             // The only production that is nothing but its two structural
             // sites: no parameters, no modulation slot, nothing to draw.
             AudioNode::Silence { .. } => 2,
+            // #input #gain #channel, and no modulation slot.
+            AudioNode::AudioIn { .. } => 2 + 3,
             AudioNode::Mix { a, b, .. } => 2 + 1 + a.site_count() + b.site_count(),
             AudioNode::RingMod { a, b, .. } => 2 + 1 + a.site_count() + b.site_count(),
             AudioNode::Filter {
@@ -1856,6 +1955,12 @@ impl AudioNode {
             ),
             AudioNode::Noise { color, .. } => format!("(noise {})", color.port_name()),
             AudioNode::Silence { .. } => "(silence)".into(),
+            AudioNode::AudioIn {
+                input,
+                gain,
+                channel,
+                ..
+            } => format!("(audioin {} g={gain:.2} {})", input + 1, channel.label()),
             AudioNode::Formant {
                 vowel,
                 shift,
@@ -2177,6 +2282,7 @@ fn spine_tags(n: &AudioNode, out: &mut Vec<&'static str>) {
         AudioNode::Pluck { .. } => out.push("plk"),
         AudioNode::Formant { .. } => out.push("vox"),
         AudioNode::Silence { .. } => out.push("mute"),
+        AudioNode::AudioIn { .. } => out.push("in"),
         AudioNode::Mix { a, .. } => {
             spine_tags(a, out);
             out.push("mix");
@@ -2278,6 +2384,36 @@ impl PatchTree {
     /// Total probabilistic-choice sites (amp envelope + tree).
     pub fn site_count(&self) -> usize {
         4 + self.root.site_count()
+    }
+
+    /// Does this patch read an input: is there an [`AudioNode::AudioIn`]
+    /// anywhere in it?
+    ///
+    /// The question every measuring path asks first. A patch that listens is
+    /// rendered with the session's audition clip, and its render key carries
+    /// the clip; a patch that does not never sees a clip, so its render (and
+    /// every cached row of it) is the same whatever clip the session holds.
+    pub fn listens(&self) -> bool {
+        self.root.listens()
+    }
+
+    /// The `#input` trace address of every AUDIO IN in this patch
+    /// (`node/0#input`, …), in walk order.
+    ///
+    /// A refinement walk locks exactly these: the input a node reads is the
+    /// player's, so a walk keeps each node and its input where they are.
+    pub fn input_sites(&self) -> Vec<String> {
+        fn walk(n: &AudioNode, key: &str, out: &mut Vec<String>) {
+            if matches!(n, AudioNode::AudioIn { .. }) {
+                out.push(format!("{key}#input"));
+            }
+            for (i, c) in n.children().into_iter().enumerate() {
+                walk(c, &format!("{key}/{i}"), out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.root, "node", &mut out);
+        out
     }
 
     /// Short human-readable signature along the main signal spine

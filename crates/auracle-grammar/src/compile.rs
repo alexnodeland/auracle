@@ -203,6 +203,10 @@ pub enum ParamMap {
     FeedbackBipolar,
     /// Crossfader position (`(2x−1)·5 V`).
     XfadePos,
+    /// An AUDIO IN's gain, in dB across the knob
+    /// ([`INPUT_GAIN_DB_MIN`]..[`INPUT_GAIN_DB_MAX`]), as the linear factor
+    /// quiver's `AudioInput` reads on its `gain` port.
+    InputGain,
     /// Wavefolder threshold (`0.1 + 0.9·x`).
     FoldThreshold,
     /// Shelf/bell gain on a ±5 V port (`(2x−1)·5`), where knob centre must be
@@ -307,6 +311,7 @@ impl ParamMap {
             ParamMap::Feedback => map::feedback(x),
             ParamMap::FeedbackBipolar => map::feedback_bipolar(x),
             ParamMap::XfadePos => map::xfade_pos(x),
+            ParamMap::InputGain => map::input_gain(x),
             ParamMap::FoldThreshold => map::fold_threshold(x),
             ParamMap::GainBipolar => map::gain_bipolar(x),
             ParamMap::FormantShift => map::formant_shift(x),
@@ -564,8 +569,35 @@ impl CompiledVoice {
     }
 }
 
+/// The quietest an AUDIO IN's gain knob goes, in dB: far enough down to tuck
+/// a hot line input under a patch, never so far that the knob's bottom is
+/// silence (a silent branch is what the vet refuses).
+pub const INPUT_GAIN_DB_MIN: f64 = -24.0;
+/// The loudest, in dB: quiver's `AudioInput::MAX_GAIN` is 4 (+12 dB), and a
+/// quiet microphone needs most of it.
+pub const INPUT_GAIN_DB_MAX: f64 = 12.0;
+/// The normalized gain at 0 dB: two thirds of the way up the knob. What a
+/// player's AUDIO IN starts at.
+pub const INPUT_GAIN_UNITY: f64 = -INPUT_GAIN_DB_MIN / (INPUT_GAIN_DB_MAX - INPUT_GAIN_DB_MIN);
+
 /// Bounded musical mappings from normalized genome parameters.
 mod map {
+    use super::{INPUT_GAIN_DB_MAX, INPUT_GAIN_DB_MIN};
+    use crate::term::InputChannel;
+
+    /// An AUDIO IN's gain: dB linear across the knob, as a linear factor.
+    pub fn input_gain(x: f64) -> f64 {
+        let db = INPUT_GAIN_DB_MIN + (INPUT_GAIN_DB_MAX - INPUT_GAIN_DB_MIN) * x;
+        10f64.powf(db / 20.0)
+    }
+    /// The grammar's channel as quiver's (the two index orders agree).
+    pub fn input_channel(c: InputChannel) -> quiver::io::InputChannel {
+        match c {
+            InputChannel::Left => quiver::io::InputChannel::Left,
+            InputChannel::Right => quiver::io::InputChannel::Right,
+            InputChannel::Both => quiver::io::InputChannel::Both,
+        }
+    }
     /// Resonance: cap below self-oscillation screech.
     pub fn resonance(x: f64) -> f64 {
         0.85 * x
@@ -1017,6 +1049,9 @@ struct Compiler {
     /// between one and half a dozen quiver nodes, and which of them carries
     /// the audio out is a fact about the arm that built it.
     taps: Vec<(String, PortRef)>,
+    /// The stream every AUDIO IN reads, or `None` for an unbound (silent) one.
+    /// See [`compile_with_input`].
+    input: Option<Arc<AudioInputStream>>,
     /// Every constant [`Self::constant`] pinned, so a test build can check,
     /// once the whole patch is wired, that no cable landed on a pinned port
     /// afterwards (the end of [`compile`]).
@@ -1843,6 +1878,33 @@ impl Compiler {
             AudioNode::Silence { .. } => {
                 let z = self.patch.add(format!("{key}:silence"), Vca::new());
                 Ok(Sig::mono(z.out("out")))
+            }
+            // quiver's `AudioInput` on the caller's stream. Its `out` carries
+            // the chosen channel at quiver's audio level (a full-scale input is
+            // ±5 V, as a full-scale oscillator is), so everything downstream
+            // meets it as it would meet a source. `input` is not compiled in:
+            // which stream a node reads is the caller's binding, one stream for
+            // every slot today (see `compile_with_input`).
+            //
+            // The gain is a live knob into the module's own `gain` port
+            // (unipolar CV into unipolar CV, so no new warning class), and the
+            // channel is baked like a VCO's waveform: changing it recompiles.
+            AudioNode::AudioIn { gain, channel, .. } => {
+                let module = match &self.input {
+                    Some(stream) => AudioInput::new(Arc::clone(stream)),
+                    None => AudioInput::unbound(),
+                }
+                .with_channel(map::input_channel(*channel));
+                let n = self.patch.add(format!("{key}:audio_in"), module);
+                self.knob(
+                    key,
+                    "gain",
+                    *gain,
+                    ParamMap::InputGain,
+                    false,
+                    n.in_("gain"),
+                )?;
+                Ok(Sig::mono(n.out("out")))
             }
             AudioNode::Wavetable {
                 table,
@@ -2903,6 +2965,11 @@ fn makes_dc(node: &AudioNode) -> bool {
         | AudioNode::Formant { .. }
         // A constant zero has no offset to block.
         | AudioNode::Silence { .. } => false,
+        // A host input can carry an offset of its own (a cheap interface's
+        // converter, a phantom-powered mic settling), and the amp envelope
+        // would turn it into a thump on every note. So an input always pays
+        // for the blocker.
+        AudioNode::AudioIn { .. } => true,
         AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => makes_dc(a) || makes_dc(b),
         AudioNode::Filter { kind, input, .. } => {
             matches!(kind, FilterKind::Ladder) || makes_dc(input)
@@ -2959,12 +3026,36 @@ fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn Grap
     Box::new(make())
 }
 
-/// Compile a patch term into a playable voice at the given sample rate.
+/// Compile a patch term into a playable voice at the given sample rate, with
+/// every AUDIO IN unbound (silent).
+///
+/// Right for every caller that does not play an input: the rack's knob
+/// table, PERFORM's live-knob list, and any patch that does not listen
+/// ([`PatchTree::listens`]), which compiles to the same voice either way. A
+/// caller that plays a patch that listens binds a stream with
+/// [`compile_with_input`].
 ///
 /// Refuses, with [`PatchError::CompilationFailed`], a term nested deeper than
 /// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
 /// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
+    compile_with_input(tree, sample_rate, None)
+}
+
+/// [`compile`], with every [`AudioNode::AudioIn`] reading `input`.
+///
+/// One stream for every AUDIO IN in the patch, whatever its `input` slot: the
+/// session's audition clip in a measurement render
+/// (`auracle_features::render_phrase`, on a host-clock stream), and the live
+/// voice's one input in the instrument (`auracle_wasm`'s `LivePoly`, on a
+/// cursor stream). Every compiled copy of a patch may share the one `Arc`:
+/// quiver's `AudioInput` fans one stream out to any number of readers.
+/// `None` builds each AUDIO IN on a stream nothing writes, so it is silent.
+pub fn compile_with_input(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
     let nesting = tree.root.depth() + tree.root.max_mod_depth();
     if nesting > COMPILE_MAX_NESTING {
         return Err(PatchError::CompilationFailed(format!(
@@ -2985,6 +3076,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         gate_out: gate_in.out("out"),
         params: HashMap::new(),
         taps: Vec::new(),
+        input: input.cloned(),
         #[cfg(test)]
         pins: Vec::new(),
     };
@@ -3242,6 +3334,7 @@ mod tests {
             gate_out: gate.out("out"),
             params: HashMap::new(),
             taps: Vec::new(),
+            input: None,
             pins: Vec::new(),
         };
         let adsr = c.patch.add("t:adsr", Adsr::new(SR));
