@@ -250,6 +250,22 @@ def _track(template, name, role, notes, bpb):
     return t
 
 
+def _joined(notes, bpb):
+    """Notes of one track with each note that starts exactly where one of the
+    same pitch ends joined to it: a voice that does not move is held, not
+    struck again. The first note's velocity holds."""
+    def start(n):
+        return (n[0] - 1) * bpb + n[1] - 1
+
+    out = []
+    for n in sorted(notes, key=lambda n: (midi(n[3]), start(n))):
+        if out and midi(out[-1][3]) == midi(n[3]) and abs(start(out[-1]) + out[-1][2] - start(n)) < 1e-5:
+            out[-1] = out[-1][:2] + [round(out[-1][2] + n[2], 6)] + out[-1][3:]
+        else:
+            out.append(list(n))
+    return out
+
+
 def _mark_notes(score):
     """A mark's notes by track, in seconds from its start: [(t, dur, pitch,
     vel)], with each track's fader (times in seconds)."""
@@ -320,10 +336,13 @@ def film_score(tl, bed, bloom, reach):
         runs.append((start, b(d["pause"]), first, True))
         back = b(d["off"] + up)
         nxt = b(demos[i + 1]["pause"]) if i + 1 < len(demos) else None
-        if back >= XB - hold - EPS:
-            back = XB  # it would come back in the bar before the exit: carry on to it
-        elif nxt is not None and nxt - back < before - EPS:
-            back = nxt  # it would come back too briefly to bloom: carry on to the next demo
+        # The next demo first: a bed that would come back too briefly to bloom
+        # before it, or not before it at all, carries on to it, so two demos
+        # never sound their voicing at once. Then the exit.
+        if nxt is not None and nxt - back < before - EPS:
+            back = nxt
+        elif back >= XB - hold - EPS:
+            back = XB
         under_to.append(back)
         start, first = back, resume
     runs.append((start, XB, first, False))
@@ -379,17 +398,33 @@ def film_score(tl, bed, bloom, reach):
                     mpad_in.append(note(b(te + t0), d / spb, p, v))
         for line in lines:
             pad += [[a, z, p] for a, z, p in line if z - a > EPS]
+    # Under the demos, the voicing: one note a pitch for each stretch, where a
+    # demo's voicing carries on into the next demo's.
+    under_spans = []
     for d, z in zip(demos, under_to):
         a = b(d["pause"])
+        if under_spans and abs(under_spans[-1][1] - a) < EPS:
+            under_spans[-1][1] = z
+        else:
+            under_spans.append([a, z])
+    for a, z in under_spans:
         mpad_in += [note(a, z - a, p, pad_vel) for p in under["voicing"]]
+    mpad_in = _joined(mpad_in, bpb)
 
     # The burble: from bar 2; under a demo, the cell of the chord it makes.
     bu = B["burble"]
     b_start = B1 + (into["burble_enters_bar"] - 1) * bpb
     spans = [(max(a, b_start), z, ch) for a, z, ch in plan[0] if z > b_start + EPS]
+    carried = False  # the last span is a demo's, with no bed between it and the next
     for d, z, later in zip(demos, under_to, plan[1:]):
-        spans.append((b(d["pause"]), z, under["counts_as"]))
+        a = b(d["pause"])
+        if carried and abs(spans[-1][1] - a) < EPS:
+            # Carried on from the demo before: the same cell, not restarted.
+            spans[-1] = (spans[-1][0], z, spans[-1][2])
+        else:
+            spans.append((a, z, under["counts_as"]))
         spans += later
+        carried = not later
     burble, k = [], 0
     vel = bu["velocity"]
     for a, z, ch in spans:

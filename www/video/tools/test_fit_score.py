@@ -447,8 +447,44 @@ class AChordBeforeADemo(unittest.TestCase):
                     demos=[(p1, 3.0, 1.0), (p2, 3.0, 1.0)])
         score, placed = film(tl)
         self.assertFalse([c for c in placed["chords"] if p1 < c[0] < p2], "no chord between the two demos")
-        under = sorted((a, b) for a, b, p in notes(score, name="epad") if p == "A3" and a >= p1 - 1e-3)
-        self.assertAlmostEqual(under[0][1], p2, places=3)
+        # Held, not struck again at the second pause: one note a pitch over both
+        # demos, and the burble's cell runs on without starting again.
+        back = tl["demos"][1]["off"] + sound_defaults.LADDER["bed_under_demo_up_s"]
+        for pitch in sound_defaults.BED["under_demo"]["voicing"]:
+            under = sorted((a, b) for a, b, p in notes(score, name="epad") if p == pitch and a >= p1 - 1e-3)
+            self.assertEqual(len(under), 1, f"{pitch} struck again: {under}")
+            self.assertAlmostEqual(under[0][0], p1, places=3)
+            self.assertAlmostEqual(under[0][1], back, places=3)
+        check_one_burble(self, score, p1, back)
+
+    def test_a_demo_whose_bed_would_come_back_near_reach_carries_on_to_the_next_demo_first(self):
+        # The review's case: three lines of 8.0, 3.0 and 0.6 s, the last two
+        # each handing over to a 1.2 s demo with a 0.05 s tail. The first
+        # demo's bed would come back in the bar before Reach, and the second
+        # demo starts before then.
+        tl = n3_film([8.0, 3.0, 0.6], demo_on=[1, 2], tail=0.05, play=1.2)
+        score, _ = film(tl)
+        xb = tl["marks"]["exit"]
+        p1 = tl["demos"][0]["pause"]
+        for pitch in sound_defaults.BED["under_demo"]["voicing"]:
+            under = sorted((a, b) for a, b, p in notes(score, name="epad") if p == pitch and a >= p1 - 1e-3)
+            self.assertEqual(len(under), 1, f"{pitch} doubled or struck again: {under}")
+            self.assertAlmostEqual(under[0][1], xb, places=3)
+        check_one_burble(self, score, p1, xb)
+
+
+def check_one_burble(case, score, a, z):
+    """Between a and z the burble is one stream, its cell running on: notes a
+    step apart, none overlapping, the cell's three notes in turn."""
+    step = sound_defaults.BED["burble"]["step_beats"] * SPB
+    cell = sound_defaults.BED["burble"]["cells"][sound_defaults.BED["under_demo"]["counts_as"]]
+    burble = [(s, e, p) for s, e, p in notes(score, name="burble") if a - 1e-3 <= s < z - 1e-3]
+    case.assertTrue(burble)
+    for (s0, e0, _), (s1, _, _) in zip(burble, burble[1:]):
+        case.assertAlmostEqual(s1 - s0, step, places=3, msg=f"the burble's cell starts again at {s1:.3f} s")
+        case.assertLessEqual(e0, s1 + 1e-3)
+    case.assertEqual([p for *_, p in burble], [cell[k % len(cell)] for k in range(len(burble))])
+    case.assertLessEqual(burble[-1][1], z + 1e-3)
 
 
 class TheSighs(unittest.TestCase):
