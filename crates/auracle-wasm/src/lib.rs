@@ -115,6 +115,12 @@ struct Status {
     pool: usize,
     pool_target: usize,
     observations: usize,
+    /// The log split the way the menu bar's TAUGHT tooltip names it: picks
+    /// (every duel, whichever surface it came from), stars, and cuts. Their
+    /// sum is `observations` (a cut is the only keep/kill the app records).
+    picks: usize,
+    stars: usize,
+    cuts: usize,
     session: usize,
     has_posterior: bool,
     generation: usize,
@@ -805,10 +811,23 @@ impl WasmEngine {
 
     /// Engine status as JSON.
     pub fn status(&self) -> String {
+        let taught = self
+            .engine
+            .log
+            .observations
+            .iter()
+            .fold((0, 0, 0), |(p, s, c), o| match o.feedback {
+                auracle_taste::Feedback::Duel { .. } => (p + 1, s, c),
+                auracle_taste::Feedback::Stars { .. } => (p, s + 1, c),
+                auracle_taste::Feedback::KeepKill { .. } => (p, s, c + 1),
+            });
         serde_json::to_string(&Status {
             pool: self.engine.pool.len(),
             pool_target: self.engine.cfg.pool_size,
             observations: self.engine.log.len(),
+            picks: taught.0,
+            stars: taught.1,
+            cuts: taught.2,
             session: self.engine.session,
             has_posterior: self.engine.posterior.is_some(),
             generation: self.engine.generation,

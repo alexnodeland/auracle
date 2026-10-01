@@ -91,8 +91,10 @@
         <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
         <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
       </div>
-      <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
-      <!-- Named in full: "gen" beside "picks" said what it counted only in
+      <!-- TAUGHT: everything it learned from (picks, stars and cuts), its
+           tooltip split by kind (main.js, renderTaught). -->
+      <span class="counter" id="taught" title="0 picks · 0 stars · 0 cuts"><span class="counter-label">taught</span> <span id="duel-count">0</span></span>
+      <!-- Named in full: "gen" beside "taught" said what it counted only in
            its tooltip. -->
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
       <!-- The job slot: long work, only while it runs — a generation, ⚡
@@ -578,7 +580,7 @@
             <div class="teach-copy" id="teach-copy">Play both. Keep the one you’d reach for.</div>
           </div>
           <div class="duel-centre">
-            <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
+            <div class="mono duel-pred" id="duel-pred" title="Its guess for this pair, made before you picked"></div>
             <!-- How the pair on the table was chosen: its own line, so it
                  holds its place while forecasts come and go above it. -->
             <div class="duel-deal">
@@ -634,7 +636,7 @@
           <div class="panel-label amber">evolution <span class="silk-dim">— what each generation actually did</span></div>
           <div class="lineage-body">
             <canvas id="lineage-spark"></canvas>
-            <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span></div>
+            <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet. Make a few picks, then press EVOLVE POOL, or ⚡ on a sound you like.</span></div>
           </div>
         </div>
       </section>

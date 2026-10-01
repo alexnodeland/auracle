@@ -109,6 +109,10 @@ const BUILD = await (async () => {
 // worker exists, so no reply can arrive while it loads.
 const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
   await import(`./taste-geom.js?v=${BUILD}`);
+// Sentences built from engine facts (a generation's outcome, a prediction's
+// word), pure and unit-tested (words.js, tests/words.test.mjs).
+const { count: plural, series, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal } =
+  await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -1561,33 +1565,29 @@ worker.onmessage = (e) => {
       // that accepted nothing is worse than silence — it claims a result the
       // engine did not produce.
       if (m.untaught) {
-        note("Nothing to breed toward yet — make a few picks first, then evolve.");
-      } else if (wasStopped && m.born && m.born.length === 0) {
-        note(`Gen ${m.status.generation} stopped before it bred anything — the bank is as it was.${madeRoom(evicted)}`);
+        note("Nothing to breed toward yet. Make a few picks first, then evolve.");
       } else if (m.born && m.born.length === 0) {
-        // When every seed the model picked has zero mass under the prior, the
-        // advice is different: more teaching will not move a walk that never
-        // started. Any other mix keeps the old sentence.
+        // Each walk that bred nothing says why (`m.reasons`, the engine's
+        // `RefineOutcome` per walk): unchanged, a sound the pool holds, a new
+        // sound that did not rate above the one it would replace, or a seed
+        // it cannot start from. The sentence says which, and how many; it
+        // used to say "no move was accepted" for all of them.
         const reasons = Array.isArray(m.reasons) ? m.reasons : [];
-        if (reasons.length > 0 && reasons.every((r) => r === "outside_support")) {
-          note(
-            `Gen ${m.status.generation}: nothing could be bred — every seed the model picked is outside what evolution can reach (a knob on its stop, or a tree deeper than the model scores). Nudge those knobs off their stops.`,
-          );
-        } else {
-          note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
-        }
+        note(`${emptyGeneration(m.status.generation, reasons, { stopped: wasStopped })}${madeRoom(evicted)}`);
       } else if (m.born && kept.length === 0) {
-        note(`Gen ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} bred, but none ranked above the patches already in the bank, so the bank is as it was.`);
+        // Bred and admitted, then ranked below the rest at the finish.
+        note(`Generation ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} ${bred.length === 1 ? "was" : "were"} bred, but none rated above the sounds they would replace, so the pool is as it was.`);
       } else if (m.born) {
         const made = madeRoom(replaced);
         const n = kept.length;
+        // Two sentences at most: what joined, then what it replaced.
         const below = dropped
-          ? ` ${dropped} more ${dropped === 1 ? "was" : "were"} bred but ranked below the rest, and ${dropped === 1 ? "was" : "were"} not kept.`
+          ? ` (${dropped} more ${dropped === 1 ? "was" : "were"} bred, then replaced)`
           : "";
         note(
           wasStopped
-            ? `Gen ${m.status.generation} stopped: ${n} new patch${n > 1 ? "es" : ""} kept, at the top of the bank.${made}${below}`
-            : `Gen ${m.status.generation}: ${n} new patch${n > 1 ? "es" : ""} in the bank.${made}${below}`,
+            ? `Generation ${m.status.generation} stopped: ${plural(n, "new sound")} kept, at the top of the pool${below}.${made}`
+            : `Generation ${m.status.generation}: ${plural(n, "new sound")} in the pool${below}.${made}`,
           bankTourOffer(),
         );
       } else {
@@ -2149,10 +2149,23 @@ worker.onmessage = (e) => {
       renderNextStep();
       renderTeach();
       const evolveEvicted = applyViews(m.views);
+      const seedName = nameOrKnown(m.seedId);
+      if (m.childId > 0) {
+        // The child joins the bank's New group as a generation's children do
+        // (`refine_child`). ⚡ is a generation of its own in the engine (it
+        // opens one, and its child is stamped with it), so the group becomes
+        // that generation's, and the next generation's first child clears it.
+        if (bornGen !== m.status.generation) {
+          lastBorn.clear();
+          bornGen = m.status.generation;
+        }
+        lastBorn.add(m.childId);
+        landedNow.add(m.childId);
+      }
       applyStatus(m.status);
       refreshInstruments();
       if (m.reason === "stopped") {
-        note("⚡ stopped — nothing was added to the bank.", { replace: "evolve-from" });
+        note("⚡ stopped. Nothing was added to the pool.", { replace: "evolve-from" });
       } else if (m.childId > 0) {
         // ⚡ is a walk of about 20 s (23 s measured on a quiet machine; more
         // with many locks). It runs on the farm, and the player goes on
@@ -2163,9 +2176,10 @@ worker.onmessage = (e) => {
         // replaced. The bench is the player's: the child waits in the bank,
         // one click away.
         const editedSince = wb.dirty || editPending || !laneFree();
+        const from = seedName ? ` from ${seedName}` : "";
         if (editedSince) {
           note(
-            `⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — it is in the bank, and your edits are still on the bench.${madeRoom(evolveEvicted)}`,
+            `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
             { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
           );
         } else {
@@ -2176,19 +2190,13 @@ worker.onmessage = (e) => {
           evolvedAnnounce = {
             id: m.childId,
             text: (name) =>
-              `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+              `⚡ bred ${name}${from}, and it’s ready to play.${madeRoom(evolveEvicted)}`,
           };
           openOnBench(m.childId, { auto: true });
         }
         scheduleSave();
       } else {
-        note(
-          refineReasonText(
-            m.reason,
-            "⚡ evolution found no accepted move — try again, or loosen some locks",
-          ),
-          { replace: "evolve-from" },
-        );
+        note(evolveRefusal(m.reason, seedName), { replace: "evolve-from" });
       }
       break;
     }
@@ -2339,10 +2347,9 @@ worker.onmessage = (e) => {
       // downloads bar, and the app itself was silent. Counted from the file,
       // so the number is what it holds.
       if (!m.reason) {
-        let n = null;
-        try { n = JSON.parse(m.json).log.observations.length; } catch (_) { /* counted below */ }
-        n = n == null ? picksTaught() : n;
-        note(`Downloaded ${a.download} — ${n} pick${n === 1 ? "" : "s"}.`, { replace: "profile" });
+        let k = null;
+        try { k = kindsInLog(JSON.parse(m.json).log.observations); } catch (_) { /* counted below */ }
+        note(`Downloaded your taste (${a.download}): ${taughtSentence(k || taughtKinds())}.`, { replace: "profile" });
       }
       break;
     }
@@ -2363,11 +2370,11 @@ worker.onmessage = (e) => {
           send({ type: "fit" });
         }
         note(n > 0
-          ? `Profile loaded — ${n} pick${n === 1 ? "" : "s"}. Redrawing your taste map…`
-          : "Profile loaded — it has no picks yet.", { replace: "profile" });
+          ? `Opened that taste file: ${taughtSentence(taughtKinds())}. Redrawing your taste map…`
+          : "Opened that taste file. Nothing has been taught in it yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("Could not read that profile file — nothing was changed.", { urgent: true });
+        note("That taste file couldn’t be read. Nothing was changed.", { urgent: true });
       }
       break;
     }
@@ -2534,10 +2541,12 @@ worker.onmessageerror = () => {
 let status = { observations: 0, generation: 0 };
 let hasPlayed = !!localStorage.getItem("auracle-played");
 
-// ---------- what PICKS counts ----------
-// What you have taught it, from the moment you teach it. `status.observations`
-// is the engine's log, and the log sees a pick only once its undo window has
-// closed and the worker has answered — so PICKS read 18 for seven seconds
+// ---------- what TAUGHT counts ----------
+// What you have taught it, from the moment you teach it: picks, stars and
+// cuts (the menu bar's TAUGHT, its tooltip split by kind; EVOLVE's meter
+// counts the picks alone). `status.observations` is the engine's log, and
+// `status.picks`/`stars`/`cuts` split it. The log sees a pick only once its
+// undo window has closed and the worker has answered — so PICKS read 18 for seven seconds
 // after the nineteenth pick, read 22 after 23 picks made two seconds apart,
 // and disagreed with the pips beside it, which light at the click. Picks the
 // log has not answered for yet are counted here, keyed by the request they
@@ -2562,14 +2571,39 @@ function aheadDrop(key) {
   renderPicks();
   return true;
 }
-/** PICKS: the log, plus what it has not answered for yet. */
+/** The log by kind, plus what it has not answered for yet (each key in
+ *  `taughtAhead` names its kind). An engine from before the split reports
+ *  only the total, which is then counted as picks. */
+function taughtKinds() {
+  const split = status.picks != null;
+  const k = {
+    picks: split ? status.picks : status.observations || 0,
+    stars: split ? status.stars || 0 : 0,
+    cuts: split ? status.cuts || 0 : 0,
+  };
+  for (const [key, n] of taughtAhead) {
+    if (key.startsWith("stars:")) k.stars += n;
+    else if (key.startsWith("keep:")) k.cuts += n;
+    else k.picks += n;
+  }
+  return k;
+}
+/** TAUGHT: everything it learned from, the log plus what is on its way. */
 function picksTaught() {
-  let n = status.observations || 0;
-  for (const k of taughtAhead.values()) n += k;
-  return n;
+  const k = taughtKinds();
+  return k.picks + k.stars + k.cuts;
+}
+/** The picks alone: what EVOLVE's meter and the refit countdown count. */
+function picksMade() {
+  return taughtKinds().picks;
+}
+function renderTaught() {
+  $("duel-count").textContent = picksTaught();
+  const counter = $("taught");
+  if (counter) counter.title = taughtTitle(taughtKinds());
 }
 function renderPicks() {
-  $("duel-count").textContent = picksTaught();
+  renderTaught();
   renderTeach();
   renderNextStep();
 }
@@ -2591,7 +2625,7 @@ function renderGenCount() {
 
 function applyStatus(st) {
   status = st;
-  $("duel-count").textContent = picksTaught();
+  renderTaught();
   renderGenCount();
   renderTeach();
   renderNextStep();
@@ -2668,15 +2702,16 @@ function renderTeach() {
   }
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
-  // refit schedule. The count is PICKS's own (`picksTaught`), so the line
-  // and the menubar move on the same click.
-  const n = picksTaught();
+  // refit schedule. The count is the picks alone (`picksMade`, the share of
+  // TAUGHT that pairs are), so the line and the menubar move on the same
+  // click, and stars and cuts never read as picks.
+  const n = picksMade();
   if (n === 0) {
-    copy.innerHTML = "Play both. Keep the one you’d reach for.";
+    copy.innerHTML = "Play both. Pick the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
     copy.innerHTML = left === FIT_EVERY
-      ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+      ? `<b>${n}</b> ${n === 1 ? "pick" : "picks"} in. Every ${FIT_EVERY} it redraws your taste map.`
       : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
@@ -2804,7 +2839,7 @@ $("job-stop").onclick = () => {
 function renderNextStep() {
   const el = $("nextstep");
   if (!el) return;
-  const n = picksTaught();
+  const n = picksMade();
   let label, act;
   // Every state of this chip is now actionable. The previous "go play" branch
   // was inert *and* outranked the teaching guidance for votes 1–5, so the one
@@ -2813,13 +2848,13 @@ function renderNextStep() {
   // own empty state, which is where it belongs.
   if (n === 0 && !hasPlayed) {
     // A fresh profile is invited to make a sound before it is asked to vote.
-    label = "Play it first — press A, or tap a key below ▸";
+    label = "Play it first: press A, or tap a key below ▸";
     act = () => {
       document.activeElement?.blur?.();
       pulseOnce($("piano"));
     };
   } else if (n === 0) {
-    label = `Teach it your taste — ${FIT_EVERY} quick picks below ▸`;
+    label = `Teach it your taste: ${FIT_EVERY} quick picks below ▸`;
     act = () => {
       const strip = $("play-duel");
       if (currentView === "play" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
@@ -2831,13 +2866,17 @@ function renderNextStep() {
   } else if (gensBred() === 0) {
     // It starts the generation where the player is: the job slot shows it
     // from any view, and the children land at the top of the bank.
-    label = breeding || evolvingFrom ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
+    label = breeding || evolvingFrom ? "Breeding: keep playing ▸" : "It’s learned something. Breed a generation ▸";
     act = breeding || evolvingFrom ? null : () => $("evolve-btn").click();
   } else if (lastBorn.size > 0) {
-    label = `Gen ${bornGen || gensBred()} bred new patches — they're at the top of the bank ▸`;
+    // A generation's children, or ⚡'s one child (a generation of its own).
+    const g = bornGen || gensBred();
+    label = lastBorn.size === 1
+      ? `Generation ${g} bred a new sound: it’s at the top of the bank ▸`
+      : `Generation ${g} bred ${lastBorn.size} new sounds: they’re at the top of the bank ▸`;
     act = showNewGroup;
   } else {
-    label = `Gen ${gensBred()} bred — see what it thinks of your taste ▸`;
+    label = `Generation ${gensBred()} bred: see what it learned ▸`;
     act = () => showView("taste");
   }
   el.textContent = label;
@@ -3377,14 +3416,12 @@ function applyViews(next) {
 const REPLACED_NAMED = 3;
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
-  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a patch");
+  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a sound");
   const more = evicted.length - names.length;
-  const list = more > 0
-    ? `${names.join(", ")} +${more} more`
-    : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  const list = series(more > 0 ? [...names, `${more} more`] : names);
   return evicted.length === 1
-    ? ` The patch it liked least was replaced: ${list}.`
-    : ` The ${evicted.length} it liked least were replaced: ${list}.`;
+    ? ` The sound it rated lowest was replaced: ${list}.`
+    : ` The ${evicted.length} it rated lowest were replaced: ${list}.`;
 }
 
 // id -> the last name its bank row had. Filled by `applyViews`; never pruned
@@ -5227,11 +5264,10 @@ function showForecast(pChosen) {
   if (!el) return;
   el.classList.toggle("hit", pChosen >= 0.65);
   el.classList.toggle("miss", pChosen <= 0.45);
-  el.textContent =
-    pChosen >= 0.65 ? `Expected — it's getting you. ${Math.round(pChosen * 100)}%`
-    : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
-    : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
-  el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
+  // The model's voice: the side it guessed, at the probability it gave that
+  // side, and how sure that reads (words.js `forecastLine`).
+  el.textContent = forecastLine(pChosen);
+  el.title = "Its guess for this pair, made before you picked. A wrong guess is where it learns most.";
   predHoldUntil = performance.now() + PRED_HOLD_MS;
   const pd = $("pd-pred");
   if (pd) {
@@ -5399,13 +5435,14 @@ function renderBelief() {
     const why = !wb.vetOk && wb.vetSilent
       ? "no guess while nothing reaches the output"
       : fitting
-      ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
+      ? "fitting to what you taught it…"
       : n === 0 || !fitted
-        ? "not yet — it needs a few picks first"
-        : "no guess for this patch yet";
+        ? "no guess yet: it needs a few picks first"
+        : "no guess for this sound yet";
     el.innerHTML = wb.subjectId == null
       ? ""
-      : `<span class="ex-why">model's guess</span> <span class="bl-none">${why}</span>`;
+      : `<span class="bl-none">${why}</span>`;
+    el.title = "";
     return;
   }
   el.classList.toggle("stale", belief.stale);
@@ -5418,24 +5455,27 @@ function renderBelief() {
   const u = sq(belief.u);
   const prev = belief.prev == null ? null : sq(belief.prev);
   const d = prev == null ? null : u - prev;
-  // 0.005 is half a printed digit: below it the arrow would point at a change
-  // the number it sits next to does not show.
-  const arrow = d == null || Math.abs(d) < 0.005 ? "" :
+  // Printed as a whole percentage with its word (words.js `guessLabel`), never
+  // bare. The arrow shows only when the printed number moved: otherwise it
+  // would point at a change the number it sits next to does not show.
+  const [uPct, prevPct] = [Math.round(u * 100), prev == null ? null : Math.round(prev * 100)];
+  const arrow = prevPct == null || uPct === prevPct ? "" :
     `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
-  const was = prev == null ? "" :
-    `<span class="bl-was">(was ${prev.toFixed(2)})</span>`;
+  const was = prevPct == null ? "" :
+    `<span class="bl-was">(was ${prevPct}%)</span>`;
   const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
     return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
+  const [pctText, sure] = guessLabel(u).split(" · ");
   el.innerHTML =
-    `<span class="ex-why">model's guess</span> <b class="bl-u">${u.toFixed(2)}</b> ${was}${arrow}` +
+    `<b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span> ${was}${arrow}` +
     (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
     (belief.lens ? ` <span class="ex-lens">in your <b>${esc(styleWord(belief.lens))}</b> style</span>` : "") +
     (belief.stale ? ` <span class="bl-stale">· re-measuring…</span>` : "");
   el.title = belief.stale
-    ? "An edit is in flight — this describes the patch before it."
-    : `The same score the bank's bars draw. Posterior-mean utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}; the named features are its exact decomposition, in utility units.`;
+    ? "An edit is on its way. This is its guess for the sound before it."
+    : `Its guess for the sound you’re playing, the same one the bank’s bar draws (utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}). The qualities beside it add up to that utility.`;
 }
 
 // ---------- the structural budget ----------
@@ -6789,26 +6829,12 @@ function voteDropped(v) {
   });
 }
 
-// What to say when evolution produced nothing, from the engine's own reason
-// (`last_refine_reason`). Only `outside_support` changes the advice: no budget
-// or lock-loosening reaches a seed the prior gives zero mass, so "try again"
-// would be a lie there.
-function refineReasonText(reason, fallback) {
-  switch (reason) {
-    case "outside_support":
-      return "⚡ this patch is outside what evolution can reach — a knob is on its stop, or the tree is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.";
-    case "no_taste":
-      return "Nothing to breed toward yet — make a few picks first, then evolve.";
-    case "unknown_seed":
-      return "that patch isn't in the bank any more — a bred generation replaced it.";
-    case "duplicate":
-      return "⚡ evolution landed on a patch the bank already holds — try again.";
-    case "not_admitted":
-      return "⚡ evolution's proposal did not survive the vet or beat its parent — try again.";
-    default:
-      return fallback;
-  }
-}
+// What to say when ⚡ produced nothing, from the engine's own reason
+// (`last_refine_reason`), is `evolveRefusal` in words.js. Only
+// `outside_support` changes the advice: no budget or lock-loosening reaches a
+// seed the prior gives zero mass, so "try again" would be a lie there. A
+// refused child's bar is the sound it would replace (the lowest unsaved one,
+// `admit_refined`), never its seed.
 
 $("bank-list").addEventListener("keydown", (e) => {
   if (bankFilter === "preset") return presetKeydown(e);
@@ -18263,7 +18289,7 @@ function picksToRefit() {
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
-  const n = picksTaught();
+  const n = picksMade();
   const cn = engineCalib ? engineCalib.n : 0;
   const left = picksToRefit();
   const skel = (rows, cls = "") =>
@@ -18959,13 +18985,14 @@ function drawLineage() {
   const log = $("lineage-log");
   if (lineage.length === 0) {
     // Don't keep telling the user to press a button they have already pressed.
-    // The toast of a generation that bred nothing says "no move was
-    // accepted"; this says the same thing in the same words.
+    // An empty lineage means no generation has put a sound in the pool; the
+    // toast of each one said why (`emptyGeneration`). This says only what is
+    // true of all of them.
     const ran = gensBred();
     log.innerHTML =
       ran > 0
-        ? `<span class="silk-dim">Generation ${ran} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
-        : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
+        ? `<span class="silk-dim">${plural(ran, "generation")} ran, and none put a new sound in the pool. More picks sharpen the next, and ⚡ on a sound you like aims it.</span>`
+        : '<span class="silk-dim">No generations yet. Make a few picks, then press EVOLVE POOL, or ⚡ on a sound you like.</span>';
     return;
   }
   log.innerHTML = lineage

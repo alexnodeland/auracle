@@ -19,6 +19,7 @@ the long-form notes are this directory's `README.md`.
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
+| `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome; unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root` (the colours generated from `www/brand/tokens.json`), then per-view sections |
 
 ## Rules

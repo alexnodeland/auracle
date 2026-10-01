@@ -4305,6 +4305,9 @@ html:not(.engineer) .dn-sig { display: none; }
 /* The number itself is the loudest thing in the row: it is what changes. */
 .belief .bl-u { color: var(--silk); font-weight: 500; font-size: var(--t-lead); }
 .belief .bl-was { color: var(--silk-dim); }
+/* The word beside the percentage (a hunch · leaning · fairly sure): the
+   model saying how sure it is, so amber. */
+.belief .bl-sure { color: var(--phos-b); }
 .belief .bl-sep, .belief .bl-none { color: var(--silk-dim); }
 .belief .bl-arrow.up { color: var(--phos-a); }
 .belief .bl-arrow.down { color: var(--silk-mute); }
