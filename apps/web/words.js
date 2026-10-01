@@ -149,6 +149,61 @@ export function evolveRefusal(reason, name) {
   }
 }
 
+// ---- a generation as it runs, and the lineage it leaves in the bank ----
+
+/** What one walk came back as, for EVOLVE POOL's narration ("walk 3 of 10 ·
+ *  joined the pool"): `child` is the id the engine admitted (`refine_child`'s
+ *  `child`, 0 for none) and `reason` the engine's `RefineOutcome` when there
+ *  is none. Only `not_admitted` is a child refused: `duplicate` landed on a
+ *  sound the pool holds, `no_move` bred nothing, `outside_support` never
+ *  started. "" for a reason with nothing to say. */
+export function walkSaid(child, reason) {
+  if (child > 0) return "joined the pool";
+  switch (reason) {
+    case "not_admitted":
+      return "rated below the pool";
+    case "duplicate":
+      return "already in the pool";
+    case "no_move":
+      return "came back unchanged";
+    case "outside_support":
+      return "couldn’t start";
+    default:
+      return "";
+  }
+}
+
+/** EVOLVE POOL once a walk has come back: "walk 3 of 10" (the jobs are
+ *  absorbed in order, so the third to come back is the third walk). */
+export function walkLabel(done, total) {
+  return `walk ${done} of ${total}`;
+}
+
+/** Under the bank's New group: the children of its generation that are not
+ *  in it, refused when they landed or replaced when it ended. */
+export function belowNote(n) {
+  return `${n} more ${n === 1 ? "was" : "were"} bred and rated below the pool.`;
+}
+
+/** A bred sound's line on its bank row: its seed (`LineageEvent.parent_id`,
+ *  by the name it has or last had) and what changed (`LineageEvent.diff`, in
+ *  words), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz". */
+export function fromLine(seedName, changes) {
+  return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
+}
+
+/** Compare's sentence under its figure. */
+export function grownFrom(seedName, generation) {
+  return `Grown from ${seedName} in generation ${generation}.`;
+}
+
+/** What the model rated a seed and its child when it bred them
+ *  (`LineageEvent`'s `parent_utility` and `child_utility`, as the bank's
+ *  percentages), in its own voice and with the word for how sure each reads. */
+export function bredRatings(seedName, seedP, childName, childP) {
+  return `when it bred them, it rated ${seedName} ${guessLabel(seedP)} and ${childName} ${guessLabel(childP)}`;
+}
+
 /** "a", "a and b", "a, b, and c" (the serial comma, always). */
 export function series(parts) {
   if (parts.length <= 1) return parts.join("");

@@ -13,6 +13,12 @@ import {
   emptyGeneration,
   evolveRefusal,
   series,
+  walkSaid,
+  walkLabel,
+  belowNote,
+  fromLine,
+  grownFrom,
+  bredRatings,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -162,4 +168,32 @@ test("lists take the serial comma", () => {
   assert.equal(series(["a"]), "a");
   assert.equal(series(["a", "b"]), "a and b");
   assert.equal(series(["a", "b", "c"]), "a, b, and c");
+});
+
+test("EVOLVE POOL narrates each walk from the engine's reason, and only a refused child is rated below the pool", () => {
+  assert.equal(walkLabel(3, 10), "walk 3 of 10");
+  assert.equal(walkSaid(41, null), "joined the pool");
+  assert.equal(walkSaid(0, "not_admitted"), "rated below the pool");
+  assert.equal(walkSaid(0, "duplicate"), "already in the pool");
+  assert.equal(walkSaid(0, "no_move"), "came back unchanged");
+  assert.equal(walkSaid(0, "outside_support"), "couldn’t start");
+  assert.equal(walkSaid(0, "stale"), "");
+  for (const r of ["not_admitted", "duplicate", "no_move", "outside_support"]) {
+    // "keep" is PERFORM's Keep pad, and nothing else (voice.md's word table).
+    assert.ok(!/\b(keep|kept)\b/.test(walkSaid(0, r)), walkSaid(0, r));
+    voiced(walkSaid(0, r));
+  }
+});
+
+test("the bank's lineage lines name the seed, what changed, and both ratings with their words", () => {
+  assert.equal(fromLine("Soft Pad", "+reverb, cutoff 1.2 kHz → 3.4 kHz"), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz");
+  assert.equal(fromLine("Soft Pad", ""), "from Soft Pad");
+  assert.equal(grownFrom("Soft Pad", 3), "Grown from Soft Pad in generation 3.");
+  assert.equal(belowNote(1), "1 more was bred and rated below the pool.");
+  assert.equal(belowNote(3), "3 more were bred and rated below the pool.");
+  const r = bredRatings("Soft Pad", 0.7, "Warm Drone 2", 0.62);
+  assert.equal(r, "when it bred them, it rated Soft Pad 70% · fairly sure and Warm Drone 2 62% · leaning");
+  // A percentage never stands alone (voice.md, the model's voice).
+  assert.ok(!/\d%(?! ·)/.test(r), r);
+  for (const s of [fromLine("Soft Pad", "+reverb"), grownFrom("Soft Pad", 1), belowNote(2), r]) voiced(s);
 });
