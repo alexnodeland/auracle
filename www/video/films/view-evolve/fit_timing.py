@@ -31,6 +31,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 SCRIPT = os.path.join(HERE, "script.json")
 VOICE = os.path.join(ROOT, "www", "video", "out", "view-evolve", "voice", "manifest.json")
 TIMELINE = os.path.join(ROOT, "www", "video", "tools", "timeline.py")
+DEMOS = os.path.join(ROOT, "www", "video", "out", "view-evolve", "demos.json")  # measured tails (tools/demo_tail.py)
 GAP = 0.12
 BAR = 240 / 84
 # The tail each beat is written with, before stretching.
@@ -38,7 +39,8 @@ BASE_TAIL = {"open": 0.0, "title": 0.6, "outro": 2.5}
 
 
 def timeline(quiet=True):
-    r = subprocess.run([sys.executable, TIMELINE, HERE, "--voice", VOICE], check=True, capture_output=True, text=True)
+    demos = ["--demos", DEMOS] if os.path.exists(DEMOS) else []
+    r = subprocess.run([sys.executable, TIMELINE, HERE, "--voice", VOICE, *demos], check=True, capture_output=True, text=True)
     if not quiet:
         print(r.stdout, end="")
     return json.load(open(os.path.join(HERE, "timeline.json")))

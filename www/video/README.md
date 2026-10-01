@@ -8,11 +8,11 @@ again. A film is narration, pictures and sound, and each has one owner here:
 |---|---|---|
 | The script | `films/<film>/script.json` | Written by hand: every line of narration, grouped into beats (scenes), with the pauses between them |
 | The voice | `voice/` | `tts.py`: Kokoro-82M, offline, one WAV per line; `asr_check.py` transcribes every line back and fails a line whose words drift from the script |
-| The timing | `films/<film>/timeline.json` | `tools/timeline.py`: lays the measured lines onto the music's bar grid, so a cut lands on a beat |
+| The timing | `films/<film>/timeline.json` | `tools/timeline.py`: lays the measured lines onto the music's clock, each demo after its line with its tail rung out, and the two marks around the narration |
 | The music | `sound/` | Scores played by Auracle's own engine, offline (`cargo run -p auracle-wasm --example score`). Every note in these films is the instrument. Its values are `www/brand/sound.json`'s (§ The sound) |
 | The picture | `films/<film>/film.js` | Scenes drawn on the stage (`stage/`), pinned to the timeline's cues, never to hand-typed seconds |
 | The footage | `films/<film>/shots.json` | `tools/footage.mjs`: the real app, driven by a script and recorded with its own sound |
-| The mix | `tools/mix.py` | Narration at a fixed level, music ducked under it, effects on the frames that show them; -16 LUFS, true peak under -1 dBTP; H.264 + AAC, captions (WebVTT) and a poster |
+| The mix | `tools/mix.py` | The ladder in `www/brand/sound.json`: the narration through its chain, the bed under it, each demo at its own level, the two marks, no cues; -16 LUFS, true peak under -1 dBTP; H.264 + AAC, captions (WebVTT) and a poster |
 
 ## The stage
 
@@ -66,7 +66,9 @@ in `tokens.json`:
 - **The mix's defaults** `tools/sound_defaults.py`: the ladder, the voice
   chain, the duck, carve and dip, each part's EQ, pan and level, the
   grammar's timings, the marks' levels, the shortlist and the room. `mix.py`
-  reads the bed's level and duck from it.
+  reads every level it sets from it, and `timeline.py` every timing. It also
+  holds the bed's notes (`BED`) and how the lead plays a line (`LEAD`), which
+  `fit_score.py --film` writes a film's bed from.
 
 The rest of `sound.json`'s numbers and pitches describe the notes rather than
 being written into them: the pedal, the marks' length, the lead's legato and
@@ -76,17 +78,77 @@ reel played). `make sound` leaves the notes as they are, and
 
 Each generated file says so at its top; edit `sound.json`, never them.
 `make dev-check` fails when one is stale. It also fails on the two ways the
-duck came to have three values in three places: a number as `mix.py`'s
-`--music-db` or `--duck-db` default, and a numeric `MUSIC_DB`/`DUCK_DB`
-fallback (or `--music-db`/`--duck-db` flag) in a film tool's shell code.
-Docstrings, help strings and comments may quote a level.
+duck came to have three values in three places: a number as a film tool's
+`--music-db`, `--duck-db` or `--gain-db` default, and a numeric
+`MUSIC_DB`/`DUCK_DB`/`APP_DB` fallback (or `--music-db`/`--duck-db`/`--gain-db`
+flag) in a film tool's shell code. Docstrings, help strings and comments may
+quote a level.
 
-The pipeline is being brought to it
-([Plan-006](../../docs/plans/006-the-sound-of-the-films.md)). Until then the
-films still fit and play Study, take their cues from the stingers, and mix
-with the levels the pipelines pass today: the bed 6 dB under the voice and a
-9 dB duck. Those are `sound.json`'s `mix_now`, kept so that no film's mix
-changes before the new mix lands.
+The mix is the spec's (`tools/mix.py`):
+- the voice through its chain, at −18 LUFS;
+- the bed at rest 3 LU under it, ducked 2 dB under the voice, carved a
+  further 3 dB in 1–4 kHz, and the pad dipped 2 dB in 300–600 Hz;
+- each demo window at −18 LUFS, with the bed 9 LU under it;
+- the marks at −18 LUFS over their 4.5 s;
+- the master at −16 LUFS, and no cues.
+
+It writes what it measured to `out/<film>/ladder.json`.
+
+A film on the N3 bed (`"music": {"bed": "n3"}` in its script) is laid out and
+scored to the spec's grammar:
+- `timeline.py` puts Bloom 1.75 s before the first word and Reach 1.75 s
+  after the last, and lays each line's `demo` after it: 0.7 s, the demo, its
+  tail to −30 dB (measured, `--demos`), 0.8 s;
+- `fit_score.py --film` writes the bed and the marks to that timeline, with
+  the bed's sighs in the narration's gaps;
+- `illustrated.sh` and `walkthrough.sh` take that route for it, and mix it on
+  stems.
+
+The films move to it as they are re-voiced
+([Plan-006](../../docs/plans/006-the-sound-of-the-films.md)). Until then, a
+film laid out before the grammar (no marks, no demos in its timeline) is
+mixed exactly as it was before ADR-014, except that no cue is laid:
+- the voice untreated;
+- its Study bed 6 dB under the voice and ducked 9 dB, with no carve;
+- the app at its gain, ducked 4.5 dB.
+
+Those values are sound.json's `before_the_grammar`. A re-finish of any of the
+six voiced walkthroughs gives main's `mix.wav` byte for byte.
+
+### A demo
+
+A line hands over to the instrument with a `demo`:
+
+```json
+{"id": "named2", "text": "Hold a chord and ride Bright up.",
+ "demo": {"id": "bright", "play_s": 6.5, "tail_s": 1.1}}
+```
+
+- `id` names the demo (the line's id when it has none).
+- `play_s` is how long the instrument plays, from its first note to its last
+  note-off.
+- `tail_s` is the script's estimate of the ring-out, used only until the tail
+  is measured.
+
+The timeline lays it out after the line:
+- 0.7 s;
+- the demo;
+- its tail, until it has fallen 30 dB under its playing level;
+- 0.8 s;
+- then the next line.
+
+The line's own `post` is not used.
+
+**Measure the tail** from a take or a render:
+
+    python3 www/video/tools/demo_tail.py WAV FIRST_NOTE NOTE_OFF --id bright --demos www/video/out/<film>/demos.json
+
+The playing level is the median RMS of the mono sum over 50 ms frames, from
+the first note to the note-off. `voice.sh`, the films' timing scripts and
+`illustrated.sh` pass `demos.json` to `timeline.py --demos` when it exists.
+The timeline marks a demo it laid out on an estimate (ESTIMATED), and
+`publish.py` refuses such a film. In the mix, the app's sound over each demo
+window goes to −18 LUFS, and the bed sits 9 LU under it.
 
 ## Setting up
 
@@ -114,10 +176,11 @@ film make targets run on `.venv-voice`; to run a tool by hand, `source
   crates/auracle-wasm --target web --release --no-opt --out-dir
   ../../apps/web/pkg && make wasm-stamp` where wasm-opt can't be downloaded).
   The footage is the app as built, so build it from the commit you publish.
-- **The shared sound**, once: `www/video/tools/sounds.sh` renders the scores
-  the pipeline plays today (`signal`, `study` and `stingers` in `sound/`) into
-  `www/video/out/sound/`. The stingers there are every film's effects. The
-  marks and N3 are not in the pipeline yet (§ The sound).
+- **The shared sound**, once: `www/video/tools/sounds.sh` renders the old
+  scores (`signal`, `study` and `stingers` in `sound/`) into
+  `www/video/out/sound/`, for the films not yet moved to N3. No mix lays the
+  stingers now. A film on N3 needs no shared render: `fit_score.py --film`
+  writes its own score, and its pipeline renders it (§ The sound).
 
 ## Making an illustrated film
 
@@ -133,16 +196,19 @@ illustrated scenes are drawn by the stage, frame by frame.
    drift from the script (WER over 0.10), then lays the timeline on the
    measured word times. Fix a failing line with a lexicon entry or a rewrite,
    never by loosening the check.
-3. **Arrange the bed** in `films/<film>/arrangement.json` (sections in bars at
-   84 BPM). A beat's `bed_db` in the script sets the bed's level under it
-   (≤ −60 is out).
+3. **The bed.** On N3 (`"music": {"bed": "n3"}`) there is nothing to arrange:
+   the timeline places the marks and each demo, and `fit_score.py --film`
+   writes the bed to them. A film still on Study arranges its bed in
+   `films/<film>/arrangement.json` (sections in bars at 84 BPM). A beat's
+   `bed_db` sets the bed's level under it (≤ −60 is out).
 4. **Draw it** in `films/<film>/film.js` with the kit, pinned to the timeline's
    cues. Preview with `python3 -m http.server 8000` from the repo root and
    `http://localhost:8000/www/video/films/<film>/?t=12&play`.
 5. **Render:** `www/video/tools/illustrated.sh <film> <poster seconds>`. It
-   fits the study score to the arrangement and plays it, takes the sound cues
-   from the picture, makes a first mix (the envelopes the picture pulses with),
-   renders the frames, then mixes and encodes: MP4 and WebM, captions, poster.
+   writes the film's bed and marks (on N3) or fits the study score, and plays
+   it. It counts the picture's sound cues (the mix lays none) and makes a first
+   mix, which gives the envelopes the picture pulses with. Then it renders the
+   frames, mixes and encodes: MP4 and WebM, captions, poster.
 
 ## Making a walkthrough
 
@@ -174,8 +240,11 @@ What makes shots reliable:
 - **Measure marks** for every callout (`marks`, or a `mark` action once the
   thing is on screen); walk.js pins callouts to them.
 - **Order gestures** that depend on each other inside a `seq`.
-- **Let the app be the music:** chords on the bar line at 84 BPM (`"snap":
-  "bar"`), and the bed out under demos (`bed_db`).
+- **Let the app be the music, after the voice:** each demo plays after its
+  line, never under it (a line's `demo`, § A demo), in F at 66 BPM, and the
+  bed comes down 9 LU under it by itself. On N3 nothing snaps. A film still
+  on Study keeps its chords on the bar line at 84 BPM (`"snap": "bar"`) and
+  takes the bed out under its demos (`bed_db`).
 - **Show the truth.** If the app does something the guide or the film doesn't
   say, film what it does and fix the app, or the words.
 
@@ -248,10 +317,11 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 |---|---|
 | `tools/voice.sh` | Script → TTS → ASR gate → timeline on measured words |
 | `tools/voice_script.py` | A film's script as `voice/tts.py` reads it, with the shared lexicon |
-| `tools/timeline.py` | Beats and lines laid on the bar grid; `--voice` for measured word times |
-| `tools/fit_score.py` | The study score stretched to a film's arrangement, its phrases repeated to fill each section and cut at its end |
-| `tools/sound_defaults.py` | Generated by `make sound` from `www/brand/sound.json`: the ladder, the voice chain, the duck, carve and dip, each part's EQ, pan and level, the grammar's timings, the marks' levels, the shortlist, the room, and the levels `mix.py` uses today |
-| `tools/test_fit_score.py`, `tools/test_mix.py` | The tools' own tests, run by `make dev-check` (the mix's need `.venv-voice`) |
+| `tools/timeline.py` | Beats and lines laid on the music's clock; `--voice` for measured word times. A line's `demo` is laid after it (0.7 s, the demo, its tail to −30 dB from `--demos`, 0.8 s), and a film on the N3 bed gets the entrance mark 1.75 s before its first word and the exit mark 1.75 s after its last |
+| `tools/demo_tail.py` | A demo's tail measured: how long after its last note-off it takes to fall 30 dB, into the file `timeline.py --demos` reads |
+| `tools/fit_score.py` | The study score stretched to a film's arrangement, its phrases repeated to fill each section and cut at its end; with `--film`, a film's N3 bed and marks written to its timeline, the sighs in the narration's gaps |
+| `tools/sound_defaults.py` | Generated by `make sound` from `www/brand/sound.json`: the ladder, the voice chain, the duck, carve and dip, each part's EQ, pan and level, the grammar's timings, the marks' levels, the shortlist, the room, the bed's notes (`BED`), how the lead plays a line (`LEAD`), and how a film laid out before the grammar is mixed (`BEFORE_THE_GRAMMAR`: the bed's level and duck, the app's gain and duck) |
+| `tools/test_fit_score.py`, `tools/test_timeline.py`, `tools/test_mix.py` | The tools' own tests, run by `make dev-check` (the mix's need `.venv-voice`) |
 | `tools/sounds.sh` | The shared scores, rendered once to `out/sound/` |
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
@@ -262,7 +332,7 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
 | `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
-| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster. A cue with no WAV stops it |
+| `tools/mix.py` | Voice, bed, marks and app sound mixed to the ladder and encoded, with captions and poster; the mix measured in `out/<film>/ladder.json`. Lays no cues |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |

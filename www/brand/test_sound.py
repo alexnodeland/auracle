@@ -100,7 +100,7 @@ class TheCheck(unittest.TestCase):
 
     def test_a_hand_edit_to_the_mix_defaults_fails_the_check(self):
         with Tree() as t:
-            t.edit(S.DEFAULTS, lambda s: s.replace('"duck_db": -9', '"duck_db": -8', 1))
+            t.edit(S.DEFAULTS, lambda s: s.replace('"broadband_db": -2', '"broadband_db": -3', 1))
             self.assertEqual(t.problems(), [f"{S.DEFAULTS}: stale or edited by hand; run `make sound`"])
 
     def test_a_deleted_generated_file_fails_the_check(self):
@@ -147,6 +147,41 @@ class TheCheck(unittest.TestCase):
             t.edit_source(lambda src: src["cast"]["parts"]["drone"]["breath"].update(low=0.6))
             self.assertEqual(t.problems(), [
                 f"{S.SOURCE}: `cast.parts.drone.breath` must run 0 <= low <= stock <= high <= 1, low below high"])
+
+    def test_the_pad_under_a_demo_names_a_chord_of_the_cycle_and_a_part(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["pad"]["under_demo"].update(counts_as="Fmaj7", on="pad"))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `bed.parts.pad.under_demo.counts_as` is 'Fmaj7', not a chord of `form.cycle`",
+                f"{S.SOURCE}: `bed.parts.pad.under_demo.on` names no part 'pad' in `cast.parts`"])
+
+    def test_the_sighs_placement_takes_no_negative_margin(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["melody"]["placement"].update(before_line_s=-0.5))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `bed.parts.melody.placement.before_line_s` should be a number, 0 or more"])
+
+    def test_the_film_tools_numbers_that_no_record_checks_are_checked_for_sense(self):
+        cases = [
+            (lambda s: s["marks"]["reach"]["out_of_the_bed"].update(hold_bars=1.5), "`marks.reach.out_of_the_bed.hold_bars` is 1.5"),
+            (lambda s: s["grammar"].update(exit_ring_out_s=-1), "`grammar.exit_ring_out_s` is -1"),
+            (lambda s: s["grammar"].update(demo_tail_hop_s=0), "`grammar.demo_tail_hop_s` is 0"),
+            (lambda s: s["cast"]["parts"]["lead"]["release"].update(tail_s="0.11"), "`cast.parts.lead.release.tail_s` is '0.11'"),
+            (lambda s: s["mix"]["sounding"].update(part_lufs=-80), "`mix.sounding.part_lufs` is -80"),
+        ]
+        for edit, want in cases:
+            with self.subTest(want=want), Tree() as t:
+                t.edit_source(edit)
+                problems = t.problems()
+                self.assertEqual(len(problems), 1, problems)
+                self.assertIn(want, problems[0])
+
+    def test_the_bed_and_the_lead_reach_the_film_tools(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["melody"]["placement"].update(bars_before_exit=2))
+            self.assertEqual(t.problems(), [f"{S.DEFAULTS}: stale or edited by hand; run `make sound`"])
+            t.generate()
+            self.assertIn('"bars_before_exit": 2', t.read(S.DEFAULTS))
 
     def test_a_part_that_turns_the_rooms_knob_fails_the_check(self):
         with Tree() as t:
@@ -211,10 +246,24 @@ class ThePlantedLevels(unittest.TestCase):
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/walkthrough\.sh:\d+: a numeric fallback for DUCK_DB")
 
+    def test_the_apps_gain_planted_in_a_pipeline_or_as_a_default_fails_the_check(self):
+        with Tree() as t:
+            t.edit("www/video/tools/walkthrough.sh",
+                   lambda s: s.replace('${APP_DB:+--gain-db "$APP_DB"}', '--gain-db "${APP_DB:--3}"', 1))
+            problems = t.problems()
+            self.assertEqual(len(problems), 1, problems)
+            self.assertRegex(problems[0], r"^www/video/tools/walkthrough\.sh:\d+: a numeric fallback for APP_DB")
+        with Tree() as t:
+            t.edit("www/video/tools/app_audio.py",
+                   lambda s: s.replace('default=sound_defaults.BEFORE_THE_GRAMMAR["app_gain_db"]', "default=-3.0", 1))
+            problems = t.problems()
+            self.assertEqual(len(problems), 1, problems)
+            self.assertRegex(problems[0], r"^www/video/tools/app_audio\.py:\d+: a number as the default of --gain-db")
+
     def test_a_number_as_mix_pys_default_fails_the_check(self):
         with Tree() as t:
             t.edit("www/video/tools/mix.py",
-                   lambda s: s.replace('default=sound_defaults.MIX_NOW["duck_db"]', "default=-8.0", 1))
+                   lambda s: s.replace('"--duck-db", type=float, default=None', '"--duck-db", type=float, default=-8.0', 1))
             problems = t.problems()
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --duck-db")
@@ -222,25 +271,24 @@ class ThePlantedLevels(unittest.TestCase):
     def test_a_negative_number_as_mix_pys_default_fails_the_check_however_it_is_written(self):
         with Tree() as t:
             t.edit("www/video/tools/mix.py",
-                   lambda s: s.replace('default=sound_defaults.MIX_NOW["music_db"]', "default = -(6)", 1))
+                   lambda s: s.replace('"--music-db", type=float, default=None', '"--music-db", type=float, default = -(6)', 1))
             problems = t.problems()
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --music-db")
 
     def test_a_level_quoted_in_a_docstring_help_string_or_comment_passes(self):
-        # Task 3 will write the new levels into prose like this.
         with Tree() as t:
             t.edit("www/video/tools/mix.py", lambda s: s.replace(
-                '"""Lay a film\'s sound in', '"""(The new mix: --music-db -3 --duck-db -2.) Lay a film\'s sound in', 1
+                '"""Lay a film\'s sound in', '"""(The ladder: --music-db -3 --duck-db -2.) Lay a film\'s sound in', 1
             ).replace(
-                'help="the music\'s duck under the voice (default: sound.json mix_now)"',
-                'help="the music\'s duck under the voice, e.g. --duck-db -2 (default: sound.json mix_now)"', 1))
+                'help="the bed\'s broadband duck under the voice',
+                'help="the bed\'s broadband duck under the voice, e.g. --duck-db -2,', 1))
             t.edit("www/video/tools/walkthrough.sh", lambda s: s.replace(
                 '${DUCK_DB:+--duck-db "$DUCK_DB"})',
                 '${DUCK_DB:+--duck-db "$DUCK_DB"})  # the spec: --duck-db -2, DUCK_DB:--2', 1
             ) + "# MUSIC_DB:--3 and --music-db -3 come with task 3\n")
             self.assertIn("--music-db -3 --duck-db -2.)", t.read("www/video/tools/mix.py"))
-            self.assertIn("e.g. --duck-db -2", t.read("www/video/tools/mix.py"))
+            self.assertIn("e.g. --duck-db -2,", t.read("www/video/tools/mix.py"))
             self.assertIn("# the spec: --duck-db -2", t.read("www/video/tools/walkthrough.sh"))
             self.assertEqual(t.problems(), [])
 

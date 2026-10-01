@@ -253,8 +253,9 @@ export class Stage {
 
   /**
    * A sound cue at absolute time t (a click, a whoosh), registered while a
-   * scene builds. The mixer lays these in from the same numbers the picture
-   * uses, so a click is heard on the frame it is seen.
+   * scene builds. No mix lays these any more: the films have no cues
+   * (ADR-014), and mix.py only counts what render.mjs --cues finds. Plan-006
+   * task 6 removes this and its call sites.
    */
   sfx(name, t, gain = 0) {
     this.cues.push({ name, t: Math.round(t * 1000) / 1000, gain });

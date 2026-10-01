@@ -16,10 +16,12 @@ import subprocess
 FILM = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.abspath(os.path.join(FILM, "..", ".."))
 MANIFEST = os.path.join(VIDEO, "out", "view-perform", "voice", "manifest.json")
+DEMOS = os.path.join(VIDEO, "out", "view-perform", "demos.json")  # the demos' measured tails (tools/demo_tail.py)
 
 
 def timeline():
-    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FILM, "--voice", MANIFEST], check=True, capture_output=True)
+    demos = ["--demos", DEMOS] if os.path.exists(DEMOS) else []
+    subprocess.run(["python3", os.path.join(VIDEO, "tools", "timeline.py"), FILM, "--voice", MANIFEST, *demos], check=True, capture_output=True)
     return json.load(open(os.path.join(FILM, "timeline.json")))
 
 

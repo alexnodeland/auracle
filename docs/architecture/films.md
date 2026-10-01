@@ -37,9 +37,10 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
                         ├─ framing.py        callouts and crops as contact sheets
                         └─ footage.mjs       the recording: video and the app's own sound per shot
                               └─ takes.py    each take's errors, paint rate and sound
-score:   fit_score.py sound/study.json → the engine plays it (examples/score.rs) → music/
-cues:    render.mjs --cues (the picture's envelopes, for the mix)
-mix:     mix.py voice + music + stingers + app sound, ducked, −16 LUFS, captions (.vtt)
+score:   fit_score.py --film (a film on N3: its bed and marks, written to the timeline), or
+         fit_score.py sound/study.json (Study, stretched) → the engine plays it (examples/score.rs) → music/
+cues:    render.mjs --cues (the picture's sound cues; the mix counts them and lays none)
+mix:     mix.py voice + bed + marks + app sound, to the ladder, −16 LUFS, captions (.vtt), ladder.json
 render:  render.mjs → part-*.mkv + picture.ffconcat (frames, in parallel)
 encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -preview.mp4, .jpg, .webp
          (side by side; --draft: a fast MP4 and the preview only)
@@ -51,10 +52,15 @@ The sound's values live in `www/brand/sound.json`
 marks and the N3 bed into `www/video/sound/` and the mix's defaults into
 `www/video/tools/sound_defaults.py`. `make dev-check` fails when one of them
 is stale, when `sound.json` disagrees with the record scores' notes, and when
-a number is `mix.py`'s bed or duck default or a pipeline's fallback for them.
-[Plan-006](../plans/006-the-sound-of-the-films.md) brings the pipeline above
-to the marks, the bed and the ladder; until then it plays Study with the
-stingers, at the levels in `sound.json`'s `mix_now`.
+a number is a film tool's level default (the bed's, the duck's, the app's
+gain) or a pipeline's fallback for one.
+`mix.py` mixes to the ladder and lays no cues. A film on the N3 bed is laid
+out to the grammar (`timeline.py`: each demo after its line, the marks 1.75 s
+from the voice) and scored to its timeline (`fit_score.py --film`: the held
+drone, the cycle's ties, the sighs in the narration's gaps), and mixed on
+stems. The films move to it as they are re-voiced
+([Plan-006](../plans/006-the-sound-of-the-films.md)); until then each is
+mixed exactly as it was, bar the cues (sound.json `before_the_grammar`).
 
 ## Walkthrough shots
 

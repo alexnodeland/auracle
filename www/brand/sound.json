@@ -1,10 +1,10 @@
 {
   "about": [
     "The one source of the films' sound (ADR-014). The values are docs/notes/sound-2026-09/SPEC.md's, chosen by ear and by measurement over six rounds; each block names the section it comes from.",
-    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is mix.py's bed or duck default or a pipeline's fallback for them.",
+    "`make sound` (www/brand/sound.py) writes the marks' and the bed's scores into www/video/sound/ (the notes from the score each names under docs/notes/sound-2026-09/scores/, the cast from here) and the mix's defaults into www/video/tools/sound_defaults.py. `make dev-check` fails when a generated file is stale, a cast preset is not in the bank, or a number is a film tool's level default or a pipeline's fallback for it: mix.py reads the bed's level and duck from the ladder (`ladder.bed_rest_lu`) and the duck (`duck.broadband_db`), and app_audio.py the app's gain from `before_the_grammar`.",
     "Strings are prose. Every number and pitch is either written into a generated file, or describes the record scores' notes and is checked against them by `--check` (the pedal, the marks' length, the lead's legato and swell, the bed's voicings, burble and sighs, and the demo), so a change here that the scores do not make fails the check. The `stock` knob values are checked against the bank by test_sound.py's render test.",
     "Units: knob values are the engine's normalized knob values, the ones a score's `params` take. Pitches are as they sound. LUFS is ITU-R BS.1770-4, as www/video/tools/mix.py computes it. A pan is -1 (left) to +1 (right), the score renderer's equal-power pan.",
-    "Three things are stand-ins, marked `stand_in`, that a film made to this must replace: the demo, the lead's bend for portamento, and the bed's hand-placed sighs."
+    "Two things are stand-ins, marked `stand_in`, that a film made to this must replace: the demo and the lead's bend for portamento. The bed's sighs, placed by hand in the audition, are placed by www/video/tools/fit_score.py --film (`bed.parts.melody.placement`)."
   ],
   "spec": "docs/notes/sound-2026-09/SPEC.md",
   "key": {
@@ -120,6 +120,10 @@
           "to_db": 0,
           "marks_s": 1.2,
           "bed_beats": 1.5
+        },
+        "release": {
+          "about": "Measured: from note-off to -30 dB in 0.108-0.112 s, for all 18 of the motif's notes in the finals (SPEC section 10). A film's sighs are placed so that this tail has ended before the next line.",
+          "tail_s": 0.11
         }
       },
       "burble": {
@@ -180,12 +184,14 @@
         "passing_chord_beats": [1, 2],
         "passing_chord": "If a hand-over would be abrupt, one passing chord of a beat or two, voice-led.",
         "burble": "Stops on Reach's downbeat.",
-        "drone": "Continues, and is released with Reach."
+        "drone": "Continues, and is released with Reach.",
+        "hold": "No chord change in the bar before Reach's downbeat: the bed holds its chord into the hand-over. In the reel the bed came back from the demo on G6/F and held it to Reach, rather than strike Bbmaj7/F 1.8 s before Reach's downbeat (a 2-beat Bbmaj7/F re-struck there never bloomed, and dipped 5 dB).",
+        "hold_bars": 1
       }
     }
   },
   "bed": {
-    "about": "SPEC section 4: N3. The score is the record named in `score`, three cycles with one sigh; the generator writes it to `out` with the cast from `cast`. `parts` describes its notes (the drone's pitches, the pad's voicings, the burble, the sighs) and is checked against them, so a change here fails the check until the score makes it too (Plan-006 task 5 writes the bed from these). Each part's EQ, pan and level is in `mix.parts`.",
+    "about": "SPEC section 4: N3. The score is the record named in `score`, three cycles with one sigh; the generator writes it to `out` with the cast from `cast`. `parts` describes its notes (the drone's pitches, the pad's voicings, the burble, the sighs) and is checked against them, so a change here fails the check until the score makes it too. They are also written into sound_defaults.py (`BED`), which www/video/tools/fit_score.py --film writes a film's bed from: the cycle held and tied for as long as the film needs, around its demos and marks, with the sighs in the narration's gaps. Each part's EQ, pan and level is in `mix.parts`.",
     "name": "N3",
     "title": "N3",
     "score": "docs/notes/sound-2026-09/scores/n3.json",
@@ -203,7 +209,14 @@
           "Bbmaj7/F": ["Bb3", "D4", "F4", "A4"],
           "Bbm6/F": ["Bb3", "Db4", "F4", "G4"]
         },
-        "restrike": "Only voices that move are re-struck (soft attack); the rest are tied, not re-struck. The inner lines descend chromatically (B, Bb, A and D, Db, C), and the top goes G G A G."
+        "restrike": "Only voices that move are re-struck (soft attack); the rest are tied, not re-struck. The inner lines descend chromatically (B, Bb, A and D, Db, C), and the top goes G G A G.",
+        "under_demo": {
+          "about": "SPEC section 9, rules 3 and 5. In the pause before a demo the pad is re-voiced to `voicing` on `on` (the marks' pad, whose 0.30 s rise speaks within the 0.7 s pause) and held until the bed comes back after the demo's note-off; the burble plays `counts_as`'s cell under it. With the demo's notes it makes `counts_as`, so the cycle resumes on the chord after it. In the reel the pad went to A3 C4, so the demo's F3 E4 G4 A4 completed an Fmaj9 without doubling it, and the bed came back on G6/F. No chord is struck less than `hold_before_s` before a demo's pause: the previous chord holds into it. The bed's pad takes 2.2 s to rise (`cast.parts.bed_pad`), so a chord struck later would never bloom, and a sliver of one would set the burble's cell going again for a note or two, a flam against the demo's own cell. In the reel Bbmaj7/F was struck 2.22 s before the pause. If the bed would come back inside the bar before the exit mark (`marks.reach.out_of_the_bed.hold_bars`), it does not: this voicing and the burble's cell carry on to the exit mark's downbeat, and nothing sounds past it.",
+          "voicing": ["A3", "C4"],
+          "on": "marks_pad",
+          "counts_as": "Fmaj9",
+          "hold_before_s": 2.2
+        }
       },
       "burble": {
         "step_beats": 0.75,
@@ -218,7 +231,7 @@
         "velocity": { "base": 0.5, "depth": 0.1, "period_notes": 7, "note": "0.5 x (1 + 0.1 sin(2 pi k / 7)): it breathes +/-10%, with no accents." }
       },
       "melody": {
-        "stand_in": "The sighs were placed by hand. A film needs them placed in the narration's gaps automatically.",
+        "placed": "By www/video/tools/fit_score.py --film, by `placement`. In the audition they were placed by hand: one sigh in the narration clip, on the first chord change after its last line ended (0.16 s after it), and none in the reel, whose narration leaves no gap that holds one.",
         "shape_beats": [1.5, 2.5],
         "shape": "Falling two-note sighs on chord tones: a dotted quarter, then a held note, the second swelling.",
         "sighs": {
@@ -228,7 +241,13 @@
           "Bbm6/F": ["Db5", "Bb4"]
         },
         "where": "Only in the narration's gaps, never in the bar before the exit mark. A sigh that has no gap is skipped, not crowded.",
-        "no_doubling": "Where a sigh would double the pad, the pad's top voice rests and returns at its next move."
+        "no_doubling": "Where a sigh would double the pad, the pad's top voice rests and returns at its next move.",
+        "placement": {
+          "about": "The rule, derived from where the hand-placed sighs sat. A sigh starts on a chord change (the first downbeat of a chord's two bars) in a gap of the narration: at least `after_line_s` after a line ends, with the whole sigh (its two notes, then the lead's release to -30 dB, `cast.parts.lead.release`) over at least `before_line_s` before the next line starts. Never in a demo's slot (its line's end to the bed's return), never in a mark, and never in the `bars_before_exit` bars before the exit mark. Every chord change that holds a whole sigh gets one; one with no room is skipped, not crowded. Where a sigh's note is one the bed's pad is sounding, that voice rests from the sigh to the next chord change, where it is struck again.",
+          "after_line_s": 0,
+          "before_line_s": 0,
+          "bars_before_exit": 1
+        }
       }
     }
   },
@@ -237,6 +256,11 @@
     "filter_order": 2,
     "band_split_order": 4,
     "center_below_hz": 150,
+    "sounding": {
+      "about": "What `while it sounds` means, where a part is levelled against the pad sounding with it (the melody; the marks' lead) and where a demo window is checked for sound: momentary loudness (400 ms blocks, 100 ms apart) above `part_lufs`, with the pad above `pad_lufs`. These are the audition's own gates (its build scripts measured every `while it sounds` this way).",
+      "part_lufs": -60,
+      "pad_lufs": -70
+    },
     "parts": {
       "drone": {
         "eq": { "lowpass_hz": 200 },
@@ -251,7 +275,7 @@
         "stereo": { "side_above_hz": 150, "side_gain": 1.25 },
         "pan": 0,
         "level": "reference",
-        "under_speech": "The pad dip (`duck.pad_dip`)."
+        "about": "Under speech, the pad dips further (`duck.pad_dip`)."
       },
       "burble": {
         "eq": { "band_hz": [110, 400] },
@@ -329,13 +353,22 @@
     "carve": { "band_hz": [1000, 4000], "db": -3, "on": "the whole bed" },
     "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
   },
+  "before_the_grammar": {
+    "about": "A film laid out before the grammar (its timeline has neither `marks` nor `demos`: a script still on Study or Signal) is mixed exactly as it was before ADR-014, so nothing about it changes until it is re-voiced onto the grammar (Plan-006 task 8). The voice is untreated at the ladder's `narration_lufs`. The bed, as one sound, sits `bed_db` under it and ducks `duck_db` broadband under the voice, with no carve and no dip. The app's recorded sound plays at `app_gain_db` (tools/app_audio.py's --gain-db, walkthrough.sh's APP_DB) and ducks `app_duck_db`, half the bed's duck, on the same detector and follower. The only change is that no cue is laid. These are the levels the films were mixed with before ADR-014 (they were mix_now). A film on the grammar lays its demos after its lines instead, each at the ladder's `demo_lufs`, and never ducks the app.",
+    "bed_db": -6,
+    "duck_db": -9,
+    "app_gain_db": -3,
+    "app_duck_db": -4.5
+  },
   "grammar": {
-    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used.",
+    "about": "SPEC section 9: the rules a film follows. `reel` is the value the final reel used, and the one www/video/tools/timeline.py lays a film out on. `exit_ring_out_s` is how long a film runs after the exit mark's last note, for the room to ring out: the reel's end (42.62 s) came 2.6 s after Reach's last note (40.02 s). A demo's tail is measured, not assumed: its playing level is the median of the RMS of the mono sum (the two channels' mean) over `demo_tail_hop_s` frames between its first note and its last note-off, and the tail ends at the first frame after the note-off that is `demo_tail_db` under that level. The reel measured its stand-in demo this way at 1.08 s (it had assumed 1.12 s).",
     "first_word_after_entrance_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
     "demo_after_line_s": 0.7,
     "demo_tail_db": -30,
+    "demo_tail_hop_s": 0.05,
     "voice_after_tail_s": 0.8,
     "exit_after_last_word_s": { "min": 1.5, "max": 2.0, "reel": 1.75 },
+    "exit_ring_out_s": 2.6,
     "rules": [
       "The motif plays only as the two marks.",
       "The first word comes 1.5-2 s after the entrance mark's last note. The bed (the mark's last chord held on) carries the gap and does not wait for a bar or cycle boundary.",
@@ -344,10 +377,5 @@
       "The voice waits until the demo's tail has fallen 30 dB under its playing level, then 0.8 s more on the bed, then continues. The bed returns over 1.0 s from note-off and resumes its cycle.",
       "The exit mark enters 1.5-2 s after the last word ends, wherever the bed is, handing over as in `marks.reach`."
     ]
-  },
-  "mix_now": {
-    "about": "The bed's level and duck the films are mixed with today: mix.py's defaults, which illustrated.sh and walkthrough.sh use. Kept so that no film's mix changes before Plan-006 task 3 moves the mix to the ladder and the duck above (the bed at -3 LU, a 2 dB duck); task 3 removes this block.",
-    "music_db": -6,
-    "duck_db": -9
   }
 }

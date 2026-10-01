@@ -19,4 +19,6 @@ mkdir -p "$out"
 python3 www/video/tools/voice_script.py "www/video/films/$F" "www/video/out/$F/tts.json"
 "$PY" www/video/voice/tts.py "www/video/out/$F/tts.json" -o "$out"
 "$PY" www/video/voice/asr_check.py "$out"
-python3 www/video/tools/timeline.py "www/video/films/$F" --voice "$out/manifest.json"
+# The demos' measured tails, when there are any (tools/demo_tail.py).
+DEMOS=(); [ -f "www/video/out/$F/demos.json" ] && DEMOS=(--demos "www/video/out/$F/demos.json")
+python3 www/video/tools/timeline.py "www/video/films/$F" --voice "$out/manifest.json" ${DEMOS[@]+"${DEMOS[@]}"}

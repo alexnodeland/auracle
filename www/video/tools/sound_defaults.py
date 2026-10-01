@@ -6,14 +6,6 @@ ADR-014; the values are docs/notes/sound-2026-09/SPEC.md's. Their prose (what ea
 value is for, and where it was measured) stays in sound.json.
 """
 
-# The bed's level against the voice and its duck under it, in dB, as the films are mixed today:
-# mix.py's --music-db and --duck-db defaults. Kept so that no film's mix changes before Plan-006
-# task 3 moves the mix to LADDER and DUCK below (the bed at -3 LU, a 2 dB duck); task 3 removes it.
-MIX_NOW = {
-    "music_db": -6,
-    "duck_db": -9,
-}
-
 # The bed's tempo and cycle; the marks are written at marks_bpm and placed by time.
 TEMPO = {
     "bpm": 66,
@@ -142,6 +134,71 @@ MARKS = {
         "pad_to_bed_level_s": 4.0,
     },
     "passing_chord_beats": [1, 2],
+    "hold_bars": 1,
+}
+
+# The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its
+# voicings, the pad under a demo, the burble, and the sighs with the rule that places them.
+BED = {
+    "name": "N3",
+    "cycle": ["Fmaj9", "G6/F", "Bbmaj7/F", "Bbm6/F"],
+    "pedal": ["F2", "C3"],
+    "voicings": {
+        "Fmaj9": ["A3", "C4", "E4", "G4"],
+        "G6/F": ["B3", "D4", "E4", "G4"],
+        "Bbmaj7/F": ["Bb3", "D4", "F4", "A4"],
+        "Bbm6/F": ["Bb3", "Db4", "F4", "G4"],
+    },
+    "under_demo": {
+        "voicing": ["A3", "C4"],
+        "on": "marks_pad",
+        "counts_as": "Fmaj9",
+        "hold_before_s": 2.2,
+    },
+    "burble": {
+        "step_beats": 0.75,
+        "held_beats": 0.675,
+        "cells": {
+            "Fmaj9": ["C3", "A3", "F3"],
+            "G6/F": ["D3", "B3", "G3"],
+            "Bbmaj7/F": ["D3", "Bb3", "F3"],
+            "Bbm6/F": ["Bb2", "Bb3", "F3"],
+        },
+        "velocity": {
+            "base": 0.5,
+            "depth": 0.1,
+            "period_notes": 7,
+        },
+    },
+    "sighs": {
+        "Fmaj9": ["F5", "E5"],
+        "G6/F": ["E5", "D5"],
+        "Bbmaj7/F": ["Bb4", "A4"],
+        "Bbm6/F": ["Db5", "Bb4"],
+    },
+    "shape_beats": [1.5, 2.5],
+    "placement": {
+        "after_line_s": 0,
+        "before_line_s": 0,
+        "bars_before_exit": 1,
+    },
+}
+
+# How the lead plays a line (SPEC section 2): held into the next note, the last note swelling, each note
+# bending in, and its release (note-off to -30 dB).
+LEAD = {
+    "legato_s": 0.06,
+    "swell": {
+        "from_db": -5,
+        "to_db": 0,
+        "marks_s": 1.2,
+        "bed_beats": 1.5,
+    },
+    "bend": {
+        "tau_ms": 45,
+        "pre_ms": 12,
+    },
+    "tail_s": 0.11,
 }
 
 # The presets a film casts from, by role, and the measured limits they were shortlisted by (RFC-007).
@@ -191,7 +248,6 @@ PARTS = {
         },
         "pan": 0,
         "level": "reference",
-        "under_speech": "The pad dip (`duck.pad_dip`).",
     },
     "burble": {
         "eq": {
@@ -243,11 +299,16 @@ PARTS = {
     },
 }
 
-# Filter orders, and the frequency below which every stem's side signal is removed.
+# Filter orders, the frequency below which every stem's side signal is removed, and what `while it sounds`
+# means (momentary loudness above part_lufs, with the pad above pad_lufs).
 MIX = {
     "filter_order": 2,
     "band_split_order": 4,
     "center_below_hz": 150,
+    "sounding": {
+        "part_lufs": -60,
+        "pad_lufs": -70,
+    },
 }
 
 # The grammar's timings, in seconds and dB (SPEC section 9).
@@ -259,10 +320,21 @@ TIMINGS = {
     },
     "demo_after_line_s": 0.7,
     "demo_tail_db": -30,
+    "demo_tail_hop_s": 0.05,
     "voice_after_tail_s": 0.8,
     "exit_after_last_word_s": {
         "min": 1.5,
         "max": 2.0,
         "reel": 1.75,
     },
+    "exit_ring_out_s": 2.6,
+}
+
+# A film laid out before the grammar (no marks, no demos), mixed as it was before ADR-014 until it is
+# re-voiced: the bed's level and duck, the app's gain (app_audio.py's --gain-db) and its duck.
+BEFORE_THE_GRAMMAR = {
+    "bed_db": -6,
+    "duck_db": -9,
+    "app_gain_db": -3,
+    "app_duck_db": -4.5,
 }
