@@ -93,11 +93,12 @@ A structural edit is a `StructOp`: `Replace`, `Insert`, `Delete`, `SetMod`,
 `SwapMix`, and the explicit-fragment forms `ReplaceTree`, `InsertTree` and
 `SetModTree`. `Insert` puts a processor into the wire between a node and its
 parent: the old subtree becomes the new module's primary input. Every new
-module arrives with audible defaults (`default_node`), and a two-input kind
-brings its own second branch: a triangle VCO for the mix, a sine an octave up
-for the ring mod, a pluck as the key of the compressor, ducker and gate, and a
-supersaw carrier with a formant modulator for the vocoder. A source cannot go
-into a wire; it can only `Replace` an empty socket.
+module arrives with audible defaults (`default_node`, now `default_fragment`),
+and a two-input kind brings its own second branch: a triangle VCO for the mix,
+a sine an octave up for the ring mod, a pluck as the key of the compressor,
+ducker and gate, and a supersaw carrier with a formant modulator for the
+vocoder (the carrier is now the chain; see "Found along the way"). A source
+cannot go into a wire; it can only `Replace` an empty socket.
 
 The ceilings are `MAX_SIZE` (24 modules), `MAX_DEPTH` (6, which is
 `PRIOR_MAX_DEPTH` + 1) and `MAX_MOD_DEPTH` (3), all checked by
@@ -187,7 +188,8 @@ this?", and none asks "what should I place?":
 - **The first suggestion is a source.** In an empty patch the six sources in
   its socket are the only additions that make a sound. Leaving everything else
   out is a choice the census makes, not a measurement: a mix or a vocoder over
-  the empty socket would sound, because each brings a source of its own.
+  the empty socket would sound, because each brings a source of its own. (A
+  vocoder no longer does: its carrier is the chain, here the empty socket.)
 - **There is no audio φ to compare against,** so an empty patch is compared
   with the pool's average sound. In standardized φ that is z = 0, where every
   lens rates 0, so a candidate's gain is its own rating and its forecast is
@@ -664,11 +666,16 @@ The questions as they were put:
 
 ## Found along the way
 
-- **`StructOp::Insert` with a vocoder drops the chain** it lands on:
-  `default_node` builds the vocoder's carrier and modulator fresh and ignores
+- **`StructOp::Insert` with a vocoder dropped the chain** it landed on:
+  `default_node` built the vocoder's carrier and modulator fresh and ignored
   the input it was handed. `InsertTree`, which the app's placements and
-  PERFORM's grafts use, keeps the chain as the carrier. Not fixed here; the
-  census leaves such edits out, and any caller of `Insert` would meet it.
+  PERFORM's grafts use, kept the chain as the carrier. It was not fixed here,
+  and the census left such edits out. **Fixed since,** on
+  `claude/insert-vocoder`: `Insert` and `Replace` (which had the same fault)
+  seat the kind's default module with `graft`, the splice `InsertTree` uses,
+  so the chain is the vocoder's carrier and keeps every module. A vocoder at
+  each wire now qualifies as a candidate; the tables above were measured
+  before the fix, without one.
 - **PERFORM's graft is a hand-made suggestion.** `insert_for` puts a neutral EQ
   on the output so Bright and Body have something to turn. The same ranking
   with the aimed criterion (`γ·s·ê·Δz` in place of taste) would measure which
