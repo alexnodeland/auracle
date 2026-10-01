@@ -6533,7 +6533,7 @@ function renderCompare() {
     (exploring ? ` <span class="lin-explore" title="Breeding samples your taste rather than only climbing it: some steps go down so it doesn’t get stuck.">exploring</span>` : "");
   const playBox = $("compare-play");
   const hear = (id, name) =>
-    `<button class="hw-btn small cmp-hear${hearingNow(`bank:${id}`) ? " playing" : ""}" type="button" data-hear="bank:${id}" data-id="${id}" aria-label="Hear ${esc(name)}">▶ ${esc(name)}</button>`;
+    `<button class="hw-btn small play cmp-hear${hearingNow(`bank:${id}`) ? " playing" : ""}" type="button" data-hear="bank:${id}" data-id="${id}" aria-label="Hear ${esc(name)}">▶ ${esc(name)}</button>`;
   playBox.innerHTML = (seedAlive
     ? hear(ev.parent_id, seedName)
     : `<span class="cmp-gone mono" title="Replaced: only its name is kept">${esc(seedName)} · replaced</span>`) +
