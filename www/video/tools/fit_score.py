@@ -307,19 +307,32 @@ def film_score(tl, bed, bloom, reach):
 
     # The cycle, in runs between the demos: each demo stops the bed's pad at
     # its line's end, and the cycle resumes after it on the chord after the
-    # one the demo makes. No chord changes in the bar before the exit mark.
+    # one the demo makes. No chord is struck in the bar before the exit mark,
+    # nor so close before a demo's pause that it could not bloom: the chord
+    # before it holds. A bed that would come back inside the bar before the
+    # exit does not: the voicing under the demo carries on to the exit.
     demos = sorted(tl.get("demos") or [], key=lambda d: d["t0"])
+    before = under["hold_before_s"] / spb
+    resume = (cycle.index(under["counts_as"]) + 1) % len(cycle)
     runs, start, first = [], B1, 0
-    for d in demos:
-        runs.append((start, b(d["pause"]), first))
-        start, first = b(d["off"] + up), (cycle.index(under["counts_as"]) + 1) % len(cycle)
-    runs.append((start, XB, first))
+    under_to = []  # where each demo's voicing (and the burble's cell under it) ends
+    for i, d in enumerate(demos):
+        runs.append((start, b(d["pause"]), first, True))
+        back = b(d["off"] + up)
+        nxt = b(demos[i + 1]["pause"]) if i + 1 < len(demos) else None
+        if back >= XB - hold - EPS:
+            back = XB  # it would come back in the bar before the exit: carry on to it
+        elif nxt is not None and nxt - back < before - EPS:
+            back = nxt  # it would come back too briefly to bloom: carry on to the next demo
+        under_to.append(back)
+        start, first = back, resume
+    runs.append((start, XB, first, False))
     plan = []  # per run: [(from, to, chord)]
-    for s0, s1, i in runs:
+    for s0, s1, i, to_demo in runs:
         spans, t = [], s0
         while t < s1 - EPS:
             nxt = t + per
-            if nxt >= s1 - EPS or nxt > XB - hold + EPS:
+            if nxt >= s1 - EPS or nxt > XB - hold + EPS or (to_demo and nxt > s1 - before + EPS):
                 spans.append((t, s1, cycle[i % len(cycle)]))
                 break
             spans.append((t, nxt, cycle[i % len(cycle)]))
@@ -366,16 +379,16 @@ def film_score(tl, bed, bloom, reach):
                     mpad_in.append(note(b(te + t0), d / spb, p, v))
         for line in lines:
             pad += [[a, z, p] for a, z, p in line if z - a > EPS]
-    for d in demos:
-        a, z = b(d["pause"]), b(d["off"] + up)
+    for d, z in zip(demos, under_to):
+        a = b(d["pause"])
         mpad_in += [note(a, z - a, p, pad_vel) for p in under["voicing"]]
 
     # The burble: from bar 2; under a demo, the cell of the chord it makes.
     bu = B["burble"]
     b_start = B1 + (into["burble_enters_bar"] - 1) * bpb
     spans = [(max(a, b_start), z, ch) for a, z, ch in plan[0] if z > b_start + EPS]
-    for d, later in zip(demos, plan[1:]):
-        spans.append((b(d["pause"]), b(d["off"] + up), under["counts_as"]))
+    for d, z, later in zip(demos, under_to, plan[1:]):
+        spans.append((b(d["pause"]), z, under["counts_as"]))
         spans += later
     burble, k = [], 0
     vel = bu["velocity"]

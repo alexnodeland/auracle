@@ -144,7 +144,7 @@ NEEDED = (
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
     "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "cast.parts.lead.release.tail_s",
     "marks.reach.out_of_the_bed.hold_bars", "mix.sounding.part_lufs", "mix.sounding.pad_lufs", "bed.name",
-    "bed.parts.pad.under_demo", "bed.parts.melody.placement",
+    "bed.parts.pad.under_demo.hold_before_s", "bed.parts.melody.placement",
 )
 
 
@@ -206,6 +206,7 @@ def validate(src: dict) -> list[str]:
         ("grammar.demo_tail_hop_s", lambda v: _num(v) and 0 < v <= 1, "a frame length in seconds, over 0 and at most 1"),
         ("grammar.demo_tail_db", lambda v: _num(v) and v < 0, "a negative number of dB"),
         ("cast.parts.lead.release.tail_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
+        ("bed.parts.pad.under_demo.hold_before_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
         ("mix.sounding.part_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
         ("mix.sounding.pad_lufs", lambda v: _num(v) and -70 <= v < 0, "a loudness from -70 LUFS (the gate) to 0"),
     ]

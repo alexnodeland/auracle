@@ -361,6 +361,96 @@ class ADemo(unittest.TestCase):
         self.assertTrue(under_burble and set(under_burble) <= set(cell))
 
 
+def n3_film(lines, demo_on=(), tail=1.08, play=5.0):
+    """A film on N3 laid out by timeline.py: `lines` are durations, and the
+    lines named in `demo_on` (indices) carry a demo of `play` s whose tail
+    measured `tail` s."""
+    import timeline
+
+    script = {"film": "f", "music": {"bed": "n3"}, "beats": [{"id": "b", "lines": []}]}
+    for i, d in enumerate(lines):
+        line = {"id": f"l{i}", "text": "A line.", "post": 0.6}
+        if i in demo_on:
+            line["demo"] = {"id": f"d{i}", "play_s": play}
+        script["beats"][0]["lines"].append(line)
+    tl, _ = timeline.lay_out(script, {f"l{i}": d for i, d in enumerate(lines)},
+                             measured={f"d{i}": {"tail_s": tail} for i in demo_on})
+    return tl
+
+
+class TheBarBeforeReach(unittest.TestCase):
+    """Nothing is struck in the bar before Reach, even when a demo's bed would
+    come back there, and nothing of the bed sounds past Reach's downbeat."""
+
+    def check(self, tl):
+        score, placed = film(tl)
+        xb = tl["marks"]["exit"]
+        self.assertFalse([c for c in placed["chords"] if xb - BAR + 1e-3 < c[0] < xb], "a chord change in the bar before Reach")
+        struck = [n for n in notes(score, name="pad") if xb - BAR + 1e-3 < n[0] <= xb + 1e-3]
+        self.assertEqual(struck, [], "the bed's pad struck in the bar before Reach")
+        for name in ("pad", "burble", "epad"):
+            late = [n for n in notes(score, name=name) if n[1] > xb + 1e-3]
+            self.assertEqual(late, [], f"{name} sounds past Reach's downbeat")
+        reach_pad = {p for a, _, p in notes(score, name="xpad") if abs(a - xb) < 1e-3}
+        self.assertTrue({"A3", "C4"} <= reach_pad)
+        return score, placed
+
+    def test_a_last_line_with_a_demo_and_a_measured_tail(self):
+        tl = n3_film([3.0, 3.2], demo_on=[1], tail=1.08)
+        score, _ = self.check(tl)
+        (d,) = tl["demos"]
+        self.assertAlmostEqual(tl["marks"]["exit"], d["next"], places=3)
+        under = [(a, b) for a, b, p in notes(score, name="epad") if abs(a - d["pause"]) < 1e-3]
+        self.assertEqual(len(under), 2)
+        for a, b in under:
+            self.assertAlmostEqual(b, tl["marks"]["exit"], places=3, msg="the voicing under the demo carries on to Reach")
+
+    def test_a_short_last_line_after_a_demo(self):
+        for last in (1.0, 0.6):
+            with self.subTest(last=last):
+                tl = n3_film([3.0, 3.2, last], demo_on=[1], tail=1.08)
+                back = tl["demos"][0]["off"] + sound_defaults.LADDER["bed_under_demo_up_s"]
+                self.assertGreater(back, tl["marks"]["exit"] - BAR, "the bed would have come back in the bar before Reach")
+                self.check(tl)
+
+    def test_a_very_short_tail(self):
+        tl = n3_film([3.0, 3.2], demo_on=[1], tail=0.15)
+        back = tl["demos"][0]["off"] + sound_defaults.LADDER["bed_under_demo_up_s"]
+        self.assertGreater(back, tl["marks"]["exit"], "the bed would have come back after Reach's downbeat")
+        self.check(tl)
+
+
+class AChordBeforeADemo(unittest.TestCase):
+    def test_no_chord_is_struck_too_close_before_a_demos_pause(self):
+        # The pause 29 ms after bar 5's change (Bbmaj7/F at 16.045 s): G6/F
+        # holds into it instead of a 29 ms sliver of Bbmaj7/F.
+        hold = sound_defaults.BED["under_demo"]["hold_before_s"]
+        self.assertEqual(hold, 2.2)
+        change = 1.5 + 2 * 2 * BAR
+        pause = change + 0.029
+        tl = a_film([(6.25, pause), (pause + 0.7 + 5.0 + 1.0 + 0.8, pause + 12.0), (pause + 12.6, pause + 40)],
+                    demos=[(pause, 5.0, 1.0)])
+        score, placed = film(tl)
+        self.assertFalse([c for c in placed["chords"] if pause - hold < c[0] < pause], placed["chords"])
+        into = [(t, ch) for t, ch in placed["chords"] if t < pause][-1]
+        self.assertEqual(into[1], "G6/F")
+        onsets = sorted(a for a, _, _ in notes(score, name="burble") if pause - 1.0 < a < pause + 0.5)
+        self.assertFalse([b - a for a, b in zip(onsets, onsets[1:]) if b - a < 0.1], f"a flam in the burble: {onsets}")
+        # Further away than the hold, the change is struck as before.
+        tl = a_film([(6.25, change + hold + 0.1), (change + hold + 7.6, change + 40)], demos=[(change + hold + 0.1, 5.0, 1.0)])
+        _, placed = film(tl)
+        self.assertIn([round(change, 3), "Bbmaj7/F"], placed["chords"])
+
+    def test_a_bed_that_would_come_back_too_briefly_holds_the_voicing_to_the_next_demo(self):
+        p1, p2 = 12.0, 12.0 + 0.7 + 3.0 + 1.0 + 1.5  # back 1.5 s before the next pause: too brief to bloom
+        tl = a_film([(6.25, p1), (p1 + 0.7 + 3.0 + 1.8, p2), (p2 + 0.7 + 3.0 + 1.8, p2 + 20)],
+                    demos=[(p1, 3.0, 1.0), (p2, 3.0, 1.0)])
+        score, placed = film(tl)
+        self.assertFalse([c for c in placed["chords"] if p1 < c[0] < p2], "no chord between the two demos")
+        under = sorted((a, b) for a, b, p in notes(score, name="epad") if p == "A3" and a >= p1 - 1e-3)
+        self.assertAlmostEqual(under[0][1], p2, places=3)
+
+
 class TheSighs(unittest.TestCase):
     def check_in_gaps(self, tl, score):
         L = sigh_length()
