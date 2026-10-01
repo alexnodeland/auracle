@@ -200,7 +200,8 @@ film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=
 | `tools/voice.sh` | Script → TTS → ASR gate → timeline on measured words |
 | `tools/voice_script.py` | A film's script as `voice/tts.py` reads it, with the shared lexicon |
 | `tools/timeline.py` | Beats and lines laid on the bar grid; `--voice` for measured word times |
-| `tools/fit_score.py` | The study score stretched to a film's arrangement |
+| `tools/fit_score.py` | The study score stretched to a film's arrangement, its phrases repeated to fill each section and cut at its end |
+| `tools/test_fit_score.py`, `tools/test_mix.py` | The tools' own tests, run by `make dev-check` (the mix's need `.venv-voice`) |
 | `tools/sounds.sh` | The shared scores, rendered once to `out/sound/` |
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
@@ -211,7 +212,7 @@ film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
 | `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
-| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster |
+| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster. A cue with no WAV stops it |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |

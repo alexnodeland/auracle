@@ -319,10 +319,9 @@ function sceneIntro({ stage, beat, line }) {
       const v1 = voiceLine(over, "This is how Auracle makes sound, from the *patch graph* to the *live voices*.");
       const tG = wordTime(l1, "patch graph");
       const tV = wordTime(l1, "live voices");
-      // The beam sweeps in real time, so the render can be heard as it is drawn
-      // (out/dsp/sfx/render_glass_pad.wav: the engine's own normalized audition).
+      // The beam sweeps the phrase in real time. The render is drawn, not
+      // heard (ADR-014: no cues).
       const tSweep = b.t0 + 0.3;
-      stage.sfx("render_glass_pad", tSweep, -6);
       return (tl, t) => {
         show(eb, ramp(t, b.t0 + 0.1, b.t0 + 0.8));
         const u = ramp(t, tSweep, tSweep + PHRASE_S, E.lin);

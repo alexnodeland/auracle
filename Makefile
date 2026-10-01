@@ -77,8 +77,8 @@ install-hooks:
 ## www/brand/tokens.json, and the check's own tests), the voice (each file's
 ## count of banned words, em dashes and British spellings exactly at
 ## www/brand/voice-baseline.json, and the check's own tests), the Claude Code
-## hooks against inputs they must block and pass, and the syntax of every film
-## tool
+## hooks against inputs they must block and pass, the syntax of every film
+## tool, and the film tools' own tests (on .venv-voice when it exists)
 dev-check:
 	@python3 .claude/checks/check_docs.py
 	@python3 www/checknames.py
@@ -91,6 +91,7 @@ dev-check:
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
 	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
 	@printf '  film tools and hooks: syntax OK\n'
+	@for f in www/video/tools/test_*.py; do $(FILM_ENV) python3 $$f || exit 1; done
 
 ## tokens: write the colours and font families in www/brand/tokens.json into
 ## every surface's stylesheet (the generated blocks are committed)

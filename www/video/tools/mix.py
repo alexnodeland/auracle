@@ -23,7 +23,8 @@ Sources:
   --music DIR   either bed.wav (the whole film), or one WAV per section named
                 as in arrangement.json (`<section>.wav`, bar-aligned, each
                 starting at its section's t0)
-  --sfx DIR     one WAV per cue name in cues.json (whoosh.wav, blip.wav, …)
+  --sfx DIR     one WAV per cue name in cues.json (whoosh.wav, blip.wav, …).
+                A cue with no WAV there stops the mix, naming it.
 
 The mix is plain arithmetic, so it is repeatable: narration at a fixed level,
 the music ducked under it by an envelope follower (80 ms attack, 450 ms
@@ -204,6 +205,10 @@ def main():
     odir = os.path.join(VIDEO, "out", args.film)
     os.makedirs(odir, exist_ok=True)
     tl = json.load(open(os.path.join(fdir, "timeline.json")))
+    # The picture's sound cues, checked before any audio is read.
+    cues_f = os.path.join(odir, "cues.json")
+    cues = json.load(open(cues_f)) if args.sfx and os.path.exists(cues_f) else []
+    sfx_files = cue_files(cues, args.sfx)
     n = int(math.ceil(tl["duration"] * SR)) + SR
     vo = np.zeros((n, 2), np.float32)
     music = np.zeros((n, 2), np.float32)
@@ -264,13 +269,10 @@ def main():
             print(f"music: {len(levels)} bed levels")
 
     # Effects, at the times the picture shows them.
-    cues_f = os.path.join(odir, "cues.json")
-    if args.sfx and os.path.exists(cues_f):
+    if cues:
         cache = {}
-        for c in json.load(open(cues_f)):
-            f = os.path.join(args.sfx, f"{c['name']}.wav")
-            if not os.path.exists(f):
-                continue
+        for c in cues:
+            f = sfx_files[c["name"]]
             if f not in cache:
                 x = load(f)
                 cache[f] = x * 10 ** ((-24 - lufs(x)) / 20) if len(x) > 0.4 * SR else x * (0.25 / (np.max(np.abs(x)) + 1e-9))
@@ -376,6 +378,18 @@ def main():
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
         print(jpg)
+
+
+def cue_files(cues, sfx):
+    """Each cue's WAV in the effects directory, by cue name. A cue with no WAV
+    stops the mix, naming every one missing: skipping it without a word is how
+    dsp's one cue went unheard in a published film."""
+    files = {c["name"]: os.path.join(sfx, f"{c['name']}.wav") for c in cues}
+    missing = sorted(name for name, f in files.items() if not os.path.exists(f))
+    if missing:
+        sys.exit(f"mix.py: no WAV in {sfx} for the cue{'s' if len(missing) > 1 else ''} {', '.join(missing)} "
+                 f"(cues.json, from the picture's stage.sfx() calls): render it there, or take the cue out")
+    return files
 
 
 def picture_input(odir):

@@ -8,6 +8,16 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: the films' music
+
+- **The music under a long film plays to its end.** Each film's music is
+  stretched to fit the film, and the stretch kept each phrase's written
+  number of repeats, so about 46 s into a long section the music stopped,
+  or thinned to its bass line. The published `math` and `dsp` films have
+  36–44 s of silence under the narration because of it. Each phrase now
+  repeats to the end of its section, and the films change when they are
+  next rendered (`test_fit_score.py`).
+
 ### Fixed — ▶ plays the edit
 
 - **▶ or Space in PATCH, pressed right after an edit, plays the edited patch.**
