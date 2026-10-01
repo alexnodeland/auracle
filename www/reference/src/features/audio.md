@@ -252,9 +252,13 @@ comfortable, with one cluster that is not:
 
 | Coordinate | VIF |
 |---|---|
-| `rolloff_mean` | ≈ 18.4 |
-| `zcr_mean` | ≈ 10.4 |
+| `rolloff_mean` | ≈ 16.9 |
+| `zcr_mean` | ≈ 9.7 |
 | `centroid_mean` | ≈ 5.9 |
+
+These are the values after the zero-crossing rate's DC removal; before it they
+were 18.4, 10.4, and 5.9 ([Open questions](../design/open-questions.md) has the
+history).
 
 That is the **brightness cluster**: three genuine measurements of one
 perceptual thing. It is left standing deliberately: dropping any of them

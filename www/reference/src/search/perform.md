@@ -639,7 +639,7 @@ re-normalizing it.
 - **The directions are fixed, not personal.** The six are the same for every
   player. A control along a fitted style $\theta_k$ is [a different and
   more interesting
-  object](../design/audition-limits.md#8-forty-addresses-and-no-macros-when-the-macro-axis-is-already-fitted),
+  object](../design/audition-limits.md#8-six-fixed-controls-when-the-personal-axis-is-already-fitted),
   and not this one.
 - **Most of what the player does here is logged, not fitted.** Keep, Back,
   Take, each offer asked for, and each control turn are recorded as
