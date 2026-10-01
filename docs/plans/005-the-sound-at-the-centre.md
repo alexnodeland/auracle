@@ -121,7 +121,11 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      first (RFC-006, Open 3).
    - (b) The seed count, exposed (`refine_seeds`).
    - (c) The palette's twelve new directions. Define each in φ and measure
-     how often each is reachable across the presets.
+     how often each is reachable across the presets. *Done (2026-10-01):*
+     `PALETTE` in `perform.rs`, measured over the 62 presets
+     ([Measured (task 9c)](#measured-task-9c)). The worker's `perform_wire`
+     takes `controls`, the palette indices to wire; the page sends none yet,
+     so it wires the six as before.
    - (d) The module suggestion: a design note first (Open 2). The note is
      [`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md),
      waiting on the maintainer's decision.
@@ -164,6 +168,47 @@ posted as `ratings`), as does every views post. The whole map is not posted
 per pick: its history ghosts and projection cost 28 ms by 100 picks and grow
 with the history, so they wait for a refit. Task 9b exposes the seed ids
 rather than the count: `seeds` and `may_replace` ride in the same field.
+
+## Measured (task 9c)
+
+`crates/auracle-wasm/examples/palette_census.rs` wires each control on each
+of the 62 presets the way PERFORM does (the shipped engine, `load_preset`,
+`Engine::wire_named`: the Jacobian, at most four knobs, the purity and reach
+gate, separation, verification on real renders). `palette_cost.mjs` beside it
+times the same measurement in wasm. The definitions, the three redundancy
+measures and the per-control tables are in the reference
+([The palette](../../www/reference/src/search/perform.md#the-palette-eighteen-directions)).
+
+| Family | Control (low · high) | Reaches alone | Beside the six |
+| --- | --- | --- | --- |
+| Tone | Bright, Warmth (cold · warm), Air (closed · airy) | 79%, 73%, 66% | 79%, 52%, 48% |
+| Weight | Body, Thump (light · thumping), Heft (slight · heavy) | 53%, 81%, 76% | 32%, 40%, 52% |
+| Dynamics | Snap, Punch (gentle · punchy), Round (hard · round) | 82%, 73%, 82% | 82%, 60%, 44% |
+| Movement | Motion, Throb (steady · throbbing), Sway (fixed · swaying) | 77%, 47%, 55% | 74%, 29%, 34% |
+| Space | Space, Distance (near · distant), Haze (clear · hazy) | 23%, 94%, 90% | 23%, 39%, 63% |
+| Character | Grit, Bite (mild · biting), Lo-fi (clean · worn) | 11%, 81%, 56% | 6%, 58%, 34% |
+
+"Beside the six" wires the control after the six, so where its gesture on a
+patch is one of theirs it is a search control. A measurement of all eighteen
+is a median 49 renders against 25 for the six (mean 49.8 against 26.2); the
+Jacobian's 12 are shared, and each control that reaches adds about five. In
+wasm (`palette_cost.mjs`, every fourth preset) that is a mean 7.5 s against
+14.2 s.
+
+Decisions:
+- The prototype's blends of the six are not used: five pairs were one
+  direction. Each of the twelve is its own direction over φ.
+- The twelfth control is Heft, in Weight. Round, Throb and Sway are proposed
+  for the prototype's Softness, Wobble and Drift (the voice's word table
+  defines round; Wobble Board is a preset; drift is WANDER's). Each new word
+  needs its row in `www/brand/voice.md` before the palette's panel shows it.
+- The engine wires the six unless the worker names others (`controls` on
+  `perform_wire`), so the app is unchanged. The palette's panel (task 5)
+  sends the controls placed on it: verifying at most eight keeps a
+  measurement near today's, and the other controls' wirings come from the
+  same Jacobian by prediction, without renders.
+- `apps/web/perform-wirings.json` keeps the six. With the twelve it would be
+  2.2 times the size (380 KB), for controls the panel does not show yet.
 
 ## Done when
 

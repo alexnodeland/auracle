@@ -87,7 +87,9 @@ Two loops share one pool of patches.
 ## PERFORM
 
 `auracle-session/src/perform.rs` gives a patch six named controls (Bright,
-Snap, Motion, Body, Grit, Space). Each is wired to the knobs whose change moves
+Snap, Motion, Body, Grit, Space), the first six of a palette of eighteen
+(`PALETTE`) that the engine measures the same way when asked
+(`Engine::wire_named`; the app asks for the six). Each is wired to the knobs whose change moves
 that direction in φ, measured on the patch's own renders (a Jacobian), and the
 wiring is verified on real renders before it is trusted. A control that no
 knob reaches becomes a **search control**: turning it asks for an offer, a

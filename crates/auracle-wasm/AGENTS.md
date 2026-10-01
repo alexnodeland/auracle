@@ -17,7 +17,9 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
 | `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
-| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only) |
+| `examples/palette_census.rs` | The palette's eighteen directions (Plan-005 task 9c): their definitions and cosines, how often each reaches the presets alone and beside the six, and what measuring eighteen costs against six, on the shipped engine; `--prototype` adds the prototype's blends |
+| `examples/palette_cost.mjs` | The same measurement's cost in wasm under node, six against eighteen (`make wasm` first) |
+| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on, with the session engine inside it (`session`) for the measurement examples. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only) |
 
 ## Rules
 
