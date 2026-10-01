@@ -10,7 +10,7 @@ $$\pi_\beta(x) \;\propto\; p_{\text{grammar}}(x)\;\exp\!\big(\beta \cdot \E[u_\t
 
 This is fugue-evo's `EvolutionModel` with the learned utility plugged in as
 fitness, so the whole thing becomes an ordinary probabilistic program and
-typed-MH / SMC drivers apply unchanged.
+fugue-evo's typed MH applies unchanged.
 
 ## What each factor does
 
@@ -33,7 +33,7 @@ a single confident-looking draw.
 <figure class="viz" data-viz="boltzmann">
 <figcaption><strong>Turn β and watch the target move.</strong> At β = 0 the target
 <em>is</em> the prior: the search browses, and simple terms dominate because that is
-what the prior says, not because anything penalises size. Turn it up and the
+what the prior says, not because anything penalizes size. Turn it up and the
 mass walks out toward the region the taste model likes, paying prior
 probability to get there. One dial, and the trade it makes is visible rather
 than tuned.</figcaption>
@@ -41,18 +41,18 @@ than tuned.</figcaption>
 
 ## $\beta$
 
-`SessionConfig::beta`, default **2.0**.
+`SessionConfig::beta`, default **2.0** (in `engine.rs`).
 
-| $\beta$ | Behaviour |
+| $\beta$ | Behavior |
 |---|---|
 | $\to 0$ | Browse the prior. The taste model is ignored |
 | $2.0$ | Shipped default |
-| large | Optimizer mode — "give me your best guess at my perfect patch" |
+| large | Optimizer mode: the search climbs toward the model's single best guess |
 
 One dial for conservatism, which is the practical payoff of writing the target
 down: there is no explore/exploit schedule to tune, no diversity term, no
-niching parameter. Tempering the same target is also how tempered SMC would
-work if it were wired up.
+niching parameter. Tempered SMC, which is not built, would temper this same
+target.
 
 ## Fitness through the surrogate
 
@@ -74,8 +74,8 @@ impl Fitness for SurrogateFitness {
 
 Three things in nine lines:
 
-**Quarantine is a fitness, not just a filter.** `QUARANTINE_FITNESS = -50.0`,
-so a pathological candidate contributes a large negative factor to the target
+**Quarantine is a fitness, not just a filter.** `QUARANTINE_FITNESS = -50.0`
+(in `surrogate.rs`), so a pathological candidate contributes a large negative factor to the target
 and the search **learns to avoid the region** rather than repeatedly sampling
 it. That is
 [safety layer 2](../audition/vetting.md#quarantine-is-not-just-hiding); hiding alone would
@@ -87,8 +87,9 @@ is meaningless against any other scaling; see
 
 **`want_audio: false`.** The surrogate only ever wants $\varphi$; nothing in a
 refinement generation is played. Asking for samples would undo the memo: a miss
-would convert 141k `f64`s it then drops, and a hit would copy a ~565 KB buffer
-out of the audio tier. Twice per MH step, ~96 times per seed, that is tens of
+would convert about 223,000 `f64`s (the 5.05 s phrase at 44,100 Hz) that it then
+drops, and a hit would copy that buffer, about 0.9 MB as `f32`, out of the audio
+tier. Twice per MH step, 80 times per seed at 40 steps, that is tens of
 megabytes of churn for a value discarded on the next line.
 
 ## Why the render memo matters
@@ -112,5 +113,6 @@ adaptive single-site MH walk warm-started from each of the best pool members
 and keeps the final state: local hill-climbing *on* that target, which is what
 a candidate pool needs, rather than a draw *from* it.
 
-Tempered SMC with the crossover population kernel remains the design. The
-distinction is in [Refinement](./refinement.md).
+The design's tempered SMC is not built, and there is no crossover: every child
+grows from one seed (`walk.rs`). [Refinement](./refinement.md) draws the
+distinction.

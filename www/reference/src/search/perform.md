@@ -36,6 +36,9 @@ deviation $s_j$ of the session's own spread, from the
 [standardizer](../features/standardization.md). The instrument's tooltips and
 the code's comments write this unit as σ.
 
+The constants on this page live in `auracle-session`'s `perform.rs` unless the
+text names another file.
+
 ## A named control is a direction
 
 Six controls, each a fixed weighting of named [φ_audio](../features/audio.md)
@@ -108,7 +111,7 @@ Ridge rather than plain least squares because $J$ is badly conditioned by
 construction. Two knobs can do nearly the same thing to the sound, which makes
 columns nearly collinear, and many knobs are nearly inaudible, which makes
 columns nearly zero. Unregularized, the solve answers
-both with large, cancelling moves.
+both with large, canceling moves.
 
 The support $S$ is the four knobs with the largest **effect**
 $\lvert \delta^\star_k \rvert \, \lVert J_{\cdot k} \rVert$ (`MAX_KNOBS`), and
@@ -206,7 +209,7 @@ assumption and is not verified.
 
 Purity asks whether a move is *this* control. Measured against the whole of
 φ, it cannot tell a brightening that also raises the zero-crossing rate and the
-high band — which every real brightening does — from one that also slows the
+high band (which every real brightening does) from one that also slows the
 attack. Over a fresh session pool, Bright's median cosine with its own axis
 was 0.26 for that reason. What a player hears as "this control does something
 else" is movement along *another control's* axis, so purity is the cosine with
@@ -292,7 +295,7 @@ half that moves at the end but reverses on the way is closed. A half is
 **open** when $r_s \ge 0.075$, half the reach floor. A control with neither
 half open becomes a search control. The instrument draws a half-closed
 control's ring solid on the side it can turn toward and dotted on the other,
-with a stop at the centre, and says which way it turns: *turns toward restless
+with a stop at the center, and says which way it turns: *turns toward restless
 only*, for Motion on First Bass.
 
 A control that would close at full travel gets **one retry at half**: the same
@@ -309,10 +312,10 @@ same `WasmEngine` calls by `make perform-wirings`), so a preset is playable the
 moment it lands; the page re-measures it in the background, because the file
 was measured under a standardizer fitted to a standard pool, not the session's.
 The view re-wires after every patch change, and after a glide or a Keep that
-carries the knobs out of the neighbourhood the wiring was measured in (see
-below), so the claims are always about the neighbourhood the sound is in. A
+carries the knobs out of the neighborhood the wiring was measured in (see
+below), so the claims are always about the neighborhood the sound is in. A
 background re-measurement that wires each control to the same knobs is taken
-in place, without re-centring the controls.
+in place, without re-centering the controls.
 
 ### The gate, and why it samples somewhere else
 
@@ -346,7 +349,7 @@ is closed however small the reversal.
 
 **Per patch, not per knob kind.** The obvious alternative to measuring a
 Jacobian per patch is a table: what a cutoff knob, or an attack knob, usually
-does. Both were measured over the 61 presets. The table was built
+does. Both were measured over 61 presets. The table was built
 leave-one-out, from per-site-kind averages over the other 60, so no preset was
 wired by a table that had seen it.
 
@@ -407,7 +410,7 @@ $$\pi_\beta(x) \;\propto\; p_{\text{grammar}}(x)\,\exp\!\big(\beta\,\E[u_\theta(
 
 restricted to this patch's shape: every structural and categorical address,
 every continuous site without a live handle, and the player's own locks are
-held fixed — the walk moves only `live_knobs`. Holding sites fixed in a Metropolis–Hastings walk is
+held fixed; the walk moves only `live_knobs`. Holding sites fixed in a Metropolis–Hastings walk is
 exact conditioning ([Locks as conditional refinement](./locks.md)), so the walk
 targets $\pi_\beta(v \mid x_{\mathcal{L}})$ over the knobs the voices can take
 live. Structure cannot change under the player's hands, and nothing the walk
@@ -429,11 +432,13 @@ drift should wander, and how far is the Wander dial's to say.
 
 | Wander | Steps | $\sigma$ | Farthest knob moved (12 presets) |
 |---|---|---|---|
-| gentle drift | 8 | 0.05 | 0.06–0.14 |
-| mid drift | 18 | 0.08 | 0.15–0.33 |
-| roam | 40 | 0.15 | 0.25–0.61 |
+| drift, at its start | 8 | 0.05 | 0.06–0.14 |
+| drift, at its top | 18 | 0.08 | 0.15–0.33 |
+| roam, at its top | 40 | 0.15 | 0.25–0.61 |
 
-(`cargo run -p auracle-session --example drift_distance --release`.) The walk
+(`cargo run -p auracle-session --example drift_distance --release`.) Within
+each zone the pace rises linearly with the dial (`wanderPace`, in
+`perform.js`); roam starts at 24 steps and $\sigma = 0.10$. The walk
 returns its end state, or nothing if it ends where it started. Like
 refinement, a short walk's end state is local movement *on* $\pi_\beta$, not a
 draw *from* it ([What is not sampled](./target.md#what-is-not-sampled-from-this)).
@@ -442,7 +447,8 @@ player keeps it.
 
 **The wiring survives a small drift.** The named controls are a linear model
 measured with 0.08 knob steps, so the instrument re-measures them only when
-some knob has left a 0.12 neighbourhood of where they were measured. A gentle
+some knob has left a 0.12 neighborhood of where they were measured (`TRUST`,
+in `perform.js`). A gentle
 drift usually stays inside and costs nothing; before, every glide was followed
 by a full re-measure of about 46 renders, which in *drift* kept the worker busy
 much of the time and queued offers behind it.
@@ -460,8 +466,8 @@ moves are allowed: it may add, remove or replace a module. It is also
 non-inserting. The instrument asks for 20 steps (40 in *roam*) and plays the
 result in the B slot, never as a jump. The Offer pad and Wander ask for this
 walk. A [search control](#wiring-ridge-support-re-solve) released more than
-$0.3$ from its centre asks for an aimed one (below), and springs back without
-moving a knob.
+$0.3$ from its center (`ASK_AT`, in `perform.js`) asks for an aimed one
+(below), and springs back without moving a knob.
 
 ### A search control's offer is aimed
 
@@ -497,9 +503,10 @@ would have done.
 
 The reply carries `moved` $= \hat e^\top\big(z(\text{offer}) - z(\text{home})\big)$
 (`Engine::moved_along`), and B's strip prints $s \cdot$ `moved` in amber:
-*grittier by 1.8σ*, or, below half of `REACH_FLOOR` (the line a verified half
-must clear to be said to turn that way), *not grittier: this walk found no way
-there — turn it again to try another*.
+*grittier by 1.8σ*. Below half of `REACH_FLOOR` (`AIM_SAID`, in `perform.js`:
+the line a verified half must clear to be said to turn that way), it says the
+walk did not get there, *not grittier: this walk found no way there*, and
+invites another turn.
 
 **The census.** $\gamma$ and the walk count were chosen by
 `make offer-census` (`offer_census`): 16 presets (every third in the bank),
@@ -560,7 +567,7 @@ With no posterior there is no utility to climb, and the first version of
 PERFORM returned nothing for drift and offers until the player had made picks.
 But the posterior before any evidence is not undefined. It is the prior.
 
-With a zero-mean prior on $\theta$ and a single lens, the prior expectation of
+With a zero-mean prior on $\theta$ and a single style, the prior expectation of
 utility is $\E[\theta]^\top z = 0$ for every patch, so the target is
 $p_{\text{grammar}}$ itself. `VetOnlyFitness` writes that down, with the vetting
 gate kept:
@@ -606,12 +613,18 @@ $\cos 45° + \sin 45° = \sqrt2$. An equal-gain law would have the opposite
 error, flat for identical sources and 3 dB down for unrelated ones. An offer
 is a different patch, so the equal-power error is the one taken.
 
-B is **loudness-matched**. Its makeup gain is the offer's own [loudness
-normalization](../audition/loudness.md) to −18 LUFS on the standard phrase,
-$10^{g/20}$ with $g$ clamped to $\pm 12$ dB, the same makeup every live patch
-gets. Without it a crossfade would mostly compare levels, and the louder side
-reliably wins. The match is made on the standard phrase at each patch's own
-settings; a named control turned on A afterwards changes A's level without
+B is **loudness-matched**. Its makeup gain is the one
+[loudness normalization](../audition/loudness.md) computes for the offer,
+`TARGET_LUFS` minus the phrase's measured `lufs_before`, so the offer's standard
+phrase plays at −18 LUFS. The gain is clamped only to the range the voice
+accepts (`MAKEUP_MIN_DB` to
+`MAKEUP_MAX_DB`, −24 to +60 dB, in `auracle-wasm`'s `live.rs`). It is the same
+makeup every live patch gets (`live_makeup`, in `level.rs`). It used to be
+clamped to ±12 dB, which left 43% of a fresh pool outside the clamp; a leveler
+on the summed polyphony now catches a held note that grows louder than the
+phrase predicted. Without the match a crossfade would mostly compare levels,
+and the louder side reliably wins. The match is made on the standard phrase at each patch's own
+settings; a named control turned on A afterward changes A's level without
 re-normalizing it.
 
 ## What is not done
@@ -624,18 +637,23 @@ re-normalizing it.
   repeated turns the same way do not ask harder, and Wander's offers are not
   aimed at the last control turned (RFC-002's open questions).
 - **The directions are fixed, not personal.** The six are the same for every
-  player. A control along a fitted style lens $\theta_k$ is [a different and
+  player. A control along a fitted style $\theta_k$ is [a different and
   more interesting
   object](../design/audition-limits.md#8-forty-addresses-and-no-macros-when-the-macro-axis-is-already-fitted),
   and not this one.
-- **What the player does here is logged, not fitted.** Keep, Back, Take, each
-  offer and each control turn are recorded as `ImplicitEvent`s
-  (`perform_keep`, `perform_back`, `perform_take`, `perform_offer`,
-  `perform_turn`). None enters the likelihood. A Keep can mean *I love this* or
-  *stop drifting for a moment*, and [implicit
-  signals](../taste/likelihoods.md#implicit-signals-are-out-of-scope) stay out
-  of the model until a fit using them can be validated against the explicit
-  ones.
+- **Most of what the player does here is logged, not fitted.** Keep, Back,
+  Take, each offer asked for, and each control turn are recorded as
+  `ImplicitEvent`s (`perform_keep`, `perform_back`, `perform_take`,
+  `perform_offer`, `perform_turn`), and none of those events enters the
+  likelihood. A Keep can mean *I love this* or *stop drifting for a moment*,
+  and [implicit
+  signals](../taste/likelihoods.md#implicit-signals-are-logged-not-modeled)
+  stay out of the model until a fit using them can be validated against the
+  explicit ones. The exception is an offer's answer: once B has been heard for
+  a second (`HEARD_MS`, in `perform.js`), Take, or asking for another offer, is
+  recorded as a duel with the `PerformOffer`
+  [provenance](../taste/likelihoods.md#edit-beats-original), and it counts as a
+  pick.
 - **Combinations are not verified.** Each control is verified alone, at $v_0$.
 - **Motion hears one note.** Its axis is built from the held note's span, with
   the [limits](../features/audio.md#what-it-cannot-say) that implies.

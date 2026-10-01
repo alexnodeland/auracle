@@ -1,4 +1,4 @@
-# Refinement — what ships
+# Refinement: what ships
 
 <p class="lede">The design is tempered sequential Monte Carlo. What ships is a short local
 Metropolis–Hastings walk. This page is about the difference, because it is easy
@@ -6,12 +6,14 @@ to overstate.</p>
 
 ```admonish warning title="Design versus implementation"
 The [design](../design/open-questions.md) describes generation as sampling from
-$\pi_\beta \propto p_{\text{grammar}} \cdot e^{\beta \E[u_\theta]}$ by tempered SMC with a
-crossover population kernel. **That is an intention, not a description of the code.**
+$\pi_\beta \propto p_{\text{grammar}} \cdot e^{\beta \E[u_\theta]}$ by tempered SMC.
+**That is an intention, not a description of the code.** There is no crossover: every
+child grows from one seed (`walk.rs`).
 
-What runs is a dozen-to-forty-step adaptive single-site MH walk warm-started from each of
-the best pool members, keeping the final state: local hill-climbing *on* that
-target, rather than a draw *from* it.
+What runs is a 40-step adaptive single-site MH walk (`refine_steps`; a walk with
+locked sites runs proportionally more steps, up to `LOCK_SCALE_CAP` (4×), in
+`walk.rs`), warm-started from each of the best pool members and keeping the final
+state: local hill-climbing *on* that target, rather than a draw *from* it.
 ```
 
 ## What runs
@@ -66,7 +68,7 @@ makes it selectable so the comparison stays runnable, the same rule the
 
 | | |
 |---|---|
-| `RefineKeep::Last` | the state the walk ended on — **the default** |
+| `RefineKeep::Last` | the state the walk ended on (**the default**) |
 | `RefineKeep::Best` | the highest-$\log \pi_\beta$ state it occupied, seed included |
 
 The archive is **free**. Every trace the kernel returns already carries its own
@@ -74,7 +76,7 @@ $\log \pi_\beta$, so `Best` is one `f64` compare per step and no extra render.
 
 It is scored on the **target**, not on fitness alone, and that is the load-bearing
 choice: taking the argmax of $\E[u]$ would discard the parsimony half of the very
-distribution the walk is sampling, and would do it with a bias — a bigger term
+distribution the walk is sampling, and would do it with a bias: a bigger term
 has more modules to score well with, so fitness-argmax systematically returns the
 largest tree the walk touched.
 
@@ -84,7 +86,7 @@ standing on at step 40.
 
 ```admonish warning title="Why the default has not moved"
 `Best` ships switched off. Argmax over a surrogate is the classic way to find
-that surrogate's *errors* rather than the user's preferences, and the always-on
+that surrogate's *errors* rather than the player's taste, and the always-on
 gate has already caught this happening: over 16 seeds, two produced pools
 **−12.0** and **−5.5** worse in the synthetic user's true utility after three
 generations, because `insert_candidate` admits and evicts by the model. Turning
@@ -103,7 +105,7 @@ the seed is exempt from eviction like a pinned patch.
 A child is admitted only if it beats the member it would displace: the
 lowest-utility unpinned member, counting the displacements the generation
 already owes. Nobody leaves while the generation runs. At its end the pool is
-trimmed back to `pool_size` by retiring its lowest-utility unpinned members,
+trimmed back to `pool_size`: its lowest-utility unpinned members are replaced,
 so the patches that leave are exactly the ones evicting one child at a time
 would have removed, but a patch saved (pinned) at any point before the end is
 never among them. Pinned candidates are always exempt.
@@ -119,7 +121,8 @@ count from the next refit, which waits for the generation to end.
 
 ## The split is measured
 
-Defaults, both scaled from the palette's operator count `N_OPS = 20`:
+Defaults (in `engine.rs`), both scaled from the grammar's processor count
+`N_OPS = 20` (in `prior.rs`):
 
 $$\text{refine\_steps} = 2 \cdot N_{\text{OPS}} = 40, \qquad
 \text{refine\_seeds} = \lceil N_{\text{OPS}} / 2 \rceil = 10$$
@@ -127,7 +130,8 @@ $$\text{refine\_steps} = 2 \cdot N_{\text{OPS}} = 40, \qquad
 Riding `N_OPS` matters: a structural proposal picks a new operator from a
 categorical that grew from six to twenty kinds, so a fixed budget would spend
 the same number of proposals covering a far wider move set and land children in
-a visibly thinner slice of it. The tuning survives a palette change.
+a visibly thinner slice of it. The tuning survives a change to the processor
+set.
 
 The 40 × 10 split was an *argument* that could have been wrong in either
 direction, so `search_health --budget-ab` was written to settle it. Over 8
@@ -147,7 +151,7 @@ Two rows are worth more than the headline.
 
 **Depth from few seeds is harmful.** 66 × 3 runs 65% *more* proposals than 40 ×
 3 and scores *lower* (0.774 against 1.241). A long chain from a bad starting
-point converges confidently on somewhere you did not want to be, and the extra
+point converges confidently on somewhere nobody wanted to be, and the extra
 steps are what get it there.
 
 **Breadth is not free either.** 20 × 20 spends the full shipped budget and is
@@ -171,7 +175,7 @@ shortlist a person will listen to.
 
 **Warm-starting from the best members is deliberate.** It concentrates effort
 where the model already believes, which is what "propose toward me" means from
-the user's side.
+the player's side.
 
 **Diversity comes from elsewhere.** The measured result below is that the pool
 does not concentrate over a session anyway, so the thing SMC would primarily
@@ -179,23 +183,23 @@ buy (maintained diversity via a population kernel) is being supplied by
 frontier-biased injection plus worst-eviction.
 
 What is lost: any claim about the *distribution* of the pool. That is the whole
-of it — the other thing this section used to claim was lost turns out not to be.
+of it. The other thing this section used to claim was lost turns out not to be.
 
 ## The islands are not separated by a valley
 
-This page previously said that a user with two distant islands "may find that
+This page previously said that a player with two distant islands "may find that
 refinement from island A never discovers island B, and has to reach it by hand
 or by the prior". That was an argument from the shape of a local walk, and it is
 **false**.
 
-`make islands` teaches a genuinely bimodal synthetic user — two islands opposed
-on every coordinate they share — runs real generations, and asks how often a
-child lands on the island its parent was not on:
+`make islands` teaches a bimodal synthetic user (two islands opposed on every
+coordinate they share), runs real generations, and asks how often a child lands
+on the island its parent was not on:
 
 | | |
 |---|---|
 | refinement events that cross islands | **99 / 473 (20.9 %)** |
-| of those, *decisive* — both ends > 1.0 onto their island | 64 (**13.5 %** of all events) |
+| of those, *decisive* (both ends > 1.0 onto their island) | 64 (**13.5 %** of all events) |
 | seeds whose pool ended on one island only | **0 / 8** |
 
 The decisive column is the one that matters. A patch sitting on the decision
@@ -251,6 +255,7 @@ Every injected child records a `LineageEvent`:
 
 ```rust
 pub struct LineageEvent {
+    pub generation: usize,     // the generation counter at the event
     pub kind: String,          // "refine" | "edit"
     pub parent_id: u64,
     pub child_id: u64,
@@ -265,7 +270,7 @@ pub struct LineageEvent {
 by their bank names.
 
 Utilities are **recorded at event time**: a later refit changes the model, and
-re-deriving these numbers afterwards would rewrite history to look
+re-deriving these numbers afterward would rewrite history to look
 better-informed than it was.
 
 Hand edits appear in the same log tagged `"edit"`, because the lineage is a

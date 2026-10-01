@@ -40,7 +40,7 @@ rejected. The constraint region is then **asymmetric**:
 $$x \to x' \text{ allowed}, \qquad x' \to x \text{ rejected}$$
 
 which violates detailed balance. Concretely, the chain drifts into locked
-structure it can never leave, so a user who locked a module would watch the
+structure it can never leave, so a player who locked a module would watch the
 search grow new sites *inside* it and then be unable to remove them.
 
 Checking both traces makes the constraint region symmetric, and symmetry is
@@ -52,7 +52,7 @@ A lock is a set of **exact address strings**, typically snapshotted from the
 UI. Every address in it is frozen, in both directions, and *that* is exact.
 
 It is **not** the same as freezing a *module*. A structural move can grow a
-brand-new address inside a locked module — one that was in neither trace when
+brand-new address inside a locked module: one that was in neither trace when
 the set was taken, so it cannot be in the set. That case is not caught.
 
 It costs nothing in correctness: the case is symmetric by construction
@@ -81,15 +81,14 @@ construct any subset.
 
 The workflow the rack exists for:
 
-> Find a patch whose character you like but whose envelope is wrong. Lock every knob
-> except the envelope. Evolve. You get variations that differ **only** where you allowed
-> them to.
+> Find a patch whose character is right but whose envelope is wrong. Lock every knob
+> except the envelope. Evolve. The variations differ **only** where the locks allow.
 
 Because the guarantee is exact rather than best-effort, that is a statement
 about what the search *will* do rather than what it will probably do. A
-heuristic version (penalize changes to locked sites, or revert them afterwards)
-would be a search that mostly respects your intent, and "mostly" is not a
-useful promise about the one thing you explicitly protected.
+heuristic version (penalize changes to locked sites, or revert them afterward)
+would be a search that mostly respects the player's intent, and "mostly" is not
+a useful promise about the one thing the player explicitly protected.
 
 ## Everything locked
 
@@ -104,7 +103,7 @@ check.
 
 The [decisions log](../design/decisions.md) states this as:
 
-> **Locks / partial evolution** — Freeze any set of trace addresses; MH
+> **Locks / partial evolution**: freeze any set of trace addresses; MH
 > proposals touching them are rejected outside the kernel, in **both**
 > directions. *Exactly Metropolis-within-Gibbs on the conditional posterior, so
 > locking is exact rather than heuristic.*
