@@ -45,8 +45,9 @@ let port = null;
 // untouched, and N farm workers get N parallel caches for free.
 //
 // **Correctness rests on the namespace, not on this file.** `cache_namespace`
-// pins the stimulus *and* `RENDER_EPOCH`, the featurizer's own generation, and
-// the engine re-verifies each row's key against the tree before folding it in
+// pins the stimulus, `RENDER_EPOCH` (the featurizer's own generation) *and*
+// the quiver version the binary renders with, and the engine re-verifies each
+// row's key against the tree before folding it in
 // (`WasmEngine::pre_featurized`). A build whose φ differs cannot read rows
 // written by another: the namespace does not match, so there is no stale-row
 // path to get wrong.
@@ -145,10 +146,10 @@ async function onJob(m) {
     // with itself. What can differ is the binary each instance actually
     // loaded, when the compiled module could not be shared and each fetched
     // its own. So the engine sends the namespace *its* binary computes for
-    // this phrase (the stimulus and the featurizer's `RENDER_EPOCH`), and a
-    // worker whose binary computes another refuses rather than render or walk
-    // under a measurement the engine does not make. The engine sees a worker
-    // that never accepts work and falls back.
+    // this phrase (the stimulus, the featurizer's `RENDER_EPOCH` and the quiver
+    // version), and a worker whose binary computes another refuses rather than
+    // render or walk under a measurement the engine does not make. The engine
+    // sees a worker that never accepts work and falls back.
     if (m.ns != null && cacheNs != null && m.ns !== cacheNs) {
       cacheNs = null;
       port.postMessage({ type: "refused", reason: `render namespace ${m.ns} is not this binary's` });

@@ -225,10 +225,12 @@ impl RenderJob {
 /// phrase does not parse.
 ///
 /// Two rows may only be compared, stored or served under the same namespace:
-/// it pins both the stimulus and [`auracle_features::RENDER_EPOCH`], the
-/// featurizer's own generation. A build whose φ differs from the one that wrote
-/// a row therefore cannot read it — the namespace simply does not match, so
-/// there is no stale-row path to get wrong.
+/// it pins the stimulus, [`auracle_features::RENDER_EPOCH`] (the featurizer's
+/// own generation) and [`auracle_features::QUIVER_DSP_VERSION`] (the DSP it
+/// renders with). A build whose φ differs from the one that wrote a row
+/// therefore cannot read it — the namespace simply does not match, so there is
+/// no stale-row path to get wrong. The worker also hands it to PERFORM, which
+/// stamps the wirings it keeps with it.
 ///
 /// The store this keys is `namespace → key → CachedFeatures`. Dropping a
 /// namespace is how a cache is invalidated, and it is the *only* correct
