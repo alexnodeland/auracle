@@ -29,7 +29,8 @@ site/assets/film/, by relative path; nothing is duplicated into site/docs.
 and no picture — build with `make site` to see them play.)
 
 It refuses a film whose picture and mix disagree about its length by more
-than a frame, or whose captions are missing.
+than a frame, or whose captions are missing, or whose timeline lays a demo
+out on an estimated tail rather than a measured one (timeline.py --demos).
 """
 import html
 import json
@@ -93,6 +94,13 @@ def fmt(t):
     return f"{m}:{s:02d}"
 
 
+def estimated_tails(tl):
+    """The demos a timeline laid out on an estimated tail, not a measured one
+    (timeline.py marks them). A film is not published with one: its voice
+    would come in on a guess at the demo's ring-out."""
+    return [d.get("id", d.get("line")) for d in tl.get("demos") or [] if d.get("estimated")]
+
+
 def main():
     films = sys.argv[1:]
     os.makedirs(DEST, exist_ok=True)
@@ -102,6 +110,11 @@ def main():
         out = os.path.join(VIDEO, "out", f)
         script = json.load(open(os.path.join(VIDEO, "films", f, "script.json")))
         tl = json.load(open(os.path.join(VIDEO, "films", f, "timeline.json")))
+        guessed = estimated_tails(tl)
+        if guessed:
+            sys.exit(f"{f}: the timeline lays out {', '.join(guessed)} on an estimated tail: measure "
+                     f"{'it' if len(guessed) == 1 else 'them'} (tools/demo_tail.py into out/{f}/demos.json), "
+                     "lay the film out again and finish it")
         files = {ext: os.path.join(out, f"{f}.{ext}") for ext in ("mp4", "vtt", "jpg", "webp")}
         for ext, p in files.items():
             if not os.path.exists(p):

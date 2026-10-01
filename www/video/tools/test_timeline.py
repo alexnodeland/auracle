@@ -238,6 +238,40 @@ class TheReel(unittest.TestCase):
         self.assertAlmostEqual(assumed["marks"]["exit"] - measured["marks"]["exit"], 0.04, places=3)
 
 
+class AnEstimatedTail(unittest.TestCase):
+    def run_cli(self, d, *extra):
+        saved = sys.argv
+        sys.argv = ["timeline.py", d, *extra]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                timeline.main()
+        finally:
+            sys.argv = saved
+        return out.getvalue()
+
+    def test_is_said_and_a_demos_file_that_is_not_there_is_an_error(self):
+        d = tempfile.mkdtemp(prefix="timeline-")
+        try:
+            with open(os.path.join(d, "script.json"), "w") as f:
+                json.dump(reel_script(1.12), f)
+            said = [l for l in self.run_cli(d).splitlines() if "ESTIMATED tail" in l]
+            self.assertEqual(len(said), 1, said)
+            self.assertNotIn("—", said[0])
+            with self.assertRaises(SystemExit) as stop:
+                self.run_cli(d, "--demos", os.path.join(d, "demos.json"))
+            self.assertIn("no " + os.path.join(d, "demos.json"), str(stop.exception.code))
+        finally:
+            shutil.rmtree(d)
+
+    def test_publish_refuses_a_film_laid_out_on_one(self):
+        import publish
+
+        guessed, _ = timeline.lay_out(reel_script(1.12), REEL_DURS)
+        measured, _ = timeline.lay_out(reel_script(1.12), REEL_DURS, measured={"bright": {"tail_s": 1.08}})
+        self.assertEqual(publish.estimated_tails(guessed), ["bright"])
+        self.assertEqual(publish.estimated_tails(measured), [])
+
+
 class TheCommand(unittest.TestCase):
     def test_it_writes_the_demos_and_the_marks(self):
         d = tempfile.mkdtemp(prefix="timeline-")

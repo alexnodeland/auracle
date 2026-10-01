@@ -19,7 +19,8 @@ F="$1"; POSTER="$2"
 cd "$ROOT/www/video"
 # The demos' measured tails, when there are any (tools/demo_tail.py).
 DEMOS=(); [ -f "out/$F/demos.json" ] && DEMOS=(--demos "out/$F/demos.json")
-python3 tools/timeline.py "films/$F" --voice "out/$F/voice/manifest.json" ${DEMOS[@]+"${DEMOS[@]}"} | sed -n 1p
+# The summary line, and any demo laid out on an estimated tail or snap ignored.
+python3 tools/timeline.py "films/$F" --voice "out/$F/voice/manifest.json" ${DEMOS[@]+"${DEMOS[@]}"} | sed -n '1p;/ESTIMATED/p;/snap:/p'
 BED=$(python3 -c "import json,sys;print(str(json.load(open(sys.argv[1]))['bed']).lower())" "films/$F/arrangement.json")
 rm -rf "out/$F/music"
 if [ "$BED" = n3 ]; then

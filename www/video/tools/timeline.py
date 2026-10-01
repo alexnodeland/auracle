@@ -286,7 +286,9 @@ def main():
             if l.get("words") and l["id"] not in words:
                 words[l["id"]] = l["words"]
     composed = {x["name"]: x["bars"] for x in read_json(args.score)["sections"]} if args.score else {}
-    measured = read_json(args.demos) if args.demos and os.path.exists(args.demos) else {}
+    if args.demos and not os.path.exists(args.demos):
+        sys.exit(f"timeline.py: no {args.demos}: measure the demos' tails into it (tools/demo_tail.py), or leave out --demos")
+    measured = read_json(args.demos) if args.demos else {}
     try:
         timeline, arr = lay_out(script, durs, words, composed, measured)
     except ValueError as e:
@@ -317,7 +319,7 @@ def main():
         print(f"  mark  {k:<10} {v:7.2f}")
     for d in timeline.get("demos", []):
         print(f"  demo  {d['id']:<10} {d['t0']:7.2f} → {d['off']:7.2f}, tail {d['tail_s']:.2f} s, next line {d['next']:.2f}"
-              + (" — ESTIMATED tail" if d.get("estimated") else ""))
+              + (" (ESTIMATED tail: measure it with tools/demo_tail.py)" if d.get("estimated") else ""))
 
 
 if __name__ == "__main__":
