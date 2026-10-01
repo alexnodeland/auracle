@@ -8,6 +8,22 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: one type scale, one set of spaces and speeds
+
+- **Nothing in the app's panels is set smaller than 11 px, and nothing drawn
+  on a canvas smaller than 12 px.** Labels, knob values, chips and captions
+  that were 10 px are 11 or 12; prose is 14 px where it was 13; the model's
+  italic is 17 px. The scopes' and TASTE's canvas text, which was 9 to 11 px,
+  is 12, and TRUST's last line no longer sits on the canvas's bottom edge.
+  The rack keeps its own sizes, which grow and shrink with its zoom.
+- **Spacing, corners and motion come from one short list.** Paddings and
+  gaps sit on a 4 px grid (4, 8, 12, 16, 24, 32, 48), corners come from
+  three radii (4, 8 and 14 px; a hairline's rounding stays under 4), and a
+  press, a change of state and a move take 90, 180 and 320 ms. With your
+  system set to reduce motion, all three are instant.
+- The module search's example reads *search: grit, vowel*, and the line
+  under the rack is a few words shorter, so each still fits at the new size.
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**

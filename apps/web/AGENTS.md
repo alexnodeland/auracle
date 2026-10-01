@@ -20,7 +20,7 @@ the long-form notes are this directory's `README.md`.
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
 | `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome; unit-tested in `tests/` |
-| `style.css` | page | Tokens on `:root` (the colours generated from `www/brand/tokens.json`), then per-view sections |
+| `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 
 ## Rules
 
@@ -73,11 +73,26 @@ the long-form notes are this directory's `README.md`.
   `localStorage` access is wrapped in `try`: private windows throw.
 - **Film mode** (`?film`) and booth mode hide what must not be on camera or at
   a kiosk (the film chip, for one). Check both when you add chrome.
-- **Style with tokens.** Colours come from `www/brand/tokens.json` (the
+- **Style with tokens.** Everything comes from `www/brand/tokens.json` (the
   generated block at the top of `style.css`; `tok()` in a script), never a
-  literal: a new colour is a token first. `make dev-check` fails on one
-  written in `style.css`, any script here or `index.html`, which is all the
-  app loads; what is not checked yet elsewhere is listed in
+  literal:
+  - colors: the palette and the app's own shades. A new color is a token
+    first;
+  - type: `--t-label` 11 px (silk caps, and the floor), `--t-value` 12
+    (mono values), `--t-body` 14, `--t-voice` 17 (the model's italic and
+    nothing else), `--t-title` 21, `--t-display` 52; canvas text at
+    `--t-canvas` (12 px, through `canvasFont()`); the rack's own tier is
+    `--t-rack-*`;
+  - space: `--s1` to `--s7` (4 to 48 px); radii `--r1` to `--r3`;
+  - motion: `--d-press`, `--d-state`, `--d-move` and the easings `--e-settle`
+    and `--e-swap`. Every duration is 0 under reduced motion, so nothing may
+    wait on a transition ending.
+
+  `make dev-check` fails on a color written in `style.css`, any script here
+  or `index.html`, which is all the app loads, and on a literal font size,
+  spacing of 4 px or more, radius or duration there. Where the scale has no
+  step (a loop's period, a glyph sized to its box), the line says why with
+  `/* token-exempt: … */`. What is not checked yet elsewhere is listed in
   [`www/brand/README.md`](../../www/brand/README.md#the-tokens). Two rules
   fighting over one element is usually a specificity mistake (the bank row's
   cut was invisible for that reason).

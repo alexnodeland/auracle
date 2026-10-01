@@ -30,6 +30,12 @@ const INK = {
   amberDim: tok("--phos-b-dim"),
   amberDeep: tok("--phos-b-deep"),
 };
+// Canvas text is set at the canvas floor, `--t-canvas` (12 px; TA20 found the
+// 10 px it had too small), in the mono family, scaled by the pixel ratio. A
+// canvas cannot read a custom property, and `make dev-check` counts a size
+// written into a `.font` string here.
+const CANVAS_PX = parseFloat(tok("--t-canvas"));
+const canvasFont = (dpr) => `${CANVAS_PX * dpr}px ${tok("--font-mono")}`;
 // Two phosphors and silk, and nothing else: every other colour the canvases
 // and the inline styles use is made *from* these tokens, so no third hue can
 // creep in as a literal and the whole instrument moves when the palette does.
@@ -5235,7 +5241,7 @@ function drawPendingScope(side, now) {
     ctx.shadowBlur = 0;
   }
   ctx.fillStyle = failed ? INK.silkDim : INK.amberDim;
-  ctx.font = `${11 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace"}`;
+  ctx.font = canvasFont(dpr);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(failed ? "no audio for this one" : "rendering…", w / 2, h / 2);
@@ -15545,8 +15551,8 @@ function renderSpecDock() {
     // longer have to be enumerated in advance while holding 120 px of the
     // patcher's vertical budget to say so.
     dock.innerHTML =
-      `<div class="sd-rest mono">Point at a module, in the catalog or in this patch, ` +
-      `and this strip says what it does, where it can go, and which way your taste leans on it.</div>`;
+      `<div class="sd-rest mono">Point at a module, in the patch or the catalog, ` +
+      `and this strip says what it does, where it can go, and how your taste leans on it.</div>`;
     return;
   }
   const p = specParts(m);
@@ -18065,7 +18071,7 @@ function drawWave(canvas, data) {
   }
   ctx.setLineDash([]);
   ctx.fillStyle = INK.greenDim;
-  ctx.font = `${9 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace"}`;
+  ctx.font = canvasFont(dpr);
   ctx.textAlign = "left";
   ctx.fillText("0 dBFS", 4 * dpr, mid - mid * 0.92 + 11 * dpr);
   const step = Math.max(1, Math.floor(data.length / w));
@@ -18383,7 +18389,7 @@ function drawTaste() {
   renderStyleChips();
   mapHits = [];
 
-  ctx.font = `${10 * dpr}px "IBM Plex Mono", monospace`;
+  ctx.font = canvasFont(dpr);
   const noTaste = !views || !views.styles;
   const empty = {
     map: !(views && views.map && views.map.points && views.map.points.length),
@@ -18414,7 +18420,10 @@ function drawTaste() {
 function drawTrustFromEngine(ctx, w, h, dpr, E) {
   const pad = 56 * dpr;
   const x0 = pad, y0 = pad * 0.5;
-  const side = Math.min(w - pad * 2.4, h - pad * 2.0);
+  // Four lines go under the plot, the last 84 px below it, and that one stays
+  // 16 px clear of the canvas's edge (TA20: it sat on the edge, and at the
+  // canvas floor's 12 px its descenders were cut off).
+  const side = Math.min(w - pad * 2.4, h - y0 - (84 + 16) * dpr);
   const sx = (p) => x0 + p * side;
   const sy = (p) => y0 + (1 - p) * side;
 
@@ -19641,7 +19650,7 @@ const INLINE_INITIAL = {
   filter: "none",
   "paint-order": "normal",
   "shape-rendering": "auto",
-  "font-size": "16px",
+  "font-size": "16px", // token-exempt: the initial size as getComputedStyle reports it; compared, never painted
   "font-weight": "400",
   "font-style": "normal",
   "letter-spacing": "normal",

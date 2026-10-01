@@ -85,9 +85,9 @@ instrument, and belongs in its own commit.
 
 ## The tokens
 
-`tokens.json` is the one source of every color and font family on every
-surface: the app, the landing page, the docs theme, this brand page, the 404,
-and the film stage. It holds:
+`tokens.json` is the one source of every color, font family, type size,
+spacing step, radius and motion on every surface: the app, the landing page,
+the docs theme, this brand page, the 404, and the film stage. It holds:
 
 - **the palettes**: the rack (the instrument's dark palette, in the tiers the
   app has always named: `rack`, `panel`, `hairline`, the plate and button
@@ -102,7 +102,24 @@ and the film stage. It holds:
   `--phos-b-30` is `--phos-b` at 30%; a third digit is a tenth, so
   `--phos-a-045` is green at 4.5%. An opacity is generated as `rgba()`, not
   `color-mix()`: a gradient with a `color-mix()` color in it interpolates in
-  Oklab rather than sRGB, and moved pixels.
+  Oklab rather than sRGB, and moved pixels;
+- **the type scale, spacing, radii and motion**, every surface's, from the
+  approved specimen (prototype v2's `:root`, in
+  `docs/notes/vision-2026-09/prototype/style.css`, which `test_tokens.py`
+  holds them to):
+
+  | Group | Tokens |
+  | --- | --- |
+  | `type` | One ratio, 1.2, from the value size: `--t-value` 12 px (mono values, readouts), `--t-body` 14 (prose, names), `--t-voice` 17 (the model speaking, in Newsreader italic, and nothing else), `--t-title` 21 (a sound's name, a card's heading, the wordmark), `--t-display` 52 (a level's one headline). Each is 12 × 1.2ⁿ rounded, and the check holds them to it. `--t-label` 11 px (silk caps) sits under the scale and is the page's floor. `--t-canvas` 12 px is the floor for text a canvas draws. |
+  | `space` | `--s1` to `--s7`: 4, 8, 12, 16, 24, 32, 48 px. 1 to 3 px is an optical nudge, not a space, and is written as it is. |
+  | `radius` | `--r1` 4 px (a row, a chip), `--r2` 8 (a button, a pad, a card), `--r3` 14 (the well, a sheet). A circle is `50%` and a pill `999px`. |
+  | `motion` | `--d-press` 90 ms, `--d-state` 180 ms, `--d-move` 320 ms; `--e-settle` (arriving and coming to rest) and `--e-swap` (one thing giving way to another). Under `prefers-reduced-motion` every duration is 0 ms. A loop's period is none of these. |
+
+- **each surface's own sizes**: the rack's type tier in the app
+  (`--t-rack-*`, drawn through its camera and sized at zoom 1), the landing
+  page's display tier, prose size and wide steps (`--s8`, `--s9`), and the
+  brand page's. A surface may restate a shared size for itself, with a note
+  that says why (the landing page reads its prose at `1rem`).
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS
 beside it.
@@ -121,8 +138,14 @@ page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
 (`www/video/stage/kit.js`), which every film uses. Each reads
 `getComputedStyle(document.documentElement)` once per name.
 
-`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds
-something that is not a color, when a block is stale, and on a color written
+The app's canvases read `--t-canvas` the same way (`canvasFont()` in
+`main.js`), and the rack reads its own tier.
+
+`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds a
+color that is not a color, a size that is not a length, a duration not in ms,
+an easing that is not a `cubic-bezier()`, or a type step off the ratio; when a
+block is stale; when a stylesheet defines, after its block, a token the block
+already defines (the later one would silently win); and on a color written
 outside a block in any of these (the `SCANNED` list in `tokens.py`):
 
 - the app: `apps/web/*.css`, `*.js` and `index.html`;
@@ -160,6 +183,24 @@ and `docs/notes/` (dated records). A new color is a token first: add it to
 `make dev-check`, plants each kind of stray color in a copy of the tree and
 expects the check to fail on it, and holds the two drifts the tokens closed
 (the films' deep amber, the brand page's lamp) in place.
+
+**Sizes and durations are a ratchet.** The same files are counted, outside
+their blocks, for four kinds of literal: a font size in px or rem (a canvas
+`ctx.font` string included), a `padding`, `margin` or `gap` of 4 px or more, a
+`border-radius` from 4 to 99 px, and a `transition` or `animation` time.
+`sizes-baseline.json` holds each file's counts, and the check fails when one
+rises, when a file it does not list has any, or when one falls below it (a
+move lowers the baseline in the same change, so the floor only goes down):
+
+    python3 www/brand/tokens.py --where FILE    every counted literal in a file
+    python3 www/brand/tokens.py --update        lower the baseline to today's counts
+
+`--check` lists the files not yet moved every time it runs. The app's
+stylesheet and scripts are at zero: where the scale has no step for a
+literal (a loop's period, a glyph sized to its button, a key that must light
+at once), the line says why with a `token-exempt:` comment, and is not
+counted. The landing page, the brand page, the 404 and the films have their
+counts in the baseline until each is moved.
 
 ## The sound
 
