@@ -91,6 +91,24 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      and plays both while both exist.
    - Replaced shows names only.
    - Each animation names its engine source (ADR-012).
+   - *Progress (2026-10-01):* built in today's bank, before the shell and
+     faces (tasks 2 and 3), so the bud and Compare draw names and phrases
+     where the specimen draws faces:
+     - the marks read `ratings.seeds` and `ratings.may_replace` at rest, and
+       the generation's own seeds and `retiring` while it runs;
+     - each walk's seed rides on `refine_child` (the job's `parent_id`, the
+       one worker addition), so a refused child fades beside its seed;
+     - the bank's rows keep a mark column left of the name, which NEW and the
+       unheard dot share.
+
+     Where the specimen and the engine differ, the engine was followed:
+     - seeds are the top `refine_seeds` (ten), not a quarter of the pool;
+     - a child is admitted against the weakest member it would displace with
+       what is already owed counted (the specimen's `floor[owed]` agrees);
+     - a duplicate or an unmoved walk breeds no child, so nothing fades for
+       it;
+     - the button says "joined the pool" where the specimen says "kept"
+       (the word table keeps "keep" for PERFORM's pad).
 5. **PERFORM.**
    - The offer grows from the sound in hand, is filled when taken and folds
      back when passed. The heard rule is unchanged.

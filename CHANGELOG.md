@@ -8,6 +8,41 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: the bank shows what a generation does
+
+- **Pointing at EVOLVE POOL marks its seeds as well as what it may
+  replace.** The ten sounds the next generation would breed from get a solid
+  amber rail and *seed*; the ones it may replace keep their dashed rail and
+  *may be replaced*. Both are the model's own lists and move with your picks.
+  Before, only *may be replaced* was marked, by a rule the bank worked out for
+  itself, and the seeds were not shown at all. While a generation runs, the
+  marks are that generation's: its seeds, and what its end would replace if
+  it ended now, which grows by one with each child it takes in.
+- **EVOLVE POOL says what each walk came back as**: *walk 3 of 10 · joined
+  the pool*, *rated below the pool*, *already in the pool*, *came back
+  unchanged*, or *couldn't start*. It used to count the walks and say
+  nothing about them.
+- **A bred sound's row says which seed it grew from and what changed**
+  (*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*), and click that line to
+  compare the two: the seed's phrase as an outline with the child's grown out
+  of it, every change, what the model rated each when it bred them, and both
+  to play while both are in the pool.
+- **A child you haven't heard has a green dot** left of its name until its
+  phrase plays or you play a note on it, across a reload.
+- **Children grow out of their seeds.** As each lands, where its seed's row
+  is in view, it buds out of it and moves up into the New group, now headed
+  *New · generation 3* with its count. A child the pool won't take buds
+  beside its seed with the reason and fades. Nothing moves with your system
+  set to reduce motion, and the same facts are on the rows and the button.
+- **Replaced lists what the latest generation replaced, by name only**, at
+  the foot of the pool: the sounds themselves are dropped, so there is
+  nothing to play or bring back.
+- **A mark never moves a name.** NEW now takes the place of the ⚡ glyph, in a
+  column every row keeps left of its name, and the dot sits beside it. NEW
+  used to push the name to the right, and *may be replaced* followed the name
+  and could cut it short. Every name in the bank starts a little further
+  right to make that room.
+
 ### Changed: one type scale, one set of spaces and speeds
 
 - **No text in the app's panels is smaller than 11 px, and none drawn on a

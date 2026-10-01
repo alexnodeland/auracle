@@ -104,20 +104,36 @@ dealt](../../reference/search/acquisition.html).
 ## Breed a generation
 
 1. Make a few picks first, so the model has something to breed toward.
-2. Hover **EVOLVE POOL** to see which bank rows it may replace. They get a
-   dashed rail and *may be replaced*. Save any you want to keep.
-3. Press **EVOLVE POOL**.
+2. Hover **EVOLVE POOL** to see what it would do, in the bank: the ten sounds
+   it would breed from get a solid amber rail and **SEED**, and the sounds it
+   may replace a dashed rail and **MAY BE REPLACED**. Save any you want to
+   keep.
+3. Press **EVOLVE POOL**. The bank shows **POOL**, where the children land.
 4. Play the new sounds as they land at the top of the bank.
 
-**EVOLVE POOL** becomes its own progress bar, **BREEDING 3/10**, with **STOP**
-beside it. The job slot in the menu bar says the same with the time left
-(*⚡ breeding 3/10 · about 40 s*), in every view. **GENERATIONS** in the menu
-bar counts the generation once its first child lands.
+**EVOLVE POOL** becomes its own progress bar, with **STOP** beside it. It
+says each walk as it comes back, and what came of it: **WALK 3 OF 10**
+*joined the pool*, *rated below the pool*, *already in the pool*, *came back
+unchanged*, or *couldn’t start*. The job slot in the menu bar counts the
+walks with the time left (*⚡ breeding 3/10 · about 40 s*), in every view.
+**GENERATIONS** in the menu bar counts the generation once its first child
+lands.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
-GEN 1**, tagged **NEW**, and can be played at once. The ranked rows below it
-don’t move. When the generation ends, its toast says what joined and what was
-replaced.
+GENERATION 1**, tagged **NEW** with a green dot until you hear it, and can be
+played at once. The line under its name says which seed it grew from and what
+changed. The ranked rows below it don’t move. Where the seed’s row is in view,
+the child buds out of it, its seed’s rail lit, and moves up into its place in
+New. A child the pool won’t take buds beside its seed with the reason
+(*rated below the pool*) and fades: the engine dropped it. With your system
+set to reduce motion nothing moves, and the button, the row, and the line
+under New say the same.
+
+When the generation ends, its toast says what joined and what was replaced,
+and **REPLACED · GENERATION 1** at the foot of the pool lists the replaced
+sounds by name. [The bank](../bank.md#which-sounds-a-generation-breeds-from-and-replaces)
+has the marks, and [Compare](../bank.md#compare-a-sound-beside-its-seed) shows
+a child beside its seed.
 
 A generation takes from under a minute to a few, depending on how many cores
 your machine has to spare. On a busy four-core machine it takes about two to

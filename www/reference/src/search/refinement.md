@@ -137,7 +137,12 @@ Both are stated by the engine before EVOLVE POOL is pressed.
   this list too: the engine does not know about cuts.
 
 The app is sent both with every pick, beside the ranked numbers
-([the posterior](../taste/posterior.md#what-the-app-is-sent-after-each-pick)).
+([the posterior](../taste/posterior.md#what-the-app-is-sent-after-each-pick)),
+and marks them in the bank while EVOLVE POOL is pointed at. Once a generation
+is open both describe the next one, so the app marks the running
+generation's own instead: the `seeds` it last heard before the generation
+opened (job `i` walks from `seeds[i]`, by the shared rule), and `retiring()`,
+which each absorbed walk's message carries with the job's `parent_id`.
 
 ## The split is measured
 
@@ -289,7 +294,13 @@ pub struct LineageEvent {
 
 `tree_diff` produces the address-level diff, which the app renders as `attack
 0.59→0.83, +noise, −distortion · liked +0.65`, naming the parent and child
-by their bank names.
+by their bank names. The bank shows each bred child's event under its name
+(*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*), with a module removed
+in one place and added in another netted out, and Compare shows it whole:
+both utilities, through the same logistic as the bank's percentages
+($\sigma(u)$), and the diff. A refused child (`NotAdmitted`) records no
+event; the app knows it only from the walk's reason and its job's
+`parent_id`.
 
 Utilities are **recorded at event time**: a later refit changes the model, and
 re-deriving these numbers afterward would rewrite history to look
