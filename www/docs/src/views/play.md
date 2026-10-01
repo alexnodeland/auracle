@@ -54,7 +54,8 @@ a word for how sure that reads, on one scale: *a hunch* (46–54%), *leaning*
 (55–69% or 31–45%) or *fairly sure* (70% and over, or 30% and under). The word
 reads the percentage; how wide the model's own doubt is stays with the bank
 row's block. Then the three coordinates contributing most, and which style is
-judging it, by its name.
+judging it, by its name. While an edit is on its way the row dims and ends in
+*· rating…*: the model rating the edited sound again.
 When the model has no basis for a claim, this row says so instead of printing a
 number, and when nothing reaches the output (the patch's only source socket is
 [empty](../rack.md#empty-sockets)) it says *no guess while nothing reaches the
@@ -76,7 +77,7 @@ FFT size, colour, corner, size, trigger, freeze).
 **The spec strip.** The line under the rack that describes whatever you are
 pointing at, in the catalogue or in the patch.
 
-**SET ASIDE.** The staging tray. Anything you unplug, delete or bypass lands here
+**SET ASIDE.** The staging tray. Anything you unplug, delete, or bypass lands here
 instead of vanishing, and stays across a reload. Drag it back onto any lit ○ to
 put it in. The socket an unplug leaves reads EMPTY and makes no sound.
 

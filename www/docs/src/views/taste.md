@@ -12,7 +12,7 @@ model reporting on itself.
 Before the first fit each tab says how far away it is, counted from where you
 are: *"1 more pick →"*, *"Your first style appears at pick 6; more split off as
 you teach it."* TRUST counts guesses instead of picks: before each pick the
-model guesses which you will choose, and after 20 guesses it grades itself
+model guesses which you will pick, and after 20 guesses it grades itself
 (*"14 to go →"*). Each button takes you to EVOLVE to make them.
 
 The **style chips** across the top are shared by all four tabs. Each carries a

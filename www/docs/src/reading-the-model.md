@@ -28,7 +28,7 @@ module's spec card in the module rail says them in these words:
 | *The model hasn’t fitted your taste yet. Make a few picks.* | No posterior yet. Answer some duels |
 | *In 3 of 40 sounds: too few for the model to lean yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
 | *In 6 of 40 sounds. Still a guess: it could lean either way (θ 0.05 ± 0.17, an interval that crosses zero).* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
-| *In 12 of 40 sounds. in drive & fold + chorus (60% of your bank) you lean toward it (θ +0.62 ± 0.20)* | Here is the belief, and here is how much to trust it |
+| *In 12 of 40 sounds. in drive & fold + chorus (60% of your pool) you lean toward it (θ +0.62 ± 0.20)* | Here is the belief, and here is how much to trust it |
 
 A dash is not zero. "The model is not sure yet" and "the model has never had a
 chance to form a view" are different statements, and one grey bar cannot say

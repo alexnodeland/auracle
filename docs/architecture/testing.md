@@ -87,12 +87,14 @@ time between them, which two runners clear in about 2.5 min each after a
 
 Browser tests over 40 s, tagged `@slow`: every test in
 `evolve_breeds_beside_you.spec.js` (186, 168, 56, 47 and 44 s: each breeds a
-generation), `evolve_from_new.spec.js` (six picks, a refit and a ⚡ walk), `evolve_truth.spec.js`'s generation with no farm (186 s),
+generation), `evolve_from_new.spec.js` (20 s measured on a 16-core M3 Max,
+not yet on CI: six picks, a refit and a ⚡ walk, the walk alone about 23 s on a
+quiet four-core machine), `evolve_truth.spec.js`'s generation with no farm (186 s),
 `perform_next.spec.js` (78 s), `perform_truth.spec.js`'s drift re-check
 (72 s), all three tests in `perform_instant.spec.js` (66 and 44 s, and
 the held-engine reload test, which boots twice like them),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s) and `perform_teaches.spec.js` (54 s). Fifteen tests, ~18.5 min in one
+(54 s) and `perform_teaches.spec.js` (54 s). Fifteen tests, ~19 min in one
 worker; the other 80 take ~16.6 min, and the fast tier's five runners take
 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.

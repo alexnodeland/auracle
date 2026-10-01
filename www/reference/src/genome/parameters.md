@@ -168,6 +168,7 @@ The app shows a ceiling once a patch is one step from it, in the form
 `23/24 modules`, and all three (`8/24 modules · 4/6 depth · 1/3 mod depth`)
 with Show measurements on. A hand-built
 patch past a ceiling is refused, and one *at* a ceiling has no room to grow,
-which is a common reason a generation reports “no move was accepted”.
+which is a common reason a generation reports that *every walk came back
+unchanged*.
 See [the validity gate](edits.md#the-validity-gate) for why the two depth
 ceilings are derived from the prior rather than set above it.

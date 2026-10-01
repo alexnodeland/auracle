@@ -447,10 +447,11 @@ banned-words check in `make dev-check` reads the list after it.
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
 | **keep** | PERFORM's Keep pad, only | every other keep |
-| **keep as new** | PATCH: the edit becomes a new saved sound named after its parent | commit |
+| **keep as new** | PATCH: the edit joins the pool as a new sound, and the original stays | commit |
+| **pick the edit** | KEEP AS NEW's one-time shortcut: keep the edit as new without the comparison, telling the model you'd pick it | my edit is better |
 | **bank** | The rail and its tabs: Pool, Saved, Presets | "IN BANK", "the node bank" |
 | **pool** | The sounds the model weighs and breeds from | evolution (for the tab) |
-| **generation** | One round of EVOLVE POOL; "gen 3" only in a tight label | round, cycle |
+| **generation** | One round of breeding: EVOLVE POOL, or ⚡ evolve from this, which the engine counts as a generation of its own; "gen 3" only in a tight label | round, cycle |
 | **breed / bred** | What a generation does: grows new sounds from seeds | generate, create, crossover (there is none) |
 | **seed** | The sound a child grew from. A random number generator's seed is always "random seed" | parent (outside the reference) |
 | **child**, **New** | A bred sound; the bank's group of the latest generation's children | offspring |
@@ -460,10 +461,13 @@ banned-words check in `make dev-check` reads the list after it.
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
 | **listening…** | PERFORM measuring a sound's controls | measuring… |
+| **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |
+| **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
+| **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |
 | **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 42 modules") |

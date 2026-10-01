@@ -139,8 +139,8 @@ pub struct ProvenanceScore {
 }
 ```
 
-The comparison this exists for: a hand edit committed through a **heard** duel
-and one committed by ticking *my edit is better* make the same claim in the
+The comparison this exists for: a hand edit kept as new through a **heard** duel
+and one kept by ticking *pick the edit* make the same claim in the
 log, and there is no reason to believe they are equally reliable. Scoring them
 against forecasts the model made *before* either answer arrived is the only way
 to find out which, and it costs one tag.

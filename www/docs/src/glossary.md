@@ -68,7 +68,9 @@ distance uphill on the current model, and injects the children as they are
 bred (a child joins only if the model rates it above the sound it would
 replace); when it ends (or you stop it) the lowest-rated unsaved sounds are
 replaced (the toast names them). The walks run in parallel on the render farm,
-so the rest of the instrument keeps answering while it breeds.
+so the rest of the instrument keeps answering while it breeds. **⚡ evolve from
+this** is one walk from the sound you're playing, and the engine counts it as a
+generation of its own: its child leads the bank under *new · gen N* the same way.
 
 ### Genome / term
 
@@ -77,7 +79,7 @@ list. The rack you see is compiled from it.
 
 ### Set aside
 
-The staging tray under the rack, labelled **SET ASIDE**. Anything you unplug, delete or bypass goes
+The staging tray under the rack, labelled **SET ASIDE**. Anything you unplug, delete, or bypass goes
 here rather than vanishing, and stays across a reload.
 
 ### Job slot

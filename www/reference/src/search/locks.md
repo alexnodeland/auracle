@@ -93,9 +93,9 @@ a useful promise about the one thing the player explicitly protected.
 ## Everything locked
 
 If $\mathcal{L}$ covers every address, the search has nothing to do and every
-proposal is rejected. The engine reports this the same way it reports any
-unsuccessful generation, as “no move was accepted”, which is honest but
-not very informative. It is listed in
+proposal is rejected. Each walk ends where it started, and the app reports
+it the way it reports any generation whose walks found nothing, as *every walk
+came back unchanged*, which is honest but not very informative. It is listed in
 [Troubleshooting](../../docs/troubleshooting.html#evolution-does-nothing) as a thing to
 check.
 

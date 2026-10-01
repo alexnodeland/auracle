@@ -136,8 +136,8 @@ $a = 1$.
 
 ## Edit-beats-original
 
-Not a fourth likelihood, but a **duel** with a provenance tag. Committing a
-hand edit with *my edit is better* records `Duel { a: edited, b: original,
+Not a fourth likelihood, but a **duel** with a provenance tag. Keeping a
+hand edit as new with *pick the edit* ticked records `Duel { a: edited, b: original,
 chose_a: true }`.
 
 The tag is what makes the claim auditable. `Provenance` distinguishes:

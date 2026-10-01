@@ -95,8 +95,8 @@ Either answer teaches the model; picking the original teaches it the most. The
 receipt names the new sound and says which side was yours: *"Kept Glass Pad 2
 as new: B was your edit, and you picked it."* <kbd>1</kbd> / <kbd>2</kbd> play,
 <kbd>←</kbd> / <kbd>→</kbd> pick. <kbd>Esc</kbd> or **cancel** closes the card
-and keeps nothing: your edit stays open. **keep as new without
-comparing** keeps it and teaches nothing. **⚡ evolve from this** on an edited
+and keeps nothing: your edit stays open. **skip comparing** keeps it as new
+and teaches nothing. **⚡ evolve from this** on an edited
 patch asks the same question before it breeds, and cancelling it cancels the
 generation too.
 
