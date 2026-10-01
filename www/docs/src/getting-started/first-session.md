@@ -115,7 +115,7 @@ What you see:
 
 1. Open **TASTE**.
 2. Open **STYLES**, and read each style’s name.
-3. Open **TRUST**, and read the line under the chart.
+3. Open **TRUST**, and see how close it is to grading the model.
 
 <figure>
 <img src="../img/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and glow, named style chips above it, and a legend below." loading="lazy" width="1440" height="900">
@@ -128,9 +128,11 @@ Early on the map is sparse, and the styles are a first guess. A style is
 named for what it leans toward until you rename it, so a style called *analog
 sustain* means the model has heard you leaning that way.
 
-TRUST will likely say *not beating a coin flip yet*. That is the honest
-answer this early, and [the TASTE guide](../views/taste.md#trust-is-its-confidence-honest)
-says why a plain hit rate would have flattered it here.
+TRUST grades the model once it has made 20 guesses, one before each pick,
+and until then it counts toward them (4 OF 20 GUESSES, **16 TO GO →**). Once
+it has 20, it will likely say *not beating a coin flip yet*. That is the
+honest answer this early, and [the TASTE guide](../views/taste.md#trust-is-its-confidence-honest)
+says why a plain hit rate would have flattered it.
 
 ## 5. Breed a generation
 

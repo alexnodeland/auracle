@@ -183,9 +183,9 @@ knew your answer:
 The menu bar shows the same skill: *calibrating · 4/20* until 20 guesses,
 then the number TRUST shows.
 
-**“Not beating a coin flip yet” is the right thing to see early.** It means
-the grading is honest and the model hasn’t had enough picks to beat chance.
-Keep picking.
+**“Not beating a coin flip yet” is the right thing to see early,** once it
+has its 20 guesses. It means the grading is honest and the model hasn’t had
+enough picks to beat chance. Keep picking.
 
 ```admonish info collapsible=true title="How it works: why not accuracy"
 Accuracy (how often the guess was right) would mislead here. A model that says

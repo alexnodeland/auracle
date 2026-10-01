@@ -74,8 +74,9 @@ to end, but:
   useful generations come after a dozen or two, and sure ones later. From
   nothing it would take hundreds, which is why the [warm
   start](./teaching.md#the-warm-start) exists.
-- **It says when it doesn’t know.** Early on, TRUST will say *not beating a
-  coin flip yet*. That is the grading working.
+- **It says when it doesn’t know.** TRUST counts toward 20 guesses before it
+  grades the model, and then, early on, says *not beating a coin flip yet*.
+  That is the grading working.
 - **The saved format may change between versions.** Your session lives in your
   browser and older ones are upgraded, but [download anything you care
   about](./your-data.md#download-and-open).
