@@ -35,7 +35,7 @@ are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>Space</kbd> | Hear the sound you’re playing, with your edits. Pressed while an edit is on its way, it plays once the edit lands. Space plays even with a knob, a setting, or a PERFORM control focused |
+| <kbd>Space</kbd> | Hear the sound you’re playing, with your edits. Pressed while an edit is on its way, it plays once the edit lands. It plays with a knob or a PERFORM control focused. |
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the sound you’re on |
 | <kbd>m</kbd> | Save the sound you’re on |
@@ -78,7 +78,7 @@ with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 | <kbd>←</kbd> <kbd>→</kbd> | Move between controls |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Turn the focused knob |
 | <kbd>Shift</kbd> and <kbd>↑</kbd> / <kbd>↓</kbd> | Fine |
-| <kbd>Enter</kbd> / <kbd>⇧Enter</kbd> | Cycle the focused setting (a wave, a filter mode) forward / back. <kbd>Space</kbd> plays, as everywhere |
+| <kbd>Space</kbd> or <kbd>Enter</kbd> / <kbd>⇧</kbd> and either | Cycle the focused setting (a wave, a filter mode) forward / back. A click leaves no focus on a setting, so Space after a click plays. |
 | <kbd>L</kbd> | Lock the focused control |
 
 ## The bank

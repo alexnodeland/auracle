@@ -4560,12 +4560,11 @@ document.addEventListener("keydown", (e) => {
   // elsewhere.
   //
   // Space is the transport everywhere else. Only a native button presses
-  // itself on Space; a drawn control (a rack setting's chip, a knob, a
-  // PERFORM control, the XY pad) keeps Space only if its own handler used it
-  // (a list row opening, `defaultPrevented`). A click leaves such a control
-  // focused, and Space after a click on a wave chip used to cycle the wave
-  // again, and after a PERFORM control did nothing at all. A chip cycles on
-  // Enter.
+  // itself on Space; a drawn control keeps Space only if its own handler used
+  // it (`defaultPrevented`: a list row opening, a rack setting's chip focused
+  // from the keyboard cycling). A knob, a PERFORM control or the XY pad keeps
+  // its focus after a drag, and Space there did nothing at all; a chip a
+  // click focused cycled again (a click now leaves no focus on a chip).
   const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
   const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
   if (ctl) {
@@ -4653,9 +4652,12 @@ document.addEventListener("visibilitychange", () => {
 // is fatal. Keyboard activation (detail === 0) keeps focus so Tab users keep
 // their place; blur() on an element that no longer holds focus (a handler
 // moved it into an input) is a no-op, so this never steals a deliberate move.
+// A rack setting's chip is a button too (ARIA's: Space and Enter cycle it),
+// so a click leaves no focus on it either, and Space then plays: it used to
+// cycle the wave a click had just changed.
 document.addEventListener("click", (e) => {
   if (e.detail === 0) return;
-  const b = e.target?.closest?.("button");
+  const b = e.target?.closest?.("button, [data-addr][role=button]");
   if (b) b.blur();
 });
 
@@ -9777,8 +9779,8 @@ function buildRack(svg, rack, opts) {
           const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
           tt.textContent = sweepable
-            ? `${k.label} · click or Enter to cycle, drag up or down to sweep (live)`
-            : `${k.label} · click or Enter to cycle`;
+            ? `${k.label} · click to cycle, drag to sweep`
+            : `${k.label} · click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
             // The click a sweep leaves behind on its way up is not a cycle.
@@ -9829,8 +9831,8 @@ function buildRack(svg, rack, opts) {
         // mouse. One roving tab stop per control; arrows move, up/down turn.
         kg.setAttribute("tabindex", "-1");
         kg.setAttribute("role", k.kind.t === "continuous" ? "slider" : "button");
-        // A setting cycles on Enter, never on Space (the transport).
-        if (k.kind.t !== "continuous") kg.setAttribute("aria-keyshortcuts", "Enter Shift+Enter");
+        // Space and Enter cycle a setting, as for any button; with ⇧, back.
+        if (k.kind.t !== "continuous") kg.setAttribute("aria-keyshortcuts", "Shift+Enter Shift+Space");
         kg.setAttribute("aria-label", `${m.title} ${k.label}`);
         kg.dataset.addr = k.addr;
         kg.dataset.kind = m.kind;
@@ -13373,10 +13375,10 @@ $("rack-svg").addEventListener("keydown", (e) => {
     knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? step : -step)));
     paintKnob(kg, knob);
     sendEdit(knob.addr, knob.value, false, id);
-  } else if (e.key === "Enter") {
-    // Enter cycles a setting (⇧ backwards). Not Space: Space is the
-    // transport, and a chip a click left focused took it, so Space after a
-    // click on the wave changed the wave again instead of playing it.
+  } else if (e.key === "Enter" || e.key === " ") {
+    // A setting focused from the keyboard is a button: Space or Enter cycles
+    // it, ⇧ backwards. A click leaves no focus on it (the document's click
+    // handler), so Space after a click plays rather than cycling again.
     if (knob.kind.t === "continuous") return;
     e.preventDefault();
     pushUndo();
@@ -20583,6 +20585,15 @@ $("ovf-menu").addEventListener("click", (e) => {
     $("ovf-menu").classList.add("hidden");
     $("ovf-btn").setAttribute("aria-expanded", "false");
   }
+});
+// The two file items are <label>s, which no key activates by itself: Enter
+// or Space opens the file dialog, as a click does.
+$("ovf-menu").addEventListener("keydown", (e) => {
+  const item = e.target.closest?.("label.ovf-item");
+  if (!item || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  item.click();
 });
 
 // ---------- help overlay ----------

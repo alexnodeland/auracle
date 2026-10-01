@@ -126,8 +126,9 @@ thin on the phrase can be the one you’d reach for under your hands.
 
 ### Changing it
 
-Drag knobs, click a named setting (or press <kbd>Enter</kbd> on it) to cycle
-it, drag cables between jacks, and place modules from the rail. Your changes
+Drag knobs, click a named setting (or, from the keyboard, press
+<kbd>Space</kbd> or <kbd>Enter</kbd> on it) to cycle it, drag cables between
+jacks, and place modules from the rail. Your changes
 stay on the sound you’re playing until you press **KEEP AS NEW**. That adds
 the edit to the pool as a new sound, and leaves the original alone. [Turning
 knobs](../rack.md#turning-knobs) has the details.

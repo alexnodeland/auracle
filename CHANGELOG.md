@@ -18,8 +18,9 @@ changelog that edits its own past is not a record.
 - **Space plays after a click on a setting or a control.** A click on a
   wave or filter-mode chip left it focused, and Space then changed the
   setting again; after a drag on a PERFORM control or a click on the XY
-  pad, Space did nothing. From the keyboard, Enter cycles a focused setting
-  and ⇧Enter goes back.
+  pad, Space did nothing. A click now leaves no focus on a setting, and one
+  reached with the keyboard cycles on Space or Enter, as a button does (⇧
+  goes back).
 - **A knob turned into a runaway is muted, as the alarm says.** The alarm
   read *Muted* while held notes went on playing what the knob had made; a
   module placed or removed was already muted when its check failed.

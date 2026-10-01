@@ -22,8 +22,10 @@ ADR-009 took RFC-003's keymap, which gave PERFORM's pads Space, Enter, B,
 The guide, the ? card and Plan-005 task 12 say Space plays the sound you're
 playing in every view, and RFC-006's PATCH check found Space in PERFORM and
 EVOLVE playing the saved recording instead of the edit. #88 made the app match
-the guide: Space plays the bench everywhere, a focused setting cycles on Enter,
-and Space stays with a native button or a control whose own handler takes it.
+the guide: Space plays the bench everywhere, and stays with a native button or
+a control whose own handler takes it. Review then put the rack's settings back
+on ARIA's button pattern: Space or Enter cycles one reached with the keyboard,
+and a click leaves no focus on it.
 
 ## Decision
 
@@ -32,8 +34,9 @@ and Space stays with a native button or a control whose own handler takes it.
 - **When PERFORM's pad keys are built,** Peek takes a key other than Space. The
   rest of RFC-003's pad keymap (Enter, B, ⇧Enter, ⇧Space) is decided then,
   against what the app does by that time.
-- **A focused setting** (a chip on the rack) cycles on Enter, and ⇧Enter goes
-  back.
+- **A setting focused from the keyboard** (a chip on the rack) cycles on
+  Space or Enter, and ⇧Enter goes back. A pointer click leaves no focus, so
+  Space then plays.
 
 ## Options Considered
 

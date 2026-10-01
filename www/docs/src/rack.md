@@ -57,8 +57,9 @@ that’s what it takes to show a large patch whole.
 
 1. Drag a knob up or down, or focus it and press <kbd>↑</kbd> and
    <kbd>↓</kbd>. Hold <kbd>Shift</kbd> for fine.
-2. Click a named setting (`saw`, `square`, `−2 oct`) to cycle it, or focus it
-   and press <kbd>Enter</kbd> (<kbd>⇧Enter</kbd> goes back).
+2. Click a named setting (`saw`, `square`, `−2 oct`) to cycle it, or reach it
+   with the keyboard and press <kbd>Space</kbd> or <kbd>Enter</kbd> (with
+   <kbd>Shift</kbd>, it goes back).
 3. Press <kbd>⌘Z</kbd> (Ctrl Z) to undo, and <kbd>⇧⌘Z</kbd> to redo.
 
 While you drag, you hear every value the knob passes through. A step

@@ -202,10 +202,12 @@ through one ordered lane in `main.js`:
   wait for an edit in flight as PATCH does, and with ▶ disabled Space says
   why rather than playing the bank's render of the patch from before any
   edit. Outside PATCH nothing lights while it waits: ▶ is PATCH's.
-- Space is the transport even with a drawn control focused (a rack chip or
-  knob, a PERFORM control, the XY pad): only a native button, or a control
-  whose own handler used the key (`defaultPrevented`), keeps it. A rack
-  setting's chip cycles on Enter (⇧Enter back).
+- Space is the transport even with a drawn control focused (a rack knob, a
+  PERFORM control, the XY pad): only a native button, or a control whose own
+  handler used the key (`defaultPrevented`), keeps it. A rack setting's chip
+  is a button: reached with the keyboard it cycles on Space or Enter (⇧
+  back), and a pointer click leaves no focus on it (the document's click
+  handler blurs it as it does a native button), so Space after a click plays.
 - A selector the voices cannot take as a parameter (`wave`, `fkind`, `dmode`,
   `rmode`; `LIVE_INDEX_SITES` are live) reaches them with the bench reply,
   after its render, not early as a structural edit does: only the render

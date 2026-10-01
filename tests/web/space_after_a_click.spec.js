@@ -1,23 +1,27 @@
 // Space plays the sound you're playing after a click on any control, and a
-// setting's chip on the rack cycles from the keyboard on Enter.
+// setting's chip on the rack is a button to the keyboard.
 //
-// A click leaves a drawn control focused: a rack setting's chip (the VCO's
-// wave, the filter's mode), a rack knob, a PERFORM control, the XY pad. The
-// global key handler let a focused control keep Space, so Space after a click
-// on the wave chip cycled the wave again (the chip's own keydown took it),
-// and after a PERFORM control it did nothing at all. Space is the transport
-// now unless a native button has keyboard focus (a mouse click blurs one) or
-// the focused control's own handler used the key (a bank row opening).
+// A click left a drawn control focused: a rack setting's chip (the VCO's wave,
+// the filter's mode), a PERFORM control, the XY pad. The global key handler
+// let a focused control keep Space, so Space after a click on the wave chip
+// cycled the wave again (the chip's own keydown took it), and after a PERFORM
+// control it did nothing at all. Now a click leaves no focus on a chip, as on
+// a native button, and Space is the transport unless a native button has
+// keyboard focus or the focused control's own handler used the key (a bank
+// row opening, a chip reached with the keyboard cycling).
 //
 // What this claims:
 //
-// - After a click on the wave chip or the filter-mode chip, Space plays (the
-//   output sounds, ▶ lights) and the chip keeps what it says; Space again
-//   stops it.
-// - A chip focused from the keyboard cycles on Enter, back on ⇧Enter, and
-//   leaves Space to the transport. Its tooltip says so.
+// - After a click on the wave chip or the filter-mode chip, focus is not on
+//   the chip, Space plays (the output sounds) and the chip keeps what it says,
+//   and Space again stops it (quiet while the phrase's first note would still
+//   be sounding).
+// - A chip reached with the keyboard follows ARIA's button pattern: Space and
+//   Enter cycle it, and with Shift they go back. Neither plays.
 // - In PERFORM, Space plays after a drag on a control, a click on the XY pad,
 //   and a click on a pad (FREEZE stays frozen).
+// - The ⋯ menu's two file items (<label>s) open their file dialog on Enter and
+//   on Space, as a click does; no key did.
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as patch_audible.spec.js does. What it does
@@ -87,15 +91,22 @@ async function quiet(page) {
 }
 
 /** Space, and the output sounds within a few seconds; Space again, and it
- *  stops. `where` names the moment for the failure message. */
+ *  stops. The phrase opens on a C4 held 1.8 s, so quiet within 1.5 s of the
+ *  sound starting is the second Space, not the phrase ending. `where` names
+ *  the moment for the failure message. */
 async function spacePlays(page, where) {
   await quiet(page);
   await page.keyboard.press(" ");
   await expect
     .poll(() => peakDb(page), { timeout: 10_000, intervals: [100], message: `Space plays ${where}` })
     .toBeGreaterThan(-50);
+  const on = Date.now();
+  expect(await peakDb(page), `still sounding before the second Space, ${where}`).toBeGreaterThan(-50);
   await page.keyboard.press(" ");
-  await quiet(page);
+  await expect
+    .poll(() => peakDb(page), { timeout: 1_500, intervals: [50], message: `the second Space stops it, ${where}` })
+    .toBeLessThan(-80);
+  expect(Date.now() - on, `stopped inside the phrase's first note, ${where}`).toBeLessThan(1_500);
 }
 
 /** The rack's chip for the first knob whose address ends in `#site`. */
@@ -123,6 +134,7 @@ test("Space after a click on a wave or filter-mode chip plays the sound and leav
     await expect(chip.text).not.toHaveText(was);
     const now = (await chip.text.textContent()).trim();
     console.log(`[space_after_a_click] ${site}: ${was} → ${now}, focus on ${await focused(page)}`);
+    expect(await focused(page), `a click leaves no focus on the ${site} chip`).not.toContain(chip.addr);
     await expect(page.locator("#rack-play")).toBeEnabled({ timeout: 30_000 });
     await spacePlays(page, `after a click on the ${site} chip`);
     await expect(chip.text, `Space left the ${site} chip alone`).toHaveText(now);
@@ -130,23 +142,23 @@ test("Space after a click on a wave or filter-mode chip plays the sound and leav
   expect(errors).toEqual([]);
 });
 
-test("a setting's chip focused from the keyboard cycles on Enter and back on ⇧Enter, and Space still plays", async ({ page }) => {
+test("a setting's chip reached with the keyboard cycles on Space and Enter, and back with Shift", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = await boot(page);
   await openPreset(page, "Falling Sign");
   const chip = await chipOf(page, "wave");
-  await expect(chip.body.locator("title")).toHaveText(/Enter to cycle/);
-  await expect(chip.g).toHaveAttribute("aria-keyshortcuts", "Enter Shift+Enter");
+  await expect(chip.body.locator("title")).toHaveText("wave · click to cycle");
+  await expect(chip.g).toHaveAttribute("role", "button");
+  await expect(chip.g).toHaveAttribute("aria-keyshortcuts", "Shift+Enter Shift+Space");
   await expect(chip.text).toHaveText("sqr");
   await chip.g.focus();
-  await page.keyboard.press("Enter");
-  await expect(chip.text).toHaveText("sin");
-  await page.keyboard.press("Shift+Enter");
-  await expect(chip.text).toHaveText("sqr");
+  for (const [key, want] of [[" ", "sin"], ["Enter", "tri"], ["Shift+ ", "sin"], ["Shift+Enter", "sqr"]]) {
+    await page.keyboard.press(key === "Shift+ " ? "Shift+Space" : key);
+    await expect(chip.text, `${key.trim() || "Space"} on the focused chip`).toHaveText(want);
+    await expect(page.locator("#rack-play"), "cycling does not play").not.toHaveClass(/\bplaying\b|\bpending\b/);
+  }
   expect(await focused(page)).toContain(chip.addr);
-  await expect(page.locator("#rack-play")).toBeEnabled({ timeout: 30_000 });
-  await spacePlays(page, "with the chip focused");
-  await expect(chip.text).toHaveText("sqr");
+  expect(await peakDb(page), "nothing played").toBeLessThan(-80);
   expect(errors).toEqual([]);
 });
 
@@ -180,5 +192,21 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   await expect(freeze).toHaveAttribute("aria-pressed", "true");
   await spacePlays(page, "after a click on FREEZE");
   await expect(freeze, "Space did not press FREEZE again").toHaveAttribute("aria-pressed", "true");
+  expect(errors).toEqual([]);
+});
+
+test("the ⋯ menu's file items open their dialog on Enter and on Space", async ({ page }) => {
+  const errors = await boot(page);
+  for (const [name, key] of [["Open a taste file", "Enter"], ["Open a patch file", " "]]) {
+    await page.locator("#ovf-btn").click();
+    const item = page.locator("#ovf-menu label.ovf-item", { hasText: name });
+    await item.focus();
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 5_000 }),
+      page.keyboard.press(key),
+    ]);
+    expect(chooser, `${key.trim() || "Space"} on ${name}…`).toBeTruthy();
+    await expect(page.locator("#ovf-menu")).toBeHidden();
+  }
   expect(errors).toEqual([]);
 });
