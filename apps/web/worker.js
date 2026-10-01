@@ -1392,6 +1392,10 @@ function genLanded(g, child) {
     index: g.next - 1,
     child: child > 0 ? child : 0,
     reason,
+    // The job's parent (`WalkJob.parent_id`): the seed this walk started
+    // from. An admitted child's lineage event names it too; a refused one's
+    // is recorded nowhere else, and the bank fades it beside this seed.
+    seed: g.parents[g.next - 1],
     done: g.next,
     total: g.total,
     ranked: JSON.parse(engine.ranked()),
