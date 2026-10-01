@@ -7095,7 +7095,20 @@ const presetVoicedMap = (() => {
     return new Map();
   }
 })();
+// Written 1.5 s after the last change, and at once when the page is hidden or
+// left, as the session is (`saveOnLeave`) and PERFORM's wirings are: leaving
+// cancels the timer, and a preset opened in the 1.5 s before a reload waited
+// on the engine again after it.
 let voicedSaveTimer = null;
+function writeVoiced() {
+  clearTimeout(voicedSaveTimer);
+  voicedSaveTimer = null;
+  try {
+    localStorage.setItem(VOICED_STORE, JSON.stringify({ build: BUILD, presets: [...presetVoicedMap] }));
+  } catch {
+    // Quota or a private window: a convenience, never load-bearing.
+  }
+}
 function rememberPresetVoiced(index, json, makeup) {
   const p = [...(presetRows || []), ...(warmRows || [])].find((r) => r.index === index);
   if (!p || !json || json === "null" || !Number.isFinite(makeup)) return;
@@ -7103,14 +7116,17 @@ function rememberPresetVoiced(index, json, makeup) {
   while (presetVoicedMap.size >= VOICED_MAX) presetVoicedMap.delete(presetVoicedMap.keys().next().value);
   presetVoicedMap.set(p.name, { json, makeup });
   clearTimeout(voicedSaveTimer);
-  voicedSaveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(VOICED_STORE, JSON.stringify({ build: BUILD, presets: [...presetVoicedMap] }));
-    } catch {
-      // Quota or a private window: a convenience, never load-bearing.
-    }
-  }, 1500);
+  voicedSaveTimer = setTimeout(writeVoiced, 1500);
 }
+// Only a write still waiting: another tab holds its own copy, and hiding this
+// one must not overwrite it with nothing new.
+function flushVoiced() {
+  if (voicedSaveTimer !== null) writeVoiced();
+}
+window.addEventListener("pagehide", flushVoiced);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushVoiced();
+});
 const presetVoiced = (name) => presetVoicedMap.get(name) || null;
 // A tree as a sound: its text without the node uids, which the pool mints
 // per session (the same rule as PERFORM's `wireKey`).

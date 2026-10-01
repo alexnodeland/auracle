@@ -8,6 +8,18 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: a reload keeps what PERFORM just measured
+
+- **A patch PERFORM measured just before a reload plays at once after it.**
+  PERFORM keeps its measurements in the browser, so a patch you have played
+  before has working controls the moment it comes back, even after a reload.
+  It wrote each one 1.5 s after it landed, and a reload, a closed tab or a
+  booth's visitor reset in those 1.5 s lost it: the patch said *listening…*
+  for a whole measurement again (7 to 10 s). A preset opened in those 1.5 s
+  was forgotten the same way, and after the reload it waited for the engine
+  instead of playing from the click. Both are now also written the moment the
+  page is hidden or left, as your session is.
+
 ### Fixed: the films' music
 
 - **The music under a long film plays to its end.** Each film's music is
