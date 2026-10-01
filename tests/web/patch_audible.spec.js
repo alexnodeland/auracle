@@ -23,11 +23,15 @@
 //   changes what comes out of the speakers to each waveform's harmonic
 //   signature, and once the edit has landed ▶ plays the triangle, Space stops
 //   it, and Space plays it again.
-// - The held note takes the new wave before the engine has rendered the
-//   change: the voices are handed the new tree, and the output reads the new
-//   wave, before the edit's reply lands (the render slowed by 1.5 s so the
-//   two are apart on any machine), and the reply swaps nothing again. It used
-//   to wait for the render: the tree reached the voices with the reply.
+// - A selector change under a held note keeps its level while the engine
+//   renders it: the voices are handed nothing until the edit's reply (the
+//   render slowed by 1.5 s so the window is wide on any machine), the held
+//   note's level stays where it was, and once the reply lands the new filter
+//   mode plays at its measured makeup, within 4 dB of the level before. A
+//   tree sent ahead of its render could carry only the previous tree's
+//   makeup, which on this change (Falling Sign's filter, low-pass to
+//   band-pass) is 11.8 dB too quiet, and up to 27 dB hot on others
+//   (crates/auracle-wasm/examples/selector_makeup.rs).
 // - Turning the filter's cutoff down lowers the centroid and the 3rd harmonic,
 //   live and on ▶.
 // - ▶ or Space pressed while a wave change is still at the engine plays the
@@ -53,8 +57,10 @@
 //
 // What it does not claim: that the harmonic levels are exact (the tolerances
 // are a few dB either side of the textbook values); how quickly a wave change
-// is heard live beyond "before its render" (the analyser's window is a third
-// of a second; the log prints both times); anything about other patches.
+// is heard live (it waits for the engine's render, a few hundred ms; the log
+// prints it); that every selector change keeps its level within 3 dB (the
+// makeup is measured on the whole phrase, a held C4 is one note of it);
+// anything about other patches.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
@@ -140,6 +146,17 @@ const INIT = `(() => {
     return { f0, level: p.db, h2: rel(2), h3: rel(3), h4: rel(4), h5: rel(5), centroid: den > 0 ? num / den : 0 };
   };
 
+  // The output's RMS over the analyser's window (a third of a second), in dBFS.
+  window.__pwRmsDb = () => {
+    const a = window.__pwTap;
+    if (!a) return null;
+    const b = new Float32Array(a.fftSize);
+    a.getFloatTimeDomainData(b);
+    let sum = 0;
+    for (const x of b) sum += x * x;
+    return sum > 0 ? 10 * Math.log10(sum / b.length) : -Infinity;
+  };
+
   // The output's peak over the analyser's window, in dBFS.
   window.__pwPeakDb = () => {
     const a = window.__pwTap;
@@ -192,7 +209,7 @@ const INIT = `(() => {
     const step = () => {
       const t = performance.now() - t0;
       const s = window.__pwSpectrum(want);
-      if (s) out.push({ t, at: t0 + t, ...s });
+      if (s) out.push({ t, at: t0 + t, rms: window.__pwRmsDb(), ...s });
       if (t < ms) setTimeout(step, 25);
       else resolve(out);
     };
@@ -208,10 +225,9 @@ const INIT = `(() => {
 // Prepended to worker.js (as in patch_editing.spec.js): a busy-wait before the
 // engine's own handler sees chosen request types, switched on by a message.
 //
-// `__pw_slow_render` slows the render itself instead: `edit_param` and
-// `edit_revet` busy-wait before they run, and `edit_param_apply` (the write
-// without the render) does not. So the write and its render can be told
-// apart in time on any machine.
+// `__pw_slow_render` slows the engine's renders of an edit instead:
+// `edit_param` and `edit_revet` busy-wait before they run, so anything that
+// reached the voices ahead of a render shows in the window before its reply.
 const SLOW = `let __pwSlow = {};
 self.addEventListener("message", (e) => {
   const d = e.data;
@@ -494,39 +510,55 @@ test("a VCO's wave cycled in PATCH is heard: live under a held note, and on ▶ 
   expect(errors).toEqual([]);
 });
 
-test("a wave changed under a held note is heard before the engine has rendered the change", async ({ page }) => {
+test("a selector changed under a held note keeps its level: the voices wait for the render and take its measured makeup", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = await boot(page, { slowable: true });
   await openPreset(page, "Falling Sign");
-  const { addr } = await waveKnob(page);
-  await expect(chipText(page, addr)).toHaveText("sqr");
+  const fk = page.locator('#rack-svg g[data-addr="node#fkind"]');
+  await expect(fk.locator(".enum-text")).toHaveText("svf lp");
   await holdC4(page);
-  expectWave(await liveSpectrum(page), "sqr", "live");
+  // Steady before the change: two reads a third of a second apart agree.
+  const rms = () => page.evaluate(() => window.__pwRmsDb());
+  await expect
+    .poll(async () => {
+      const a = await rms();
+      await page.waitForTimeout(350);
+      return Math.abs((await rms()) - a);
+    }, { timeout: 15_000 })
+    .toBeLessThan(1);
+  const before = await rms();
   // The render behind the change takes a second and a half more on any
-  // machine; the write ahead of it does not.
+  // machine.
   await slowRender(page, 1500);
   const n = await replies(page);
-  await page.evaluate((w) => { window.__pwRec = window.__pwRecord(3000, w); }, C4);
-  await clickWave(page);
-  await expect(chipText(page, addr)).toHaveText("sin");
+  await page.evaluate((w) => { window.__pwRec = window.__pwRecord(2800, w); }, C4);
+  await fk.locator(".enum-body").click();
+  await expect(fk.locator(".enum-text")).toHaveText("svf bp");
   const [chip, snaps] = await page.evaluate(async () => [window.__pwAt.chip, await window.__pwRec]);
   await pastReply(page, n, 0);
   const [landed, voiced] = await page.evaluate(
-    ([i, t]) => [window.__pwIO.benchAt[i], window.__pwVoiced.find((x) => x > t)], [n, chip]);
-  const heard = snaps.find((x) => x.at > chip && isWave(x, "sin"));
-  console.log(
-    `[patch_audible] sqr → sin under a held note: the voices had it ${voiced ? Math.round(voiced - chip) + " ms" : "never"} ` +
-      `after the click, the new wave read ${heard ? Math.round(heard.at - chip) + " ms" : "after 3 s"}, ` +
-      `the engine's reply (its render) at ${Math.round(landed - chip)} ms`,
-  );
-  expect(voiced, "the voices were handed the new wave").toBeTruthy();
-  expect(voiced, "the voices had the new wave before its render landed").toBeLessThan(landed);
-  expect(heard, "the new wave is heard at the output").toBeTruthy();
-  expect(heard.at, "the new wave is heard before its render landed").toBeLessThan(landed);
-  // And once the render lands, the held note keeps the wave: no second swap.
+    ([i, t]) => [window.__pwIO.benchAt[i], window.__pwVoiced.filter((x) => x > t)], [n, chip]);
+  // The analyser's window is a third of a second: reads from 0.4 s after the
+  // click until the reply hear only what played after the click.
+  const inWindow = snaps.filter((x) => x.at > chip + 400 && x.at < landed - 50).map((x) => x.rms);
+  const lo = Math.min(...inWindow), hi = Math.max(...inWindow);
   await settled(page);
-  expectWave(await liveSpectrum(page), "sin", "live, after the render landed");
-  expect(await page.evaluate((t) => window.__pwVoiced.filter((x) => x > t).length, chip), "one swap for one change").toBe(1);
+  await page.waitForTimeout(800); // the swap's fade-in and the leveler settle
+  const after = await rms();
+  console.log(
+    `[patch_audible] svf lp → svf bp under a held note: ${before.toFixed(1)} dB before; ` +
+      `${lo.toFixed(1)} to ${hi.toFixed(1)} dB over ${inWindow.length} reads while the engine rendered (reply at ` +
+      `${Math.round(landed - chip)} ms); the voices took the tree ${voiced.length ? Math.round(voiced[0] - chip) + " ms" : "never"} ` +
+      `after the click; ${after.toFixed(1)} dB once it landed`,
+  );
+  expect(inWindow.length, "reads while the engine rendered").toBeGreaterThanOrEqual(10);
+  expect(voiced.filter((t) => t < landed), "nothing reached the voices before the render").toEqual([]);
+  expect(Math.max(hi - before, before - lo), "the level held while the engine rendered").toBeLessThan(1.5);
+  expect(voiced.length, "the new mode reached the voices with the reply").toBe(1);
+  // Measured on the whole phrase, the makeup does not level one held C4
+  // exactly: band-pass sits 2.8 dB under low-pass here (the early tree played
+  // it 14.6 dB under, for the length of the render).
+  expect(Math.abs(after - before), "the new mode plays at its measured level").toBeLessThan(4);
   await page.keyboard.up("a");
   expect(errors).toEqual([]);
 });

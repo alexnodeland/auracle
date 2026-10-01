@@ -20,11 +20,6 @@ changelog that edits its own past is not a record.
   setting again; after a drag on a PERFORM control or a click on the XY
   pad, Space did nothing. From the keyboard, Enter cycles a focused setting
   and ⇧Enter goes back.
-- **A held note takes a new wave or filter mode as soon as the engine has
-  it.** A setting that changes how the patch is built reached held notes
-  only after the engine had rendered the sound again, a fraction of a second
-  later and longer while it was busy. It now reaches them first, as a new
-  module does.
 
 ### Fixed: a reload keeps what PERFORM just measured
 

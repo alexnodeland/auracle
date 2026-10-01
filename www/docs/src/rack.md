@@ -71,9 +71,11 @@ circuit](./views/perform.md#opening-the-circuit)).
 
 ```admonish info collapsible=true title="How it works: when an edit reaches the sound"
 Knobs, and the octave and wavetable selectors, reach the instrument as you
-move them. A structural edit, or any other selector (a VCO’s wave, say),
-re-patches it as soon as the engine has made the edit, before the engine
-renders the patch again. Held notes keep sounding through it.
+move them. A structural edit re-patches it as soon as the engine has made the
+edit. Any other selector (a VCO’s wave, say) re-patches it once the engine has
+rendered the patch again, a fraction of a second later and longer while the
+engine is busy, because that render measures the level the new sound plays
+at. Held notes keep sounding through it.
 
 The patch is rendered and checked again before it can play its phrase, so a ▶
 pressed before then waits for it, then plays the edit. So does

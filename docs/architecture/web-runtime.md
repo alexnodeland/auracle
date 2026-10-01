@@ -207,11 +207,13 @@ through one ordered lane in `main.js`:
   whose own handler used the key (`defaultPrevented`), keeps it. A rack
   setting's chip cycles on Enter (⇧Enter back).
 - A selector the voices cannot take as a parameter (`wave`, `fkind`, `dmode`,
-  `rmode`; `LIVE_INDEX_SITES` are live) is sent with `early`: the worker
-  writes it (`edit_param_apply`), posts the tree (`tree_json`, as a
-  structural edit does), then renders (`edit_revet`), so a held note takes
-  the new wave before the render, and the bench reply only corrects the
-  makeup.
+  `rmode`; `LIVE_INDEX_SITES` are live) reaches them with the bench reply,
+  after its render, not early as a structural edit does: only the render
+  measures the makeup the new tree plays at. Sent early, it could carry only
+  the previous tree's, which put a held note up to 27 dB hot or 29 dB quiet
+  over the presets' 355 selector changes, and no estimate cheaper than the
+  render came within 3 dB often enough
+  (`crates/auracle-wasm/examples/selector_makeup.rs`).
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,

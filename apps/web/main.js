@@ -11664,11 +11664,7 @@ function postParam(q) {
   }
   editInFlight = true;
   paramAtWorker = q;
-  // A selector the voices cannot take as a parameter (`LIVE_INDEX_SITES`
-  // aside) asks the worker for its tree before its render: the voices hear
-  // it from that `tree_json`, not from the bench reply a render later.
-  const early = !!q.isIndex && !LIVE_INDEX_SITES.has(addr.split("#").pop());
-  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq, early });
+  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq });
 }
 
 /** The bench is being replaced: everything still waiting was aimed at the

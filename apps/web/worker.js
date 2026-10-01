@@ -2318,20 +2318,13 @@ async function dispatch(m) {
       break;
     }
     case "edit_param": {
-      // A selector (`wave`, `fkind`, …: `early` from main) reaches the
-      // voices only as a new tree. Written, posted, then rendered, as a
-      // structural edit is, so a held note takes the new wave before the
-      // render rather than after it (`edit_param_apply`).
-      if (m.early && typeof engine.edit_param_apply === "function") {
-        if (!engine.edit_param_apply(m.addr, m.value, m.isIndex)) {
-          post({ type: "edit_rejected", addr: m.addr });
-          break;
-        }
-        postLiveTree(m.addr);
-        engine.edit_revet();
-        postBench({ edited: m.addr, token: m.token });
-        break;
-      }
+      // A selector (`wave`, `fkind`, …) reaches the voices only as a new
+      // tree, and that tree waits for its render here, unlike a structural
+      // edit's (`postLiveTree`): the makeup the voices play it at is what the
+      // render measures. Posted early it could carry only the previous tree's
+      // makeup, which put a held note up to 27 dB hot or 29 dB quiet, and no
+      // estimate cheaper than the render came close enough
+      // (crates/auracle-wasm/examples/selector_makeup.rs).
       const ok = engine.edit_param(m.addr, m.value, m.isIndex);
       if (ok) postBench({ edited: m.addr, token: m.token });
       else post({ type: "edit_rejected", addr: m.addr });
