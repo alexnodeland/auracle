@@ -21,7 +21,8 @@ given. This retimes a section from M bars to N:
     phrase in a shortened section is cut the same way. Without this a phrase
     kept its composed repeats, so a stretched bed fell silent after its
     written length (16 bars of Study, about 46 s);
-  - anything pushed before bar 1 or past bar N is dropped, and said so.
+  - anything pushed before bar 1 or past bar N is dropped, and said so, and
+    a repeat cut at the end is said so too.
 
 It is a composer's rule of thumb, applied mechanically: the output is meant to
 be listened to (or measured) before it is used.
@@ -37,8 +38,8 @@ EPS = 1e-6
 def fit(s, targets, src="score"):
     """The score `s` with each section in `targets` ({name: bars}) refitted.
 
-    Returns the fitted score and a list of what was dropped. `s` is not
-    changed."""
+    Returns the fitted score, what was dropped and what was cut at a section's
+    end, each a list of lines to show. `s` is not changed."""
     bpb = s.get("beats_per_bar", 4)
     composed = {x["name"]: x["bars"] for x in s["sections"]}
     for name in targets:
@@ -46,7 +47,7 @@ def fit(s, targets, src="score"):
             raise ValueError(f"no section {name!r} in {src}")
     fitted = copy.deepcopy(s)
     fitted["sections"] = [{"name": x["name"], "bars": targets.get(x["name"], x["bars"])} for x in s["sections"]]
-    dropped = []
+    dropped, cut = [], []
 
     def move(sec, bar):
         m = composed[sec]
@@ -79,7 +80,7 @@ def fit(s, targets, src="score"):
                 continue
             m, n = composed[sec], targets[sec]
             if p.get("type") == "phrase":
-                extra += fit_phrase(t["name"], p, m, n, bpb, dropped)
+                extra += fit_phrase(t["name"], p, m, n, bpb, dropped, cut)
                 continue
             if "bars" in p:
                 a, b = p["bars"]
@@ -109,20 +110,21 @@ def fit(s, targets, src="score"):
                 pts.append(pt)
             a["points"] = pts
     fitted["_fitted_from"] = {"score": src, "sections": {k: [composed[k], v] for k, v in targets.items()}}
-    return fitted, dropped
+    return fitted, dropped, cut
 
 
-def fit_phrase(track, p, m, n, bpb, dropped):
+def fit_phrase(track, p, m, n, bpb, dropped, cut):
     """Refit one `phrase` pattern (`notes` relative to `start_bar`, played
     `repeat` times every `every_bars`) from an M-bar section to N bars, in
     place. Returns the extra one-repeat phrases that hold a last, cut repeat.
 
     The score example places a phrase's notes without looking at the section's
-    end, so a repeat that ran past it would sound in the next section (or, in a
-    loop, wrap onto its downbeat). A repeat that would is cut at the end: its
-    notes that start before the end are kept and shortened to end there, and
-    it is written as a phrase of its own, offset through its notes' bars
-    (`start_bar` is a whole number; `every_bars` need not be)."""
+    end, so a repeat that ran past it would sound over the start of the next
+    section. A repeat that would is cut at the end: its notes that start
+    before the end are kept and shortened to end there, and it is written as a
+    phrase of its own, offset through its notes' bars (`start_bar` is a whole
+    number; `every_bars` need not be). Each cut repeat is added to `cut`, and
+    each composed repeat that loses every note to `dropped`."""
     sec = p["section"]
     start = p.get("start_bar", 1)
     rep = p.get("repeat", 1)
@@ -153,8 +155,12 @@ def fit_phrase(track, p, m, n, bpb, dropped):
     while whole < reps and first + whole * period + span <= end + EPS:
         whole += 1
     p["repeat"] = whole
-    extra = []
-    for r in range(whole, reps):
+    extra, lost = [], []
+    name = f"{track}/{sec} phrase from bar {start}"
+    # Past `whole`: the repeats that reach the end (cut), and any composed
+    # repeat that now starts after it (dropped). A repeat a stretch added that
+    # has no note before the end is simply not written.
+    for r in range(whole, max(reps, rep)):
         off = first + r * period
         kept = []
         for nb, beat, dur, *rest in notes:
@@ -164,6 +170,12 @@ def fit_phrase(track, p, m, n, bpb, dropped):
             kept.append([round(nb + r * every, 6), beat, round(min(dur, end - at), 6), *rest])
         if kept:
             extra.append(dict(p, repeat=1, notes=kept))
+            cut.append(f"{name}: repeat {r + 1} cut at the end of bar {n} ({len(kept)} of {len(notes)} notes kept)")
+        elif r < rep:
+            lost.append(r + 1)
+    if lost:
+        which = f"repeat {lost[0]}" if len(lost) == 1 else f"repeats {lost[0]}-{lost[-1]}"
+        dropped.append(f"{name}: {which} of {rep}, past bar {n}")
     return extra
 
 
@@ -172,7 +184,7 @@ def main():
     targets = dict((a.split("=")[0], int(a.split("=")[1])) for a in sys.argv[3:])
     s = json.load(open(src))
     try:
-        fitted, dropped = fit(s, targets, src)
+        fitted, dropped, cut = fit(s, targets, src)
     except ValueError as e:
         sys.exit(str(e))
     bpb = s.get("beats_per_bar", 4)
@@ -184,6 +196,8 @@ def main():
         print(f"  {k:<10} {composed[k]} → {v} bars")
     for d in dropped:
         print(f"  dropped: {d}")
+    for c in cut:
+        print(f"  cut: {c}")
 
 
 if __name__ == "__main__":

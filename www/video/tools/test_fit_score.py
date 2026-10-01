@@ -67,7 +67,7 @@ class AFittedBedFillsItsSection(unittest.TestCase):
     TARGETS = {"loop_a": 65, "loop_b": 52}
 
     def setUp(self):
-        self.score, self.dropped = fit_score.fit(study(), self.TARGETS)
+        self.score, self.dropped, self.cut = fit_score.fit(study(), self.TARGETS)
 
     def test_the_pad_sounds_from_the_first_beat_to_the_last(self):
         for sec, bars in self.TARGETS.items():
@@ -97,28 +97,39 @@ class AFittedBedFillsItsSection(unittest.TestCase):
         whole = {p["section"]: p["repeat"] for p in pad["patterns"] if p["repeat"] > 1}
         self.assertEqual(whole, {"loop_a": 16, "loop_b": 13})
 
-    def test_nothing_is_dropped(self):
+    def test_nothing_is_dropped_and_each_last_repeat_is_reported_cut(self):
         self.assertEqual(self.dropped, [])
+        # 52 bars is 13 whole repeats of the pad's 4, so only the pluck's
+        # 8-bar phrase is cut there.
+        self.assertEqual(self.cut, [
+            "pad/loop_a phrase from bar 1: repeat 17 cut at the end of bar 65 (5 of 11 notes kept)",
+            "pluck/loop_a phrase from bar 1: repeat 9 cut at the end of bar 65 (4 of 37 notes kept)",
+            "pluck/loop_b phrase from bar 1: repeat 7 cut at the end of bar 52 (17 of 37 notes kept)",
+        ])
 
 
 class AShortenedSectionStopsAtItsEnd(unittest.TestCase):
     def test_no_note_runs_past_a_shortened_section(self):
         # circuit and taste fit loop_a to 13 bars, tour loop_b to 7.
-        score, _ = fit_score.fit(study(), {"loop_a": 13, "loop_b": 7})
+        score, dropped, _ = fit_score.fit(study(), {"loop_a": 13, "loop_b": 7})
         for sec, bars in (("loop_a", 13), ("loop_b", 7)):
             end = bars * 4
             for track in ("pad", "pluck"):
                 notes = notes_of(score, track, sec)
                 self.assertLessEqual(max(e for _, e in notes), end + 1e-9, f"{track} in {sec}")
             self.assertEqual(gaps(notes_of(score, "pad", sec), end), [], f"pad in {sec}")
+        self.assertEqual(dropped, [
+            "pad/loop_b phrase from bar 1: repeats 3-4 of 4, past bar 7",
+            "pluck/loop_b phrase from bar 1: repeat 2 of 2, past bar 7",
+        ])
 
 
 class TheComposedLength(unittest.TestCase):
     def test_fitting_to_the_composed_length_changes_no_note(self):
         s = study()
-        fitted, dropped = fit_score.fit(s, {"loop_a": 16, "loop_b": 16})
+        fitted, dropped, cut = fit_score.fit(s, {"loop_a": 16, "loop_b": 16})
         self.assertEqual(fitted["tracks"], s["tracks"])
-        self.assertEqual(dropped, [])
+        self.assertEqual((dropped, cut), ([], []))
 
     def test_the_input_is_not_changed(self):
         s = study()
@@ -138,31 +149,54 @@ class APhrase(unittest.TestCase):
     def test_a_repeat_cut_by_the_end_keeps_what_starts_before_it_shortened_to_fit(self):
         s = self.score({"start_bar": 1, "repeat": 4, "every_bars": 2,
                         "notes": [[1, 1, 8, "C4", 0.5], [2, 3, 1, "E4", 0.5]]})
-        fitted, _ = fit_score.fit(s, {"s": 11})
+        fitted, dropped, cut = fit_score.fit(s, {"s": 11})
         ps = fitted["tracks"][0]["patterns"]
         self.assertEqual(ps[0]["repeat"], 5)
         self.assertEqual([p["notes"] for p in ps[1:]], [[[11, 1, 4, "C4", 0.5]]])
         self.assertEqual(max(e for _, e in notes_of(fitted, "t", "s")), 44)
+        self.assertEqual(dropped, [])
+        self.assertEqual(cut, ["t/s phrase from bar 1: repeat 6 cut at the end of bar 11 (1 of 2 notes kept)"])
 
-    def test_a_repeat_offset_by_fractional_bars_keeps_a_whole_start_bar(self):
+    def test_a_repeat_cut_at_fractional_bars_keeps_a_whole_start_bar(self):
+        # Every 2.5 bars, a note held 8 beats: in 13 bars the sixth repeat
+        # starts at bar 13.5 and must be cut to the 2 beats that are left.
         s = self.score({"start_bar": 1, "repeat": 4, "every_bars": 2.5,
-                        "notes": [[1, 1, 2, "C4", 0.5]]})
+                        "notes": [[1, 1, 8, "C4", 0.5]]})
         s["sections"][0]["bars"] = 10
-        fitted, _ = fit_score.fit(s, {"s": 14})
-        for p in fitted["tracks"][0]["patterns"]:
+        fitted, _, cut = fit_score.fit(s, {"s": 13})
+        ps = fitted["tracks"][0]["patterns"]
+        self.assertEqual([(p["start_bar"], p["repeat"]) for p in ps], [(1, 5), (1, 1)])
+        for p in ps:
             self.assertIsInstance(p["start_bar"], int)
-        starts = [st for st, _ in notes_of(fitted, "t", "s")]
-        self.assertEqual(starts, [0, 10, 20, 30, 40, 50])
+        self.assertEqual(ps[1]["notes"], [[13.5, 1, 2, "C4", 0.5]])
+        self.assertEqual(notes_of(fitted, "t", "s"), [(0, 8), (10, 18), (20, 28), (30, 38), (40, 48), (50, 52)])
+        self.assertEqual(len(cut), 1)
+
+    def test_a_phrase_that_starts_after_a_shortened_end_is_dropped_and_said_so(self):
+        # A 16-bar section with a phrase from bar 8, fitted to 6 bars.
+        s = self.score({"start_bar": 8, "repeat": 2, "every_bars": 2, "notes": [[1, 1, 4, "C4", 0.5]]})
+        s["sections"][0]["bars"] = 16
+        fitted, dropped, cut = fit_score.fit(s, {"s": 6})
+        self.assertEqual(fitted["tracks"][0]["patterns"][0]["repeat"], 0)
+        self.assertEqual(notes_of(fitted, "t", "s"), [])
+        self.assertEqual(dropped, ["t/s phrase from bar 8: repeats 1-2 of 2, past bar 6"])
+        self.assertEqual(cut, [])
+
+    def test_a_phrase_anchored_to_the_end_that_falls_before_bar_1_is_dropped_and_said_so(self):
+        s = self.score({"start_bar": 7, "repeat": 1, "every_bars": 2, "notes": [[1, 1, 8, "C4", 0.5]]})
+        fitted, dropped, _ = fit_score.fit(s, {"s": 1})
+        self.assertEqual(fitted["tracks"][0]["patterns"][0]["repeat"], 0)
+        self.assertEqual(dropped, ["t/s phrase"])
 
     def test_a_phrase_anchored_to_the_end_moves_with_it(self):
         s = self.score({"start_bar": 7, "repeat": 1, "every_bars": 2, "notes": [[1, 1, 8, "C4", 0.5]]})
-        fitted, _ = fit_score.fit(s, {"s": 12})
+        fitted, _, _ = fit_score.fit(s, {"s": 12})
         self.assertEqual(fitted["tracks"][0]["patterns"][0]["start_bar"], 11)
         self.assertEqual(fitted["tracks"][0]["patterns"][0]["repeat"], 1)
 
     def test_a_phrase_that_ends_early_is_left_alone(self):
         s = self.score({"start_bar": 1, "repeat": 1, "every_bars": 2, "notes": [[1, 1, 4, "C4", 0.5]]})
-        fitted, _ = fit_score.fit(s, {"s": 30})
+        fitted, _, _ = fit_score.fit(s, {"s": 30})
         self.assertEqual(fitted["tracks"][0]["patterns"], s["tracks"][0]["patterns"])
 
 
