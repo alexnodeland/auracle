@@ -269,8 +269,9 @@
 
   /* type: one ratio (1.2) and six roles. The steps run up from the value size,
      12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit under the
-     scale at 11 px, and nothing in the page is smaller */
-  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the page's floor */
+     scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
+     has sizes of its own, and a lone glyph is sized to its button */
+  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
   --t-value: 12px;   /* mono values, readouts, small print */
   --t-body: 14px;    /* prose, names, hints */
   --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
@@ -339,8 +340,11 @@
   --surface-pop: linear-gradient(180deg, var(--pop-hi), var(--pop-lo));
   --shadow-pop: var(--lift), 0 14px 34px var(--black-62);
 
-  /* fixed chrome heights, so nothing hand-tunes an offset to them */
-  --menubar-h: 44px;
+  /* fixed chrome heights, so nothing hand-tunes an offset to them. The menu
+     bar takes its height from this (`min-height`), and type_scale.spec.js
+     measures that it does: at 44px it was 49px tall, and the alarm placed
+     under it overlapped it. */
+  --menubar-h: 52px;
   --keybar-h: 128px;
 
   /* Never let the UA leak someone else's design system: dark form controls,
@@ -415,6 +419,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---- menu bar ---- */
 .menubar {
   position: relative;
+  min-height: var(--menubar-h);
   display: flex;
   align-items: center;
   gap: var(--s5);
@@ -611,7 +616,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .skill { display: none; }
 }
 @media (max-width: 480px) {
-  .wordmark { font-size: var(--t-title); padding-left: 0; }
+  /* On a phone the wordmark takes a step down, to leave the bar room. */
+  .wordmark { font-size: var(--t-body); padding-left: 0; }
   #help-open { display: none; }
   .counter-label { letter-spacing: 0.1em; }
 }
@@ -688,7 +694,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--hairline);
 }
-.bank-head .silk-dim { font-size: var(--t-label); }
+.bank-head .silk-dim { font-size: var(--t-value); }
 /* "+N arriving" owns the stretch between the label and the save count, and
    gives it up by ellipsizing. It used to be as wide as its text, so the save
    count beside it walked 66px left the moment the pool finished filling (and
@@ -701,6 +707,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The save count is a value readout, and had no size of its own: it took the
+   body size, and left "+N arriving" too little room. */
+.pin-budget { font-size: var(--t-value); }
 /* Three banks: presets, the evolving pool, and what you kept. */
 .bank-filters {
   display: flex;
@@ -886,7 +895,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   flex: 0 0 auto;
   min-width: 26px;
   text-align: right;
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   color: var(--phos-b-dim);
 }
 
@@ -1004,7 +1013,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .preset-item .pb-sig {
   margin-left: auto;
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   color: var(--phos-a-dim);
 }
 .preset-item .pb-in {
@@ -1226,10 +1235,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .mm-pip-n {
   font-family: var(--font-mono);
-  font-size: 7px; /* token-exempt: a pip's number, drawn at the minimap's scale */
+  font-size: var(--t-label);
   font-weight: 600;
   fill: var(--mm-pip-ink);
   text-anchor: middle;
+  dominant-baseline: central;
   pointer-events: none;
 }
 /* A control that does not apply right now, holding its slot.
@@ -1579,7 +1589,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .scope { flex: 1; min-height: 90px; }
 .readout {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   line-height: 1.5;
   color: var(--phos-a-dim);
   min-height: 2.9em;
@@ -1774,8 +1784,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #oct-label { grid-column: span 1; justify-self: center; }
 .key-side.right { align-items: flex-end; }
 .oct-ctl { display: flex; align-items: center; gap: var(--s2); }
-#oct-label { font-size: var(--t-label); color: var(--phos-a); min-width: 44px; text-align: center; }
-.live-label { font-size: var(--t-label); color: var(--phos-a-dim); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#oct-label { font-size: var(--t-value); color: var(--phos-a); min-width: 44px; text-align: center; }
+.live-label { font-size: var(--t-value); color: var(--phos-a-dim); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #vol { accent-color: var(--phos-a); width: 110px; }
 
 .piano {
@@ -1946,7 +1956,7 @@ input, textarea, .bi-rename {
   box-shadow: 0 0 10px var(--phos-a-55);
   transition: width var(--d-move) ease;
 }
-.boot-status { font-size: var(--t-label); color: var(--phos-a); }
+.boot-status { font-size: var(--t-value); color: var(--phos-a); }
 
 /* ---- bank names + presets ---- */
 /* The name is the row's headline — a musician scans names, not signatures. */
@@ -2046,7 +2056,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   padding: var(--s2) var(--s3) var(--s2);
 }
 .bank-tour .tour-step {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   color: var(--phos-b-dim);
   letter-spacing: 0.1em;
 }
@@ -2220,9 +2230,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   letter-spacing: 0.3em;
   text-transform: uppercase;
 }
-.nb-rail .rail-n { font-size: var(--t-label); color: var(--silk-dim); }
+.nb-rail .rail-n { font-size: var(--t-value); color: var(--silk-dim); }
 .nb-rail .rail-held {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   color: var(--phos-a);
   border: 1px solid var(--phos-a-deep);
   border-radius: 999px;
@@ -2279,7 +2289,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   background: var(--bezel);
   border-bottom: 1px solid var(--hairline);
 }
-.nb-head .mono { font-size: var(--t-label); color: var(--silk-dim); }
+.nb-head .mono { font-size: var(--t-value); color: var(--silk-dim); }
 
 /* ---- search: the index. Machined like .perf-sel, never a native widget. ---- */
 .nb-search { position: relative; margin: 0 var(--s3); }
@@ -2381,7 +2391,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nb-n { font-size: var(--t-label); color: var(--silk-dim); letter-spacing: 0; }
+.nb-n { font-size: var(--t-value); color: var(--silk-dim); letter-spacing: 0; }
 .nb-list { display: flex; flex-direction: column; gap: 3px; padding: var(--s1) 0 2px; }
 
 /* ---- the chip: glyph, name, port signature, belief ---- */
@@ -2587,7 +2597,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   z-index: 3;
   margin: var(--s1) 0 0;
   padding: var(--s2) var(--s3);
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   line-height: 1.5;
   color: var(--phos-a);
   background: var(--bezel);
@@ -2707,7 +2717,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
    It is on screen only while the pointer is in the catalogue (see
    `nbSpecHide`), which is when the bottom of the rack is not what you are
    reading. */
-.play-canvas { --spec-h: clamp(96px, 13vh, 150px); --spec-line: 46px; }
+.play-canvas {
+  --spec-h: clamp(96px, 13vh, 150px); /* token-exempt: the strip's height, which its negative margin cancels out of the column: geometry, not space */
+  --spec-line: 46px; /* token-exempt: the strip's one line, the height the column keeps for it */
+}
 .spec-dock {
   flex: 0 0 var(--spec-h);
   margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
@@ -2752,7 +2765,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   align-items: start;
 }
 .sd-rest {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   line-height: 1.7;
   color: var(--silk-dim);
   /* One line, and it ends in an ellipsis rather than wrapping out of a strip
@@ -2763,12 +2776,12 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .sd-id { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; }
 .sd-idtext { min-width: 0; }
 .sd-name { display: block; margin-bottom: 3px; }
-.sd-ports { font-size: var(--t-label); line-height: 1.6; color: var(--phos-a-dim); }
+.sd-ports { font-size: var(--t-value); line-height: 1.6; color: var(--phos-a-dim); }
 .sd-body { min-width: 0; }
 .sd-body .sp-blurb { margin: 0 0 var(--s1); }
-.sd-strip { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); font-size: var(--t-label); line-height: 1.6; }
+.sd-strip { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); font-size: var(--t-value); line-height: 1.6; }
 .sd-model {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   line-height: 1.6;
   color: var(--silk-dim);
   border-left: 1px solid var(--hairline);
@@ -2787,7 +2800,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   font-family: var(--font-silk); font-size: var(--t-body);
   color: var(--silk-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sd-hint { font-size: var(--t-label); color: var(--silk-dim); margin-left: auto; white-space: nowrap; }
+.sd-hint { font-size: var(--t-value); color: var(--silk-dim); margin-left: auto; white-space: nowrap; }
 .sd-hint kbd { font-size: var(--t-label); color: var(--silk-dim); }
 
 /* ---- priced sockets (WS-2 §5) ----
@@ -2802,7 +2815,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   border: 1px solid var(--hairline);
   border-radius: var(--r1);
   background: var(--black-25);
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   white-space: nowrap;
   cursor: help;
 }
@@ -2814,7 +2827,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .pr-dim { color: var(--silk-dim); }
 .pr-note {
   color: var(--silk-dim); text-transform: uppercase;
-  letter-spacing: 0.14em; font-size: 0.9em;
+  letter-spacing: 0.14em; font-size: var(--t-label);
   border-bottom: 1px dotted var(--hairline);
 }
 .nb-price { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: var(--t-value); }
@@ -2826,7 +2839,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--hairline); border-radius: 50%;
   background: var(--black-25);
-  color: var(--phos-a); font-size: 9px; line-height: 1; cursor: pointer; /* token-exempt: a glyph sized to its 22px button */
+  color: var(--phos-a);
+  font-size: 9px; /* token-exempt: a glyph sized to its 22px button */
+  line-height: 1; cursor: pointer;
   padding: 0 0 0 1px;
 }
 .pv-play:hover:not(:disabled) { color: var(--white); border-color: var(--phos-a-deep); background: var(--phos-a-10); }
@@ -2844,7 +2859,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
    thing in it that is not text. 30px still reads as a waveform — it is a
    "does this sound like anything" glance, not a measurement. */
 .spec-dock.armed .pv-scope { height: 30px; }
-.pv-label { font-size: var(--t-label); color: var(--silk-dim); white-space: nowrap; }
+.pv-label { font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; }
 /* Rendering is a half-second of somebody else's CPU: say so by dimming the
    thing that is about to change rather than by adding a spinner. */
 .pv.busy .pv-scope { opacity: 0.45; }
@@ -2869,7 +2884,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   color: var(--silk);
 }
 .sp-ports, .sp-params, .sp-model, .sp-heard {
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   line-height: 1.6;
   color: var(--silk-dim);
 }
@@ -3143,7 +3158,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   border-left: 1px solid var(--hairline);
   padding-left: var(--s1);
   letter-spacing: 0;
-  font-size: var(--t-label);
+  font-size: var(--t-value);
 }
 .pick-chip .pick-chip-price.hidden { display: none; }
 .pick-chip kbd {
@@ -3291,7 +3306,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
      strip is the newest claim on it — so it gives ground first. Its height is
      still reserved, just smaller: the blurb wraps rather than the strip
      appearing and disappearing under the pointer. */
-  .play-canvas { --spec-h: 92px; }
+  .play-canvas { --spec-h: 92px; } /* token-exempt: the strip's height on a short window, as above */
   .spec-dock { padding: var(--s2) var(--s4); }
   /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
      rail folds itself to the 34px group tab rather than squeezing the canvas. */
@@ -3313,7 +3328,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   }
   .nb-item:active { transform: none; }
   .jack.legal circle { animation: none; }
-  * { animation: none !important; transition: none !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
 /* ---------- performance controls (keybar) ---------- */
@@ -3335,9 +3350,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 /* The spinners are the most native pixels a number input has. */
 .perf-num::-webkit-inner-spin-button,
 .perf-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.perf-glide { display: flex; align-items: center; gap: 3px; font-size: var(--t-label); color: var(--phos-a-dim); }
+.perf-glide { display: flex; align-items: center; gap: 3px; font-size: var(--t-value); color: var(--phos-a-dim); }
 .perf-glide input[type="range"] { width: 54px; }
-.midi-ind { font-size: var(--t-label); color: var(--silk-dim); }
+.midi-ind { font-size: var(--t-value); color: var(--silk-dim); }
 .midi-ind.on { color: var(--phos-a); text-shadow: 0 0 6px var(--phos-a-60); }
 #rec-btn.lit { color: var(--led-red); border-color: var(--led-red); text-shadow: 0 0 8px var(--led-red-80); }
 
@@ -3358,9 +3373,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   background: none; border: none; color: var(--phos-a);
   cursor: pointer; font-size: var(--t-label); padding: 0 2px;
 }
-.style-badge { display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t-label); color: var(--silk-dim); }
+.style-badge { display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t-value); color: var(--silk-dim); }
 .style-badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.duel-pred { font-size: var(--t-label); color: var(--silk-dim); text-align: center; min-height: 12px; }
+.duel-pred { font-size: var(--t-value); color: var(--silk-dim); text-align: center; min-height: 12px; }
 .duel-pred.hit { color: var(--phos-a); }
 .duel-pred.miss { color: var(--phos-b); }
 
@@ -3380,7 +3395,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 /* ---------- quick duel strip (PLAY) ---------- */
 .play-duel {
   display: flex; align-items: center; gap: var(--s2);
-  padding: var(--s1) var(--s3); font-size: var(--t-label);
+  padding: var(--s1) var(--s3); font-size: var(--t-value);
   border-top: 1px solid var(--play-duel-edge); background: var(--play-duel-glass);
 }
 .play-duel .pd-label { font-size: var(--t-label); letter-spacing: 0.12em; text-transform: uppercase; }
@@ -3440,7 +3455,7 @@ kbd { font-family: var(--font-mono); }
 /* The instrument's only About surface. Quiet enough that it never competes with
    the thing a reader opened this card for. */
 .help-fine {
-  margin: var(--s3) 0 0; font-size: var(--t-label); letter-spacing: 0.06em;
+  margin: var(--s3) 0 0; font-size: var(--t-value); letter-spacing: 0.06em;
   color: var(--silk-dim); border-top: 1px solid var(--hairline); padding-top: var(--s3);
 }
 .help-fine a { color: var(--silk-dim); }
@@ -3570,7 +3585,7 @@ select:focus-visible,
 /* ---------- menubar: skill readout + overflow ---------- */
 /* One line, always: at 190px it wrapped to "calibrating — 16 of 20 /
    forecasts" and pushed the menubar's baseline around. */
-.skill { font-size: var(--t-label); color: var(--phos-b-dim); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill { font-size: var(--t-value); color: var(--phos-b-dim); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ovf { position: relative; }
 .ovf-menu {
   position: absolute;
@@ -3784,7 +3799,7 @@ select:focus-visible,
   padding: var(--s1) var(--s2);
   border: 1px solid var(--hairline); border-radius: 3px;
   background: var(--bezel);
-  font-size: var(--t-label); color: var(--phos-a-dim);
+  font-size: var(--t-value); color: var(--phos-a-dim);
   text-align: center;
 }
 .ix-dims.busy { color: var(--silk-dim); }
@@ -3824,13 +3839,13 @@ select:focus-visible,
   background: var(--surface-pop); box-shadow: var(--shadow-pop);
   text-align: center;
 }
-.dv-mark { font-size: 26px; color: var(--phos-a); line-height: 1; } /* token-exempt: a glyph, the drop target's mark */
+.dv-mark { color: var(--phos-a); line-height: 1; font-size: 26px; } /* token-exempt: a glyph, the drop target's mark */
 .dv-line {
   margin-top: var(--s2);
   font-family: var(--font-silk); font-size: var(--t-title);
   letter-spacing: 0.1em; color: var(--silk);
 }
-.dv-sub { margin-top: var(--s1); font-size: var(--t-label); color: var(--silk-dim); letter-spacing: 0.1em; }
+.dv-sub { margin-top: var(--s1); font-size: var(--t-value); color: var(--silk-dim); letter-spacing: 0.1em; }
 
 /* ---------- the offscreen export stage ----------
    `buildRack` draws into a live document or it draws nothing: `fitLabels`
@@ -3944,7 +3959,7 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   min-width: 0;
 }
 .dn-id { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
-.dn-sig { font-size: var(--t-label); color: var(--phos-a-dim); }
+.dn-sig { font-size: var(--t-value); color: var(--phos-a-dim); }
 /* The same bookkeeping on the duel cards: on request only. */
 html:not(.engineer) .dn-id,
 html:not(.engineer) .dn-sig { display: none; }
@@ -4072,7 +4087,7 @@ html:not(.engineer) .dn-sig { display: none; }
    looks like dropped messages. */
 .toast-stack {
   flex: 0 0 auto;
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   color: var(--silk-dim);
   border: 1px solid var(--hairline);
   border-radius: 999px;
@@ -4182,7 +4197,10 @@ html:not(.engineer) .dn-sig { display: none; }
   animation: listen 1.1s ease-in-out infinite; /* token-exempt: a loop's period, not a transition */
 }
 @media (prefers-reduced-motion: reduce) { .wi-play.loading { animation: none; } }
-@media (pointer: coarse) { .wi-play { width: 34px; height: 34px; } }
+@media (pointer: coarse) {
+  .wi-play { width: 34px; height: 34px; }
+  .warm-cell .warm-item { padding-right: 46px; } /* token-exempt: the ▶'s column on touch: 34px wide, 6px in from the edge, 6px clear of the words */
+}
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 .warm-tour { margin-right: auto; color: var(--phos-a); font-size: var(--t-body); text-decoration: none; }
 .warm-tour:hover, .warm-tour:focus-visible { text-decoration: underline; }
@@ -4225,7 +4243,7 @@ html:not(.engineer) .dn-sig { display: none; }
 .cd-row { display: flex; gap: var(--s2); align-items: center; }
 .cd-play { flex: 1; }
 .cd-pick { flex: 1; }
-.cd-hint { font-size: var(--t-label); }
+.cd-hint { font-size: var(--t-value); }
 @media (max-width: 700px) {
   .cduel-grid { grid-template-columns: 1fr; }
 }
@@ -4256,7 +4274,7 @@ html:not(.engineer) .dn-sig { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
 /* ---------- bank rows ---------- */
@@ -4360,7 +4378,7 @@ html:not(.engineer) .dn-sig { display: none; }
    the default, where it is the same fact about every pair; amber only for a
    check dealt at random under a rule that otherwise chooses. */
 .duel-deal { display: flex; align-items: center; gap: var(--s2); }
-.duel-rule { font-size: var(--t-label); color: var(--silk-dim); white-space: nowrap; cursor: help; }
+.duel-rule { font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; cursor: help; }
 .duel-rule:empty { display: none; }
 .duel-rule.check { color: var(--phos-b); }
 /* The centre column is as wide as its widest line, and the meter's copy
@@ -4743,14 +4761,13 @@ html.handheld .handheld-gate {
   text-align: center;
   padding: var(--s6) var(--s5) var(--s5);
 }
-.hg-card .boot-word { font-size: var(--t-title); }
 /* The lit E is instrumentation — it lights where the model is working. The
    handheld gate runs nothing, so its E is silk like the rest of the word. */
 .hg-card .boot-word b { color: var(--silk); text-shadow: none; }
 .hg-lede {
   margin-top: var(--s4);
   font-family: var(--font-voice);
-  font-size: var(--t-voice);
+  font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk);
 }
@@ -4788,7 +4805,7 @@ html.handheld .handheld-gate {
 .hg-ask b { color: var(--phos-b); font-weight: 500; }
 .hg-soon {
   margin-top: var(--s3);
-  font-size: var(--t-label);
+  font-size: var(--t-value);
   letter-spacing: 0.08em;
   color: var(--silk-dim);
 }
@@ -5132,8 +5149,8 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
    deck it maps. Slimmer, still a 24px target. */
 .midi-row .util-btn { padding-block: var(--s1); }
 .midi-slot { color: var(--silk); font-family: var(--font-silk); }
-.midi-src { color: var(--phos-a-dim); font-size: var(--t-label); }
-.midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-label); align-items: center; }
+.midi-src { color: var(--phos-a-dim); font-size: var(--t-value); }
+.midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-value); align-items: center; }
 .key-side.right .perf-ctl { position: relative; }
 
 /* Level three at rest takes no room (notes/ui-hierarchy.md). */
@@ -5315,8 +5332,10 @@ html.booth .pf-marquee { display: grid; min-height: 46px; }
   letter-spacing: 0.145em;
   color: var(--silk);
 }
-.ba-sub { font-family: var(--font-silk); font-size: var(--t-title); color: var(--silk); animation: ba-pulse 2.4s ease-in-out infinite; } /* token-exempt: a loop's period, not a transition */
-.ba-cap { font-size: var(--t-body); color: var(--phos-b); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Under the wordmark's title size: the line at the body size, its mono
+   caption at the value size. */
+.ba-sub { font-family: var(--font-silk); font-size: var(--t-body); color: var(--silk); animation: ba-pulse 2.4s ease-in-out infinite; } /* token-exempt: a loop's period, not a transition */
+.ba-cap { font-size: var(--t-value); color: var(--phos-b); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ba-cap:empty { display: none; }
 @keyframes ba-pulse { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .ba-sub { animation: none; } }

@@ -79,8 +79,10 @@
 
     /* type: one ratio (1.2) and six roles. The steps run up from the value
        size, 12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit
-       under the scale at 11 px, and nothing in the page is smaller */
-    --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the page's floor */
+       under the scale at 11 px, the floor for text in a page; the rack, drawn
+       to its zoom, has sizes of its own, and a lone glyph is sized to its
+       button */
+    --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
     --t-value: 12px;   /* mono values, readouts, small print */
     --t-body: 14px;    /* prose, names, hints */
     --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */

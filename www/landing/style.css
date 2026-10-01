@@ -154,8 +154,9 @@
 
   /* type: one ratio (1.2) and six roles. The steps run up from the value size,
      12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit under the
-     scale at 11 px, and nothing in the page is smaller */
-  --t-label: 11px;                /* silk caps: panel labels, tabs, buttons; the page's floor */
+     scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
+     has sizes of its own, and a lone glyph is sized to its button */
+  --t-label: 11px;                /* silk caps: panel labels, tabs, buttons; the floor for text */
   --t-value: 12px;                /* mono values, readouts, small print */
   --t-body: 1rem;                 /* landing: prose, read at arm's length */
   --t-voice: 17px;                /* the model speaking (Newsreader italic), and nothing else */
@@ -190,7 +191,7 @@
   /* landing: sizes only this surface uses */
   --t-h2: clamp(1.6rem, 3.2vw, 2.3rem); /* a section's heading */
   --t-lede: clamp(1.05rem, 1.7vw, 1.28rem); /* a section's first sentence */
-  --t-micro: 0.66rem;             /* mono values in the figures */
+  --t-micro: 11px;                /* mono values in the figures, at the floor */
   --s8: 72px;                     /* between sections */
   --s9: 112px;                    /*   …and around the hero */
 }
@@ -278,7 +279,7 @@ a:hover { text-decoration-color: currentcolor; }
 
 kbd {
   font-family: var(--font-mono);
-  font-size: 0.78em;
+  font-size: var(--t-label);
   color: var(--silk-dim);
   border: 1px solid var(--hairline);
   border-bottom-width: 2px;

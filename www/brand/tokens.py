@@ -35,8 +35,9 @@ with no build step.
   surface does not define, or a stylesheet uses a token another surface owns;
 - a `<meta name="theme-color">` is not the rack, or a hex quoted in `<code>`
   is not a token's value (prose may name a colour, but only a true one);
-- a SCANNED stylesheet defines, outside its block, a custom property the
-  block already defines (the later definition would silently win);
+- a SCANNED stylesheet defines, outside its block, a custom property any
+  block defines (its own block's would be silently overridden, and another
+  surface's name would be borrowed);
 - a SCANNED file's count of literal sizes and durations moves from
   SIZES_BASELINE (see "The sizes ratchet" below).
 
@@ -44,23 +45,33 @@ The files in NOT_YET below still hold colours of their own and are not
 scanned yet; `--check` lists them every time it runs.
 
 The sizes ratchet. Every SCANNED file is counted, outside its generated block,
-for four kinds of literal:
-- font: a px or rem font size (`font-size`, the `font` shorthand, a canvas
-  `ctx.font` string, a literal times the pixel ratio in one included);
+for four kinds of literal (units in any case: `PX` is `px`):
+- font: a font size in px, rem, em or % (`font-size`, the `font` shorthand);
+  an SVG `font-size="N"` attribute; and every assignment to a canvas's
+  `.font` that is not `canvasFont(…)`, whatever its form (a string, a
+  template, a sum, a variable);
 - space: a px or rem `padding`, `margin` or `gap` of 4 px or more (under the
   first step is an optical nudge);
-- radius: a px `border-radius` from 4 px up to 99 px (under it is a hairline's
-  rounding, 999px is a pill and 50% a circle: shapes, not steps);
-- time: a `transition` or `animation` duration or delay.
-A literal on a line that carries `token-exempt: why` is not counted; the why
-is required. Stylesheets, `<style>` blocks and `style` attributes are read as
-CSS, and a script's string literals and its `.style.*` and `.font`
-assignments as CSS in a script. Today's surfaces predate the scale, so this is
-a ratchet, as the voice check is: the check fails when a file's count rises,
-when a file the baseline does not list has any, and when a count falls below
-the baseline (a move lowers the baseline in the same change, with
-`--update`), so the floor only goes down. `--check` lists the files not yet
-moved every time it runs.
+- radius: a px or rem `border-radius` from 4 px up to 99 px (under it is a
+  hairline's rounding, 999px is a pill and 50% a circle: shapes, not steps);
+- time: a `transition` or `animation` duration or delay; in a script, an
+  animation's `duration: N` and a number passed to `.animate()`.
+These are read in stylesheets, `<style>` blocks and `style` attributes; in a
+script's string literals, its `.style.*` assignments, its style objects
+(`{ fontSize: "12px" }`) and its `style.setProperty()` calls; and through a
+custom property: a literal in `--x: 10px` (or `setProperty("--x", "10px")`)
+counts when `var(--x)` is used in one of the declarations above, in any
+scanned file. A `token-exempt: why` comment exempts only the declaration it
+trails, and the why is required. Not counted: a script's other millisecond
+constants (timers, dwells, settles: when something happens, not how long it
+moves), lengths that are not one of the four kinds (widths, heights,
+offsets, shadows), and spacing in em.
+
+Today's surfaces predate the scale, so this is a ratchet, as the voice check
+is: the check fails when a file's count rises, when a file the baseline does
+not list has any, and when a count falls below the baseline (a move lowers
+the baseline in the same change, with `--update`), so the floor only goes
+down. `--check` lists the files not yet moved every time it runs.
 
 Python 3 standard library only.
 """
@@ -708,12 +719,19 @@ def scan(src: dict) -> list[str]:
         for s in surfaces:
             mine |= set(names_of(src, s)) | set(size_names(src, s))
         if kind != "js":
-            # A definition after the block would silently win over it.
+            # A definition after the block would silently win over it, and one
+            # of another surface's names would borrow it outside the source.
             for m in re.finditer(r"(?<![\w-])--([\w-]+)\s*:", body):
-                if m.group(1) in mine or m.group(1) in families:
+                n = m.group(1)
+                if n in mine or n in families:
                     errs.append(
-                        f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: defines --{m.group(1)}, which the tokens block already does; "
+                        f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: defines --{n}, which the tokens block already does; "
                         f"change it in {SOURCE}"
+                    )
+                elif n in owned:
+                    errs.append(
+                        f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: defines --{n}, which belongs to {', '.join(sorted(owned[n]))}; "
+                        f"a size or shade this surface needs is a token of its own in {SOURCE}"
                     )
         for m in THEME_RE.finditer(body):
             if m.group(1).lower() != rack:
@@ -753,19 +771,25 @@ PROP_RE = re.compile(r"(?<![\w-])(-?-?[a-zA-Z][\w-]*)\s*:\s*([^;{}]*)")
 SPACE_PROP_RE = re.compile(r"(?:padding|margin|scroll-padding|scroll-margin)(?:-[a-z-]+)?|(?:row-|column-|grid-|grid-row-|grid-column-)?gap")
 RADIUS_PROP_RE = re.compile(r"border(?:-[a-z]+)*-radius")
 TIME_PROP_RE = re.compile(r"(?:transition|animation)(?:-duration|-delay)?")
-QUANTITY_RE = re.compile(r"(?<![\w.#$-])(-?(?:\d+\.?\d*|\.\d+))(px|rem|ms|s)(?![\w-])")
+QUANTITY_RE = re.compile(r"(?<![\w.#$-])(-?(?:\d+\.?\d*|\.\d+))(px|rem|em|ms|s|%)(?![\w-])", re.I)
 JS_PROPS = (
-    r"fontSize|font-size|padding\w*|padding-[a-z-]+|margin\w*|margin-[a-z-]+|gap|rowGap|row-gap|columnGap|column-gap"
+    r"font|fontSize|font-size|padding\w*|padding-[a-z-]+|margin\w*|margin-[a-z-]+|gap|rowGap|row-gap|columnGap|column-gap"
     r"|border\w*Radius|border(?:-[a-z]+)*-radius|transition\w*|transition-[a-z]+|animation\w*|animation-[a-z]+"
 )
 # `el.style.fontSize = "12px"`, and `{ fontSize: "12px" }` or `{ "font-size": "12px" }`
 # in an object (Object.assign(el.style, …), a style map).
 JS_STYLE_RE = re.compile(r"""\.style\.(%s)\s*=\s*(["'`])((?:(?!\2).)*)\2""" % JS_PROPS)
 JS_OBJ_STYLE_RE = re.compile(r"""(?<![\w$.-])(["']?)(%s)\1\s*:\s*(["'`])((?:(?!\3).)*)\3""" % JS_PROPS)
-CANVAS_FONT_RE = re.compile(r"""\.font\s*=\s*(["'`])((?:(?!\1).)*)\1""")
-SCALED_PX_RE = re.compile(r"\$\{\s*(\d+(?:\.\d+)?)\s*\*[^}]*\}px")
+SET_PROPERTY_RE = re.compile(r"""setProperty\(\s*(["'])(--[\w-]+|[a-z-]+)\1\s*,([^;)]*)\)""")
+# Any assignment to a canvas's font but the one sanctioned path. Its form does
+# not matter: a string, a template, a sum or a variable all set a size.
+CANVAS_FONT_RE = re.compile(r"""\.font\s*=(?!=)\s*([^;\n]*)""")
+SVG_FONT_SIZE_RE = re.compile(r"""\bfont-size\s*=\s*\\?["']\s*(-?\d+(?:\.\d+)?)""")
+JS_DURATION_RE = re.compile(r"""(?<![\w$.-])["']?duration["']?\s*:\s*(\d+(?:\.\d+)?)(?![\w.])""")
+JS_ANIMATE_RE = re.compile(r"""\.animate\((?:[^()]|\([^()]*\))*?,\s*(\d+(?:\.\d+)?)\s*\)""")
 STRING_RE = re.compile(r""""(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`""")
-EXEMPT_RE = re.compile(r"token-exempt:(.*?)(?:\*/|$)", re.M)
+CUSTOM_DEF_RE = re.compile(r"(?<![\w-])(--[\w-]+)\s*:\s*([^;{}]*)")
+EXEMPT_RE = re.compile(r"(/\*|//)\s*token-exempt:(.*?)(?:\*/|$)", re.M)
 
 
 def kind_of(prop: str) -> str | None:
@@ -784,9 +808,10 @@ def kind_of(prop: str) -> str | None:
 
 def counted(kind: str, num: str, unit: str) -> bool:
     """Whether a quantity in a value of this kind is a literal the scale owns."""
+    unit = unit.lower()
     v = abs(float(num)) * (16 if unit == "rem" else 1)
     if kind == "font":
-        return unit in ("px", "rem")
+        return unit in ("px", "rem", "em", "%")
     if kind == "space":
         return unit in ("px", "rem") and v >= 4
     if kind == "radius":
@@ -794,87 +819,142 @@ def counted(kind: str, num: str, unit: str) -> bool:
     return unit in ("ms", "s") and v > 0
 
 
-def value_hits(kind: str, value: str, at: int) -> list[tuple[int, str, str]]:
-    """The counted literals in one declaration's value, as (offset, kind, text)."""
+# A hit is (offset, kind, text, end): `end` is where the declaration (or the
+# script's construct) it sits in ends, which is what an exemption trails.
+Hit = tuple[int, str, str, int]
+
+
+def value_hits(kind: str, value: str, at: int) -> list[Hit]:
+    """The counted literals in one declaration's value."""
+    end = at + len(value.rstrip())
     if kind == "font":
         # The shorthand's size is the length before the line height or the
         # family; a font-size holds one, or a clamp() of them.
-        head = value.split("/")[0]
-        found = [m for m in QUANTITY_RE.finditer(head) if counted(kind, m.group(1), m.group(2))]
-        return [(at + m.start(), kind, m.group(0)) for m in found]
-    return [(at + m.start(), kind, m.group(0)) for m in QUANTITY_RE.finditer(value) if counted(kind, m.group(1), m.group(2))]
+        value = value.split("/")[0]
+    return [(at + m.start(), kind, m.group(0), end) for m in QUANTITY_RE.finditer(value) if counted(kind, m.group(1), m.group(2))]
 
 
-def css_size_hits(body: str, base: int = 0) -> list[tuple[int, str, str]]:
+def css_size_hits(body: str, base: int = 0, usage: dict | None = None) -> list[Hit]:
     hits = []
     for m in PROP_RE.finditer(body):
         prop = m.group(1)
         kind = None if prop.startswith("-") else kind_of(prop)
         if kind:
             hits += value_hits(kind, m.group(2), base + m.start(2))
+    # A literal reaches a counted property through a custom property.
+    for m in CUSTOM_DEF_RE.finditer(body):
+        kind = (usage or {}).get(m.group(1))
+        if kind:
+            hits += value_hits(kind, m.group(2), base + m.start(2))
     return hits
 
 
-def js_size_hits(body: str) -> list[tuple[int, str, str]]:
-    """CSS held in a script: declarations in its strings, its `.style.*`
-    assignments, and the size in a canvas `.font` string."""
+def js_size_hits(body: str, usage: dict | None = None) -> list[Hit]:
+    """Sizes and durations in a script: CSS in its strings, its `.style.*`
+    assignments, style objects and setProperty() calls, its canvas fonts, an
+    SVG `font-size` attribute in a template, and an animation's duration."""
     hits = []
     for m in STRING_RE.finditer(body):
-        hits += css_size_hits(m.group(0), m.start())
+        hits += css_size_hits(m.group(0), m.start(), usage)
     for pat, p, v in ((JS_STYLE_RE, 1, 3), (JS_OBJ_STYLE_RE, 2, 4)):
         for m in pat.finditer(body):
             kind = kind_of(re.sub(r"[A-Z]", lambda c: "-" + c.group(0).lower(), m.group(p)))
             if kind:
                 hits += value_hits(kind, m.group(v), m.start(v))
+    for m in SET_PROPERTY_RE.finditer(body):
+        name = m.group(2)
+        kind = (usage or {}).get(name) if name.startswith("--") else kind_of(name)
+        if kind:
+            hits += value_hits(kind, m.group(3), m.start(3))
     for m in CANVAS_FONT_RE.finditer(body):
-        lit = [q for q in QUANTITY_RE.finditer(m.group(2)) if q.group(2) == "px"]
-        lit += list(SCALED_PX_RE.finditer(m.group(2)))
-        if lit:
-            first = min(lit, key=lambda q: q.start())
-            hits.append((m.start(2) + first.start(), "font", first.group(0)))
+        rhs = m.group(1).strip()
+        if rhs and not rhs.startswith("canvasFont("):
+            hits.append((m.start(1), "font", rhs[:40], m.start(1) + len(m.group(1).rstrip())))
+    hits += [(m.start(1), "font", m.group(1), m.end()) for m in SVG_FONT_SIZE_RE.finditer(body)]
+    for pat in (JS_DURATION_RE, JS_ANIMATE_RE):
+        hits += [(m.start(1), "time", m.group(1), m.end(1)) for m in pat.finditer(body) if float(m.group(1)) > 0]
     return hits
 
 
-def size_hits(rel: str) -> tuple[list[tuple[int, str, str]], list[str]]:
-    """A scanned file's counted literals, as (line, kind, text), and its
-    problems (a token-exempt that does not say why)."""
+def css_bodies(rel: str) -> list[tuple[str, str, int]]:
+    """A scanned file's text, its generated block blanked, as (kind, body,
+    offset) pieces: "css" for a stylesheet, a <style> block or a style
+    attribute, "js" for a script or an inline <script>. Comments blanked."""
     text = read(rel)
-    blocks = {c["file"] for c in CONSUMERS}
-    if rel in blocks:
+    if rel in {c["file"] for c in CONSUMERS}:
         m = BLOCK_RE.search(text)
         if m:
             text = text[: m.start()] + blank(m.group(0)) + text[m.end() :]
-    problems, exempt = [], set()
-    for m in EXEMPT_RE.finditer(text):
-        line = text.count("\n", 0, m.start()) + 1
-        if not m.group(1).strip():
-            problems.append(f"{rel}:{line}: a token-exempt says why")
-        exempt.add(line)
     if rel.endswith(".js"):
-        hits = js_size_hits(strip_js(text))
-    elif rel.endswith((".html", ".hbs")):
+        return [("js", strip_js(text), 0)]
+    if rel.endswith((".html", ".hbs")):
         body = strip_html(text)
-        hits = []
-        for m in re.finditer(r"<style[^>]*>(.*?)</style>", body, re.S):
-            hits += css_size_hits(m.group(1), m.start(1))
-        for m in STYLE_RE.finditer(body):
-            hits += css_size_hits(m.group(2), m.start(2))
-        for m in re.finditer(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", body, re.S):
-            hits += [(m.start(1) + o, k, t) for o, k, t in js_size_hits(strip_js(m.group(1)))]
-    else:
-        hits = css_size_hits(strip_css(text))
+        out = [("css", m.group(1), m.start(1)) for m in re.finditer(r"<style[^>]*>(.*?)</style>", body, re.S)]
+        out += [("css", m.group(2), m.start(2)) for m in STYLE_RE.finditer(body)]
+        out += [("js", strip_js(m.group(1)), m.start(1)) for m in re.finditer(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", body, re.S)]
+        # An SVG `font-size` attribute in the markup itself.
+        out += [("svg", m.group(0), m.start()) for m in SVG_FONT_SIZE_RE.finditer(re.sub(r"<script.*?</script>", lambda x: blank(x.group(0)), body, flags=re.S))]
+        return out
+    return [("css", strip_css(text), 0)]
+
+
+def custom_usage() -> dict[str, str]:
+    """Each custom property `var()`'d in a counted declaration, anywhere
+    scanned, and the kind of that declaration."""
+    usage: dict[str, str] = {}
+
+    def from_css(body: str) -> None:
+        for m in PROP_RE.finditer(body):
+            kind = None if m.group(1).startswith("-") else kind_of(m.group(1))
+            if kind:
+                for v in VAR_RE.finditer(m.group(2)):
+                    usage.setdefault(v.group(1), kind)
+
+    for rel, _ in scanned_files():
+        for kind, body, _ in css_bodies(rel):
+            if kind == "css":
+                from_css(body)
+            elif kind == "js":
+                for s in STRING_RE.finditer(body):
+                    from_css(s.group(0))
+    return usage
+
+
+def size_hits(rel: str, usage: dict | None = None) -> tuple[list[tuple[int, str, str]], list[str]]:
+    """A scanned file's counted literals, as (line, kind, text), and its
+    problems (a token-exempt that does not say why)."""
+    text = read(rel)
+    if usage is None:
+        usage = custom_usage()
+    hits: list[Hit] = []
+    for kind, body, at in css_bodies(rel):
+        found = css_size_hits(body, 0, usage) if kind == "css" else js_size_hits(body, usage) if kind == "js" else []
+        if kind == "svg":
+            m = SVG_FONT_SIZE_RE.match(body)
+            found = [(m.start(1), "font", m.group(1), m.end())]
+        hits += [(at + o, k, t, at + e) for o, k, t, e in found]
+    # An exemption trails the declaration it is for: what it covers ends where
+    # the comment's own line, back past `;`, `,`, `}` and quotes, stops.
+    problems, trailed = [], set()
+    for m in EXEMPT_RE.finditer(text):
+        if not m.group(2).strip():
+            problems.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: a token-exempt says why")
+        p = m.start()
+        while p > 0 and text[p - 1] in " \t;,}\"'`":
+            p -= 1
+        trailed.add(p)
     out = []
-    for o, kind, lit in sorted(set(hits)):
-        line = text.count("\n", 0, o) + 1
-        if line not in exempt:
-            out.append((line, kind, lit))
+    for o, kind, lit, end in sorted(set(hits)):
+        if end not in trailed:
+            out.append((text.count("\n", 0, o) + 1, kind, lit))
     return out, problems
 
 
 def size_counts() -> tuple[dict[str, dict[str, int]], list[str]]:
     now, problems = {}, []
+    usage = custom_usage()
     for rel, _ in scanned_files():
-        hits, p = size_hits(rel)
+        hits, p = size_hits(rel, usage)
         problems += p
         c = {k: 0 for k in SIZE_KINDS}
         for _, kind, _ in hits:

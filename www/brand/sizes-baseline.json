@@ -4,15 +4,15 @@
     "space": 7
   },
   "www/brand/index.html": {
-    "font": 21,
+    "font": 23,
     "radius": 5,
-    "space": 2,
+    "space": 4,
     "time": 1
   },
   "www/landing/style.css": {
-    "font": 32,
+    "font": 34,
     "radius": 7,
-    "space": 24,
+    "space": 26,
     "time": 18
   },
   "www/video/films/dsp/film.js": {
@@ -30,7 +30,7 @@
     "space": 2
   },
   "www/video/films/math/film.js": {
-    "font": 10,
+    "font": 11,
     "radius": 2,
     "space": 8
   },

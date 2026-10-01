@@ -78,21 +78,33 @@ the long-form notes are this directory's `README.md`.
   literal:
   - colors: the palette and the app's own shades. A new color is a token
     first;
-  - type: `--t-label` 11 px (silk caps, and the floor), `--t-value` 12
-    (mono values), `--t-body` 14, `--t-voice` 17 (the model's italic and
-    nothing else), `--t-title` 21, `--t-display` 52; canvas text at
-    `--t-canvas` (12 px, through `canvasFont()`); the rack's own tier is
-    `--t-rack-*`;
+  - type: `--t-label` 11 px (silk caps, and the floor for text),
+    `--t-value` 12 (mono values and readouts), `--t-body` 14, `--t-voice` 17
+    (the model's italic and nothing else), `--t-title` 21, `--t-display`
+    52; canvas text at `--t-canvas` (12 px, through `canvasFont()`); the
+    rack's own tier is `--t-rack-*`;
   - space: `--s1` to `--s7` (4 to 48 px); radii `--r1` to `--r3`;
   - motion: `--d-press`, `--d-state`, `--d-move` and the easings `--e-settle`
-    and `--e-swap`. Every duration is 0 under reduced motion, so nothing may
-    wait on a transition ending.
+    and `--e-swap`; a script's tween reads its length with `motionMs()`.
+    Every duration is 0 under reduced motion, so nothing may wait on a
+    transition ending, and a tween of 0 ms must jump to its end.
 
   `make dev-check` fails on a color written in `style.css`, any script here
-  or `index.html`, which is all the app loads, and on a literal font size,
-  spacing of 4 px or more, radius or duration there. Where the scale has no
-  step (a loop's period, a glyph sized to its box), the line says why with
-  `/* token-exempt: … */`. What is not checked yet elsewhere is listed in
+  or `index.html`, which is all the app loads. It also counts literal sizes
+  and durations there, and fails on a new one:
+  - a font size in px, rem, em or %, an SVG `font-size`, and any canvas
+    `.font` not set through `canvasFont()`;
+  - a padding, margin or gap of 4 px or more, and a radius of 4 to 99 px;
+  - a transition or animation time, and in a script an animation's
+    `duration:` or a number passed to `.animate()`;
+  - any of these held in a custom property that one of them uses, or set
+    with `style.setProperty()`.
+
+  It does not count a script's timers (when something happens, not how long
+  it moves), widths, heights, offsets, shadows or spacing in em. Where the
+  scale has no step (a loop's period, a glyph sized to its box), the
+  declaration says why with a trailing `/* token-exempt: … */`, which covers
+  that declaration only. What is not checked yet elsewhere is listed in
   [`www/brand/README.md`](../../www/brand/README.md#the-tokens). Two rules
   fighting over one element is usually a specificity mistake (the bank row's
   cut was invisible for that reason).

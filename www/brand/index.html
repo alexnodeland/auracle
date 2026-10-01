@@ -101,8 +101,9 @@
 
   /* type: one ratio (1.2) and six roles. The steps run up from the value size,
      12 × 1.2ⁿ rounded: 12, 14, 17, 21, and 52 at n = 8. Labels sit under the
-     scale at 11 px, and nothing in the page is smaller */
-  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the page's floor */
+     scale at 11 px, the floor for text in a page; the rack, drawn to its zoom,
+     has sizes of its own, and a lone glyph is sized to its button */
+  --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
   --t-value: 12px;   /* mono values, readouts, small print */
   --t-body: 14px;    /* prose, names, hints */
   --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
@@ -135,8 +136,8 @@
   --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
 
   /* brand: sizes only this surface uses */
-  --t-micro: 0.66rem; /* mono captions */
-  --s8: 72px;         /* between sections */
+  --t-micro: 11px; /* mono captions, at the floor */
+  --s8: 72px;      /* between sections */
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -728,12 +729,13 @@ section:first-of-type { border-top: 0; }
   </section>
 
   <section>
-    <p class="eyebrow">Type, space and motion</p>
+    <p class="eyebrow">Type, space, and motion</p>
     <h2 class="h2">One ratio, seven steps, three speeds.</h2>
     <p class="t">The instrument is set on one scale. Its type runs up from the size of a
     value by a single ratio, <strong>1.2</strong>: 12 &times; 1.2<sup>n</sup>, rounded, is
-    12, 14, 17 and 21, and 52 at the eighth step. Labels sit just under the scale at
-    <strong>11 px</strong>, and nothing in a page is smaller. Text a canvas draws is never
+    12, 14, 17, and 21, and 52 at the eighth step. Labels sit just under the scale at
+    <strong>11 px</strong>, the floor for text in a page. The rack, drawn to its zoom, keeps
+    sizes of its own, and a lone glyph is sized to its button. Text a canvas draws is never
     under <strong>12 px</strong>. Every specimen here is set with the token it names, from
     <code>tokens.json</code>, so the page cannot stop matching what ships.</p>
 
@@ -743,7 +745,7 @@ section:first-of-type { border-top: 0; }
         <tbody>
           <tr><td><code>--t-label</code></td><td class="num">11 px</td><td class="sample t-label">Silk caps · the floor</td></tr>
           <tr><td><code>--t-value</code></td><td class="num">12 px</td><td class="sample t-value">−22.7 dB · 1.3 ms · 59%</td></tr>
-          <tr><td><code>--t-body</code></td><td class="num">14 px</td><td class="sample t-body">Prose, names and hints.</td></tr>
+          <tr><td><code>--t-body</code></td><td class="num">14 px</td><td class="sample t-body">Prose, names, and hints.</td></tr>
           <tr><td><code>--t-voice</code></td><td class="num">17 px</td><td class="sample t-voice">it thinks you’d reach for this one</td></tr>
           <tr><td><code>--t-title</code></td><td class="num">21 px</td><td class="sample t-title">Folded Lead</td></tr>
           <tr><td><code>--t-display</code></td><td class="num">52 px</td><td class="sample t-display">Glass Pad</td></tr>

@@ -5,7 +5,7 @@
 // move. The dial used to jump there in one frame, which read as "I set Bright
 // to 70% and now it says 0", and a background re-check re-centred them too,
 // seconds after the player had let go. Now a re-centre glides the pointer home
-// over about 250 ms with a ghost tick fading where it was, and a background
+// over --d-state (180 ms) with a ghost tick fading where it was, and a background
 // re-check leaves the controls where they are unless it wired them to
 // different knobs.
 //

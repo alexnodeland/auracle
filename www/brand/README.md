@@ -145,7 +145,8 @@ The app's canvases read `--t-canvas` the same way (`canvasFont()` in
 color that is not a color, a size that is not a length, a duration not in ms,
 an easing that is not a `cubic-bezier()`, or a type step off the ratio; when a
 block is stale; when a stylesheet defines, after its block, a token the block
-already defines (the later one would silently win); and on a color written
+already defines (the later one would silently win) or one another surface owns;
+and on a color written
 outside a block in any of these (the `SCANNED` list in `tokens.py`):
 
 - the app: `apps/web/*.css`, `*.js` and `index.html`;
@@ -185,9 +186,22 @@ expects the check to fail on it, and holds the two drifts the tokens closed
 (the films' deep amber, the brand page's lamp) in place.
 
 **Sizes and durations are a ratchet.** The same files are counted, outside
-their blocks, for four kinds of literal: a font size in px or rem (a canvas
-`ctx.font` string included), a `padding`, `margin` or `gap` of 4 px or more, a
-`border-radius` from 4 to 99 px, and a `transition` or `animation` time.
+their blocks, for four kinds of literal, in any unit case:
+
+- a font size in px, rem, em or % (`font-size` and the `font` shorthand), an
+  SVG `font-size` attribute, and any assignment to a canvas's `.font` that
+  is not `canvasFont(…)`;
+- a `padding`, `margin` or `gap` of 4 px or more, in px or rem;
+- a `border-radius` from 4 to 99 px;
+- a `transition` or `animation` time, and in a script an animation's
+  `duration: N` or a number passed to `.animate()`.
+
+They are read in stylesheets, `<style>` blocks and `style` attributes, and
+in a script's strings, `.style.*` assignments, style objects and
+`style.setProperty()` calls; a literal held in a custom property counts when
+that property is `var()`'d in one of the declarations above. A script's
+timers (when something happens, not how long it moves), widths, heights,
+offsets, shadows and spacing in em are not counted.
 `sizes-baseline.json` holds each file's counts, and the check fails when one
 rises, when a file it does not list has any, or when one falls below it (a
 move lowers the baseline in the same change, so the floor only goes down):
@@ -198,8 +212,8 @@ move lowers the baseline in the same change, so the floor only goes down):
 `--check` lists the files not yet moved every time it runs. The app's
 stylesheet and scripts are at zero: where the scale has no step for a
 literal (a loop's period, a glyph sized to its button, a key that must light
-at once), the line says why with a `token-exempt:` comment, and is not
-counted. The landing page, the brand page, the 404 and the films have their
+at once), the declaration says why with a trailing `token-exempt:` comment,
+which covers that declaration and no other. The landing page, the brand page, the 404 and the films have their
 counts in the baseline until each is moved.
 
 ## The sound

@@ -239,6 +239,76 @@ class TheSizesRatchet(unittest.TestCase):
             block = T.BLOCK_RE.search(source(c["file"])).group(0)
             self.assertRegex(block, r"@media \(prefers-reduced-motion: reduce\) \{\s*:root \{ --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; \}", c["file"])
 
+    def test_an_edit_inside_the_reduced_motion_line_leaves_the_block_stale(self):
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s.replace(":root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }", ":root { --d-press: 0ms; --d-state: 0ms; --d-move: 90ms; }", 1))
+            self.assertTrue(any(p.startswith("apps/web/style.css") and "stale" in p for p in t.problems()))
+
+    def test_the_generator_is_idempotent(self):
+        with Tree() as t:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                T.generate(check=False)
+            self.assertEqual(out.getvalue(), "", "a second run wrote a block the first had written")
+            before = {c["file"]: open(os.path.join(t.root, c["file"]), encoding="utf-8").read() for c in T.CONSUMERS}
+            with contextlib.redirect_stdout(io.StringIO()):
+                T.generate(check=False)
+            after = {c["file"]: open(os.path.join(t.root, c["file"]), encoding="utf-8").read() for c in T.CONSUMERS}
+            self.assertEqual(before, after)
+
+
+class TheRatchetsHoles(unittest.TestCase):
+    """Each way a size or duration slipped past the count, planted in the app
+    and expected to count."""
+
+    def counts_in(self, rel, add):
+        with Tree() as t:
+            t.edit(rel, lambda s: s + "\n" + add + "\n")
+            return [p for p in t.problems() if p.startswith(rel)]
+
+    def test_an_em_or_percent_or_uppercase_font_size_counts(self):
+        for rule in (".x { font-size: 0.9em; }", ".x { font-size: 85%; }", ".x { font: 600 0.8em/1 var(--font-mono); }", ".x { font-size: 13PX; }"):
+            self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/style.css", rule)), rule)
+
+    def test_a_scripts_animation_duration_counts(self):
+        for line in ("el.animate(kf, { duration: 300, easing: e });", "el.animate([{ opacity: 0 }, { opacity: 1 }], 240);"):
+            self.assertTrue(any("literal time sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+
+    def test_a_canvas_font_in_any_form_counts(self):
+        for line in (
+            "ctx.font = `${dpr * 11}px mono`;",
+            'ctx.font = Math.round(10 * dpr) + "px mono";',
+            "ctx.font = f;",
+            'ctx.font = size + "px mono";',
+        ):
+            self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+        self.assertEqual(self.counts_in("apps/web/main.js", "ctx.font = canvasFont(dpr);"), [])
+
+    def test_set_property_counts(self):
+        for line in ('el.style.setProperty("padding", "6px");', 'el.style.setProperty("padding", wide ? "6px" : "0px");'):
+            self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/main.js", line)), line)
+
+    def test_an_svg_font_size_attribute_counts(self):
+        line = 'svg.innerHTML = `<text font-size="9" x="1">in</text>`;'
+        self.assertTrue(any("literal font sizes" in p for p in self.counts_in("apps/web/main.js", line)))
+
+    def test_a_literal_held_in_a_custom_property_counts_where_a_counted_declaration_uses_it(self):
+        self.assertTrue(any("literal space sizes" in p for p in self.counts_in("apps/web/style.css", ".x { --pad: 10px; }\n.y { padding: var(--pad); }")))
+        self.assertTrue(any("literal time sizes" in p for p in self.counts_in("apps/web/main.js", 'el.style.setProperty("--fade-in", "200ms"); const r = "transition: opacity var(--fade-in)";')))
+        # A height in a custom property is not a space.
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { --tall: 44px; }\n.y { height: var(--tall); }"), [])
+
+    def test_a_token_another_surface_owns_cannot_be_defined_or_used(self):
+        got = self.counts_in("apps/web/style.css", ":root { --s8: 72px; }")
+        self.assertTrue(any("defines --s8, which belongs to" in p for p in got), got)
+        got = self.counts_in("apps/web/style.css", ".x { margin: var(--s8); }")
+        self.assertTrue(any("var(--s8) belongs to" in p for p in got), got)
+
+    def test_an_exemption_covers_only_the_declaration_it_trails(self):
+        got = self.counts_in("apps/web/style.css", ".x { font-size: 13px; animation: spin 1.2s linear infinite; } /* token-exempt: a loop's period */")
+        self.assertTrue(any("literal font sizes" in p for p in got), got)
+        self.assertFalse(any("literal time sizes" in p for p in got), got)
+        self.assertEqual(self.counts_in("apps/web/style.css", ".x { font-size: 13px; /* token-exempt: a glyph */ animation: spin 1.2s linear infinite; /* token-exempt: a loop */ }"), [])
+
 
 class TheSpecimensScale(unittest.TestCase):
     """The approved specimen (prototype v2) is a dated record; tokens.json

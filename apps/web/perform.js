@@ -907,10 +907,12 @@ export function createPerform(host) {
   // sound does not move, but the dial used to jump to 12 o'clock under the
   // player's eyes ("I set Bright to 70% and now it says 0"), and a MIDI pot on
   // it went dead until swept back through the middle. Now the pointer glides
-  // home over RECENTRE_MS while a ghost tick marks where it was and fades
+  // home over `--d-state` while a ghost tick marks where it was and fades
   // (none of it under reduced motion), and a pot bound to it keeps working
   // from where it is (midi.js re-anchors instead of letting go).
-  const RECENTRE_MS = 250;
+  // A motion token's length in ms, read when the motion starts (main.js's
+  // `motionMs`): 0 under reduced motion, which the glides also skip.
+  const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
   const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   function recentre(k) {
     if (k.tween) cancelAnimationFrame(k.tween);
@@ -928,8 +930,9 @@ export function createPerform(host) {
       ghost.classList.add("fade");
     }
     const t0 = performance.now();
+    const ms = motionMs("--d-state");
     const step = () => {
-      const u = clamp((performance.now() - t0) / RECENTRE_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : from * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
@@ -1537,7 +1540,7 @@ export function createPerform(host) {
   }
 
   // Blend back to *home*: at once for the sound and the control's value (B
-  // is empty or emptying), and over BLEND_HOME_MS for the pointer, drawn
+  // is empty or emptying), and over `--d-move` for the pointer, drawn
   // (`k.drawn`) as a re-centre is, so the eye sees where it went. A hand on
   // Blend stops the glide (bindDrag).
   //
@@ -1547,7 +1550,7 @@ export function createPerform(host) {
   // blend over the little travel it had left (from 0.9, all of it in about
   // thirteen steps), so the next nudge poured the next offer in over what the
   // player had just chosen, which is what bringing Blend home is for.
-  const BLEND_HOME_MS = 300;
+  // Home over `--d-move`.
   function blendHome() {
     const k = knobs.find((x) => x.spec.kind === "blend");
     state.blend = 0;
@@ -1561,8 +1564,9 @@ export function createPerform(host) {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!v0 || still) return paintKnob(k);
     const t0 = performance.now();
+    const ms = motionMs("--d-move");
     const step = () => {
-      const u = clamp((performance.now() - t0) / BLEND_HOME_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : v0 * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
