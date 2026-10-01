@@ -23,13 +23,18 @@ Sources:
   --music DIR   either bed.wav (the whole film), or one WAV per section named
                 as in arrangement.json (`<section>.wav`, bar-aligned, each
                 starting at its section's t0)
-  --sfx DIR     one WAV per cue name in cues.json (whoosh.wav, blip.wav, …)
+  --sfx DIR     one WAV per cue name in cues.json (whoosh.wav, blip.wav, …).
+                A cue with no WAV there stops the mix, naming it.
 
 The mix is plain arithmetic, so it is repeatable: narration at a fixed level,
 the music ducked under it by an envelope follower (80 ms attack, 450 ms
-release, -9 dB), effects on top, then one gain to the loudness target and a
+release), effects on top, then one gain to the loudness target and a
 look-ahead peak limiter. Loudness is ITU-R BS.1770-4 (K-weighted, gated),
 computed here rather than trusted to a filter's defaults.
+
+The music's level and its duck default to sound_defaults.MIX_NOW, generated
+from www/brand/sound.json (`make sound`). That is the one place they are set:
+illustrated.sh and walkthrough.sh leave them to this default.
 """
 import argparse
 import json
@@ -42,6 +47,8 @@ import sys
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import lfilter, resample_poly
+
+import sound_defaults
 
 
 # Arrays of numbers (word times, the picture's envelopes) on one line each: a
@@ -182,7 +189,7 @@ def follower(mask, attack_ms=80, release_ms=450):
 
 # ---- the film ---------------------------------------------------------------
 
-def main():
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("film")
     ap.add_argument("--voice")
@@ -196,14 +203,28 @@ def main():
                     help="with --encode: also FILM-preview.mp4, 720p, small enough to send")
     ap.add_argument("--poster", type=float)
     ap.add_argument("--target", type=float, default=-16.0, help="integrated loudness, LUFS")
-    ap.add_argument("--music-db", type=float, default=-9.0, help="music level relative to the voice, before ducking")
-    ap.add_argument("--duck-db", type=float, default=-8.0)
-    args = ap.parse_args()
+    # One source: www/brand/sound.json's `mix_now`, through sound_defaults.py.
+    # These are today's levels (the bed 6 dB under the voice, a 9 dB duck),
+    # kept until Plan-006 task 3 moves the mix to the spec's ladder (the bed at
+    # -3 LU, a 2 dB duck), so no film's mix changes before then.
+    ap.add_argument("--music-db", type=float, default=sound_defaults.MIX_NOW["music_db"],
+                    help="music level relative to the voice, before ducking (default: sound.json mix_now)")
+    ap.add_argument("--duck-db", type=float, default=sound_defaults.MIX_NOW["duck_db"],
+                    help="the music's duck under the voice (default: sound.json mix_now)")
+    return ap
+
+
+def main():
+    args = parser().parse_args()
 
     fdir = os.path.join(VIDEO, "films", args.film)
     odir = os.path.join(VIDEO, "out", args.film)
     os.makedirs(odir, exist_ok=True)
     tl = json.load(open(os.path.join(fdir, "timeline.json")))
+    # The picture's sound cues, checked before any audio is read.
+    cues_f = os.path.join(odir, "cues.json")
+    cues = json.load(open(cues_f)) if args.sfx and os.path.exists(cues_f) else []
+    sfx_files = cue_files(cues, args.sfx)
     n = int(math.ceil(tl["duration"] * SR)) + SR
     vo = np.zeros((n, 2), np.float32)
     music = np.zeros((n, 2), np.float32)
@@ -264,13 +285,10 @@ def main():
             print(f"music: {len(levels)} bed levels")
 
     # Effects, at the times the picture shows them.
-    cues_f = os.path.join(odir, "cues.json")
-    if args.sfx and os.path.exists(cues_f):
+    if cues:
         cache = {}
-        for c in json.load(open(cues_f)):
-            f = os.path.join(args.sfx, f"{c['name']}.wav")
-            if not os.path.exists(f):
-                continue
+        for c in cues:
+            f = sfx_files[c["name"]]
             if f not in cache:
                 x = load(f)
                 cache[f] = x * 10 ** ((-24 - lufs(x)) / 20) if len(x) > 0.4 * SR else x * (0.25 / (np.max(np.abs(x)) + 1e-9))
@@ -376,6 +394,18 @@ def main():
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
         print(jpg)
+
+
+def cue_files(cues, sfx):
+    """Each cue's WAV in the effects directory, by cue name. A cue with no WAV
+    stops the mix, naming every one missing: skipping it without a word is how
+    dsp's one cue went unheard in a published film."""
+    files = {c["name"]: os.path.join(sfx, f"{c['name']}.wav") for c in cues}
+    missing = sorted(name for name, f in files.items() if not os.path.exists(f))
+    if missing:
+        sys.exit(f"mix.py: no WAV in {sfx} for the cue{'s' if len(missing) > 1 else ''} {', '.join(missing)} "
+                 f"(cues.json, from the picture's stage.sfx() calls): render it there, or take the cue out")
+    return files
 
 
 def picture_input(odir):

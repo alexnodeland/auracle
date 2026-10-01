@@ -20,9 +20,8 @@ high-note level · chord flatness · slow motion · mid motion · fast motion`
 (`AudioFeatures::NAMES`, in that order).
 
 **Audio.** The score bed plays under everything, as in the other explainers.
-Where a beat shows a render, a 1–2 s excerpt of the real standard-phrase
-render of the named preset may be laid in as an effect, ducked like `sfx`
-(render it with `render_playback`; Glass Pad and First Bass are good).
+A beat that shows a render draws it and does not play it
+([ADR-014](../../../../docs/decisions/014-the-films-sound.md): no cues).
 
 ---
 

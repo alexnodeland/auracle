@@ -7,8 +7,10 @@
 #
 #   www/video/tools/illustrated.sh FILM POSTER_SECONDS
 #
-# Run voice.sh FILM first, and sounds.sh once. MUSIC_DB / DUCK_DB override
-# the bed's level and ducking (the explainers use -6 / -9).
+# Run voice.sh FILM first, and sounds.sh once. The bed's level and its duck
+# are mix.py's defaults, from www/brand/sound.json (`mix_now`): today's
+# levels, kept until Plan-006 task 3 moves the mix to the spec's ladder, so no
+# film's mix changes before then. MUSIC_DB / DUCK_DB override them.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"
@@ -19,7 +21,8 @@ python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed 
 rm -rf "out/$F/music"
 (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 2 | tail -2)
 node tools/render.mjs "$F" --cues | tail -1
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --music-db "${MUSIC_DB:--6}" --duck-db "${DUCK_DB:--9}")
+MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers
+     ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -1
 node tools/render.mjs "$F" --jobs 3 | tr '\r' '\n' | tail -1
 python3 tools/mix.py "$F" "${MIX[@]}" --encode --poster "$POSTER" | tail -1

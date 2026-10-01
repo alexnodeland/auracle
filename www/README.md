@@ -58,6 +58,7 @@ www/
   brand/            the marks and the colour tokens, ONE source for every consumer
     index.html      the spec — lockups, construction, the icon set. Builds to /brand/
     tokens.json     every colour and font family; `make tokens` (tokens.py) writes them into each stylesheet
+    sound.json      the films' sound; `make sound` (sound.py) writes the marks, the bed and the mix's defaults
     mark.svg        THE mark. Becomes every favicon.svg on the site
     mark-16.svg     the same mark hinted for a true 16px raster
     mark-active.svg the mark with one quadrant lit — a state, never a favicon

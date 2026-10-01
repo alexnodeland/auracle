@@ -1,0 +1,168 @@
+{
+  "_generated": "generated from www/brand/sound.json by www/brand/sound.py (make sound); do not edit. The notes are docs/notes/sound-2026-09/scores/m1_reach.json's; the cast is sound.json's.",
+  "title": "Reach",
+  "tempo": 60,
+  "sample_rate": 48000,
+  "beats_per_bar": 4,
+  "seed": 20260930,
+  "render": {
+    "full": false,
+    "sections": true,
+    "lead_in_bars": 0,
+    "tail_s": 2.0,
+    "silence_dbfs": -90
+  },
+  "master": {
+    "gain_db": null,
+    "peak_dbfs": -1.0
+  },
+  "sections": [
+    {
+      "name": "mark",
+      "bars": 2
+    }
+  ],
+  "_about": "M1 'Reach': F4 G4 C5 A4 over the F2/C3 drone; Fmaj7 (A3 C4 E4) | Bbmaj9/F (Bb3 D4 F4) | Bbm6/F (Bb3 Db4 F4 G4) | Fmaj7, I IV iv I, voice-led with ties held.",
+  "tracks": [
+    {
+      "name": "drone",
+      "preset": "Cathedral",
+      "voices": 4,
+      "gain_db": -6.2,
+      "trim_db": -6,
+      "params": {
+        "amp#attack": 0.85
+      },
+      "notes": {
+        "mark": [
+          [1, 1, 4.5, "F2", 0.56],
+          [1, 1, 4.5, "C3", 0.52]
+        ]
+      }
+    },
+    {
+      "name": "pad",
+      "preset": "Cathedral",
+      "voices": 6,
+      "gain_db": -6.0,
+      "trim_db": -6,
+      "params": {
+        "amp#attack": 0.55
+      },
+      "notes": {
+        "mark": [
+          [1, 1, 1, "A3", 0.55],
+          [1, 2, 1.5, "Bb3", 0.55],
+          [1, 3.5, 2, "A3", 0.55],
+          [1, 1, 1, "C4", 0.55],
+          [1, 2, 1, "D4", 0.55],
+          [1, 3, 0.5, "Db4", 0.55],
+          [1, 3.5, 2, "C4", 0.55],
+          [1, 1, 1, "E4", 0.55],
+          [1, 2, 1.5, "F4", 0.55],
+          [1, 3.5, 2, "E4", 0.55],
+          [1, 3, 0.5, "G4", 0.55]
+        ]
+      }
+    },
+    {
+      "name": "mel1",
+      "preset": "Wobble Board",
+      "voices": 2,
+      "gain_db": -2.0,
+      "params": {
+        "amp#attack": 0.25,
+        "amp#sustain": 0.8,
+        "amp#release": 0.45,
+        "node#cut": 0.58,
+        "node#res": 0.2,
+        "node/0/m#rate": 0.73,
+        "node/0#mdepth": 0.035
+      },
+      "notes": {
+        "mark": [
+          [1, 1, 0.56, "F4", 0.58]
+        ]
+      }
+    },
+    {
+      "name": "mel2",
+      "preset": "Wobble Board",
+      "voices": 2,
+      "gain_db": -2.0,
+      "params": {
+        "amp#attack": 0.25,
+        "amp#sustain": 0.8,
+        "amp#release": 0.45,
+        "node#cut": 0.58,
+        "node#res": 0.2,
+        "node/0/m#rate": 0.73,
+        "node/0#mdepth": 0.035
+      },
+      "notes": {
+        "mark": [
+          [1, 1.5, 0.56, "G4", 0.6]
+        ]
+      },
+      "pitch_drop": {
+        "semis": -2.0,
+        "tau_ms": 45,
+        "pre_ms": 12
+      }
+    },
+    {
+      "name": "mel3",
+      "preset": "Wobble Board",
+      "voices": 2,
+      "gain_db": -2.0,
+      "params": {
+        "amp#attack": 0.25,
+        "amp#sustain": 0.8,
+        "amp#release": 0.45,
+        "node#cut": 0.58,
+        "node#res": 0.2,
+        "node/0/m#rate": 0.73,
+        "node/0#mdepth": 0.035
+      },
+      "notes": {
+        "mark": [
+          [1, 2.0, 1.56, "C5", 0.64]
+        ]
+      },
+      "pitch_drop": {
+        "semis": -5.0,
+        "tau_ms": 45,
+        "pre_ms": 12
+      }
+    },
+    {
+      "name": "mel4",
+      "preset": "Wobble Board",
+      "voices": 2,
+      "gain_db": -2.0,
+      "params": {
+        "amp#attack": 0.25,
+        "amp#sustain": 0.8,
+        "amp#release": 0.45,
+        "node#cut": 0.58,
+        "node#res": 0.2,
+        "node/0/m#rate": 0.73,
+        "node/0#mdepth": 0.035
+      },
+      "notes": {
+        "mark": [
+          [1, 3.5, 2.0, "A4", 0.6]
+        ]
+      },
+      "pitch_drop": {
+        "semis": 3.0,
+        "tau_ms": 45,
+        "pre_ms": 12
+      },
+      "fader": [
+        ["mark", 1, 3.5, -5.0],
+        ["mark", 1, 4.7, 0.0]
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 title: "Films: from script to the site"
-last_updated: 2026-09-29
-related_adrs: [3, 4]
+last_updated: 2026-09-30
+related_adrs: [3, 4, 14]
 ---
 
 # Films: from script to the site
@@ -45,6 +45,16 @@ encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -
          (side by side; --draft: a fast MP4 and the preview only)
 publish: publish.py → www/landing/assets/film/, guide markers, Films page, README, app chip
 ```
+
+The sound's values live in `www/brand/sound.json`
+([ADR-014](../decisions/014-the-films-sound.md)). `make sound` writes the two
+marks and the N3 bed into `www/video/sound/` and the mix's defaults into
+`www/video/tools/sound_defaults.py`. `make dev-check` fails when one of them
+is stale, when `sound.json` disagrees with the record scores' notes, and when
+a number is `mix.py`'s bed or duck default or a pipeline's fallback for them.
+[Plan-006](../plans/006-the-sound-of-the-films.md) brings the pipeline above
+to the marks, the bed and the ladder; until then it plays Study with the
+stingers, at the levels in `sound.json`'s `mix_now`.
 
 ## Walkthrough shots
 

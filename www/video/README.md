@@ -9,7 +9,7 @@ again. A film is narration, pictures and sound, and each has one owner here:
 | The script | `films/<film>/script.json` | Written by hand: every line of narration, grouped into beats (scenes), with the pauses between them |
 | The voice | `voice/` | `tts.py`: Kokoro-82M, offline, one WAV per line; `asr_check.py` transcribes every line back and fails a line whose words drift from the script |
 | The timing | `films/<film>/timeline.json` | `tools/timeline.py`: lays the measured lines onto the music's bar grid, so a cut lands on a beat |
-| The music | `sound/` | Scores played by Auracle's own engine, offline (`cargo run -p auracle-wasm --example score`). Every note in these films is the instrument |
+| The music | `sound/` | Scores played by Auracle's own engine, offline (`cargo run -p auracle-wasm --example score`). Every note in these films is the instrument. Its values are `www/brand/sound.json`'s (§ The sound) |
 | The picture | `films/<film>/film.js` | Scenes drawn on the stage (`stage/`), pinned to the timeline's cues, never to hand-typed seconds |
 | The footage | `films/<film>/shots.json` | `tools/footage.mjs`: the real app, driven by a script and recorded with its own sound |
 | The mix | `tools/mix.py` | Narration at a fixed level, music ducked under it, effects on the frames that show them; -16 LUFS, true peak under -1 dBTP; H.264 + AAC, captions (WebVTT) and a poster |
@@ -41,6 +41,53 @@ Preview any film in a browser, served from the repo root:
 
 `?t=` shows one frame and `?play` runs from there in real time.
 
+## The sound
+
+The films' sound is [ADR-014](../../docs/decisions/014-the-films-sound.md)'s,
+and its values live in one file, `www/brand/sound.json`, as the colors live
+in `tokens.json`:
+- the key, tempo and form;
+- the cast, with every knob the finals turned;
+- the two marks (Bloom in, Reach out) and the bed (N3);
+- each part's EQ, pan and level;
+- the voice chain, the loudness ladder, the duck, the carve and the pad's dip;
+- the grammar's timings.
+
+`docs/notes/sound-2026-09/SPEC.md` is where each value was chosen.
+
+    make sound
+
+(`www/brand/sound.py`) writes it out:
+- **The scores** `sound/bloom.json`, `sound/reach.json` and `sound/n3.json`.
+  The notes are the auditioned finals in `docs/notes/sound-2026-09/scores/`.
+  Every track's preset, voices, trim, transpose and knobs, the lead's bend
+  times and the drone's breath are the cast's. As committed they render bit
+  for bit what was auditioned.
+- **The mix's defaults** `tools/sound_defaults.py`: the ladder, the voice
+  chain, the duck, carve and dip, each part's EQ, pan and level, the
+  grammar's timings, the marks' levels, the shortlist and the room. `mix.py`
+  reads the bed's level and duck from it.
+
+The rest of `sound.json`'s numbers and pitches describe the notes rather than
+being written into them: the pedal, the marks' length, the lead's legato and
+swell, the bed's voicings, burble and sighs, and the demo (which only the
+reel played). `make sound` leaves the notes as they are, and
+`make dev-check` fails while `sound.json` disagrees with them.
+
+Each generated file says so at its top; edit `sound.json`, never them.
+`make dev-check` fails when one is stale. It also fails on the two ways the
+duck came to have three values in three places: a number as `mix.py`'s
+`--music-db` or `--duck-db` default, and a numeric `MUSIC_DB`/`DUCK_DB`
+fallback (or `--music-db`/`--duck-db` flag) in a film tool's shell code.
+Docstrings, help strings and comments may quote a level.
+
+The pipeline is being brought to it
+([Plan-006](../../docs/plans/006-the-sound-of-the-films.md)). Until then the
+films still fit and play Study, take their cues from the stingers, and mix
+with the levels the pipelines pass today: the bed 6 dB under the voice and a
+9 dB duck. Those are `sound.json`'s `mix_now`, kept so that no film's mix
+changes before the new mix lands.
+
 ## Setting up
 
 Everything here runs from the repo root, on Linux or macOS. **`make
@@ -67,9 +114,10 @@ film make targets run on `.venv-voice`; to run a tool by hand, `source
   crates/auracle-wasm --target web --release --no-opt --out-dir
   ../../apps/web/pkg && make wasm-stamp` where wasm-opt can't be downloaded).
   The footage is the app as built, so build it from the commit you publish.
-- **The shared sound**, once: `www/video/tools/sounds.sh` renders the three
-  scores in `sound/` into `www/video/out/sound/`. The stingers there are every
-  film's effects.
+- **The shared sound**, once: `www/video/tools/sounds.sh` renders the scores
+  the pipeline plays today (`signal`, `study` and `stingers` in `sound/`) into
+  `www/video/out/sound/`. The stingers there are every film's effects. The
+  marks and N3 are not in the pipeline yet (§ The sound).
 
 ## Making an illustrated film
 
@@ -193,14 +241,17 @@ The steps above are also `make` targets: `make film-sounds`, `make
 film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=…`,
 `make film-record FILM=… POSTER=… [DRAFT=1] [SHOTS=a,b]`,
 `make film-record-all FILMS="name poster …" [DRAFT=1]`,
-`make film-preview FILM=…` and `make film-publish FILMS="…"`.
+`make film-preview FILM=…` and `make film-publish FILMS="…"`. `make sound`
+writes the scores and the mix's defaults from `www/brand/sound.json`.
 
 | Tool | What it does |
 |---|---|
 | `tools/voice.sh` | Script → TTS → ASR gate → timeline on measured words |
 | `tools/voice_script.py` | A film's script as `voice/tts.py` reads it, with the shared lexicon |
 | `tools/timeline.py` | Beats and lines laid on the bar grid; `--voice` for measured word times |
-| `tools/fit_score.py` | The study score stretched to a film's arrangement |
+| `tools/fit_score.py` | The study score stretched to a film's arrangement, its phrases repeated to fill each section and cut at its end |
+| `tools/sound_defaults.py` | Generated by `make sound` from `www/brand/sound.json`: the ladder, the voice chain, the duck, carve and dip, each part's EQ, pan and level, the grammar's timings, the marks' levels, the shortlist, the room, and the levels `mix.py` uses today |
+| `tools/test_fit_score.py`, `tools/test_mix.py` | The tools' own tests, run by `make dev-check` (the mix's need `.venv-voice`) |
 | `tools/sounds.sh` | The shared scores, rendered once to `out/sound/` |
 | `tools/footage.mjs` | Record (or `--dry` rehearse) a walkthrough's shots |
 | `tools/shotgen.py` | Shared pieces for a film's shots generator |
@@ -211,7 +262,7 @@ film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
 | `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
-| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster |
+| `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster. A cue with no WAV stops it |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |
