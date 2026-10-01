@@ -8,16 +8,6 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
-### Fixed: a vocoder inserted by the engine keeps the chain
-
-- **A vocoder inserted into a wire makes the chain it lands on speak.** The
-  chain is its carrier, the input you hear, and the vocoder brings a formant
-  voice of its own. The engine's `insert` and `replace` edits used to give it
-  a supersaw carrier instead and drop the chain: on First Bass, the filter
-  and its saw. No player met this. The app places a module with
-  `insert_tree`, which always kept the chain, and breeding never uses these
-  edits (`a_vocoder_placed_on_a_chain_keeps_it_as_its_carrier`).
-
 ### Changed: one type scale, one set of spaces and speeds
 
 - **No text in the app's panels is smaller than 11 px, and none drawn on a
