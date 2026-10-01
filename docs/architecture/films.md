@@ -59,8 +59,8 @@ out to the grammar (`timeline.py`: each demo after its line, the marks 1.75 s
 from the voice) and scored to its timeline (`fit_score.py --film`: the held
 drone, the cycle's ties, the sighs in the narration's gaps), and mixed on
 stems. The films move to it as they are re-voiced
-([Plan-006](../plans/006-the-sound-of-the-films.md)); until then each plays
-Study as one bed.
+([Plan-006](../plans/006-the-sound-of-the-films.md)); until then each is
+mixed exactly as it was, bar the cues (sound.json `before_the_grammar`).
 
 ## Walkthrough shots
 

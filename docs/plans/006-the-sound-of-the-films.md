@@ -57,9 +57,10 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    - each part's EQ and pan;
    - cues removed.
 
-   It also keeps the app's old 4.5 dB duck for a film laid out before the
-   grammar (no demos), until the film is re-timed. The app's gain and that
-   duck are sound.json's `before_the_grammar`.
+   A film laid out before the grammar (no marks, no demos) is mixed exactly as
+   it was, bar the cues, until it is re-voiced onto the grammar. Its levels are
+   sound.json's `before_the_grammar`. A re-finish of each voiced walkthrough
+   gives main's `mix.wav` byte for byte.
 4. **The timeline.** *Done* (#84).
    - a line can carry a demo, laid out as a 0.7 s pause, the demo, its tail to
      −30 dB, then 0.8 s;

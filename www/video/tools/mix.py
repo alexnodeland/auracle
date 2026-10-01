@@ -53,12 +53,20 @@ docs/notes/sound-2026-09/SPEC.md sections 5 to 8). None is written here:
   LADDER['demo_lufs'] over its window (first note to last note-off), and the
   bed goes down to LADDER['bed_under_demo_lu'] under it from the first note
   and comes back from the note-off. The app's sound is never ducked: in this
-  grammar the instrument never plays under the voice. A film laid out before
-  the grammar (no `demos`) plays the app under the voice, so until it is
-  re-timed it keeps the duck it had (BEFORE_THE_GRAMMAR['app_duck_db']).
+  grammar the instrument never plays under the voice (a film laid out before
+  the grammar is another matter: below).
 - **Under the voice** one detector and one follower (DUCK) drive three moves:
   the whole bed ducks DUCK['broadband_db'], a further CARVE['db'] in
   CARVE['band_hz'], and the pad a further PAD_DIP['db'] in PAD_DIP['band_hz'].
+- **A film laid out before the grammar** (no `marks`, no `demos` in its
+  timeline: a script still on Study) is mixed exactly as it was before
+  ADR-014, bar the cues, so nothing about it changes until it is re-voiced
+  onto the grammar: the voice untreated, its bed as one sound
+  BEFORE_THE_GRAMMAR['bed_db'] under it and ducked
+  BEFORE_THE_GRAMMAR['duck_db'], the app at its gain and ducked
+  BEFORE_THE_GRAMMAR['app_duck_db'], with that mix's own loudness and
+  follower arithmetic (lufs_before, follower_before), so it is the same to
+  the sample.
 - **No cues.** A film lays no whoosh, blip, shimmer or sting (ADR-014). Any
   left in out/FILM/cues.json (the picture's stage.sfx() calls) are not laid,
   and the mix says how many.
@@ -295,9 +303,10 @@ def follower(x, attack_ms=None, release_ms=None):
     """An envelope follower: rises toward its input with the attack time
     constant, falls with the release (DUCK['follower'] unless given).
 
-    Exactly the per-sample recurrence cur = x + (cur - x)·k, with k the attack
-    coefficient when the input is above cur and the release otherwise; run a
-    stretch of constant input at a time, where k cannot change."""
+    The per-sample recurrence cur = x + (cur - x)·k, with k the attack
+    coefficient when the input is above cur and the release otherwise, in
+    closed form over each stretch of constant input, where k cannot change. It
+    equals the sample-by-sample loop (follower_before) to rounding."""
     f = DUCK["follower"]
     a = math.exp(-1.0 / ((f["attack_ms"] if attack_ms is None else attack_ms) * SR / 1000))
     r = math.exp(-1.0 / ((f["release_ms"] if release_ms is None else release_ms) * SR / 1000))
@@ -317,16 +326,64 @@ def follower(x, attack_ms=None, release_ms=None):
     return out
 
 
-def voice_env(vo):
+def voice_env(vo, follow=None):
     """The duck's follower: 1 where the voice's short RMS is above the
-    detector's threshold (DUCK['detector']), through DUCK['follower']."""
+    detector's threshold (DUCK['detector']), through DUCK['follower'] (with
+    `follow`, that follower function)."""
     det = DUCK["detector"]
     hop = max(1, int(round(det["rms_ms"] * SR / 1000)))
     n = len(vo)
     m = np.sqrt(np.mean(vo[: n // hop * hop].reshape(-1, hop, vo.shape[1]) ** 2, axis=(1, 2)))
     mask = (20 * np.log10(m + 1e-9) > det["above_dbfs"]).astype(np.float64)
     mask = np.concatenate([np.repeat(mask, hop), np.zeros(n - n // hop * hop)])
-    return follower(mask)
+    return (follow or follower)(mask)
+
+
+# ---- before the grammar --------------------------------------------------------
+#
+# A film laid out before the grammar is mixed as main mixed it before ADR-014,
+# to the sample. Two pieces of that mix's arithmetic differ from the mix's own
+# by rounding: its loudness summed each 400 ms block afresh, and its follower
+# ran sample by sample. They are kept here as they were, for those films only,
+# and go when the last of them is re-voiced (Plan-006 task 9).
+
+def lufs_before(x):
+    """lufs() as main computed it: each block's mean square summed afresh.
+    The K-weighting is the same, a channel at a time."""
+    blk = int(0.4 * SR)
+    hop = int(0.1 * SR)
+    if len(x) < blk:
+        return -70.0
+    y = np.empty(x.shape)
+    for ch in range(x.shape[1]):
+        y[:, ch] = k_weight(x[:, ch])
+    ms = []
+    for i in range(0, len(y) - blk + 1, hop):
+        seg = y[i : i + blk]
+        ms.append(float(np.sum(np.mean(seg**2, axis=0))))
+    del y
+    ms = np.array(ms)
+    l = -0.691 + 10 * np.log10(ms + 1e-12)
+    g = ms[l > -70]
+    if not len(g):
+        return -70.0
+    rel = -0.691 + 10 * np.log10(np.mean(g)) - 10
+    g2 = ms[(l > -70) & (l > rel)]
+    return float(-0.691 + 10 * np.log10(np.mean(g2)))
+
+
+def follower_before(mask, attack_ms=None, release_ms=None):
+    """follower() as main ran it: sample by sample."""
+    f = DUCK["follower"]
+    a = math.exp(-1.0 / ((f["attack_ms"] if attack_ms is None else attack_ms) * SR / 1000))
+    r = math.exp(-1.0 / ((f["release_ms"] if release_ms is None else release_ms) * SR / 1000))
+    out = np.empty_like(mask)
+    cur = 0.0
+    for i, m in enumerate(mask):
+        k = a if m > cur else r
+        cur = m + (cur - m) * k
+        out[i] = cur
+    return out
 
 
 # ---- filters -----------------------------------------------------------------
@@ -584,7 +641,7 @@ def app_under_voice(app, env):
     """The app's sound in a film laid out before the grammar: ducked
     BEFORE_THE_GRAMMAR['app_duck_db'] times the follower, as it was mixed
     before ADR-014 (half the old bed's duck)."""
-    return (app * (10 ** (BEFORE_THE_GRAMMAR["app_duck_db"] * env / 20))[:, None]).astype(np.float32)
+    return app * (10 ** (BEFORE_THE_GRAMMAR["app_duck_db"] * env / 20))[:, None].astype(np.float32)
 
 
 def under_voice(bed, env, duck_db):
@@ -743,11 +800,23 @@ def parser():
     # One source: www/brand/sound.json's ladder and duck, through
     # sound_defaults.py. These override them for a trial mix; a film is mixed
     # at the defaults.
-    ap.add_argument("--music-db", type=float, default=sound_defaults.LADDER["bed_rest_lu"],
-                    help="the bed at rest against the voice, in LU (default: sound.json ladder.bed_rest_lu)")
-    ap.add_argument("--duck-db", type=float, default=sound_defaults.DUCK["broadband_db"],
-                    help="the bed's broadband duck under the voice (default: sound.json duck.broadband_db)")
+    ap.add_argument("--music-db", type=float, default=None,
+                    help="the bed at rest against the voice, in LU (default: sound.json ladder.bed_rest_lu; "
+                         "before the grammar, before_the_grammar.bed_db)")
+    ap.add_argument("--duck-db", type=float, default=None,
+                    help="the bed's broadband duck under the voice (default: sound.json duck.broadband_db; "
+                         "before the grammar, before_the_grammar.duck_db)")
     return ap
+
+
+def bed_levels(args, before):
+    """The bed's level against the voice and its duck under it, in dB: the
+    overrides when given, else sound.json's: the ladder and the duck, or for a
+    film laid out before the grammar, `before_the_grammar`."""
+    btg = BEFORE_THE_GRAMMAR
+    rest = args.music_db if args.music_db is not None else (btg["bed_db"] if before else LADDER["bed_rest_lu"])
+    duck = args.duck_db if args.duck_db is not None else (btg["duck_db"] if before else DUCK["broadband_db"])
+    return rest, duck
 
 
 def main():
@@ -763,6 +832,10 @@ def main():
     marks = {k: v for k, v in (tl.get("marks") or {}).items() if k in ("entrance", "exit")}
     arr_f = os.path.join(fdir, "arrangement.json")
     arr = read_json(arr_f) if os.path.exists(arr_f) else {}
+    # Laid out before the grammar: mixed exactly as it was (bar the cues).
+    before = not marks and not demos
+    music_db, duck_db = bed_levels(args, before)
+    loud = lufs_before if before else lufs
 
     # No cues (ADR-014): whatever the picture still asks for is not laid.
     cues_f = os.path.join(odir, "cues.json")
@@ -787,14 +860,17 @@ def main():
             if line["id"] in files:
                 lay(vo, load(files[line["id"]]), line["t0"])
         target = LADDER["narration_lufs"]
-        lv = lufs(vo)
+        lv = loud(vo)
         vo *= 10 ** ((target - lv) / 20)
-        vo, did = voice_chain(vo)
-        vo *= 10 ** ((target - lufs(vo)) / 20)
+        if before:
+            did = ["untreated (laid out before the grammar)"]
+        else:
+            vo, did = voice_chain(vo)
+            vo *= 10 ** ((target - lufs(vo)) / 20)
         print(f"voice: {lv:.1f} LUFS → {target:.1f}; {'; '.join(did)}")
     if not np.isfinite(vo).all():
         sys.exit("mix.py: the narration holds samples that are not numbers; nothing written")
-    env = voice_env(vo) if np.any(vo) else np.zeros(n)
+    env = voice_env(vo, follower_before if before else follower) if np.any(vo) else np.zeros(n)
 
     # The app's own sound: each demo window to the demo's level.
     app = np.zeros((n, 2), np.float32)
@@ -826,7 +902,7 @@ def main():
                 app[i:j] *= 10 ** ((LADDER["demo_lufs"] - la) / 20)
             print(f"app: {len(demos)} demo window{'s' if len(demos) != 1 else ''} → {LADDER['demo_lufs']:.1f} LUFS; "
                   "elsewhere at its gain_db")
-        elif np.any(app):
+        elif np.any(app) and before:
             # Laid out before the grammar: the app plays under the voice, so
             # it keeps the duck it had until the film is re-timed.
             app = app_under_voice(app, env)
@@ -839,7 +915,7 @@ def main():
     rest = np.zeros((n, 2), np.float32)  # the bed at rest: before the duck, the dip and the demos
     pad_raw = pad_dipped = None
     took = {"marks": [], "demos": []}
-    rest_at = LADDER["narration_lufs"] + args.music_db
+    rest_at = LADDER["narration_lufs"] + music_db
     if args.score and args.music:
         score = read_json(args.score)
         placed = score.get("_film")
@@ -906,7 +982,7 @@ def main():
                     lay(bed, load(f), sec["t0"])
                 else:
                     print(f"  (no {f})", file=sys.stderr)
-        ml = lufs(bed)
+        ml = loud(bed)
         bed *= 10 ** ((rest_at - ml) / 20)
         rest = bed.copy()
         print(f"music: {ml:.1f} LUFS → {rest_at:.1f}")
@@ -937,7 +1013,11 @@ def main():
             print(f"music: under {len(demos)} demo{'s' if len(demos) != 1 else ''}, "
                   + ", ".join(f"{g:+.1f} dB" for g in took["demos"]))
         bed_unducked = bed
-        bed = under_voice(bed_unducked, env, args.duck_db)
+        if before:
+            # As it was mixed: a broadband duck, with no carve.
+            bed = bed * (10 ** (duck_db * env / 20))[:, None].astype(np.float32)
+        else:
+            bed = under_voice(bed_unducked, env, duck_db)
     else:
         bed_unducked = bed
 
@@ -949,7 +1029,7 @@ def main():
     mix[-f:] *= np.linspace(1, 0, f)[:, None]
     if not np.isfinite(mix).all():
         sys.exit("mix.py: the mix has samples that are not numbers (NaN or infinite); nothing written")
-    l0 = lufs(mix)
+    l0 = loud(mix)
     if l0 <= -70:
         sys.exit("mix.py: the mix is silent (under the -70 LUFS gate); nothing written")
     master = 10 ** ((args.target - l0) / 20)

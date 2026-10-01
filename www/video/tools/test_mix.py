@@ -58,21 +58,27 @@ class TheLadder(unittest.TestCase):
         self.assertEqual((mix.LADDER["narration_lufs"], mix.LADDER["bed_rest_lu"], mix.LADDER["demo_lufs"],
                           mix.LADDER["marks_lufs"], mix.LADDER["master_lufs"]), (-18, -3, -18, -18, -16))
 
-    def test_the_bed_duck_and_master_defaults_are_read_from_the_ladder(self):
-        # Read, not copied: a change to sound.json's ladder reaches mix.py.
-        saved = dict(mix.LADDER), dict(mix.DUCK)
+    def test_the_bed_duck_and_master_defaults_are_read_from_sound_json(self):
+        # Read, not copied: a change to sound.json's ladder, duck or
+        # before_the_grammar reaches mix.py.
+        saved = dict(mix.LADDER), dict(mix.DUCK), dict(mix.BEFORE_THE_GRAMMAR)
         mix.LADDER.update(bed_rest_lu=-1.25, master_lufs=-14.5)
         mix.DUCK.update(broadband_db=-3.5)
+        mix.BEFORE_THE_GRAMMAR.update(bed_db=-7.25, duck_db=-8.5)
         try:
             args = mix.parser().parse_args(["f"])
+            self.assertEqual(args.target, -14.5)
+            self.assertEqual(mix.bed_levels(args, before=False), (-1.25, -3.5))
+            self.assertEqual(mix.bed_levels(args, before=True), (-7.25, -8.5))
         finally:
-            mix.LADDER.clear()
-            mix.LADDER.update(saved[0])
-            mix.DUCK.clear()
-            mix.DUCK.update(saved[1])
-        self.assertEqual((args.music_db, args.duck_db, args.target), (-1.25, -3.5, -14.5))
+            for d, v in zip((mix.LADDER, mix.DUCK, mix.BEFORE_THE_GRAMMAR), saved):
+                d.clear()
+                d.update(v)
         args = mix.parser().parse_args(["f"])
-        self.assertEqual((args.music_db, args.duck_db, args.target), (-3, -2, -16))
+        self.assertEqual((args.target, mix.bed_levels(args, False), mix.bed_levels(args, True)), (-16, (-3, -2), (-6, -9)))
+        args = mix.parser().parse_args(["f", "--music-db", "-4", "--duck-db", "-1"])
+        self.assertEqual(mix.bed_levels(args, False), mix.bed_levels(args, True))
+        self.assertEqual(mix.bed_levels(args, True), (-4, -1))
 
     def test_while_it_sounds_and_the_tails_frames_are_sound_jsons(self):
         with open(SOUND_JSON, encoding="utf-8") as f:
@@ -392,8 +398,10 @@ class AMixThatWouldBeWrongStops(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")
 class AFilmNotYetOnN3(unittest.TestCase):
-    """A film still on Study: its bed as one sound (bed.wav), at the ladder's
-    level and duck, with its bed levels; and a mix with no bed at all."""
+    """A film laid out before the grammar (no marks, no demos), mixed as it
+    was before ADR-014: its voice untreated, its bed as one sound (bed.wav)
+    6 dB under it, ducked 9 dB with no carve, with its bed levels; its app
+    ducked 4.5 dB; and a mix with no bed at all."""
 
     def setUp(self):
         self.film = Film().__enter__()
@@ -425,21 +433,31 @@ class AFilmNotYetOnN3(unittest.TestCase):
         with open(os.path.join(self.film.root, "out/f/ladder.json")) as f:
             return json.load(f), out.getvalue()
 
-    def test_its_bed_is_mixed_as_one_sound_to_the_ladder_with_its_levels(self):
+    def test_its_bed_is_mixed_as_it_was_with_its_levels(self):
+        btg = sound_defaults.BEFORE_THE_GRAMMAR
+        self.assertEqual((btg["bed_db"], btg["duck_db"]), (-6, -9))
         report, log = self.run_mix("--music", os.path.join(self.film.root, "bed"))
         lad = report["ladder"]
         self.assertAlmostEqual(lad["voice_lufs"], -18.0, delta=0.05)
-        # The whole bed is set to the ladder, then its levels take it out for
-        # a while; measured where the voice speaks, the 0.4 s ramps show.
-        self.assertAlmostEqual(lad["bed_rest_vs_voice_lu"], -3.0, delta=0.3)
-        self.assertTrue(-2.0 <= lad["duck_db"] < -1.2, lad["duck_db"])
-        self.assertTrue(-3.0 <= lad["carve_db"] < -1.8, lad["carve_db"])
+        self.assertIn("voice: ", log)
+        self.assertIn("untreated (laid out before the grammar)", log, "no voice chain")
+        # The whole bed is set 6 dB under the voice, then its levels take it
+        # out for a while; measured where the voice speaks, the 0.4 s ramps show.
+        self.assertAlmostEqual(lad["bed_rest_vs_voice_lu"], -6.0, delta=0.3)
+        self.assertTrue(-9.0 <= lad["duck_db"] < -6.0, lad["duck_db"])
+        self.assertAlmostEqual(lad["carve_db"], 0.0, delta=0.01, msg="no carve before the grammar")
         self.assertIsNone(lad["pad_dip_db"], "a bed as one sound has no pad to dip")
         self.assertIn("music: 3 bed levels", log)
         mixed = mix.load(os.path.join(self.film.root, "out/f/mix.wav"))
         self.assertLess(level_db(mixed[int(14.5 * SR):int(18.5 * SR)]), level_db(mixed[int(0.5 * SR):int(6.5 * SR)]) - 40,
                         "the bed is out where its level says -60")
         self.assertEqual(report["marks"], [])
+
+    def test_its_loudness_and_follower_are_the_ones_it_was_mixed_with(self):
+        x = np.random.default_rng(9).standard_normal((3 * SR, 2)).astype(np.float32) * 0.1
+        self.assertAlmostEqual(mix.lufs_before(x), mix.lufs(x), places=9)
+        mask = np.repeat(np.random.default_rng(10).integers(0, 2, 300).astype(float), 240)
+        self.assertLess(float(np.max(np.abs(mix.follower_before(mask) - mix.follower(mask)))), 1e-9)
 
     def test_its_app_keeps_the_duck_it_had_under_the_voice(self):
         btg = sound_defaults.BEFORE_THE_GRAMMAR

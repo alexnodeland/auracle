@@ -24,10 +24,10 @@
 # the narration. The mix takes the ladder and the duck from
 # www/brand/sound.json (mix.py's defaults), brings each demo window to the
 # demo's level, and lays no cues (ADR-014). A film laid out before the grammar
-# (no demos) keeps the app at its gain and ducked under the voice, as before
-# (sound.json `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's
-# level and its duck for a trial mix, and APP_DB the app's gain; JOBS sets the
-# render's parallel pages (default: one per core).
+# (no marks, no demos) is mixed exactly as it was, bar the cues (sound.json
+# `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's level and its
+# duck for a trial mix, and APP_DB the app's gain; JOBS sets the render's
+# parallel pages (default: one per core).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"; shift 2

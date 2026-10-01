@@ -355,7 +355,9 @@
     "pad_dip": { "band_hz": [300, 600], "db": -2, "on": "the pad" }
   },
   "before_the_grammar": {
-    "about": "A film laid out before the grammar (its timeline has no `demos`) plays the app's recorded sound under the narration, which the grammar never does. Until it is re-voiced and re-timed (Plan-006 task 8), a re-finish keeps the app as it was mixed before ADR-014: at `app_gain_db` (tools/app_audio.py's --gain-db, walkthrough.sh's APP_DB) and ducked `app_duck_db` under the voice, on the duck's own detector and follower. That is half the old 9 dB duck on the bed. A film on the grammar lays its demos after its lines instead, each at the ladder's `demo_lufs`, and never ducks the app.",
+    "about": "A film laid out before the grammar (its timeline has neither `marks` nor `demos`: a script still on Study or Signal) is mixed exactly as it was before ADR-014, so nothing about it changes until it is re-voiced onto the grammar (Plan-006 task 8). The voice is untreated at the ladder's `narration_lufs`. The bed, as one sound, sits `bed_db` under it and ducks `duck_db` broadband under the voice, with no carve and no dip. The app's recorded sound plays at `app_gain_db` (tools/app_audio.py's --gain-db, walkthrough.sh's APP_DB) and ducks `app_duck_db`, half the bed's duck, on the same detector and follower. The only change is that no cue is laid. These are the levels the films were mixed with before ADR-014 (they were mix_now). A film on the grammar lays its demos after its lines instead, each at the ladder's `demo_lufs`, and never ducks the app.",
+    "bed_db": -6,
+    "duck_db": -9,
     "app_gain_db": -3,
     "app_duck_db": -4.5
   },

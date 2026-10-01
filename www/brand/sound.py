@@ -144,8 +144,8 @@ NEEDED = (
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
-    "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "before_the_grammar.app_gain_db",
-    "before_the_grammar.app_duck_db", "cast.parts.lead.release.tail_s",
+    "grammar.exit_ring_out_s", "grammar.demo_tail_hop_s", "before_the_grammar.bed_db",
+    "before_the_grammar.duck_db", "before_the_grammar.app_gain_db", "before_the_grammar.app_duck_db", "cast.parts.lead.release.tail_s",
     "marks.reach.out_of_the_bed.hold_bars", "mix.sounding.part_lufs", "mix.sounding.pad_lufs", "bed.name",
     "bed.parts.pad.under_demo.hold_before_s", "bed.parts.melody.placement",
 )
@@ -209,6 +209,8 @@ def validate(src: dict) -> list[str]:
         ("grammar.demo_tail_hop_s", lambda v: _num(v) and 0 < v <= 1, "a frame length in seconds, over 0 and at most 1"),
         ("grammar.demo_tail_db", lambda v: _num(v) and v < 0, "a negative number of dB"),
         ("cast.parts.lead.release.tail_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
+        ("before_the_grammar.bed_db", lambda v: _num(v) and v <= 0, "a level in dB, 0 or less"),
+        ("before_the_grammar.duck_db", lambda v: _num(v) and v <= 0, "a duck in dB, 0 or less"),
         ("before_the_grammar.app_gain_db", lambda v: _num(v) and v <= 0, "a gain in dB, 0 or less"),
         ("before_the_grammar.app_duck_db", lambda v: _num(v) and v <= 0, "a duck in dB, 0 or less"),
         ("bed.parts.pad.under_demo.hold_before_s", lambda v: _num(v) and v >= 0, "a number of seconds, 0 or more"),
@@ -593,8 +595,8 @@ DEFAULTS_DOC = {
     "MIX": "Filter orders, the frequency below which every stem's side signal is removed, and what `while it sounds`\n"
            "means (momentary loudness above part_lufs, with the pad above pad_lufs).",
     "TIMINGS": "The grammar's timings, in seconds and dB (SPEC section 9).",
-    "BEFORE_THE_GRAMMAR": "A film laid out before the grammar (no demos): the app's gain (app_audio.py's --gain-db) and\n"
-                          "its duck under the voice, as mixed before ADR-014, until the film is re-timed.",
+    "BEFORE_THE_GRAMMAR": "A film laid out before the grammar (no marks, no demos), mixed as it was before ADR-014 until it is\n"
+                          "re-voiced: the bed's level and duck, the app's gain (app_audio.py's --gain-db) and its duck.",
     "BED": "The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its\n"
            "voicings, the pad under a demo, the burble, and the sighs with the rule that places them.",
     "LEAD": "How the lead plays a line (SPEC section 2): held into the next note, the last note swelling, each note\n"

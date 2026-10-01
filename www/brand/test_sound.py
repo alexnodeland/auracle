@@ -263,7 +263,7 @@ class ThePlantedLevels(unittest.TestCase):
     def test_a_number_as_mix_pys_default_fails_the_check(self):
         with Tree() as t:
             t.edit("www/video/tools/mix.py",
-                   lambda s: s.replace('default=sound_defaults.DUCK["broadband_db"]', "default=-8.0", 1))
+                   lambda s: s.replace('"--duck-db", type=float, default=None', '"--duck-db", type=float, default=-8.0', 1))
             problems = t.problems()
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --duck-db")
@@ -271,7 +271,7 @@ class ThePlantedLevels(unittest.TestCase):
     def test_a_negative_number_as_mix_pys_default_fails_the_check_however_it_is_written(self):
         with Tree() as t:
             t.edit("www/video/tools/mix.py",
-                   lambda s: s.replace('default=sound_defaults.LADDER["bed_rest_lu"]', "default = -(6)", 1))
+                   lambda s: s.replace('"--music-db", type=float, default=None', '"--music-db", type=float, default = -(6)', 1))
             problems = t.problems()
             self.assertEqual(len(problems), 1, problems)
             self.assertRegex(problems[0], r"^www/video/tools/mix\.py:\d+: a number as the default of --music-db")

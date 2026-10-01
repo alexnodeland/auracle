@@ -11,8 +11,9 @@
 #
 # Run voice.sh FILM first, and sounds.sh once. The mix takes the ladder and
 # the duck from www/brand/sound.json (mix.py's defaults) and lays no cues
-# (ADR-014). MUSIC_DB / DUCK_DB override the bed's level and its duck for a
-# trial mix.
+# (ADR-014); a film laid out before the grammar is mixed exactly as it was,
+# bar the cues (`before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's
+# level and its duck for a trial mix.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"
