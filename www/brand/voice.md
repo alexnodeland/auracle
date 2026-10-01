@@ -365,6 +365,7 @@ person. It is not a presenter addressing an audience.
 
 - **Silence is part of the script.** Write it in:
   - the pause before every demo, about 0.7 seconds;
+  - the pause after it, about 0.8 seconds once its tail has rung out;
   - a breath after each new idea;
   - each chapter's few seconds without words.
 - **Explain, pause, demo, continue:**
@@ -373,7 +374,9 @@ person. It is not a presenter addressing an audience.
   - then the voice names what you heard, or moves on.
 
   Voice and instrument never overlap.
-- **Let a sound finish** before the voice speaks over its tail.
+- **A demo never cuts off.** Its last notes ring out into their own room.
+  Then the bed carries a pause of about 0.8 seconds, and only then does the
+  voice continue. The voice never starts over a sound's tail.
 - **The bed sits under the voice,** soft and in F. Its melody lives between
   lines, never across them. The film sound's specification sets the levels
   (RFC-007, to be written).
@@ -387,7 +390,7 @@ person. It is not a presenter addressing an audience.
 2. **Each chapter:**
    - a figure;
    - the voice explains;
-   - a pause and the demo;
+   - a pause, the demo, its tail, and a pause;
    - the voice continues;
    - a few seconds without words.
 3. **The ending:** one thing to try, then the lockup and the sound mark.
