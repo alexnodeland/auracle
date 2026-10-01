@@ -148,6 +148,26 @@ class TheCheck(unittest.TestCase):
             self.assertEqual(t.problems(), [
                 f"{S.SOURCE}: `cast.parts.drone.breath` must run 0 <= low <= stock <= high <= 1, low below high"])
 
+    def test_the_pad_under_a_demo_names_a_chord_of_the_cycle_and_a_part(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["pad"]["under_demo"].update(counts_as="Fmaj7", on="pad"))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `bed.parts.pad.under_demo.counts_as` is 'Fmaj7', not a chord of `form.cycle`",
+                f"{S.SOURCE}: `bed.parts.pad.under_demo.on` names no part 'pad' in `cast.parts`"])
+
+    def test_the_sighs_placement_takes_no_negative_margin(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["melody"]["placement"].update(before_line_s=-0.5))
+            self.assertEqual(t.problems(), [
+                f"{S.SOURCE}: `bed.parts.melody.placement.before_line_s` should be a number, 0 or more"])
+
+    def test_the_bed_and_the_lead_reach_the_film_tools(self):
+        with Tree() as t:
+            t.edit_source(lambda src: src["bed"]["parts"]["melody"]["placement"].update(bars_before_exit=2))
+            self.assertEqual(t.problems(), [f"{S.DEFAULTS}: stale or edited by hand; run `make sound`"])
+            t.generate()
+            self.assertIn('"bars_before_exit": 2', t.read(S.DEFAULTS))
+
     def test_a_part_that_turns_the_rooms_knob_fails_the_check(self):
         with Tree() as t:
             t.edit_source(lambda src: src["cast"]["parts"]["bed_pad"]["knobs"].update(

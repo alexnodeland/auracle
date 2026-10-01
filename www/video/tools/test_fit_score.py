@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""fit_score.py: a fitted bed fills its section, and stops at its end.
+"""fit_score.py: a fitted bed fills its section, and stops at its end; and a
+film's bed, written to its timeline, is the approved reel's music on the
+reel's timeline, holds its drone, keeps its ties across the cycle, makes way
+for each demo, and sighs only in the narration's gaps.
 
     python3 www/video/tools/test_fit_score.py      (run by `make dev-check`)
 
@@ -19,6 +22,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import fit_score  # noqa: E402
+import sound_defaults  # noqa: E402
 
 STUDY = os.path.join(HERE, "..", "sound", "study.json")
 
@@ -198,6 +202,247 @@ class APhrase(unittest.TestCase):
         s = self.score({"start_bar": 1, "repeat": 1, "every_bars": 2, "notes": [[1, 1, 4, "C4", 0.5]]})
         fitted, _, _ = fit_score.fit(s, {"s": 30})
         self.assertEqual(fitted["tracks"][0]["patterns"], s["tracks"][0]["patterns"])
+
+
+# ─── a film's bed (fit_score.py --film) ─────────────────────────────────────
+
+ROOT = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
+SPB = 60 / 66
+BAR = 4 * SPB
+
+
+def generated(name):
+    with open(os.path.join(ROOT, sound_defaults.SCORES[name]["score"]), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def film(tl):
+    return fit_score.film_score(tl, generated("bed"), generated("bloom"), generated("reach"))
+
+
+def at(n, bpb=4):
+    return (n[0] - 1) * bpb + n[1] - 1
+
+
+def notes(score, role=None, name=None):
+    """(start, end, pitch) in seconds of film time, for a role's or a track's notes."""
+    t0 = score["_film"]["t0"]
+    out = []
+    for t in score["tracks"]:
+        if (role and t["role"] != role) or (name and t["name"] != name):
+            continue
+        for n in t["notes"]["s"]:
+            out.append((t0 + at(n) * SPB, t0 + (at(n) + n[2]) * SPB, n[3]))
+    return sorted(out)
+
+
+def a_film(lines, demos=(), entrance=0.0, exit_after=1.75):
+    """A timeline: lines [(t0, t1)], demos [(line end, play, tail)], the marks
+    around them as timeline.py places them."""
+    tl = {"film": "f", "lines": [{"id": f"l{i}", "text": ".", "t0": a, "t1": b} for i, (a, b) in enumerate(lines)],
+          "marks": {"entrance": entrance, "exit": lines[-1][1] + exit_after}}
+    tl["demos"] = [{"line": "l", "id": f"d{i}", "pause": p, "t0": p + 0.7, "off": p + 0.7 + play, "tail_s": tail,
+                    "next": p + 0.7 + play + tail + 0.8} for i, (p, play, tail) in enumerate(demos)]
+    tl["duration"] = tl["marks"]["exit"] + 4.5 + 2.6
+    return tl
+
+
+def sigh_length():
+    shape = sound_defaults.BED["shape_beats"]
+    return (shape[0] + shape[1]) * SPB + sound_defaults.LEAD["tail_s"]
+
+
+class TheReelsMusicComesBack(unittest.TestCase):
+    """Written to the final reel's timeline, the film's bed is the approved
+    reel's music (docs/notes/sound-2026-09/scores/reel.json), note for note:
+    Bloom's chord held into bar 1, the pad re-voiced for the demo, G6/F after
+    it and held to Reach, the burble, the held drone and both marks."""
+
+    def test_every_track_but_the_demo(self):
+        import test_timeline
+        import timeline
+
+        tl, _ = timeline.lay_out(test_timeline.reel_script(1.12), test_timeline.REEL_DURS)
+        score, placed = film(tl)
+        with open(os.path.join(ROOT, "docs/notes/sound-2026-09/scores/reel.json"), encoding="utf-8") as f:
+            reel = json.load(f)
+        want = {t["name"]: t for t in reel["tracks"] if t["name"] != "demo"}
+        got = {t["name"]: t for t in score["tracks"]}
+        self.assertEqual(sorted(got), sorted(want))
+        self.assertEqual(score["sections"], reel["sections"])
+        for name, w in want.items():
+            g = got[name]
+            key = lambda n: (at(n), n[3])  # noqa: E731
+            gn, wn = sorted(g["notes"]["s"], key=key), sorted(w["notes"]["s"], key=key)
+            self.assertEqual(len(gn), len(wn), name)
+            for a, b in zip(gn, wn):
+                self.assertAlmostEqual(at(a), at(b), places=6, msg=name)
+                self.assertAlmostEqual(a[2], b[2], places=6, msg=name)
+                self.assertEqual((a[3], a[4]), (b[3], b[4]), name)
+            for k in ("preset", "voices", "trim_db", "transpose", "params", "pitch_drop", "fader", "automation"):
+                self.assertEqual(g.get(k), w.get(k), f"{name} {k}")
+        self.assertEqual(placed["sighs"], [], "the reel's narration leaves no gap that holds a sigh")
+        self.assertEqual([ch for _, ch in placed["chords"]], ["Fmaj9", "G6/F", "Bbmaj7/F", "G6/F"])
+
+
+class TheDroneIsHeld(unittest.TestCase):
+    def test_one_note_a_pitch_from_the_entrance_to_the_exits_end_breathing_once_a_cycle(self):
+        lines = [(6.25 + 12 * k, 6.25 + 12 * k + 9) for k in range(10)]
+        score, _ = film(a_film(lines))
+        drone = next(t for t in score["tracks"] if t["name"] == "drone")
+        exit_end = score["_film"]["exit"] + sound_defaults.MARKS["length_s"]
+        self.assertEqual([n[3] for n in drone["notes"]["s"]], sound_defaults.BED["pedal"])
+        for n in drone["notes"]["s"]:
+            self.assertEqual(at(n), 0)
+            self.assertAlmostEqual(n[2] * SPB, exit_end, places=4)
+        pts = drone["automation"][0]["points"]
+        lows = [at(p[1:3]) for p in pts if p[3] == min(q[3] for q in pts)]
+        b1 = sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"] / SPB
+        self.assertEqual([round(x - b1, 6) for x in lows[:4]], [0, 32, 64, 96], "lowest at each cycle's start")
+        self.assertEqual(drone["fader"][0][3], sound_defaults.MARKS["drone_fade_in"]["from_db"])
+
+
+class TheCycleKeepsItsTies(unittest.TestCase):
+    def test_a_voice_that_stays_is_held_across_the_cycles_turn_and_only_movers_are_struck(self):
+        lines = [(6.25 + 12 * k, 6.25 + 12 * k + 9) for k in range(10)]
+        score, placed = film(a_film(lines))
+        pad = notes(score, name="pad")
+        cycles = [t for t, ch in placed["chords"] if ch == "Fmaj9"][1:]
+        self.assertGreaterEqual(len(cycles), 3)
+        for t in cycles:
+            struck = sorted(p for a, _, p in pad if abs(a - t) < 1e-3)
+            self.assertEqual(struck, ["A3", "C4", "E4"], f"at {t:.2f} s only the voices that move are struck")
+            g4 = [(a, b) for a, b, p in pad if p == "G4" and a < t - 0.1 and b > t + 0.1]
+            self.assertEqual(len(g4), 1, f"G4 is held across the cycle's turn at {t:.2f} s")
+        # Two bars a chord, in the cycle's order, until the bar before the exit.
+        chords = placed["chords"]
+        order = sound_defaults.BED["cycle"]
+        for (t0, a), (t1, b) in zip(chords, chords[1:]):
+            self.assertAlmostEqual(t1 - t0, 2 * BAR, places=2)
+            self.assertEqual(order.index(b), (order.index(a) + 1) % 4)
+        self.assertLessEqual(chords[-1][0], score["_film"]["exit"] - BAR + 1e-3)
+
+    def test_the_bed_fills_the_film_from_bloom_to_reach(self):
+        lines = [(6.25 + 12 * k, 6.25 + 12 * k + 9) for k in range(6)]
+        tl = a_film(lines, demos=[(lines[2][1], 5.0, 1.0)])
+        tl["lines"][3]["t0"] = tl["demos"][0]["next"]
+        tl["lines"][3]["t1"] = tl["lines"][3]["t0"] + 2
+        score, _ = film(tl)
+        sounding = sorted((a, b) for a, b, _ in notes(score, role="pad") + notes(score, role="mpad"))
+        cur, holes = 0.0, []
+        for a, b in sounding:
+            if a > cur + 1e-3:
+                holes.append((cur, a))
+            cur = max(cur, b)
+        self.assertEqual(holes, [])
+        self.assertGreaterEqual(cur, score["_film"]["exit"] + sound_defaults.MARKS["length_s"] - 1e-3)
+
+
+class ADemo(unittest.TestCase):
+    def test_the_pad_is_re_voiced_in_the_pause_and_the_cycle_resumes_after_it(self):
+        lines = [(6.25, 12.0), (12.6, 16.0), (24.0, 30.0), (30.6, 34.0)]
+        tl = a_film(lines, demos=[(16.0, 5.5, 1.0)])
+        (d,) = tl["demos"]
+        tl["lines"][2]["t0"] = d["next"]
+        score, placed = film(tl)
+        up = sound_defaults.LADDER["bed_under_demo_up_s"]
+        back = d["off"] + up
+        bed_pad = notes(score, name="pad")
+        self.assertFalse([n for n in bed_pad if n[0] < back - 1e-3 and n[1] > d["pause"] + 1e-3],
+                         "the bed's pad is quiet from the line's end to its return")
+        under = [(a, b, p) for a, b, p in notes(score, name="epad") if abs(a - d["pause"]) < 1e-3]
+        self.assertEqual(sorted(p for *_, p in under), sound_defaults.BED["under_demo"]["voicing"])
+        for a, b, _ in under:
+            self.assertAlmostEqual(b, back, places=3)
+        resumed = [ch for t, ch in placed["chords"] if abs(t - back) < 1e-3]
+        self.assertEqual(resumed, ["G6/F"], "the demo makes Fmaj9, so the cycle resumes on the chord after it")
+        cell = sound_defaults.BED["burble"]["cells"]["Fmaj9"]
+        under_burble = [p for a, _, p in notes(score, name="burble") if d["pause"] - 1e-3 <= a < back - 1e-3]
+        self.assertTrue(under_burble and set(under_burble) <= set(cell))
+
+
+class TheSighs(unittest.TestCase):
+    def check_in_gaps(self, tl, score):
+        L = sigh_length()
+        exit_ = tl["marks"]["exit"]
+        for t, ch in score["_film"]["sighs"]:
+            for l in tl["lines"]:
+                self.assertTrue(l["t1"] <= t + 1e-3 or l["t0"] >= t + L - 1e-3, f"the sigh at {t:.2f} s crosses {l['id']}")
+            for d in tl["demos"]:
+                up = sound_defaults.LADDER["bed_under_demo_up_s"]
+                self.assertTrue(t + L <= d["pause"] + 1e-3 or t >= d["off"] + up - 1e-3, f"the sigh at {t:.2f} s is in a demo")
+            self.assertLessEqual(t + L, exit_ - BAR + 1e-3, "never in the bar before the exit mark")
+            self.assertIn([t, ch], score["_film"]["chords"], "a sigh starts on a chord change")
+
+    def test_the_hand_placed_sigh_comes_back(self):
+        # The narration clip: the tour's views1-views5, cut from 24.4 s, the
+        # clip ending 3.5 s past the narration, over N3 placed so that its
+        # third cycle starts 16.25 s in. By hand, one sigh (F5 E5) sat there,
+        # 0.16 s after the last line ended.
+        views = [(24.886, 26.661), (27.061, 29.031), (29.531, 33.046), (33.546, 38.033), (38.533, 40.488)]
+        lines = [(a - 24.4, b - 24.4) for a, b in views]
+        bar1 = 16.25 - 16 * BAR
+        tl = {"film": "n3_narration", "lines": [{"id": f"views{i + 1}", "text": ".", "t0": a, "t1": b}
+                                                for i, (a, b) in enumerate(lines)],
+              "marks": {"entrance": bar1 - sound_defaults.MARKS["into_the_bed"]["bed_bar_1_at_s"]},
+              "demos": [], "duration": 21.5}
+        score, placed = film(tl)
+        self.assertEqual(placed["sighs"], [[16.25, "Fmaj9"]])
+        a, b = (next(t for t in score["tracks"] if t["name"] == n) for n in ("sigh1a", "sigh1b"))
+        self.assertEqual((a["notes"]["s"][0][3], b["notes"]["s"][0][3]), ("F5", "E5"))
+        self.assertEqual((a["role"], b["role"]), ("melody", "melody"))
+        self.assertEqual(b["pitch_drop"]["semis"], 1.0)
+
+    def test_a_gap_that_holds_a_sigh_gets_one_and_one_a_little_short_gets_none(self):
+        b1 = 1.5
+        change = b1 + 4 * 2 * BAR  # the fifth chord change: Fmaj9 again
+        L = sigh_length()
+        base = [(6.25, 10.0), (10.6, change - 0.3)]
+        for room, want in ((L + 0.05, 1), (L - 0.05, 0)):
+            lines = base + [(change + room, change + room + 3), (change + room + 3.6, change + room + 30)]
+            tl = a_film(lines)
+            score, placed = film(tl)
+            here = [s for s in placed["sighs"] if abs(s[0] - change) < 1e-2]
+            self.assertEqual(len(here), want, f"{room:.2f} s of room")
+            self.check_in_gaps(tl, score)
+
+    def test_sighs_sit_only_in_the_narrations_gaps(self):
+        # A long film with gaps of every length, and demos.
+        lines, t = [], 6.25
+        for k in range(24):
+            lines.append((t, t + 2.5 + (k % 5)))
+            t = lines[-1][1] + (0.5, 1.2, 3.0, 4.2, 6.5, 9.0)[k % 6]
+        tl = a_film(lines, demos=[(lines[5][1], 5.0, 1.1), (lines[14][1], 6.5, 1.08)])
+        for i in (5, 14):
+            shift = tl["demos"][0 if i == 5 else 1]["next"] - tl["lines"][i + 1]["t0"]
+            for l in tl["lines"][i + 1:]:
+                l["t0"] += shift
+                l["t1"] += shift
+            for d in tl["demos"][(1 if i == 5 else 2):]:
+                for k in ("pause", "t0", "off", "next"):
+                    d[k] += shift
+        tl["marks"]["exit"] = tl["lines"][-1]["t1"] + 1.75
+        tl["duration"] = tl["marks"]["exit"] + 7.1
+        score, placed = film(tl)
+        self.assertGreaterEqual(len(placed["sighs"]), 2, "the long gaps get sighs")
+        self.check_in_gaps(tl, score)
+        # Each sigh is its chord's: two notes, falling, the second swelling.
+        for n, (t, ch) in enumerate(placed["sighs"], 1):
+            a, b = (next(x for x in score["tracks"] if x["name"] == f"sigh{n}{s}") for s in "ab")
+            self.assertEqual([a["notes"]["s"][0][3], b["notes"]["s"][0][3]], sound_defaults.BED["sighs"][ch])
+            self.assertEqual(b["fader"][0][3], sound_defaults.LEAD["swell"]["from_db"])
+
+    def test_a_sigh_that_would_double_the_pad_rests_its_voice_to_the_next_change(self):
+        # Bbmaj7/F's sigh (Bb4 A4) and the pad's top A4.
+        change = 1.5 + 2 * 2 * BAR  # bar 5: Bbmaj7/F
+        lines = [(6.25, change - 0.2), (change + 6.0, change + 9.0), (change + 9.6, change + 40)]
+        score, placed = film(a_film(lines))
+        self.assertIn([round(change, 3), "Bbmaj7/F"], placed["sighs"])
+        nxt = change + 2 * BAR
+        a4 = [(a, b) for a, b, p in notes(score, name="pad") if p == "A4"]
+        self.assertFalse([1 for a, b in a4 if a < nxt - 1e-3 and b > change + 1e-3], "the pad's A4 rests under the sigh")
+        others = sorted(p for a, b, p in notes(score, name="pad") if a <= change + 1e-3 < b)
+        self.assertEqual(others, ["Bb3", "D4", "F4"])
 
 
 if __name__ == "__main__":

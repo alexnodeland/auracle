@@ -23,7 +23,8 @@ and the grammar's timings. This script writes:
 - **the mix's defaults**, `www/video/tools/sound_defaults.py`: the ladder, the
   voice chain, the duck, the carve and the dip, each part's EQ, pan and level,
   the grammar's timings, the marks' levels and hand-overs, the shortlist and
-  the room, which `mix.py` reads.
+  the room, which `mix.py` and `timeline.py` read; and the bed's notes and how
+  the lead plays a line, which `fit_score.py --film` writes a film's bed from.
 
 The rest of sound.json's numbers and pitches describe the records' notes
 rather than being written into them: the pedal, the marks' length, the lead's
@@ -140,7 +141,8 @@ NEEDED = (
     "bed.parts.drone.pitches", "bed.parts.pad.voicings", "bed.parts.burble.cells", "bed.parts.burble.velocity",
     "bed.parts.melody.sighs", "bed.parts.melody.shape_beats",
     "mix.parts", "voice_chain.stages", "ladder.bed_rest_lu", "duck.broadband_db", "duck.carve", "duck.pad_dip",
-    "grammar.exit_ring_out_s",
+    "grammar.exit_ring_out_s", "cast.parts.lead.release.tail_s", "marks.reach.out_of_the_bed.hold_bars",
+    "bed.parts.pad.under_demo", "bed.parts.melody.placement",
 )
 
 
@@ -182,6 +184,19 @@ def validate(src: dict) -> list[str]:
         for part in set(block.get("tracks", {}).values()):
             if part not in parts:
                 errs.append(f"{SOURCE}: `{where}.tracks` names no part {part!r} in `cast.parts`")
+    under = src["bed"]["parts"]["pad"]["under_demo"]
+    if under["counts_as"] not in src["form"]["cycle"]:
+        errs.append(f"{SOURCE}: `bed.parts.pad.under_demo.counts_as` is {under['counts_as']!r}, not a chord of `form.cycle`")
+    if under["on"] not in parts:
+        errs.append(f"{SOURCE}: `bed.parts.pad.under_demo.on` names no part {under['on']!r} in `cast.parts`")
+    for p in under["voicing"]:
+        try:
+            midi(p)
+        except SourceError as e:
+            errs.append(f"{SOURCE}: `bed.parts.pad.under_demo.voicing`: {e}")
+    for k, v in strip(src["bed"]["parts"]["melody"]["placement"]).items():
+        if not isinstance(v, (int, float)) or v < 0:
+            errs.append(f"{SOURCE}: `bed.parts.melody.placement.{k}` should be a number, 0 or more")
     return errs
 
 
@@ -485,12 +500,37 @@ def defaults(src: dict) -> dict:
             **{k: strip(src["marks"][k]) for k in ("length_s", "lead_over_pad_db", "drone_under_pad_lu", "drone_fade_in")},
             "into_the_bed": numbers(src["marks"]["bloom"]["into_the_bed"]),
             "passing_chord_beats": src["marks"]["reach"]["out_of_the_bed"]["passing_chord_beats"],
+            "hold_bars": src["marks"]["reach"]["out_of_the_bed"]["hold_bars"],
+        },
+        "BED": bed_defaults(src),
+        "LEAD": {
+            "legato_s": src["cast"]["parts"]["lead"]["legato"]["s"],
+            "swell": strip(src["cast"]["parts"]["lead"]["swell"]),
+            "bend": numbers(src["cast"]["parts"]["lead"]["bend"]),
+            "tail_s": src["cast"]["parts"]["lead"]["release"]["tail_s"],
         },
         "SHORTLIST": {"roles": src["cast"]["shortlist"]["roles"], "criteria": numbers(src["cast"]["shortlist"]["criteria"])},
         "ROOM": {"preset": src["cast"]["room"]["preset"], "stock": src["cast"]["room"]["stock"]},
         "PARTS": strip(src["mix"]["parts"]),
         "MIX": {k: src["mix"][k] for k in ("filter_order", "band_split_order", "center_below_hz")},
         "TIMINGS": {k: strip(v) for k, v in src["grammar"].items() if k not in ("about", "rules")},
+    }
+
+
+def bed_defaults(src: dict) -> dict:
+    """The bed's notes as fit_score.py --film writes a film's bed from them."""
+    bed = src["bed"]["parts"]
+    b = bed["burble"]
+    return {
+        "cycle": src["form"]["cycle"],
+        "pedal": src["key"]["pedal"],
+        "voicings": bed["pad"]["voicings"],
+        "under_demo": strip(bed["pad"]["under_demo"]),
+        "burble": {"step_beats": b["step_beats"], "held_beats": b["held_beats"], "cells": b["cells"],
+                   "velocity": numbers(b["velocity"])},
+        "sighs": bed["melody"]["sighs"],
+        "shape_beats": bed["melody"]["shape_beats"],
+        "placement": strip(bed["melody"]["placement"]),
     }
 
 
@@ -523,6 +563,10 @@ DEFAULTS_DOC = {
     "PARTS": "Each part's EQ, pan and level on stems (SPEC section 5). A level is against the pad unless it names LUFS.",
     "MIX": "Filter orders, and the frequency below which every stem's side signal is removed.",
     "TIMINGS": "The grammar's timings, in seconds and dB (SPEC section 9).",
+    "BED": "The bed's notes (SPEC section 4), which fit_score.py --film writes a film's bed from: the cycle and its\n"
+           "voicings, the pad under a demo, the burble, and the sighs with the rule that places them.",
+    "LEAD": "How the lead plays a line (SPEC section 2): held into the next note, the last note swelling, each note\n"
+            "bending in, and its release (note-off to -30 dB).",
 }
 
 

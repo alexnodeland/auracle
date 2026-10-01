@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # A walkthrough (the real app, recorded), from its rehearsed shots to the
 # encoded MP4 and WebM:
-#   record every shot → check the takes → study score fitted to the
-#   arrangement → the picture's sound cues, counted (the mix lays none) → the
+#   record every shot → check the takes → the bed (a film on N3: its bed and
+#   marks written to the timeline; otherwise the study score fitted to the
+#   arrangement) → the picture's sound cues, counted (the mix lays none) → the
 #   app's own sound laid under the picture (app_audio.py follows cuts) → first
 #   mix → frames → final mix and encode.
 #
@@ -45,13 +46,21 @@ if [ "$REC" = 1 ]; then
 fi
 python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"
 [ "$POST" = 1 ] || exit 0
-A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
-python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
+BED=$(python3 -c "import json,sys;print(str(json.load(open(sys.argv[1]))['bed']).lower())" "films/$F/arrangement.json")
 rm -rf "out/$F/music"
-(cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+if [ "$BED" = n3 ]; then
+  python3 tools/fit_score.py --film "films/$F" "out/$F/n3.film.json" | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/n3.film.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+  MUSIC=(--score "out/$F/n3.film.json" --music "out/$F/music/n3")
+else
+  A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
+  python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+  MUSIC=(--music "out/$F/music/study")
+fi
 node tools/render.mjs "$F" --cues | tail -1
 python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
-MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --app "out/$F/app.json"
+MIX=(--voice "out/$F/voice" "${MUSIC[@]}" --app "out/$F/app.json"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
 node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1
