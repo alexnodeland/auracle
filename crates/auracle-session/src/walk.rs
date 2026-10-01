@@ -243,6 +243,22 @@ where
         + Sync
         + 'static,
 {
+    // The input a node reads belongs to the player (ADR-015), so every AUDIO
+    // IN the seed holds keeps its input and its place: its `#input` is locked
+    // exactly as a player's lock is. The kernel proposes on it like any other
+    // site (and, the prior's `PlayerInput` being what it is, would propose
+    // slot 0 and accept it), and the lock rejects that, and a removal of the
+    // node, outside the kernel. A node the walk grows reads slot 0. The lock
+    // compensation below counts these sites, since proposals on them are
+    // wasted like proposals on any lock.
+    let inputs = seed.input_sites();
+    let with_inputs: HashSet<String>;
+    let locked = if inputs.is_empty() {
+        locked
+    } else {
+        with_inputs = locked.iter().cloned().chain(inputs).collect();
+        &with_inputs
+    };
     let model = EvolutionModel::new(prior, fitness).with_beta(beta);
     let mut chain = EvolutionChain::new(model);
     // `init_from` is `None` exactly when the seed's total log-weight is not
@@ -346,5 +362,103 @@ where
         Err(RefineOutcome::NoMove)
     } else {
         Ok(current)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auracle_grammar::term::{AmpEnv, AudioNode, FilterKind, InputChannel, ModNode, Waveform};
+    use auracle_grammar::{Uid, INPUT_GAIN_UNITY};
+    use fugue_evo::genome::trace_genome::TraceGenome;
+
+    /// A fitness that renders nothing: the walk's target is the grammar prior
+    /// itself, which is the walk with the most freedom to move anything.
+    #[derive(Clone)]
+    struct Flat;
+    impl fugue_evo::fitness::traits::Fitness for Flat {
+        type Genome = PatchTree;
+        type Value = f64;
+        fn evaluate(&self, _: &PatchTree) -> f64 {
+            0.0
+        }
+    }
+
+    fn reads(tree: &PatchTree, key: &str) -> Option<usize> {
+        tree.to_trace().get_usize(&fugue::addr!(key, "input"))
+    }
+
+    /// **Walks never change an input.** A seed whose AUDIO IN reads slot 4,
+    /// walked on the bare prior (where nothing about the sound holds a site
+    /// in place), comes back from every walk with the node where it was and
+    /// still reading slot 4, while the rest of the patch moves.
+    ///
+    /// Without the lock this fails at once: the kernel resamples `#input`
+    /// from `PlayerInput`, which proposes slot 0, and on a flat target that
+    /// proposal is always accepted.
+    #[test]
+    fn walks_never_change_an_input() {
+        let seed = PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.4,
+                sustain: 0.7,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                b: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff: 0.5,
+                    resonance: 0.2,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 4,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Left,
+                    }),
+                    modulation: ModNode::None,
+                }),
+            },
+        };
+        assert_eq!(seed.input_sites(), ["node/1/0#input"]);
+        let prior = PatchGrammarPrior::default();
+        let mut moved = 0;
+        for w in 0..24u64 {
+            let mut rng = StdRng::seed_from_u64(0xA0D1_0000 + w);
+            let end = walk_on(
+                prior.clone(),
+                1.0,
+                RefineKeep::Last,
+                Flat,
+                &mut rng,
+                &seed,
+                &HashSet::new(),
+                120,
+            );
+            let Ok(child) = end else { continue };
+            moved += 1;
+            assert_eq!(
+                reads(&child, "node/1/0"),
+                Some(4),
+                "walk {w} changed or removed the input: {}",
+                child.to_sexpr()
+            );
+        }
+        assert!(
+            moved >= 20,
+            "only {moved} of 24 walks moved, so this proved little"
+        );
     }
 }
