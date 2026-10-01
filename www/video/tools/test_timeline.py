@@ -163,6 +163,58 @@ class TheMarks(unittest.TestCase):
         self.assertEqual(lines(tl)["title1"]["t0"], 0.0)
 
 
+class NothingSnapsOnN3(unittest.TestCase):
+    """The grammar's timings are the rule on N3: a script's `snap` (or its
+    default, "bar") moves nothing, and the timeline says so once."""
+
+    def snapping(self, snap):
+        s = reel_script(1.12)
+        s["snap"] = snap
+        s["beats"].insert(0, {"id": "open", "lead": 11.3, "snap": "beat", "lines": []})
+        s["beats"][1]["snap"] = "bar"
+        s["beats"][1]["lead"] = 0.37
+        # A second beat after the demo's line, which would snap to a bar.
+        later = s["beats"][1]["lines"][3:]
+        del s["beats"][1]["lines"][3:]
+        s["beats"].append({"id": "later", "snap": snap, "lead": 0.2, "lines": later})
+        return s
+
+    def test_a_bar_or_beat_script_with_a_demo_lays_out_as_if_nothing_snapped(self):
+        unsnapped = self.snapping("none")
+        for b in unsnapped["beats"]:
+            b["snap"] = "none"
+        want, _ = timeline.lay_out(unsnapped, REEL_DURS)
+        for snap in ("bar", "beat"):
+            got, _ = timeline.lay_out(self.snapping(snap), REEL_DURS)
+            self.assertEqual(got["lines"], want["lines"], snap)
+            self.assertEqual(got["demos"], want["demos"], snap)
+            self.assertEqual(got["marks"], want["marks"], snap)
+            self.assertEqual(got["beats"], want["beats"], snap)
+        # Not on a bar: the open beat's 11.3 s lead and the title's 0.37 s.
+        self.assertAlmostEqual(want["marks"]["entrance"], 11.67, places=3)
+        later = next(b for b in want["beats"] if b["id"] == "later")
+        self.assertAlmostEqual(later["t0"], want["demos"][0]["next"], places=3)
+        self.assertAlmostEqual(lines(want)["named3"]["t0"], want["demos"][0]["next"] + 0.2, places=3)
+
+    def test_the_timeline_says_once_that_it_ignored_the_snap(self):
+        d = tempfile.mkdtemp(prefix="timeline-")
+        try:
+            with open(os.path.join(d, "script.json"), "w") as f:
+                json.dump(self.snapping("bar"), f)
+            saved = sys.argv
+            sys.argv = ["timeline.py", d]
+            try:
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    timeline.main()
+            finally:
+                sys.argv = saved
+            said = [l for l in out.getvalue().splitlines() if "snap" in l]
+            self.assertEqual(said, ["  snap: bar, beat ignored on N3: the grammar's timings are the rule, "
+                                    "and the voice waits for no bar"])
+        finally:
+            shutil.rmtree(d)
+
+
 class TheReel(unittest.TestCase):
     def test_the_reels_timeline_comes_back(self):
         # SPEC section 9's table, laid out from its lines, gaps and demo.

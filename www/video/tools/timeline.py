@@ -25,7 +25,9 @@ from tools/../voice/tts.py are used and nothing else changes.
 
 A beat starts on the next bar line (`snap: "bar"`, the default), the next beat
 (`"beat"`), or immediately (`"none"`). Cutting on the bar is what makes an
-edit feel played rather than assembled.
+edit feel played rather than assembled. On the N3 bed nothing snaps: the
+grammar's timings are the rule there, and the voice waits for no bar (a
+script's `snap` is ignored, and the timeline says so once).
 
 **A demo.** A line can carry one, `"demo": {"id": "bright", "play_s": 6.5}`:
 the instrument plays after the line, never under it (ADR-014; the grammar in
@@ -85,6 +87,12 @@ def est_duration(text):
 def read_json(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def snaps_asked(script):
+    """The `snap` values a script asks for, other than "none"."""
+    asked = [script.get("snap")] + [b.get("snap") for b in script["beats"]]
+    return sorted({x for x in asked if x not in (None, "none")})
 
 
 def on_n3(script):
@@ -173,7 +181,8 @@ def lay_out(script, durs=None, words=None, composed=None, measured=None):
             # A section starts exactly where the previous one ended.
             prev = [section_end[k] for k in section_end if section_end[k] <= t + 1e-6]
             t = max(prev) if prev else 0.0
-        snap = b.get("snap", default_snap)
+        # On N3 the grammar's timings are the rule: the voice waits for no bar.
+        snap = "none" if n3 else b.get("snap", default_snap)
         if snap == "bar":
             t = math.ceil(t / bar - 1e-6) * bar
         elif snap == "beat":
@@ -294,7 +303,10 @@ def main():
     end, bpm = timeline["duration"], timeline["grid"]["bpm"]
     bar = 60.0 / bpm * timeline["grid"]["meter"]
     print(f"{script['film']}: {end:.1f} s ({end / bar:.0f} bars at {bpm} BPM), {len(timeline['lines'])} lines"
-          + (" — ESTIMATED durations" if not args.voice else ""))
+          + (" (ESTIMATED durations)" if not args.voice else ""))
+    if on_n3(script) and snaps_asked(script):
+        print(f"  snap: {', '.join(snaps_asked(script))} ignored on {sound_defaults.BED['name']}: the grammar's timings "
+              "are the rule, and the voice waits for no bar")
     for b in timeline["beats"]:
         print(f"  {b['id']:<8} {b['t0']:7.2f} → {b['t1']:7.2f}  {b['music'] or ''}")
     for a in arr["sections"]:
