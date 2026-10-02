@@ -6074,3 +6074,240 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   .pf-pad { min-height: 44px; }
   .pf-xy-field { height: 118px; }
 }
+
+/* =====================================================================
+   PATCH, Plan-005 task 7 (patch.js): the model's guess, each cable's
+   measured level, a patch from nothing, and the module sheet on touch.
+   ===================================================================== */
+
+/* ---------- a patch from nothing ----------
+   At the right of the name's row, as the specimen puts NEW PATCH beside the
+   title: the callout before it ellipsizes to make room, so the header keeps
+   its two rows at every width (in the toolbar row it broke the tools onto a
+   third from 1200 to 1279 px). The specimen's glyph beside each label; under
+   1280 px only the glyph, the button named by its aria-label and tooltip. */
+.callout-row .seg-new { margin-left: auto; flex: none; padding-left: var(--s3); }
+.callout-row .seg-new:empty { display: none; }
+.seg-new .seg-item { display: inline-flex; align-items: center; gap: var(--s1); }
+.seg-new .pn-ic { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 1279px) {
+  .seg-new .pn-label, .seg-new kbd { display: none; }
+}
+.seg-new kbd {
+  margin-left: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--silk-mute);
+}
+@media (pointer: coarse) { .seg-new kbd { display: none; } }
+
+/* ---------- the guess ----------
+   A guess looks like a guess (voice.md, ADR-012): dashed amber, and the
+   model's italic for its reason. The line sits over the rack's top left, as
+   the prototype's readout does; the module is drawn at its socket. */
+.guess-read {
+  position: absolute;
+  z-index: 5;
+  left: var(--s4);
+  top: var(--s3);
+  right: var(--s7);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  pointer-events: none;
+}
+.guess-read[hidden] { display: none; }
+.gr-chip {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--phos-b);
+}
+.gr-why {
+  min-width: 0;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  color: var(--silk);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.guess-read .gr-why:only-child { color: var(--silk-dim); }
+
+.rack-guess .guess-lead { fill: none; stroke: var(--phos-b-55); stroke-width: 1.6; stroke-dasharray: 5 5; }
+.rack-guess .guess-at { fill: var(--phos-b); }
+.guess-plate { cursor: pointer; outline: none; }
+.guess-plate .gp-body {
+  fill: var(--phos-b-06);
+  stroke: var(--phos-b-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  transition: stroke var(--d-state) ease, fill var(--d-state) ease;
+}
+/* Over an empty socket it covers the socket's own "drop a source" outright. */
+.guess-plate.over .gp-body { fill: var(--rack); }
+.guess-plate.over:hover .gp-body, .guess-plate.over:focus-visible .gp-body { fill: var(--rack); }
+.guess-plate:hover .gp-body,
+.guess-plate:focus-visible .gp-body { stroke: var(--phos-b); fill: var(--phos-b-10); }
+.guess-plate .gp-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-title);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: var(--phos-b);
+}
+.guess-plate .gp-word {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--phos-b-dim);
+}
+.guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+.guess-plate text { pointer-events: none; }
+.gp-skip { cursor: pointer; outline: none; }
+.gp-skip .gp-skip-hit { fill: transparent; stroke: transparent; }
+.gp-skip path { stroke: var(--phos-b-dim); stroke-width: 1.6; stroke-linecap: round; }
+.gp-skip:hover path, .gp-skip:focus-visible path { stroke: var(--phos-b); }
+.gp-skip:focus-visible .gp-skip-hit { stroke: var(--phos-b-55); }
+
+/* The module rail's row for the guessed kind: an amber mark in the row's own
+   left padding, so its name never moves. */
+.nb-item { position: relative; }
+.nb-item.guessed::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px; /* token-exempt: half the mark, to centre it */
+  border-radius: 50%;
+  background: var(--phos-b);
+  box-shadow: 0 0 6px var(--phos-b-60);
+}
+
+/* ---------- each cable's measured level ----------
+   The light a cable carries at rest is its level as the engine measured it
+   (`edit_cable_levels`): stroke opacity, set per cable by `paintWireLevel`,
+   eased so the light arriving reads as the measurement landing. The mark on
+   its middle lights a bar per third of the meter's range, hollow while the
+   patch has changed since it was measured. */
+/* At rest only: while notes sound the live meter drives it, and a transition
+   would make the meter lag. */
+#rack-svg:not(.flowing) .wire.audio { transition: stroke-opacity var(--d-state) ease; }
+.cable-marks { pointer-events: none; }
+.cable-mark { pointer-events: all; }
+.cable-mark .lm-box { fill: var(--rack-96); stroke: var(--phos-a-45); stroke-width: 1; }
+.cable-mark .lm-bar { fill: none; stroke: var(--phos-a-45); stroke-width: 0.8; }
+.cable-mark .lm-bar.on { fill: var(--phos-a); stroke: var(--phos-a); }
+.cable-mark.unknown .lm-box { stroke: var(--silk-mute); stroke-dasharray: 2 2; }
+.cable-mark.unknown .lm-bar { stroke: var(--silk-mute); }
+
+/* ---------- the module sheet (touch) ----------
+   The prototype's sheet: up from the bottom on a narrow screen, a panel at
+   the bottom right on a wide one. Every setting is a wide slider with − and
+   + steps, or its choices as buttons. */
+.msheet {
+  position: fixed;
+  z-index: 58;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  padding: var(--s1) var(--s3) var(--s3);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-bottom: 0;
+  border-radius: var(--r3) var(--r3) 0 0;
+  box-shadow: 0 -24px 48px -24px var(--black-90);
+  transform: translateY(calc(100% + 24px));
+  visibility: hidden;
+  transition: transform var(--d-move) var(--e-settle), visibility 0s linear var(--d-move);
+}
+.msheet.on { transform: none; visibility: visible; transition: transform var(--d-move) var(--e-settle), visibility 0s; }
+.msheet.dragging { transition: none; }
+@media (min-width: 701px) and (min-height: 501px) {
+  .msheet {
+    left: auto;
+    right: var(--s5);
+    bottom: var(--s5);
+    width: 420px;
+    border-radius: var(--r3);
+    border-bottom: 1px solid var(--hairline);
+  }
+}
+.ms-grab { flex: none; width: 40px; height: 4px; border-radius: 2px; background: var(--hairline); margin: var(--s2) auto; touch-action: none; }
+.ms-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); touch-action: none; }
+.ms-title { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+.ms-name { font-family: var(--font-silk); font-size: var(--t-title); font-weight: 500; color: var(--silk); }
+.ms-sub { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-x {
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: none; border: 0; color: var(--silk-dim); font-size: var(--t-body); cursor: pointer;
+}
+.ms-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; padding-bottom: var(--s1); }
+.ms-says { margin: var(--s1) 0 var(--s2); font-size: var(--t-body); line-height: 1.35; color: var(--silk-dim); }
+.ms-rows { display: grid; gap: var(--s2); }
+.ms-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-areas: "lab lab lab" "minus track plus";
+  gap: 2px var(--s2);
+  align-items: center;
+  border-radius: var(--r2);
+}
+.ms-row > .ms-lab { grid-area: lab; }
+.ms-row > .ms-step:first-of-type { grid-area: minus; }
+.ms-row > .ms-track { grid-area: track; }
+.ms-row > .ms-step:last-of-type { grid-area: plus; }
+.ms-row.hl { background: var(--phos-a-06); box-shadow: 0 0 0 1px var(--phos-a-deep); }
+.ms-lab { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
+.ms-n { font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--silk); }
+.ms-val { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); font-variant-numeric: tabular-nums; }
+.ms-step {
+  width: 44px; height: 44px; border-radius: var(--r2);
+  border: 1px solid var(--hairline); background: var(--panel-hi); color: var(--silk);
+  font-family: var(--font-mono); font-size: var(--t-title); line-height: 1;
+  display: grid; place-items: center; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  cursor: pointer;
+}
+.ms-step:active { background: var(--plate-lo); }
+.ms-track { position: relative; height: 44px; touch-action: none; cursor: pointer; border-radius: var(--r2); outline: none; }
+.ms-track:focus-visible { box-shadow: 0 0 0 2px var(--phos-a-deep); }
+.ms-rail, .ms-fill { position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.ms-rail { left: 14px; right: 14px; background: var(--hairline); }
+.ms-fill { left: 14px; background: var(--phos-a); box-shadow: 0 0 8px var(--phos-a-50); }
+.ms-thumb {
+  position: absolute; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; /* token-exempt: half the thumb, to centre it */
+  border-radius: 50%; background: radial-gradient(circle at 40% 35%, var(--knob-hi), var(--knob-mid));
+  border: 2px solid var(--phos-a); box-shadow: 0 2px 6px var(--black-60);
+}
+.ms-row-seg { grid-template-columns: 1fr; grid-template-areas: none; }
+.ms-row-seg > .ms-lab { grid-area: auto; }
+.ms-seg { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.ms-seg button {
+  flex: 1; min-width: 64px; height: 40px; border-radius: var(--r2);
+  border: 1px solid var(--hairline); background: none; cursor: pointer;
+  font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.ms-seg button[aria-checked="true"] { color: var(--phos-a); border-color: var(--phos-a-deep); background: var(--phos-a-06); }
+.ms-foot { flex: none; display: flex; justify-content: flex-end; padding-top: var(--s3); margin-top: var(--s2); border-top: 1px solid var(--hairline); }
+.ms-rm { height: 40px; }
+.ms-rm:hover, .ms-rm:active { color: var(--led-red); }
+
+@media (prefers-reduced-motion: reduce) {
+  #rack-svg:not(.flowing) .wire.audio, .guess-plate .gp-body { transition: none; }
+}

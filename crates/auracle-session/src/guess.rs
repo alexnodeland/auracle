@@ -857,8 +857,10 @@ pub const GUESS_TAKEN_KEEP: usize = 16;
 ///
 /// The ranking is a pure function of the tree, so it cannot remember a skip
 /// itself; and the tree a taken guess is undone to ranks it first again.
-/// Keyed by patch: the pool id the patch in hand was opened from. Not
-/// persisted (a reload starts with no skips), and not evidence.
+/// Keyed by patch: the pool id the patch in hand was opened from, until keep
+/// as new makes a sound of it; from then on the caller files what follows
+/// under the new id ([`GuessMemory::carry`]). Not persisted (a reload starts
+/// with no skips), and not evidence.
 #[derive(Clone, Debug, Default)]
 pub struct GuessMemory {
     skips: HashMap<u64, Vec<GuessSkip>>,
@@ -892,7 +894,9 @@ impl GuessMemory {
     }
 
     /// Keep as new made `to` from `from`, the same patch the player is
-    /// working on: it takes `from`'s skips and taken guesses with it.
+    /// working on: it takes `from`'s skips and taken guesses with it. The
+    /// caller then keys the patch in hand by `to`, so a skip made after the
+    /// commit is the kept sound's, not `from`'s (`WasmEngine`'s `guess_key`).
     pub fn carry(&mut self, from: u64, to: u64) {
         if from == to {
             return;

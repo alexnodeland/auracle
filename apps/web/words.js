@@ -520,6 +520,69 @@ export function platformKeys(s, apple = onApple()) {
   });
 }
 
+// ---- PATCH: the model's guess for the next module ----
+// The worker's `guess` reply (`WasmEngine::guess_rank`): a ranking, best
+// first by the lower bound of the gain (`lcb`), each guess with the pick
+// forecast `p` and `why`, the part of the gain that leads (a PERFORM control
+// and the end word it moves toward, or a structural coordinate); or a
+// refusal (`reason`). Its reason is the model's italic, lowercase and in the
+// third person (voice.md, the **guess** row).
+
+/** Why the top guess leads, or null when no part of it leans the player's
+ *  way. `nice` names a structural coordinate (`n_reverb` → "reverbs"). */
+export function guessWhy(why, nice = (s) => s) {
+  if (!why) return null;
+  if (why.control && why.word) return `it moves toward ${why.word}, as your picks lean`;
+  if (why.coordinate) return `your picks lean toward ${why.moved < 0 ? "less" : "more"} ${nice(why.coordinate)}`;
+  return null;
+}
+
+/** The model's line for the top guess: its reason, then its forecast with
+ *  the sure word, said over the pool's average when the patch makes no sound
+ *  (`against` "pool"). The lower bound it is ranked by can be under zero
+ *  (the list leads with the best bound, not with a module it is sure will
+ *  help), and then the line says so. */
+export function guessLine(g, against = "patch", nice) {
+  const reason = guessWhy(g.why, nice) || "no part of it leans your way";
+  const pct = `${pctOf(g.p)}%`;
+  const forecast = against === "pool"
+    ? `${pct} over your pool’s average · ${sureWord(g.p)}`
+    : `${pct} · ${sureWord(g.p)}`;
+  return `${reason} · ${forecast}${g.lcb < 0 ? " · it may not help" : ""}`;
+}
+
+/** What the model says when it has no guess to show, or null when it says
+ *  nothing: before the warm start (`no_taste`) and with no patch open. */
+export function guessRefusal(data) {
+  if (!data) return null;
+  switch (data.reason) {
+    case "no_taste":
+    case "no_patch":
+      return null;
+    case "full":
+      return "no guess: nothing more fits, so a module has to come out first";
+    case "unmeasured":
+      return "no guess yet: it hasn’t heard this patch";
+    default:
+      break;
+  }
+  if (Array.isArray(data.guesses) && data.guesses.length === 0) {
+    if (data.rendered < data.planned) return "no guess yet: it has not heard the modules that fit here";
+    return data.skipped > 0
+      ? "no guess left here: every module that fits was skipped"
+      : "no guess: none of the modules that fit here passed the safety check";
+  }
+  return null;
+}
+
+/** A cable's measured level (`edit_cable_levels`, dB re 1 V, the live
+ *  meter's scale) as a tooltip: "−14 dB", or "nothing" at the probe's floor. */
+export function levelWord(db, floor = -120) {
+  if (db == null || !Number.isFinite(db) || db <= floor + 0.5) return "nothing";
+  const r = Math.round(db);
+  return `${r < 0 ? "−" : ""}${Math.abs(r)} dB`;
+}
+
 /** PERFORM's palette: the eighteen controls the engine can measure, in the
  *  engine's order (`auracle_session::perform::PALETTE`, whose index is how a
  *  control is named across the boundary: a wiring's `index`, an aimed
