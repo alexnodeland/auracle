@@ -474,9 +474,12 @@ test("a generation's children land in New with their seed and what changed, and 
   // generation, and each walk's are read as it lands (`__pwMarks`).
   await page.locator("#evolve-btn").click();
 
-  // Three walks back, then stop: the generation ends with what it bred.
+  // Three walks back, then stop: the generation ends with what it bred. On a
+  // fast machine the walks land in a burst and the generation may already
+  // have ended, with STOP gone: either way it ends with what it bred.
   await expect.poll(() => page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child").length), { timeout: 400_000 }).toBeGreaterThanOrEqual(3);
-  await page.locator("#evolve-stop").click();
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
   // The generation's own seeds: each walk's `seed` is one of them, in job
   // order (`next_seeds` and `refine_jobs` share one rule).
