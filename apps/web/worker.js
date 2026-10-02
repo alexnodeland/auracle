@@ -1279,7 +1279,10 @@ function genProgress(g) {
 
 // Open a generation. Called from `dispatch`, and returns as soon as the jobs
 // are out: the generation runs from farm messages and `soon` pieces.
-function breedOpen() {
+// `toward`: bred toward the sound of your own (`refine_toward_jobs`): its
+// context carries the target, so every walk, farmed or here, is tilted to
+// it, and it is absorbed and finished as any generation is.
+function breedOpen(toward = false) {
   let parents;
   let ctx = null;
   let jobs = null;
@@ -1288,7 +1291,16 @@ function breedOpen() {
   // retires leave main's bank now and are named, rather than going silently
   // inside `refine_jobs` and staying live in main until the first child.
   poolTrim();
-  if (typeof engine.refine_jobs === "function") {
+  if (toward) {
+    const reply = typeof engine.refine_toward_jobs === "function"
+      ? JSON.parse(engine.refine_toward_jobs())
+      : { context: null, jobs: [] };
+    if (reply.context) {
+      ctx = JSON.stringify(reply.context);
+      jobs = reply.jobs.map((j) => JSON.stringify(j));
+    }
+    parents = reply.jobs.map((j) => j.parent_id);
+  } else if (typeof engine.refine_jobs === "function") {
     const reply = JSON.parse(engine.refine_jobs());
     if (reply.context) {
       // Stringified once: every worker gets this very string.
@@ -1301,8 +1313,13 @@ function breedOpen() {
   }
   if (parents.length === 0) {
     // No posterior yet — nothing to refine *toward*. Report it rather than
-    // burning a minute to produce nothing.
-    post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
+    // burning a minute to produce nothing. A breed toward a sound of your own
+    // also opens nothing without the sound: `no_sound` says which.
+    const noSound = toward && engine.own_sound() === "null";
+    post({
+      type: "refined", views: tasteViews(), status: status(), born: [],
+      untaught: !noSound, ...(toward ? { toward: true, no_sound: noSound } : {}),
+    });
     return;
   }
   const g = {
@@ -1340,6 +1357,28 @@ function poolTrim() {
     gone = [];
   }
   if (gone.length) post({ type: "pool_trimmed", retired: gone, views: tasteViews(), status: status() });
+}
+
+// Every preset's measurement, for the presets nearest a sound of your own:
+// the wirings the app ships (`perform-wirings.json`, `make perform-wirings`)
+// carry each preset's audio φ, so the engine names the nearest presets
+// without rendering sixty of them. Fetched once, the first time a sound is
+// brought; with no file (an old bundle, a blocked fetch) only pool members
+// are named as nearest.
+let ownPresets = null;
+function ownPresetsReady() {
+  if (!ownPresets) {
+    ownPresets = (async () => {
+      if (typeof engine.own_presets_set !== "function") return;
+      try {
+        const r = await fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href));
+        if (r.ok) engine.own_presets_set(await r.text());
+      } catch (_) {
+        /* the nearest presets are a convenience, never load-bearing */
+      }
+    })();
+  }
+  return ownPresets;
 }
 
 async function breedFarm(g) {
@@ -2401,8 +2440,34 @@ async function dispatch(m) {
     case "refine": {
       // The breed job (see `breedOpen`): open the generation, hand its walks
       // to the farm, and return. It is absorbed from farm messages, a child
-      // per turn, and nothing else waits for it but a refit.
-      breedOpen();
+      // per turn, and nothing else waits for it but a refit. `toward`: bred
+      // toward the sound of your own (Breed toward it); same lane, same
+      // waits, so it queues behind a generation or ⚡ like any other.
+      breedOpen(m.toward === true);
+      break;
+    }
+    // ---- a sound of your own (Plan-005 task 11) ----
+    // The page decodes a dropped file and sends it mixed to mono: `pcm`, a
+    // Float32Array (transfer it), at `sampleRate`, with the file's `name`.
+    // Replies `own_sound` with the engine's measurement (`sound`: ok or an
+    // error flag, its z with the masked coordinates null, its place on the
+    // map, its nearest pool members and presets, the seeds a breed toward it
+    // starts from). The session saves it as features, never the audio, and
+    // `own_sound` asks for it again after a reload or when the pool moved.
+    case "own_sound_set": {
+      await ownPresetsReady();
+      const sound = JSON.parse(engine.own_sound_set(m.pcm, m.sampleRate, m.name || undefined));
+      post({ type: "own_sound", sound });
+      break;
+    }
+    case "own_sound": {
+      await ownPresetsReady();
+      post({ type: "own_sound", sound: JSON.parse(engine.own_sound()) });
+      break;
+    }
+    case "own_sound_clear": {
+      engine.own_sound_clear();
+      post({ type: "own_sound", sound: null });
       break;
     }
     case "breed_step": {

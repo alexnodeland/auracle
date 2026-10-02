@@ -233,6 +233,19 @@ before the walk starts. A generation also brings a pool restored over size
 back to size before it opens (`poolTrim`), posting `pool_trimmed` so main
 drops and names the rows.
 
+Breed toward it (a sound of your own, Plan-005 task 11) is a generation over
+the same path: `refine` with `toward: true` makes `breedOpen` call
+`refine_toward_jobs` instead of `refine_jobs`. Its context carries the target
+(`toward`), so `farm_walk` and the engine's fallback walk the same tilted
+target, and its parents are the pool members nearest the sound. It queues,
+absorbs and stops as EVOLVE POOL does. Without a taste or a sound it opens
+nothing and `refined` says which (`untaught`, `no_sound`). The sound itself
+arrives as `own_sound_set` (the page's decoded file, mono `Float32Array`,
+`sampleRate`, `name`); `own_sound_set`, `own_sound` and `own_sound_clear`
+reply `own_sound`. The first of them fetches `perform-wirings.json` once and
+hands it to `own_presets_set`, so the nearest presets need no renders. The
+UI does not send these yet.
+
 ## The farm on demand
 
 The engine worker asks main for a crew (`farm_want`); main spawns the workers

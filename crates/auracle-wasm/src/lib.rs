@@ -489,6 +489,116 @@ struct FromJobReply<'a> {
     reason: Option<&'static str>,
 }
 
+/// How many of the pool's sounds, and of the presets, a sound of your own's
+/// reply names as nearest. The card shows three; six leave room for the
+/// ones already gone from the pool.
+const OWN_NEAREST: usize = 6;
+
+/// A sound of your own, as [`WasmEngine::own_sound_set`] and
+/// [`WasmEngine::own_sound`] reply. Serialized from this struct.
+#[derive(Serialize)]
+struct OwnReply<'a> {
+    ok: bool,
+    /// Why the file was not measured: a flag the app words
+    /// (`auracle_features::FileError::code`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    truncated: Option<bool>,
+    /// Standardized φ, every coordinate in `phi_names` order, `null` where
+    /// the file does not measure it. `null` as a whole before the pool has
+    /// a standardizer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    z: Option<Vec<Option<f64>>>,
+    /// The names of the coordinates a file does not measure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    masked: Option<Vec<&'static str>>,
+    /// Its place on TASTE's map (`taste_map`'s axes), or `null`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    map: Option<Option<auracle_session::OwnPoint>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nearest: Option<Vec<OwnNear>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nearest_presets: Option<Vec<OwnNearPreset>>,
+    /// The pool ids a breed toward it would start from, nearest first;
+    /// empty before there is a taste to breed with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seeds: Option<Vec<u64>>,
+}
+
+#[derive(Serialize)]
+struct OwnNear {
+    id: u32,
+    distance: f64,
+}
+
+#[derive(Serialize)]
+struct OwnNearPreset {
+    index: usize,
+    name: String,
+    distance: f64,
+}
+
+/// The presets' audio φ from the app's shipped wirings
+/// (`apps/web/perform-wirings.json`): each preset's `data.z` under the
+/// file's `standardizer`, back to raw. Presets the bank does not name today
+/// are skipped.
+fn presets_from_wirings(json: &str) -> Vec<auracle_session::PresetPhi> {
+    #[derive(serde::Deserialize)]
+    struct Std {
+        mean: Vec<f64>,
+        std: Vec<f64>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Data {
+        z: Vec<f64>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Row {
+        name: String,
+        data: Data,
+    }
+    #[derive(serde::Deserialize)]
+    struct File {
+        standardizer: Std,
+        presets: Vec<Row>,
+    }
+    let Ok(f) = serde_json::from_str::<File>(json) else {
+        return Vec::new();
+    };
+    let names: Vec<&'static str> = auracle_grammar::preset_bank()
+        .iter()
+        .map(|p| p.name)
+        .collect();
+    f.presets
+        .into_iter()
+        .filter_map(|r| {
+            let index = names.iter().position(|n| *n == r.name)?;
+            let n = f.standardizer.mean.len().min(f.standardizer.std.len());
+            if r.data.z.len() != n {
+                return None;
+            }
+            let audio = r
+                .data
+                .z
+                .iter()
+                .zip(&f.standardizer.mean)
+                .zip(&f.standardizer.std)
+                .map(|((z, m), s)| z * s + m)
+                .collect();
+            Some(auracle_session::PresetPhi {
+                index,
+                name: r.name,
+                audio,
+            })
+        })
+        .collect()
+}
+
 /// A PERFORM reply that carries a tree (a graft, a drift, an offer).
 ///
 /// Serialized from this struct, so the tree goes out through its own
@@ -612,6 +722,10 @@ pub struct WasmEngine {
     /// The model's guesses' skips and last taken guess, per patch (the pool
     /// id the bench was opened from): what the ranking cannot remember.
     guesses: GuessMemory,
+    /// Every preset's audio φ, for the presets nearest a sound of your own
+    /// ([`WasmEngine::own_presets_set`]). Empty until the worker hands over
+    /// the shipped wirings; then only pool members are named as nearest.
+    own_presets: Vec<auracle_session::PresetPhi>,
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -745,6 +859,7 @@ impl WasmEngine {
             bench_phi_prev: None,
             pending_bank: Vec::new(),
             guesses: GuessMemory::default(),
+            own_presets: Vec::new(),
         }
     }
 
@@ -1379,6 +1494,142 @@ impl WasmEngine {
         self.engine
             .refine_from_absorb(id as u64, result)
             .unwrap_or(0) as u32
+    }
+
+    // ---- a sound of your own (see `auracle_session::own`) ----
+
+    /// Bring a sound of your own: `pcm`, a decoded file mixed to mono, at
+    /// `sample_rate`, called `name` (the file's name; "Your sound" when
+    /// left out). Measured as `auracle_features::featurize_file` measures a
+    /// recording, kept by the session (saved with it as features, never the
+    /// audio), and replied as JSON:
+    ///
+    /// ```json
+    /// {"ok":true,"name":"Field recording 03","seconds":12.4,"truncated":false,
+    ///  "z":[0.41,null,…],"masked":["centroid_std:p2",…],
+    ///  "map":{"x":1.2,"y":-0.4,"observed":5},
+    ///  "nearest":[{"id":17,"distance":0.38},…],
+    ///  "nearest_presets":[{"index":12,"name":"Glass Pad","distance":0.21},…],
+    ///  "seeds":[17,4,…]}
+    /// ```
+    ///
+    /// or `{"ok":false,"error":"silent"}` (`bad_rate`, `too_long`,
+    /// `too_short`, `non_finite`, `silent`), leaving any sound brought
+    /// before in place. `z` is every coordinate of φ in `phi_names` order,
+    /// `null` where a file does not measure it; distances are in σ over the
+    /// coordinates it does. `nearest_presets` is empty until
+    /// [`WasmEngine::own_presets_set`] has run. Costs the file's analysis
+    /// (well under a second for the 30 s it measures) and one map frame.
+    pub fn own_sound_set(&mut self, pcm: &[f32], sample_rate: f64, name: Option<String>) -> String {
+        match auracle_features::featurize_file(pcm, sample_rate) {
+            Ok(f) => {
+                let name = name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or("Your sound");
+                self.engine.own_set(name, &f);
+                self.own_sound()
+            }
+            Err(e) => serde_json::to_string(&OwnReply {
+                ok: false,
+                error: Some(e.code()),
+                name: None,
+                seconds: None,
+                truncated: None,
+                z: None,
+                masked: None,
+                map: None,
+                nearest: None,
+                nearest_presets: None,
+                seeds: None,
+            })
+            .unwrap_or_else(|_| "null".into()),
+        }
+    }
+
+    /// The sound of your own as it stands now, in
+    /// [`WasmEngine::own_sound_set`]'s reply, or `null` when there is none:
+    /// after a reload (the session brings it back), or after the pool or
+    /// the taste has moved its neighbours and its place.
+    pub fn own_sound(&self) -> String {
+        let Some(own) = self.engine.own_sound() else {
+            return "null".into();
+        };
+        let reply = OwnReply {
+            ok: true,
+            error: None,
+            name: Some(&own.name),
+            seconds: Some(own.seconds),
+            truncated: Some(own.truncated),
+            z: self.engine.own_z(),
+            masked: Some(auracle_features::file_masked_names()),
+            map: Some(self.engine.own_on_map(auracle_session::Placement::Fit)),
+            nearest: Some(
+                self.engine
+                    .own_nearest(OWN_NEAREST)
+                    .into_iter()
+                    .map(|(id, distance)| OwnNear {
+                        id: id as u32,
+                        distance,
+                    })
+                    .collect(),
+            ),
+            nearest_presets: Some(
+                self.engine
+                    .own_nearest_presets(OWN_NEAREST, &self.own_presets)
+                    .into_iter()
+                    .filter_map(|(index, distance)| {
+                        let name = self.own_presets.iter().find(|p| p.index == index)?;
+                        Some(OwnNearPreset {
+                            index,
+                            name: name.name.clone(),
+                            distance,
+                        })
+                    })
+                    .collect(),
+            ),
+            seeds: Some(self.engine.own_seeds()),
+        };
+        serde_json::to_string(&reply).unwrap_or_else(|_| "null".into())
+    }
+
+    /// Put the sound of your own down. Returns whether there was one.
+    pub fn own_sound_clear(&mut self) -> bool {
+        self.engine.own_clear()
+    }
+
+    /// Hand over every preset's audio φ for the presets nearest a sound of
+    /// your own: the text of the app's `perform-wirings.json`, whose
+    /// `presets[].data.z` and `standardizer` are each preset's measurement
+    /// (fingerprinted against the presets by `make perform-wirings`).
+    /// Returns how many presets were read; 0 leaves the presets unknown and
+    /// only pool members are named as nearest.
+    pub fn own_presets_set(&mut self, wirings_json: &str) -> u32 {
+        self.own_presets = presets_from_wirings(wirings_json);
+        self.own_presets.len() as u32
+    }
+
+    /// Open a generation bred toward the sound of your own, as data for the
+    /// render farm, in [`WasmEngine::refine_jobs`]'s shape: its `context`
+    /// carries `toward` (the target and the coordinates it is measured on),
+    /// which tilts every walk, and its jobs start from the pool members
+    /// nearest the sound. `context` is `null` (and nothing is opened) without
+    /// a sound or before there is a taste to breed with. Absorb and finish
+    /// as any generation. Draws from the evolution stream.
+    pub fn refine_toward_jobs(&mut self) -> String {
+        let opened = self.engine.refine_toward_jobs(&mut self.rng.refine);
+        let reply = match &opened {
+            Some((ctx, jobs)) => JobsReply {
+                context: Some(ctx),
+                jobs,
+            },
+            None => JobsReply {
+                context: None,
+                jobs: &[],
+            },
+        };
+        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
     }
 
     // ---- performance (see `auracle_session::perform`) ----
@@ -3518,6 +3769,150 @@ mod tests {
             let b = s.spawn(move || taught_wasm(seed));
             (a.join().unwrap(), b.join().unwrap())
         })
+    }
+
+    /// A saw-ish note with a slow swell, as a page would decode it: mono
+    /// `f32` at 48 kHz.
+    fn decoded_file(seconds: f64) -> Vec<f32> {
+        let sr = 48_000.0;
+        (0..(seconds * sr) as usize)
+            .map(|i| {
+                let t = i as f64 / sr;
+                let saw: f64 = (1..24)
+                    .map(|h| (std::f64::consts::TAU * 147.0 * h as f64 * t).sin() / h as f64)
+                    .sum();
+                (0.25 * saw * (1.0 - (-t * 3.0).exp())) as f32
+            })
+            .collect()
+    }
+
+    /// **A sound of your own, through the binding.** It is measured, placed
+    /// and its nearest named; a file that cannot be measured is refused by a
+    /// flag and leaves the sound in place; a breed toward it carries its
+    /// target over the farm's wire, so `farm_walk` walks the tilted target
+    /// `run_walk` walks; and the session saves it as features only and
+    /// brings it back.
+    #[test]
+    fn a_sound_of_your_own_through_the_binding() {
+        let mut engine = taught_wasm(0x0A1D);
+        assert_eq!(engine.own_sound(), "null");
+        let reply: serde_json::Value = serde_json::from_str(&engine.own_sound_set(
+            &decoded_file(3.0),
+            48_000.0,
+            Some("Field recording 03".into()),
+        ))
+        .unwrap();
+        assert_eq!(reply["ok"], true);
+        assert_eq!(reply["name"], "Field recording 03");
+        let names = auracle_features::Features::phi_names();
+        let z = reply["z"].as_array().unwrap();
+        assert_eq!(z.len(), names.len());
+        let masked: Vec<&str> = reply["masked"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        for (n, v) in names.iter().zip(z) {
+            assert_eq!(v.is_null(), masked.contains(n), "{n}");
+        }
+        assert!(reply["map"]["x"].as_f64().unwrap().is_finite());
+        let nearest = reply["nearest"].as_array().unwrap();
+        assert_eq!(nearest.len(), OWN_NEAREST);
+        for n in nearest {
+            assert!(engine.engine.find(n["id"].as_u64().unwrap()).is_some());
+        }
+        assert_eq!(reply["nearest_presets"].as_array().unwrap().len(), 0);
+        assert_eq!(reply["seeds"].as_array().unwrap().len(), 3);
+
+        let refused: serde_json::Value =
+            serde_json::from_str(&engine.own_sound_set(&vec![0.0; 48_000], 48_000.0, None))
+                .unwrap();
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["error"], "silent");
+        assert!(engine.own_sound().contains("Field recording 03"));
+
+        let jobs: serde_json::Value = serde_json::from_str(&engine.refine_toward_jobs()).unwrap();
+        assert!(
+            jobs["context"]["toward"].is_object(),
+            "the target rides the wire"
+        );
+        let context = serde_json::to_string(&jobs["context"]).unwrap();
+        let ctx: WalkContext = serde_json::from_str(&context).unwrap();
+        for job in jobs["jobs"].as_array().unwrap() {
+            let text = serde_json::to_string(job).unwrap();
+            let native: WalkJob = serde_json::from_str(&text).unwrap();
+            let wired = farm_walk(&context, &text);
+            assert_eq!(
+                wired,
+                serde_json::to_string(&run_walk(&ctx, &native, &RenderMemo::default())).unwrap()
+            );
+            engine.refine_absorb(&wired);
+        }
+
+        let saved = engine.export_session();
+        let state: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        let own = &state["own_sound"];
+        assert_eq!(own["name"], "Field recording 03");
+        assert_eq!(
+            own["features"].as_array().unwrap().len(),
+            names.len() - masked.len(),
+            "features only: the measured coordinates, by name"
+        );
+        let mut back = WasmEngine::new(5, 12);
+        assert!(back.import_session(&saved) > 0);
+        let again: serde_json::Value = serde_json::from_str(&back.own_sound()).unwrap();
+        assert_eq!(again["name"], "Field recording 03");
+        assert_eq!(again["z"], engine_z(&engine));
+        assert!(engine.own_sound_clear());
+        assert_eq!(engine.own_sound(), "null");
+    }
+
+    fn engine_z(e: &WasmEngine) -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(&e.own_sound()).unwrap()["z"].clone()
+    }
+
+    /// The presets nearest a sound come from the wirings the app ships:
+    /// every preset is read, back to the raw φ a render measures today.
+    #[test]
+    fn presets_come_back_from_the_shipped_wirings() {
+        let presets = presets_from_wirings(include_str!("../../../apps/web/perform-wirings.json"));
+        let bank = auracle_grammar::preset_bank();
+        assert_eq!(
+            presets.len(),
+            bank.len(),
+            "a preset is missing from the file"
+        );
+        let spec = PhraseSpec::default();
+        for p in presets.iter().step_by(20) {
+            let truth = auracle_features::featurize(&bank[p.index].tree, &spec)
+                .unwrap()
+                .features
+                .audio
+                .to_vec();
+            for (a, b) in p.audio.iter().zip(&truth) {
+                assert!(
+                    (a - b).abs() <= 1e-9 * (1.0 + b.abs()),
+                    "{}: {a} vs {b}",
+                    p.name
+                );
+            }
+        }
+        assert!(presets_from_wirings("{").is_empty());
+        let mut engine = taught_wasm(0x5E7);
+        let n = engine.own_presets_set(include_str!("../../../apps/web/perform-wirings.json"));
+        assert_eq!(n as usize, bank.len());
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.own_sound_set(&decoded_file(2.0), 48_000.0, None))
+                .unwrap();
+        assert_eq!(reply["name"], "Your sound");
+        let near = reply["nearest_presets"].as_array().unwrap();
+        assert_eq!(near.len(), OWN_NEAREST);
+        let d: Vec<f64> = near
+            .iter()
+            .map(|n| n["distance"].as_f64().unwrap())
+            .collect();
+        assert!(d.windows(2).all(|w| w[0] <= w[1]));
     }
 
     /// **The farm's wire changes no child.** One twin breeds a generation
