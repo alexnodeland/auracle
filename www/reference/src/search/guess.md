@@ -1,9 +1,10 @@
 # The model's guess: the next module
 
 <p class="lede">For the patch in hand, the model guesses which module you would
-add next. It renders every module that could go at the output, scores each by
-the posterior's draws of what it adds, and leads with the one whose lower
-bound is highest.</p>
+add next. It renders up to eight of the modules that could go at the
+output, in the structural design's order, scores each by the posterior's
+draws of what it adds, and leads with the one whose lower bound is
+highest.</p>
 
 PATCH starts from nothing and grows a module at a time. The guess is the
 model's answer to "what next?": GUESS · FILTER at the output, with its reason
@@ -29,8 +30,9 @@ Each must pass `validate_tree` (the size, depth and modulation-depth
 ceilings), and no raw module count of [φ_struct](../features/structural.md)
 may fall while their sum rises. A patch that does not sound takes sources
 only: a processor over an empty socket is silent too. The seven presets
-measured below have 20 to 30 such candidates, and an empty patch has six. A deeper wire is ranked only when
-asked for by its module's key (`at`); the note found that deeper sockets add
+measured (three of them in the table below) have 20 to 30 such candidates,
+and an empty patch has six. A deeper wire is ranked only when asked for by
+its module's key (`at`); the note found that deeper sockets add
 candidates the model rates highly by extrapolating, not ones a listener
 likes more.
 
@@ -58,6 +60,12 @@ best first, ties in the candidates' order. Each guess also carries the pick
 forecast $p = \Pr(\text{you'd pick the patch with it over the patch})$, the
 same number the app shows beside every prediction with its sure word.
 
+**The top guess's lower bound can be negative.** The list leads with the
+best bound, not with a module the model is sure will help: in the native
+run measured below, 12 of the 18 first guesses had a bound under zero, with
+forecasts from 49% to 76%. The words a guess is shown with have to allow for
+that.
+
 The lower bound was the best criterion the note measured at both stages: after
 the warm start a listener would pick the patch with the guessed module over
 the patch 66% of the time, and the guess truly helps 71% of the time; after 78
@@ -79,7 +87,10 @@ A crew that stops early has rendered the likeliest.
 
 `GUESS_FLOOR` (8) is how many the engine worker renders when there is no render
 crew, one per turn with the player answered between them; `GUESS_BUDGET_MS`
-(3 000) is how much rendering it spends before it ranks what it has. The note
+(3 000) is how much rendering it spends before it ranks what it has. The
+budget counts render time only, not the time the worker spends on the
+player's requests between renders, and it is checked after each render, so it
+can run over by one render. The note
 measured the first eight in this order (its dout8) against rendering every
 candidate: 66% against 66% picked at the warm start, 69% against 70% after 78
 picks. On a crew the plan asks for all of them.
@@ -97,7 +108,8 @@ Measured on 2026-10-01 on an Apple M3 Max that other jobs were sharing, by
 `crates/auracle-session/examples/guess_cost.rs` and `guess_cost.mjs` in
 `auracle-wasm`, after both warm starts the note used; the native run starts
 each patch from a memo that holds only the patch. With no crew, the floor
-fits the 3 s budget in wasm on every preset measured but the two heaviest
+fits the 3 s render budget in wasm on every preset measured but the two
+heaviest
 (Deadfall and Ceiling, 3.3 to 4.2 s), where the worker ranks the seven or so
 it rendered in time. On a crew of six, every candidate of a preset would take
 about five renders' time, under 2.5 s (derived, not measured).
@@ -105,18 +117,25 @@ about five renders' time, under 2.5 s (derived, not measured).
 ## Why
 
 A guess's reason is the largest part of its gain under the style most
-responsible for its sound. Under that style's posterior mean $\bar\theta$,
-the gain $\bar\theta^\top(z_c - z_p)$ splits exactly by coordinate. The
-parts considered are:
+responsible for its sound, with $\Delta z = z_c - z_p$ and that style's
+posterior mean $\bar\theta$ (`GuessWhy::part`). The parts considered are:
 
-- each of PERFORM's six [named directions](./perform.md#a-named-control-is-a-direction),
-  over the audio coordinates it weights, named by the end word the guess moves
-  toward ("it moves toward dark");
-- each structural coordinate the guess changes ("more drive").
+- each of PERFORM's six [named directions](./perform.md#a-named-control-is-a-direction)
+  $\hat e$: the gain's projection on it, $(\bar\theta^\top \hat e)(\hat e^\top
+  \Delta z)$, named by the end word the guess moves toward ("it moves toward
+  dark"). The projection is positive only when the move and the lean point
+  the same way along $\hat e$, so the word names where the gain comes from.
+  Summing $\bar\theta_j \Delta z_j$ over the direction's coordinates would
+  not: for Bright, a centroid that rises while the rolloff falls further
+  reads "toward dark", and a taste for the centroid alone gains from the
+  rise;
+- each structural coordinate the guess changes, $\bar\theta_j \Delta z_j$
+  ("more drive").
 
 The largest positive part is the reason, with how far the guess moves along
-it in σ. When no part is positive, no part leans the player's way, and the
-guess has no reason (`why` is null). For a patch that does not sound, the gain
+it in σ; a move under 0.005σ, which would print as 0.00σ, is never a reason.
+When no part is positive, no part leans the player's way, and the guess has
+no reason (`why` is null). For a patch that does not sound, the gain
 is over the pool's average, but the reason measures the move from the average
 sound with the patch's own structure, so it can name only what the guess
 changes, never the amp envelope an empty patch keeps.
@@ -137,9 +156,18 @@ it (`GuessMemory`):
   structural edit, so ⌘Z undoes it, and the tree it returns to would rank the
   same guess first again. When the patch in hand comes back to the tree a
   guess was taken on (compared by content, as patches always are), the guess
-  is skipped.
+  is skipped. Opening a patch (another, or the same one again) or closing
+  the bench forgets the guesses taken, so a later edit undone back to an old
+  tree is not taken for an undo of a guess.
+- **Only a current guess is taken.** A guess is checked against the patch as
+  it is when it is taken (`guess_is_current`: the same edit, socket and family
+  among its candidates now), and refused with a reason otherwise: a source
+  ranked for an empty socket, sent after the player filled it, would wipe what
+  they placed. The check renders nothing.
 - **Per patch:** skips are kept by the pool id the patch was opened from, for
-  the session; an import starts with none.
+  the session; an import starts with none. Keep as new carries them, and the
+  guesses taken, to the new sound: it is the same patch the player is working
+  on.
 
 Neither a take nor a skip is evidence. Both are logged in the implicit stream,
 as a revert is, and stay out of the likelihood: a skip is confounded with
@@ -167,6 +195,6 @@ edit.
 
 The worker answers `guess` in its `later` lane: it plans, renders the first
 `GUESS_FLOOR` candidates with `memo_render`, and ranks, posting the ranking
-with the tree it ranked. A taken guess is `edit_structure` with the guess
+with the tree it ranked, or the error if the engine failed. A taken guess is `edit_structure` with the guess
 attached (`guess_take`), and a skip is `guess_skip`. Raising a render crew for
 a guess, as a generation raises one, comes with PATCH's view of it.

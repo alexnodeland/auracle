@@ -131,8 +131,9 @@ it drops a stale pre-placement audition.
   engine what it owes (`guess_plan`: the patch first if unmeasured, then the
   output's candidates in render order), renders the first `GUESS_FLOOR` (8)
   with `memo_render`, one per turn, breathing between them as PERFORM's
-  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of rendering
-  is spent, and posts `guess` with `{token, tree, data}`: the ranking
+  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of render
+  time is spent (render time only, checked after each render, so it can run
+  over by one), and posts `guess` with `{token, tree, data}`: the ranking
   (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
   the grammar's ceiling, `no_patch` with nothing open). It gives way to work
   the player asks for and resumes from the memo. `at`, a module's key, ranks
@@ -141,7 +142,9 @@ it drops a stale pre-placement audition.
   the farm's store) is not wired yet.
 - **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
   edit with the same replies, remembered so that a later edit back to the
-  tree before it (⌘Z) counts as a skip.
+  tree before it (⌘Z) counts as a skip. A guess no longer current for the
+  patch (ranked on an earlier tree) is refused with `edit_rejected` and its
+  reason. A crash in `guessRun` still answers: `guess` with `{token, error}`.
 - **`guess_skip`** (`now`; `{token, guess}`): keeps that guess's family away
   from its socket for this patch, and answers `guess_skipped` with `{token,
   ok}`. Skips and takes are logged, never evidence.
