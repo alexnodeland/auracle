@@ -436,7 +436,10 @@ function guessFace(g, at, layer) {
     const face = key && lruGet(faceByKey, key);
     if (!face || !faceStats) {
       t.remove();
-      if (!target) return;
+      // Waiting only for a face that can still land: one the worker has
+      // said it has none for (a patch with no sound) would redraw the plate
+      // at every face batch for nothing.
+      if (!target || faceNone.has(target)) return;
       if (!face) wantFace(target);
       guessFaceWaiting = true;
       return;

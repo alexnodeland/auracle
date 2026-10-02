@@ -106,6 +106,11 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        name could be cut short, its column is wider by the face (the bank
        252 to 280 px, PATCH's subject column by 28 px, the teach strip's A
        and B by 18), and EVOLVE's and PERFORM's names wrap rather than cut;
+     - beside PATCH's guess plate, the patch's face (*as it is*) and the
+       face of the render the guess made with its module (*with it*,
+       `Guess::key`, `face_of_key`): the specimen's estimated vessel, measured;
+       a patch from nothing has only the second. They sit right of the
+       plate wherever it is placed, and are not kept in view as the plate is;
      - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
        × 630 at 2×), with the patch inside; without a face (an edit the vet
        refuses, a bank of fewer than four) it says why, and downloads
