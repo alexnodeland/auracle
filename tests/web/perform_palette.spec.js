@@ -54,6 +54,24 @@ async function openOnPerform(page, name) {
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
 
+// Watch the page every frame for what `probe` (a function's source, run in
+// the page) reports, keeping every distinct answer: a state that lasts a
+// second (a measurement on a fast machine) is seen however the test is timed.
+async function watch(page, probe) {
+  await page.evaluate((src) => {
+    const f = new Function(`return (${src})();`);
+    const seen = (window.__seen = []);
+    const tick = () => {
+      if (window.__seen !== seen) return;
+      const v = f();
+      if (v != null && !seen.some((x) => JSON.stringify(x) === JSON.stringify(v))) seen.push(v);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }, probe.toString());
+  return () => page.evaluate(() => window.__seen.slice());
+}
+
 // The deck's named controls, in order, by their names.
 const deckNames = (page) =>
   page.evaluate(() => [...document.querySelectorAll(".pf-knob[data-index]")].map((k) => k.getAttribute("aria-label")));
@@ -114,8 +132,14 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   expect(await deckNames(page)).toEqual(["Bright", "Motion", "Body", "Grit", "Space", "Bite", "Warmth"]);
   await expect(row(page, "Snap", false).locator(".pp-place")).toBeEnabled();
 
-  // Order: Bite to the front, one step at a time.
+  // Order: Bite to the front, one step at a time. The same set in another
+  // order is the same measurement, so nothing is asked of the engine.
+  const asked = () => page.evaluate(() => window.__sent.filter((m) => m.type === "perform_wire").length);
+  await expect.poll(async () => { const a = await asked(); await page.waitForTimeout(500); return (await asked()) === a; }, { timeout: 30_000 }).toBe(true);
+  const before = await asked();
   for (let i = 0; i < 5; i++) await row(page, "Bite", true).locator(".pp-up").click();
+  await page.waitForTimeout(1000);
+  expect(await asked(), "a reorder asks for no measurement").toBe(before);
   await expect(row(page, "Bite", true).locator(".pp-up")).toBeDisabled();
   const arranged = ["Bite", "Bright", "Motion", "Body", "Grit", "Space", "Warmth"];
   expect(await deckNames(page)).toEqual(arranged);
@@ -143,16 +167,27 @@ test("a placed control is measured with the panel's set, keyed by that set, and 
   await openOnPerform(page, "Glass Pad");
   const base = await page.evaluate(() => window.__sent.length);
   await page.locator(".pf-arrange").click();
+  const seen = await watch(page, () => {
+    const k = document.querySelector('.pf-knob[data-index="16"]');
+    const r = document.querySelector('.pp-row.on[data-index="16"]');
+    if (!k) return null;
+    return {
+      waiting: k.classList.contains("waiting"),
+      sign: k.querySelector(".pf-k-wait").textContent,
+      status: /listening to Bite…/.test(document.querySelector(".pf-status").textContent),
+      row: r ? r.querySelector(".pp-wait").textContent : null,
+      // The controls already measured still turn meanwhile.
+      bright: !document.querySelector('.pf-knob[data-index="0"]').classList.contains("unwired"),
+    };
+  });
   await row(page, "Bite", false).locator(".pp-place").click();
 
-  // At once: the new control waits, said in its own box and on the status line.
+  // While it was measured, the new control waited, and said so in its own
+  // box, on its palette row and on the status line, with Bright playing on.
   const bite = page.locator('.pf-knob[data-index="16"]');
-  await expect(bite).toHaveClass(/\bwaiting\b/);
-  await expect(bite.locator(".pf-k-wait")).toHaveText("listening…");
-  await expect(page.locator(".pf-status")).toContainText("listening to Bite…");
-  await expect(row(page, "Bite", true).locator(".pp-wait")).toHaveText("listening…");
-  // The controls already measured still turn meanwhile.
-  await expect(page.locator('.pf-knob[data-index="0"]')).not.toHaveClass(/\bunwired\b/);
+  await expect
+    .poll(async () => (await seen()).some((v) => v.waiting && v.sign === "listening…" && v.status && v.row === "listening…" && v.bright), { timeout: 150_000 })
+    .toBe(true);
 
   // The request names the set, in palette order.
   const asked = await page.evaluate((n) => window.__sent.slice(n).filter((m) => m.type === "perform_wire" && m.controls), base);
@@ -186,7 +221,7 @@ test("a placed control is measured with the panel's set, keyed by that set, and 
   expect(errs).toEqual([]);
 });
 
-test("a control is named back by its palette index, on a panel in another order", async ({ page }) => {
+test("a control is named back by its palette index, on a panel in another order", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
   // A preset on which GRIT is a search control (most are: the shipped
@@ -266,15 +301,21 @@ test("How it works lists every placed control, and explains the one last touched
   expect(errs).toEqual([]);
 });
 
-test("a row's mark never moves its name: every name starts at the same x", async ({ page }) => {
+test("a row's mark never moves its name: every name starts at the same x", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   await page.locator(".pf-arrange").click();
-  await row(page, "Haze", false).locator(".pp-place").click();
   // While Haze is listened to, the palette holds every kind of row: a
   // control that turns, one that can't (a search control), one listening,
-  // and the unplaced, with no mark.
+  // and the unplaced, with no mark. Read in the frame it shows.
+  const seen = await watch(page, () => {
+    const rows = [...document.querySelectorAll(".pp-row")];
+    if (!rows.some((r) => r.querySelector(".pp-mark").dataset.mark === "listening")) return null;
+    return rows.map((r) => ({ mark: r.querySelector(".pp-mark").dataset.mark || "", x: r.querySelector(".pp-name").getBoundingClientRect().left.toFixed(1) }));
+  });
+  await row(page, "Haze", false).locator(".pp-place").click();
+  await expect.poll(async () => (await seen()).length, { timeout: 150_000 }).toBeGreaterThan(0);
   const read = () =>
     page.evaluate(() =>
       [...document.querySelectorAll(".pp-row")].map((r) => ({
@@ -283,12 +324,12 @@ test("a row's mark never moves its name: every name starts at the same x", async
         w: r.querySelector(".pp-name").scrollWidth - r.querySelector(".pp-name").clientWidth,
       })),
     );
-  const now = await read();
+  const now = (await seen())[0];
   const marks = new Set(now.map((r) => r.mark));
   expect(marks.has("listening"), "a row listening").toBe(true);
   expect(marks.has(""), "a row with no mark").toBe(true);
   expect(marks.has("turns"), "a row that turns").toBe(true);
-  const xs = new Set(now.map((r) => r.x.toFixed(1)));
+  const xs = new Set(now.map((r) => r.x));
   expect([...xs], "one x for every name").toHaveLength(1);
   // …and once Haze is measured, the same x.
   await expect(row(page, "Haze", true).locator(".pp-mark")).not.toHaveAttribute("data-mark", "listening", { timeout: 150_000 });

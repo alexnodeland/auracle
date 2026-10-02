@@ -288,10 +288,14 @@ export function createPerform(host) {
   const title = el("div", "pf-title");
   const nameEl = el("div", "pf-name", "·");
   const statusEl = el("div", "pf-status mono", "");
-  // What PERFORM is doing with the sound, announced politely: the one live
-  // region for a measurement (the controls' own waiting signs are silent).
-  statusEl.setAttribute("role", "status");
-  title.append(nameEl, statusEl);
+  // What PERFORM is doing with the sound is announced politely, by a quiet
+  // twin of the status line (`statusSaid`): the one live region for a
+  // measurement (the controls' own waiting signs are silent), and it leaves
+  // out "re-checking", which comes and goes in the background and is not
+  // news.
+  const statusSaid = el("div", "sr-only", "");
+  statusSaid.setAttribute("role", "status");
+  title.append(nameEl, statusEl, statusSaid);
   const scope = el("canvas", "pf-scope");
   scope.width = 360;
   scope.height = 72;
@@ -1185,6 +1189,9 @@ export function createPerform(host) {
   function request(kind, msg) {
     const req = ++state.req;
     state.pending.set(req, { kind, gen: state.gen, at: performance.now() });
+    // A measurement carries the set it asked for (no `controls` is the six),
+    // so its reply is laid on the panel it belongs to (`forPanel`).
+    if (kind === "perform_wire") state.pending.get(req).set = setOf(msg.controls || PANEL_DEFAULT);
     host.send({ ...msg, type: kind, req });
     return req;
   }
@@ -1243,6 +1250,9 @@ export function createPerform(host) {
     } catch {
       return json;
     }
+    // Merging with #97 (which clips the key): the clip applies to `base`,
+    // here, before `#controls=` and the set are added, so the set is never
+    // clipped off and two sets of one patch never share a key.
     const sk = setKey(set);
     return sk ? `${base}#controls=${sk}` : base;
   }
@@ -1652,7 +1662,10 @@ export function createPerform(host) {
       live.bMix(state.visible ? state.blend : 0);
     }
     renderOffer();
-    growOffer();
+    // An undone pass brings back an offer already grown: it is not grown
+    // again, so it does not grow again on screen.
+    if (again) moment("grown");
+    else growOffer();
     knobs.forEach(paintKnob);
     if (!again) logImplicit("perform_offer", { why: state.offerWhy || "" });
   }
@@ -1701,8 +1714,20 @@ export function createPerform(host) {
     grown.oncancel = still;
     setTimeout(still, ms + 100);
   }
-  // A copy of B as it was, to move while B itself is already what it is now.
+  // A copy of B as it was, to move while B itself is already what it is now:
+  // taken (`snapshot`) and put on the page (`ghost`) apart, so a Take's copy
+  // can wait for the bench's word.
   function ghost(name) {
+    const gh = snapshot(name);
+    if (gh) showGhost(gh);
+    return gh;
+  }
+  function showGhost(gh) {
+    document.body.append(gh.g);
+    gh.gone = () => gh.g.remove();
+    setTimeout(gh.gone, gh.ms * 3 + 200);
+  }
+  function snapshot(name) {
     const ms = motionMs("--d-move");
     const r = offerCard.getBoundingClientRect();
     if (!ms || !state.visible || !r.width) return null;
@@ -1717,15 +1742,16 @@ export function createPerform(host) {
     g.style.top = `${r.top}px`;
     g.style.width = `${r.width}px`;
     g.style.height = `${r.height}px`;
-    document.body.append(g);
-    const gone = () => g.remove();
-    setTimeout(gone, ms * 3 + 200);
-    return { g, r, ms, gone };
+    return { g, r, ms, gone: () => g.remove() };
   }
-  function takeMotion() {
+  // Played when the bench has taken the offer's tree (`patchChanged` sees
+  // the taken tree arrive, after the engine adopted it), with the copy of B
+  // taken when TAKE was pressed. A Take the bench refuses never arrives, so
+  // it never fills.
+  function takeMotion(gh) {
     moment("taken");
-    const gh = ghost("taken");
     if (!gh) return;
+    showGhost(gh);
     const fill = el("span", "pf-ghost-fill");
     gh.g.append(fill);
     // The green rises from the base, then the whole of B goes into the name.
@@ -2139,7 +2165,7 @@ export function createPerform(host) {
       // A measurement of a set the panel no longer holds (the player placed
       // or hid a control while it ran) is kept in the cache, above, and not
       // played: the panel's own set is measured, or already is.
-      const forPanel = setOf(p.cacheAs?.set || PANEL_DEFAULT).join(",") === setOf(state.panel).join(",");
+      const forPanel = setOf(p.set || p.cacheAs?.set || PANEL_DEFAULT).join(",") === setOf(state.panel).join(",");
       if (!forPanel && state.wire && m.data) {
         state.revalidating = inFlight("perform_wire");
         measurePanel();
@@ -2297,8 +2323,10 @@ export function createPerform(host) {
     const taking = state.taking;
     const taken = !!taking && performance.now() - taking.at < 15_000 && treeShape(json) === taking.key;
     if (taken || (taking && performance.now() - taking.at >= 15_000)) state.taking = null;
+    // The bench took it: B fills and goes into the name now.
+    if (taken) takeMotion(taking.shot);
     const carried =
-      taken && Array.isArray(liveKnobs) && liveKnobs.length ? carryWiring(taking.wire, liveKnobs) : null;
+      taken && taking.wire && Array.isArray(liveKnobs) && liveKnobs.length ? carryWiring(taking.wire, liveKnobs) : null;
     // The patch being left: a measurement of it is still worth finishing
     // (cached, for flicking back) but nobody is waiting on it, so it drops to
     // the engine's background lane; offers and drifts grown from it are worth
@@ -2615,7 +2643,6 @@ export function createPerform(host) {
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
-    takeMotion();
     const json = state.offer.json;
     // Measured when the offer grew: A rebuilds as the offer at its own level,
     // not the old sound's, and B hands over with no jump.
@@ -2636,7 +2663,7 @@ export function createPerform(host) {
     // bench refuses must not lend its wiring to whatever patch comes next. The
     // wiring is the one under the hands now, kept here because an edit still
     // in flight can land first and clear it.
-    if (state.wire) state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire };
+    state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire, shot: snapshot("taken") };
     renderOffer();
     knobs.forEach(paintKnob);
     host.commitTree(json, "taken offer", makeup);
@@ -2723,7 +2750,11 @@ export function createPerform(host) {
       if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
       else if (state.revalidating || state.measuring) parts.push("re-checking");
     }
-    statusEl.textContent = parts.join(" · ");
+    // Written only when the words change.
+    const text = parts.join(" · ");
+    if (statusEl.textContent !== text) statusEl.textContent = text;
+    const said = parts.filter((x) => x !== "re-checking").join(" · ");
+    if (statusSaid.textContent !== said) statusSaid.textContent = said;
   }
 
   function renderOffer(msg) {
@@ -3579,6 +3610,8 @@ export function createPerform(host) {
     if (left.length) host.send({ type: "retire", reqs: left });
     revalidate(!hit && state.wire.some((w) => w.pending));
     knobs.forEach(paintKnob);
+    // The palette's signs follow the measurement just asked for.
+    renderPalette();
   }
 
   pad("keep", "Keep", "Make this sound home: Back returns here", keep);
