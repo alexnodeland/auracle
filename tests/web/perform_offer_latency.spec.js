@@ -27,6 +27,7 @@
 // The spec reaches the worker by wrapping `Worker` before `main.js` runs, as
 // perform_next.spec.js does.
 const { test, expect } = require("@playwright/test");
+const patchPage = require("./patch_page.js");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -160,4 +161,61 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
   const retired = await reply(page, "perform_offered", SPARE, Math.max(10_000, 4 * step));
   expect(retired.error).toBe("retired");
   expect(errs).toEqual([]);
+});
+
+// PATCH's guess asks a render crew to render every candidate, and waiting for
+// that crew (its spawn, its replies: seconds) used to hold the floor though
+// nothing ran on the engine thread, so a pressed Offer, EVOLVE's `refine` and
+// the measurement of the sound in hand waited for it. A guess's crew phase is
+// now detached; this opens a patch the guess has not ranked, and presses an
+// Offer (over the worker's protocol, a step long) while the crew is out. The
+// Offer must be answered before the guess is, within a measured step's bound.
+test("an Offer pressed while the guess is on its crew starts at once", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(420_000);
+  const errors = await patchPage.boot(page, { warmed: false });
+  await patchPage.warmStartAndFit(page);
+  const lat = () => page.evaluate(() => window.__lat);
+  await page.evaluate(() => {
+    window.__lat = [];
+    window.__pwEngine().addEventListener("message", (e) => {
+      const d = e.data || {};
+      if (d.type === "perform_offered") window.__lat.push({ type: d.type, req: d.req, t: performance.now(), offer: !!(d.offer && d.offer.tree), reason: d.offer && d.offer.reason, error: d.error });
+    });
+  });
+  const offer = async (req) => {
+    const tree = await page.evaluate(() => window.__pwLast.bench.treeJson);
+    const at = await page.evaluate(([r, tr]) => {
+      const t = performance.now();
+      window.__pwEngine().postMessage({ type: "perform_offer", req: r, tree: tr, overrides: [], locks: [], steps: 1 });
+      return t;
+    }, [req, tree]);
+    await expect.poll(async () => (await lat()).some((l) => l.req === req), { timeout: 120_000 }).toBe(true);
+    const got = (await lat()).find((l) => l.req === req);
+    console.log(`offer ${req}: ${got.offer ? "an offer" : got.reason || got.error || "nothing"} after ${(got.t - at).toFixed(0)} ms`);
+    return { at, took: got.t - at };
+  };
+
+  // The first patch opened after the warm start: the crew is cold, so the
+  // guess waits seconds for it to spawn. The page asks once the bench
+  // settles. An Offer pressed before the guess has started would be served
+  // first whatever the floor does (`soon` goes before `later`), so wait until
+  // the guess is on its crew: the worker asks main for the crew's ports
+  // (`farm_want`).
+  const t0 = await patchPage.now(page);
+  const wants = await page.evaluate(() => window.__pwCounts.farm_want || 0);
+  await patchPage.openPreset(page, "Reese");
+  await page.waitForFunction((w) => (window.__pwCounts.farm_want || 0) > w, wants, { timeout: 30_000 });
+  await page.waitForTimeout(100);
+  const { at, took } = await offer(9_100_002);
+  const answeredAt = at + took;
+  const guessed = await page.evaluate((t) => window.__pwReplies.find((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses), t0);
+  // The cost of a step here, idle, once the guess has landed.
+  await patchPage.drawnGuess(page);
+  const step = (await offer(9_100_001)).took;
+  console.log(`idle step ${step.toFixed(0)} ms; an Offer pressed with the guess on its crew answered in ${took.toFixed(0)} ms; guess ${guessed ? "answered " + (guessed.t - answeredAt).toFixed(0) + " ms after" : "not yet answered"}`);
+  expect(took, "the Offer waited for the guess's crew").toBeLessThan(Math.max(2_000, 3 * step));
+  // The test proves something only if the guess was still out when the Offer
+  // was answered.
+  expect(guessed === undefined || guessed.t > answeredAt, "the guess was done before the Offer was answered, so nothing was proved").toBe(true);
+  expect(errors, errors.join("\n")).toEqual([]);
 });

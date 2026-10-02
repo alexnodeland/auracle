@@ -1305,7 +1305,9 @@ async function walkRun(m) {
 // is spent, ranking what it has (`rendered` of `planned` says how much). The
 // budget counts render time only, checked after each render, so it can run
 // over by one render. A `later` job: it gives way to work the player asks for
-// and resumes where it stopped, since every render it made is in the memo.
+// and resumes where it stopped, since every render it made is in the memo. The
+// crew phase does not hold the floor (it renders nothing on this thread, and
+// waiting for a crew is not work); only the floor's renders do.
 // The reply echoes `token` and carries the tree it ranked, so a page that has
 // moved on drops it.
 const GUESS_FLOOR = 8;
@@ -1315,6 +1317,8 @@ const GUESS_BUDGET_MS = 3000;
 // their own sequence; the farm echoes `i` in `done`, which no fill is
 // listening for while a walk crew stands.
 const guessInflight = new Map();
+// The crew phases of the guesses asked for, one at a time and in order.
+let guessCrewTail = Promise.resolve();
 let guessSeq = 0;
 const guessBusy = () => guessInflight.size > 0;
 
@@ -2996,13 +3000,25 @@ async function dispatch(m) {
     // The model's guess for the patch in hand (see `guessRun`), and a skip of
     // one. Taking a guess is `edit_structure` with `guess`.
     case "guess": {
-      // The floor for the whole guess, crew phase included: while it waits
-      // for a crew no other long job may take the floor from under it (one
-      // long job at a time); `now` work is still served between awaits.
-      await holdFloor(m, async () => {
-        if (await guessCrewPhase(m)) return;
-        await guessRun(m);
-      });
+      // The crew phase does not hold the floor. It renders nothing here: it
+      // waits for a crew to spawn and for its workers' replies, up to several
+      // seconds, and a floor held across that made a pressed Offer, EVOLVE's
+      // `refine` and the measurement of the sound in hand wait for it though
+      // nothing was running on this thread. So it runs detached, as a
+      // generation's walks do (one guess at a time: `guessCrewTail`), and
+      // when it is over the guess goes back to the front of `later` with
+      // `crewed` set, and takes the floor then for the floor's own renders.
+      if (!m.crewed) {
+        guessCrewTail = guessCrewTail
+          .then(async () => {
+            if (await guessCrewPhase(m)) return;
+            lanes[LATER].unshift(m);
+          })
+          .catch((err) => engineError("guess", null, err))
+          .finally(schedulePump);
+        break;
+      }
+      await holdFloor(m, () => guessRun(m));
       break;
     }
     // A patch of its own (PATCH's NEW PATCH): the guesses' key from here on

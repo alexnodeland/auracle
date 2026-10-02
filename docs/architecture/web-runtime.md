@@ -247,9 +247,9 @@ it drops a stale pre-placement audition.
 
 - **`guess`** (`later`; `{token, at?}`): the module the model
   guesses the player would add next
-  ([reference](../../www/reference/src/search/guess.md)). It holds the
-  floor throughout, in two phases:
-  - `guessCrewPhase`: it plans first, and a refusal (`no_taste`, `full`) or
+  ([reference](../../www/reference/src/search/guess.md)). It runs in two
+  phases, and only the second holds the floor:
+  - `guessCrewPhase`, detached from the pump (one guess's at a time): it plans first, and a refusal (`no_taste`, `full`) or
     a guess the memo already holds raises no crew. Otherwise, where a walk
     crew can be had
     (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
@@ -258,8 +258,12 @@ it drops a stale pre-placement audition.
     routed by `guessDone`; a lost worker gives its job back, `guessLost`),
     absorbing each with `memo_absorb` as it lands, for at most
     `GUESS_BUDGET_MS` (3 s) of wall-clock time from when the crew is up
-    (`crewRenders`). The crew's idle timer starts when it ends.
-  - `guessRun`: renders with `memo_render` whatever of the
+    (`crewRenders`). The crew's idle timer starts when it ends. It renders
+    nothing on the worker's thread, so it must not stop `soon` work starting:
+    held on the floor, it made a pressed Offer, `refine` and the measurement
+    of the sound in hand wait for a crew's spawn and its renders (about 4 s,
+    up to 18 s). When it ends the guess goes back to the front of `later`.
+  - `guessRun`, holding the floor: renders with `memo_render` whatever of the
     first `GUESS_FLOOR` (8) is still owed (nothing after a crew that rendered
     them; all of them with none), one per turn, breathing between them as
     PERFORM's measurement does, and stops rendering once `GUESS_BUDGET_MS` of
