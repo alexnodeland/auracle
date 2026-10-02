@@ -15,6 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
@@ -248,14 +249,16 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   // Counts the offers the engine hands back, to know when the spare is here
-  // (a state, not a guess at how long a loaded machine takes to grow one).
+  // (a state, not a guess at how long a loaded machine takes to grow one);
+  // the page's own, not perform_budget.js's probes (ids from 8_800_000).
+  await budget.watch(page);
   await page.addInitScript(`(() => {
     const Orig = window.Worker;
     window.__offered = 0;
     function Wrapped(url, opts) {
       const w = new Orig(url, opts);
       if (/worker\\.js/.test(String(url))) w.addEventListener("message", (e) => {
-        if (e.data && e.data.type === "perform_offered" && e.data.offer && e.data.offer.tree) window.__offered += 1;
+        if (e.data && e.data.type === "perform_offered" && e.data.req < 8_000_000 && e.data.offer && e.data.offer.tree) window.__offered += 1;
       });
       return w;
     }
@@ -271,8 +274,9 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   await page.locator('.viewtab[data-view="perform"]').click();
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
-  // Steady, hands off: the spare grows.
-  await page.waitForFunction(() => window.__offered >= 1, null, { timeout: 150_000 });
+  const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
+  // Steady, hands off: the spare grows, behind the shipped wiring's re-check.
+  await page.waitForFunction(() => window.__offered >= 1, null, { timeout: OFFER_MS });
   const ms = await page.evaluate(async () => {
     const pad = document.querySelector(".pf-pad.primary");
     const t0 = performance.now();
@@ -323,6 +327,7 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   })();`);
   // The shipped file is blocked: the wiring under test is the player's own.
   await page.route("**/perform-wirings.json*", (r) => r.abort());
+  await budget.watch(page);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
@@ -343,11 +348,14 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   console.log(`a kept wiring from another build, wired in ${ms.toFixed(0)} ms`);
   expect(ms, "played at once from the kept wiring").toBeLessThan(1500);
   expect(await wiredHow(page, "Acid Line"), "wired from the player's cache").toBe("cached");
+  // The re-measurement is engine work (about thirty renders, in the
+  // background): two waits on it below, bounded by the budget.
+  const RECHECK_MS = await budget.offerBudget(page, { waits: 2 });
   // …and the player is told it is being measured again, under this build,
   // until the new measurement lands.
   const status = page.locator(".pf-status");
   await expect(status, "the status line says the wiring is re-checked").toHaveText(/re-checking/, { timeout: 60_000 });
-  await expect(status, "the re-check lands").not.toHaveText(/re-checking/, { timeout: 150_000 });
+  await expect(status, "the re-check lands").not.toHaveText(/re-checking/, { timeout: RECHECK_MS });
   await expect(status).toHaveText(/controls reach/);
   // Secondary, internal: the measurement was asked of the engine, and the
   // re-measured wiring replaced the old one, stamped with this build's render
@@ -358,6 +366,6 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
       const kept = new Map(JSON.parse(localStorage.getItem("auracle-perform-wirings") || "[]"));
       return String(kept.get(key)?.rev ?? "");
     }, key);
-  await expect.poll(keptRev, { timeout: 150_000, intervals: [1000] }).toMatch(/^0@.+/);
+  await expect.poll(keptRev, { timeout: RECHECK_MS, intervals: [1000] }).toMatch(/^0@.+/);
   expect(errs).toEqual([]);
 });

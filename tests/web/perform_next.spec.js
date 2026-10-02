@@ -15,6 +15,7 @@
 // The spec watches the worker's replies by wrapping `Worker` before `main.js`
 // runs, to know when a spare has landed.
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -23,7 +24,9 @@ const INIT = `(() => {
     const w = new Orig(url, opts);
     if (/worker\\.js/.test(String(url))) {
       w.addEventListener("message", (e) => {
-        if (e.data && e.data.type === "perform_offered" && e.data.offer && e.data.offer.tree) offered.push(performance.now());
+        // The page's offers only: perform_budget.js's probes (ids from
+        // 8_800_000) are not spares.
+        if (e.data && e.data.type === "perform_offered" && e.data.req < 8_000_000 && e.data.offer && e.data.offer.tree) offered.push(performance.now());
       });
     }
     return w;
@@ -35,6 +38,7 @@ const INIT = `(() => {
 async function boot(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -82,11 +86,14 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   test.setTimeout(420_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  // Two spares waited for: each behind whatever the engine has queued (the
+  // first behind the shipped wiring's re-check), then grown.
+  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
   const picks = async () => Number(await page.locator("#duel-count").textContent());
   await page.keyboard.down("a");
 
   // The first spare grows once the patch is steady and the hands are off.
-  await expect.poll(() => spares(page), { timeout: 150_000 }).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => spares(page), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(1);
   const first = await pressOffer(page);
   expect(first, "the first offer is handed over").toBeLessThan(300);
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
@@ -96,7 +103,7 @@ test("the second offer is as fast as the first, and a pass says what it did and 
 
   // Heard, and a second spare grows while B holds the first.
   await peek(page, 1800);
-  await expect.poll(() => spares(page), { timeout: 150_000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => spares(page), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(2);
   const p0 = await picks();
   const second = await pressOffer(page);
   console.log(`offer → B: first ${first.toFixed(0)} ms, NEXT ${second.toFixed(0)} ms`);

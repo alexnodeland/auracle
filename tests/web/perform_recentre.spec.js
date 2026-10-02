@@ -18,6 +18,7 @@
 // A MIDI device is stood in for by replacing navigator.requestMIDIAccess
 // before the app runs, with one input the spec sends control changes from.
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 
 const FAKE_MIDI = `(() => {
   const input = { id: "pw", name: "Test pot", manufacturer: "", state: "connected", onmidimessage: null };
@@ -29,6 +30,7 @@ const FAKE_MIDI = `(() => {
 async function boot(page, { midi = false } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   if (midi) await page.addInitScript(FAKE_MIDI);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -60,9 +62,12 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   test.setTimeout(420_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  // Two background re-checks are waited for below, each a measurement
+  // (about thirty renders) that may wait behind a spare.
+  const RECHECK_MS = await budget.offerBudget(page, { waits: 2 });
   const status = page.locator(".pf-status");
   // The shipped wiring's background re-check, done.
-  await expect(status).not.toContainText("re-checking", { timeout: 180_000 });
+  await expect(status).not.toContainText("re-checking", { timeout: RECHECK_MS });
   const bright = page.locator('.pf-knob[data-i="0"]');
   await drag(page, bright, -150);
   expect(Number(await bright.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
@@ -95,7 +100,7 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   await drag(page, bright, -90);
   const set = await bright.getAttribute("aria-valuenow");
   expect(Number(set)).toBeGreaterThan(0.3);
-  await expect(status).not.toContainText("re-checking", { timeout: 180_000 });
+  await expect(status).not.toContainText("re-checking", { timeout: RECHECK_MS });
   await page.waitForTimeout(2_500); // past the pause a re-check waits for
   if ((await bright.locator(".pf-k-sub").textContent()) === caption) {
     await expect(bright, "same knobs: the control stays where the hand left it").toHaveAttribute("aria-valuenow", set);
@@ -107,8 +112,9 @@ test("a pot on Blend is let go when Blend comes home, and takes it again from ho
   test.setTimeout(420_000);
   const errs = await boot(page, { midi: true });
   await openOnPerform(page, "Glass Pad");
+  const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
-  await page.waitForSelector(".pf-offer.ready", { timeout: 120_000 });
+  await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
   // CC 20 learned onto Blend (the seventh row of the MIDI panel).
   await page.locator("#midi-ind").click();
   await page.locator("#midi-panel .midi-row").nth(6).locator("button", { hasText: "learn" }).click();

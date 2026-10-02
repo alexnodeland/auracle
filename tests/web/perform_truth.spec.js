@@ -25,6 +25,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -55,6 +56,7 @@ async function boot(page, { shipped = true, stalled = false } = {}) {
   page.on("pageerror", (e) => errs.push(e.message));
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   if (stalled) await page.route("**/perform-wirings.json*", () => {});
+  await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -288,8 +290,9 @@ test("after a pass, Blend comes home", async ({ page }) => {
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   await wired(page);
+  const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
-  await page.waitForSelector(".pf-offer.ready", { timeout: 120_000 });
+  await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
   const blend = page.locator('.pf-knob[data-i="6"]');
   await drag(page, blend, -120);
   expect(Number(await blend.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
@@ -307,6 +310,9 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   await wired(page);
+  // A drift waits behind the shipped wiring's background re-check, then
+  // walks twelve renders: engine growth, bounded by the budget.
+  const DRIFT_MS = await budget.offerBudget(page, { waits: 1 });
   // Every status line from here on.
   await page.evaluate(() => {
     const s = document.querySelector(".pf-status");
@@ -325,7 +331,7 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   await expect(wander.locator(".pf-k-sub")).toHaveText(/^roam/);
   await page.locator(".pf-xy-field").focus(); // off the dial, hands off
   // A drift arrives and glides.
-  await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: 150_000 });
+  await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: DRIFT_MS });
   // …and finishes: give the glide (3 s at most in roam) time to land.
   await page.waitForTimeout(4000);
   const seen = await page.evaluate(() => window.__statuses);
