@@ -4228,4 +4228,175 @@ mod tests {
             "measured with the reference"
         );
     }
+
+    // ---- CAPTURE takes in the session file (Plan-007 task 6) ----
+
+    /// A sound that mixes a CAPTURE holding a take (a decaying tone, two
+    /// seconds at the phrase's rate, recorded from an input) with a keyed
+    /// VCO, so it still sounds, and still measures, without its take.
+    fn captured_patch() -> auracle_grammar::PatchTree {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel, Waveform};
+        use auracle_grammar::ModNode;
+        let sr = auracle_features::PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..(2.0 * sr) as usize)
+            .map(|i| {
+                let t = i as f64 / sr;
+                (0.6 * (-t * 1.5).exp() * (std::f64::consts::TAU * 196.0 * t).sin()) as f32
+            })
+            .collect();
+        auracle_grammar::PatchTree {
+            amp: AmpEnv {
+                attack: 0.02,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: auracle_grammar::Uid::NEW,
+                balance: 0.4,
+                a: Box::new(AudioNode::Capture {
+                    uid: auracle_grammar::Uid::NEW,
+                    play: CaptureMode::Once,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: auracle_grammar::Uid::NEW,
+                        input: 0,
+                        gain: auracle_grammar::INPUT_GAIN_UNITY,
+                        channel: InputChannel::Both,
+                    }),
+                    take: auracle_grammar::Take::from_samples(&x, sr).unwrap(),
+                }),
+                b: Box::new(AudioNode::Vco {
+                    uid: auracle_grammar::Uid::NEW,
+                    wave: Waveform::Triangle,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+            },
+        }
+    }
+
+    /// The take of the CAPTURE at `node/0`.
+    fn capture_take(tree: &auracle_grammar::PatchTree) -> auracle_grammar::Take {
+        match tree.root.children().first() {
+            Some(auracle_grammar::AudioNode::Capture { take, .. }) => take.clone(),
+            n => panic!("no capture at node/0: {n:?}"),
+        }
+    }
+
+    /// An engine holding one captured sound.
+    fn capture_engine() -> (Engine, u64) {
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0xCA97));
+        engine.cfg.pool_size += 1;
+        let id = engine
+            .insert_preset(captured_patch(), "captured")
+            .expect("a captured sound vets");
+        (engine, id)
+    }
+
+    /// **A take is saved with its sound, held to its bound, and comes back
+    /// bit for bit**, so the restored sound measures exactly as before and
+    /// nothing is reported as repaired.
+    #[test]
+    fn a_take_is_saved_with_its_sound_and_restored() {
+        let (engine, id) = capture_engine();
+        let before = &engine.pool[engine.find(id).unwrap()];
+        let (tree, phi) = (before.tree.clone(), before.features.phi());
+        let text = serde_json::to_string(&engine.export_state()).unwrap();
+        let state: SessionState = serde_json::from_str(&text).unwrap();
+        // The bound, in the file: f32 samples in base64, no longer than the
+        // take's seconds at its rate.
+        let saved = serde_json::to_value(&state).unwrap();
+        let entry = saved["bank"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .expect("the captured sound is in the bank");
+        let take = &entry["tree"]["root"]["Mix"]["a"]["Capture"]["take"];
+        let length = take["length"].as_u64().unwrap() as usize;
+        assert_eq!(take["format"], auracle_grammar::TAKE_FORMAT);
+        assert_eq!(
+            take["data"].as_str().unwrap().len(),
+            (length * 4).div_ceil(3) * 4
+        );
+        assert!(
+            length as f64 <= auracle_grammar::TAKE_SECONDS * take["sample_rate"].as_f64().unwrap()
+        );
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(state);
+        let after = &back.pool[back.find(id).unwrap()];
+        assert_eq!(after.tree, tree, "the take came back different");
+        assert_eq!(capture_take(&after.tree), capture_take(&tree));
+        assert!(!capture_take(&tree).is_empty());
+        assert_eq!(
+            after.features.phi(),
+            phi,
+            "the restored sound measures differently"
+        );
+        assert_eq!(back.repair_report(), (0, 0, 0));
+    }
+
+    /// **A take the session file holds but that cannot be read costs the sound
+    /// its take and nothing else**: the bank comes back whole, the capture is
+    /// in place and empty, the sound is measured again without it (its φ
+    /// moves), and the restore reports one repaired sound, which the app tells
+    /// the player.
+    ///
+    /// A sound whose only source is its take would restore silent and fail
+    /// the vet, and `import_state` drops any entry that no longer renders;
+    /// that rule is restore-wide and is left as it is here.
+    #[test]
+    fn an_unreadable_take_restores_the_sound_empty_and_says_so() {
+        let (engine, id) = capture_engine();
+        let phi = engine.pool[engine.find(id).unwrap()].features.phi();
+        let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+        for e in saved["bank"].as_array_mut().unwrap() {
+            if e["id"] == id {
+                // A length the data does not hold.
+                e["tree"]["root"]["Mix"]["a"]["Capture"]["take"]["length"] = 7.into();
+            }
+        }
+        let state: SessionState = serde_json::from_value(saved).expect("the session still parses");
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        assert_eq!(
+            back.import_state(state.clone()),
+            engine.pool.len(),
+            "the bank came back whole"
+        );
+        let c = &back.pool[back.find(id).unwrap()];
+        assert!(
+            capture_take(&c.tree).is_empty(),
+            "the unreadable take was kept"
+        );
+        assert_ne!(
+            c.features.phi(),
+            phi,
+            "measured as if the take were still there"
+        );
+        assert_eq!(back.repair_report().0, 1, "the restore did not say so");
+        // The farm's restore comes back the same: each entry rendered from its
+        // own term (which no longer holds the take), absorbed in bank order.
+        let mut farmed = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        let bank = farmed.import_state_deferred(state);
+        for entry in bank {
+            let Ok(pre) = PreFeaturized::render(entry.tree.clone(), &engine.cfg.phrase, false)
+            else {
+                continue;
+            };
+            farmed.absorb_bank_entry(entry, pre);
+        }
+        assert_eq!(farmed.finish_restore(), engine.pool.len());
+        assert_eq!(farmed.repair_report().0, 1);
+        let f = &farmed.pool[farmed.find(id).unwrap()];
+        assert_eq!(f.tree, c.tree);
+        assert_eq!(f.features.phi(), c.features.phi());
+    }
 }

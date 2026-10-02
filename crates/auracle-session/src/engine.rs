@@ -4166,9 +4166,16 @@ impl Engine {
         // player's bank — losing four patches to fix a bug in one number.
         // Repair keeps the patch and loses only the corruption, which is the
         // standing rule for saved state: migration, never deletion.
+        //
+        // A CAPTURE whose saved take could not be read is the same rule: the
+        // sound came back whole with that take empty (`Take`'s loader never
+        // fails the term), and it counts as a repaired sound so the player is
+        // told. Asked before the clamp, which rebuilds a term it mends and so
+        // forgets which take was unreadable.
         let mut bank = state.bank;
         for entry in &mut bank {
-            if entry.tree.clamp_domains() > 0 {
+            let lost = entry.tree.lost_takes() > 0;
+            if entry.tree.clamp_domains() > 0 || lost {
                 self.repaired_terms += 1;
             }
         }
@@ -4256,7 +4263,10 @@ impl Engine {
 
     /// How many saved terms, log cells and whole observations the last
     /// [`Engine::import_state_deferred`] had to repair. All three are zero for
-    /// a session written by a build that has this gate.
+    /// a session written by a build that has this gate, except that a term
+    /// counts as repaired when a CAPTURE's saved take could not be read (it
+    /// loads empty; see `auracle_grammar::Take`), which a file damaged after
+    /// it was written can cause under any build.
     ///
     /// Reported rather than logged because the frontend is the only thing that
     /// can tell the player their profile was mended, and a silent repair of the
