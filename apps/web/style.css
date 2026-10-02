@@ -5105,14 +5105,16 @@ html.handheld .handheld-gate {
 /* Two lines are kept whether or not an offer is there: B's strip used to grow
    by a line when one landed, and push the XY pad down under a moving hand. */
 .pf-offer { min-height: calc(2 * 1.35em + 2 * var(--s2)); }
-.pf-offer-body {
+.pf-offer-body,
+.pf-ghost-body {
   line-height: 1.35;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.pf-offer-label {
+.pf-offer-label,
+.pf-ghost-label {
   font-style: normal;
   color: var(--phos-b);
   border: 1px solid var(--phos-b-deep);
@@ -5413,10 +5415,10 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 
 /* A bred child that landed below its parent: the sampler exploring, said so. */
 .lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
-.pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
+.pf-offer-what, .pf-ghost-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
 /* How far an aimed offer went the way its control was turned: the model's
    measurement, so amber; a miss says so in words, not in another colour. */
-.pf-offer-aim { color: var(--phos-b-dim); font-style: normal; }
+.pf-offer-aim, .pf-ghost-aim { color: var(--phos-b-dim); font-style: normal; }
 
 /* ---------- PERFORM: XY pad beside the hood ---------- */
 .pf-stage {

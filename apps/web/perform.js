@@ -1659,8 +1659,10 @@ export function createPerform(host) {
     const r = offerCard.getBoundingClientRect();
     if (!ms || !state.visible || !r.width) return null;
     const g = offerCard.cloneNode(true);
-    // Its own class, never B's: it is a picture of B, not B.
+    // Its own classes, never B's, inside as well: it is a picture of B, not
+    // B, and nothing that reads B may find it.
     g.className = "pf-offer-ghost";
+    for (const e of g.querySelectorAll("[class]")) e.className = e.className.replace(/\bpf-offer-/g, "pf-ghost-");
     g.dataset.moment = name;
     g.setAttribute("aria-hidden", "true");
     g.style.left = `${r.left}px`;
