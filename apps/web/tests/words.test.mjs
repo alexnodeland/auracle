@@ -115,7 +115,7 @@ test("a mixed generation counts each outcome, in one sentence", () => {
 
 test("a generation that could not start from its seeds says how to fix it", () => {
   assert.equal(emptyGeneration(7, ["outside_support", "outside_support"]),
-    "Generation 7: nothing could be bred, because every seed it picked has a knob on its stop, is deeper than the model scores, or has AUDIO IN. Nudge those knobs off their stops.");
+    "Generation 7: nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores. Nudge those knobs off their stops.");
 });
 
 test("a stopped generation counts only the walks that came back, never \"every walk\"", () => {
@@ -364,12 +364,4 @@ test("AUDIO IN says which input it reads, or why it has none, in the voice", () 
   assert.match(INPUT_SAID.refused, /refused/);
   assert.match(INPUT_SAID.refused, /ASK AGAIN/);
   assert.match(INPUT_SAID.monitorOn, /headphones/);
-});
-
-test("⚡ on a sound with AUDIO IN says why it can't start, not a knob's stop", () => {
-  const s = evolveRefusal("outside_support", "Mic Pad", true);
-  assert.match(s, /AUDIO IN/);
-  assert.doesNotMatch(s, /stop/);
-  voiced(s);
-  assert.match(evolveRefusal("outside_support", "Mic Pad"), /on its stop/);
 });

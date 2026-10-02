@@ -28,7 +28,9 @@ changelog that edits its own past is not a record.
   six seconds captured the first time your input carries a signal, saved with
   your session. NEW CLIP captures another. Until there is one, it hears a
   built-in plucked phrase.
-- A sound with AUDIO IN can’t be bred from yet: ⚡ evolve from this says so.
+- **A sound with AUDIO IN breeds like any other.** ⚡ evolve from this and a
+  generation walk it through the clip and keep its input where you set it. No
+  generation adds an input to a sound by itself.
 
 ### Added: PERFORM's palette, its offers in motion, and stage mode
 

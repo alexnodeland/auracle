@@ -113,12 +113,16 @@ built-in plucked phrase.
 The [reference](../reference/audition/clips.html) has how the clip is made,
 stored, and measured.
 
+## Breeding it
+
+A sound with AUDIO IN breeds like any other. ⚡ EVOLVE FROM THIS and a
+generation walk it through the clip, and every child keeps its AUDIO IN on
+the input you set, while its gain, its channel, and everything around it can
+change. No generation adds AUDIO IN to a sound by itself: an input is in a
+sound only because you patched it in.
+
 ## What it doesn’t do yet
 
-- **It isn’t bred from.** ⚡ EVOLVE FROM THIS says it can’t start from a sound
-  with AUDIO IN, and a generation’s walk from one comes back with nothing
-  (*couldn’t start*). You can play, edit, save, and keep it, and no
-  generation adds AUDIO IN to a sound by itself.
 - **No face yet.** The square on the module shows your input’s level; a face of
   your input will take its place.
 - **One input for the keys** (above), and one clip for every input.

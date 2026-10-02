@@ -222,15 +222,20 @@ keeps the measurement it had and is reported as `unmeasured`: a clip change
 never deletes a patch. Observations already in the log keep the $\varphi$
 they were logged with.
 
+## Breeding a patch that listens
+
+AUDIO IN is a player kind ([grammar](../genome/grammar.md#audio-in-the-players-input)):
+the prior never draws one, so no fill or walk deals an input, and it scores a
+player’s, so a listening patch is walked like any other. A walk renders every
+proposal with the session’s clip, because `WalkContext.phrase` carries it,
+and the farm’s walk (`farm_walk`) is handed the same context: a ⚡ or a
+generation from a listening seed lands the same child on the farm as on the
+engine, with the seed’s inputs held and any CAPTURE’s take carried through
+(`crates/auracle-wasm`’s
+`a_listening_seed_evolves_on_the_farm_with_its_clip_and_take`).
+
 ## What is open
 
-- **AUDIO IN in the prior.** Its weight is still 0 (`AUDIO_IN_WEIGHT`), so no
-  fill or walk draws one. A player places one from the module rail, and such a
-  patch has `log p = −∞` under the shipped prior: ⚡ evolve from it is refused
-  (`OutsideSupport`, which the app explains as AUDIO IN), and a generation’s
-  walk from it never starts. Everything on this page is built and tested with
-  the term on (`PatchGrammarPrior::with_audio_in`); turning it on is setting
-  `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT` (Plan-007 task 4).
 - **One clip for every input.** The session has one clip, and every AUDIO IN
   reads it whatever its input slot. A clip per input would make the render
   depend on the slot.

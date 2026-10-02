@@ -136,12 +136,10 @@ When every sound the model chose to breed from is out of breeding’s reach, the
 toast is different:
 
 > *Generation 4: nothing could be bred, because every seed it picked has a
-> knob on its stop, is deeper than the model scores, or has AUDIO IN. Nudge
-> those knobs off their stops.*
+> knob on its stop or is deeper than the model scores. Nudge those knobs off
+> their stops.*
 
-More picks won’t fix that one; moving those knobs will. A sound with AUDIO IN
-can’t be bred from yet ([what it doesn’t do
-yet](./playing-through.md#what-it-doesnt-do-yet)).
+More picks won’t fix that one; moving those knobs will.
 
 ## An edit didn’t take
 

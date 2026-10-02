@@ -496,10 +496,6 @@ the voices' input in the worklet, and the clip in the engine.
   goes out (port messages are ordered). A crew raised later gets the current
   phrase in `farmSetup`. `farm.js` keeps its open render store when the
   namespace is unchanged (the namespace never sees the clip).
-- **⚡ from a sound that listens.** The shipped prior gives AUDIO IN no weight
-  yet (`AUDIO_IN_WEIGHT`), so a walk cannot start from one. `evolved_from`
-  carries `listens` with an `outside_support` reason, and main says why
-  (`evolveRefusal`) instead of blaming a knob on its stop.
 
 ## The job slot
 

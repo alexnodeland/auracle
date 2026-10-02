@@ -2376,7 +2376,7 @@ worker.onmessage = (e) => {
         }
         scheduleSave();
       } else {
-        note(evolveRefusal(m.reason, seedName, !!m.listens), { replace: "evolve-from" });
+        note(evolveRefusal(m.reason, seedName), { replace: "evolve-from" });
       }
       break;
     }

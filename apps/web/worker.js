@@ -1607,15 +1607,7 @@ async function evolveFrom(m) {
   const reply = JSON.parse(engine.refine_from_job(m.id, locks));
   if (!reply.job) {
     // No taste yet, or the seed has gone. No crew is raised for nothing.
-    // A seed outside the grammar's support may be one with an AUDIO IN, which
-    // the shipped prior gives no weight yet: main says so rather than blame
-    // a knob.
-    const reason = reply.reason || refineReason();
-    let listens = false;
-    if (reason === "outside_support") {
-      try { listens = /"AudioIn"/.test(engine.tree_json_of(m.id) || ""); } catch (_) { /* gone */ }
-    }
-    post({ type: "evolved_from", seedId: m.id, childId: 0, reason, listens, views: tasteViews(), status: status() });
+    post({ type: "evolved_from", seedId: m.id, childId: 0, reason: reply.reason || refineReason(), views: tasteViews(), status: status() });
     schedulePump();
     return;
   }

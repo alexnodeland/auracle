@@ -105,7 +105,7 @@ export function emptyGeneration(gen, reasons, { stopped = false, replaced = "" }
   if (t.outside_support === n) {
     const what = stopped
       ? `${count(n, "seed")} it picked couldn’t be bred from${before}`
-      : "nothing could be bred, because every seed it picked has a knob on its stop, is deeper than the model scores, or has AUDIO IN";
+      : "nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores";
     return `${head}: ${what}.${tail("Nudge those knobs off their stops.")}`;
   }
   if (t.no_move === n) {
@@ -131,14 +131,11 @@ export function emptyGeneration(gen, reasons, { stopped = false, replaced = "" }
 }
 
 /** Why ⚡ evolve from this added nothing, from the engine's reason. `name`
- *  is the sound it walked from; `listens`, that it has an AUDIO IN, which
- *  the shipped grammar gives no weight yet (`AUDIO_IN_WEIGHT`), so a walk
- *  cannot start from it whatever its knobs. */
-export function evolveRefusal(reason, name, listens = false) {
+ *  is the sound it walked from. */
+export function evolveRefusal(reason, name) {
   const from = name ? ` from ${name}` : "";
   switch (reason) {
     case "outside_support":
-      if (listens) return `⚡ can’t start${from}: a sound with AUDIO IN can’t be bred from yet. Play it and keep it, and breed from another sound.`;
       return `⚡ can’t start${from}: a knob is on its stop, or the patch is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.`;
     case "no_taste":
       return "Nothing to breed toward yet. Make a few picks first, then evolve.";
