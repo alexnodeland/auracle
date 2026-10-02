@@ -196,6 +196,7 @@ function farmDrop(f, reason) {
   f.alive = false;
   console.warn(`[auracle] farm worker ${f.index} out: ${reason || "unknown"}`);
   if (farmSink) farmSink.lost(f);
+  guessLost(f);
   walkLost(f);
 }
 
@@ -219,6 +220,8 @@ function onFarmMessage(f, m) {
       farmDrop(f, m.reason || "declined a job");
       return;
     case "done":
+      // A guess's render on a walk crew (`crewRenders`), or a fill's draw.
+      if (guessDone(f, m)) return;
       if (farmSink) farmSink.done(f, m);
       return;
     case "walked":
@@ -1147,19 +1150,159 @@ async function measure(m) {
 // candidates in the order a crew that stops early should render them) and
 // ranks what the memo holds (`guess_rank`); it renders nothing itself.
 //
-// Here, with no crew, it renders the first `GUESS_FLOOR` candidates, one per
-// turn with the player answered between them, as PERFORM's measurement does,
-// and stops rendering once `GUESS_BUDGET_MS` of rendering is spent, ranking
-// what it has (`rendered` of `planned` says how much). The budget counts
-// render time only, checked after each render, so it can run over by one
-// render. A crew renders them
-// all with `farm_render` and `memo_absorb` (task 7 raises one for it; the
-// plan's `cache` keys the farm's store). A `later` job: it gives way to work
-// the player asks for and resumes where it stopped, since every render it
-// made is in the memo. The reply echoes `token` and carries the tree it
-// ranked, so a page that has moved on drops it.
+// On a crew (`guessOnCrew`), it asks for every candidate (`limit` 0) and
+// hands them out, one `farm_render` per idle worker (the farm's `job`), and
+// absorbs each result as it lands (`memo_absorb`, checked against this
+// engine's stimulus), for at most `GUESS_BUDGET_MS` of wall-clock time; it
+// does not render, so the player is answered throughout. With no crew (width
+// 0, boot's crew still filling the pool, a spawn that failed), or for what a
+// crew left unrendered, it renders the first `GUESS_FLOOR` candidates here,
+// one per turn with the player answered between them, as PERFORM's
+// measurement does, and stops rendering once `GUESS_BUDGET_MS` of rendering
+// is spent, ranking what it has (`rendered` of `planned` says how much). The
+// budget counts render time only, checked after each render, so it can run
+// over by one render. A `later` job: it gives way to work the player asks for
+// and resumes where it stopped, since every render it made is in the memo.
+// The reply echoes `token` and carries the tree it ranked, so a page that has
+// moved on drops it.
 const GUESS_FLOOR = 8;
 const GUESS_BUDGET_MS = 3000;
+
+// The guess's renders out on the crew, by job id: {job, f, resolve}. Ids are
+// their own sequence; the farm echoes `i` in `done`, which no fill is
+// listening for while a walk crew stands.
+const guessInflight = new Map();
+let guessSeq = 0;
+const guessBusy = () => guessInflight.size > 0;
+
+/** A crew worker answered a guess render (`done`), or gave its job back. */
+function guessDone(f, m) {
+  const s = guessInflight.get(m.i);
+  if (!s) return false;
+  guessInflight.delete(m.i);
+  if (f && f.job === `g${m.i}`) f.job = null;
+  s.resolve(m.ok ? { ok: true, cached: m.cached } : { ok: false });
+  return true;
+}
+
+/** A worker holding a guess render was lost: its job comes back unrendered
+ *  (not failed: the render did not fail, the worker did). */
+function guessLost(f) {
+  for (const [i, s] of guessInflight) {
+    if (s.f !== f) continue;
+    guessInflight.delete(i);
+    s.resolve(null);
+  }
+}
+
+/** Render `jobs` on the crew, as many at once as there are idle workers, for
+ *  at most `ms`. Resolves to the results that landed, by job (`{ok, cached}`;
+ *  null for one a lost worker gave back). Jobs still out when the time is up
+ *  are abandoned: their answers find nobody. */
+function crewRenders(jobs, ms) {
+  return new Promise((resolve) => {
+    const out = new Map();
+    const queue = [...jobs];
+    const ids = new Set();
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      for (const i of ids) {
+        const s = guessInflight.get(i);
+        if (!s) continue;
+        guessInflight.delete(i);
+        if (s.f && s.f.job === `g${i}`) s.f.job = null;
+      }
+      walkPump();
+      resolve(out);
+    };
+    const timer = setTimeout(finish, Math.max(0, ms));
+    const hand = () => {
+      if (finished) return;
+      for (const f of farm) {
+        if (!queue.length) break;
+        if (!f.alive || !f.ready || f.job !== null) continue;
+        const job = queue.shift();
+        const i = ++guessSeq;
+        ids.add(i);
+        f.job = `g${i}`;
+        guessInflight.set(i, {
+          f,
+          resolve: (r) => {
+            ids.delete(i);
+            out.set(job, r);
+            hand();
+            if (out.size === jobs.length || (!queue.length && ids.size === 0) || !crewReady()) finish();
+          },
+        });
+        f.port.postMessage({ type: "job", i, tree: job.tree, wantAudio: false });
+      }
+      if (!crewReady() || (queue.length && ids.size === 0 && !farm.some((f) => f.alive && f.ready))) finish();
+    };
+    hand();
+  });
+}
+
+/** The guess's renders on a crew (raised for it, as a generation raises
+ *  one): every candidate, absorbed as it lands, within the budget. Returns
+ *  the plan's refusal if it has one, else null once rendering is over (all
+ *  absorbed, or the budget spent); what is left unrendered the serial floor
+ *  below picks up. False when no crew can be had: the floor does it all. */
+async function guessOnCrew(at, failed) {
+  if (!booted || bootCrewLive() || walking()) return false;
+  if (!(await crewUp())) return false;
+  const t0 = performance.now();
+  try {
+    for (let round = 0; round < 6; round++) {
+      const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), 0));
+      if (plan.reason) return plan;
+      if (!plan.jobs.length) return null;
+      const left = GUESS_BUDGET_MS - (performance.now() - t0);
+      if (left <= 0 || !crewReady()) return null;
+      const results = await crewRenders(plan.jobs, left);
+      let absorbed = 0;
+      for (const [job, r] of results) {
+        if (!r) continue;
+        if (!r.ok) failed.push(job.key);
+        // A row this engine refuses (another stimulus) costs a render below,
+        // never a wrong φ; it is not a vet failure.
+        else if (engine.memo_absorb(job.tree, r.cached)) absorbed += 1;
+      }
+      if (results.size < plan.jobs.length || absorbed === 0) return null;
+    }
+    return null;
+  } finally {
+    crewIdle();
+  }
+}
+
+/** A guess's crew phase, before it takes the floor: every candidate on a
+ *  crew, once per request (a resumed run goes on from the memo). Not holding
+ *  the floor, as a generation's walks do not: it renders nothing here, and the
+ *  player and other long work are served while the crew renders. True when
+ *  it answered (a refusal from the plan, or an error). */
+async function guessCrewPhase(m) {
+  if (m.crewed) return false;
+  m.crewed = true;
+  const at = m.at || undefined;
+  const failed = m.failed || (m.failed = []);
+  try {
+    const crew = await guessOnCrew(at, failed);
+    if (crew && crew.reason) {
+      post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data: crew });
+      return true;
+    }
+    if (crew === null) m.crew = true;
+    return false;
+  } catch (err) {
+    const message = String((err && err.message) || err);
+    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    if (isFatal(err, message)) throw err;
+    return true;
+  }
+}
 
 async function guessRun(m) {
   const at = m.at || undefined;
@@ -1167,6 +1310,13 @@ async function guessRun(m) {
   const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
   m.spent = m.spent || 0;
   try {
+    // After a crew (`guessCrewPhase`) the ranking covers every candidate it
+    // rendered; with none, the floor's.
+    const limit = m.crew ? 0 : GUESS_FLOOR;
+    // The floor: the first `GUESS_FLOOR` in order, here. After a crew these
+    // are usually in the memo already (they went out first), so this renders
+    // only what the crew could not (a row from another stimulus, a lost
+    // worker), and it is the whole of the work with no crew.
     for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
       const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
       if (plan.reason) {
@@ -1185,7 +1335,7 @@ async function guessRun(m) {
         if (m.spent >= GUESS_BUDGET_MS) break;
       }
     }
-    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
+    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), limit)));
   } catch (err) {
     // Answered, as `measure` answers: the page holds a guess open until its
     // reply lands. A trap still poisons the engine, through `dispatch`.
@@ -2558,6 +2708,7 @@ async function dispatch(m) {
     // The model's guess for the patch in hand (see `guessRun`), and a skip of
     // one. Taking a guess is `edit_structure` with `guess`.
     case "guess": {
+      if (await guessCrewPhase(m)) break;
       await holdFloor(m, () => guessRun(m));
       break;
     }
