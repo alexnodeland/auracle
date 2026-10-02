@@ -129,8 +129,10 @@ const {
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims,
 } = await import(`./words.js?v=${BUILD}`);
-// A sound's face against the bank, as markup (faces.js, tests/faces.test.mjs).
-const { decodeFace, bankStats, statsMoved, faceSvg } = await import(`./faces.js?v=${BUILD}`);
+// A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
+// one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
+const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
+const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -289,7 +291,7 @@ const FACE_SIZE = {
   hand: [32, 48],  // PERFORM, the sound in hand
   offer: [16, 26], // PERFORM's B
   warm: [24, 40],  // the warm start's cards
-  share: [156, 260], // the sound's card (drawn into its SVG, not a slot)
+  share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
 };
 const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
 const faceKeyById = new Map();  // pool id -> key
@@ -302,11 +304,9 @@ let faceStats = null;           // the bank's mean and spread (faces.js `bankSta
 let faceBankKeys = "";          // the keys those were taken over
 let faceEpoch = 0;              // bumped when they change: every face redraws
 const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
-// Each face is drawn once per bank, as an image the browser decodes once:
-// rows are rebuilt as HTML on every bank render, and forty faces of thirteen
-// paths each as inline SVG were a megabyte of markup to parse every time.
-let faceUrls = new Set(); // this epoch's object URLs
-let faceUrlsOld = [];     // the last epoch's, revoked once every slot is redrawn
+// Each face is drawn once per bank (vessel.js `drawVessel`, the renderer every
+// size shares) into an image: rows are rebuilt as HTML on every bank render,
+// and an <img> of a drawing already made costs nothing to put back.
 let faceSendQueued = false;
 let facePaintQueued = false;
 
@@ -346,13 +346,23 @@ function faceMarkup(target, kind, ask = true, build = true) {
   let s = faceMarkupCache.get(ck);
   if (s == null && !build) return "";
   if (s == null) {
-    const svg = faceSvg(face, faceStats, { w, h, layers: h >= 20, line: h >= 120 ? 2 : 1, color: tok("--phos-a") });
-    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    faceUrls.add(url);
-    s = `<img class="face" src="${url}" width="${w}" height="${h}" alt="" draggable="false">`;
+    s = `<img class="face" src="${faceImage(face, w, h)}" width="${w}" height="${h}" alt="" draggable="false">`;
     faceMarkupCache.set(ck, s);
   }
   return s;
+}
+/** One face drawn at `w × h` CSS px, at the screen's density, as a PNG. */
+let faceCanvas = null;
+function faceImage(face, w, h, opts = {}) {
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const c = faceCanvas || (faceCanvas = document.createElement("canvas"));
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  drawVessel(ctx, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: h >= 20, ...opts });
+  return c.toDataURL("image/png");
 }
 function wantFace(target) {
   if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
@@ -410,10 +420,6 @@ function facesChanged() {
     facePaintQueued = false;
     faceRestat();
     paintFaces();
-    // Every slot in the page now shows this epoch's drawing; a slot out of
-    // the page (PERFORM's B with no offer) is redrawn when it is set again.
-    for (const u of faceUrlsOld) URL.revokeObjectURL(u);
-    faceUrlsOld = [];
     imageSync(); // a card waiting on its face
   });
 }
@@ -438,8 +444,6 @@ function faceRestat() {
   faceStats = now;
   faceEpoch++;
   faceMarkupCache.clear();
-  faceUrlsOld.push(...faceUrls);
-  faceUrls = new Set();
   return true;
 }
 /** Draw every slot whose face or bank changed since it was drawn. The bank's
@@ -4355,6 +4359,16 @@ async function bootPerform() {
     label: () => liveLabelText,
     // A face into one of PERFORM's slots: the sound in hand's, or B's.
     face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
+    // A tree's face and the bank it is drawn against, for a drawing of
+    // PERFORM's own at any size (vessel.js `drawVessel`), or null until the
+    // face has landed (asked for here).
+    faceOf: (json) => {
+      const target = json ? faceTarget({ tree: json }) : "";
+      const key = target && faceKeyOfTarget(target);
+      const face = key && faceByKey.get(key);
+      if (!face && target) wantFace(target);
+      return face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
+    },
     locks: () => [...lockedAddrs()],
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
@@ -21216,13 +21230,27 @@ async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
     }
     const m = px("--s4");
     add("rect", { x: m + 0.5, y: m + 0.5, width: CARD_W - 2 * m - 1, height: CARD_H - 2 * m - 1, rx: px("--r3"), fill: "none", stroke: tok("--hairline") });
-    // The face: `faceSvg`'s markup, nested, in the sound's green, as the
-    // app's slots draw it.
+    // The face, by the renderer every size shares, large, with its glow and
+    // the floor's reflection, as the specimen's card draws it; drawn at 3×
+    // so a 3× download is sharp. Its space runs to the frame's foot, for the
+    // reflection.
     const [fw, fh] = FACE_SIZE.share;
     const fx = px("--s7");
-    const fy = (CARD_H - fh) / 2;
-    const holder = add("g", { transform: `translate(${fx} ${fy})` });
-    if (sub.face && faceStats) holder.innerHTML = faceSvg(sub.face, faceStats, { w: fw, h: fh, line: 2, color: tok("--phos-a") });
+    const fy = px("--s6");
+    const ih = CARD_H - fy - m;
+    if (sub.face && faceStats) {
+      const c = document.createElement("canvas");
+      const z = 3;
+      c.width = fw * z;
+      c.height = ih * z;
+      const ctx = c.getContext("2d");
+      ctx.setTransform(z, 0, 0, z, 0, 0);
+      drawVessel(ctx, sub.face, faceStats, {
+        box: { x: fw * 0.06, y: 8, w: fw * 0.88, h: fh },
+        color: tok("--phos-a"), glow: 14, line: 2, reflection: true,
+      });
+      add("image", { x: fx, y: fy, width: fw, height: ih, href: c.toDataURL("image/png") });
+    }
     // The words: the name at the display size (the title's if it will not
     // fit on one line, then over two lines), the line under it, the mark.
     const tx = fx + fw + px("--s7");

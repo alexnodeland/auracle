@@ -89,10 +89,15 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - the worker files each face under its render namespace and key, in
        memory and in IndexedDB, answers `faces` without a render, and
        renders only what it has no face for, in `later`, after boot;
-     - main whitens against the pool's faces and draws the specimen's
-       vessel (`faces.js`), once per bank as an image; the bank is drawn
-       against again when its mean moves by 0.25 dB in a band or its spread
-       by 1%;
+     - main whitens against the pool's faces (`faces.js`), and one
+       renderer draws the specimen's vessel at every size (`vessel.js`
+       `drawVessel(ctx, face, stats, {box, slices, glow, reflection})`): a
+       row's icon, the cards, PERFORM's slots, the share card with its glow
+       and reflection, and stage mode's full screen (drawn once at 1440 ×
+       900 for PERFORM's branch to wire; `host.faceOf(tree)` hands it the
+       face and the bank). Slots show it once per bank as an image; the bank
+       is drawn against again when its mean moves by 0.25 dB in a band or
+       its spread by 1%;
      - faces are on the bank's rows (pool and presets), EVOLVE's cards,
        PATCH's header and teach strip, PERFORM's sound in hand and B, and
        the warm start's cards, each in a slot its place always has; the
@@ -111,14 +116,17 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - its slice layers were not documented; here each slice's spectrum is
        relative to its own loudest band and sized and lit by the slice's
        loudness, as the specimen draws them;
-     - the specimen draws a glow on every face; faces here have none (a
-       glow would have to be an SVG filter on forty images), and the card
-       draws none either;
+     - the specimen draws small faces (rows, chips) without a glow and
+       large ones with one; here the same: the share card and stage size
+       have the glow and the floor's reflection, the slots none;
      - a face's whitening moves when the pool does, so a face of the same
        render can read differently a generation later: the specimen's never
        did, since its bank never changed;
-     - the specimen's faces are drawn on canvases; here they are SVG, so the
-       share card carries the face as vectors.
+     - the specimen's stage fades its live trail like phosphor; that trail
+       is what you hear, not the face, so it is stage mode's to draw over
+       the face (PERFORM's branch), and the renderer draws the face's slices
+       as the specimen's `A.face` does: stacked layers, each as bright as
+       its slice is loud.
 4. **EVOLVE and the bank** (this is Plan-004 task 7's explanation figure).
    - Pointing at EVOLVE POOL marks the seeds as well as the sounds that may be
      replaced. The seed count is exposed from the engine (task 9).

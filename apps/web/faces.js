@@ -1,8 +1,8 @@
-// A sound's face: its render's spectrum, against the bank's, drawn as a
-// vessel (Plan-005 task 3, RFC-006 §2; the specimen is prototype v2's
-// `A.face`, docs/notes/vision-2026-09/prototype/core.js). Pure, so it is
-// unit-tested (tests/faces.test.mjs); main.js asks for faces and puts this
-// module's drawing in their slots, as an image, and on the sound's card.
+// A sound's face: its render's spectrum, against the bank's (Plan-005 task 3,
+// RFC-006 §2; the specimen is prototype v2's `A.face`,
+// docs/notes/vision-2026-09/prototype/core.js). The data and the geometry,
+// pure, so they are unit-tested (tests/faces.test.mjs); vessel.js draws them,
+// at every size.
 //
 // What is drawn is the engine's measurement of the render
 // (`auracle_features::face`, read from the engine's memo by
@@ -101,61 +101,23 @@ export function smooth(a, k) {
 }
 
 const sig = (x) => 1 / (1 + Math.exp(-x));
-const r2 = (x) => Math.round(x * 100) / 100;
-const r1 = (x) => Math.round(x * 10) / 10;
 
-/** The vessel's outline as an SVG path: frequency up the box (low at the
- *  base), mirrored about its center, half-width `R · σ(1.4 v) · scale` for a
- *  band `v` spreads from the bank's mean (half the box at the mean), closed
- *  with quadratic curves through the midpoints, as the specimen draws it. */
-export function vesselPath(dev, box, scale = 1, fine = true) {
-  const r = fine ? r2 : r1;
+/** The vessel's outline: frequency up the box (low at the base), mirrored
+ *  about its center, half-width `R · σ(1.4 v) · scale` for a band `v` spreads
+ *  from the bank's mean (half the box at the mean), as the specimen draws it.
+ *  The closed list of points, up the right side and down the left;
+ *  vessel.js joins them with quadratic curves through their midpoints. */
+export function vesselPoints(dev, box, scale = 1) {
   const n = dev.length;
   const cx = box.x + box.w / 2;
   const R = box.w / 2;
-  const pts = [];
-  for (let i = 0; i < n; i++) pts.push([R * sig(dev[i] * 1.4) * scale, box.y + box.h - (i / (n - 1)) * box.h]);
-  const all = pts.map(([w, y]) => [cx + w, y]).concat(pts.slice().reverse().map(([w, y]) => [cx - w, y]));
-  const m = all.length;
-  let d = `M${r((all[m - 1][0] + all[0][0]) / 2)} ${r((all[m - 1][1] + all[0][1]) / 2)}`;
-  for (let i = 0; i < m; i++) {
-    const p = all[i];
-    const q = all[(i + 1) % m];
-    d += `Q${r(p[0])} ${r(p[1])} ${r((p[0] + q[0]) / 2)} ${r((p[1] + q[1]) / 2)}`;
-  }
-  return `${d}Z`;
+  const half = [];
+  for (let i = 0; i < n; i++) half.push([R * sig(dev[i] * 1.4) * scale, box.y + box.h - (i / (n - 1)) * box.h]);
+  return half.map(([w, y]) => [cx + w, y]).concat(half.slice().reverse().map(([w, y]) => [cx - w, y]));
 }
 
 /** How large and how bright slice t's layer is (0 draws none). */
 export function layerWeight(loudDb) {
   const l = Math.max(0, Math.min(1, 1 + loudDb / FACE_LAYER_RANGE_DB));
   return l < 0.25 ? 0 : l;
-}
-
-/** The face as SVG markup, `w × h` px: the twelve slices as faint layers, each
- *  as large and bright as the slice is loud, under the whole phrase's
- *  outline. Empty when there is no face or no bank to draw it against.
- *  `color` is written onto the paths, for a drawing that stands alone (the
- *  app's slots show it as an image, the card nests it); without it the
- *  paths carry only their classes (`face-l`, `face-o`). */
-export function faceSvg(face, stats, { w, h, layers = true, line = 1, color = null } = {}) {
-  if (!face || !stats) return "";
-  const pad = Math.min(w, h) * 0.06;
-  const box = { x: pad, y: pad, w: w - 2 * pad, h: h - 2 * pad };
-  const k = h < 36 ? 2 : 1;
-  // A tenth of a pixel is finer than a small face can show.
-  const fine = h >= 120;
-  let body = "";
-  if (layers) {
-    for (let t = 0; t < FACE_SLICES; t++) {
-      const l = layerWeight(face.loud[t]);
-      if (!l) continue;
-      const d = vesselPath(smooth(whiten(face.slices[t], stats), k), box, 0.35 + 0.65 * l, fine);
-      body += `<path class="face-l" d="${d}"${color ? ` fill="${color}"` : ""} fill-opacity="${r2(0.05 + 0.11 * l)}"/>`;
-    }
-  }
-  const paint = color ? ` fill="none" stroke="${color}" stroke-linejoin="round"` : "";
-  body += `<path class="face-o" d="${vesselPath(smooth(whiten(face.ltas, stats), k), box, 1, fine)}"${paint} stroke-width="${line}"/>`;
-  const ns = color ? ` xmlns="http://www.w3.org/2000/svg"` : "";
-  return `<svg${ns} class="face" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" focusable="false">${body}</svg>`;
 }

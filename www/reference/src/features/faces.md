@@ -6,8 +6,9 @@ $\varphi$, the taste model or the vetting gate reads it.</p>
 
 The app draws every sound as its face (the guide’s
 [a sound’s face](../../docs/faces.html)). The measurement is
-`auracle_features::face`; the comparison with the bank and the drawing are
-`apps/web/faces.js`.
+`auracle_features::face`; the comparison with the bank is `apps/web/faces.js`,
+and one renderer draws a face at every size, from a bank row’s icon to a full
+screen, `apps/web/vessel.js`.
 
 ## Where it is taken
 
@@ -89,8 +90,8 @@ since the faces were last drawn by more than `FACE_RESTAT_DB` = 0.25 dB in a
 band or `FACE_RESTAT_SPREAD` = 1% of $\sigma$. A smaller move shifts a 40 px
 face by under a tenth of a pixel. The recomputation is $O(40|\mathcal B|)$;
 redrawing is the cost, so the bank’s rows in view are redrawn the next frame
-and the rest when the page is idle (3–5 ms in the next frame for a pool of
-40, against 17–22 ms for all forty at once).
+and the rest when the page is idle (1.5–2 ms in the next frame for a pool
+of 40, against 17–22 ms when all forty were redrawn at once).
 
 ## The drawing
 
@@ -107,6 +108,12 @@ under it each slice draws a faint layer with $k = 0.35 + 0.65\,\ell$ and
 opacity $0.05 + 0.11\,\ell$, where
 $\ell = \operatorname{clamp}(1 + \text{loudness}/30\ \text{dB}, 0, 1)$, and a
 slice with $\ell < 0.25$ draws none (`FACE_LAYER_RANGE_DB`).
+
+Large faces (the share card, a full screen) add the specimen’s glow, a blur
+of 14 to 30 px on the outline, and the floor’s reflection: a line of light
+under the vessel and its outline mirrored in it, faint and fading over a
+third of its height. A slot shows its face drawn once per bank, at the
+screen’s density, as an image.
 
 ## Keys and caching
 

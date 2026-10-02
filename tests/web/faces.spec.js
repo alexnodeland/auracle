@@ -46,15 +46,8 @@ const init = (warmed) => `(() => {
   }
   Wrapped.prototype = Orig.prototype;
   window.Worker = Wrapped;
-  // A face's outline, read from the image a slot shows.
-  window.__pwOutline = async (img) => {
-    try {
-      const text = await (await fetch(img.src)).text();
-      return (text.match(/class="face-o" d="([^"]+)"/) || [])[1] || "";
-    } catch (_) {
-      return "";
-    }
-  };
+  // What a slot shows: its drawing, as the image it is (vessel.js draws it).
+  window.__pwOutline = async (img) => (img ? img.getAttribute("src") || "" : "");
   try {
     for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured"${warmed ? ', "auracle-warmed"' : ""}]) localStorage.setItem(k, "1");
   } catch (_) {}
@@ -91,7 +84,7 @@ const nameBoxes = (page) =>
       return { id: r.dataset.id, name: n.textContent, x: Math.round((q.left - b.left) * 10) / 10, w: Math.round(q.width * 10) / 10, cut: n.scrollWidth > n.clientWidth + 0.5, face: !!r.querySelector(".face-slot img.face") };
     }));
 
-/** The outline each row's face draws (its image's own SVG). */
+/** The drawing each row's face shows (its image). */
 const outlines = (page) =>
   page.evaluate(async () => {
     const out = {};
@@ -244,11 +237,11 @@ test("the sound's card downloads with its face, its name and its patch", async (
   expect(seen.w).toBe(1200);
   expect(seen.h).toBe(630);
   expect(seen.green).toBeGreaterThan(5);
-  // The SVG: the face as vectors, the name in words.
+  // The SVG: the face drawn into it, the name in words.
   await page.locator("#ix-fmt").selectOption("svg");
   const [svg] = await Promise.all([page.waitForEvent("download"), page.locator("#ix-go").click()]);
   const text = fs.readFileSync(await svg.path(), "utf8");
-  expect(text).toContain('class="face-o"');
+  expect(text).toMatch(/<image [^>]*href="data:image\/png;base64,/);
   expect(text).toContain(name.replace(/&/g, "&amp;"));
   expect(text).toContain('<metadata id="auracle-patch">');
   expect(errors).toEqual([]);

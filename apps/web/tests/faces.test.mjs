@@ -13,9 +13,8 @@ import {
   statsMoved,
   whiten,
   smooth,
-  vesselPath,
+  vesselPoints,
   layerWeight,
-  faceSvg,
 } from "../faces.js";
 
 /** Bytes for a face whose long-term spectrum is `ltas` (dB), every slice the
@@ -70,41 +69,26 @@ test("whitening moves when the bank changes", () => {
 test("a sound at the bank's mean is a straight vessel, half the box wide", () => {
   const bank = [tilt(0.5), tilt(1), tilt(1.5), tilt(2)].map((t) => decodeFace(bytes(t)));
   const s = bankStats(bank);
-  const mean = { ltas: s.mean };
-  const dev = whiten(mean.ltas, s);
+  const dev = whiten(s.mean, s);
   assert.ok(dev.every((v) => Math.abs(v) < 1e-12));
-  const d = vesselPath(dev, { x: 0, y: 0, w: 20, h: 40 });
-  // Every point sits at x = 10 ± 5, except where the two sides meet, at the
-  // very top and the very base.
-  const pts = [...d.matchAll(/([-\d.]+) ([-\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-  for (const [x, y] of pts) {
-    if (y === 0 || y === 40) continue;
-    assert.ok(Math.abs(Math.abs(x - 10) - 5) < 0.01, `${x},${y}`);
-  }
+  const pts = vesselPoints(dev, { x: 0, y: 0, w: 20, h: 40 });
+  assert.equal(pts.length, 2 * FACE_BANDS);
+  for (const [x] of pts) assert.ok(Math.abs(Math.abs(x - 10) - 5) < 1e-9, String(x));
 });
 
 test("the vessel is mirrored, low at the base", () => {
   const dev = Float64Array.from({ length: FACE_BANDS }, (_, i) => (i < 5 ? 2 : -1));
-  const d = vesselPath(dev, { x: 0, y: 0, w: 20, h: 40 });
-  const pts = [...d.matchAll(/Q([-\d.]+) ([-\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-  const atBase = pts.filter(([, y]) => y > 39).map(([x]) => Math.abs(x - 10));
-  const atTop = pts.filter(([, y]) => y < 1).map(([x]) => Math.abs(x - 10));
-  assert.ok(Math.min(...atBase) > Math.max(...atTop), "wide where the lows are strong, narrow on top");
-  const left = pts.filter(([x]) => x < 10).map(([x, y]) => `${(20 - x).toFixed(2)},${y}`).sort();
-  const right = pts.filter(([x]) => x > 10).map(([x, y]) => `${x.toFixed(2)},${y}`).sort();
-  assert.deepEqual(left, right);
-});
-
-test("a face is the same markup for the same render and bank", () => {
-  const bank = [tilt(0.5), tilt(1), tilt(1.5), tilt(2)].map((t) => decodeFace(bytes(t)));
-  const s = bankStats(bank);
-  const a = faceSvg(decodeFace(bytes(tilt(1.2))), s, { w: 24, h: 40 });
-  const b = faceSvg(decodeFace(bytes(tilt(1.2))), bankStats(bank.map((f) => ({ ...f }))), { w: 24, h: 40 });
-  assert.equal(a, b);
-  assert.match(a, /^<svg class="face"/);
-  assert.equal((a.match(/class="face-l"/g) || []).length, FACE_SLICES, "a layer per loud slice");
-  assert.equal(faceSvg(null, s, { w: 24, h: 40 }), "");
-  assert.equal(faceSvg(bank[0], null, { w: 24, h: 40 }), "", "no bank, no face");
+  const pts = vesselPoints(dev, { x: 0, y: 0, w: 20, h: 40 });
+  const right = pts.slice(0, FACE_BANDS);
+  const left = pts.slice(FACE_BANDS).reverse();
+  assert.equal(right[0][1], 40, "the lowest band at the base");
+  assert.equal(right[FACE_BANDS - 1][1], 0, "the highest at the top");
+  assert.ok(right[0][0] - 10 > right[FACE_BANDS - 1][0] - 10, "wide where the lows are strong, narrow on top");
+  right.forEach(([x, y], i) => {
+    assert.ok(Math.abs(20 - x - left[i][0]) < 1e-9);
+    assert.equal(y, left[i][1]);
+  });
+  assert.deepEqual(vesselPoints(dev, { x: 0, y: 0, w: 20, h: 40 }), pts, "the same geometry every time");
 });
 
 test("a quiet slice draws a smaller, fainter layer, and silence none", () => {
@@ -129,12 +113,4 @@ test("faces are drawn against the bank again only once its stats have moved", ()
   assert.equal(statsMoved(s, moved), true);
   assert.equal(statsMoved(s, { mean: s.mean, spread: s.spread * 1.02 }), true);
   assert.equal(statsMoved(s, null), true, "a bank too small to draw against is a change");
-});
-
-test("a face drawn to stand alone (an image, the card) carries its own paint", () => {
-  const bank = [tilt(0.5), tilt(1), tilt(1.5), tilt(2)].map((t) => decodeFace(bytes(t)));
-  const svg = faceSvg(bank[1], bankStats(bank), { w: 24, h: 40, color: "#8ef0b1" });
-  assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
-  assert.match(svg, /class="face-o" d="[^"]+" fill="none" stroke="#8ef0b1"/);
-  assert.equal((svg.match(/class="face-l" d="[^"]+" fill="#8ef0b1"/g) || []).length, FACE_SLICES);
 });

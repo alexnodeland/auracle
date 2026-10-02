@@ -19,6 +19,8 @@ the long-form notes are this directory's `README.md`.
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
+| `faces.js` | main thread | A sound's face: the engine's bytes as dB, the bank's mean and spread, whitening, the vessel's geometry; unit-tested in `tests/` |
+| `vessel.js` | main thread | The one renderer for a face at every size (`drawVessel`: slices, glow, the floor's reflection), on a canvas; unit-tested in `tests/` |
 | `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome; unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 

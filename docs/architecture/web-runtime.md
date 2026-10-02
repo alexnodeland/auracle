@@ -210,7 +210,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   `main.js`): the bank's mean per band and pooled spread over the faces of the
   rows the bank shows, recomputed when that set changes (once a frame) and
   drawn against only when it has moved more than 0.25 dB in a band or 1% of
-  the spread. Each face is drawn once per bank as an SVG image (an object
+  the spread. One renderer draws a face at every size (`vessel.js`
+  `drawVessel`); a slot shows it drawn once per bank as an image (a PNG data
   URL); after the bank changes, the bank's rows in view are redrawn the next
   frame and the rest when the page is idle. A slot is fixed-size and present
   whether or not its face has arrived, so no name moves for it.
