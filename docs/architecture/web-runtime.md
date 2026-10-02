@@ -713,6 +713,14 @@ the voices' input in the worklet, and the clip in the engine.
   source node fans out to an analyser per device (every module's meter), the
   worklet's input, and the clip's capture. `devicechange` and a track's
   `ended` silence what read a device that went, and reopen it when it is back.
+- **The square.** The meter loop (rAF, only while a stream is open) reads
+  each analyser's time buffer, one `FACE_FRAME` long, for the level and,
+  above −60 dBFS, for the live face: `createLiveMeter().measure` (faces.js)
+  into the face's bands, eased (0.6 old, 0.4 new), drawn by `drawVessel` on
+  a canvas in the plate's square against the bank's `faceStats` in
+  `--phos-a`, through `host.faceStats`/`host.faceColor`. The lane's
+  `data-face` says whether it drew (`live`) or not (`none`: silence, or no
+  stats under four faces); the level bar runs up the square's left edge.
 - **The voices.** The worklet node has one two-channel input. `audio-in.js`
   connects the source of the bench's first AUDIO IN to it (`LivePoly` binds one
   input stream that every AUDIO IN reads). Main posts `monitor {on}` to the

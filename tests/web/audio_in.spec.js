@@ -34,6 +34,10 @@
 //   standing is handed it (@slow: a crew stands only after a walk).
 // - An unplugged input silences its module and says so; plugged back in, it
 //   is reopened and heard again.
+// - The browser's "default" is numbered as the input it stands for, even when
+//   only the list's "Default - X" label names it.
+// - The plate's square draws the input's live face (against the bank's
+//   faces) while it plays, and nothing, level included, once it is gone.
 //
 // What it does not claim: anything about a real microphone, the latency of
 // the worklet path, or what the clip does to a sound's ratings (the engine's
@@ -477,5 +481,51 @@ test("a mono input with no channel count in its settings is captured as one chan
   const sent = await page.evaluate(() => window.__pwSent[0]);
   console.log(`mono clip sent: ${sent.frames} frames × ${sent.channels}`);
   expect(sent.channels).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test("the browser's default input is numbered as the input it stands for when only the list's label names it", async ({ page }) => {
+  // "default" stands for Fake Interface B, the second input listed, in a group
+  // of its own, and its track's label is plain: only the list's "Default -
+  // Fake Interface B" says which input it is. Unresolved, input 1 would be
+  // the first input listed (Fake Mic A), not the one the browser opened.
+  await page.addInitScript(() => { try { sessionStorage.setItem("__pwDefaultOwn", "1"); } catch (_) {} });
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await expect(lane(page).locator(".ain-dev-text")).toHaveText("1 · Fake Interface B");
+  const st = await state(page);
+  expect(st.list.map((e) => e.id)).toEqual(["mic-b", "mic-a"]);
+  // The stream the ask opened is kept and filed under the real input: one
+  // ask, one track, nothing opened again by id.
+  expect(await calls(page)).toBe(1);
+  expect(await page.evaluate(() => window.__pwLiveTracks())).toEqual({ "mic-b": 1 });
+  expect(errors).toEqual([]);
+});
+
+test("the square draws the input's live face while it plays, and nothing once it is unplugged", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  // A face is drawn against the bank, so it waits for the bank's faces.
+  await expect(lane(page)).toHaveAttribute("data-face", "live", { timeout: 120_000 });
+  const lit = () => lane(page).locator(".ain-face-live canvas").evaluate((c) => {
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+    return { n, of: c.width * c.height };
+  });
+  const on = await lit();
+  console.log(`live face: ${on.n} of ${on.of} px lit, meter ${await lane(page).getAttribute("data-db")} dBFS`);
+  expect(on.n).toBeGreaterThan(50);
+  await plateShot(page, "live-face");
+
+  await page.evaluate(() => window.__pwUnplug("mic-a"));
+  await expect(lane(page)).toHaveAttribute("data-state", "unplugged", { timeout: 20_000 });
+  await expect(lane(page)).toHaveAttribute("data-face", "none", { timeout: 5_000 });
+  expect((await lit()).n).toBe(0);
+  await expect(lane(page).locator(".ain-meter-fill")).toHaveAttribute("height", "0.0");
   expect(errors).toEqual([]);
 });

@@ -25,7 +25,16 @@ const STUB = `(() => {
     // Set before boot: Fake Mic A is mono and its track's settings name no
     // channel count, as Safari's do.
     monoA: (() => { try { return sessionStorage.getItem("__pwMonoA") === "1"; } catch (_) { return false; } })(),
+    // Set before boot: "default" stands for Fake Interface B (not the first
+    // input listed), in a group of its own, and its track's label is plain
+    // ("Default audio input", as Chromium's fake devices label theirs); only
+    // the list's "Default - Fake Interface B" says which input it is.
+    defaultOwn: (() => { try { return sessionStorage.getItem("__pwDefaultOwn") === "1"; } catch (_) { return false; } })(),
   });
+  const defaultDev = () => {
+    const real = mic.devices.filter((d) => d.present);
+    return (mic.defaultOwn && real.find((d) => d.deviceId === "mic-b")) || real[0];
+  };
   let ctx = null;
   const toneCtx = () => ctx || (ctx = new AudioContext());
   function tone(freq, mono) {
@@ -60,7 +69,7 @@ const STUB = `(() => {
     mic.granted = true;
     try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}
     const want = c && c.audio && c.audio.deviceId && c.audio.deviceId.exact;
-    const dev = want ? mic.devices.find((d) => d.deviceId === want && d.present) : mic.devices.find((d) => d.present);
+    const dev = want ? mic.devices.find((d) => d.deviceId === want && d.present) : defaultDev();
     if (!dev) throw new DOMException("Requested device not found", "NotFoundError");
     const mono = mic.monoA && dev.deviceId === "mic-a";
     const { stream, osc } = tone(dev.freq, mono);
@@ -70,10 +79,11 @@ const STUB = `(() => {
     const asDefault = !want;
     track.getSettings = () => ({
       deviceId: asDefault ? "default" : dev.deviceId,
-      groupId: dev.groupId,
+      groupId: asDefault && mic.defaultOwn ? "gdefault" : dev.groupId,
       ...(mono ? {} : { channelCount: 2 }),
     });
-    Object.defineProperty(track, "label", { value: asDefault ? "Default - " + dev.label : dev.label });
+    const defaultLabel = mic.defaultOwn ? "Default audio input" : "Default - " + dev.label;
+    Object.defineProperty(track, "label", { value: asDefault ? defaultLabel : dev.label });
     mic.tracks.push({ id: dev.deviceId, track, osc });
     return stream;
   };
@@ -81,8 +91,10 @@ const STUB = `(() => {
   // group of the input it stands for, then the real inputs.
   md.enumerateDevices = async () => {
     const real = mic.devices.filter((d) => d.present);
-    const first = real[0];
-    const listed = first ? [{ deviceId: "default", groupId: first.groupId, label: "Default - " + first.label }, ...real] : real;
+    const first = defaultDev();
+    const listed = first
+      ? [{ deviceId: "default", groupId: mic.defaultOwn ? "gdefault" : first.groupId, label: "Default - " + first.label }, ...real]
+      : real;
     return listed.map((d) => ({
       deviceId: mic.granted ? d.deviceId : "",
       groupId: d.groupId,

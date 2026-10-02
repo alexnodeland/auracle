@@ -4909,6 +4909,9 @@ mod tests {
             }
         }
         println!("{landed} of 4 ⚡ walks from the listening seed landed a child");
+        // Every comparison above is about a child: with none landed, the
+        // test would pass having compared nothing.
+        assert!(landed > 0, "no ⚡ from the listening seed landed a child");
         assert_eq!(farmed.ranked(), serial.ranked());
     }
 

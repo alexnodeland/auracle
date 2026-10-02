@@ -1581,6 +1581,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ain-face-body { fill: var(--well); stroke: var(--plate-edge); stroke-width: 1; pointer-events: none; }
 .ain-meter-track { fill: var(--white-09); pointer-events: none; }
 .ain-meter-fill { fill: var(--phos-a); opacity: 0.85; pointer-events: none; }
+/* The live face's canvas fills its square (its pixels are FACE_PX per unit). */
+.ain-face-live { pointer-events: none; }
+.ain-face-live canvas { display: block; width: 100%; height: 100%; }
 .ain-note {
   font-family: var(--font-silk); font-size: var(--t-rack-label); letter-spacing: 0.1em;
   text-transform: uppercase; fill: var(--silk-dim); pointer-events: none;

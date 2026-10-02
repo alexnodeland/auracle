@@ -284,6 +284,10 @@ const audioIn = createAudioIn({
   ensureAudio: () => ensureAudio(),
   showMenu: (x, y, head, rows) => showMenu(x, y, head, rows),
   setKnob: (addr, value) => setRackKnob(addr, value),
+  // The input's live face is drawn against the bank's faces, in the faces'
+  // own color.
+  faceStats: () => faceStats,
+  faceColor: () => tok("--phos-a"),
 });
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —

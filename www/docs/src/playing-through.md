@@ -30,7 +30,7 @@ AUDIO IN has three settings and a row under them:
 | **GAIN** | Its level, from −24 to +12 dB (unity at 67%) |
 | **CHANNEL** | Left, right, or both summed. A mono microphone is the same on all three |
 | The input line | The input’s name (*1 · MacBook Pro Microphone*). Click it to pick another |
-| The square | Your input’s level, before the patch |
+| The square | Your input, before the patch: its level up the left edge, and its [face](./faces.md) as you play, from what it is playing now |
 | **MONITOR** | Hear your input through the sound |
 | **NEW CLIP** | Capture a new clip for the model (see [the clip](#the-clip-what-the-model-hears)) |
 
@@ -122,8 +122,6 @@ sound only because you patched it in.
 
 ## What it doesn’t do yet
 
-- **No face yet.** The square on the module shows your input’s level; a face of
-  your input will take its place.
 - **One input for the keys** (above), and one clip for every input.
 
 ## What to try next

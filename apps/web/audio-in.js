@@ -37,7 +37,11 @@
 // Nothing here runs on the audio thread: the worklet (live-audio.js) writes
 // the input into LivePoly, and this module only connects nodes and paints.
 
-const W = await import(new URL(`./words.js${new URL(import.meta.url).search}`, import.meta.url).href);
+const V = new URL(import.meta.url).search;
+const W = await import(new URL(`./words.js${V}`, import.meta.url).href);
+// The input's live face: measured as a face is, drawn as every face is.
+const { createLiveMeter, FACE_FRAME, FACE_BANDS } = await import(new URL(`./faces.js${V}`, import.meta.url).href);
+const { drawVessel, vesselBox } = await import(new URL(`./vessel.js${V}`, import.meta.url).href);
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** `INPUT_SLOTS` in auracle-grammar: how many inputs a node can name. */
@@ -55,6 +59,9 @@ const CLIP_SIGNAL_DB = -50;
 const METER_FLOOR_DB = -60;
 /** The face slot's side on the module (rack units). */
 const FACE = 44;
+/** Canvas pixels per rack unit for the live face: sharp at the rack's
+ *  closer zooms. */
+const FACE_PX = 3;
 /** The most characters the input line holds: 26 mono characters at the
  *  rack's label size fill the 168 units left of the face slot. */
 const LINE_CHARS = 26;
@@ -158,16 +165,22 @@ export function createAudioIn(host) {
 
   /** The real input a stream's settings name. An unconstrained ask in Chrome
    *  and Edge answers with the pseudo-device `default`, which is not in the
-   *  list of inputs: it is resolved to the real one by its group (the same
-   *  hardware), else by its label ("Default - X" is X). Null when it cannot
-   *  be. Call after `enumerate`. */
+   *  list of inputs. It is resolved to the real one by its group (the same
+   *  hardware: the track's, then the list's), else by the track's label
+   *  ("Default - X" is X), else by the list's own label for the pseudo-device
+   *  without its "Default - " (a track can carry a plain label of its own
+   *  while the list still says which input it stands for). Null when none
+   *  of these names a real input. Call after `enumerate`. */
   function realId(id, groupId, label) {
     if (id && !isPseudo(id)) return id;
     const p = pseudo.get(id) || {};
-    const group = groupId || p.groupId;
-    if (group) for (const [rid, g] of groups) if (g === group) return rid;
-    const name = (label || p.label || "").replace(/^(Default|Communications) - /, "");
-    if (name) for (const [rid, l] of present) if (l === name) return rid;
+    for (const group of [groupId, p.groupId]) {
+      if (group) for (const [rid, g] of groups) if (g === group) return rid;
+    }
+    for (const said of [label, p.label]) {
+      const name = (said || "").replace(/^(Default|Communications) - /, "");
+      if (name) for (const [rid, l] of present) if (l === name) return rid;
+    }
     return null;
   }
 
@@ -348,12 +361,17 @@ export function createAudioIn(host) {
     const track = stream.getAudioTracks()[0];
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
+    analyser.fftSize = FACE_FRAME; // one face frame: the level and the face read the same buffer
     source.connect(analyser);
     const settings = (track && track.getSettings && track.getSettings()) || {};
     const s = {
       stream, track, source, analyser,
       buf: new Float32Array(analyser.fftSize),
+      // Its live face: the latest frame in the face's bands (eased), drawn
+      // on the module against the bank as a sound's face is.
+      meter: createLiveMeter(),
+      face: { ltas: new Float64Array(FACE_BANDS), slices: [], loud: [] },
+      faceLive: false,
       channels: settings.channelCount === 1 ? 1 : 2,
       db: -Infinity,
     };
@@ -551,13 +569,23 @@ export function createAudioIn(host) {
     for (let i = 0; i < s.buf.length; i++) sum += s.buf[i] * s.buf[i];
     const rms = Math.sqrt(sum / s.buf.length);
     s.db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+    // The face, only while there is something to draw (and someone to see
+    // it: the meter loop runs only while an input is open).
+    if (s.db > METER_FLOOR_DB && document.querySelector("#rack-svg .ain-face-live")) {
+      const { db } = s.meter.measure(s.buf, ctx.sampleRate);
+      for (let b = 0; b < FACE_BANDS; b++) s.face.ltas[b] = s.faceLive ? s.face.ltas[b] * 0.6 + db[b] * 0.4 : db[b];
+      s.faceLive = true;
+    } else {
+      s.faceLive = false;
+    }
     return s.db;
   }
   function loop() {
     if (raf || streams.size === 0) return;
     const tick = () => {
       raf = 0;
-      if (streams.size === 0) return;
+      // The last input closed: its level and face go with it.
+      if (streams.size === 0) return paintMeters();
       for (const s of streams.values()) level(s);
       if (capture && capture.phase === "armed") {
         const s = streams.get(capture.id);
@@ -638,13 +666,24 @@ export function createAudioIn(host) {
       });
     }
     lane.appendChild(dev);
-    // FACE SLOT. The live face of the input (faces, Plan-005 task 3, on
-    // `claude/faces`, not merged yet) goes in this square; until it lands the
-    // square draws the input's level meter. Swap the meter for the face here.
+    // The input's live face (faces, Plan-005 task 3): its latest frame in the
+    // face's bands, against the bank's faces, drawn as every face is
+    // (vessel.js), on a canvas in the square; a level bar runs up its left
+    // edge. With fewer faces in the bank than a face needs (`faceStats` is
+    // null), the bar alone says the input is there.
     const face = el("g", { transform: `translate(${w - inset - FACE},0)` }, "ain-face");
     face.appendChild(el("rect", { width: FACE, height: FACE, rx: 3 }, "ain-face-body"));
-    face.appendChild(el("rect", { x: FACE / 2 - 6, y: 4, width: 12, height: FACE - 8, rx: 1.5 }, "ain-meter-track"));
-    face.appendChild(el("rect", { x: FACE / 2 - 6, y: FACE - 4, width: 12, height: 0, rx: 1.5 }, "ain-meter-fill"));
+    face.appendChild(el("rect", { x: 3, y: 4, width: 4, height: FACE - 8, rx: 1 }, "ain-meter-track"));
+    face.appendChild(el("rect", { x: 3, y: FACE - 4, width: 4, height: 0, rx: 1 }, "ain-meter-fill"));
+    if (interactive) {
+      const fo = el("foreignObject", { x: 9, y: 2, width: FACE - 11, height: FACE - 4 }, "ain-face-live");
+      const cv = document.createElement("canvas");
+      cv.width = (FACE - 11) * FACE_PX;
+      cv.height = (FACE - 4) * FACE_PX;
+      cv.setAttribute("aria-hidden", "true");
+      fo.appendChild(cv);
+      face.appendChild(fo);
+    }
     lane.appendChild(face);
     // Monitoring, the clip, and the ask (in place of both while there is no
     // input). Half the width each.
@@ -714,6 +753,9 @@ export function createAudioIn(host) {
 
   function paint() {
     for (const lane of document.querySelectorAll("#rack-svg .ain-lane")) paintLane(lane);
+    // A lane drawn new, or one whose input closed, shows the level and face
+    // as they are now (the meter loop runs only while an input is open).
+    paintMeters();
   }
 
   function paintMeters() {
@@ -728,6 +770,15 @@ export function createAudioIn(host) {
       fill.setAttribute("y", (FACE - 4 - h).toFixed(1));
       fill.setAttribute("height", h.toFixed(1));
       lane.dataset.db = Number.isFinite(db) ? db.toFixed(1) : "-inf";
+      const cv = lane.querySelector(".ain-face-live canvas");
+      if (cv) {
+        const g = cv.getContext("2d");
+        g.clearRect(0, 0, cv.width, cv.height);
+        const stats = host.faceStats ? host.faceStats() : null;
+        const drawn = !!(s && s.faceLive && stats) &&
+          drawVessel(g, s.face, stats, { box: vesselBox(cv.width, cv.height), color: host.faceColor(), slices: false, line: FACE_PX });
+        lane.dataset.face = drawn ? "live" : "none";
+      }
     }
   }
 

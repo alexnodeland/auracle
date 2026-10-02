@@ -18,8 +18,8 @@ changelog that edits its own past is not a record.
   Refuse, and the module stays in the patch, silent, with ASK AGAIN.
 - **MONITOR plays your input through the sound with no key down.** It starts
   off every time Auracle opens, so a microphone never reaches the speakers
-  until you ask; the module’s square shows your input’s level either way.
-  Use headphones.
+  until you ask; the module’s square shows your input’s level and its face,
+  as you play, either way. Use headphones.
 - **Pick the input on the module.** Each microphone or interface gets an
   input number that stays with it, an input is opened once however many
   modules read it, and one that is unplugged goes silent and says so, then

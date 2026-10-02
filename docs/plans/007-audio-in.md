@@ -124,10 +124,11 @@ measured with audition clips, from quiver to the PATCH plate.
      view re-checked every quantum. A patch that listens is held open by an
      **open voice** (`LivePoly::set_open`): one more voice of the patch, built
      with it, gated at C4 outside the keys' allocation while monitoring is on;
-   - the AUDIO IN plate: device select, level meter, live face; *done* but
-     the face: the input line opens the input menu, and the face's square
-     draws the level meter until faces (Plan-005 task 3, `claude/faces`) land
-     (`FACE SLOT` in `audio-in.js`);
+   - the AUDIO IN plate: device select, level meter, live face; *done*: the
+     input line opens the input menu, and the square draws the input's face
+     (`createLiveMeter` on the level's own analyser frame, eased, drawn by
+     `drawVessel` against the bank's `faceStats`) with a level bar at its
+     left edge; with no stats (under four faces) the bar alone;
    - monitoring off, with a headphones note; *done*: MONITOR, off on every
      load and never saved, USE HEADPHONES under it and in its toast;
    - the clip on first listen (task 3's web half); *done*: 6 s of the voices'
