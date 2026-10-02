@@ -503,7 +503,7 @@ brand-rasters:
 	@printf '  an SVG renderer with no Jost. Serve the repo and screenshot the\n'
 	@printf '  #banner and #og elements of www/brand/render.html instead.\n\n'
 
-## film-sounds: render the films' shared scores (signal, study, stingers), once
+## film-sounds: render the shared beds of the films not yet on N3 (signal, study)
 film-sounds:
 	$(FILM_ENV) www/video/tools/sounds.sh
 
