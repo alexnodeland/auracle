@@ -230,19 +230,21 @@ test("a STOP before anything was recorded leaves the take as it was, and says no
   const lane = page.locator("#rack-svg .take-lane").first();
   await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s", { timeout: 60_000 });
   await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
-  // RECORD, then STOP the moment it has started (its input is open, so it
-  // starts a few microtasks after the press), with no task in between: both
-  // reach the worklet before its next quantum, so nothing is recorded. The
-  // CAPTURE's take is not sent back as a new one (which was an edit, an undo
+  // The worklet's answer to a STOP before its first quantum is no frames
+  // (apps/web/tests/worklet-take.test.mjs holds that exactly; a browser can
+  // only race for it). Here the page is handed that answer while RECORD
+  // rolls: it says nothing was recorded, and sends no take: not the one the
+  // CAPTURE already holds, as if it were new (which was an edit, an undo
   // step and "Recorded 0.1 s").
-  const started = await lane.locator(".take-rec").evaluate(async (b) => {
-    b.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    for (let i = 0; i < 20 && window.__aur.takes().rolling?.waiting; i++) await Promise.resolve();
-    const ok = window.__aur.takes().rolling?.waiting === false;
-    b.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    return ok;
+  await lane.locator(".take-rec").click();
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: false });
+  await page.evaluate(() => {
+    const live = window.__aur.getLive();
+    live.node.port.dispatchEvent(new MessageEvent("message", {
+      data: { type: "take_done", key: "node", buf: new Float32Array(16), frames: 0 },
+    }));
+    live.takeStop("node"); // the worklet's own recording ends (its answer finds nothing rolling)
   });
-  expect(started).toBe(true);
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 10_000 })
     .toContain("Nothing was recorded. Play into the capture’s input while STOP is lit, then try again.");
   await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
