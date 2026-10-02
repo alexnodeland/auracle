@@ -60,9 +60,56 @@ served within a lane (`laneOf` in `worker.js`):
   probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
-so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
-answering every `now` request that arrived meanwhile. One long job holds the
-floor at a time. A hidden PERFORM's measurement drops to `later`.
+so long jobs are cut into pieces and `breathe` between pieces, answering every
+`now` request that arrived meanwhile. One long job holds the floor at a time.
+A hidden PERFORM's measurement drops to `later`. The jobs cut this way are
+PERFORM's measurement (`measure`, a render at a time), the model's guess and
+PERFORM's offers and drifts (`walkRun`, an MH step, at most one render, at a
+time; below).
+
+### Offers and drifts are jobs
+
+An offer is 20 steps (40 in *roam*, up to four times that under locks), an
+aimed one may walk up to three times, and a drift is 12: 12 to 60 phrase
+renders. As one wasm call they kept the worker deaf for all of them, and it
+did not matter which lane they were in, because the lane decides when a call
+*starts*. A spare offer grown in the background (`later`) therefore stood in
+front of a pick (`perform_record`, `now`), a Keep, a ▶ and a bench open: the
+first spare took 62 s on a CI runner, and everything the player did in that
+minute waited (`perform_teaches`, `perform_recentre` and `perform_next` timed
+out on it).
+
+Now `perform_offer` and `perform_drift` begin a **job** in the engine
+(`perform_offer_begin`, `perform_drift_begin`: a handle) and `walkRun` advances
+it one step at a time (`perform_job_step`), `breathe`ing between steps, and
+asks for the reply when it is done (`perform_job_finish`). It holds the floor
+like `measure` does, with these rules:
+
+- A player's request waits for the step in progress, at most one render.
+- A spare or Wander's drift (`later`) gives the floor up when long work the
+  player asked for is waiting (a pressed Offer, a measurement), goes back to
+  the front of `later` with its job intact, and resumes after it. A claim on a
+  spare (`promote`) stops it giving way.
+- `retire` (the page left the patch, or a turn replaced an aimed offer) stops a
+  walk that is running at its next step, drops one that is paused, and answers
+  `retired`, instead of walking to the end for nothing.
+- A binary without the jobs (a stale cache) takes the one call, as it always
+  did.
+
+What this does not do is shorten an offer: a pressed Offer still takes its
+renders, and on a slow machine that is a wait the player sees (B counts the
+seconds). It stops the wait being everyone's.
+
+**Determinism** ([ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+A job takes one draw of the session's PERFORM stream when it begins and walks
+on a generator of its own seeded from it, and it reads the target (the tilted
+prior, the posterior, the standardizer, the memo) as it stood when it began.
+Which step ran when, what the player recorded meanwhile, and what other walk
+was begun or paused beside it change nothing it finds. The engine's own
+`offer`, `offer_toward` and `drift` are the job run to the end on a caller's
+generator, so stepping and not stepping are one walk
+(`a_stepped_walk_is_the_walk`; in the bindings
+`a_stepped_offer_gives_the_reply_the_one_call_gives`).
 
 A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
 the farm and never hold the floor, so every lane is served while they run.

@@ -8,6 +8,25 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: an offer growing in the background no longer holds up your pick
+
+- **A pick, a Keep or a ▶ no longer waits for an offer that was growing
+  behind it.** PERFORM grows a spare offer while you play, ahead of the
+  Offer pad, and growing one is twenty-odd renders of the sound that the
+  engine could not stop partway. Whatever you did next (answering an offer
+  with a pick, Keep, play) waited for all of it: about a minute on a slow
+  machine. The engine now grows an offer, or Wander's drift, one render at a
+  time and answers you between renders, so you wait for at most the render
+  in progress. An offer you press for still takes the time its renders take,
+  and B counts the seconds as before.
+- **Leaving a sound stops the offer growing for it.** Switching to another
+  sound, or turning a different control while an aimed offer grows, used to
+  let the old walk finish for nothing. It stops at its next step.
+- **For a given seed, the offers themselves differ from before.** Each
+  offer and each drift now walks on a stream of its own, seeded when it begins, so how far
+  one offer had got when another began no longer changes what either finds.
+  They are the same kind of walk on the same target as before.
+
 ### Changed: TASTE draws each pick, and LEARNING is the model room
 
 - **A pick draws as an arrow on TASTE's map, and every glow moves with

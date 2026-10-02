@@ -812,6 +812,17 @@ while it grows. Growing it on the render farm, and starting both ways at
 pointer-down, would take the wait off the player’s hands; that belongs to
 the farm’s walk path and is not built here.
 
+**Whether it holds the engine.** It does not. A walk is a chain of steps, and
+a step costs at most one phrase render (about 0.15 s natively, 0.3 s in wasm
+under node on the machine this was timed on, `offer_cost`), so the engine
+worker runs an offer or a drift one step at a time and answers the player’s
+picks, Keeps and plays between steps. An offer you did not ask for (the spare
+grown while you play) gives way to one you did. Cutting a walk up does not
+change what it finds: for a seed, the offer is the same tree whatever the step
+sizes (the walk is the same code, run in pieces), and what you do between
+steps does not move it, because it keeps the target it began on and draws
+from a generator of its own.
+
 ## Before any evidence: `VetOnlyFitness`
 
 With no posterior there is no utility to climb, and the first version of
