@@ -454,6 +454,13 @@ export function createPatch(host) {
     return { name: "New patch", meta: parts.join(" · ") };
   }
 
+  // The brand set's glyphs (the specimen's `icon`): a 24 px grid, a 2 px
+  // stroke in the button's own colour.
+  const GLYPHS = {
+    patch: '<path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/>',
+    x: '<path d="M7.5 7.5l9 9M16.5 7.5l-9 9"/>',
+    undo: '<path d="M9 6.5L5 10.5l4 4"/><path d="M5 10.5h9.5a4.5 4.5 0 0 1 0 9H12"/>',
+  };
   // Rebuilt only when what it shows changes: every bench reply asks, and a
   // rebuild takes the focus off a button the keyboard is standing on.
   let toolsSig = "";
@@ -464,20 +471,29 @@ export function createPatch(host) {
     const sig = `${fresh.on}|${has}|${fresh.on ? moduleCount() > 0 : ""}|${fresh.fromName}`;
     if (sig === toolsSig && seg.childElementCount) return;
     toolsSig = sig;
-    const btn = (id, label, title, on, extra) => {
-      const b = el("button", { class: "util-btn seg-item", id, type: "button", title, ...extra }, label);
+    // The specimen's glyph beside each label; under 1280 px the label goes
+    // (the toolbar keeps its rows), and the button is named by its
+    // aria-label and its tooltip.
+    const btn = (id, glyph, label, title, on, extra) => {
+      const b = el("button", { class: "util-btn seg-item", id, type: "button", title, "aria-label": title, ...extra });
+      const svg = document.createElementNS(SVG_NS, "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("class", "pn-ic");
+      svg.innerHTML = GLYPHS[glyph];
+      b.append(svg, el("span", { class: "pn-label", text: label }));
       b.disabled = !on;
       return b;
     };
     if (fresh.on) {
-      const back = btn("patch-back", `back to ${fresh.fromName}`, "Esc", true, { onclick: backFrom });
+      const back = btn("patch-back", "undo", `back to ${fresh.fromName}`, `Back to ${fresh.fromName} · Esc`, true, { onclick: backFrom });
       back.append(el("kbd", { text: "esc" }));
       seg.replaceChildren(
-        btn("patch-clear", "clear", "Clear the patch", moduleCount() > 0, { onclick: clearNew }),
+        btn("patch-clear", "x", "clear", "Clear the patch", moduleCount() > 0, { onclick: clearNew }),
         back,
       );
     } else {
-      seg.replaceChildren(btn("patch-new-btn", "new patch", "Start from nothing", has, { onclick: enterNew }));
+      seg.replaceChildren(btn("patch-new-btn", "patch", "new patch", "New patch", has, { onclick: enterNew }));
     }
   }
 

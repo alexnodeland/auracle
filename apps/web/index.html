@@ -326,6 +326,12 @@
                for every patch, and the cell keeps its place when empty. -->
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
+            <!-- A patch from nothing, at the right of the name's row as the
+                 specimen has it: NEW PATCH, then CLEAR and BACK TO ‹name›
+                 while one is open. Filled by patch.js (`renderTools`). The
+                 callout gives way to it (it ellipsizes), so neither row of
+                 the header grows. -->
+            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
           </div>
           <!-- The act the whole app is for, on the name's row: beside the
                thing it breeds from, and above the locks that prepare it. -->
@@ -337,9 +343,6 @@
                them is the one the whole app is for — which is why it has the
                row above to itself. -->
           <div class="rack-tools">
-            <!-- A patch from nothing: NEW PATCH, then CLEAR and BACK TO ‹name›
-                 while one is open. Filled by patch.js (`renderTools`). -->
-            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
             <div class="seg seg-teach" role="group" aria-label="Teach the model">
               <!-- The express path. Commit normally plays both versions and asks;
                    tick this when you already know, and it commits straight away.

@@ -5677,7 +5677,19 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
    measured level, a patch from nothing, and the module sheet on touch.
    ===================================================================== */
 
-/* ---------- a patch from nothing ---------- */
+/* ---------- a patch from nothing ----------
+   At the right of the name's row, as the specimen puts NEW PATCH beside the
+   title: the callout before it ellipsizes to make room, so the header keeps
+   its two rows at every width (in the toolbar row it broke the tools onto a
+   third from 1200 to 1279 px). The specimen's glyph beside each label; under
+   1280 px only the glyph, the button named by its aria-label and tooltip. */
+.callout-row .seg-new { margin-left: auto; flex: none; padding-left: var(--s3); }
+.callout-row .seg-new:empty { display: none; }
+.seg-new .seg-item { display: inline-flex; align-items: center; gap: var(--s1); }
+.seg-new .pn-ic { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 1279px) {
+  .seg-new .pn-label, .seg-new kbd { display: none; }
+}
 .seg-new kbd {
   margin-left: var(--s1);
   font-family: var(--font-mono);
@@ -5735,7 +5747,9 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   stroke-dasharray: 6 5;
   transition: stroke var(--d-state) ease, fill var(--d-state) ease;
 }
-.guess-plate.over .gp-body { fill: var(--rack-96); }
+/* Over an empty socket it covers the socket's own "drop a source" outright. */
+.guess-plate.over .gp-body { fill: var(--rack); }
+.guess-plate.over:hover .gp-body, .guess-plate.over:focus-visible .gp-body { fill: var(--rack); }
 .guess-plate:hover .gp-body,
 .guess-plate:focus-visible .gp-body { stroke: var(--phos-b); fill: var(--phos-b-10); }
 .guess-plate .gp-name {

@@ -55,11 +55,14 @@ clicking it does the step it names:
 **⚡ EVOLVE FROM THIS**, on the name’s row: breeding from this sound alone. See
 [locks, and evolving from here](../rack.md#locks-and-evolving-from-here).
 
-**The toolbar.** **NEW PATCH** ([a patch from nothing](#a-patch-from-nothing));
-**PICK THE EDIT** and **KEEP AS NEW**; the layout and view controls (**CHAIN**,
-**SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and the locks (**LOCK
-KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and editing the
-rack](../rack.md) covers them all.
+**NEW PATCH**, at the right of the name's row, before ⚡: [a patch from
+nothing](#a-patch-from-nothing). In a window under 1280 px wide it shows its
+glyph only, and says its name on hover.
+
+**The toolbar.** **PICK THE EDIT** and **KEEP AS NEW**; the layout and view
+controls (**CHAIN**, **SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and
+the locks (**LOCK KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and
+editing the rack](../rack.md) covers them all.
 
 **The model's guess for the next module,** over the rack's top left once the
 model has fitted your taste: *GUESS · REVERB*, then its reason in the model's
