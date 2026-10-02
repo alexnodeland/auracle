@@ -3787,6 +3787,140 @@ mod tests {
         );
     }
 
+    /// **A listening seed evolves on the farm as it does in the engine, with
+    /// the session's clip and its take.** AUDIO IN is a player kind, so a
+    /// player's patch with one is inside the prior's support and ⚡ walks it.
+    /// The seed (a filter over input 3, mixed with a CAPTURE of input 1
+    /// holding a take) is imported into twins that hold the same captured
+    /// clip. Every ⚡ starts (never `outside_support`); the farm's job carries
+    /// the session's phrase with its clip and the seed with its take, and the
+    /// child it lands is the engine's own. A child keeps its inputs and its
+    /// take.
+    #[test]
+    fn a_listening_seed_evolves_on_the_farm_with_its_clip_and_take() {
+        use auracle_grammar::term::{
+            AmpEnv, AudioNode, CaptureMode, FilterKind, InputChannel, ModNode,
+        };
+        use auracle_grammar::{Take, Uid, INPUT_GAIN_UNITY};
+        let (mut serial, mut farmed) = twins(0xA0D1);
+        // A plucked 220 Hz figure, three seconds at 48 kHz, as a browser
+        // would capture it.
+        let rate = 48_000.0f32;
+        let clip: Vec<f32> = (0..(3.0 * rate) as usize)
+            .map(|i| {
+                let t = i as f32 / rate;
+                let env = (-(t % 0.5) * 6.0).exp();
+                (t * 220.0 * std::f32::consts::TAU).sin() * 0.3 * env
+            })
+            .collect();
+        let take: Vec<f32> = (0..4_000).map(|i| (i as f32 * 0.05).sin() * 0.4).collect();
+        let seed = PatchTree {
+            amp: AmpEnv {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff: 0.55,
+                    resonance: 0.2,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 3,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Both,
+                    }),
+                    modulation: ModNode::None,
+                }),
+                b: Box::new(AudioNode::Capture {
+                    uid: Uid::NEW,
+                    play: CaptureMode::Hold,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 1,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Left,
+                    }),
+                    take: Take::from_samples(&take, 44_100.0).unwrap(),
+                }),
+            },
+        };
+        let json = serde_json::to_string(&seed).unwrap();
+        let mut ids = Vec::new();
+        for e in [&mut serial, &mut farmed] {
+            let r: serde_json::Value =
+                serde_json::from_str(&e.set_audition_clip(clip.clone(), 1, rate as f64)).unwrap();
+            assert_eq!(r["ok"], true, "{r}");
+            ids.push(e.import_patch(&json, "Mic Pad"));
+        }
+        let (a, b) = (ids[0], ids[1]);
+        assert!(a > 0 && b > 0, "the listening patch was not admitted");
+        let phrase: serde_json::Value = serde_json::from_str(&farmed.phrase_json()).unwrap();
+        assert!(
+            !phrase["clip"].is_null(),
+            "the session's phrase carries no clip"
+        );
+        let mut landed = 0;
+        for attempt in 0..4 {
+            let here = serial.refine_from(a, "[]");
+            assert_ne!(
+                serial.last_refine_reason(),
+                "outside_support",
+                "attempt {attempt}"
+            );
+            let reply: serde_json::Value =
+                serde_json::from_str(&farmed.refine_from_job(b, "[]")).unwrap();
+            assert_eq!(
+                reply["context"]["phrase"], phrase,
+                "the walk's context is not the session's phrase with its clip"
+            );
+            let job: auracle_session::WalkJob =
+                serde_json::from_value(reply["job"].clone()).expect("a job");
+            assert!(
+                job.seed.listens() && job.seed.has_takes(),
+                "the job lost the seed's input or take"
+            );
+            let result = farm_walk(
+                &serde_json::to_string(&reply["context"]).unwrap(),
+                &serde_json::to_string(&reply["job"]).unwrap(),
+            );
+            let there = farmed.refine_from_absorb(b, &result);
+            assert_eq!(
+                here, there,
+                "attempt {attempt}: the farm's ⚡ landed elsewhere"
+            );
+            assert_eq!(serial.last_refine_reason(), farmed.last_refine_reason());
+            if here > 0 {
+                landed += 1;
+                let child: PatchTree = serde_json::from_str(&serial.tree_json_of(here)).unwrap();
+                assert!(
+                    child.listens(),
+                    "the child lost its input: {}",
+                    child.to_sexpr()
+                );
+                assert_eq!(
+                    child.input_sites().len(),
+                    seed.input_sites().len(),
+                    "{}",
+                    child.to_sexpr()
+                );
+                assert!(
+                    child.has_takes(),
+                    "the child lost the take: {}",
+                    child.to_sexpr()
+                );
+            }
+        }
+        println!("{landed} of 4 ⚡ walks from the listening seed landed a child");
+        assert_eq!(farmed.ranked(), serial.ranked());
+    }
+
     /// PERFORM's measurement wires the six it always has unless the worker
     /// names palette controls, and then exactly those, in the order named,
     /// each with its name and its palette `index`, which is how the page

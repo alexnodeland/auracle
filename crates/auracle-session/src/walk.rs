@@ -436,9 +436,12 @@ mod tests {
         tree.to_trace().get_usize(&fugue::addr!(key, "input"))
     }
 
-    /// **Walks never change an input.** A seed whose AUDIO IN reads slot 4,
-    /// walked on the bare prior (where nothing about the sound holds a site
-    /// in place), comes back from every walk with the node where it was and
+    /// **A listening seed walks under the shipped prior, and walks never
+    /// change an input.** AUDIO IN is a player kind: the shipped prior never
+    /// draws one and scores a player's finite, so a seed whose AUDIO IN reads
+    /// slot 4 starts a walk (it used to be refused as outside the support),
+    /// and walked on the bare prior (where nothing about the sound holds a
+    /// site in place) every walk comes back with the node where it was and
     /// still reading slot 4, while the rest of the patch moves.
     ///
     /// Without the lock this fails at once: the kernel resamples `#input`
@@ -481,10 +484,8 @@ mod tests {
             },
         };
         assert_eq!(seed.input_sites(), ["node/1/0#input"]);
-        // With the term on: the shipped prior gives an AUDIO IN no mass until
-        // live capture works (`AUDIO_IN_WEIGHT`), and a seed with `log p = −∞`
-        // does not walk at all.
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // The shipped prior, which never draws AUDIO IN and scores it finite.
+        let prior = PatchGrammarPrior::default();
         let mut moved = 0;
         for w in 0..24u64 {
             let mut rng = StdRng::seed_from_u64(0xA0D1_0000 + w);
@@ -629,8 +630,8 @@ mod tests {
         for w in 0..24u64 {
             let mut rng = StdRng::seed_from_u64(0x7AC0_0000 + w);
             let end = walk_on(
-                // The seed listens through AUDIO IN, off in the shipped prior.
-                PatchGrammarPrior::default().with_audio_in(),
+                // The shipped prior: the seed's AUDIO INs are player kinds.
+                PatchGrammarPrior::default(),
                 1.0,
                 RefineKeep::Last,
                 CountsDeaf(Arc::clone(&deaf)),
@@ -676,8 +677,8 @@ mod tests {
         for w in 0..4u64 {
             let mut rng = StdRng::seed_from_u64(0x0F1E + w);
             let end = walk_on(
-                // The seed listens through AUDIO IN, off in the shipped prior.
-                PatchGrammarPrior::default().with_audio_in(),
+                // The shipped prior: the seed's AUDIO INs are player kinds.
+                PatchGrammarPrior::default(),
                 1.0,
                 RefineKeep::Last,
                 Flat,
