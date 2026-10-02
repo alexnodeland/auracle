@@ -193,17 +193,20 @@ edit.
 
 ## The engine worker
 
-The worker answers `guess` in its `later` lane, in two phases:
+The worker answers `guess` in its `later` lane, holding the floor (no other
+long job starts while it runs; the player is answered between its steps), in
+two phases:
 
-- **On a crew.** Where a walk crew can be had (raised on demand as a
-  generation raises one: not while boot's own crew is filling the pool, nor
-  while a generation or ⚡ walks), it plans every candidate (`limit` 0) and
-  hands them out, one `farm_render` per idle worker, absorbing each result as
-  it lands (`memo_absorb`, which refuses a row measured under another
-  stimulus). It stops after `GUESS_BUDGET_MS` of wall-clock time. It renders
-  nothing on the engine worker and does not hold the floor, so the player and
-  other long work are served throughout.
-- **The floor.** Then, holding the floor, it renders with `memo_render` what
+- **On a crew.** It plans first: a refusal (`no_taste`, `full`) or a guess
+  the memo already holds raises no crew. Otherwise, where a walk crew can be
+  had (raised on demand as a generation raises one: not while boot's own crew
+  is filling the pool, nor while a generation or ⚡ walks), it plans every
+  candidate (`limit` 0) and hands them out, one `farm_render` per idle
+  worker, absorbing each result as it lands (`memo_absorb`, which refuses a
+  row measured under another stimulus). It stops after `GUESS_BUDGET_MS` of
+  wall-clock time, counted from when the crew is up. It renders nothing on
+  the engine worker.
+- **The floor.** Then it renders with `memo_render` what
   is still owed of the first `GUESS_FLOOR` in order, one per turn: nothing
   after a crew that rendered them, everything with no crew (at width 0,
   `?farm=0` or a machine with one core, the page answers the request for a

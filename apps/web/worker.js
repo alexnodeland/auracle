@@ -1153,8 +1153,9 @@ async function measure(m) {
 // On a crew (`guessOnCrew`), it asks for every candidate (`limit` 0) and
 // hands them out, one `farm_render` per idle worker (the farm's `job`), and
 // absorbs each result as it lands (`memo_absorb`, checked against this
-// engine's stimulus), for at most `GUESS_BUDGET_MS` of wall-clock time; it
-// does not render, so the player is answered throughout. With no crew (width
+// engine's stimulus), for at most `GUESS_BUDGET_MS` of wall-clock time once
+// the crew is up; it renders nothing here, so the player is answered
+// throughout. A refusal from the plan raises no crew. With no crew (width
 // 0, boot's crew still filling the pool, a spawn that failed), or for what a
 // crew left unrendered, it renders the first `GUESS_FLOOR` candidates here,
 // one per turn with the player answered between them, as PERFORM's
@@ -1251,8 +1252,16 @@ function crewRenders(jobs, ms) {
  *  absorbed, or the budget spent); what is left unrendered the serial floor
  *  below picks up. False when no crew can be had: the floor does it all. */
 async function guessOnCrew(at, failed) {
+  // The plan first: a refusal (no fit yet, the grammar's ceiling) or a guess
+  // the memo already holds needs no crew, and raising one would spawn
+  // workers on every settle before the warm start.
+  const first = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), 0));
+  if (first.reason) return first;
+  if (!first.jobs.length) return null;
   if (!booted || bootCrewLive() || walking()) return false;
   if (!(await crewUp())) return false;
+  // The budget starts once the crew is up: a cold crew's spawn is not
+  // rendering.
   const t0 = performance.now();
   try {
     for (let round = 0; round < 6; round++) {
@@ -1278,11 +1287,11 @@ async function guessOnCrew(at, failed) {
   }
 }
 
-/** A guess's crew phase, before it takes the floor: every candidate on a
- *  crew, once per request (a resumed run goes on from the memo). Not holding
- *  the floor, as a generation's walks do not: it renders nothing here, and the
- *  player and other long work are served while the crew renders. True when
- *  it answered (a refusal from the plan, or an error). */
+/** A guess's crew phase: every candidate on a crew, once per request (a
+ *  resumed run goes on from the memo). It holds the guess's floor (no other
+ *  long job starts meanwhile) but renders nothing here, so the player is
+ *  answered while the crew renders. True when it answered (a refusal from
+ *  the plan, or an error). */
 async function guessCrewPhase(m) {
   if (m.crewed) return false;
   m.crewed = true;
@@ -2711,8 +2720,19 @@ async function dispatch(m) {
     // The model's guess for the patch in hand (see `guessRun`), and a skip of
     // one. Taking a guess is `edit_structure` with `guess`.
     case "guess": {
-      if (await guessCrewPhase(m)) break;
-      await holdFloor(m, () => guessRun(m));
+      // The floor for the whole guess, crew phase included: while it waits
+      // for a crew no other long job may take the floor from under it (one
+      // long job at a time); `now` work is still served between awaits.
+      await holdFloor(m, async () => {
+        if (await guessCrewPhase(m)) return;
+        await guessRun(m);
+      });
+      break;
+    }
+    // A patch of its own (PATCH's NEW PATCH): the guesses' key from here on
+    // (`guess_patch_as`; 0 asks for a fresh one). Answered with the key.
+    case "guess_patch_as": {
+      post({ type: "guess_patch", token: m.token ?? null, key: engine.guess_patch_as(m.key | 0) });
       break;
     }
     case "guess_skip": {
