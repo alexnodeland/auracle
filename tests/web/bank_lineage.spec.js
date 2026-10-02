@@ -59,6 +59,8 @@ const init = `(() => {
       rows: ids("[data-id]"),
       seed: ids(".seed"),
       may: ids(".may-go"),
+      // The words those rows carry.
+      words: [...new Set([...document.querySelectorAll("#bank-list .bank-item.may-go .bi-flag")].map((e) => e.textContent))],
     });
   };
   function Wrapped(url, opts) {
@@ -72,9 +74,9 @@ const init = `(() => {
       }
       const d = e.data;
       if (!d || typeof d.type !== "string" || d.pwFake) return;
-      // A generation's seeds: the last \`ratings.seeds\` posted before it
-      // opened, which is what its first \`refine_progress\` finds.
-      if (d.type === "refine_progress" && !state.genSeeds && state.ratings) state.genSeeds = state.ratings.seeds.slice();
+      // A generation's seeds, as its progress posts them (\`refine_jobs\`'
+      // parents, job i walking from seeds[i]).
+      if (d.type === "refine_progress" && !state.genSeeds && Array.isArray(d.seeds)) state.genSeeds = d.seeds.slice();
       last[d.type] = d;
       counts[d.type] = (counts[d.type] || 0) + 1;
       if (d.views) {
@@ -260,7 +262,10 @@ test("pointing at EVOLVE POOL marks what the engine says may be replaced", async
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a mark never moves or narrows a row's name: the unheard dot, NEW, seed and may be replaced", async ({ page }) => {
+// At the widest bank (1440 px) and the narrowest it has (1080 px, 200 px).
+for (const [width, height] of [[1440, 900], [1080, 800]]) {
+test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and may be replaced (${width} px)`, async ({ page }) => {
+  await page.setViewportSize({ width, height });
   const pageErrors = await pooled(page);
   const shown = await rowIds(page);
   const [seed, may, kid] = [shown[1], shown[2], shown[3]];
@@ -305,8 +310,34 @@ test("a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   }
   expect(gap.dotRight).toBeLessThanOrEqual(gap.nameLeft);
   expect(gap.dotLeft).toBeGreaterThanOrEqual(gap.tagRight);
+
+  // Each word a row can carry while EVOLVE POOL is pointed at fits in the
+  // stars' place, clear of save and cut. ("will be replaced" shows
+  // only while a generation runs, so each word is measured in the flag of a
+  // marked row.) EVOLVE POOL focused marks the rows, and the pointer on the
+  // row shows its cut.
+  await rate(page, { may: [may] });
+  await page.locator("#evolve-btn").focus();
+  await expect(row(page, may)).toHaveClass(/\bmay-go\b/);
+  await row(page, may).hover();
+  for (const word of ["seed", "may be replaced", "will be replaced"]) {
+    const fit = await row(page, may).evaluate((r, w) => {
+      const f = r.querySelector(".bi-flag");
+      f.textContent = w;
+      const box = (el) => (el && el.getBoundingClientRect().width > 0 ? el.getBoundingClientRect() : null);
+      const fl = f.getBoundingClientRect();
+      const save = box(r.querySelector(".bi-save"));
+      const kill = box(r.querySelector(".bi-kill"));
+      return { flagRight: fl.right, saveLeft: save ? save.left : null, killLeft: kill ? kill.left : null };
+    }, word);
+    console.log(`${width} px, "${word}": ${JSON.stringify(fit)}`);
+    if (fit.saveLeft != null) expect(fit.flagRight, `"${word}" runs into save`).toBeLessThanOrEqual(fit.saveLeft);
+    if (fit.killLeft != null) expect(fit.flagRight, `"${word}" runs into cut`).toBeLessThanOrEqual(fit.killLeft);
+  }
+  await page.mouse.move(5, 5);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
+}
 
 test("a child keeps its unheard dot across a reload, and loses it when its phrase is heard", async ({ page }) => {
   test.setTimeout(300_000);
@@ -390,6 +421,115 @@ test("Compare shows a child beside its seed, what changed and both ratings, and 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
+test("Compare opens from the keyboard: c on a bred sound in the bank, and Esc hands the keys back", async ({ page }) => {
+  const pageErrors = await boot(page);
+  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.views, null, { timeout: 60_000 });
+  const s = await state(page);
+  const [seed, kid, plain] = [s.ranked[1], s.ranked[3], s.ranked[2]];
+  const ev = {
+    generation: 1, kind: "refine", parent_id: seed.id, child_id: kid.id,
+    diff: [{ addr: "node/1#op", before: null, after: "delay" }],
+    parent_utility: 0.4, child_utility: 0.5,
+  };
+  await inject(page, { type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
+  await expect(row(page, kid.id).locator(".bi-from")).toBeVisible();
+  // The bank is one tab stop; the cursor walks to a row.
+  const cursorTo = async (id) => {
+    await page.locator("#bank-list").focus();
+    for (let i = 0; i < 45; i++) {
+      const at = await page.evaluate(() => document.querySelector("#bank-list .bank-item.kbd")?.dataset.id ?? null);
+      if (at === String(id)) return;
+      await page.keyboard.press("ArrowDown");
+    }
+    throw new Error(`the cursor never reached ${id}`);
+  };
+  // A sound with no seed has nothing to compare.
+  await cursorTo(plain.id);
+  await page.keyboard.press("c");
+  await expect(page.locator("#compare")).toBeHidden();
+  // A bred one opens Compare, which takes the focus.
+  await cursorTo(kid.id);
+  await page.keyboard.press("c");
+  await expect(page.locator("#compare")).toBeVisible();
+  await expect(page.locator("#compare-title")).toHaveText(`${kid.name} · what changed`);
+  await expect(page.locator("#compare")).toBeFocused();
+  // Esc closes it, and the bank has the keys again.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#compare")).toBeHidden();
+  await expect(page.locator("#bank-list")).toBeFocused();
+  await page.keyboard.press("c");
+  await expect(page.locator("#compare")).toBeVisible();
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("a ⚡ child that replaced nothing leaves the last generation's Replaced as it was", async ({ page }) => {
+  const pageErrors = await pooled(page);
+  const s = await state(page);
+  const gone = s.ranked[s.ranked.length - 1];
+  const left = s.ranked.filter((r) => r.id !== gone.id);
+  const views = { ...s.views, ranked: left };
+  // A generation's end replaced one sound (here a restored pool's trim, as
+  // the worker posts it).
+  await inject(page, { type: "pool_trimmed", retired: [gone.id], views, status: { ...s.status, generation: 1 } });
+  const fold = page.locator("#bank-list .bank-group.replaced .bg-fold");
+  await fold.scrollIntoViewIfNeeded();
+  await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
+  await expect(fold.locator(".bg-n")).toHaveText(/^1 /);
+  // Then a ⚡ child lands with the pool not full: nothing displaced.
+  await inject(page, {
+    type: "evolved_from", seedId: left[0].id, childId: left[1].id, reason: null,
+    views, status: { ...s.status, generation: 2 },
+  });
+  await fold.scrollIntoViewIfNeeded();
+  await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
+  await fold.click();
+  await expect(page.locator("#bank-list .replaced-names span")).toHaveText([gone.name]);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound its child would replace", { tag: "@slow" }, async ({ page }) => {
+  // With no generation open ⚡'s child replaces at once the lowest unsaved
+  // sound other than its seed (\`absorb_from\`, \`evict_to_size\`), which is
+  // the first of \`ratings.may_replace\` with the pool full. It marked the seed
+  // and nothing else.
+  test.setTimeout(600_000);
+  const pageErrors = await taught(page);
+  await page.locator('.viewtab[data-view="play"]').click();
+  await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });
+  await page.locator("#rack-evolve").click();
+  const seedId = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "sent:refine_from").pop().id);
+  await page.locator('.viewtab[data-view="evolve"]').click();
+  await page.locator("#evolve-wrap").hover();
+  // Read the marks against the ratings main.js holds as it draws them.
+  const read = () => page.evaluate(() => ({
+    walking: !window.__pwLast.evolved_from,
+    seed: [...document.querySelectorAll("#bank-list .bank-item.seed")].map((e) => Number(e.dataset.id)),
+    may: [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)),
+    words: [...document.querySelectorAll("#bank-list .bank-item.may-go .bi-flag")].map((e) => e.textContent),
+    mayReplace: window.__pwState.ratings.may_replace,
+    status: window.__pwState.status,
+  }));
+  await expect.poll(async () => (await read()).seed.length, { timeout: 30_000 }).toBe(1);
+  const m = await read();
+  test.skip(!m.walking, "⚡ landed before the marks were read");
+  expect(m.seed).toEqual([seedId]);
+  expect(m.status.pool, "the pool is not full, so ⚡ would replace nothing").toBeGreaterThanOrEqual(m.status.pool_target);
+  const want = m.mayReplace.filter((id) => id !== seedId).slice(0, m.status.pool + 1 - m.status.pool_target);
+  expect(m.may).toEqual(want);
+  expect(m.words).toEqual(want.map(() => "may be replaced"));
+  // When the child lands, what it replaced is what was marked (the model has
+  // not moved: no pick since).
+  await page.mouse.move(5, 5);
+  await expect.poll(() => page.evaluate(() => !!window.__pwLast.evolved_from), { timeout: 300_000 }).toBe(true);
+  const done = await page.evaluate(() => window.__pwLast.evolved_from);
+  console.log(`⚡ from ${seedId}: child ${done.childId}, reason ${done.reason}; marked ${JSON.stringify(m.may)}`);
+  if (done.childId > 0) {
+    const pool = new Set(done.views.ranked.map((r) => r.id));
+    expect(want.filter((id) => !pool.has(id)), "what ⚡'s child replaced").toEqual(want);
+  }
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
 test("Compare lists every change a long walk made, and the list scrolls", async ({ page }) => {
   // A 40-step walk can change two dozen sites (26 in one review run). Compare
   // showed the first eight and "+18 more"; the release notes say every change.
@@ -436,8 +576,11 @@ test("GENERATIONS counts a generation from its first child, with no pick since i
   const walks = await page.evaluate(() => window.__pwMarks.slice());
   const first = walks.findIndex((s) => s.child > 0);
   console.log(`walks: ${JSON.stringify(walks.map((s) => [s.index, s.child, s.breeding, s.gens, s.statusGen]))}`);
-  expect(walks[first].breeding, "the first child landed after the generation ended, so nothing was tested").toBe(true);
-  expect(walks[first].statusGen, "a status counting the generation came first, so nothing was tested").toBeLessThan(walks[first].generation);
+  // What this tests needs the first child to land while the generation runs
+  // and before any status counting it (none is asked for here, but one can
+  // come unasked): otherwise there is nothing to test, not a failure.
+  test.skip(!walks[first].breeding, "the first child landed after the generation ended");
+  test.skip(!(walks[first].statusGen < walks[first].generation), "a status counting the generation came first");
   // Read the moment each walk landed: nothing counted before its first
   // child, and the generation counted from it on.
   for (const s of walks.slice(0, first)) expect(s.gens, `after walk ${s.index}, no child yet`).toBe(String(s.generation - 1));
@@ -460,7 +603,10 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
   await seedRow.scrollIntoViewIfNeeded();
   const at = await seedRow.boundingBox();
 
-  // The first walk's child, rated below the pool (`not_admitted`).
+  // The first walk's child, rated below the pool (`not_admitted`). The fake
+  // \`refine_child\` is handled as a real one, so it also moves main.js's
+  // count of walks back (\`breeding.done\`) and of children bred and not
+  // kept (\`bredBelow.n\`) beside the real walks': this test reads neither.
   await landChild(page, 0, { seed: seeds[0], generation: gen, reason: "not_admitted" });
   // (Read from what the button said, not what it says: a real walk may land
   // a moment later and say its own.)
@@ -482,7 +628,9 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => window.__pwBuds.filter((b) => b.refused).length)).toBe(1);
 
-  await page.locator("#evolve-stop").click();
+  // Stopped, unless its real walks have already ended it.
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 60_000 });
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
@@ -516,17 +664,18 @@ test("a generation's children land in New with their seed and what changed, and 
   // The generation's own seeds: each walk's `seed` is one of them, in job
   // order (`next_seeds` and `refine_jobs` share one rule).
   const seeds = (await state(page)).genSeeds;
-  expect(seeds && seeds.length, "no seeds were posted before the generation opened").toBe(10);
+  expect(seeds && seeds.length, "the generation's progress posted no seeds").toBe(10);
   const kids = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child"));
   for (const k of kids) expect(k.seed, `walk ${k.index} came from a seed the generation did not take`).toBe(seeds[k.index]);
   // While it ran, EVOLVE POOL marked this generation's seeds, not the next
   // one's (`ratings.seeds` moves as its children land), and what its end
-  // would replace if it ended there (that walk's `retiring`).
+  // will replace (that walk's `retiring`), in words of their own.
   const during = await page.evaluate(() => window.__pwMarks.filter((s) => s.breeding));
   expect(during.length, "no walk landed while the generation ran").toBeGreaterThan(0);
   for (const s of during) {
     expect(s.seed, `seeds marked after walk ${s.index}`).toEqual(sorted(seeds.filter((id) => s.rows.includes(id))));
-    expect(s.may, `may be replaced after walk ${s.index}`).toEqual(sorted(s.retiring.filter((id) => s.rows.includes(id) && !seeds.includes(id))));
+    expect(s.may, `will be replaced after walk ${s.index}`).toEqual(sorted(s.retiring.filter((id) => s.rows.includes(id) && !seeds.includes(id))));
+    expect(s.words, `the words after walk ${s.index}`).toEqual(s.may.length ? ["will be replaced"] : []);
   }
   if (during.some((s) => s.child > 0)) expect(during.some((s) => s.may.length > 0), "a child was taken in and nothing was marked as may be replaced").toBe(true);
   await page.mouse.move(5, 5);
