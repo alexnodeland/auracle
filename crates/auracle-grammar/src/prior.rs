@@ -43,6 +43,7 @@ use fugue_evo::inference::prior::GenomePrior;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::rng::gen_index;
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
     TableShape, Uid, Waveform,
@@ -1101,7 +1102,7 @@ impl PatchGrammarPrior {
             match weighted_choice(rng, &self.source_weights) {
                 0 => AudioNode::Vco {
                     uid: Uid::NEW,
-                    wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
+                    wave: Waveform::from_index(gen_index(rng, Waveform::ALL.len())),
                     octave: rng.gen_range(0..5) as i8 - 2,
                     detune: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1117,11 +1118,11 @@ impl PatchGrammarPrior {
                 },
                 2 => AudioNode::Noise {
                     uid: Uid::NEW,
-                    color: NoiseColor::from_index(rng.gen_range(0..NoiseColor::ALL.len())),
+                    color: NoiseColor::from_index(gen_index(rng, NoiseColor::ALL.len())),
                 },
                 3 => AudioNode::Wavetable {
                     uid: Uid::NEW,
-                    table: TableShape::from_index(rng.gen_range(0..TableShape::ALL.len())),
+                    table: TableShape::from_index(gen_index(rng, TableShape::ALL.len())),
                     octave: rng.gen_range(0..5) as i8 - 2,
                     morph: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1163,7 +1164,7 @@ impl PatchGrammarPrior {
                 },
                 1 => AudioNode::Filter {
                     uid: Uid::NEW,
-                    kind: FilterKind::from_index(rng.gen_range(0..FilterKind::ALL.len())),
+                    kind: FilterKind::from_index(gen_index(rng, FilterKind::ALL.len())),
                     cutoff: rng.gen(),
                     resonance: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1208,7 +1209,7 @@ impl PatchGrammarPrior {
                     uid: Uid::NEW,
                     drive: rng.gen(),
                     tone: rng.gen(),
-                    mode: DriveMode::from_index(rng.gen_range(0..DriveMode::ALL.len())),
+                    mode: DriveMode::from_index(gen_index(rng, DriveMode::ALL.len())),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                     input: Box::new(self.sample_audio(rng, depth + 1)),
@@ -1344,7 +1345,7 @@ impl PatchGrammarPrior {
             0 => ModNode::None,
             1 => ModNode::Lfo {
                 uid: Uid::NEW,
-                wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
+                wave: Waveform::from_index(gen_index(rng, Waveform::ALL.len())),
                 rate: rng.gen(),
             },
             2 => ModNode::Env {
@@ -1376,7 +1377,7 @@ impl PatchGrammarPrior {
                 values: rng.gen(),
             },
             MOD_OP => {
-                let kind = ModOp::from_index(rng.gen_range(0..N_MOD_OPS));
+                let kind = ModOp::from_index(gen_index(rng, N_MOD_OPS));
                 let two = kind.param_sites().len() > 1;
                 let p0 = rng.gen();
                 // The one-parameter ops must not consume a second draw: their
@@ -1393,7 +1394,7 @@ impl PatchGrammarPrior {
             }
             _ => ModNode::Pair {
                 uid: Uid::NEW,
-                kind: PairOp::from_index(rng.gen_range(0..N_PAIR_OPS)),
+                kind: PairOp::from_index(gen_index(rng, N_PAIR_OPS)),
                 a: Box::new(self.sample_mod(rng, depth + 1, false)),
                 b: Box::new(self.sample_mod(rng, depth + 1, false)),
             },

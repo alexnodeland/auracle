@@ -144,9 +144,11 @@ themselves (`film_chip.spec.js`).
 ## Known
 
 - **Seeded deals are not fully reproducible** (ADR-001): the duel stream's
-  draws depend on the pool's size at each deal (range sampling rejects draws,
-  and wasm's `usize` is 32-bit), so deals made while the pool fills can differ
-  between runs. The films' taught set-up re-deals to the fifth pair, and no
+  draws depend on the pool's size at each deal (range sampling rejects draws),
+  so deals made while the pool fills can differ between runs. (A draw of
+  wasm's 32-bit `usize` used to read the stream differently from a native one;
+  `auracle_grammar::rng::gen_index` pins it, but `fugue-ppl`'s walks still
+  draw one.) The films' taught set-up re-deals to the fifth pair, and no
   line depends on which pair shows, but takes still land on different pairs.
   Fix: derive each deal's draw from the seed and the deal's index. Its own PR.
 - **Published films with stale details** (`taste`, `math`, `dsp`, and the

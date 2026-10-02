@@ -45,6 +45,7 @@ pub mod genome;
 pub mod mutate;
 pub mod presets;
 pub mod prior;
+pub mod rng;
 pub mod steps;
 pub mod term;
 

@@ -57,7 +57,10 @@ contributor guide; this file does not repeat it.
 6. **Seeded means reproducible.** Every consumer of randomness in the engine
    draws from its own stream, so timing cannot change what a seed deals
    ([ADR-001](docs/decisions/001-one-random-stream-per-consumer.md)). Do not
-   share a generator across consumers again.
+   share a generator across consumers again. And a seed means the same on
+   every target: draw an index with `auracle_grammar::rng::gen_index`, never
+   `gen_range(0..len)` over a `usize`, which reads the stream differently in
+   wasm32 (`crates/auracle-wasm/tests/boot_agrees.rs`).
 7. **Generated files are not hand-edited.** `apps/web/pkg/`, `site/`,
    `www/docs/src/img/`, `www/landing/assets/film/` (written by
    `www/video/tools/publish.py`) and the `<!-- film:NAME -->` blocks it fills,
