@@ -3611,24 +3611,36 @@ fn compile_voice(
 /// spectrum (`auracle_features::explain::response_bands`). Pinned against a
 /// compiled filter over white noise by `lowpass_response_is_the_compiled_filter`.
 pub fn lowpass_response(cutoff: f64, resonance: f64, sample_rate: f64, len: usize) -> Vec<f64> {
+    let mut impulse = vec![0.0; len];
+    if let Some(first) = impulse.first_mut() {
+        *first = 1.0;
+    }
+    lowpass_apply(&mut impulse, cutoff, resonance, sample_rate);
+    impulse
+}
+
+/// `x` through the same lowpass [`lowpass_response`] measures, in place: quiver's
+/// `Svf` driven as the compiler drives it, its corner held where the held note
+/// (C4) puts it. What the app's lesson on filters plays when the filter cannot
+/// go inside a patch (one more module would break the size ceilings): the
+/// filter then follows the whole voice, at one corner for every note.
+pub fn lowpass_apply(x: &mut [f64], cutoff: f64, resonance: f64, sample_rate: f64) {
     let mut svf = Svf::new(sample_rate);
     let mut inputs = PortValues::new();
     let mut outputs = PortValues::new();
-    let mut out = Vec::with_capacity(len);
-    for i in 0..len {
+    for s in x.iter_mut() {
         inputs.clear();
         // Ports as `Svf::new` declares them: in, cutoff, res, keytrack,
         // keytrack amount; the lowpass is output 10.
-        inputs.set(0, if i == 0 { 1.0 } else { 0.0 });
+        inputs.set(0, *s);
         inputs.set(1, cutoff.clamp(0.0, 1.0));
         inputs.set(2, map::resonance(resonance.clamp(0.0, 1.0)));
         inputs.set(4, 0.0);
         inputs.set(5, KEYTRACK_AMT);
         outputs.clear();
         svf.tick(&inputs, &mut outputs);
-        out.push(outputs.get_or(10, 0.0));
+        *s = outputs.get_or(10, 0.0);
     }
-    out
 }
 
 /// The corner a lowpass [`AudioNode::Filter`]'s `cutoff` knob sets on the

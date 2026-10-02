@@ -104,11 +104,14 @@ pub struct Facts {
     /// `high_ratio`: the highest note against the held one, dB.
     pub high_db: f64,
     /// `held_centroid_std`: how far the held note's brightness wanders,
-    /// octaves.
+    /// octaves (φ keeps it on its log axis, where one unit is the whole span
+    /// from 20 Hz to Nyquist, about 10.1 octaves at 44.1 kHz).
     pub held_move_oct: f64,
     /// `motion_slow`, `motion_mid`, `motion_fast`: the held note's movement
-    /// at 0.5–2, 2–8 and 8–30 Hz, as a standard deviation in octaves (each
-    /// is `0.5·log2` of a variance in φ).
+    /// at 0.5–2, 2–8 and 8–30 Hz, each `2^x` of φ's `0.5·log2` of a
+    /// variance: a standard deviation over brightness in octaves and level in
+    /// doublings (6 dB) together, floored at 0.01 (`MOTION_VAR_FLOOR`), which
+    /// is "no movement".
     pub motion_oct: [f64; 3],
 }
 
@@ -117,7 +120,8 @@ impl Facts {
     pub fn of(phi: &AudioFeatures, sample_rate: f64) -> Facts {
         let nyquist = sample_rate / 2.0;
         // `audio::log_axis` inverted: octaves above 20 Hz, 1.0 at Nyquist.
-        let hz = |a: f64| 20.0 * 2f64.powf(a * (nyquist.max(40.0) / 20.0).log2());
+        let span = (nyquist.max(40.0) / 20.0).log2();
+        let hz = |a: f64| 20.0 * 2f64.powf(a * span);
         let db = |ratio: f64| 20.0 * ratio.max(1e-6).log10();
         let ln_db = 20.0 / std::f64::consts::LN_10;
         Facts {
@@ -134,7 +138,7 @@ impl Facts {
             tail_db: db(phi.tail_ratio.exp() - 1e-3).max(-60.0),
             bass_pct: phi.bass_fraction * 100.0,
             high_db: phi.high_ratio * ln_db,
-            held_move_oct: phi.held_centroid_std,
+            held_move_oct: phi.held_centroid_std * span,
             motion_oct: [
                 2f64.powf(phi.motion_slow),
                 2f64.powf(phi.motion_mid),
@@ -470,7 +474,7 @@ mod tests {
             attack_s: (0.020f64 + 0.005).ln(),
             tail_ratio: (0.1f64 + 1e-3).ln(),
             bass_fraction: 0.25,
-            held_centroid_std: 0.3,
+            held_centroid_std: 0.03,
             high_ratio: 0.5f64.ln(),
             chord_flatness_delta: 0.0,
             motion_slow: 0.5 * (0.04f64).log2(),
@@ -488,6 +492,10 @@ mod tests {
         assert!((f.bass_pct - 25.0).abs() < 1e-9);
         assert!((f.swing - 0.5).abs() < 1e-9);
         assert!((f.motion_oct[0] - 0.2).abs() < 1e-9);
+        // The held note's wander is on φ's log axis: 0.03 of 20 Hz to
+        // Nyquist is 0.30 octave at 44.1 kHz, not 0.03.
+        assert!((f.held_move_oct - 0.03 * (22_050.0f64 / 20.0).log2()).abs() < 1e-12);
+        assert!((f.held_move_oct - 0.3032).abs() < 1e-3);
         assert!((f.motion_oct[1] - 0.01).abs() < 1e-9);
     }
 

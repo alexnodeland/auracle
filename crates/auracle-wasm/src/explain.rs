@@ -11,9 +11,12 @@
 //! filter's own response, from quiver's filter as the compiler wires it.
 //! Nothing here touches the pool, the bench or the log.
 
-use auracle_features::{explain, featurize, AudioFeatures};
+use auracle_features::{
+    audio_features, explain, featurize, normalize_to, vet, AudioFeatures, RenderedPhrase,
+    VetConfig, VetFailure, TARGET_LUFS,
+};
 use auracle_grammar::term::FilterKind;
-use auracle_grammar::{cutoff_hz, lowpass_response, AudioNode, ModNode, Uid};
+use auracle_grammar::{cutoff_hz, lowpass_apply, lowpass_response, AudioNode, ModNode, Uid};
 use auracle_session::perform::{direction, insert_at_output, standardized_audio, PALETTE};
 use wasm_bindgen::prelude::*;
 
@@ -101,14 +104,24 @@ impl WasmEngine {
     /// grammar (`Filter` `SvfLp`, resonance [`LESSON_RESONANCE`]) at `cutoff`
     /// (its knob, 0–1) put on its output, below any stereo effect that ends
     /// the chain; with no `cutoff`, the performed state as it is (the
-    /// lesson's first step, and what the filtered one is drawn against). Its
-    /// JSON is `{cutoff, cutoff_hz, response, portrait}`: the knob, its
-    /// corner on the held note in Hz, the filter's gain in each of the
-    /// portrait's bands (dB, from its impulse response), and the render's
-    /// portrait; the first three `null` with no filter. When the sound does
-    /// not render, `error` (`no_tree`, `no_room`, `silent`, `vet`) stands for
-    /// the portrait. Its samples are the render's audition, at the level
-    /// every audition plays at. One render; the patch itself is not changed.
+    /// lesson's first step, and what the filtered one is drawn against).
+    ///
+    /// A patch with no room for one more module (the grammar's size
+    /// ceilings: one in nine pool draws, none of the presets) still gets its
+    /// lesson: the filter then follows the whole voice
+    /// ([`auracle_grammar::lowpass_apply`] on the rendered phrase), at the
+    /// corner the knob sets on the held note for every note, since nothing
+    /// keytracks it there, and the result is normalized again as every
+    /// render is. `placement` says which: `inside` the patch, or `after` it.
+    ///
+    /// Its JSON is `{cutoff, cutoff_hz, response, placement, portrait}`: the
+    /// knob, its corner on the held note in Hz, the filter's gain in each of
+    /// the portrait's bands (dB, from its impulse response), where it went,
+    /// and the render's portrait; the first four `null` with no filter. When
+    /// the sound does not render, `error` (`no_tree`, `silent`, `vet`) stands
+    /// for the portrait. Its samples are the render's audition, at the level
+    /// every audition plays at (normalized to −18 LUFS: a filtered sound is
+    /// darker, not quieter). One render; the patch itself is not changed.
     pub fn lesson_filter(
         &self,
         tree_json: &str,
@@ -122,7 +135,8 @@ impl WasmEngine {
                 0.5
             }
         });
-        let sr = self.engine.cfg.phrase.sample_rate;
+        let phrase = &self.engine.cfg.phrase;
+        let sr = phrase.sample_rate;
         let response = cutoff.map(|c| {
             explain::response_bands(&lowpass_response(c, LESSON_RESONANCE, sr, RESPONSE_LEN), sr)
         });
@@ -141,35 +155,57 @@ impl WasmEngine {
             json: head(serde_json::json!({ "error": why })),
             samples: Vec::new(),
         };
+        let done =
+            |r: &RenderedPhrase, phi: &AudioFeatures, placement: Option<&str>| ExplainRender {
+                json: head(serde_json::json!({
+                    "placement": placement,
+                    "portrait": explain::portrait(r, phi),
+                })),
+                samples: audition_pcm(&r.to_audition()),
+            };
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return fail("no_tree");
         };
-        let tree = match cutoff {
-            None => tree,
-            Some(cutoff) => {
-                let filter = AudioNode::Filter {
-                    uid: Uid::NEW,
-                    kind: FilterKind::SvfLp,
-                    cutoff,
-                    resonance: LESSON_RESONANCE,
-                    mod_depth: 0.0,
-                    input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
-                    modulation: ModNode::None,
-                };
-                let Some(filtered) = insert_at_output(&tree, filter) else {
-                    return fail("no_room");
-                };
-                filtered
-            }
+        let Some(cutoff) = cutoff else {
+            return match featurize(&tree, phrase) {
+                Err(e) => fail(reason(&e)),
+                Ok(v) => done(&v.render, &v.features.audio, None),
+            };
         };
-        match featurize(&tree, &self.engine.cfg.phrase) {
+        let filter = AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: FilterKind::SvfLp,
+            cutoff,
+            resonance: LESSON_RESONANCE,
+            mod_depth: 0.0,
+            input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+            modulation: ModNode::None,
+        };
+        if let Some(filtered) = insert_at_output(&tree, filter) {
+            return match featurize(&filtered, phrase) {
+                Err(e) => fail(reason(&e)),
+                Ok(v) => done(&v.render, &v.features.audio, Some("inside")),
+            };
+        }
+        // No room for one more module: the filter follows the whole voice.
+        match featurize(&tree, phrase) {
             Err(e) => fail(reason(&e)),
-            Ok(v) => ExplainRender {
-                json: head(serde_json::json!({
-                    "portrait": explain::portrait(&v.render, &v.features.audio),
-                })),
-                samples: audition_pcm(&v.render.to_audition()),
-            },
+            Ok(v) => {
+                let mut r = v.render;
+                lowpass_apply(&mut r.samples, cutoff, LESSON_RESONANCE, sr);
+                if let Err(e) = vet(&r.samples, &VetConfig::for_spec(phrase)) {
+                    return fail(if matches!(e, VetFailure::Silent { .. }) {
+                        "silent"
+                    } else {
+                        "vet"
+                    });
+                }
+                if normalize_to(&mut r.samples, sr, TARGET_LUFS).is_none() {
+                    return fail("silent");
+                }
+                let phi = audio_features(&r);
+                done(&r, &phi, Some("after"))
+            }
         }
     }
 }
@@ -270,7 +306,55 @@ mod tests {
         let fig: serde_json::Value =
             serde_json::from_str(&engine.explain_render(&tree, "[]", None)).unwrap();
         assert!(p["cutoff"].is_null() && p["response"].is_null());
+        assert!(p["placement"].is_null());
         assert_eq!(p["portrait"], fig["portrait"]);
         assert!(!plain.take_samples().is_empty());
+        assert_eq!(b["placement"], "inside");
+    }
+
+    /// A patch with no room for one more module still gets its lesson: the
+    /// filter follows the whole voice (`placement: "after"`), and still
+    /// darkens it, as it would inside.
+    #[test]
+    fn a_patch_with_no_room_gets_the_filter_after_it() {
+        let mut engine = WasmEngine::new(20_260_928, 60);
+        while engine.fill_step(8) > 0 {}
+        let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        let full = ids
+            .iter()
+            .map(|&id| engine.tree_json_of(id))
+            .find(|t| {
+                let tree: auracle_grammar::PatchTree = serde_json::from_str(t).unwrap();
+                let probe = AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff: 0.5,
+                    resonance: LESSON_RESONANCE,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+                    modulation: ModNode::None,
+                };
+                insert_at_output(&tree, probe).is_none()
+            })
+            .expect("a pool of 60 holds a patch at the size ceilings");
+        let plain: serde_json::Value =
+            serde_json::from_str(&engine.lesson_filter(&full, "[]", None).json()).unwrap();
+        let mut r = engine.lesson_filter(&full, "[]", Some(0.4));
+        let f: serde_json::Value = serde_json::from_str(&r.json()).unwrap();
+        assert!(f["error"].is_null(), "{f}");
+        assert_eq!(f["placement"], "after");
+        assert!(!r.take_samples().is_empty());
+        let centre =
+            |j: &serde_json::Value| j["portrait"]["facts"]["centroid_hz"].as_f64().unwrap();
+        assert!(
+            centre(&f) < centre(&plain),
+            "{} vs {}",
+            centre(&f),
+            centre(&plain)
+        );
     }
 }
