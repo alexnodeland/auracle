@@ -1533,6 +1533,35 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .step-bar.latent .step-num { opacity: 0.45; }
 .step-bar.dragging .step-track, .step-bar:hover .step-track { stroke: var(--nut-hi); }
 [data-addr].step-bar:focus-visible .step-track { stroke: var(--phos-a); stroke-width: 2; }
+/* AUDIO IN's lane (audio-in.js `drawLane`): its input as a chip that opens
+   the input menu, the face slot (the level meter until faces land), MONITOR
+   and NEW CLIP, and the headphones note. MONITOR lit is green: it is the
+   input carrying signal to the speakers. */
+.ain-dev-body, .ain-btn-body { fill: var(--well); stroke: var(--plate-edge); stroke-width: 1; cursor: pointer; }
+.ain-dev:hover .ain-dev-body, .ain-btn:hover .ain-btn-body { stroke: var(--nut-hi); }
+.ain-dev:focus-visible .ain-dev-body, .ain-btn:focus-visible .ain-btn-body { stroke: var(--phos-a); stroke-width: 2; }
+.ain-dev-text {
+  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--phos-a);
+  pointer-events: none;
+}
+.ain-lane:not([data-state="live"]):not([data-state="meter"]) .ain-dev-text { fill: var(--silk-dim); }
+.ain-btn-text {
+  font-family: var(--font-silk); font-size: var(--t-rack-label); letter-spacing: 0.1em;
+  text-transform: uppercase; fill: var(--silk-dim); text-anchor: middle; pointer-events: none;
+}
+.ain-btn.on .ain-btn-body { fill: var(--phos-a-16); stroke: var(--phos-a); }
+.ain-btn.on .ain-btn-text { fill: var(--phos-a); }
+.ain-btn.off { opacity: 0.45; }
+.ain-face-body { fill: var(--well); stroke: var(--plate-edge); stroke-width: 1; pointer-events: none; }
+.ain-meter-track { fill: var(--white-09); pointer-events: none; }
+.ain-meter-fill { fill: var(--phos-a); opacity: 0.85; pointer-events: none; }
+.ain-note {
+  font-family: var(--font-silk); font-size: var(--t-rack-label); letter-spacing: 0.1em;
+  text-transform: uppercase; fill: var(--silk-dim); pointer-events: none;
+}
+#rack-svg.silk-floor[data-illegible~="label"] .ain-note,
+#rack-svg.silk-floor[data-illegible~="label"] .ain-btn-text,
+#rack-svg.silk-floor[data-illegible~="label"] .ain-dev-text { visibility: hidden; }
 /* An enum chip's text is its readout — the option it is set to, and the part
    of the chip that changes — so it is set at the readout size and leaves with
    the readouts under the silkscreen floor, rather than a step below them,

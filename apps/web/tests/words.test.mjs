@@ -24,6 +24,14 @@ import {
   bredRatings,
   changeParts,
   markWord,
+  INPUT_SAID,
+  INPUT_SILK,
+  inputGone,
+  inputBack,
+  clipCapturing,
+  clipArmed,
+  inputLine,
+  inputRow,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -103,7 +111,7 @@ test("a mixed generation counts each outcome, in one sentence", () => {
 
 test("a generation that could not start from its seeds says how to fix it", () => {
   assert.equal(emptyGeneration(7, ["outside_support", "outside_support"]),
-    "Generation 7: nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores. Nudge those knobs off their stops.");
+    "Generation 7: nothing could be bred, because every seed it picked has a knob on its stop, is deeper than the model scores, or has AUDIO IN. Nudge those knobs off their stops.");
 });
 
 test("a stopped generation counts only the walks that came back, never \"every walk\"", () => {
@@ -295,4 +303,36 @@ test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
   assert.equal(markWord("will"), "will be replaced");
   assert.equal(markWord("other"), "");
   for (const k of ["seed", "may", "will"]) voiced(markWord(k));
+});
+
+test("AUDIO IN says which input it reads, or why it has none, in the voice", () => {
+  // The slot is the engine's (from 0); the line counts from 1, as a desk does.
+  assert.equal(inputLine("live", 0, "Fake Mic A"), "1 · Fake Mic A");
+  assert.equal(inputLine("meter", 1, "Interface"), "2 · Interface · meter only");
+  assert.equal(inputLine("unplugged", 2, "USB mic"), "3 · USB mic · unplugged");
+  assert.equal(inputLine("empty", 4), "5 · no device");
+  assert.equal(inputLine("refused", 0), "input refused");
+  assert.equal(inputLine("unasked", 0), "no input yet");
+  assert.equal(inputRow(1, "Interface"), "2 · Interface");
+  for (const s of Object.values(INPUT_SAID)) voiced(s);
+  for (const s of Object.values(INPUT_SILK)) {
+    voiced(s);
+    // Silk: one to three words, a lowercase source, no punctuation.
+    assert.ok(s.split(" ").length <= 3 && s === s.toLowerCase() && !/[.,:!?]/.test(s), s);
+  }
+  for (const s of [inputGone("Fake Mic A"), inputBack("Fake Mic A"), clipCapturing("Fake Mic A", 6), clipArmed("Fake Mic A", 6), inputLine("opening", 0, "Fake Mic A")]) voiced(s);
+  // A toast is at most two sentences.
+  for (const s of Object.values(INPUT_SAID)) assert.ok(s.split(/[.…] /).length <= 2, s);
+  // The refusal says why and what to do; monitoring on says to use headphones.
+  assert.match(INPUT_SAID.refused, /refused/);
+  assert.match(INPUT_SAID.refused, /ASK AGAIN/);
+  assert.match(INPUT_SAID.monitorOn, /headphones/);
+});
+
+test("⚡ on a sound with AUDIO IN says why it can't start, not a knob's stop", () => {
+  const s = evolveRefusal("outside_support", "Mic Pad", true);
+  assert.match(s, /AUDIO IN/);
+  assert.doesNotMatch(s, /stop/);
+  voiced(s);
+  assert.match(evolveRefusal("outside_support", "Mic Pad"), /on its stop/);
 });

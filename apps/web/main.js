@@ -129,6 +129,9 @@ const {
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES,
 } = await import(`./words.js?v=${BUILD}`);
+// AUDIO IN: the permission, the inputs, monitoring and the clip
+// (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
+const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -252,6 +255,17 @@ const playCounts = new Map();
 let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let perform = null;          // from perform.js, once the voices exist
+// AUDIO IN's inputs (audio-in.js). Asks for nothing until a player adds the
+// module; every host call is wrapped, since most of these are declared below.
+const audioIn = createAudioIn({
+  ctx: audioCtx,
+  live: () => live,
+  note: (text, opts) => note(text, opts),
+  send: (msg, transfer) => send(msg, transfer),
+  ensureAudio: () => ensureAudio(),
+  showMenu: (x, y, head, rows) => showMenu(x, y, head, rows),
+  setKnob: (addr, value) => setRackKnob(addr, value),
+});
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
 // a preset already in the bank opens directly, and its reply can come after
@@ -1326,12 +1340,6 @@ worker.onmessage = (e) => {
     // Order matters here: the copy lands *before* anything else can write,
     // and autosave stays off until the player says "start fresh" or reloads
     // (with a newer build, the next boot reads the record where it is).
-    // Which clip sounds with an AUDIO IN are measured with: after a restore,
-    // and in reply to setting one. Capturing a clip is Plan-007 task 4's.
-    case "audition_clip": {
-      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
-      break;
-    }
     case "restore_failed": {
       saveBlocked = "unparseable";
       clearTimeout(saveTimer);
@@ -1344,6 +1352,19 @@ worker.onmessage = (e) => {
         { label: "start fresh", run: startFresh },
       );
       $("alarm").dataset.tag = "quarantine";
+      break;
+    }
+    // Which clip sounds with an AUDIO IN are measured with: after a restore,
+    // and in reply to a capture (audio-in.js sends it as `set_audition_clip`;
+    // `ok` is there only then). A clip the engine took measured the pool's
+    // listeners again, so their ratings moved, and it is saved with the
+    // session from now on.
+    case "audition_clip": {
+      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
+      if (m.views) applyViews(m.views);
+      if (m.status) applyStatus(m.status);
+      audioIn.clip(m);
+      if (m.ok) scheduleSave();
       break;
     }
     // `edit_begin` said no: that id is not in the pool any more. It is
@@ -2047,6 +2068,7 @@ worker.onmessage = (e) => {
     case "ready": {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
+      if (m.clip) audioIn.clip({ clip: m.clip });
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -2337,7 +2359,7 @@ worker.onmessage = (e) => {
         }
         scheduleSave();
       } else {
-        note(evolveRefusal(m.reason, seedName), { replace: "evolve-from" });
+        note(evolveRefusal(m.reason, seedName, !!m.listens), { replace: "evolve-from" });
       }
       break;
     }
@@ -4360,6 +4382,8 @@ async function bootBooth() {
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  // An input opened before the voices existed is connected to them now.
+  if (wb.rack) audioIn.follow(wb.rack);
   bootPerform();
   bootBooth();
   // The analysers exist for the first time here, so this is the first moment
@@ -8012,6 +8036,18 @@ function syncCommitBtn() {
  *  reads it once, at the press, off the rack under the hand); without one it
  *  is read off the bench now, which is the rack on screen whenever no drag is
  *  holding the redraw back. */
+/** Set one of the bench's settings from outside the rack's own controls
+ *  (AUDIO IN's input menu picks an input slot): the same edit a click on its
+ *  chip makes, one undo step, through the bench lane. */
+function setRackKnob(addr, value) {
+  const k = wb.rack?.modules.flatMap((m) => m.knobs).find((x) => x.addr === addr);
+  if (!k) return;
+  pushUndo();
+  k.value = value;
+  sendEdit(addr, value, k.kind.t !== "continuous");
+  renderRack();
+}
+
 function sendEdit(addr, value, isIndex, id) {
   if (!wb.dirty && !editPending) {
     editPending = true;
@@ -8241,7 +8277,9 @@ function moduleBox(mod, isEmpty) {
   const step = plateStep(mod);
   const perRow = PLATE_COLS[step];
   const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
-  const lane = hasStepLane(mod) ? STEP_LANE_H : 0;
+  // AUDIO IN's lane (audio-in.js `drawLane`): its input, meter, MONITOR and
+  // NEW CLIP, under its three settings.
+  const lane = hasStepLane(mod) ? STEP_LANE_H : mod.kind === "audio_in" ? INPUT_LANE_H : 0;
   return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
 }
 
@@ -9591,6 +9629,9 @@ function renderRack(rebuild = false) {
   // `overlayPending`). Here rather than in the reply handler, because a drag
   // keeps writing after the last reply and it is the redraw that must agree.
   overlayPending();
+  // Which inputs the bench's AUDIO INs read: opened, closed and fed to the
+  // voices from here, on every redraw, value-only ones included.
+  audioIn.follow(hasRack ? wb.rack : null);
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -10248,8 +10289,7 @@ function buildRack(svg, rack, opts) {
       return true;
     };
     // A `silence` leaf is a source with nothing in it: no input socket. An
-    // `audio_in` is a source too (its signal comes from outside the patch),
-    // though it has no palette entry until the app can capture an input.
+    // `audio_in` is a source too (its signal comes from outside the patch).
     const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence" || m.kind === "audio_in";
     if (m.is_mod) {
       // A modulator's output is a cable source too, but only the one sitting
@@ -10551,6 +10591,11 @@ function buildRack(svg, rack, opts) {
     // After the dials, so the roving tab order reads rate → length → glide →
     // step 1 … step 8, the order the plate is read in.
     if (!compact && !isEmpty && m.lane) drawStepLane(g, m, box, interactive, locks);
+    // AUDIO IN's lane belongs to the player's inputs, so only the bench draws
+    // it; a picture of another patch leaves the space plain.
+    if (!compact && !isEmpty && m.kind === "audio_in" && interactive) {
+      audioIn.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2, true);
+    }
   }
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
@@ -12018,7 +12063,7 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // fitting the patch, and `.` typed a full stop. Hand the focus back to the
   // thing the gesture is actually about.
   releaseTextEntry();
-  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .ain-ctl");
   // In freeform, a plain press on a faceplate moves the module. Tested after
   // the modifier gestures below would be too late — they are tested here, in
   // order, and space still wins so the pan modifier keeps working over a plate
@@ -12085,7 +12130,7 @@ $("rack-svg").addEventListener("contextmenu", (ev) => {
 // press that turns into a drag cancels the timer before it can fire.
 $("rack-scroll").addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "mouse" || ev.button !== 0) return;
-  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock")) return;
+  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .ain-ctl")) return;
   const sx = ev.clientX, sy = ev.clientY;
   let timer = setTimeout(() => {
     timer = null;
@@ -12233,6 +12278,10 @@ const LANE_FULL =
   `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one wasn’t queued. ` +
   "It’s busy (breeding, or a heavy render): try again when they land.";
 function queueStruct(msg, landed, tag, waiting) {
+  // Placing an AUDIO IN is the one moment the app asks the browser for an
+  // input (Plan-007 task 4): inside the player's gesture, never at boot, and
+  // whether the edit goes out now or waits its turn.
+  if (msg.op && JSON.stringify(msg.op).includes('"AudioIn"')) audioIn.added();
   if (!laneFree()) {
     if (laneStructCount() >= LANE_STRUCT_MAX) return note(LANE_FULL, { urgent: true });
     // The confirmation travels with the op rather than being said now, for the
@@ -14559,6 +14608,22 @@ const MODULES = [
     heard: "flatness, loudly. It is the one source φ can pick out on its own.",
     glyph: `<path class="gl" d="M1 7 L2.3 2.6 L3.6 10.8 L4.9 4 L6.2 12 L7.5 3.4 L8.8 9.6 L10.1 2.4 L11.4 11.4 L12.7 4.6 L14 12.2 L15.3 3 L16.6 10 L17.9 4.4 L19 7.4"/>`,
     frag: () => ({ Noise: { color: "White" } }),
+  },
+  {
+    // Plan-007 task 4. No `phi`: φ counts it for display (`n_audio_in`) and
+    // has no column for it, so the model has no lean on the module itself;
+    // it hears what the patch does to the clip. Adding it asks the browser
+    // for an input (`queueStruct` → audio-in.js).
+    kind: "audio_in", tag: "AudioIn", name: "audio in", sort: "source", group: "sources",
+    ins: 0, modTarget: null, phi: null,
+    tags: ["input", "mic", "microphone", "line", "interface", "guitar", "voice", "external", "effect"],
+    blurb: "Your own signal, from a microphone or an interface. Patch it into a filter or a delay to play through it, or into a follower to modulate with it.",
+    heard: "what the patch does to it, through the clip: your capture, or a built-in plucked phrase until there is one.",
+    glyph:
+      `<path class="gl-mark" d="M1 7 H4.5 M3 5.4 L4.6 7 L3 8.6"/>` +
+      `<path class="gl" d="M6.5 7 L7.6 4.2 L8.7 9.4 L9.8 2.8 L10.9 11 L12 5 L13.1 9 L14.2 3.8 L15.3 10.2 L16.4 5.8 L17.5 8.2 L19 7"/>`,
+    // Unity gain (`INPUT_GAIN_UNITY`, 24/36), the first input, both channels.
+    frag: () => ({ AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } }),
   },
 
   // ---- shape: the nonlinearities ----
@@ -21803,6 +21868,9 @@ bootMidi();
 // toast at a moment the app would not normally produce one.
 window.__aur = {
   audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // Where AUDIO IN's inputs stand: permission, the slot list, what is open,
+  // monitoring and the clip (audio-in.js).
+  audioIn: () => audioIn.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")

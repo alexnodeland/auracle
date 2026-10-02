@@ -105,7 +105,7 @@ export function emptyGeneration(gen, reasons, { stopped = false, replaced = "" }
   if (t.outside_support === n) {
     const what = stopped
       ? `${count(n, "seed")} it picked couldn’t be bred from${before}`
-      : "nothing could be bred, because every seed it picked has a knob on its stop or is deeper than the model scores";
+      : "nothing could be bred, because every seed it picked has a knob on its stop, is deeper than the model scores, or has AUDIO IN";
     return `${head}: ${what}.${tail("Nudge those knobs off their stops.")}`;
   }
   if (t.no_move === n) {
@@ -131,11 +131,14 @@ export function emptyGeneration(gen, reasons, { stopped = false, replaced = "" }
 }
 
 /** Why ⚡ evolve from this added nothing, from the engine's reason. `name`
- *  is the sound it walked from. */
-export function evolveRefusal(reason, name) {
+ *  is the sound it walked from; `listens`, that it has an AUDIO IN, which
+ *  the shipped grammar gives no weight yet (`AUDIO_IN_WEIGHT`), so a walk
+ *  cannot start from it whatever its knobs. */
+export function evolveRefusal(reason, name, listens = false) {
   const from = name ? ` from ${name}` : "";
   switch (reason) {
     case "outside_support":
+      if (listens) return `⚡ can’t start${from}: a sound with AUDIO IN can’t be bred from yet. Play it and keep it, and breed from another sound.`;
       return `⚡ can’t start${from}: a knob is on its stop, or the patch is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.`;
     case "no_taste":
       return "Nothing to breed toward yet. Make a few picks first, then evolve.";
@@ -148,6 +151,81 @@ export function evolveRefusal(reason, name) {
     default:
       return `⚡${from} came back unchanged. Try again, or loosen some locks.`;
   }
+}
+
+// ---- AUDIO IN: your input in the patch (Plan-007 task 4) ----
+
+/** What AUDIO IN says as it asks for an input, is refused one, or loses one.
+ *  Plain sentences; the silk labels on the module are `INPUT_SILK`. */
+export const INPUT_SAID = Object.freeze({
+  asking: "AUDIO IN asks the browser for a microphone or an interface. What it hears stays in this browser.",
+  refused: "The browser was refused the input, so AUDIO IN stays in the patch, silent. Allow the microphone in this site’s settings, then press ASK AGAIN.",
+  missing: "No input was found, so AUDIO IN stays in the patch, silent. Plug in a microphone or an interface, then press ASK AGAIN.",
+  failed: "The input didn’t open, so AUDIO IN is silent. Close any app holding it, then press ASK AGAIN.",
+  unsupported: "This browser doesn’t offer its inputs to web pages, so AUDIO IN stays silent.",
+  monitorOn: "Monitoring on: your input plays through the sound with no key down. Use headphones, or the speakers feed back into the microphone.",
+  monitorOff: "Monitoring off: your input reaches the meter, not the speakers.",
+  monitorNone: "Nothing to monitor yet: AUDIO IN has no input.",
+  clipNone: "Nothing to capture yet: AUDIO IN has no input.",
+});
+
+/** The labels on the AUDIO IN module: silk, set in capitals by CSS. */
+export const INPUT_SILK = Object.freeze({
+  monitor: "monitor",
+  newClip: "new clip",
+  allow: "allow input",
+  askAgain: "ask again",
+  headphones: "use headphones",
+});
+
+/** An input that went away, and the same one back. `label` is the browser's
+ *  name for the device. */
+export function inputGone(label) {
+  return `${label || "The input"} was unplugged, so AUDIO IN is silent until it’s back.`;
+}
+export function inputBack(label) {
+  return `${label || "The input"} is back.`;
+}
+
+/** The clip being captured: `seconds` of `label` (Plan-007's audition clip). */
+export function clipCapturing(label, seconds) {
+  return `Capturing ${seconds} s of ${label || "your input"} as the clip the model hears it through…`;
+}
+/** NEW CLIP pressed: the capture waits for the input to carry a signal. */
+export function clipArmed(label, seconds) {
+  return `The next ${seconds} s of ${label || "your input"} become the clip, from the moment it carries a signal. Play into it.`;
+}
+
+/** The AUDIO IN module's input line: which input it reads, or why none.
+ *  `slot` counts from 0, as the engine's `input` knob does; it is shown
+ *  from 1, as a desk numbers its inputs. `state`:
+ *  - `live`: its input is open (`label` is the device);
+ *  - `meter`: open for the meter only, because the keys read another input;
+ *  - `unplugged`: the device it was given is gone;
+ *  - `opening`: allowed, and its stream not open yet;
+ *  - `empty`: no device has been given that slot;
+ *  - `unasked`, `asking`, `refused`, `missing`, `failed`, `unsupported`:
+ *    no input at all yet, and why. */
+export function inputLine(state, slot, label) {
+  const n = `${(slot | 0) + 1}`;
+  switch (state) {
+    case "live": return `${n} · ${label}`;
+    case "meter": return `${n} · ${label} · meter only`;
+    case "unplugged": return `${n} · ${label} · unplugged`;
+    case "empty": return `${n} · no device`;
+    case "opening": return `${n} · ${label} · opening…`;
+    case "asking": return "asking…";
+    case "refused": return "input refused";
+    case "missing": return "no input found";
+    case "failed": return "input didn’t open";
+    case "unsupported": return "no inputs in this browser";
+    default: return "no input yet";
+  }
+}
+
+/** A device's row in the AUDIO IN input menu: "2 · Scarlett 2i2". */
+export function inputRow(slot, label) {
+  return `${(slot | 0) + 1} · ${label}`;
 }
 
 // ---- a generation as it runs, and the lineage it leaves in the bank ----

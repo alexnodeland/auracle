@@ -140,7 +140,10 @@ async function onJob(m) {
   if (m.type === "phrase") {
     // The namespace is a pure function of the stimulus and the featurizer
     // generation, so it is known as soon as the phrase is, and every row this
-    // worker reads or writes is scoped by it.
+    // worker reads or writes is scoped by it. The engine sends the phrase
+    // again when the session's audition clip changes (a capture, a restore):
+    // the namespace never sees the clip, so the store opened for it stays.
+    const opened = cacheDb ? cacheNs : null;
     try {
       cacheNs = wasm ? wasm.cache_namespace(m.json) : null;
     } catch (_) {
@@ -162,7 +165,7 @@ async function onJob(m) {
       return; // `phrase` stays unset, so a job already on its way is declined
     }
     phrase = m.json;
-    if (cacheNs) await cacheOpen(cacheNs);
+    if (cacheNs && cacheNs !== opened) await cacheOpen(cacheNs);
     return;
   }
   if (m.type === "bye") {
