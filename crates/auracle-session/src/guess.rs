@@ -608,6 +608,19 @@ impl Engine {
             PatchZ::Known(z) => (z, "patch"),
             PatchZ::Pool => (vec![0.0; sz.mean.len()], "pool"),
         };
+        // What a why measures the move from. Against the patch, the patch.
+        // Against the pool's average, the average sound with the patch's
+        // own structure (its amp envelope, what an empty socket keeps): the
+        // gain is over z = 0, as the note decided, but a reason must name
+        // something the guess changes, never the envelope it inherits.
+        let zw = if against == "patch" {
+            zp.clone()
+        } else {
+            let n_audio = AudioFeatures::NAMES.len();
+            let mut raw = sz.mean[..n_audio].to_vec();
+            raw.extend(struct_features(tree).to_vec());
+            sz.transform(&raw)
+        };
         let planned = if limit == 0 {
             o.total
         } else {
@@ -637,7 +650,7 @@ impl Engine {
             ranked.push((
                 i,
                 Guess {
-                    why: guess_why(post, &z, &zp),
+                    why: guess_why(post, &z, &zw),
                     p: post.prob_prefers(&z, &zp),
                     lcb: mean - sd,
                     mean,
@@ -662,9 +675,9 @@ impl Engine {
     }
 }
 
-/// The largest part of the gain `θ · (z − zp)` under the style most
-/// responsible for `z`: one of PERFORM's six directions (over the audio
-/// coordinates it spans) or one structural coordinate. `None` when no part
+/// The largest part of `θ · (z − zp)` under the style most responsible for
+/// `z`: one of PERFORM's six directions (over the audio coordinates it
+/// spans) or one structural coordinate the guess moves. `None` when no part
 /// is positive, so nothing leans your way.
 fn guess_why(post: &auracle_taste::TastePosterior, z: &[f64], zp: &[f64]) -> Option<GuessWhy> {
     let names: Vec<String> = Features::phi_names()

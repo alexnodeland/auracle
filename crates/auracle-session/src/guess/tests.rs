@@ -249,6 +249,20 @@ fn guesses_are_ranked_by_the_lower_bound() {
             assert!((g.p - post.prob_prefers(&z, &zp)).abs() < 1e-12);
             if let Some(w) = &g.why {
                 assert!(w.part > 0.0, "a why leans your way");
+                // A reason names what the guess changes, never what it
+                // inherits from the patch (an empty patch's amp envelope).
+                if let Some(c) = w.coordinate {
+                    let j = StructFeatures::NAMES.iter().position(|n| *n == c).unwrap();
+                    let (a, b) = (
+                        struct_features(&t).to_vec()[j],
+                        struct_features(&tree).to_vec()[j],
+                    );
+                    assert_ne!(
+                        a, b,
+                        "{} at {}: the why names {c}, unmoved",
+                        g.kind, g.socket
+                    );
+                }
             }
         }
         for w in r.guesses.windows(2) {
