@@ -73,9 +73,9 @@ runners). Rust tests over a minute, named in the `Makefile` as
 | --- | --- |
 | `auracle-session tests::refinement_improves_pool` (the search floor, a runner of its own) | 331 s |
 | `auracle-session perform::tests::an_aimed_offer_moves_the_way_it_was_turned` | 184 s |
-| `auracle-session perform::tests::a_planned_measurement_is_the_measurement` | 183 s |
+| `auracle-session perform::tests::a_planned_measurement_is_the_measurement` | 183 s (before its palette case, which adds a third measurement; it now fits its standardizer once rather than six times, which more than pays for it) |
 | `auracle-session tests::a_walk_is_a_function_of_its_job` | 127 s |
-| `auracle-session perform::tests::named_controls_move_the_sound_they_name` | 100 s |
+| `auracle-session perform::tests::named_controls_move_the_sound_they_name` | 100 s (before it held the palette's twelve too; its four presets now run in parallel, 34 s on a 16-core M3 Max) |
 | `auracle-wasm tests::evolve_from_this_on_the_farm_is_evolve_from_this` | 83 s |
 | `auracle-session tests::closed_loop_learns_synthetic_taste` | 76 s |
 | `auracle-session tests::closed_loop_learns_motion_rate` | 72 s |

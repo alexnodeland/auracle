@@ -41,8 +41,10 @@ text names another file.
 
 ## A named control is a direction
 
-Six controls, each a fixed weighting of named [φ_audio](../features/audio.md)
-coordinates, normalized to unit length:
+Six controls on the panel, each a fixed weighting of named
+[φ_audio](../features/audio.md) coordinates, normalized to unit length. They
+are the first six of [the palette's eighteen](#the-palette-eighteen-directions),
+which the engine defines and measures the same way:
 
 | Control | Low · high | Weights before normalizing |
 |---|---|---|
@@ -56,10 +58,10 @@ coordinates, normalized to unit length:
 So $\hat e_{\text{Bright}} = (e_{\text{centroid}} + e_{\text{rolloff}})/\sqrt2$, and
 Motion spreads over its four coordinates with weight $\tfrac12$ each, the
 [motion bands](../features/audio.md#motion-bands) plus the older
-`held_centroid_std`. A unit test requires each direction to have unit norm over
-φ’s real coordinate names, so a control whose every coordinate was renamed away
-fails the build. A control that lost one of several coordinates would still
-pass, and would quietly narrow to the rest.
+`held_centroid_std`. A unit test requires each of the eighteen directions to
+have unit norm over φ’s real coordinate names, and every coordinate it weights
+to be one of them, so a control that lost any coordinate to a rename fails the
+build instead of quietly narrowing to the rest.
 
 The direction is defined in $z$, not raw $\varphi$, because only a standardized
 coordinate has a scale that means the same thing across axes. The patch’s
@@ -222,9 +224,29 @@ $$
 
 with $\hat a_k$ the other controls’ axes. Reach and position stay on $\hat e$.
 And two controls whose predicted movements are within $\lvert\cos\rvert > 0.8$
-of each other are one gesture with two names: the later one in the fixed order
-(Bright, Snap, Motion, Body, Grit, Space) becomes a search control
-(`separate`, `COLLINEAR`).
+of each other are one gesture with two names: the later one in the order they
+were wired (for the panel, Bright, Snap, Motion, Body, Grit, Space) becomes a
+search control (`separate`, `COLLINEAR`).
+
+A palette control is not one of the six axes, so the same idea is written for
+any direction (`purity_basis`). Take an orthonormal basis $b_0, \dots, b_q$ of
+the span of $\hat e$ and the six axes, with $b_0 = \hat e$ and the rest from
+Gram–Schmidt over the six in order, and, for the predicted movement $m$ as
+above,
+
+$$
+\rho \;=\; \frac{\hat e^\top m}{\sqrt{\sum_{i=0}^{q} (b_i^\top m)^2}} .
+$$
+
+For one of the six this is the formula above, bit for bit: the other five axes
+share no coordinate with it, so they enter the basis unchanged (a unit test
+holds the two equal). A control that leans on some of the six (Thump on Body,
+and on Snap through `crest`) takes up what it shares with them, and the
+remainder of each, the part orthogonal to $\hat e$, counts against it in full:
+a move of $\hat e$ plus an equal part of that remainder has
+$\rho = 1/\sqrt2$ (the unit test checks this for every such pair). One with a
+coordinate of its own (Air’s `zcr_mean`) widens the span by that much. A move
+along the control’s own direction has $\rho = 1$.
 
 Measured over the first 24 patches of a fresh session pool (`reach_census`,
 seed 7), with verification on real renders:
@@ -332,7 +354,9 @@ s\,\big(\hat e^\top z(v(\tfrac{3s}{4})) - \hat e^\top z(v_0)\big) \;>\; -0.05
 $$
 
 It requires at least eight open halves, so a wiring change that closed most of
-them would fail the gate rather than pass it vacuously.
+them would fail the gate rather than pass it vacuously. The palette’s twelve
+are held to the same check on the same four presets, each wired alone, and
+must show at least 16 open halves over at least 8 of the twelve.
 
 It samples somewhere else because **no finite set of samples proves a response
 monotone**. A smooth function can agree with any finite set of points and
@@ -397,6 +421,8 @@ attached.
 | `cargo run -p auracle-session --example perform_wiring --release -- "First Bass"` | The shipped wiring on named presets: knobs, purity, reach, position, search |
 | `cargo run -p auracle-session --example perform_inserts --release` | For each preset’s search controls, whether PERFORM’s graft is transparent and whether it makes the control reachable |
 | `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool, with verification, and how the gate would read with purity against the whole of φ |
+| `cargo run -p auracle-wasm --example palette_census --release -- 3 --prototype` | The [palette](#the-palette-eighteen-directions): the eighteen directions, their cosines, how often each reaches the presets, and what measuring them costs natively |
+| `node crates/auracle-wasm/examples/palette_cost.mjs 4` | The same measurement’s cost in wasm, the six against the eighteen (`make wasm` first) |
 
 The two probes print CSV and the medians are computed from it. `jacobian_probe`
 uses central differences on raw φ at the same $h = 0.08$, so it measures the
@@ -404,6 +430,210 @@ same response as the shipped code without being bit-identical to it.
 `perform_wiring` runs the shipped `jacobian` and the bare-axis `wire` under a
 preset-library standardizer, and does not run verification; `reach_census`
 runs the shipped path (`Engine::wire_controls`) with verification.
+
+## The palette: eighteen directions
+
+[RFC-006](https://github.com/alexnodeland/auracle/blob/main/docs/proposals/006-the-sound-at-the-centre.md)
+turns PERFORM’s controls into a palette of eighteen in six families, of which
+the player places up to eight. The engine defines all eighteen (`PALETTE` in
+`perform.rs`) and measures any of them exactly as it measures the six: one
+Jacobian, the ridge solve onto at most four knobs, the purity and reach gate,
+separation, and verification on real renders (`Engine::wire_named`; the
+arithmetic alone, unverified and without a render, is `wire_set`). The first
+six entries are `CONTROLS`, at the same indices, so an index names the same
+control in either list. The app still asks for the six (`perform_wire`
+without `controls`); the palette’s panel is Plan-005 task 5.
+
+**How a control is named across the boundary.** `perform_wire`’s `controls` is
+a JSON array of palette indices, read entry by entry: a non-negative whole
+number is an index, and an index out of range, a repeat, or anything else in
+the array (a negative, a fraction, a string) is dropped on its own. What is
+not an array at all means the six. An array with nothing valid in it wires
+nothing and renders only the patch itself. The reply’s `wiring` follows the
+order asked, and each entry carries its palette `index` (`Wiring::index`)
+beside its `name`. The page names a control back to the engine by that
+`index` (`perform_offer`’s `control`, `perform_graft`’s `k`), never by the
+entry’s position: asked for `[16, 6]`, the first entry is Bite with `index`
+16, and a position of 0 would aim along Bright. Only for the six asked in
+order are position and index the same.
+
+### The directions
+
+Each of the twelve is a direction of its own over φ’s coordinates, normalized
+like the six:
+
+| Family | Control | Low · high | Weights before normalizing | What it means in φ |
+|---|---|---|---|---|
+| Tone | Bright | dark · bright | `centroid_mean` $+1$, `rolloff_mean` $+1$ | The six, above |
+| Tone | Warmth | cold · warm | `bass_fraction` $+1$, `high_ratio` $-1$ | Weight low down and a soft upper register: the highest note comes through quieter than the held one, as under a low-pass that does not follow the keys |
+| Tone | Air | closed · airy | `zcr_mean` $+1$, `rolloff_mean` $+\tfrac12$, `centroid_mean` $-\tfrac12$ | The very top, above the notes: the highest partials and any breath, and the rolloff, measured against the centroid, so the top opens while the body of the sound stays |
+| Weight | Body | thin · full | `bass_fraction` $+1$ | The six |
+| Weight | Thump | light · thumping | `bass_fraction` $+1$, `crest` $+1$ | Weight low down that hits |
+| Weight | Heft | slight · heavy | `rms_mean` $+1$, `bass_fraction` $+1$ | Dense, held weight: frames full of level (which loudness normalization gives a sustained, low sound, since K-weighting counts the lows for less) and weight low down |
+| Dynamics | Snap | bloom · snap | `attack_s` $-1$, `crest` $+1$ | The six |
+| Dynamics | Punch | gentle · punchy | `crest` $+1$, `rms_std` $+1$ | The size of the hit against the rest: peaks, and a level that moves over the phrase |
+| Dynamics | Round | hard · round | `attack_s` $+1$, `rolloff_mean` $-1$ | A soft attack and few harmonics, the voice’s *round* |
+| Movement | Motion | still · restless | `held_centroid_std`, `motion_slow`, `motion_mid`, `motion_fast`, each $+1$ | The six |
+| Movement | Throb | steady · throbbing | `motion_mid` $+1$ | Pulsing and tremolo: the held note’s motion at 2–8 Hz alone |
+| Movement | Sway | fixed · swaying | `motion_slow` $+1$ | Sweeps and breathing: the held note’s motion at 0.5–2 Hz alone |
+| Space | Space | close · far | `tail_ratio` $+1$ | The six |
+| Space | Distance | near · distant | `tail_ratio` $+1$, `attack_s` $+\tfrac12$, `crest` $-\tfrac12$, `rolloff_mean` $-\tfrac12$ | What distance does to a sound: a longer tail, a softer attack, smaller peaks and a duller top |
+| Space | Haze | clear · hazy | `tail_ratio` $+1$, `motion_fast` $+1$, `crest` $-1$ | A wash: a tail, a shimmer (the 8–30 Hz beating that detune and chorus give) and peaks smoothed away |
+| Character | Grit | smooth · rough | `flatness_mean` $+1$ | The six |
+| Character | Bite | mild · biting | `flux_mean` $+1$, `zcr_mean` $+1$ | An edge: the spectrum changing fast, and high partials (a filter that snaps open, a resonance that rings) |
+| Character | Lo-fi | clean · worn | `flatness_mean` $+1$, `rolloff_mean` $-1$, `motion_fast` $+1$ | Worn like tape: hiss, a dull top and flutter |
+
+Three things φ lacks shaped these. It has no low-mid band, so Warmth is not
+quite the voice’s *warm*, “weight in the low middle, a soft top”. It measures
+weight low down (`bass_fraction`, below about 250 Hz) against a soft top of
+the keyboard (−`high_ratio`: the highest note quieter than the held one).
+That is close to the word, and not exactly it: a sound can gain low-middle
+warmth that this does not see, and lose some that it does not count.
+Defined with the spectrum’s top instead (`rolloff_mean` down with
+`bass_fraction` up), it moved with Body across the sounds ($r = 0.92$), and
+on 28 of the 40 presets where both it and Bright reached it was Bright’s
+gesture, which is why it reads the keyboard’s top and not the spectrum’s.
+φ has no bit-depth or bandwidth feature, so a crusher reaches Lo-fi only
+through the flatness it adds. And its only space coordinate is `tail_ratio`,
+which the amp release sets (a reverb’s tail is cut at note-off), so Distance
+and Haze lean on what else distance and a wash do to a sound.
+
+### Two names for one control
+
+The approved prototype (`docs/notes/vision-2026-09/prototype/perform.js`)
+defined the twelve as blends of the six. Five pairs of those blends were one
+direction, $\lvert\cos\rvert \ge 0.9$: Air and Bright ($+0.94$), Softness and
+Snap ($-0.94$, Snap turned down), Wobble and Motion ($+0.99$), Distance and
+Space ($+0.92$), and Warmth and Air ($-0.94$). Punch was $+0.89$ to Snap. That is
+why each of the twelve above is its own direction. Redundancy was then measured
+three ways over the eighteen, on the presets and the shipped engine’s pool:
+
+- **The directions themselves**, $\hat e_i^\top \hat e_j$: no pair reaches
+  $0.9$. The largest are Space and Distance ($+0.76$) and Body with each of
+  Warmth, Thump and Heft ($+0.71$).
+- **The sounds’ positions** along them, correlated over the 62 presets and the
+  pool of 40: no pair reaches $0.9$. The closest are Motion and Throb ($+0.88$),
+  Snap and Distance ($-0.87$), Motion and Sway ($+0.85$) and Throb and Sway
+  ($+0.83$): a sound that moves tends to move in every band, and a distant one
+  tends to have a slow attack.
+- **The wirings**: over the presets where both reach alone, how often their
+  predicted movements are one gesture ($\lvert\cos\rvert > 0.8$, what
+  `separate` checks). Only Space and Distance do on more than half (9 of 14):
+  where a patch can reach Space at all, it is through the release, and Distance
+  turns it too. A first Heft that also carried $-$`crest` was Thump turned down
+  on two presets in three (both turned the amp envelope, opposite ways), and was
+  changed to the definition above.
+
+### How often each reaches
+
+Each control wired on each of the 62 presets, on the engine the shipped
+wirings are measured under. **Alone** is the control wired by itself: whether
+this patch has knobs that move it, purely and verifiably. **Beside the six** is
+the control wired after the six, so a control whose gesture on a patch is one
+of theirs ($\lvert\cos\rvert > 0.8$) is a search control there: whether it
+adds a gesture the panel does not have. **Both halves** is both directions
+open after verification.
+
+| Family | Control | Alone | Beside the six | Both halves | Median purity | Median reach (σ) |
+|---|---|---|---|---|---|---|
+| Tone | Bright | 79% | 79% | 74% | 0.81 | 1.64 |
+| Tone | Warmth | 73% | 52% | 26% | 0.70 | 0.57 |
+| Tone | Air | 66% | 48% | 35% | 0.60 | 0.47 |
+| Weight | Body | 53% | 32% | 21% | 0.54 | 0.68 |
+| Weight | Thump | 81% | 40% | 27% | 0.70 | 1.55 |
+| Weight | Heft | 76% | 52% | 19% | 0.65 | 0.77 |
+| Dynamics | Snap | 82% | 82% | 32% | 0.99 | 1.56 |
+| Dynamics | Punch | 73% | 60% | 15% | 0.89 | 0.92 |
+| Dynamics | Round | 82% | 44% | 34% | 0.74 | 1.18 |
+| Movement | Motion | 77% | 74% | 26% | 0.98 | 1.91 |
+| Movement | Throb | 47% | 29% | 6% | 0.75 | 1.80 |
+| Movement | Sway | 55% | 34% | 5% | 0.94 | 2.67 |
+| Space | Space | 23% | 23% | 3% | 0.98 | 2.18 |
+| Space | Distance | 94% | 39% | 32% | 0.55 | 1.16 |
+| Space | Haze | 90% | 63% | 35% | 0.69 | 1.49 |
+| Character | Grit | 11% | 6% | 11% | 0.58 | 0.29 |
+| Character | Bite | 81% | 58% | 37% | 0.73 | 0.72 |
+| Character | Lo-fi | 56% | 34% | 23% | 0.56 | 0.91 |
+
+Purity and reach are medians over the presets the control reaches alone. For
+the six, “beside the six” is the panel as it is today: Body and Grit lose
+patches to the gestures of the controls wired before them. Alone, a median
+preset is reached by 12 of the eighteen (5 at least, 16 at most), against 3 of
+the six.
+
+Read the table with one caution. Purity measures cross-talk against the named
+axes, not whether a control moved every coordinate it names, so a direction is
+reached through whichever of its coordinates the knobs move. On a patch where
+nothing moves the flatness, Lo-fi is reached by a duller top and flutter, and
+Distance (94%) by a softer attack and a duller top, since few patches can move
+their tail (Space reaches 23%). Throb and Sway rarely open both halves: a sound
+that is still cannot be made stiller.
+
+### What it costs
+
+A measurement is $n + 1$ renders for the Jacobian, shared by every control,
+then four per reachable control and two more for each retry. Wiring eighteen
+instead of six multiplies only the arithmetic (the solve per control takes
+microseconds) and the verification renders.
+
+| Per preset | Renders, median | Mean | Most | Native s, mean | wasm s, mean |
+|---|---|---|---|---|---|
+| The Jacobian alone | 12 | 12.1 | 23 | | |
+| The six, today | 25 | 26.2 | 42 | 5.9 | 7.5 |
+| All eighteen | 49 | 49.8 | 84 | 11.2 | 14.2 |
+
+The render counts are over all 62 presets (`palette_census`). The native times
+are from the same run, three presets at a time on an Apple M3 Max shared with
+other work, at 224 ms a render (173 ms in a quieter run). The wasm times are
+`palette_cost.mjs` under node, on one thread as the engine worker has, over
+every fourth preset (16), at 265 ms a render. That run boots its own pool from
+the same seed, and in wasm the pool comes out differently from the native one,
+so its counts differ a little per preset (median 28 renders for the six, 60 for
+the eighteen).
+
+A control that reaches costs about five verification renders: 4.7 for the six,
+and 5.0 for the eighteen wired in palette order, where 7.5 controls reach a
+preset on average. So the eighteen double today’s measurement. The panel never
+needs all eighteen. To keep within today’s budget:
+
+1. **Wire all eighteen by prediction** from the one Jacobian the six already
+   pay for. That is arithmetic, and enough for each palette entry to preview
+   what it would do, drawn as a guess
+   ([ADR-012](https://github.com/alexnodeland/auracle/blob/main/docs/decisions/012-motion-shows-what-the-engine-does.md)):
+   verification closes some predicted reaches (Throb predicted on 71% of
+   presets alone, verified on 47%).
+2. **Verify only the placed controls**, at most eight. A panel of the six and
+   two of the twelve adds one or two controls that reach (the twelve reach a
+   mean 46% of presets beside the six, 73% alone), so five to seven renders,
+   a fifth to a quarter more than today’s measurement.
+3. **Verify a control placed later from the memo:** the Jacobian is already
+   there, so it costs only its own four renders, and two more if it is
+   retried at half travel.
+
+The shipped preset wirings stay the six’s. With the twelve’s wirings beside
+them, `apps/web/perform-wirings.json` would weigh 391,740 bytes instead of
+173,171 (2.3 times), fetched by every visitor for controls the panel does not
+show yet.
+
+### Names
+
+Three of the prototype’s names are changed, and the maintainer approved them
+with Heft and the end words below on 2026-10-01
+([voice](https://github.com/alexnodeland/auracle/blob/main/www/brand/voice.md)):
+
+- **Round** (hard · round) for Softness (hard · soft): the voice’s word table
+  already defines *round* as “a soft attack, few harmonics”, which is this
+  direction.
+- **Throb** (steady · throbbing) for Wobble: Wobble Board is a preset, and a
+  control of the same name reads as that sound. *Throb* is the tremolo module’s
+  own tag. Pulse was the other candidate, and it is a wave shape.
+- **Sway** (fixed · swaying) for Drift: *drift* is already WANDER’s zone and
+  the walk behind it (`Engine::drift`). Breath would read as Air’s breathiness,
+  and Sweep Machine is a preset.
+
+Heft (slight · heavy), the twelfth, is new. The new words get their rows in
+the voice’s word table with the palette’s panel, when the app first shows
+them.
 
 ## Drift: a local walk on the live knobs
 
@@ -639,8 +869,17 @@ re-normalizing it.
   and is not built. Nor is the aim itself tuned per patch or per player:
   repeated turns the same way do not ask harder, and Wander’s offers are not
   aimed at the last control turned (RFC-002’s open questions).
-- **The directions are fixed, not personal.** The six are the same for every
-  player. A control along a fitted style $\theta_k$ is [a different and
+- **The palette is measured, not yet played.** The engine defines and
+  measures all eighteen directions, and the app still wires and shows the six:
+  placing controls on the panel is Plan-005 task 5. The twelve have no
+  [grafts](#the-measurements-and-what-reproduces-them) yet, so a search control
+  among them asks for an aimed offer only. The page’s wiring cache is keyed
+  by the patch alone (`wireKey` in `perform.js`), which is right while every
+  measurement is of the six; once the panel asks for other controls, the key
+  must hold the set asked for too, or a wiring of one set is played for
+  another.
+- **The directions are fixed, not personal.** The eighteen are the same for
+  every player. A control along a fitted style $\theta_k$ is [a different and
   more interesting
   object](../design/audition-limits.md#8-six-fixed-controls-when-the-personal-axis-is-already-fitted),
   and not this one.

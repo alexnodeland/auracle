@@ -257,6 +257,17 @@ the worker reports in its `ready` (`cache_namespace`: the stimulus,
 longer matches (a refit, or a new build whose DSP or featurizer measures
 differently) is played at once and re-measured.
 
+A `perform_wire` request may carry `controls`, indices into the engine's
+palette of eighteen (`perform::PALETTE`), and the worker passes them to every
+binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without
+them the engine wires the six. The page sends none yet, so every wiring it
+measures, caches and ships is the six's. The palette's panel (Plan-005 task 5)
+will ask for the controls placed on it. Each wiring in the reply carries its
+palette `index`, and the panel must name a control back by it (an aimed
+offer's `control`, a graft's `k`), not by its position, which follows the
+order asked; and `wireKey` must then hold the set asked for as well as the
+patch.
+
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when
 the page is hidden or left (`flushWirings` on `pagehide` and
