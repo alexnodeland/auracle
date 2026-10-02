@@ -82,6 +82,53 @@ test("the model's guess is drawn at its socket with its reason and forecast, and
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
+test("beside the guess, the patch's face and its face with the guess, each as rendered, gone after a knob turns, and only the guess's on a patch from nothing", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(420_000);
+  const errors = await boot(page, { warmed: false });
+  await warmStartAndFit(page);
+  await openPreset(page, "Sub & Sparkle");
+  const top = (await drawnGuess(page)).data.guesses[0];
+  // The candidate's face is the memo row the guess rendered for it (its
+  // `key`), not an estimate; the patch's is the bench's own render.
+  expect(top.key, "the ranking names the candidate's render").toMatch(/^[0-9a-f]{32}$/);
+  const faces = page.locator("#rack-svg .rack-guess image.gp-face");
+  await expect(faces).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.locator("#rack-svg .rack-guess .gp-face-word")).toHaveText(["as it is", "with it"]);
+  // Each word sits under its own face, and the two words don't touch.
+  const boxes = await page.locator("#rack-svg .rack-guess .gp-face-word").evaluateAll((ts) =>
+    ts.map((t) => { const r = t.getBoundingClientRect(); return { l: r.left, r: r.right }; }));
+  expect(boxes[0].r, "the words stand apart").toBeLessThan(boxes[1].l);
+  expect(await faces.nth(1).getAttribute("data-face")).toBe(`g${top.key}`);
+  // Both drawn pictures. Not compared: a module at its defaults can move
+  // no band by the face's half-decibel step, and the two are then the same.
+  for (const f of [faces.nth(0), faces.nth(1)]) expect(await f.getAttribute("href")).toMatch(/^data:image\/png;base64,/);
+
+  // A knob turned: a knob is not ranked again, so the guess stays, but its
+  // faces describe the tree it was ranked on, which the bench has left. They
+  // go, and stay gone after the edit has settled.
+  const plates = page.locator("#rack-svg .guess-plate");
+  const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
+  const box = await knob.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
+  await page.mouse.up();
+  await expect(faces).toHaveCount(0, { timeout: 15_000 });
+  await page.waitForTimeout(1500);
+  await expect(faces).toHaveCount(0);
+  await expect(plates).toHaveCount(1);
+
+  // A patch from nothing has no sound, so no face as it is: only the guess's.
+  const t0 = await now(page);
+  await page.locator("#patch-new-btn").click();
+  await expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout: 30_000 });
+  const empty = (await rankedGuess(page, t0)).data.guesses[0];
+  await expect(faces).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.locator("#rack-svg .rack-guess .gp-face-word")).toHaveText(["with it"]);
+  expect(await faces.first().getAttribute("data-face")).toBe(`g${empty.key}`);
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
 test("nothing is guessed before the warm start", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page, { warmed: true });

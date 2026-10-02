@@ -79,6 +79,71 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      slices, whitened against the bank's mean and spread.
    - It appears on every row, chip and card.
    - The share card is built on today's image export.
+   - *Progress (2026-10-02):* built in today's views, before the shell
+     (task 2):
+     - the analysis is Rust (`auracle_features::face`), taken inside every
+       featurization and carried on the memo row beside φ, not in it, so
+       the fill, the farm, a generation's walks and an offer give a face
+       without a render of its own: 2.5 ms in wasm against a 201 ms
+       featurization, 1.66 ms against 146 ms natively (1.1%);
+     - the worker files each face under its render namespace and key, in
+       memory and in IndexedDB, answers `faces` from memory in `now`, looks
+       the rest up in `later`, and renders only what it has no face for, in
+       a lane of its own below `later`, after boot, dropping what is waiting
+       for a slot that left the view;
+     - main whitens against the pool's faces (`faces.js`), and one
+       renderer draws the specimen's vessel at every size (`vessel.js`
+       `drawVessel(ctx, face, stats, {box, slices, glow, reflection})`): a
+       row's icon, the cards, PERFORM's slots, the share card with its glow
+       and reflection, and stage mode's full screen (`stageDraw` in
+       `perform.js`, with `host.faceOf(tree)` handing it the face and the
+       bank). Slots show it once per bank as an image; the bank
+       is drawn against again when its mean moves by 0.25 dB in a band or
+       its spread by 1%;
+     - faces are on the bank's rows (pool and presets), EVOLVE's cards,
+       PATCH's header and teach strip, PERFORM's sound in hand and B, and
+       the warm start's cards, each in a slot its place always has; where a
+       name could be cut short, its column is wider by the face (the bank
+       252 to 280 px, PATCH's subject column by 28 px, the teach strip's A
+       and B by 18), and EVOLVE's and PERFORM's names wrap rather than cut;
+     - beside PATCH's guess plate, the patch's face (*as it is*) and the
+       face of the render the guess made with its module (*with it*,
+       `Guess::key`, `face_of_key`): the specimen's estimated vessel, measured;
+       a patch from nothing has only the second. Both are of the tree the
+       guess was ranked on (the reply's `tree`): a knob turn is not ranked
+       again, so they go until the next ranking. They sit right of the
+       plate wherever it is placed, and are not kept in view as the plate is;
+     - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
+       × 630 at 2×), with the patch inside; without a face (an edit the vet
+       refuses, a bank of fewer than four) it says why, and downloads
+       without one.
+
+     Where the specimen and the engine differ, the engine was followed:
+     - the specimen's data summed whole FFT bins, so its two narrowest bands
+       read empty (−60 dB); a band here is the mean power density over its
+       edges, so a band narrower than a bin reads that bin and white noise
+       reads level;
+     - the specimen whitened against a fixed snapshot of 63 presets; here it
+       is the live pool, and moves with it;
+     - its slice layers were not documented; here each slice's spectrum is
+       relative to its own loudest band and sized and lit by the slice's
+       loudness, as the specimen draws them;
+     - the specimen draws small faces (rows, chips) without a glow and
+       large ones with one; here the same: the share card and stage size
+       have the glow and the floor's reflection, the slots none;
+     - a face's whitening moves when the pool does, so a face of the same
+       render can read differently a generation later: the specimen's never
+       did, since its bank never changed;
+     - the specimen's stage fades its live trail like phosphor; that trail
+       is what you hear, not the face, so stage mode draws it on a layer of
+       its own over the still face (`st-trail`), in the face's bands and
+       against the same bank, with the vessel's outline lit by how loud it
+       is, as the specimen's `frame` does; the face's slices are drawn as
+       the specimen's `A.face` draws them: stacked layers, each as bright as
+       its slice is loud;
+     - the specimen's stage lights each note's band (the vessel as a
+       keyboard on its side); no note timings reach `perform.js`, so stage
+       mode lights none (task 5 says so too).
 4. **EVOLVE and the bank** (this is Plan-004 task 7's explanation figure).
    - Pointing at EVOLVE POOL marks the seeds as well as the sounds that may be
      replaced. The seed count is exposed from the engine (task 9).
@@ -129,14 +194,12 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      set in palette order, the page names each control back by its `index`,
      and `wireKey` holds the set. A placed control is measured lazily and
      says *listening…* while it is. How it works covers every placed control.
-     B grows from the sound's name, fills when taken and folds back when
+     B grows from the sound's face, fills when taken and folds back when
      passed (each motion names its engine source); the heard rule is
      unchanged (an unheard take is allowed and records no pick). Stage mode
-     draws the output's spectrum for now: stage draws the face once task 3
-     lands (`stageDraw` in `perform.js` is the one function to swap, marked
-     `faces:`). Not done: the faces the prototype draws (the well, a face in
-     stage mode) wait for task 3, so the offer's motion anchors on the
-     sound's name; the palette's preview of
+     draws the sound's face, still, with what sounds fading over it (task
+     3). Not done: the prototype's large well beside the controls (the face
+     is in the header for now); the palette's preview of
      an unplaced control needs the unverified wiring exposed (the reference's
      PERFORM page, "What is not done"); the prototype's well-and-panel layout
      waits for the shell (task 2). Where the prototype and the engine
@@ -162,7 +225,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      liking rises, the forecasts scored, copy as JSON, and the math, whose
      numbers come from `WasmEngine::model_facts`; the forecasts from
      `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
-     is one function (`drawMark`, `host.drawFace`), the faces' slot (task 3).
+     is one function (`drawMark`, `host.drawFace`), and draws each sound's
+     face (task 3), sized by the model's doubt.
      Then, to match Vision II exactly: the taste-over-time track and its
      replay, SOUND / TASTE, a weight's shading of the small map
      (`WasmEngine::pool_features`), the weights moving per pick (a `styles`
@@ -222,7 +286,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        from that render or kept beside its row, the guess
        plate gets the candidate's face, labelled as the patch with this
        module, beside the patch's own. patch.js calls `host.guessFace(g,
-       at, layer)` for it; main.js does not provide it yet;
+       at, layer)` for it, and main.js draws both faces there (task 3:
+       `Guess::key` names the candidate's memo row, `face_of_key` reads its
+       face, labelled *as it is* and *with it*);
      - the specimen's "in 39% of similar presets" counted presets; the
        engine's guess is ranked by the posterior, so the line is the
        model's reason and forecast, and says *it may not help* when the lower

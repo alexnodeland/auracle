@@ -187,7 +187,9 @@ export function createPatch(host) {
   // `guess_rank`'s ranking for the patch in hand, best first by the lower
   // bound of the gain. Only the top guess is drawn; a skip shows the next one
   // the engine ranks (`guess_skip`, then `guess` again).
-  const guess = { want: false, out: null, again: false, data: null, epoch: -1, skipping: false, retries: 0 };
+  // `tree`: the bench's tree the ranking was made on (the reply's), which
+  // the faces beside the plate describe.
+  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0 };
 
   function askGuess() {
     if (guess.out) {
@@ -220,6 +222,7 @@ export function createPatch(host) {
       return;
     }
     guess.data = m.data || null;
+    guess.tree = m.tree || null;
     guess.epoch = epoch;
     guess.skipping = false;
     // A ranking that came back with nothing in it because its time ran out
@@ -422,7 +425,9 @@ export function createPatch(host) {
     // is a measurement, not the specimen's estimate. Once faces exist the
     // host draws it beside the plate, labelled as the patch with this module,
     // with the patch's own face to compare (`guessFace(g, at, layer)`).
-    if (host.guessFace) host.guessFace(g, at, layer);
+    // Both describe the tree the guess was ranked on (`guess.tree`), so the
+    // host draws them only while the bench is still that tree.
+    if (host.guessFace) host.guessFace(g, at, layer, guess.tree);
     // Over a narrow socket the words can be wider than the plate: condensed
     // to fit, as the rack's own silkscreen is (`fitLabels`).
     for (const t of [t1, t2, t3]) {
@@ -962,6 +967,7 @@ export function createPatch(host) {
       probe.tree = null;
       probe.stale = false;
       guess.data = null;
+      guess.tree = null;
       guess.skipping = false;
       guess.want = true;
       guess.retries = 0;
@@ -976,6 +982,12 @@ export function createPatch(host) {
       // A knob: the cables are where they were, and their levels are no
       // longer measured (hollow marks) until the probe has heard the change.
       if (probe.levels) probe.stale = true;
+      // A knob is not ranked again: the guess stands, but the faces beside it
+      // describe the tree it was ranked on, which the bench has left. They go
+      // until the next ranking (ADR-012); the plate is not rebuilt for it.
+      if (guess.tree && guess.tree !== host.benchTreeJson()) {
+        host.rackSvg()?.querySelector(":scope > g.rack-guess > g.gp-faces")?.remove();
+      }
     }
     probe.want = true;
     renderTools();

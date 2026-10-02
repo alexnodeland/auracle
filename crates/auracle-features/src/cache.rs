@@ -48,6 +48,7 @@ use std::sync::{Arc, Mutex};
 use auracle_grammar::PatchTree;
 use serde::{Deserialize, Serialize};
 
+use crate::face::Face;
 use crate::phrase::PhraseSpec;
 use crate::pipeline::{featurize, Features, FeaturizeError};
 use crate::render::Audition;
@@ -102,6 +103,11 @@ pub fn canonical_tree_json(tree: &PatchTree) -> String {
 /// | 1 | first persistent cache; peak-capped loudness normalization |
 /// | 2 | the motion bands: three φ_audio coordinates (`motion_slow`, `motion_mid`, `motion_fast`) — an epoch-1 row lacks them and does not deserialize |
 /// | 3 | pink noise leaves the compiler through a 20 Hz highpass (it carried 22 % of its energy below 20 Hz), so every patch with a pink source renders differently |
+///
+/// The face ([`CachedFeatures::face`]) is not epoch-bearing: it is optional,
+/// a row without one is still current φ, and the app completes a missing
+/// face with a render. A change to how a face is *measured* does need a bump,
+/// or rows would serve the old picture.
 pub const RENDER_EPOCH: u32 = 3;
 
 /// The `quiver-dsp` version this build renders with, folded into
@@ -191,6 +197,13 @@ pub struct CachedFeatures {
     pub note_onsets: Vec<usize>,
     /// Length of the render in samples.
     pub n_samples: usize,
+    /// The render's face ([`crate::face`]): a picture for the app, not part
+    /// of φ. Computed from the same render as everything above. `None` in a
+    /// row stored before faces existed; such a row is still current φ, and
+    /// the app completes its face with a render when it needs one (which is
+    /// why faces arriving did not bump [`RENDER_EPOCH`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face: Option<Face>,
 }
 
 /// Memo occupancy and hit accounting.
@@ -430,8 +443,11 @@ pub fn featurize_memo(
     let entry = CachedFeatures {
         key,
         features: v.features,
-        note_onsets: v.render.note_onsets,
         n_samples: v.render.samples.len(),
+        // From the same render, read as the audition's f32 samples, so this
+        // face equals the one taken from the stored audition.
+        face: Some(Face::of_f64(&v.render.samples, v.render.sample_rate)),
+        note_onsets: v.render.note_onsets,
     };
     memo.put(entry.clone(), audition.clone());
     Ok((entry, audition))
@@ -477,6 +493,11 @@ mod tests {
         assert_eq!(fresh.features.lufs_before, hit.features.lufs_before);
         assert_eq!(fresh.render.note_onsets, hit.note_onsets);
         assert_eq!(fresh.render.samples.len(), hit.n_samples);
+        // The face rides with the row: the same picture on a hit, and the
+        // picture of the render φ was measured on.
+        let face = Face::of_f64(&fresh.render.samples, fresh.render.sample_rate);
+        assert_eq!(miss.face.as_ref(), Some(&face));
+        assert_eq!(hit.face.as_ref(), Some(&face));
         let s = memo.stats();
         assert_eq!((s.hits, s.misses), (1, 1), "second call must not render");
     }
@@ -569,6 +590,61 @@ mod tests {
         assert_eq!(
             again.features.phi(),
             featurize(&t, &spec).unwrap().features.phi()
+        );
+    }
+
+    /// A patch that listens (AUDIO IN) has the face of what it heard: the
+    /// face is taken from the listening render like any other, so a clip of a
+    /// 1 kHz tone lights the band holding 1 kHz, and two clips give two
+    /// faces, each on its own row.
+    #[test]
+    fn a_listening_patch_has_the_face_of_its_clip() {
+        use crate::clip::AuditionClip;
+        use crate::face::{band_edges_hz, FACE_BANDS};
+        use auracle_grammar::term::InputChannel;
+        let spec = PhraseSpec::default();
+        let clip = |hz: f64| {
+            let n = (spec.total_seconds() * 44_100.0) as usize;
+            let x: Vec<f32> = (0..n)
+                .map(|i| (0.3 * (i as f64 * hz / 44_100.0 * std::f64::consts::TAU).sin()) as f32)
+                .collect();
+            PhraseSpec {
+                clip: Some(AuditionClip::from_interleaved(&x, 1, 44_100.0, &spec).unwrap()),
+                ..spec.clone()
+            }
+        };
+        let mut listens = tree(0.5);
+        listens.root = AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: 0,
+            gain: 0.5,
+            channel: InputChannel::Both,
+        };
+        let memo = RenderMemo::default();
+        let face_of = |s: &PhraseSpec| {
+            featurize_memo(&listens, s, &memo, false)
+                .expect("a listening render vets")
+                .0
+                .face
+                .expect("it has a face")
+        };
+        let (low, high) = (face_of(&clip(1000.0)), face_of(&clip(4000.0)));
+        assert_ne!(low, high, "two clips, two faces");
+        let edges = band_edges_hz();
+        let band = |hz: f64| {
+            (0..FACE_BANDS)
+                .find(|&b| hz >= edges[b] && hz < edges[b + 1])
+                .unwrap()
+        };
+        assert_eq!(
+            low.ltas_db()[band(1000.0)],
+            0.0,
+            "1 kHz lights its own band"
+        );
+        assert_eq!(
+            high.ltas_db()[band(4000.0)],
+            0.0,
+            "4 kHz lights its own band"
         );
     }
 

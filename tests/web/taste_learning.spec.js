@@ -488,6 +488,43 @@ test("the track replays what the engine posted at each pick, and is still there 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
+test("each sound on the map is drawn as its face: taller than it is wide, in the sound's green", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openView(page, "taste");
+  const { pos } = await mapPositions(page);
+  // A face is a vessel, about 0.6 as wide as it is tall; a dot is as wide as
+  // it is tall. Measured on the map's own pixels, in the sound's green.
+  const extents = (x, y) => page.evaluate(([x, y]) => {
+    const cv = document.getElementById("taste-crt");
+    const d = window.devicePixelRatio || 1;
+    const g = cv.getContext("2d");
+    const green = (px, py) => {
+      const [r, gg, b, a] = g.getImageData(Math.round(px * d), Math.round(py * d), 1, 1).data;
+      return a > 90 && gg > r + 30 && gg > b;
+    };
+    let up = 0;
+    while (up < 30 && green(x, y - up - 1)) up++;
+    let down = 0;
+    while (down < 30 && green(x, y + down + 1)) down++;
+    let left = 0;
+    while (left < 30 && green(x - left - 1, y)) left++;
+    let right = 0;
+    while (right < 30 && green(x + right + 1, y)) right++;
+    return { tall: up + down, wide: left + right };
+  }, [x, y]);
+  await expect.poll(async () => {
+    let faces = 0;
+    for (const q of Object.values(pos).slice(0, 12)) {
+      const e = await extents(q.x, q.y);
+      if (e.tall >= e.wide + 4) faces++;
+    }
+    return faces;
+  }, { timeout: 30_000 }).toBeGreaterThanOrEqual(8);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
 test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await boot(page);

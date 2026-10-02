@@ -681,8 +681,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank {
   position: relative; /* containing block for .bank-tour, which anchors to
                          the rail it describes rather than to the page */
-  width: 252px;
-  flex: 0 0 252px;
+  /* 252px of rows, and the faces' column (24px and its 4px gap): the column
+     is added, not taken from the names (Plan-005, a mark never narrows a
+     name). */
+  width: 280px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--hairline);
@@ -967,6 +970,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
    what uncertainty should look like. Absolutely positioned so it costs the row
    no height at all. */
 .bank-item { position: relative; }
+/* The face's column, left of the row's lines, on every row whether its face
+   has arrived or not: the lines start at the same x either way. */
+.bank-item { padding-left: calc(var(--s2) + var(--s5) + var(--s1)); }
+.bank-item > .face-slot {
+  position: absolute;
+  left: var(--s2);
+  top: 50%;
+  transform: translateY(-50%);
+}
 .bank-item .bi-u {
   position: absolute;
   left: 8px; right: 8px; bottom: 3px;
@@ -1170,11 +1182,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
    the callout into the name's row is also 40px given back to the rack. */
 .patch-head {
   display: grid;
-  grid-template-columns: clamp(180px, 26%, 320px) minmax(0, 1fr) auto;
+  /* The subject's column is wider by its face (20 px and the 8 px gap), so
+     the name keeps the width it had before faces; 26% of a stage 28 px
+     narrower (the bank is wider by the faces' column) is 7 px less again. */
+  grid-template-columns: clamp(208px, calc(26% + 35px), 348px) minmax(0, 1fr) auto;
   grid-template-areas: "subject callout evolve" "tools tools tools";
   align-items: center;
   column-gap: var(--s4);
   row-gap: var(--s2);
+}
+/* At 1080 px and under, faces cost the callout its last words: the bank is
+   28 px wider and the subject column 35, so at 1000 px "Breed a generation ▸"
+   showed as "Breed a gener…", and the first-step callouts and "see what it
+   learned" lost their ▸ (measured: a 309 px cell, 344 before faces). The
+   gaps and the chip's own padding give 28 px of it back, so the name keeps
+   its width (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .patch-head { column-gap: var(--s2); }
+  .patch-head .nextstep { padding-inline: var(--s2); }
+  .patch-head .callout-row .seg-new { padding-left: var(--s2); }
 }
 .patch-head .subject-block { grid-area: subject; }
 .patch-head .callout-row { grid-area: callout; }
@@ -3750,7 +3776,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   .util-btn { padding: var(--s1) var(--s2); }
 }
 @media (max-width: 1080px) {
-  .bank { width: 200px; flex-basis: 200px; }
+  .bank { width: 228px; flex-basis: 228px; } /* 200px of rows and the faces' column */
   /* A 200px rail has room for "+15", not for "+15 arriving"; the tooltip
      keeps the sentence. */
   .bank-head .bc-word { display: none; }
@@ -3848,7 +3874,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .pd-side {
   background: var(--pd-side); border: 1px solid var(--plate-edge); border-radius: 3px;
   color: var(--phos-a); font: var(--t-value)/1.4 var(--font-mono);
-  padding: 2px var(--s2); cursor: pointer; max-width: 180px;
+  padding: 2px var(--s2); cursor: pointer; max-width: 198px; /* 180 px of name, and the face's 14 and its 4 px */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pd-side:hover { border-color: var(--phos-a); }
@@ -5324,6 +5350,33 @@ html.handheld .handheld-gate {
 .keys-span .pc-cap { font-size: var(--t-label); color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .keys-span .perf-sel { flex: 1; min-width: 0; }
 
+/* ===================== faces ===================== */
+/* A sound's face (Plan-005 task 3): the render's spectrum against the bank's,
+   drawn by faces.js (in the sound's green, `--phos-a`) as an image in a slot
+   its place always has. */
+.face-slot { display: inline-block; flex: none; vertical-align: middle; }
+.face-slot .face { display: block; pointer-events: none; }
+/* PATCH's teach strip: the face, then the name. */
+.pd-side .face-slot { margin-right: var(--s1); }
+/* An EVOLVE card's face, before its name; the name keeps the head's free
+   space, so the badge and the flip stay at the right. */
+.panel-head > .face-slot + .duel-name { margin-right: auto; }
+/* At 1000 to 1080 px the bank is wider by the faces' column (228 px, not
+   200); PERFORM's side padding gives the 28 px back, so its eight captions
+   keep the width they had (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .stage > .view.perform { padding-left: var(--s2); padding-right: var(--s2); } /* (0,3,0): over PERFORM's own padding, set further down */
+}
+/* A warm-start card: the face left of its two lines, in a column the card
+   always has. */
+.warm-cell .warm-item { padding-left: calc(var(--s3) + var(--s5) + var(--s2)); }
+.warm-item > .face-slot {
+  position: absolute;
+  left: var(--s3);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 /* ===================== PERFORM ===================== */
 /* The sound under your hands: up to eight named controls from a palette of
    eighteen, Blend, a wander dial and six pads, on one faceplate. Built by
@@ -5342,6 +5395,7 @@ html.handheld .handheld-gate {
   justify-content: space-between;
   gap: var(--s4);
 }
+.pf-head .pf-title { margin-right: auto; } /* the held face sits before it */
 .pf-name {
   font-family: var(--font-silk);
   font-size: 26px; /* token-exempt: PERFORM's held name. The specimen sets it as the level's display (52px) in a layout with room for it, which PERFORM's rebuild makes (Plan-005 task 5); at 52px here it pushes how it works under the keybed */
@@ -6172,6 +6226,10 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   fill: var(--phos-b-dim);
 }
 .guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Beside the guess plate: the patch's face, and its face with the guess, as
+   rendered (Plan-005 task 3). The words under them are the rack's value tier. */
+.rack-guess .gp-face { pointer-events: none; }
+.rack-guess .gp-face-word { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--silk-dim); text-anchor: middle; pointer-events: none; }
 .guess-plate text { pointer-events: none; }
 .gp-skip { cursor: pointer; outline: none; }
 .gp-skip .gp-skip-hit { fill: transparent; stroke: transparent; }
