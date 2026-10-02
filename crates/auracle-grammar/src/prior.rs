@@ -401,7 +401,7 @@ fn u01_seq(key: String, sites: &'static [&'static str]) -> Model<Vec<f64>> {
 impl PatchGrammarPrior {
     fn source_model(&self, key: String) -> Model<AudioNode> {
         let weights = self.source_weights;
-        // Five of the six sources own a modulation slot, so the source model
+        // Five of the eight sources own a modulation slot, so the source model
         // needs the grammar config the processor model already carried.
         let cfg = self.clone();
         sample(addr!(key.clone(), "src"), weighted_cat(&weights)).bind(move |src| match src {
