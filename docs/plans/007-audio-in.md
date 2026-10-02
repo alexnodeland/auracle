@@ -140,8 +140,8 @@ measured with audition clips, from quiver to the PATCH plate.
      lists them at its foot under *kept safe*, each with the engine's
      sentence and RECORD AGAIN, which records the sound from its saved term
      (`held_sounds` now carries it and the capture's key,
-     `PatchTree::lost_take_key`) on an instrument of its own, lending the
-     input it reads, and sends the take to `readmit_held`. It does not open
+     `PatchTree::lost_take_key`), lending the input it reads and waiting
+     for it to open, and sends the take to `readmit_held`. It does not open
      the sound on the bench: a held sound is not in the pool, and the bench
      opens pool sounds;
    - **TRACK live** (task 5); *done* (the second web PR): one tracked voice.
@@ -228,8 +228,9 @@ measured with audition clips, from quiver to the PATCH plate.
    - a recording stops at `TAKE_SECONDS` at the voice's rate
      (`RecordWindow`), so it always reads back as a take.
    - Live: *done* (task 4's second web PR): `LivePoly::set_record` and
-     `take_json`, RECORD on the plate (an instrument of its own in the
-     worklet, the take sent as `set_take`), and the held sounds in the bank.
+     `take_json`, RECORD on the plate (the worklet copies the input while it
+     is lit, the engine worker renders the take, `render_take`, and it goes
+     out as `set_take`), and the held sounds in the bank.
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
    is *done* (*Audition clips*, with the AUDIO IN term on the grammar page),

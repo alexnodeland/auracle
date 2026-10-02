@@ -298,12 +298,14 @@ Recording is the host’s. A compiled voice has a record gate per capture and
 reads the take back from quiver’s state, and `StructOp::SetTake` puts it in the
 term. Nothing in the engine raises the gate, so a measurement render never
 records and a capture measures the same every time. In the app, RECORD on the
-CAPTURE’s plate builds an instrument of its own in the worklet (one voice of
-the patch, its key held at C4), raises the gate there
-(`LivePoly::set_record`) while the input is written into it, and on STOP (or
-at `TAKE_SECONDS`) reads the take back (`LivePoly::take_json`) and sends it as
-`set_take`, an edit like any other. A sound kept safe is recorded the same way
-from its saved term, and the take goes to `readmit_held`.
+CAPTURE’s plate has the worklet copy the input the CAPTURE listens to while it
+is lit, and on STOP (or at `TAKE_SECONDS`) the engine worker plays that copy
+through one voice of the patch, its key held at C4 and the gate raised
+(`render_take`, with `LivePoly::set_record` and `LivePoly::take_json`): the
+take a voice recording live would have made, without compiling, rendering or
+encoding on the audio thread. The take goes out as `set_take`, an edit like any
+other. A sound kept safe is recorded the same way from its saved term, and the
+take goes to `readmit_held`.
 
 ### Player kinds: scored and never drawn
 

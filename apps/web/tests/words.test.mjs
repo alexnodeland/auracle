@@ -669,7 +669,7 @@ test("CAPTURE says how long its take is, and what recording did, in the voice", 
   assert.match(TAKE_SAID.empty, /while STOP is lit/);
   // Every code the worklet sends has its own sentence, and each says that
   // nothing was recorded or changed.
-  assert.deepEqual(Object.keys(TAKE_ERRORS).sort(), ["failed", "no_capture", "not_ready"]);
+  assert.deepEqual(Object.keys(TAKE_ERRORS).sort(), ["failed", "no_capture"]);
   for (const s of Object.values(TAKE_ERRORS)) assert.match(s, /nothing (was recorded|changed)/);
   // An input that didn't open says so, and that nothing was recorded.
   for (const s of Object.values(TAKE_INPUT)) {

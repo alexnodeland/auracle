@@ -4,13 +4,15 @@
 //
 // What it owns, and the rules it keeps:
 //
-// - **Recording happens in an instrument of its own.** RECORD asks the
-//   worklet to build one voice of the patch (`take_start`), hold its key,
-//   raise the CAPTURE's record gate and write the input into it each quantum;
-//   STOP (or the take's limit, the engine's `take_seconds`) drops the gate and reads the
-//   recording back (`take_done`). So recording needs no MONITOR and leaves the
-//   voices under the player's hands alone, and what it records is what the
-//   CAPTURE's own input branch makes, not the raw input.
+// - **The audio thread only copies.** RECORD hands the worklet a buffer
+//   (`take_start`), and while it is lit the worklet copies the recorder's
+//   input into it; STOP (or the take's limit, the engine's `take_seconds`)
+//   hands it back (`take_done`). The engine worker then plays it through one
+//   voice of the patch, its key held and the CAPTURE's record gate raised
+//   (`render_take`), and encodes the take. So recording needs no MONITOR,
+//   leaves the voices under the player's hands alone, costs the audio thread
+//   a copy, and what it records is what the CAPTURE's own input branch makes,
+//   not the raw input.
 // - **A recording goes into the sound as an edit.** On the bench it is
 //   `edit_structure` with `set_take`, through the bench lane like any other
 //   structural edit: one undo step, rendered and vetted. For a sound kept
@@ -38,10 +40,13 @@ const TAKE_SECONDS_UNTIL_READY = 4;
 export const TAKE_LANE_H = 30;
 
 export function createTakes(host) {
-  // host: live(), note(text, opts), send(msg), setTake(key, take, text),
+  // host: live(), note(text, opts), send(msg, transfer), setTake(key, take, text),
   // lend(slot) → {ready, release}, ensureAudio(), renderBank(), benchTree(),
-  // nodeAt(key), nodeIn(tree, key), benchId() → the sound on the bench
-  let rolling = null;   // {key, held: entry|null, bench, moved, waiting, timer, release}
+  // nodeAt(key), nodeIn(tree, key), benchId() → the sound on the bench,
+  // sampleRate() → the audio's
+  let rolling = null;   // {key, tree, held: entry|null, bench, moved, waiting, timer, release}
+  const rendering = new Map(); // render_take id → its recording, until the worker answers
+  let renderSeq = 0;
   let held = [];        // the sounds a restore kept safe: {id, name, auto_name, note, capture, tree}
   let limit = TAKE_SECONDS_UNTIL_READY; // seconds: the engine's take_seconds once it is ready
 
@@ -71,14 +76,15 @@ export function createTakes(host) {
     try { slot = inputSlot(JSON.parse(treeJson), key); } catch (_) { /* records nothing below */ }
     const lease = slot != null ? host.lend(slot) : null;
     const r = {
-      key, held: heldEntry || null, bench: heldEntry ? null : host.benchId(), moved: false,
+      key, tree: treeJson, held: heldEntry || null, bench: heldEntry ? null : host.benchId(), moved: false,
       waiting: !!lease, release: lease ? lease.release : null, timer: null,
     };
     rolling = r;
     paint();
     const go = () => {
       r.waiting = false;
-      live.takeStart(treeJson, key);
+      // Room for the whole take and a little more, interleaved stereo.
+      live.takeStart(key, new Float32Array(Math.ceil((limit + 0.5) * host.sampleRate()) * 2));
       // The take's own limit stops the recording; the control stops a moment
       // after it, so the whole take is read back.
       r.timer = setTimeout(() => stop(), limit * 1000 + 250);
@@ -127,7 +133,7 @@ export function createTakes(host) {
     paint();
   }
 
-  /** The worklet's reply: the recording, or why there is none. */
+  /** The worklet's reply: the input it copied, or why there is none. */
   function onWorklet(m) {
     if (!rolling) return;
     if (m.type !== "take_done" && m.type !== "take_error") return;
@@ -140,10 +146,34 @@ export function createTakes(host) {
       if (!r.moved) host.note(W.TAKE_ERRORS[m.code] || W.TAKE_ERRORS.failed, { urgent: true, replace: "take" });
       return;
     }
-    // No take: nothing was recorded (a STOP before the first quantum). The
-    // worklet sends none rather than the take the CAPTURE already held.
+    // Nothing copied: a STOP before the first quantum, and no take (not the
+    // one the CAPTURE already holds, sent back as if it were new).
+    const frames = m.frames | 0;
+    if (r.moved) return;
+    if (!m.buf || frames <= 0) {
+      host.note(W.TAKE_SAID.empty, { urgent: true, replace: "take" });
+      return;
+    }
+    // The engine worker plays it through the CAPTURE and encodes the take.
+    const id = ++renderSeq;
+    rendering.set(id, r);
+    host.send({
+      type: "render_take", id, tree: r.tree, key: r.key,
+      samples: m.buf.subarray(0, frames * 2), channels: 2, sampleRate: host.sampleRate(),
+    }, [m.buf.buffer]);
+  }
+
+  /** The worker's take, rendered from what was recorded. */
+  function rendered(m) {
+    const r = rendering.get(m.id);
+    if (!r) return;
+    rendering.delete(m.id);
+    if (!m.take) {
+      host.note(W.TAKE_ERRORS[m.code] || W.TAKE_ERRORS.failed, { urgent: true, replace: "take" });
+      return;
+    }
     let take = null;
-    try { take = m.take ? JSON.parse(m.take) : null; } catch (_) { take = null; }
+    try { take = JSON.parse(m.take); } catch (_) { take = null; }
     const seconds = take && take.sample_rate > 0 ? (take.length | 0) / take.sample_rate : 0;
     if (!take || seconds <= 0) {
       if (!r.moved) host.note(W.TAKE_SAID.empty, { urgent: true, replace: "take" });
@@ -305,6 +335,7 @@ export function createTakes(host) {
     paint,
     onWorklet,
     benchMoved,
+    rendered,
     /** The engine's longest take, in seconds (its `ready`). */
     setLimit: (s) => { if (Number.isFinite(s) && s > 0) limit = s; },
     setHeld,
@@ -313,6 +344,7 @@ export function createTakes(host) {
     /** For the debugging handle: what is rolling and what is kept safe. */
     state: () => ({
       rolling: rolling ? { key: rolling.key, held: rolling.held ? rolling.held.id : null, waiting: rolling.waiting } : null,
+      rendering: rendering.size,
       held: held.map((h) => h.id),
     }),
   };

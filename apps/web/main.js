@@ -296,7 +296,8 @@ const audioIn = createAudioIn({
 const takes = createTakes({
   live: () => live,
   note: (text, opts) => note(text, opts),
-  send: (msg) => send(msg),
+  send: (msg, transfer) => send(msg, transfer),
+  sampleRate: () => (audioCtx ? audioCtx.sampleRate : 48_000),
   ensureAudio: () => ensureAudio(),
   lend: (slot) => audioIn.lend(slot),
   renderBank: () => renderBank(),
@@ -1959,6 +1960,11 @@ worker.onmessage = (e) => {
       takes.setHeld(m.held);
       break;
     }
+    // RECORD's take, rendered by the engine from what the worklet copied.
+    case "take_rendered": {
+      takes.rendered(m);
+      break;
+    }
     case "readmitted": {
       if (m.views) applyViews(m.views);
       if (m.status) applyStatus(m.status);
@@ -3203,6 +3209,10 @@ worker.onmessage = (e) => {
 function releaseRequest(request, id) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
   switch (request) {
+    case "render_take":
+      // The recording it carried is lost: say so, rather than wait forever.
+      takes.rendered({ id, take: null, code: "failed" });
+      break;
     case "edit_param":
       // That write did not land. The ones queued behind it are gestures of
       // their own and still go; the next reply draws what the engine holds.

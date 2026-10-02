@@ -97,16 +97,14 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.inPtr = 0;
     this.inViewB = null;
     this.inPtrB = 0;
-    // CAPTURE's recordings (takes.js): an instrument of its own, one voice of
-    // the patch with its key held and the capture's record gate raised, fed
-    // the input each quantum whether or not it is monitored, and never heard.
-    // Built and read back in the port handler; process() only feeds and
-    // renders it.
-    this.taker = null;
-    this.takeKey = null;
-    this.takeFrames = 0; // frames the taker has rendered since RECORD
-    this.inViewT = null;
-    this.inPtrT = 0;
+    // CAPTURE's recordings (takes.js): while RECORD is lit, process() copies
+    // the second input (the one the CAPTURE listens to) into a buffer main
+    // allocated and handed over, and STOP hands it back. That copy is all a
+    // recording costs this thread: the engine worker plays it through the
+    // CAPTURE's branch and encodes the take (render_take), where compiling a
+    // voice and encoding a 4 s take (6 ms, two quanta) would have been a
+    // glitch for everything here.
+    this.takeRec = null; // {key, buf: interleaved stereo, at: frames copied, cap} (this.rec is ● REC's)
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -230,45 +228,24 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         break;
       }
       case "take_start": {
-        if (!this.ready) {
-          this.port.postMessage({ type: "take_error", key: m.key, code: "not_ready" });
+        if (!(m.buf instanceof Float32Array) || m.buf.length < 2) {
+          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: "no buffer" });
           break;
         }
-        if (this.taker) { this.taker.free(); this.taker = null; }
-        try {
-          const t = new LivePoly(m.tree, sampleRate, 1);
-          t.set_leveler(false);
-          t.note_on(60, 1.0);
-          if (!t.set_record(m.key, true)) {
-            t.free();
-            this.port.postMessage({ type: "take_error", key: m.key, code: "no_capture" });
-            break;
-          }
-          this.taker = t;
-          this.takeKey = m.key;
-          this.takeFrames = 0;
-          this.inViewT = null;
-          this.port.postMessage({ type: "take_started", key: m.key });
-        } catch (err) {
-          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: String(err) });
-        }
+        this.takeRec = { key: m.key, buf: m.buf, at: 0, cap: m.buf.length >> 1 };
+        this.port.postMessage({ type: "take_started", key: m.key });
         break;
       }
       case "take_stop": {
-        if (!this.taker) {
+        const rec = this.takeRec;
+        if (!rec) {
           this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: "not recording" });
           break;
         }
-        const t = this.taker;
-        const key = this.takeKey;
-        this.taker = null;
-        this.takeKey = null;
-        t.set_record(key, false);
-        // Stopped before a quantum ran: nothing was recorded, and the CAPTURE
-        // still holds the take it was built with, which is no new take.
-        const take = this.takeFrames > 0 ? t.take_json(key) : null;
-        t.free();
-        this.port.postMessage({ type: "take_done", key, take });
+        this.takeRec = null;
+        // The frames copied, and the buffer back (none copied: a STOP before
+        // the first quantum, and no take).
+        this.port.postMessage({ type: "take_done", key: rec.key, buf: rec.buf, frames: rec.at }, [rec.buf.buffer]);
         break;
       }
       case "touch":
@@ -346,12 +323,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
   // pointer moved, and that is checked every quantum.
   writeInput(p, inp, n, b) {
     const ptr = p.input_ptr();
-    let view = b === "t" ? this.inViewT : b ? this.inViewB : this.inView;
-    const was = b === "t" ? this.inPtrT : b ? this.inPtrB : this.inPtr;
+    let view = b ? this.inViewB : this.inView;
+    const was = b ? this.inPtrB : this.inPtr;
     if (!view || was !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
       view = new Float32Array(wasm.memory.buffer, ptr, p.input_capacity() * 2);
-      if (b === "t") { this.inViewT = view; this.inPtrT = ptr; }
-      else if (b) { this.inViewB = view; this.inPtrB = ptr; }
+      if (b) { this.inViewB = view; this.inPtrB = ptr; }
       else { this.inView = view; this.inPtr = ptr; }
     }
     const l = inp[0];
@@ -397,6 +373,24 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const L = out[0];
     const R = out[1] || out[0];
+    // A recording: the second input, copied. No input connected is silence,
+    // which still counts as recorded time (the buffer is zeros).
+    const rec = this.takeRec;
+    if (rec && rec.at < rec.cap) {
+      const tin = inputs[1];
+      const q = L ? L.length : 128;
+      const n = Math.min(q, rec.cap - rec.at);
+      if (tin && tin.length > 0 && tin[0].length >= n) {
+        const l = tin[0];
+        const r = tin[1] || tin[0];
+        const b = rec.buf;
+        for (let i = 0, j = 2 * rec.at; i < n; i++, j += 2) {
+          b[j] = l[i];
+          b[j + 1] = r[i];
+        }
+      }
+      rec.at += n;
+    }
     if (this.poly && L) {
       const n = L.length;
       // The input first: the voices read it as they render this quantum.
@@ -405,14 +399,6 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       if (this.monitor && hasInput) {
         this.writeInput(this.poly, inp, n, false);
         if (this.polyB) this.writeInput(this.polyB, inp, n, true);
-      }
-      // A recording runs on its own instrument, heard by no one: fed its own
-      // input (the second) and rendered, its output dropped.
-      if (this.taker) {
-        const tin = inputs[1];
-        if (tin && tin.length > 0 && tin[0].length === n) this.writeInput(this.taker, tin, n, "t");
-        this.taker.process_ptr(n);
-        this.takeFrames += n;
       }
       // Zero-allocation render: the synth fills a persistent wasm buffer;
       // we view its memory directly. The cached view is rebuilt only when
@@ -701,8 +687,10 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     // CAPTURE: record into the capture at `key` of `tree` (JSON), on an
     // instrument of its own; stop replies `take_done` with the recording.
-    takeStart(tree, key) {
-      node.port.postMessage({ type: "take_start", tree, key });
+    /** Copy the recorder's input into `buf` (interleaved stereo, transferred:
+     *  it comes back with `take_done`) until `takeStop`. */
+    takeStart(key, buf) {
+      node.port.postMessage({ type: "take_start", key, buf }, [buf.buffer]);
     },
     takeStop(key) {
       node.port.postMessage({ type: "take_stop", key });

@@ -3661,6 +3661,15 @@ async function dispatch(m) {
     // read and it was the sound's only source, so they are kept out of the
     // pool and saved unchanged (Plan-007 task 6). The capture plate (task 4)
     // lists them and sends a new recording; until then nothing asks.
+    case "render_take": {
+      // RECORD's take: the input the worklet copied while RECORD was lit,
+      // played through the CAPTURE's own branch and encoded here, off the
+      // audio thread (render_take). Always answered: no take is a code, and
+      // a throw is the dispatcher's `engine_error`, with this id.
+      const take = glue.render_take(m.tree, m.key, m.samples, m.channels | 0, m.sampleRate);
+      post({ type: "take_rendered", id: m.id, take: take || null, code: take ? null : "no_capture" });
+      break;
+    }
     case "held_sounds": {
       post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
       break;

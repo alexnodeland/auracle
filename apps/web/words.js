@@ -278,7 +278,6 @@ export const TAKE_SAID = Object.freeze({
 
 /** Why RECORD recorded nothing, by the worklet's `take_error` code. */
 export const TAKE_ERRORS = Object.freeze({
-  not_ready: "The audio isn’t running yet, so nothing was recorded. Press RECORD again in a moment.",
   no_capture: "There’s no CAPTURE there to record into, so nothing was recorded.",
   failed: "The recording failed, so nothing changed. Press RECORD to try again.",
 });

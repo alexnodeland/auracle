@@ -817,15 +817,24 @@ the voices' input in the worklet, and the clip in the engine.
   bench's own. `lend` answers `{ready, release}`; RECORD waits on `ready`
   (the line says *opening input…*) and starts only on `{ok: true}`, or says
   why it can't (`TAKE_INPUT`: refused, missing, failed, unsupported,
-  unplugged). Then it posts `take_start {tree, key}` to the worklet, which
-  builds an instrument of its own in its port handler (one voice, its key
-  held, `set_record(key, true)`), writes the second input into it each
-  quantum whether or not MONITOR is on, renders it and drops its output.
-  `take_stop {key}` (STOP, or the engine's `take_seconds` and a quarter of a
-  second) drops the gate and replies `take_done {key, take}`: `take_json(key)`,
-  or no take when no quantum ran since `take_start` (the CAPTURE would read
-  back the take it was built with). `take_error {code}` says why there is
-  none (`not_ready`, `no_capture`, `failed`). On the bench the take goes out
+  unplugged). Then it posts `take_start {key, buf}` to the worklet, `buf` a
+  `Float32Array` main allocated for the whole take (transferred), and while
+  RECORD is lit the worklet copies the second input into it each quantum,
+  whether or not MONITOR is on: a copy is all a recording costs the render
+  thread. `take_stop {key}` (STOP, or the engine's `take_seconds` and a
+  quarter of a second) hands it back, `take_done {key, buf, frames}`, and
+  main sends it to the engine worker as `render_take {id, tree, key,
+  samples, channels, sampleRate}` (transferred, `now` lane). The worker plays
+  it through one voice of the sound, its key held at C4 and the CAPTURE's
+  record gate raised, and encodes the take (`render_take` in `live.rs`: the
+  take the live recorder would have made, bit for bit), replying
+  `take_rendered {id, take}`, or no take with a `code`. That used to run in
+  the worklet's port handler: a 4 s take's encode is 6.3 ms and the
+  recorder's render up to 0.7 ms a quantum (`examples/take_cost.mjs`), a
+  glitch for everything on the render thread; in the worker it is about
+  70 ms nobody hears. No frames copied (a STOP before the first quantum) is
+  no take. `take_error {code}` says why the worklet has none (`failed`). On
+  the bench the take goes out
   as `edit_structure` with `set_take`, through the bench lane, and only to the
   sound it was recorded for: RECORD remembers `wb.subjectId`, and a move to
   another sound stops it and drops the take (`benchMoved`).

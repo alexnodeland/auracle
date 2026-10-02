@@ -56,12 +56,26 @@
 //! parse off-thread — is out of scope for now and recorded here so that the
 //! next person to see a click on a structural edit knows where it comes from.
 //!
+//! **RECORD costs the render thread a copy.** Measured with
+//! `examples/take_cost.mjs` (V8, one thread, 48 kHz): compiling one voice of a
+//! sound for a recorder took at most 0.07 ms over the 62 presets, but
+//! encoding a 4 s take (`take_json`, 1 MB of JSON) took 6.3 ms, and compiling
+//! a CAPTURE that already holds one (its take decoded from the tree) 6.3 ms:
+//! over two quanta of the 2.67 ms each, in the port handler, a glitch for
+//! everything else on the thread. And the recorder rendered its voice every
+//! quantum while it rolled (up to 0.66 ms). So none of that is here: while
+//! RECORD is lit the worklet only copies its second input into a buffer main
+//! handed it, and the engine worker renders the take from that buffer
+//! ([`render_take`]), compile, render and encode.
+//!
 //! Per-quantum work outside a swap allocates nothing: the arpeggiator reuses
 //! two buffers sized for a full keyboard, and knob smoothers index a table of
 //! live parameter handles that is rebuilt once per swap (`param_slots`), so a
 //! knob write is a linear scan and an atomic store rather than a `String`
 //! allocation and a `HashMap` lookup per voice. Metering allocates while it is
-//! on (see [`Meter`]); the recorder while a take is rolling.
+//! on (see [`Meter`]); ● REC's recorder while it rolls (a slice a quantum).
+//! RECORD on a CAPTURE allocates nothing there: a copy into a buffer main
+//! handed over (above).
 
 use std::sync::Arc;
 
@@ -855,13 +869,12 @@ fn tick_voice(
     }
 }
 
-#[wasm_bindgen]
 impl LivePoly {
-    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON.
-    #[wasm_bindgen(constructor)]
-    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, JsValue> {
-        let tree: PatchTree =
-            serde_json::from_str(tree_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    /// [`LivePoly::new`] with its error as a `String`: what the host's
+    /// constructor wraps, and what [`render_take`] calls (natively too, where
+    /// a `JsValue` cannot be made).
+    fn from_json(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, String> {
+        let tree: PatchTree = serde_json::from_str(tree_json).map_err(|e| e.to_string())?;
         let n = n_voices.max(1);
         let input = Arc::new(AudioInputStream::new(
             LIVE_INPUT_CHANNELS,
@@ -872,16 +885,12 @@ impl LivePoly {
         let tracked = has_track(&tree.root);
         let voices: Vec<Voice> = (0..n)
             .map(|_| build_voice(&tree, sample_rate, &input, tracked))
-            .collect::<Result<_, _>>()
-            .map_err(|e| JsValue::from_str(&e))?;
+            .collect::<Result<_, _>>()?;
         // A patch that listens (or tracks) gets its open voice now, here in
         // the port handler, like the rest; one that does not never compiles
         // one.
         let open = if tree.listens() || tracked {
-            Some(
-                build_voice(&tree, sample_rate, &input, false)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )
+            Some(build_voice(&tree, sample_rate, &input, false)?)
         } else {
             None
         };
@@ -944,6 +953,15 @@ impl LivePoly {
             p.rebuild_sync_lanes();
             p
         })
+    }
+}
+
+#[wasm_bindgen]
+impl LivePoly {
+    /// Build an `n_voices`-voice instrument from a `PatchTree` JSON.
+    #[wasm_bindgen(constructor)]
+    pub fn new(tree_json: &str, sample_rate: f64, n_voices: usize) -> Result<LivePoly, JsValue> {
+        LivePoly::from_json(tree_json, sample_rate, n_voices).map_err(|e| JsValue::from_str(&e))
     }
 
     /// Find every `steps` module's transport and rate handles in the current
@@ -2210,6 +2228,51 @@ impl LivePoly {
         self.step(frames);
         self.out_buf.clone()
     }
+}
+
+/// RECORD's take, rendered off the audio thread (in the engine worker):
+/// `samples`, the input as it was recorded (interleaved, `channels` per
+/// frame, at `sample_rate`), played through the CAPTURE at `key`'s own branch
+/// with the record gate raised, as the live recorder would have done from a
+/// key held at C4. One voice of `tree_json`, the same compile and the same
+/// input path as the instrument, so the take is the one recording live would
+/// have made; but none of it (the compile, the render of the CAPTURE's input
+/// branch, the take's encode) runs on the render thread, which now only
+/// copies the input while RECORD is lit.
+///
+/// Returns the take's saved JSON, or an empty string when the tree does not
+/// compile or there is no CAPTURE at `key`. Allocates; not for the audio
+/// thread.
+#[wasm_bindgen]
+pub fn render_take(
+    tree_json: &str,
+    key: &str,
+    samples: &[f32],
+    channels: usize,
+    sample_rate: f64,
+) -> String {
+    let Ok(mut poly) = LivePoly::from_json(tree_json, sample_rate, 1) else {
+        return String::new();
+    };
+    poly.set_leveler(false);
+    poly.note_on(OPEN_NOTE, 1.0);
+    if !poly.set_record(key, true) {
+        return String::new();
+    }
+    let ch = channels.clamp(1, LIVE_INPUT_CHANNELS);
+    const Q: usize = 128;
+    for block in samples.chunks(Q * ch) {
+        let frames = block.len() / ch;
+        for f in 0..frames {
+            for c in 0..LIVE_INPUT_CHANNELS {
+                poly.input_buf[f * LIVE_INPUT_CHANNELS + c] = block[f * ch + c.min(ch - 1)];
+            }
+        }
+        poly.write_input(frames, LIVE_INPUT_CHANNELS);
+        poly.process_ptr(frames);
+    }
+    poly.set_record(key, false);
+    poly.take_json(key)
 }
 
 #[cfg(test)]
@@ -3793,6 +3856,53 @@ mod tests {
             poly.voices.iter().all(|v| !v.running),
             "a released key's voice is still running after the swap"
         );
+    }
+
+    /// **A take rendered off the audio thread is the one recording live
+    /// makes.** The same input, recorded by a live voice quantum by quantum
+    /// and handed to `render_take` as one buffer, gives the same take, bit
+    /// for bit; a key with no CAPTURE renders none.
+    #[test]
+    fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
+        let tree = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: auracle_grammar::PARAM_MAX,
+                release: 0.0,
+            },
+            root: AudioNode::Capture {
+                uid: Uid::NEW,
+                play: CaptureMode::Once,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Left,
+                }),
+                take: auracle_grammar::Take::empty(),
+            },
+        })
+        .unwrap();
+        // Live: a key held at C4, the gate raised, 100 quanta of the tone.
+        let mut live = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
+        live.set_leveler(false);
+        live.note_on(OPEN_NOTE, 1.0);
+        assert!(live.set_record("node", true));
+        let mut input = Vec::new();
+        for q in 0..100 {
+            quantum_with_input(&mut live, q * 128, true);
+            input.extend_from_slice(&live.input_buf[..256]);
+        }
+        live.set_record("node", false);
+        let recorded = live.take_json("node");
+        // Off the audio thread, from the same input.
+        let rendered = render_take(&tree, "node", &input, 2, 44_100.0);
+        assert!(!rendered.is_empty(), "no take rendered");
+        assert_eq!(rendered, recorded, "the rendered take is not the live one");
+        assert_eq!(render_take(&tree, "node/9", &input, 2, 44_100.0), "");
+        assert_eq!(render_take("not a tree", "node", &input, 2, 44_100.0), "");
     }
 
     /// **A CAPTURE records what is patched into it and reads it back.** With
