@@ -44,7 +44,8 @@ measured with audition clips, from quiver to the PATCH plate.
    - The same release carries quiver's half of tasks 5 and 6: `PitchTracker`
      (the Track module: pitch by YIN, gate and level) and `Capture`.
 2. **The AUDIO IN term:** knobs (`input`, `gain`, `channel`), `describe`, rare
-   in the prior. Walks never change `input`. *Done* (engine):
+   in the prior. Walks never change `input`. *Done* (engine), and **off in
+   the prior until task 4**:
    - `AudioNode::AudioIn`, source index 7, compiled to quiver's `AudioInput`
      on the stream `compile_with_input` binds (`compile` leaves it silent);
    - `input` a slot (1 to 8) the prior never chooses (`PlayerInput`: drawn
@@ -52,12 +53,41 @@ measured with audition clips, from quiver to the PATCH plate.
      live, `channel` left, right or both;
    - described as `audio_in`, "audio in", with `NodeKind::AudioIn` in the
      edit vocabulary;
-   - Silence's 0.5% prior weight, untilted by taste;
+   - prior weight 0 for now (`AUDIO_IN_WEIGHT` in `prior.rs`), so no fill or
+     walk draws one and every seed deals the pool it dealt before the term.
+     Before the app can capture, a drawn listener would be heard as the
+     reference pluck in a duel or the bank and as silence from the keys and
+     PERFORM, on a plate the player cannot use. Task 4 turns it on at
+     `AUDIO_IN_ENABLED_WEIGHT`, Silence's 0.5%, untilted by taste
+     (`PatchGrammarPrior::with_audio_in` is that prior, and the tests reach the
+     term through it);
    - every walk locks each `#input` its seed holds, so the node and its input
      stay;
    - φ keeps its shape: a display counter, `n_audio_in`, and no column.
-   - Open: the node bank entry, the device list and the face are task 4's;
-     `make revalidate` for the prior change is paired with this branch.
+   - Open: the node bank entry, the device list and the face are task 4's,
+     and so is turning the weight on (see task 4).
+
+   The paired `make revalidate` measured the prior **at 0.5%**: before is
+   main at 728dd65, after is this branch with the term at 0.5% (16-seed climb
+   re-run on the rebased heads, byte-identical). Nothing moved beyond noise.
+   The one row that moved the wrong way, locked refine at 160 steps, is
+   about 2 se, not the shipped setting, and non-monotone on the after side.
+
+   | Row | Before | After (0.5%) |
+   |---|---|---|
+   | phi-stats: featurized, quarantine | 1168 (97%), 2.7% | 1172 (98%), 2.3% |
+   | phi-stats: mean size, depth | 3.16, 2.61 | 3.12, 2.58 |
+   | phi-stats: top VIF (rolloff, zcr) | 19.7, 12.9 | 19.9, 13.0 |
+   | phi-stats: audio in quarantined | — | 1 of 17 |
+   | norm-peak: over ceiling; pulled down | 0/144; 10%, 3.8 dB | 0/142; 13%, 4.0 dB |
+   | 1 climb, 16 seeds, mean gain | +2.000 ± 0.380 | +1.693 ± 0.404 |
+   | 1 climb, paired gain; best patch | | −0.31 ± 0.49; +0.28 ± 0.56 |
+   | 1 search-check, 6 seeds | +0.790 (4/6) | +1.295 (6/6) |
+   | 2 MH acceptance; structural share | 48.9%; 30.1% | 47.8%; 31.1% |
+   | 3 locked refine beat parent, 20/*40/80/160 | 54/62/77/88% | 58/69/81/71% |
+   | 4 fit vs truth; ranking across refits | 0.372; 0.569 | 0.375; 0.610 |
+   | 4 true best survived | 100% | 100% |
+
 3. **Audition clips:**
    - a built-in reference signal; *done*: a plucked figure (A2 to E4, a noise
      pick on every note, a quiet tail), deterministic, mono;
@@ -70,16 +100,41 @@ measured with audition clips, from quiver to the PATCH plate.
    - `featurize`, the vet, and walks rendering with them; *done*: the clip
      rides in `PhraseSpec`, a listening patch renders on a host-clock stream,
      its render key (and so the farm's stored key, and PERFORM's wiring key)
-     carries the clip, and `LivePoly` binds a cursor-mode input stream.
-     Open: re-sending the farm's phrase after a capture, and a clip per
-     input.
+     carries the clip, and `LivePoly` binds a cursor-mode input stream. A
+     fill's farm result for a listener measured under another clip (or vetted
+     out under one) is measured on the engine instead (`Engine::absorb_prior`),
+     and a restore's falls back to `bank_render`. Open: re-sending the farm's
+     phrase (task 4), and a clip per input.
 4. **Web capture:**
    - the permission flow, only when a node is added;
    - `enumerateDevices`, and one capture stream per input fanned out to every
      node that uses it;
    - the live worklet's input;
    - the AUDIO IN plate: device select, level meter, live face;
-   - monitoring off, with a headphones note.
+   - monitoring off, with a headphones note;
+   - **turning AUDIO IN on in the prior** once a player can hear a live input:
+     set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
+     task 2 measured exactly that setting, so if nothing else has changed it
+     owes no new run; it does owe `make perform-wirings` and a re-pinned boot
+     probe (`UPDATE_BOOT_PROBE=1`, `crates/auracle-wasm/tests/boot_agrees.rs`),
+     because the pool a seed deals moves.
+
+   Constraints the engine half leaves for this task:
+   - **Re-send the farm's phrase** after a capture *and* after any restore
+     that installs a saved clip. The farm handshake runs before the staged
+     restore, so until it is re-sent every farm render of a listener carries
+     the old clip's key. The engine stays correct without it (a fill measures
+     such a draw itself, a restore's entry falls back to `bank_render`), but
+     each one costs a serial render on the engine's worker.
+   - **The walk context carries the phrase**, clip included (about 600 KB of
+     JSON with a capture), and goes with every walk job. `farm_walk` reuses
+     its parsed context only while the text matches, so each job costs the
+     message and a full-text compare, and each new generation a re-parse.
+   - **The worklet's input view** into wasm memory must re-check
+     `view.buffer !== wasm.memory.buffer` every quantum and re-make the view
+     when memory has grown, as the output view does.
+   - `LivePoly`'s input stream is built in `LivePoly::new`, which the worklet
+     calls in its port handler (`port.onmessage`), never in `process()`.
 5. **Track** (pitch by YIN, gate, level) in quiver and the grammar. Play the
    patch from a voice or an instrument. quiver's half is done
    (`PitchTracker`, 0.4.0).

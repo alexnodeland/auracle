@@ -187,9 +187,14 @@ evolvable, as slot 0. A refinement walk locks every `#input` its seed holds
 ([locks](../search/locks.md)): it may change the gain, the channel and
 everything the signal goes through, and never the input or the node itself.
 
-Its prior weight is `Silence`’s, 0.5% of source draws, and it takes no taste
+Its prior weight is **0 for now** (`AUDIO_IN_WEIGHT`): until the app can
+capture a live input, a drawn one would be heard through the reference clip in
+a duel and as silence from the keys, so the prior draws none and its source
+table is the one it had before the term. It is turned on at `Silence`’s 0.5%
+(`AUDIO_IN_ENABLED_WEIGHT`, `PatchGrammarPrior::with_audio_in`), with no taste
 tilt: whether a patch listens is a choice a player makes by patching an input
-in.
+in. At 0 a tree holding one has $\log p = -\infty$ and cannot be walked,
+which is safe only because nothing can place one yet.
 
 ## What is not in the grammar
 

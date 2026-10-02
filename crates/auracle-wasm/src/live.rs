@@ -549,7 +549,8 @@ pub struct LivePoly {
     /// One per `steps` module in the patch.
     sync_lanes: Vec<SyncLane>,
     /// The live input every AUDIO IN in every voice reads (ADR-015). Built
-    /// once, in [`LivePoly::new`], in quiver's cursor mode: the voices render
+    /// once, in [`LivePoly::new`] (which the worklet calls in its port
+    /// handler, never in `process()`), in quiver's cursor mode: the voices render
     /// a quantum one after another and start and resume at quantum
     /// boundaries, which is the host that mode keeps in step. Every rebuilt
     /// voice binds this same stream, so a patch swap needs no new one.

@@ -107,7 +107,8 @@ The compiler binds the stream: `compile_with_input` builds every AUDIO IN in
 the patch on the stream it is given, and `compile` builds them on a stream
 nothing writes (silent), which is the same voice for any patch that does not
 listen. The live instrument, `LivePoly`, binds its own stream: quiver’s cursor
-mode, built once when the instrument is, which every voice it rebuilds shares.
+mode, built once in `LivePoly::new`, which the worklet calls in its port
+handler and never in `process()`, and which every voice it rebuilds shares.
 The worklet writes each quantum’s input through `input_ptr` and `write_input`,
 with no allocation, and a quantum with no write is silent. (Feeding it a
 capture is not built yet: that is Plan-007 task 4.)
@@ -131,15 +132,29 @@ have to.
 
 ## Walks and the farm
 
-A walk renders with the clip because `WalkContext.phrase` carries it, and a
-farm worker renders with it because the phrase handshake does (parsed once per
-worker, not once per render: a phrase with a clip is about 600 KB of JSON).
+A walk renders with the clip because `WalkContext.phrase` carries it, and the
+context goes with every walk job (`farm_walk` reuses its parsed copy while the
+text matches). A farm worker’s fill and restore renders use the clip because
+the phrase handshake carries it, parsed once per worker rather than once per
+render: a phrase with a clip is about 600 KB of JSON.
 
-The handshake is sent when the farm starts. If the session’s clip changes
-after that, a farm render of a patch that listens carries the old clip’s key,
-`pre_featurized` refuses it, and the engine measures that patch itself.
-Re-sending the handshake when a clip is captured is part of the capture (task
-4).
+The handshake is sent when the farm starts, which is before a staged restore
+installs the session’s saved clip. So after a capture, or a restore with a
+clip, the farm can be a phrase behind, and its render of a patch that listens
+carries the old clip’s key:
+
+- **A fill** draw that listens is admitted only on the session’s own key.
+  `pre_featurized` refuses the stale result, and `Engine::absorb_prior`
+  measures the draw itself, on the session’s clip, as the serial fill would.
+  It does the same when the farm sent no result for a listener, since the old
+  clip may be why it failed the vet. A draw that does not listen keys no clip
+  and is taken as sent.
+- **A restore**’s entry is refused by `bank_absorb`, and the worker measures
+  it with `bank_render`.
+
+The pool is right either way, but each such patch costs a serial render.
+Re-sending the handshake after a capture and after a restore that installs a
+clip is part of the capture (Plan-007 task 4).
 
 ## Stored with the session
 
@@ -179,6 +194,11 @@ never deletes a patch. Observations already in the log keep the $\varphi$
 they were logged with.
 
 ## What is open
+
+- **AUDIO IN in the prior.** Its weight is 0 until a player can hear a live
+  input (`AUDIO_IN_WEIGHT`), so no fill or walk draws one and nothing in the
+  app places one. Everything on this page is built and tested with the term
+  on (`PatchGrammarPrior::with_audio_in`), which is the prior task 4 ships.
 
 - **Capture.** The permission flow, the device list, the worklet’s input and
   the farm’s handshake after a capture are Plan-007 task 4. Until then every

@@ -127,8 +127,8 @@ like a judgment call.
 `AudioIn` is a source leaf too, and it has its raw counter, `n_audio_in`, so
 `size` is still the sum of the counts and the identity above, written over the
 raw counts, still holds. But it is **not a column of $\varphi$**: RFC-008 keeps
-$\varphi$’s shape, and at the prior’s 0.5% the column would be zero in nearly
-every row. Leaving it out brings no dependency back, because the identity was
+$\varphi$’s shape, and at its prior weight (0 until live capture works, 0.5%
+after) the column would be zero in nearly every row. Leaving it out brings no dependency back, because the identity was
 never reachable from the retained columns: it needs `n_mix`, which is dropped,
 and each binary count separately, which the families hide. The shape
 coordinates count it with no help (`chain_balance` and `frac_sidechained` read
