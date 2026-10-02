@@ -65,7 +65,9 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile_with_input, ParamMap, PatchTree};
+use auracle_grammar::{
+    compile_follower, compile_with_input, AudioNode, ParamMap, PatchTree, TrackFeed,
+};
 use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
 use quiver::{AtomicF64, AudioInputStream};
 use wasm_bindgen::prelude::*;
@@ -578,6 +580,9 @@ pub struct LivePoly {
     open: Option<Voice>,
     /// The host asked for the open voice (the AUDIO IN's MONITOR is on).
     open_on: bool,
+    /// A patch with a TRACK: the open voice leads and the keys' voices
+    /// follow ([`Lead`]). `None` for any other patch.
+    lead: Option<Lead>,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -676,12 +681,84 @@ impl Meter {
     }
 }
 
+/// Does this patch hold a TRACK anywhere (a patch played by its input)?
+fn has_track(node: &AudioNode) -> bool {
+    matches!(node, AudioNode::Track { .. }) || node.children().into_iter().any(has_track)
+}
+
+/// The **one tracked voice** of a patch with a TRACK: the open voice tracks
+/// the input, and every key's voice is a follower (`compile_follower`) that
+/// plays what the lead tracks, frame by frame, and stops with its key.
+///
+/// The lead renders its quantum first and copies its tracked signals for each
+/// frame into `buf` ([`auracle_grammar::CompiledVoice::read_tracks`]); each
+/// follower then reads its frame's copy into its feeds before it ticks, so a
+/// voice-major render plays exactly what a frame-by-frame one would (the
+/// phrase render's `lead`). Without it a key's voice tracked the input itself
+/// and its tracker's gate held its amp open after the key was let go, so
+/// every key played over a sung line left a voice sounding, and they stacked.
+struct Lead {
+    /// Values per frame: three per TRACK (pitch, gate, level), in the lead's
+    /// `tracker_keys` order.
+    stride: usize,
+    /// One quantum of the lead's tracked signals, `stride` per frame, sized
+    /// for [`LIVE_INPUT_FRAMES`] frames at the build.
+    buf: Vec<f64>,
+    /// Each key voice's feeds, in the lead's key order (index-parallel to
+    /// `voices`).
+    feeds: Vec<Vec<TrackFeed>>,
+    /// Frames of `buf` the lead wrote this quantum (0 when it is not running).
+    filled: usize,
+}
+
+impl Lead {
+    /// The lead for `voices` led by `open`, or `None` for a patch whose open
+    /// voice tracks nothing. Allocates (a build, never a quantum).
+    fn build(voices: &[Voice], open: Option<&Voice>) -> Option<Lead> {
+        let keys = open?.voice.tracker_keys();
+        if keys.is_empty() {
+            return None;
+        }
+        let stride = 3 * keys.len();
+        let feeds = voices
+            .iter()
+            .map(|v| {
+                keys.iter()
+                    .map(|k| v.voice.track_feeds.get(k).cloned().unwrap_or_default())
+                    .collect()
+            })
+            .collect();
+        Some(Lead {
+            stride,
+            buf: vec![0.0; stride * LIVE_INPUT_FRAMES],
+            feeds,
+            filled: 0,
+        })
+    }
+
+    /// Silence every follower's tracked branch: the lead has stopped.
+    fn quiet(&self) {
+        for feeds in &self.feeds {
+            for f in feeds {
+                f.gate.set(0.0);
+                f.level.set(0.0);
+            }
+        }
+    }
+}
+
 fn build_voice(
     tree: &PatchTree,
     sample_rate: f64,
     input: &Arc<AudioInputStream>,
+    follow: bool,
 ) -> Result<Voice, String> {
-    let voice = compile_with_input(tree, sample_rate, Some(input)).map_err(|e| e.to_string())?;
+    let voice = if follow {
+        compile_follower(tree, sample_rate, Some(input))
+    } else {
+        compile_with_input(tree, sample_rate, Some(input))
+    }
+    .map_err(|e| e.to_string())?;
     voice.gate.set(0.0);
     Ok(Voice {
         voice,
@@ -699,13 +776,46 @@ fn build_voice(
     })
 }
 
+/// What a voice does with a TRACK lead as it ticks ([`Lead`]).
+enum Tracks<'a> {
+    /// Nothing: the patch has no TRACK, or this voice is not in it.
+    None,
+    /// This voice is the lead: copy its tracked signals, `stride` per frame,
+    /// into the buffer after each tick.
+    Lead(&'a mut [f64], usize),
+    /// This voice follows: before each tick, set its feeds from the lead's
+    /// copy of that frame (`filled` frames of it).
+    Follow(&'a [TrackFeed], &'a [f64], usize, usize),
+}
+
 /// Render one sounding voice's `frames` into the interleaved `out`, metering
 /// it when `meter` is given, and park it once its release tail is silent.
-fn tick_voice(v: &mut Voice, frames: usize, out: &mut [f32], mut meter: Option<&mut Meter>) {
+fn tick_voice(
+    v: &mut Voice,
+    frames: usize,
+    out: &mut [f32],
+    mut meter: Option<&mut Meter>,
+    mut tracks: Tracks,
+) {
     let held = v.note.is_some();
     let mut tail_silent = 0u32;
     for f in 0..frames {
+        if let Tracks::Follow(feeds, buf, stride, filled) = &tracks {
+            if f < *filled {
+                let frame = &buf[f * stride..(f + 1) * stride];
+                for (i, feed) in feeds.iter().enumerate() {
+                    feed.voct.set(frame[3 * i]);
+                    feed.gate.set(frame[3 * i + 1]);
+                    feed.level.set(frame[3 * i + 2]);
+                }
+            }
+        }
         let (l, r) = v.voice.patch.tick();
+        if let Tracks::Lead(buf, stride) = &mut tracks {
+            if let Some(frame) = buf.get_mut(f * *stride..(f + 1) * *stride) {
+                v.voice.read_tracks(frame);
+            }
+        }
         // Per sample, not per quantum: the capture is allocation-free
         // and quiver's own guidance is that a per-block sample aliases
         // everything above `sample_rate / (2 * block_size)`. A level
@@ -757,17 +867,25 @@ impl LivePoly {
             LIVE_INPUT_CHANNELS,
             LIVE_INPUT_FRAMES,
         ));
+        // A patch with a TRACK is played by one tracked voice: the keys'
+        // voices follow it ([`Lead`]).
+        let tracked = has_track(&tree.root);
         let voices: Vec<Voice> = (0..n)
-            .map(|_| build_voice(&tree, sample_rate, &input))
+            .map(|_| build_voice(&tree, sample_rate, &input, tracked))
             .collect::<Result<_, _>>()
             .map_err(|e| JsValue::from_str(&e))?;
-        // A patch that listens gets its open voice now, here in the port
-        // handler, like the rest; one that does not never compiles one.
-        let open = if tree.listens() {
-            Some(build_voice(&tree, sample_rate, &input).map_err(|e| JsValue::from_str(&e))?)
+        // A patch that listens (or tracks) gets its open voice now, here in
+        // the port handler, like the rest; one that does not never compiles
+        // one.
+        let open = if tree.listens() || tracked {
+            Some(
+                build_voice(&tree, sample_rate, &input, false)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )
         } else {
             None
         };
+        let lead = Lead::build(&voices, open.as_ref());
         let param_slots = intern_params(&voices, open.as_ref());
         Ok(LivePoly {
             voices,
@@ -820,6 +938,7 @@ impl LivePoly {
             input_buf: vec![0.0; LIVE_INPUT_FRAMES * LIVE_INPUT_CHANNELS],
             open,
             open_on: false,
+            lead,
         })
         .map(|mut p| {
             p.rebuild_sync_lanes();
@@ -1708,6 +1827,32 @@ impl LivePoly {
         self.out_buf.clear();
         self.out_buf.resize(frames * 2, 0.0);
         let metered = self.meter_voice();
+        // The open voice first: for a tracked patch it is the lead, and the
+        // keys' voices play what it tracked this quantum, frame by frame. The
+        // meter reads it when no key's voice is sounding, so the rack's levels
+        // follow the input then.
+        let mut open_metered = false;
+        if let Some(lead) = self.lead.as_mut() {
+            lead.filled = 0;
+        }
+        if let Some(v) = self.open.as_mut() {
+            if v.running {
+                open_metered = self.meter.on && metered.is_none();
+                let meter = if open_metered {
+                    Some(&mut self.meter)
+                } else {
+                    None
+                };
+                let tracks = match self.lead.as_mut() {
+                    Some(lead) => {
+                        lead.filled = frames.min(LIVE_INPUT_FRAMES);
+                        Tracks::Lead(&mut lead.buf, lead.stride)
+                    }
+                    None => Tracks::None,
+                };
+                tick_voice(v, frames, &mut self.out_buf, meter, tracks);
+            }
+        }
         for (vi, v) in self.voices.iter_mut().enumerate() {
             if !v.running {
                 continue;
@@ -1717,21 +1862,13 @@ impl LivePoly {
             } else {
                 None
             };
-            tick_voice(v, frames, &mut self.out_buf, meter);
-        }
-        // The open voice, after the keys'. The meter reads it when no key's
-        // voice is sounding, so the rack's levels follow the input then.
-        let mut open_metered = false;
-        if let Some(v) = self.open.as_mut() {
-            if v.running {
-                open_metered = self.meter.on && metered.is_none();
-                let meter = if open_metered {
-                    Some(&mut self.meter)
-                } else {
-                    None
-                };
-                tick_voice(v, frames, &mut self.out_buf, meter);
-            }
+            let tracks = match self.lead.as_ref() {
+                Some(lead) if lead.filled > 0 => {
+                    Tracks::Follow(&lead.feeds[vi], &lead.buf, lead.stride, lead.filled)
+                }
+                _ => Tracks::None,
+            };
+            tick_voice(v, frames, &mut self.out_buf, meter, tracks);
         }
         let metered = metered.or(open_metered.then_some(usize::MAX));
         if metered.is_some() {
@@ -1775,14 +1912,17 @@ impl LivePoly {
             };
             let mut built = built;
             if let Some(tree) = self.pending.clone() {
-                match build_voice(&tree, self.sample_rate, &self.input) {
+                // A patch that listens (or tracks) is built one voice longer:
+                // the last is its open voice (`set_open`), which leads a
+                // tracked patch's other voices, so it alone is no follower.
+                let tracked = has_track(&tree.root);
+                let extra = tree.listens() || tracked;
+                let follow = tracked && built.len() < self.n_voices;
+                match build_voice(&tree, self.sample_rate, &self.input, follow) {
                     Ok(v) => {
                         built.push(v);
-                        // A patch that listens is built one voice longer: the
-                        // last is its open voice (`set_open`).
-                        let listens = tree.listens();
-                        if built.len() >= self.n_voices + usize::from(listens) {
-                            let open = if listens { built.pop() } else { None };
+                        if built.len() >= self.n_voices + usize::from(extra) {
+                            let open = if extra { built.pop() } else { None };
                             // The open voice's envelope is carried like a held
                             // note's, so a swap does not re-attack the input.
                             let open_phase = self
@@ -1811,6 +1951,7 @@ impl LivePoly {
                             // outside `new` that allocates for parameters,
                             // and it is inside the swap that already compiles.
                             self.open = open;
+                            self.lead = Lead::build(&self.voices, self.open.as_ref());
                             self.smoothers.clear();
                             self.param_slots = intern_params(&self.voices, self.open.as_ref());
                             self.rebuild_sync_lanes();
@@ -1963,6 +2104,13 @@ impl LivePoly {
     /// fade. `off` releases it into its tail, and it parks once that is
     /// silent.
     ///
+    /// A patch with a TRACK has an open voice even if nothing in it listens,
+    /// and it is the **one tracked voice** ([`Lead`]): it is not held like a
+    /// key, because its tracker's gate opens its amp, so it sounds while the
+    /// input does; and the keys' voices follow it (their TRACKs play what it
+    /// tracks, and they stop with their keys) instead of each tracking the
+    /// input and staying open after their key was let go.
+    ///
     /// Allocation free: the open voice is compiled with the patch (in
     /// [`Self::new`] or the swap's rebuild), never here.
     pub fn set_open(&mut self, on: bool) {
@@ -1975,18 +2123,64 @@ impl LivePoly {
         self.open.as_ref().is_some_and(|v| v.running)
     }
 
+    /// Raise (`on`) or drop the record gate of the CAPTURE at node `key` in
+    /// every voice. A raised gate records the branch patched into the capture
+    /// from the top of its buffer, in any voice that is ticking, for at most
+    /// `TAKE_SECONDS` a press (quiver's `RecordWindow`). Returns whether the
+    /// patch has a capture there. Allocation free.
+    ///
+    /// The worklet records with an instrument of its own (one voice of the
+    /// patch, its key held), so recording neither needs MONITOR nor touches
+    /// the voices under the player's hands; it then reads the recording with
+    /// [`Self::take_json`] and the page puts it in the patch.
+    pub fn set_record(&mut self, key: &str, on: bool) -> bool {
+        let level = if on { GATE_ON } else { 0.0 };
+        let mut found = false;
+        for v in self.voices.iter().chain(self.open.as_ref()) {
+            if let Some(gate) = v.voice.records.get(key) {
+                gate.set(level);
+                found = true;
+            }
+        }
+        found
+    }
+
+    /// The recording the CAPTURE at node `key` holds in the first sounding
+    /// voice (the one a recording ran in; the first voice when none is
+    /// sounding), as the take's saved JSON (`f32le-base64`), the form
+    /// `StructOp::SetTake` and `WasmEngine::readmit_held` take. Empty when
+    /// the patch has no capture there. Allocates: the port handler's, never
+    /// `process()`.
+    pub fn take_json(&self, key: &str) -> String {
+        self.voices
+            .iter()
+            .find(|v| v.running)
+            .or(self.voices.first())
+            .and_then(|v| v.voice.take(key))
+            .and_then(|t| serde_json::to_string(&t).ok())
+            .unwrap_or_default()
+    }
+
     /// Bring the open voice's gate in line with [`Self::open_on`].
     fn sync_open(&mut self) {
         let on = self.open_on;
         let bend = self.bend;
         self.counter += 1;
         let at = self.counter;
+        // A tracked patch's lead is opened by its tracker's gate, not held
+        // like a key: it sounds while the input does.
+        let tracked = self.lead.is_some();
+        if !on {
+            if let Some(lead) = self.lead.as_ref() {
+                lead.quiet();
+            }
+        }
         let Some(v) = self.open.as_mut() else { return };
         if on && v.note.is_none() {
             v.pitch_cur = 0.0;
             v.pitch_tgt = 0.0;
             v.voice.pitch.set(bend);
-            v.voice.gate.set(GATE_ON);
+            v.voice.gate.set(if tracked { 0.0 } else { GATE_ON });
             v.regate_in = 0;
             v.note = Some(OPEN_NOTE);
             v.stamp = at;
@@ -3380,5 +3574,148 @@ mod tests {
         );
         let quiet = loudest_with_input(&mut poly, 220, 10);
         assert!(quiet < 1.0e-6, "the pad droned after the swap ({quiet})");
+    }
+
+    /// A patch a TRACK plays: a sine VCO played by the pitch of input 1.
+    fn tracked_patch() -> String {
+        use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel, PitchBand, Waveform};
+        use auracle_grammar::ModNode;
+        serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: auracle_grammar::PARAM_MAX,
+                release: 0.05,
+            },
+            root: AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: auracle_grammar::TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Sine,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                listen: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Left,
+                }),
+            },
+        })
+        .unwrap()
+    }
+
+    /// **A tracked patch has one tracked voice, and the keys do not stack
+    /// on it.** Monitored, the open voice leads: it tracks the input and
+    /// sounds while the input does, with no key down. The keys' voices
+    /// follow it and stop with their keys: once four keys are let go and
+    /// their tails have died, the output is the lead's alone again. (Before
+    /// the lead, each key's voice tracked the input itself and its tracker's
+    /// gate held its amp open after the key was let go, so the voices stayed
+    /// and the level stood at five voices'.)
+    #[test]
+    fn a_tracked_patch_has_one_tracked_voice_and_the_keys_do_not_stack() {
+        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
+        poly.set_leveler(false);
+        // Well under the master ceiling, so five voices read as five.
+        poly.set_makeup(0.06);
+        poly.set_open(true);
+        loudest_with_input(&mut poly, 0, 120);
+        let alone = loudest_with_input(&mut poly, 120, 40);
+        assert!(
+            alone > 0.02,
+            "the tracked voice is silent with the input sounding ({alone})"
+        );
+        for n in [60, 64, 67, 71] {
+            poly.note_on(n, 1.0);
+        }
+        loudest_with_input(&mut poly, 160, 20);
+        let chord = loudest_with_input(&mut poly, 180, 20);
+        assert!(
+            chord > alone * 1.5,
+            "the keys add nothing over the lead: {chord} against {alone}"
+        );
+        for n in [60, 64, 67, 71] {
+            poly.note_off(n);
+        }
+        loudest_with_input(&mut poly, 200, 200);
+        let after = loudest_with_input(&mut poly, 400, 40);
+        assert!(
+            after < alone * 1.2,
+            "the keys' voices stayed after their keys: {after} against the lead's {alone}"
+        );
+        assert!(
+            poly.voices.iter().all(|v| !v.running),
+            "a released key's voice is still running"
+        );
+        // Unmonitored, the worklet writes no input (and clears it), so the
+        // lead's tracker lets go, and it rings out and parks.
+        poly.set_open(false);
+        poly.clear_input();
+        let mut unmonitored = 0.0f32;
+        for q in 440..640 {
+            unmonitored = quantum_with_input(&mut poly, q * 128, false);
+        }
+        assert!(!poly.open_sounding(), "the lead still sounds unmonitored");
+        assert!(
+            unmonitored < 1.0e-6,
+            "still sounding unmonitored ({unmonitored})"
+        );
+    }
+
+    /// **A CAPTURE records what is patched into it and reads it back.** With
+    /// a key held on one voice, the record gate raised records the input;
+    /// dropped, the take reads back as its saved JSON, as long as it ran, and
+    /// not silent. A key with no capture records nothing.
+    #[test]
+    fn a_capture_records_and_reads_back_its_take() {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
+        let tree = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: auracle_grammar::PARAM_MAX,
+                release: 0.0,
+            },
+            root: AudioNode::Capture {
+                uid: Uid::NEW,
+                play: CaptureMode::Once,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Left,
+                }),
+                take: auracle_grammar::Take::empty(),
+            },
+        })
+        .unwrap();
+        let mut poly = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
+        assert!(
+            !poly.set_record("node/9", true),
+            "a capture where there is none"
+        );
+        poly.note_on(60, 1.0);
+        assert!(poly.set_record("node", true));
+        loudest_with_input(&mut poly, 0, 100);
+        assert!(poly.set_record("node", false));
+        let json = poly.take_json("node");
+        let take: auracle_grammar::Take = serde_json::from_str(&json).expect("a take");
+        assert!(take.unreadable().is_none(), "{json:.80}");
+        let want = 100 * 128;
+        assert!(
+            take.len() + 256 >= want && take.len() <= want,
+            "the take is {} samples, the press {want}",
+            take.len()
+        );
+        let peak = take.samples().iter().fold(0.0f32, |m, x| m.max(x.abs()));
+        assert!(peak > 0.05, "the take is silent ({peak})");
+        assert_eq!(poly.take_json("node/9"), "");
     }
 }

@@ -463,6 +463,15 @@ fn clip_note(status: &ClipStatus) -> &'static str {
 #[derive(Serialize)]
 struct HeldView {
     id: u32,
+    /// The node key of the CAPTURE to record again
+    /// (`PatchTree::lost_take_key`): what the page records into and
+    /// [`WasmEngine::readmit_held`] fills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capture: Option<String>,
+    /// Its term, as it was saved, so the page can record it again without
+    /// opening it (a held sound is not in the pool, and the bench opens pool
+    /// sounds).
+    tree: serde_json::Value,
     /// The player's name for it, if it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
@@ -3582,7 +3591,7 @@ impl WasmEngine {
     }
 
     /// The sounds the last restore held back, as JSON
-    /// `[{"id":3,"name":"…","note":"Its recording couldn’t be read. …"}]`:
+    /// `[{"id":3,"capture":"node/1","tree":{…},"name":"…","note":"Its recording couldn’t be read. …"}]`:
     /// each one's only source was a CAPTURE whose take couldn't be read. They
     /// are not in the bank's pool (never dealt, ranked or bred) and are saved
     /// with the session unchanged. The capture plate (Plan-007 task 4) lists
@@ -3595,6 +3604,8 @@ impl WasmEngine {
             .iter()
             .map(|e| HeldView {
                 id: e.id as u32,
+                capture: e.tree.lost_take_key(),
+                tree: serde_json::to_value(&e.tree).unwrap_or(serde_json::Value::Null),
                 name: e.name.clone(),
                 auto_name: e.auto_name.clone(),
                 note: HELD_NOTE,
@@ -6432,6 +6443,12 @@ mod tests {
         assert_eq!(listed.as_array().unwrap().len(), 1);
         assert_eq!(listed[0]["id"], 9_999);
         assert_eq!(listed[0]["name"], "Held One");
+        // What the page records it again with: the capture's key, and the
+        // term (so a recorder can be built from it with no bench).
+        assert_eq!(listed[0]["capture"], "node");
+        let listed_tree: PatchTree =
+            serde_json::from_value(listed[0]["tree"].clone()).expect("the held term");
+        assert_eq!(listed_tree.lost_take_key().as_deref(), Some("node"));
         assert!(listed[0]["note"]
             .as_str()
             .unwrap()

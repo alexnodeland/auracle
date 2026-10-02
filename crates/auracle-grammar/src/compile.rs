@@ -579,6 +579,32 @@ impl CompiledVoice {
         }
     }
 
+    /// The node keys of this voice's TRACKs, in the order
+    /// [`Self::read_tracks`] writes them. Empty in a follower. Allocates; read
+    /// it once per compiled voice, not per tick.
+    pub fn tracker_keys(&self) -> Vec<String> {
+        self.trackers.iter().map(|(k, _)| k.clone()).collect()
+    }
+
+    /// Each TRACK's pitch (V/Oct), gate and level as they stand after this
+    /// voice's last tick, three values per TRACK in [`Self::tracker_keys`]
+    /// order, into the front of `out`: what [`Self::lead`] hands a follower,
+    /// for a host that ticks this voice ahead of its followers by more than a
+    /// frame and feeds them each frame from the copy (`LivePoly` renders one
+    /// voice's quantum after another). Writes nothing past `out`'s end.
+    /// Allocates nothing.
+    pub fn read_tracks(&self, out: &mut [f64]) {
+        for (i, (_, id)) in self.trackers.iter().enumerate() {
+            let Some(slot) = out.get_mut(3 * i..3 * i + 3) else {
+                return;
+            };
+            let read = |port| self.patch.get_output_value(*id, port).unwrap_or(0.0);
+            slot[0] = read(10);
+            slot[1] = read(11);
+            slot[2] = read(12);
+        }
+    }
+
     /// The take the CAPTURE at `key` holds right now: what it was compiled
     /// with, or what it has recorded since. `None` only when there is no
     /// CAPTURE there: a take it was compiled with passed the bound, and a
