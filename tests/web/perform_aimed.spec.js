@@ -20,6 +20,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -43,6 +44,7 @@ const INIT = `(() => {
 async function boot(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -84,6 +86,8 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   await wired(page);
+  // Two offers grown below, an aimed one (up to three walks) and a plain one.
+  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
   const grit = page.locator('.pf-knob[data-i="4"]');
   await expect(grit, "Grit is a search control on Glass Pad").toHaveClass(/\bsearch\b/);
   const strip = page.locator(".pf-offer");
@@ -102,7 +106,7 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
   await expect(strip).toContainText(/growing a grittier offer…|grittier by|not grittier/, { timeout: 5_000 });
 
   // Landed: B reports the move along Grit, in amber, in one of two sentences.
-  await expect(strip).toHaveClass(/\bready\b/, { timeout: 180_000 });
+  await expect(strip).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   const aim = strip.locator(".pf-offer-aim");
   await expect(aim).toHaveText(/^(grittier by \d+\.\dσ|not grittier: this walk found no way there\. Turn it again to try another)$/);
   const colour = await aim.evaluate((e) => getComputedStyle(e).color);
@@ -122,7 +126,7 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
   // request, no direction in B.
   await page.evaluate(() => (window.__pfOffers.length = 0));
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)/ }).first().click();
-  await expect(strip).toHaveClass(/\bready\b/, { timeout: 180_000 });
+  await expect(strip).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   await expect(strip.locator(".pf-offer-aim")).toHaveCount(0);
   const plain = await page.evaluate(() => window.__pfOffers);
   expect(plain.every((p) => p.control == null && p.sign == null)).toBe(true);
