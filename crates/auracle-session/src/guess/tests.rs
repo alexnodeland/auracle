@@ -587,3 +587,43 @@ fn the_memory_forgets_takes_and_carries_to_a_kept_patch() {
     assert_eq!(mem.skips(2), [c.skip()]);
     assert_eq!(mem.observe(2, &tree), Some(d.skip()), "the take came along");
 }
+
+/// **AUDIO IN is never guessed, and a patch of nothing but an input does not
+/// sound to the guess.** No empty socket is offered AUDIO IN; it has a
+/// family of its own; and a lone input is offered no processor (live it is
+/// silent until an input is connected), while the empty socket beside it in
+/// a mix is offered the six sources.
+#[test]
+fn audio_in_is_never_guessed_and_a_lone_input_is_silent() {
+    let input = || AudioNode::AudioIn {
+        uid: Uid::NEW,
+        input: 0,
+        gain: auracle_grammar::INPUT_GAIN_UNITY,
+        channel: auracle_grammar::InputChannel::Both,
+    };
+    assert_eq!(node_family(NodeKind::AudioIn), "audio_in");
+    assert!(!guessable_source(NodeKind::AudioIn));
+    assert!(!guessable_insert(NodeKind::AudioIn));
+    let mut lone = preset("Hornet");
+    lone.root = input();
+    lone.ensure_uids();
+    assert!(!sounds(&lone.root));
+    assert!(
+        guess_candidates(&lone, None).is_empty(),
+        "a lone input was offered something"
+    );
+    let mut beside = preset("Hornet");
+    beside.root = AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: Box::new(input()),
+        b: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+    };
+    beside.ensure_uids();
+    let offered = guess_candidates(&beside, None);
+    let kinds: Vec<&str> = offered.iter().map(|c| c.kind.as_str()).collect();
+    assert_eq!(kinds.len(), 6, "{kinds:?}");
+    assert!(offered
+        .iter()
+        .all(|c| matches!(c.op, StructOp::Replace { .. }) && c.kind != "audio_in"));
+}

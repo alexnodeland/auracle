@@ -47,9 +47,9 @@ pub use engine::{
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use guess::{
-    guess_candidates, guess_is_current, guessable_source, Guess, GuessCandidate, GuessMemory,
-    GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS, GUESS_FLOOR,
-    GUESS_TAKEN_KEEP,
+    guess_candidates, guess_is_current, guessable_insert, guessable_source, Guess, GuessCandidate,
+    GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
+    GUESS_FLOOR, GUESS_TAKEN_KEEP,
 };
 pub use map::{MapPoint, TasteMap};
 pub use naming::{claim_name, NameScale};

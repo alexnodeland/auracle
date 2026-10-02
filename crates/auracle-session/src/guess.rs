@@ -102,6 +102,7 @@ pub fn node_family(kind: NodeKind) -> &'static str {
         NodeKind::Pluck => "pluck",
         NodeKind::Formant => "formant",
         NodeKind::Silence => "silence",
+        NodeKind::AudioIn => "audio_in",
         NodeKind::Mix => "mix",
         NodeKind::Filter | NodeKind::Eq | NodeKind::Vocoder => "filter",
         NodeKind::Fold | NodeKind::Distortion | NodeKind::Bitcrush | NodeKind::RingMod => "drive",
@@ -128,6 +129,8 @@ pub fn guessable_source(kind: NodeKind) -> bool {
         | NodeKind::Wavetable
         | NodeKind::Pluck
         | NodeKind::Formant => true,
+        // It asks for a device and a permission, and a guess must not.
+        NodeKind::AudioIn => false,
         NodeKind::Silence
         | NodeKind::Mix
         | NodeKind::Filter
@@ -149,6 +152,45 @@ pub fn guessable_source(kind: NodeKind) -> bool {
         | NodeKind::Comp
         | NodeKind::Duck
         | NodeKind::Gate => false,
+    }
+}
+
+/// Whether a guess may insert `kind` into a wire. Exhaustive, with no
+/// catch-all, so a new processor kind does not compile until someone
+/// decides. Every processor today may be guessed. A module whose default
+/// brings AUDIO IN (TRACK's `/1` asks for a device) or whose empty default
+/// silences the chain it lands on (an empty CAPTURE take) must say no.
+/// Sources are never inserted.
+pub fn guessable_insert(kind: NodeKind) -> bool {
+    match kind {
+        NodeKind::Mix
+        | NodeKind::Filter
+        | NodeKind::Eq
+        | NodeKind::Vocoder
+        | NodeKind::Fold
+        | NodeKind::Distortion
+        | NodeKind::Bitcrush
+        | NodeKind::RingMod
+        | NodeKind::Delay
+        | NodeKind::Granular
+        | NodeKind::Shift
+        | NodeKind::Chorus
+        | NodeKind::Phaser
+        | NodeKind::Flanger
+        | NodeKind::Tremolo
+        | NodeKind::Vibrato
+        | NodeKind::Reverb
+        | NodeKind::Comp
+        | NodeKind::Duck
+        | NodeKind::Gate => true,
+        NodeKind::Vco
+        | NodeKind::Supersaw
+        | NodeKind::Noise
+        | NodeKind::Wavetable
+        | NodeKind::Pluck
+        | NodeKind::Formant
+        | NodeKind::Silence
+        | NodeKind::AudioIn => false,
     }
 }
 
@@ -347,9 +389,15 @@ fn keys<'a>(n: &'a AudioNode, key: String, out: &mut Vec<(String, &'a AudioNode)
     }
 }
 
+/// Whether the patch has a source that makes a sound, for the guess: a patch
+/// that does not is offered sources only, and compared with the pool's
+/// average sound. AUDIO IN counts as silent here. Its render reads the
+/// audition clip and so measures as sounding, but live it is silent until
+/// the player connects an input, and a guess that a patch of nothing but an
+/// input "sounds" would offer processors over silence.
 fn sounds(n: &AudioNode) -> bool {
     match n {
-        AudioNode::Silence { .. } => false,
+        AudioNode::Silence { .. } | AudioNode::AudioIn { .. } => false,
         n if n.children().is_empty() => true,
         n => n.children().into_iter().any(sounds),
     }
@@ -419,7 +467,7 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
         } else {
             socket_of("wire", n, key)
         };
-        for k in NodeKind::ALL.iter().filter(|k| !k.is_source()) {
+        for k in NodeKind::ALL.iter().filter(|k| guessable_insert(**k)) {
             ops.push((
                 StructOp::Insert {
                     key: key.clone(),
