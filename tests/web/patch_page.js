@@ -24,7 +24,17 @@ const init = ({ warmed }) => `(() => {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
         if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null });
+        // A crew's ports held back while __pwHoldCrew is set (holdCrew).
+        if (m && m.type === "farm_ports" && window.__pwHoldCrew) {
+          window.__pwHeld.push([m, t, performance.now()]);
+          return;
+        }
         return post(m, t);
+      };
+      window.__pwHeld = [];
+      window.__pwReleaseCrew = () => {
+        window.__pwHoldCrew = false;
+        for (const [m, t] of window.__pwHeld.splice(0)) post(m, t);
       };
       w.addEventListener("message", (e) => {
         const d = e.data;
@@ -196,4 +206,12 @@ async function drawnGuess(page, { timeout = 90_000, anyTree = false } = {}) {
   return page.evaluate(agree, anyTree);
 }
 
-module.exports = { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess };
+/** Hold every crew main raises from here on: its ports (`farm_ports`) are
+ *  kept from the engine worker until `releaseCrew`, so whatever waits for a
+ *  crew (a guess's crew phase) is still waiting. The worker gives up on a
+ *  crew `CREW_SPAWN_MS` (10 s) after asking for it. */
+const holdCrew = (page) => page.evaluate(() => { window.__pwHoldCrew = true; });
+/** Hand the held ports over; how many crews were held. */
+const releaseCrew = (page) => page.evaluate(() => { const n = window.__pwHeld.length; window.__pwReleaseCrew(); return n; });
+
+module.exports = { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess, holdCrew, releaseCrew };

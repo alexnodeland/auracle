@@ -213,6 +213,9 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
 // Offer must be answered before the guess is, within a measured step's bound.
 test("an Offer pressed while the guess is on its crew starts at once", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
+  // `watch` for AURACLE_CPU_THROTTLE's slowing of the engine worker, which
+  // patchPage.boot's page throttle does not reach.
+  await budget.watch(page);
   const errors = await patchPage.boot(page, { warmed: false });
   await patchPage.warmStartAndFit(page);
   const lat = () => page.evaluate(() => window.__lat);
@@ -242,21 +245,36 @@ test("an Offer pressed while the guess is on its crew starts at once", { tag: "@
   // first whatever the floor does (`soon` goes before `later`), so wait until
   // the guess is on its crew: the worker asks main for the crew's ports
   // (`farm_want`).
+  //
+  // And keep it there until the Offer is answered. On a CI runner the crew
+  // came up and the guess was done before the Offer was answered, so the
+  // test proved nothing and said so. The crew's ports are held back from the
+  // engine worker (`holdCrew`) until the Offer's reply has landed: the guess
+  // is then on its crew for the whole of the Offer, every run. The worker
+  // waits 10 s for a crew before giving up on it, longer than the bound
+  // below. With a guess that held the floor through its crew phase, the
+  // Offer would wait those 10 s.
   const t0 = await patchPage.now(page);
   const wants = await page.evaluate(() => window.__pwCounts.farm_want || 0);
+  await patchPage.holdCrew(page);
   await patchPage.openPreset(page, "Reese");
   await page.waitForFunction((w) => (window.__pwCounts.farm_want || 0) > w, wants, { timeout: 30_000 });
+  const wantedAt = await patchPage.now(page);
   await page.waitForTimeout(100);
   const { at, took } = await offer(9_100_002);
   const answeredAt = at + took;
   const guessed = await page.evaluate((t) => window.__pwReplies.find((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses), t0);
+  const held = await patchPage.releaseCrew(page);
+  console.log(`crew asked for; the Offer answered ${(answeredAt - wantedAt).toFixed(0)} ms later, ${held} crew's ports held until then`);
   // The cost of a step here, idle, once the guess has landed.
   await patchPage.drawnGuess(page);
   const step = (await offer(9_100_001)).took;
   console.log(`idle step ${step.toFixed(0)} ms; an Offer pressed with the guess on its crew answered in ${took.toFixed(0)} ms; guess ${guessed ? "answered " + (guessed.t - answeredAt).toFixed(0) + " ms after" : "not yet answered"}`);
   expect(took, "the Offer waited for the guess's crew").toBeLessThan(Math.max(2_000, 3 * step));
   // The test proves something only if the guess was still out when the Offer
-  // was answered.
+  // was answered: its crew was held until then, and the worker had not given
+  // up waiting for it (10 s after asking).
+  expect(answeredAt - wantedAt, "the worker gave up on the crew before the Offer was answered, so nothing was proved").toBeLessThan(10_000);
   expect(guessed === undefined || guessed.t > answeredAt, "the guess was done before the Offer was answered, so nothing was proved").toBe(true);
   expect(errors, errors.join("\n")).toEqual([]);
 });
