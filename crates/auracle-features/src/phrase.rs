@@ -41,6 +41,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::clip::AuditionClip;
+
 /// One note of the phrase.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Note {
@@ -71,6 +73,17 @@ pub struct PhraseSpec {
     pub seed: u64,
     /// The phrase notes, played in order.
     pub notes: Vec<Note>,
+    /// The audition clip every AUDIO IN reads in a render of this stimulus
+    /// ([`crate::clip`]): the session's capture, or `None` for the built-in
+    /// [`reference`](crate::clip::reference).
+    ///
+    /// Part of the stimulus, because it is: a patch that listens measures
+    /// differently under another clip. Left out of the serialized spec when
+    /// `None`, so a phrase without one writes, and hashes, exactly as it did
+    /// before clips existed. The cache keys never hash its samples; see
+    /// [`crate::cache::render_key`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip: Option<AuditionClip>,
 }
 
 impl Default for PhraseSpec {
@@ -110,6 +123,7 @@ impl Default for PhraseSpec {
                     chord: Vec::new(),
                 },
             ],
+            clip: None,
         }
     }
 }
@@ -134,5 +148,23 @@ impl PhraseSpec {
     /// voice's level, and that summing is signal, not runaway.
     pub fn max_voices(&self) -> usize {
         1 + self.notes.iter().map(|n| n.chord.len()).max().unwrap_or(0)
+    }
+
+    /// The clip an AUDIO IN reads under this stimulus: its own, at the
+    /// phrase's sample rate, or the built-in reference when it has none.
+    pub fn audition_clip(&self) -> AuditionClip {
+        match &self.clip {
+            Some(clip) => clip.at_rate(self.sample_rate),
+            None => crate::clip::reference(self),
+        }
+    }
+
+    /// This stimulus without its clip: what the cache namespace, and the key
+    /// of every patch that does not listen, are computed over.
+    pub fn without_clip(&self) -> PhraseSpec {
+        PhraseSpec {
+            clip: None,
+            ..self.clone()
+        }
     }
 }

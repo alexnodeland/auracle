@@ -34,7 +34,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, render_playback, Audition, Features, PhraseSpec, RenderMemo,
+    featurize_memo, render_playback, Audition, AuditionClip, ClipSource, Features, PhraseSpec,
+    RenderMemo, SavedClip,
 };
 use auracle_grammar::prior::N_OPS;
 use auracle_grammar::rng::gen_index;
@@ -827,6 +828,46 @@ pub struct SessionState {
     /// it existed; their first map takes the sign convention.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub map_axes: Option<[Vec<f64>; 2]>,
+    /// The audition clip patches that listen are measured with, in its saved
+    /// form (`auracle_features::SavedClip`: 16-bit samples in base64, at most
+    /// `MAX_CLIP_SECONDS`, about 600 KB of text for five seconds of mono).
+    /// Absent when the session measures with the built-in reference.
+    ///
+    /// Held as raw JSON and checked on the way in, not parsed as part of the
+    /// session: a clip that cannot be read must cost the session its clip,
+    /// never its bank and its log. An unreadable one restores as the
+    /// reference, and [`Engine::audition_clip_status`] says why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audition_clip: Option<serde_json::Value>,
+}
+
+/// Which clip the patches that listen are measured with, as
+/// [`Engine::audition_clip_status`] reports it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ClipStatus {
+    /// `reference` or `captured`.
+    pub source: ClipSource,
+    /// The clip's content id: what a listening patch's render key carries.
+    pub id: String,
+    /// Length, seconds.
+    pub seconds: f64,
+    /// 1 or 2.
+    pub channels: usize,
+    /// Set when the session file held a clip that could not be read, so the
+    /// reference is measuring in its place: what was wrong with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unreadable: Option<String>,
+}
+
+/// What [`Engine::set_audition_clip`] did to the pool.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClipChange {
+    /// Members that listen, measured again with the new clip.
+    pub remeasured: Vec<u64>,
+    /// Members that listen and no longer vet under it. They stay in the pool
+    /// with the measurement they had (a clip change never deletes a patch);
+    /// the caller says which.
+    pub unmeasured: Vec<u64>,
 }
 
 /// A chosen duel, with the reasoning that produced it.
@@ -1211,6 +1252,9 @@ pub struct Engine {
     /// read of the session, and remembering how it was drawn is not a change
     /// to it. Persisted with the session, so a reload does not mirror it either.
     pub(crate) map_axes: std::sync::Mutex<Option<[Vec<f64>; 2]>>,
+    /// Why the last restore measured with the reference though the session
+    /// held a clip; see [`ClipStatus::unreadable`].
+    clip_unreadable: Option<String>,
 }
 
 impl Engine {
@@ -1250,6 +1294,7 @@ impl Engine {
             evolving: HashMap::new(),
             retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
+            clip_unreadable: None,
         }
     }
 
@@ -1461,20 +1506,28 @@ impl Engine {
             if self.pool.iter().any(|c| c.tree == tree) {
                 continue;
             }
-            let want_audio = self.wants_admitted_audio();
-            if let Ok((cached, audition)) =
-                featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio)
-            {
-                self.push_prior(PreFeaturized {
-                    tree,
-                    cached,
-                    audition,
-                });
+            if let Some(pre) = self.measure_draw(tree) {
+                self.push_prior(pre);
                 added += 1;
             }
         }
         self.standardize_pool();
         added
+    }
+
+    /// Render, vet and featurize a draw here, under this session's phrase
+    /// (and so its audition clip) and memo: the serial fold's measurement,
+    /// and the farm's fallback for a listener it measured under another clip
+    /// ([`Engine::absorb_prior`]). `None` is a vet or compile failure.
+    fn measure_draw(&self, tree: PatchTree) -> Option<PreFeaturized> {
+        let want_audio = self.wants_admitted_audio();
+        let (cached, audition) =
+            featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio).ok()?;
+        Some(PreFeaturized {
+            tree,
+            cached,
+            audition,
+        })
     }
 
     // ------------------------------------------------------------------
@@ -1586,6 +1639,16 @@ impl Engine {
     /// index is consumed either way, exactly as a failed draw burns an attempt
     /// in the serial loop.
     ///
+    /// A draw that **listens** is the one exception: the farm measured it
+    /// with whatever clip its phrase carried, and that is this session's
+    /// measurement only if the result's key, which names the clip, is this
+    /// session's. After a capture, or a restore that installed a clip, the
+    /// farm can still be on the old phrase until it is sent the new one. So a
+    /// listener with another key, or with no result (vetted out under another
+    /// clip, perhaps), is measured here instead, exactly as the serial fold
+    /// would have measured it. A draw that does not listen keys no clip and
+    /// is taken as sent.
+    ///
     /// Returns the new candidate id, or `None` when the draw did not land
     /// (rejected, duplicate, or the pool was already full).
     pub fn absorb_prior(&mut self, index: u64, pre: Option<PreFeaturized>) -> Option<u64> {
@@ -1596,6 +1659,7 @@ impl Engine {
             return None;
         }
         self.consume_draw(index);
+        let pre = self.measured_here_if_stale(index, pre);
         let mut id = None;
         if let Some(pre) = pre {
             if !self.pool.iter().any(|c| c.tree == pre.tree) {
@@ -1604,6 +1668,34 @@ impl Engine {
         }
         self.standardize_pool();
         id
+    }
+
+    /// `pre`, unless draw `index` listens and `pre` is not this session's
+    /// measurement of it, in which case the draw measured here (see
+    /// [`Engine::absorb_prior`]).
+    fn measured_here_if_stale(
+        &self,
+        index: u64,
+        pre: Option<PreFeaturized>,
+    ) -> Option<PreFeaturized> {
+        let current = |p: &PreFeaturized| {
+            !p.tree.listens()
+                || p.cached.key == auracle_features::render_key(&p.tree, &self.cfg.phrase)
+        };
+        match pre {
+            Some(p) if current(&p) => Some(p),
+            pre => {
+                let tree = self.draw_at(index)?;
+                if !tree.listens() {
+                    return pre;
+                }
+                // A duplicate lands nowhere, so there is nothing to measure.
+                if self.pool.iter().any(|c| c.tree == tree) {
+                    return None;
+                }
+                self.measure_draw(tree)
+            }
+        }
     }
 
     /// Mark index `index` as folded in, whatever its outcome.
@@ -1994,6 +2086,11 @@ impl Engine {
             // amplifying holes into the pool is a failure a listener notices
             // immediately.
             0.0,
+            // `AudioIn` is not tilted either, and for the reason the grammar
+            // gives it a Silence-sized weight: the input is the player's.
+            // Whether a patch listens is a choice they make by patching one
+            // in, and it has no φ column a coefficient could be read from.
+            0.0,
         ];
         let src = tilt_weights(&prior.source_weights, &sources, eta);
         prior.source_weights = src.try_into().expect("source weight arity");
@@ -2015,7 +2112,13 @@ impl Engine {
         // maps onto a single production's weight, so none of them belongs
         // here: a tilt is a claim about one categorical outcome, and
         // "asymmetric" is not an outcome any one production produces.
-        let binary_tilt = sources.iter().sum::<f64>() / sources.len() as f64;
+        //
+        // Averaged over the seven kinds the table had before AUDIO IN, not
+        // all eight: the input's untilted zero joining the mean would shift
+        // every session's mixer tilt by an eighth without anything about the
+        // listener having changed. (Silence's zero has been in the mean since
+        // it arrived, so leaving it there moves nothing.)
+        let binary_tilt = sources[..7].iter().sum::<f64>() / 7.0;
         let (drive, mod_fx) = (g("n_drive"), g("n_mod_fx"));
         // `n_filter` and `n_time` are families now too — the eq and the
         // vocoder are counted under the first, the granulator and the pitch
@@ -3598,15 +3701,21 @@ impl Engine {
     /// exactly the machinery a dealt duel is, and differ only in the tag that
     /// says where they came from.
     fn record_duel_as(&mut self, a: usize, b: usize, chose_a: bool, provenance: Provenance) {
+        // An answer consumes the check its showing was, whether or not the
+        // model can forecast it yet. This used to happen only inside the
+        // forecast below, so a check shown and answered before the first fit
+        // stayed pending, and the next time the same pair was shown (as a
+        // chosen pair, after the fit) its answer was scored as that old
+        // check: one check too many, on a pair the model had chosen.
+        let key = pair_key(self.pool[a].id, self.pool[b].id);
+        let random_check = match self.pending_checks.iter().position(|k| *k == key) {
+            Some(i) => {
+                self.pending_checks.remove(i);
+                true
+            }
+            None => false,
+        };
         if let Some(p_a) = self.predict_duel(a, b) {
-            let key = pair_key(self.pool[a].id, self.pool[b].id);
-            let random_check = match self.pending_checks.iter().position(|k| *k == key) {
-                Some(i) => {
-                    self.pending_checks.remove(i);
-                    true
-                }
-                None => false,
-            };
             self.forecasts.push(Forecast {
                 p_a,
                 chose_a,
@@ -3973,6 +4082,12 @@ impl Engine {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
+            audition_clip: self
+                .cfg
+                .phrase
+                .clip
+                .as_ref()
+                .and_then(|c| serde_json::to_value(c).ok()),
         }
     }
 
@@ -4014,6 +4129,8 @@ impl Engine {
     /// [`Engine::import_profile`] may re-fit a standardizer over the *current*
     /// pool, so clearing before it would change the scale a restore lands on.
     pub fn import_state_deferred(&mut self, state: SessionState) -> Vec<BankEntry> {
+        // The clip first: every bank entry that listens is measured with it.
+        self.restore_clip(state.audition_clip);
         self.import_profile(state.profile);
         self.lineage = state.lineage;
         self.generation = state.generation;
@@ -4056,6 +4173,85 @@ impl Engine {
             }
         }
         bank
+    }
+
+    /// Install a session's saved clip, or the reference when there is none
+    /// or it cannot be read (and remember why, for
+    /// [`Engine::audition_clip_status`]).
+    fn restore_clip(&mut self, saved: Option<serde_json::Value>) {
+        self.clip_unreadable = None;
+        self.cfg.phrase.clip = match saved {
+            None => None,
+            Some(v) => match serde_json::from_value::<SavedClip>(v)
+                .map_err(|e| e.to_string())
+                .and_then(|s| AuditionClip::from_saved(&s).map_err(|e| e.to_string()))
+            {
+                Ok(clip) => Some(clip.at_rate(self.cfg.phrase.sample_rate)),
+                Err(why) => {
+                    self.clip_unreadable = Some(why);
+                    None
+                }
+            },
+        };
+    }
+
+    /// Measure the patches that listen with `clip` from now on (`None`: the
+    /// built-in reference), and measure again the pool members that listen.
+    ///
+    /// Only those: a patch that does not listen measures the same under any
+    /// clip, and its render key does not carry one. A member that no longer
+    /// vets under the new clip keeps the measurement it had and is reported
+    /// in [`ClipChange::unmeasured`]; a clip change never deletes a patch
+    /// (and a silent clip, the likely way to fail every one at once, cannot
+    /// be made). A generation open over the old clip is not disturbed: its
+    /// children's keys name the old clip, and admission measures them again.
+    pub fn set_audition_clip(&mut self, clip: Option<AuditionClip>) -> ClipChange {
+        let clip = clip.map(|c| c.at_rate(self.cfg.phrase.sample_rate));
+        self.clip_unreadable = None;
+        if self.cfg.phrase.clip == clip {
+            return ClipChange::default();
+        }
+        self.cfg.phrase.clip = clip;
+        let want_audio = self.wants_admitted_audio();
+        let mut change = ClipChange::default();
+        for i in 0..self.pool.len() {
+            if !self.pool[i].tree.listens() {
+                continue;
+            }
+            let id = self.pool[i].id;
+            let Ok((cached, audition)) =
+                featurize_memo(&self.pool[i].tree, &self.cfg.phrase, &self.memo, want_audio)
+            else {
+                change.unmeasured.push(id);
+                continue;
+            };
+            let phi_std = self
+                .standardizer
+                .as_ref()
+                .map(|sz| sz.transform(&cached.features.phi()))
+                .unwrap_or_default();
+            let render = self.admitted_render(&self.pool[i].tree, &cached.features, audition);
+            let c = &mut self.pool[i];
+            c.features = cached.features;
+            c.phi_std = phi_std;
+            c.key = cached.key;
+            c.render = render;
+            change.remeasured.push(id);
+        }
+        change
+    }
+
+    /// Which clip the patches that listen are measured with, and, after a
+    /// restore whose clip could not be read, why it is the reference.
+    pub fn audition_clip_status(&self) -> ClipStatus {
+        let clip = self.cfg.phrase.audition_clip();
+        ClipStatus {
+            source: clip.source(),
+            id: clip.id().to_string(),
+            seconds: clip.seconds(),
+            channels: clip.channel_count(),
+            unreadable: self.clip_unreadable.clone(),
+        }
     }
 
     /// How many saved terms, log cells and whole observations the last

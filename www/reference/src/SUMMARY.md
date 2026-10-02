@@ -19,6 +19,7 @@
 # Audition
 
 - [The standard phrase](./audition/phrase.md)
+- [Audition clips](./audition/clips.md)
 - [Loudness normalization](./audition/loudness.md)
 - [The vetting gate](./audition/vetting.md)
 

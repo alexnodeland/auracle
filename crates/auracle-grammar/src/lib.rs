@@ -31,8 +31,9 @@
 //!   Wavefolder, Distortion, Bitcrusher, DelayLine, Chorus, Reverb, Phaser,
 //!   Flanger, Tremolo, Vibrato, Granular, PitchShifter, RingModulator,
 //!   Compressor, Ducker, NoiseGate, Vocoder, Adsr, Vca, Lfo, SampleAndHold,
-//!   SlewLimiter, EnvelopeFollower — plus one module of this crate's own,
-//!   [`steps::StepsCv`], a step sequencer whose every value is a port.
+//!   SlewLimiter, EnvelopeFollower, AudioInput — plus one module of this
+//!   crate's own, [`steps::StepsCv`], a step sequencer whose every value is a
+//!   port.
 //! - Every compiled patch gets the mandatory voice stage — amp ADSR → VCA →
 //!   **Limiter** → StereoOutput — and bounded parameter mappings (resonance,
 //!   feedback), so the grammar cannot express the most degenerate settings.
@@ -49,7 +50,10 @@ pub mod rng;
 pub mod steps;
 pub mod term;
 
-pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap, COMPILE_MAX_NESTING};
+pub use compile::{
+    compile, compile_with_input, CompiledVoice, ParamHandle, ParamMap, COMPILE_MAX_NESTING,
+    INPUT_GAIN_UNITY,
+};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
@@ -57,7 +61,7 @@ pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
-pub use term::{AudioNode, ModNode, PatchTree, Uid};
+pub use term::{AudioNode, InputChannel, ModNode, PatchTree, Uid, INPUT_SLOTS};
 
 #[cfg(test)]
 mod tests {
@@ -1074,7 +1078,13 @@ mod tests {
     #[test]
     fn everything_a_hand_can_reach_has_finite_prior() {
         use mutate::{ModKind, NodeKind, StructOp};
-        let prior = PatchGrammarPrior::default();
+        // With AUDIO IN on. Nothing else's mass depends on its weight, so for
+        // every other kind this is the default grammar; and the app places no
+        // AUDIO IN until live capture works, which is when the default turns
+        // it on (`AUDIO_IN_WEIGHT`, Plan-007 task 4). Until then a placed one
+        // scores −∞ under the default, which
+        // `audio_in_is_rare_and_the_prior_never_picks_an_input` pins.
+        let prior = PatchGrammarPrior::default().with_audio_in();
         let finite = |what: &str, t: &PatchTree| {
             let lp = log_prior(&prior, t);
             assert!(lp.is_finite(), "{what}: log-prior is {lp}");
@@ -1270,7 +1280,9 @@ mod tests {
     #[test]
     fn the_two_samplers_agree_on_kind_frequencies() {
         use std::collections::BTreeMap;
-        let prior = PatchGrammarPrior::default();
+        // With AUDIO IN on, so both samplers have every kind to agree on; the
+        // default differs only in drawing none.
+        let prior = PatchGrammarPrior::default().with_audio_in();
         let n = 3000;
         let count = |trees: &[PatchTree]| -> (BTreeMap<String, f64>, f64) {
             let mut c: BTreeMap<String, f64> = BTreeMap::new();
@@ -1300,6 +1312,13 @@ mod tests {
             b.get("silence").copied().unwrap_or(0.0) > 0.0,
             "the program never drew a hole"
         );
+        // The input is as rare as the hole, and both samplers reach it.
+        for (side, counts) in [("RNG path", &a), ("program", &b)] {
+            assert!(
+                counts.get("audio_in").copied().unwrap_or(0.0) > 0.0,
+                "the {side} never drew an audio in"
+            );
+        }
         let kinds: std::collections::BTreeSet<&String> = a.keys().chain(b.keys()).collect();
         for k in kinds {
             let fa = a.get(k).copied().unwrap_or(0.0) / ta;
@@ -1868,5 +1887,240 @@ mod tests {
             assert_ne!(m.uid, 0, "{} was left without an identity", m.key);
             assert!(seen.insert(m.uid), "{} shares an identity", m.key);
         }
+    }
+
+    // ---- AUDIO IN (ADR-015, Plan-007 task 2) ----
+
+    fn listening(input: u8, channel: term::InputChannel) -> PatchTree {
+        let mut t = presets::presets()[0].1.clone();
+        t.amp = term::AmpEnv {
+            attack: 0.0,
+            decay: 0.3,
+            sustain: PARAM_MAX,
+            release: 0.2,
+        };
+        t.root = term::AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: term::FilterKind::SvfLp,
+            cutoff: 0.9,
+            resonance: 0.1,
+            mod_depth: 0.0,
+            input: Box::new(term::AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input,
+                gain: INPUT_GAIN_UNITY,
+                channel,
+            }),
+            modulation: term::ModNode::None,
+        };
+        t
+    }
+
+    /// The rack draws an AUDIO IN as its own plate: kind `audio_in` (the
+    /// `NodeKind` spelling), title "audio in", and three knobs whose
+    /// addresses are trace sites a knob edit can write.
+    #[test]
+    fn audio_in_is_a_plate_with_three_knobs() {
+        use describe::KnobKind;
+        let tree = listening(2, term::InputChannel::Right);
+        let rack = describe::describe(&tree);
+        let m = rack
+            .modules
+            .iter()
+            .find(|m| m.key == "node/0")
+            .expect("the input's plate");
+        assert_eq!(
+            (m.kind.as_str(), m.title.as_str()),
+            ("audio_in", "audio in")
+        );
+        assert!(!m.is_mod);
+        let labels: Vec<&str> = m.knobs.iter().map(|k| k.label.as_str()).collect();
+        assert_eq!(labels, ["input", "gain", "channel"]);
+        let addrs: Vec<&str> = m.knobs.iter().map(|k| k.addr.as_str()).collect();
+        assert_eq!(addrs, ["node/0#input", "node/0#gain", "node/0#channel"]);
+        match &m.knobs[0].kind {
+            KnobKind::Enum { options } => {
+                assert_eq!(options.len(), term::INPUT_SLOTS);
+                assert_eq!((options[0].as_str(), m.knobs[0].value), ("1", 2.0));
+            }
+            k => panic!("input is a selector, not {k:?}"),
+        }
+        match &m.knobs[2].kind {
+            KnobKind::Enum { options } => {
+                assert_eq!(options, &["left", "right", "both"]);
+                assert_eq!(m.knobs[2].value, 1.0);
+            }
+            k => panic!("channel is a selector, not {k:?}"),
+        }
+        assert_eq!(m.structural_addrs, ["node/0#leaf", "node/0#src"]);
+        // Every knob is an address a knob edit writes, and nothing else moves.
+        let set = set_param(&tree, "node/0#input", ParamValue::Index(5)).unwrap();
+        match &set.root.children()[0] {
+            term::AudioNode::AudioIn { input, channel, .. } => {
+                assert_eq!((*input, *channel), (5, term::InputChannel::Right));
+            }
+            n => panic!("the edit replaced the node: {}", n.to_sexpr()),
+        }
+        let clamped = set_param(&tree, "node/0#input", ParamValue::Index(99)).unwrap();
+        assert_eq!(
+            clamped
+                .to_trace()
+                .get_usize(&fugue::addr!("node/0", "input")),
+            Some(term::INPUT_SLOTS - 1),
+            "an input past the last slot is clamped to it"
+        );
+        let louder = set_param(&tree, "node/0#gain", ParamValue::Continuous(0.9)).unwrap();
+        assert_eq!(tree_diff(&tree, &louder).len(), 1);
+        assert_eq!(tree.input_sites(), ["node/0#input"]);
+        assert!(tree.listens() && !presets::presets()[0].1.listens());
+    }
+
+    /// Off in the shipped prior, rare once on, and the prior never picks a
+    /// device.
+    ///
+    /// The default prior draws no AUDIO IN from either sampler and gives one
+    /// no mass, because live capture is not built yet (`AUDIO_IN_WEIGHT`).
+    /// With the term on ([`PatchGrammarPrior::with_audio_in`]), a drawn AUDIO
+    /// IN is rare and reads the first input, and a tree reading any other
+    /// slot scores exactly what the same tree reading slot 0 does.
+    #[test]
+    fn audio_in_is_rare_and_the_prior_never_picks_an_input() {
+        let off = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0xA0D1_0000);
+        for _ in 0..3000 {
+            assert!(
+                !off.sample_with_rng(&mut rng).listens(),
+                "the RNG path drew an input"
+            );
+            assert!(
+                !draw(&off, &mut rng).0.listens(),
+                "the program drew an input"
+            );
+        }
+        let lp = log_prior(&off, &listening(0, term::InputChannel::Both));
+        assert_eq!(
+            lp,
+            f64::NEG_INFINITY,
+            "the shipped prior gives an input mass"
+        );
+
+        let prior = PatchGrammarPrior::default().with_audio_in();
+        let n = 3000;
+        let mut rng = StdRng::seed_from_u64(0xA0D1_0001);
+        let mut drawn = Vec::new();
+        for _ in 0..n {
+            drawn.push(prior.sample_with_rng(&mut rng));
+            drawn.push(draw(&prior, &mut rng).0);
+        }
+        let listeners: Vec<&PatchTree> = drawn.iter().filter(|t| t.listens()).collect();
+        let rate = listeners.len() as f64 / drawn.len() as f64;
+        assert!(
+            (0.002..0.03).contains(&rate),
+            "{rate:.4} of drawn trees listen; the input should be rare, not absent"
+        );
+        for t in &listeners {
+            let trace = t.to_trace();
+            for site in t.input_sites() {
+                let (key, _) = edit::split_addr(&site);
+                assert_eq!(
+                    trace.get_usize(&fugue::addr!(key, "input")),
+                    Some(0),
+                    "the prior chose an input: {}",
+                    t.to_sexpr()
+                );
+            }
+        }
+        // Every slot carries the same prior mass, so a player's input is
+        // never what makes a patch improbable (or un-evolvable).
+        let lp0 = log_prior(&prior, &listening(0, term::InputChannel::Both));
+        assert!(lp0.is_finite());
+        for slot in 1..term::INPUT_SLOTS as u8 {
+            let lp = log_prior(&prior, &listening(slot, term::InputChannel::Both));
+            assert_eq!(lp, lp0, "slot {slot} scores differently from slot 0");
+        }
+        // Past the last slot is outside the support, and the decoder says so.
+        let mut past = listening(0, term::InputChannel::Both).to_trace();
+        past.insert_choice(
+            fugue::addr!("node/0", "input"),
+            fugue_evo::genome::trace_genome::ChoiceValue::Usize(term::INPUT_SLOTS),
+            0.0,
+        );
+        assert!(PatchTree::from_trace(&past).is_err());
+    }
+
+    /// The codec round-trips an AUDIO IN at every slot and channel, with the
+    /// site count `site_count` claims, and the generative program replays the
+    /// same choices.
+    #[test]
+    fn audio_in_round_trips_at_every_slot_and_channel() {
+        // Scored with the term on: the default prior gives it no mass while
+        // live capture is not built (`AUDIO_IN_WEIGHT`).
+        let prior = PatchGrammarPrior::default().with_audio_in();
+        for slot in 0..term::INPUT_SLOTS as u8 {
+            for channel in term::InputChannel::ALL {
+                let t = listening(slot, channel);
+                let trace = t.to_trace();
+                assert_eq!(trace.choices.len(), t.site_count());
+                assert_eq!(PatchTree::from_trace(&trace).unwrap(), t);
+                let (replayed, scored) = run(
+                    ScoreGivenTrace {
+                        base: trace,
+                        trace: Trace::default(),
+                    },
+                    prior.model(),
+                );
+                assert_eq!(replayed, t, "the program replays another tree");
+                assert!(scored.log_prior.is_finite());
+            }
+        }
+    }
+
+    /// An AUDIO IN compiles to quiver's `AudioInput` on the caller's stream:
+    /// silent unbound, the stream's signal bound, its gain a live knob, and
+    /// its channel the one it names.
+    #[test]
+    fn audio_in_compiles_to_a_bound_input() {
+        use quiver::prelude::AudioInputStream;
+        use std::sync::Arc;
+        let level =
+            |tree: &PatchTree, stream: Option<&Arc<AudioInputStream>>, gain: Option<f64>| {
+                let mut v = compile_with_input(tree, SR, stream).expect("compiles");
+                if let Some(g) = gain {
+                    v.params["node/0#gain"].set_normalized(g);
+                }
+                v.gate.set(5.0);
+                let mut peak = 0.0f64;
+                for _ in 0..4096 {
+                    let (l, _) = v.patch.tick();
+                    peak = peak.max(l.abs());
+                    if let Some(s) = stream {
+                        s.advance();
+                    }
+                }
+                peak
+            };
+        let stream = || {
+            let s = Arc::new(AudioInputStream::with_host_clock(2, 4096));
+            // Left a 220 Hz tone, right silent.
+            let left: Vec<f32> = (0..4096)
+                .map(|i| (0.25 * (i as f64 * 220.0 * std::f64::consts::TAU / SR).sin()) as f32)
+                .collect();
+            s.write(&[&left[..], &[0.0f32; 4096][..]]);
+            s
+        };
+        let left = listening(0, term::InputChannel::Left);
+        assert_eq!(level(&left, None, None), 0.0, "an unbound input is silent");
+        let heard = level(&left, Some(&stream()), None);
+        assert!(heard > 0.1, "a bound input is heard ({heard})");
+        let quieter = level(&left, Some(&stream()), Some(0.0));
+        assert!(
+            quieter < heard * 0.2,
+            "the gain knob is live: −24 dB should be far quieter ({quieter} vs {heard})"
+        );
+        let right = listening(0, term::InputChannel::Right);
+        assert!(
+            level(&right, Some(&stream()), None) < 1e-6,
+            "the right channel of this input is silent"
+        );
     }
 }

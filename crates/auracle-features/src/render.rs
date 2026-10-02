@@ -3,9 +3,23 @@
 //! Determinism contract: quiver's thread-local RNG is re-seeded from
 //! [`PhraseSpec::seed`] immediately before ticking, and the patch is compiled
 //! fresh per render, so `(term, spec)` → bit-identical samples on any thread.
+//!
+//! A patch that listens ([`PatchTree::listens`]) also reads the stimulus's
+//! audition clip ([`PhraseSpec::audition_clip`]), through one quiver
+//! `AudioInputStream` on the **host's clock**: the whole clip is written once
+//! as one block, and the render calls `advance()` after each frame's tick of
+//! every voice, never `tick_block`. That is quiver's rule for a frame-by-frame
+//! host, and it is what keeps the chord voices in step: a chord voice is
+//! compiled at its note's onset, mid-render, and on the host's clock its
+//! AUDIO IN reads the frame every other voice reads, from its first tick (a
+//! cursor-mode stream would leave a voice built mid-block silent until the
+//! next block, and this render has only one). A patch that does not listen
+//! gets no stream at all, so its render is what it always was.
 
-use auracle_grammar::{compile, PatchTree};
-use quiver::PatchError;
+use std::sync::Arc;
+
+use auracle_grammar::{compile_with_input, PatchTree};
+use quiver::{AudioInputStream, PatchError};
 
 use crate::phrase::PhraseSpec;
 
@@ -109,7 +123,10 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
     // should not depend on which constructors quiver adds a draw to next.
     quiver::rng::seed(spec.seed);
 
-    let mut voice = compile(tree, spec.sample_rate)?;
+    // The clip, for a patch that listens: one stream every voice reads, on
+    // this render's clock (see the module doc).
+    let input = tree.listens().then(|| audition_stream(spec));
+    let mut voice = compile_with_input(tree, spec.sample_rate, input.as_ref())?;
     // Chord voices for the note being (or last) played. Compiled lazily at
     // the first chord note; a mono spec pays nothing.
     let mut chord_voices: Vec<ChordVoice> = Vec::new();
@@ -138,6 +155,10 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
                     }
                 }
             }
+            // Every voice has read this frame; the next tick reads the next.
+            if let Some(stream) = &input {
+                stream.advance();
+            }
             s
         };
 
@@ -147,7 +168,9 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
         if !note.chord.is_empty() {
             chord_voices.retain(|cv| !cv.parked);
             for &voct in &note.chord {
-                let v = compile(tree, spec.sample_rate)?;
+                // On the same stream: its AUDIO IN reads the frame the main
+                // voice is on, from this, its first, tick.
+                let v = compile_with_input(tree, spec.sample_rate, input.as_ref())?;
                 v.pitch.set(voct);
                 v.gate.set(5.0);
                 chord_voices.push(ChordVoice {
@@ -193,6 +216,20 @@ pub(crate) fn render_phrase_observed<O: VoiceObserver>(
         note_onsets,
         spans,
     })
+}
+
+/// The stream a listening patch reads during a render of `spec`: the
+/// stimulus's clip (or the reference) written once, whole, as one block on a
+/// host-clock stream, so frame `n` of the render reads frame `n` of the clip
+/// and a clip shorter than the phrase falls silent at its end.
+fn audition_stream(spec: &PhraseSpec) -> Arc<AudioInputStream> {
+    let clip = spec.audition_clip();
+    let stream = Arc::new(AudioInputStream::with_host_clock(
+        clip.channel_count(),
+        clip.frames(),
+    ));
+    stream.write(clip.planar());
+    stream
 }
 
 /// A playback-ready audition buffer.
@@ -260,4 +297,175 @@ pub fn render_playback(
         *s *= gain;
     }
     Ok(render.to_audition())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clip::AuditionClip;
+    use crate::phrase::Note;
+    use auracle_grammar::term::{AmpEnv, AudioNode, InputChannel, Uid};
+    use auracle_grammar::{INPUT_GAIN_UNITY, PARAM_MAX};
+
+    /// A patch that is nothing but an input through the voice stage.
+    fn only_input() -> PatchTree {
+        PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: PARAM_MAX,
+                release: 0.0,
+            },
+            root: AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: 0,
+                gain: INPUT_GAIN_UNITY,
+                channel: InputChannel::Both,
+            },
+        }
+    }
+
+    /// Two notes: one the clip is silent under, then one with `chord`'s
+    /// voices, each compiled at its onset, mid-render.
+    fn two_notes(chord: &[f64]) -> PhraseSpec {
+        PhraseSpec {
+            notes: vec![
+                Note {
+                    voct: 0.0,
+                    on_s: 0.1,
+                    off_s: 0.4,
+                    chord: Vec::new(),
+                },
+                Note {
+                    voct: 0.0,
+                    on_s: 0.3,
+                    off_s: 0.3,
+                    chord: chord.to_vec(),
+                },
+            ],
+            ..PhraseSpec::default()
+        }
+    }
+
+    /// **Chord voices read the frame the main voice reads.** The clip is
+    /// silent until the second note's onset and a tone after it, so every
+    /// voice meets the tone cold at the same sample. On the host's clock the
+    /// chord voices, compiled at that onset mid-render (one for a dyad, two
+    /// for a triad), read exactly the frames the main voice reads: the dyad's
+    /// render is the mono render doubled and the triad's tripled, bit for bit.
+    ///
+    /// This fails both ways the render could get it wrong. Without an
+    /// `advance()` per frame every voice reads frame 0 (silence) and the mono
+    /// render is silent. On a cursor-mode stream a voice built mid-block waits
+    /// for a block that never comes, and the dyad is the mono render, not
+    /// twice it.
+    #[test]
+    fn chord_voices_read_the_frame_the_main_voice_reads() {
+        let mono = two_notes(&[]);
+        let onset = ((0.1 + 0.4) * mono.sample_rate) as usize;
+        let held = (0.3 * mono.sample_rate) as usize;
+        let clip: Vec<f32> = (0..mono.total_samples())
+            .map(|i| {
+                if i < onset {
+                    0.0
+                } else {
+                    let t = i as f64 / mono.sample_rate;
+                    (0.4 * (t * 330.0 * std::f64::consts::TAU).sin()) as f32
+                }
+            })
+            .collect();
+        let clip = AuditionClip::from_interleaved(&clip, 1, mono.sample_rate, &mono).unwrap();
+        let with_clip = |s: PhraseSpec| PhraseSpec {
+            clip: Some(clip.clone()),
+            ..s
+        };
+        let tree = only_input();
+        let one = render_phrase(&tree, &with_clip(mono)).unwrap().samples;
+        let two = render_phrase(&tree, &with_clip(two_notes(&[7.0 / 12.0])))
+            .unwrap()
+            .samples;
+        let three = render_phrase(&tree, &with_clip(two_notes(&[4.0 / 12.0, 7.0 / 12.0])))
+            .unwrap()
+            .samples;
+        assert!(
+            one[..onset].iter().all(|s| *s == 0.0),
+            "the clip is silent before the dyad, and so is the render"
+        );
+        let heard = one[onset..onset + held]
+            .iter()
+            .fold(0.0f64, |m, s| m.max(s.abs()));
+        assert!(
+            heard > 0.05,
+            "the input is heard under the second note ({heard})"
+        );
+        for i in onset..onset + held {
+            assert_eq!(
+                two[i],
+                2.0 * one[i],
+                "frame {i}: the chord voice is not reading the main voice's frame"
+            );
+            assert_eq!(
+                three[i],
+                3.0 * one[i],
+                "frame {i}: the two chord voices are not reading the main voice's frame"
+            );
+        }
+    }
+
+    /// A patch that does not listen renders identically under any clip: it
+    /// never reads one, so neither its samples nor its cached rows move.
+    #[test]
+    fn a_patch_that_does_not_listen_ignores_the_clip() {
+        let spec = PhraseSpec::default();
+        let clip =
+            AuditionClip::from_interleaved(&[0.25f32; 4410], 1, spec.sample_rate, &spec).unwrap();
+        let tree = auracle_grammar::presets()[0].1.clone();
+        assert!(!tree.listens());
+        let plain = render_phrase(&tree, &spec).unwrap().samples;
+        let clipped = render_phrase(
+            &tree,
+            &PhraseSpec {
+                clip: Some(clip),
+                ..spec
+            },
+        )
+        .unwrap()
+        .samples;
+        assert_eq!(plain, clipped);
+    }
+
+    /// The vet judges the render made with the clip: a patch that listens to
+    /// the reference passes, and the same patch over a clip that only sounds
+    /// in the phrase's first gap (while its amp is closed) is refused as
+    /// silent.
+    #[test]
+    fn the_vet_hears_the_clip() {
+        let spec = PhraseSpec::default();
+        let tree = only_input();
+        assert!(
+            crate::featurize(&tree, &spec).is_ok(),
+            "the reference is heard"
+        );
+        let gap = (1.85 * spec.sample_rate) as usize..(1.95 * spec.sample_rate) as usize;
+        let between: Vec<f32> = (0..spec.total_samples())
+            .map(|i| if gap.contains(&i) { 0.5 } else { 0.0 })
+            .collect();
+        let between = AuditionClip::from_interleaved(&between, 1, spec.sample_rate, &spec)
+            .expect("a clip that is not silent");
+        let err = crate::featurize(
+            &tree,
+            &PhraseSpec {
+                clip: Some(between),
+                ..spec
+            },
+        )
+        .expect_err("the patch is silent over it");
+        assert!(
+            matches!(
+                err,
+                crate::FeaturizeError::Quarantined(crate::VetFailure::Silent { .. })
+            ),
+            "{err}"
+        );
+    }
 }

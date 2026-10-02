@@ -729,6 +729,22 @@ const EMPTY_F32 = new Float32Array(0);
 // opening a newer save, a new enum variant, one corrupt bank tree). The
 // `_checked` / `_v2` forms say `unparseable` for the second case, and that
 // verdict goes to main as `restore_failed`, which is what stops the write.
+// The session's audition clip as the engine reports it, or null from a binary
+// too old to say.
+function auditionClip() {
+  try {
+    return JSON.parse(engine.audition_clip());
+  } catch (_) {
+    return null;
+  }
+}
+
+// A restore installs the session's saved clip (or the reference, with why),
+// so main hears which one after every restore.
+function postClip() {
+  post({ type: "audition_clip", clip: auditionClip() });
+}
+
 function restoreFailed(status) {
   post({ type: "restore_failed", status });
   return 0;
@@ -744,6 +760,7 @@ function restoreSerial(saved) {
     return engine.import_session(saved);
   }
   if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+  postClip();
   return verdict.restored | 0;
 }
 async function restoreSession(saved, farmed, stages) {
@@ -766,6 +783,7 @@ async function restoreSession(saved, farmed, stages) {
     }
   }
   if (!Array.isArray(jobs) || jobs.length === 0) {
+    postClip();
     try { return engine.restore_finish(); } catch (_) { return 0; }
   }
 
@@ -827,6 +845,7 @@ async function restoreSession(saved, farmed, stages) {
   for (let i = next; i < jobs.length; i++) {
     if (engine.bank_render(i)) landed++;
   }
+  postClip();
   return engine.restore_finish();
 }
 
@@ -2001,7 +2020,10 @@ async function dispatch(m) {
         try {
           ns = mod.cache_namespace(engine.phrase_json()) || null;
         } catch (_) { /* older engine */ }
-        post({ type: "ready", ceilings, ns });
+        // The audition clip sounds with an AUDIO IN are measured with (the
+        // built-in reference until an input is captured). PERFORM keys the
+        // wiring of a sound that listens by it.
+        post({ type: "ready", ceilings, ns, clip: auditionClip() });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.
@@ -2783,6 +2805,26 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
+    // The session's audition clip (Plan-007 task 3, ADR-015): what a sound
+    // with an AUDIO IN is measured with. Capturing one is task 4's (the
+    // permission flow and the worklet's input); these are the engine's side,
+    // so a capture has somewhere to land. `samples` is a Float32Array of
+    // `channels` interleaved, at `sampleRate`; without it the clip goes back
+    // to the built-in reference. A new clip changes the phrase the farm was
+    // handed at boot, and until task 4 sends it again the farm measures sounds
+    // that listen with the old one; their keys differ, so the engine measures
+    // those itself rather than trust the farm's rows.
+    case "audition_clip": {
+      postClip();
+      break;
+    }
+    case "set_audition_clip": {
+      const reply = m.samples
+        ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
+        : engine.clear_audition_clip();
+      post({ type: "audition_clip", ...JSON.parse(reply) });
+      break;
+    }
     case "export": {
       // `reason` is echoed so main can name a safety copy for what it is.
       post({ type: "exported", json: engine.export_profile(), reason: m.reason || null });

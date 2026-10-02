@@ -18,8 +18,8 @@ use rand::Rng;
 
 use crate::prior::{PatchGrammarPrior, STEPS_SITES};
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Uid, Waveform,
+    AmpEnv, AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp,
+    PatchTree, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 impl EvolutionaryGenome for PatchTree {
@@ -253,6 +253,24 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 + (*oa as f64 - *ob as f64).abs() / 4.0
                 + (mda - mdb).abs()
                 + mod_distance(moda, modb)
+        }
+        (
+            AudioIn {
+                input: ia,
+                gain: ga,
+                channel: ca,
+                ..
+            },
+            AudioIn {
+                input: ib,
+                gain: gb,
+                channel: cb,
+                ..
+            },
+        ) => {
+            (if ia == ib { 0.0 } else { 1.0 })
+                + (ga - gb).abs()
+                + (if ca == cb { 0.0 } else { 1.0 })
         }
         (Noise { color: ca, .. }, Noise { color: cb, .. }) => {
             if ca == cb {
@@ -978,6 +996,20 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 6);
         }
+        // Index 7, appended after `Silence`. Draw order: input, gain, channel,
+        // as `prior` samples them.
+        AudioIn {
+            input,
+            gain,
+            channel,
+            ..
+        } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 7);
+            put_usize(t, key, "input", *input as usize);
+            put_f64(t, key, "gain", *gain);
+            put_usize(t, key, "channel", channel.index());
+        }
         Wavetable {
             table,
             octave,
@@ -1562,6 +1594,17 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_mod(t, &mod_key(key))?,
             }),
             6 => Ok(AudioNode::Silence { uid: Uid::NEW }),
+            7 => Ok(AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: get_index(t, key, "input", INPUT_SLOTS)? as u8,
+                gain: get_f64(t, key, "gain")?,
+                channel: InputChannel::from_index(get_index(
+                    t,
+                    key,
+                    "channel",
+                    InputChannel::ALL.len(),
+                )?),
+            }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "source kind {k} out of range at {key}"
             ))),
@@ -1810,6 +1853,11 @@ pub const PARAM_DOMAIN: std::ops::Range<f64> = 0.0..1.0;
 /// deep: no mapping in [`crate::compile`] can tell it from `1.0`.
 pub const PARAM_MAX: f64 = 1.0 - f64::EPSILON;
 
+/// Is `addr` an AUDIO IN's `#input` site?
+fn is_input_site(addr: &fugue::Address) -> bool {
+    addr.to_string().ends_with("#input")
+}
+
 /// Is `v` a legal value for a continuous site?
 ///
 /// Non-finite fails: `NaN` compares false against every bound, and an infinity
@@ -1855,6 +1903,13 @@ impl PatchTree {
             .iter()
             .filter_map(|(a, c)| match c.value {
                 ChoiceValue::F64(v) if !in_domain(v) => Some((a.to_string(), v)),
+                // An AUDIO IN's input is a `u8` in the term, so a saved tree
+                // can name a slot past the last one, which the codec refuses
+                // to decode. It is reported (and repaired, below) with the
+                // knobs, or the patch could be played but never edited.
+                ChoiceValue::Usize(i) if is_input_site(a) && i >= INPUT_SLOTS => {
+                    Some((a.to_string(), i as f64))
+                }
                 _ => None,
             })
             .collect();
@@ -1886,12 +1941,18 @@ impl PatchTree {
     pub fn clamp_domains(&mut self) -> usize {
         let mut trace = self.to_trace();
         let mut fixed = 0usize;
-        for c in trace.choices.values_mut() {
-            if let ChoiceValue::F64(v) = c.value {
-                if !in_domain(v) {
+        for (a, c) in trace.choices.iter_mut() {
+            match c.value {
+                ChoiceValue::F64(v) if !in_domain(v) => {
                     c.value = ChoiceValue::F64(clamp_param(v));
                     fixed += 1;
                 }
+                // To the last slot: the nearest legal value, as for a knob.
+                ChoiceValue::Usize(i) if is_input_site(a) && i >= INPUT_SLOTS => {
+                    c.value = ChoiceValue::Usize(INPUT_SLOTS - 1);
+                    fixed += 1;
+                }
+                _ => {}
             }
         }
         if fixed == 0 {
@@ -2423,6 +2484,41 @@ mod domain_tests {
             PatchTree::from_trace(&t2).is_err(),
             "fkind = 4 must not wrap to svf lp"
         );
+    }
+
+    /// An AUDIO IN's input past the last slot (a `u8` in a saved file can say
+    /// 200) is reported with the out-of-domain knobs and repaired to the last
+    /// slot, so the patch stays editable: the codec refuses the slot, and
+    /// every knob edit goes through the codec.
+    #[test]
+    fn an_input_past_the_last_slot_is_reported_and_repaired() {
+        let mut t = PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 0.7,
+                release: 0.3,
+            },
+            root: AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: 200,
+                gain: 0.5,
+                channel: InputChannel::Both,
+            },
+        };
+        assert_eq!(
+            t.domain_violations(),
+            vec![("node#input".to_string(), 200.0)]
+        );
+        assert!(PatchTree::from_trace(&t.to_trace()).is_err());
+        assert!(crate::set_param(&t, "node#gain", crate::ParamValue::Continuous(0.3)).is_err());
+        assert_eq!(t.clamp_domains(), 1);
+        assert!(matches!(
+            t.root,
+            AudioNode::AudioIn { input, .. } if input as usize == INPUT_SLOTS - 1
+        ));
+        assert!(t.domain_violations().is_empty());
+        assert!(crate::set_param(&t, "node#gain", crate::ParamValue::Continuous(0.3)).is_ok());
     }
 
     /// NaN carries no direction, so it lands in the middle rather than being
