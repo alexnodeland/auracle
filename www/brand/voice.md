@@ -442,7 +442,7 @@ banned-words check in `make dev-check` reads the list after it.
 | --- | --- | --- |
 | **pick** | Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass, the warm start, and keep as new | vote, choose, preference, "keep the one" |
 | **pair** | The two sounds you pick between | duel (outside the reference) |
-| **fair-test picks** | Pairs dealt at random, the ones LEARNING's forecasts are graded on | check duels, check picks |
+| **fair-test picks** | Pairs dealt at random, the ones TRUST grades | check duels, check picks |
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
