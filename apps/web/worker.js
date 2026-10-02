@@ -2891,7 +2891,8 @@ async function dispatch(m) {
     case "explain_lesson": {
       const reply = { type: "explain_lesson", token: m.token ?? null, tree: m.tree, cutoff: m.cutoff };
       try {
-        const r = engine.lesson_filter(m.tree, JSON.stringify(m.overrides || []), m.cutoff);
+        // No cutoff: the sound in hand as it is, the lesson's first step.
+        const r = engine.lesson_filter(m.tree, JSON.stringify(m.overrides || []), Number.isFinite(m.cutoff) ? m.cutoff : undefined);
         const data = JSON.parse(r.json);
         const buffer = new Float32Array(r.take_samples());
         r.free();

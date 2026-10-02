@@ -100,33 +100,36 @@ impl WasmEngine {
     /// The lesson on filters: the performed state with a lowpass from the
     /// grammar (`Filter` `SvfLp`, resonance [`LESSON_RESONANCE`]) at `cutoff`
     /// (its knob, 0–1) put on its output, below any stereo effect that ends
-    /// the chain. Its JSON is `{cutoff, cutoff_hz, response, portrait}`:
-    /// the knob's corner on the held note in Hz, the filter's gain in each of
-    /// the portrait's bands (dB, from its impulse response), and the filtered
-    /// render's portrait; or `{cutoff, cutoff_hz, response, error}` when the
-    /// filtered sound does not render (`no_tree`, `no_room`, `silent`, `vet`).
-    /// Its samples are the filtered audition, at the level every audition
-    /// plays at. One render; the patch itself is not changed.
+    /// the chain; with no `cutoff`, the performed state as it is (the
+    /// lesson's first step, and what the filtered one is drawn against). Its
+    /// JSON is `{cutoff, cutoff_hz, response, portrait}`: the knob, its
+    /// corner on the held note in Hz, the filter's gain in each of the
+    /// portrait's bands (dB, from its impulse response), and the render's
+    /// portrait; the first three `null` with no filter. When the sound does
+    /// not render, `error` (`no_tree`, `no_room`, `silent`, `vet`) stands for
+    /// the portrait. Its samples are the render's audition, at the level
+    /// every audition plays at. One render; the patch itself is not changed.
     pub fn lesson_filter(
         &self,
         tree_json: &str,
         overrides_json: &str,
-        cutoff: f64,
+        cutoff: Option<f64>,
     ) -> ExplainRender {
-        let cutoff = if cutoff.is_finite() {
-            cutoff.clamp(0.0, 1.0)
-        } else {
-            0.5
-        };
+        let cutoff = cutoff.map(|c| {
+            if c.is_finite() {
+                c.clamp(0.0, 1.0)
+            } else {
+                0.5
+            }
+        });
         let sr = self.engine.cfg.phrase.sample_rate;
-        let response = explain::response_bands(
-            &lowpass_response(cutoff, LESSON_RESONANCE, sr, RESPONSE_LEN),
-            sr,
-        );
+        let response = cutoff.map(|c| {
+            explain::response_bands(&lowpass_response(c, LESSON_RESONANCE, sr, RESPONSE_LEN), sr)
+        });
         let head = |extra: serde_json::Value| {
             let mut j = serde_json::json!({
                 "cutoff": cutoff,
-                "cutoff_hz": cutoff_hz(cutoff),
+                "cutoff_hz": cutoff.map(cutoff_hz),
                 "response": response,
             });
             if let (Some(o), Some(e)) = (j.as_object_mut(), extra.as_object()) {
@@ -141,19 +144,25 @@ impl WasmEngine {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return fail("no_tree");
         };
-        let filter = AudioNode::Filter {
-            uid: Uid::NEW,
-            kind: FilterKind::SvfLp,
-            cutoff,
-            resonance: LESSON_RESONANCE,
-            mod_depth: 0.0,
-            input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
-            modulation: ModNode::None,
+        let tree = match cutoff {
+            None => tree,
+            Some(cutoff) => {
+                let filter = AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff,
+                    resonance: LESSON_RESONANCE,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+                    modulation: ModNode::None,
+                };
+                let Some(filtered) = insert_at_output(&tree, filter) else {
+                    return fail("no_room");
+                };
+                filtered
+            }
         };
-        let Some(filtered) = insert_at_output(&tree, filter) else {
-            return fail("no_room");
-        };
-        match featurize(&filtered, &self.engine.cfg.phrase) {
+        match featurize(&tree, &self.engine.cfg.phrase) {
             Err(e) => fail(reason(&e)),
             Ok(v) => ExplainRender {
                 json: head(serde_json::json!({
@@ -217,8 +226,8 @@ mod tests {
     #[test]
     fn the_lesson_filter_darkens_the_sound_in_hand() {
         let (engine, tree) = engine_with_patch();
-        let mut open = engine.lesson_filter(&tree, "[]", 0.95);
-        let mut shut = engine.lesson_filter(&tree, "[]", 0.45);
+        let mut open = engine.lesson_filter(&tree, "[]", Some(0.95));
+        let mut shut = engine.lesson_filter(&tree, "[]", Some(0.45));
         let (a, b): (serde_json::Value, serde_json::Value) = (
             serde_json::from_str(&open.json()).unwrap(),
             serde_json::from_str(&shut.json()).unwrap(),
@@ -254,5 +263,14 @@ mod tests {
         assert!(want[at(fc * 4.0)] < -20.0, "{want:?}");
         assert!(!open.take_samples().is_empty());
         assert!(!shut.take_samples().is_empty());
+        // With no filter, it is the sound in hand as it is: the same render
+        // a figure measures, and the same audition.
+        let mut plain = engine.lesson_filter(&tree, "[]", None);
+        let p: serde_json::Value = serde_json::from_str(&plain.json()).unwrap();
+        let fig: serde_json::Value =
+            serde_json::from_str(&engine.explain_render(&tree, "[]", None)).unwrap();
+        assert!(p["cutoff"].is_null() && p["response"].is_null());
+        assert_eq!(p["portrait"], fig["portrait"]);
+        assert!(!plain.take_samples().is_empty());
     }
 }

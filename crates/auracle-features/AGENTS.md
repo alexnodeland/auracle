@@ -12,6 +12,7 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 | `clip.rs` | `AuditionClip`: what an AUDIO IN is measured with (a capture, or the built-in `reference`), its bounded saved form |
 | `render.rs` | Headless render of a compiled voice under the phrase |
 | `probe.rs` | The cable probe: every audio cable's RMS and peak over one render of the phrase, read through the compiler's taps without changing the render (Plan-005 task 9e); `examples/cable_probe` measures its cost and proves the render bit-identical on every preset |
+| `explain.rs` | A render's portrait for the app's figures (Plan-005 task 10): its spectrum in the face's 40 bands, the held note's harmonics, the onset, the phrase's level, the held note's brightness and level tracks, and φ's coordinates in their units (`Facts`); a picture, not a feature: nothing in φ reads it |
 | `vet.rs` | The vetting gate: silence, DC, blow-ups and other unplayable renders are refused |
 | `loudness.rs` | BS.1770-style loudness, normalization to `TARGET_LUFS` (−18) |
 | `pipeline.rs` | compile → render → vet → normalize → φ, and `phi_names()` |
