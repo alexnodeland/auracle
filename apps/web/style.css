@@ -5127,7 +5127,7 @@ html.handheld .handheld-gate {
 .face-slot .face { display: block; pointer-events: none; }
 /* PATCH's teach strip: the face, then the name. */
 .pd-side .face-slot { margin-right: var(--s1); }
-/* Beside a name that sits on its baseline (an EVOLVE card's), centred. */
+/* Beside a name that sits on its baseline (an EVOLVE card's), centered. */
 .duel-name > .face-slot { align-self: center; }
 /* A warm-start card: the face left of its two lines, in a column the card
    always has. */

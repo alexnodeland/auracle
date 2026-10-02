@@ -105,7 +105,7 @@ const r2 = (x) => Math.round(x * 100) / 100;
 const r1 = (x) => Math.round(x * 10) / 10;
 
 /** The vessel's outline as an SVG path: frequency up the box (low at the
- *  base), mirrored about its centre, half-width `R · σ(1.4 v) · scale` for a
+ *  base), mirrored about its center, half-width `R · σ(1.4 v) · scale` for a
  *  band `v` spreads from the bank's mean (half the box at the mean), closed
  *  with quadratic curves through the midpoints, as the specimen draws it. */
 export function vesselPath(dev, box, scale = 1, fine = true) {
@@ -134,9 +134,10 @@ export function layerWeight(loudDb) {
 
 /** The face as SVG markup, `w × h` px: the twelve slices as faint layers, each
  *  as large and bright as the slice is loud, under the whole phrase's
- *  outline. Empty when there is no face or no bank to draw it against. The
- *  colours are the stylesheet's (`.face-l`, `.face-o`), or `color` written
- *  on, for a file that stands alone (an image, the card). */
+ *  outline. Empty when there is no face or no bank to draw it against.
+ *  `color` is written onto the paths, for a drawing that stands alone (the
+ *  app's slots show it as an image, the card nests it); without it the
+ *  paths carry only their classes (`face-l`, `face-o`). */
 export function faceSvg(face, stats, { w, h, layers = true, line = 1, color = null } = {}) {
   if (!face || !stats) return "";
   const pad = Math.min(w, h) * 0.06;

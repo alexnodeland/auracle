@@ -51,7 +51,8 @@ THE THREE YOU’D REACH FOR.</figcaption>
 3. Press **TEACH IT**.
 
 The card is headed **PICK THE THREE YOU’D REACH FOR**, over nine presets drawn
-one per family from the library. The button under them counts down as you
+one per family from the library, each with its [face](../faces.md), which
+arrives once the bank has filled and the preset has been rendered. The button under them counts down as you
 pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then reads **TEACH IT**.
 
 When you press it, PERFORM opens on your first pick, and **TAUGHT** in the

@@ -20,7 +20,7 @@
 //!   sits in rather than nothing, and white noise reads the same in every
 //!   band.
 //! - **Slices:** the render cut into [`FACE_SLICES`] equal spans of time; a
-//!   frame belongs to the slice its centre falls in. On the standard phrase
+//!   frame belongs to the slice its center falls in. On the standard phrase
 //!   (5.05 s) a slice is 0.42 s: five for the held C4, one for the C5 stab,
 //!   two for the dyad, four for the low C3 and its release.
 //! - **The long-term spectrum:** every frame's power averaged, in the same
@@ -212,8 +212,8 @@ fn analyze(n: usize, sample_rate: f64, sample: impl Fn(usize) -> f64) -> Face {
             *c = Complex::new(s * hann[i], 0.0);
         }
         fft.process(&mut buf);
-        let centre = (pos + FRAME / 2).min(n.saturating_sub(1));
-        let t = (centre * FACE_SLICES / n.max(1)).min(FACE_SLICES - 1);
+        let center = (pos + FRAME / 2).min(n.saturating_sub(1));
+        let t = (center * FACE_SLICES / n.max(1)).min(FACE_SLICES - 1);
         for (a, c) in acc[t].iter_mut().zip(&buf[..bins]) {
             *a += c.norm_sqr();
         }

@@ -4,7 +4,7 @@ number: 5
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-10-01
+updated: 2026-10-02
 originating_proposal: 6
 related_adrs: [4, 11, 12]
 ---
@@ -79,6 +79,46 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      slices, whitened against the bank's mean and spread.
    - It appears on every row, chip and card.
    - The share card is built on today's image export.
+   - *Progress (2026-10-02):* built in today's views, before the shell
+     (task 2):
+     - the analysis is Rust (`auracle_features::face`), taken inside every
+       featurization and carried on the memo row beside φ, not in it, so
+       the fill, the farm, a generation's walks and an offer give a face
+       without a render of its own: 4.3 ms in wasm against a 498 ms
+       featurization;
+     - the worker files each face under its render namespace and key, in
+       memory and in IndexedDB, answers `faces` without a render, and
+       renders only what it has no face for, in `later`, after boot;
+     - main whitens against the pool's faces and draws the specimen's
+       vessel (`faces.js`), once per bank as an image; the bank is drawn
+       against again when its mean moves by 0.25 dB in a band or its spread
+       by 1%;
+     - faces are on the bank's rows (pool and presets), EVOLVE's cards,
+       PATCH's header and teach strip, PERFORM's sound in hand and B, and
+       the warm start's cards, each in a slot its place always has; the
+       bank is widened by the face's column (252 to 280 px), so no name
+       loses width;
+     - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
+       × 630 at 2×), with the patch inside.
+
+     Where the specimen and the engine differ, the engine was followed:
+     - the specimen's data summed whole FFT bins, so its two narrowest bands
+       read empty (−60 dB); a band here is the mean power density over its
+       edges, so a band narrower than a bin reads that bin and white noise
+       reads level;
+     - the specimen whitened against a fixed snapshot of 63 presets; here it
+       is the live pool, and moves with it;
+     - its slice layers were not documented; here each slice's spectrum is
+       relative to its own loudest band and sized and lit by the slice's
+       loudness, as the specimen draws them;
+     - the specimen draws a glow on every face; faces here have none (a
+       glow would have to be an SVG filter on forty images), and the card
+       draws none either;
+     - a face's whitening moves when the pool does, so a face of the same
+       render can read differently a generation later: the specimen's never
+       did, since its bank never changed;
+     - the specimen's faces are drawn on canvases; here they are SVG, so the
+       share card carries the face as vectors.
 4. **EVOLVE and the bank** (this is Plan-004 task 7's explanation figure).
    - Pointing at EVOLVE POOL marks the seeds as well as the sounds that may be
      replaced. The seed count is exposed from the engine (task 9).

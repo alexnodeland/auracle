@@ -32,8 +32,10 @@ You can also open a sound with **OPEN IN PATCH** on either side of a pair in
 
 From the top:
 
-**The name.** The sound’s name, *(edited)* once you have changed it, and a
-caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
+**The name.** The sound’s [face](../faces.md), its name, *(edited)* once
+you have changed it, and a caption for what you did to it (*2 locked*). The
+face is the sound as it stands: an edit shows in it once the edit’s render
+lands. **▶**, or <kbd>Space</kbd>, plays
 the standard phrase on the sound as it stands. Pressed while an edit is still on
 its way to the engine, ▶ wears a dotted amber ring and plays once the edit
 lands; press it again to take that back. Space plays the same phrase from

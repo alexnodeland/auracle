@@ -75,9 +75,10 @@ You can also drop a file on the window.
 ### A patch as a picture
 
 **Download as a picture…** draws the rack as a PNG or SVG, at a size and
-background you choose. **The picture carries the patch:** open an Auracle PNG
-and you get the same patch back, so a picture of a rack posted in a chat is a
-patch someone else can play.
+background you choose, or the sound’s card: its [face](./faces.md#share-a-sound-as-a-card),
+name and where it came from. **The picture carries the patch:** open an
+Auracle PNG and you get the same patch back, so a picture of a rack, or a
+card, posted in a chat is a patch someone else can play.
 
 ```admonish warning title="Opened files are content, not code"
 A patch file names things: its own name, and its modules’ labels. Those names

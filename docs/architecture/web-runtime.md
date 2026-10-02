@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-01
+last_updated: 2026-10-02
 related_adrs: [1, 2, 7, 12]
 ---
 
@@ -174,6 +174,46 @@ it drops a stale pre-placement audition.
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live.
+## Faces
+
+Every row, chip and card draws its sound's face (Plan-005 task 3; the guide's
+`faces.md`, the reference's `features/faces.md`): the render's spectrum in 40
+bands × 12 slices (`auracle_features::face`), drawn against the bank.
+
+- **Taken in the featurization.** The face is computed inside
+  `featurize_memo` from the render φ is measured on and rides on the memo row
+  (`CachedFeatures::face`), so farm rows (`farm_render`), walk results
+  (`farm_walk`) and offers carry it without a render of their own. It is not
+  part of φ. In wasm it costs 4.3 ms against a 498 ms featurization
+  (`crates/auracle-wasm/examples/face_cost.mjs`).
+- **Filed by the worker under `"<ns>/<render key>"`**, as a farm row is
+  (`face_key` for a pool member, `farm_key` for a tree). The memo is an LRU a
+  generation's walks churn, so the worker copies a face out the first time it
+  is asked for and keeps it in memory (`faceMem`) and in its own IndexedDB
+  store (`auracle-faces`), stamped with the namespace as the render cache is
+  (`faceStoreOpen`): a build whose renders differ never reads another's.
+- **`faces`** (now lane; main → worker): `{ids, trees: [{ref, tree} | {ref,
+  preset}], render}`. Answered at once with `{type: "faces", items: [{id |
+  ref, key, face}], pending, failed}`: every face the memo (`face_of`,
+  `face_of_tree`), a resident audition or the store can give. With `render`,
+  each of the rest is queued in `later` as **`face_render`**, blocked until
+  boot has finished (`blocked`: half a second each, they would slow the
+  fill), and answered as it lands, or in `failed` (a tree that does not vet).
+  A preset is asked by index (`preset_tree_json`), so its face does not
+  insert it into the bank. Every request is answered; a `not_ready` or an
+  `engine_error` for one makes main ask again when a slot next wants it.
+- **After a `render`**, the worker posts the buffer first and then, if main
+  hasn't been sent it, the face (`faceAfterRender`), from the stored audition
+  (not the PCM main is sent: `audition_pcm` limits). A face never delays a
+  render reaching the keys.
+- **Main whitens and draws** (`faces.js`, `faceRestat`, `paintFaces` in
+  `main.js`): the bank's mean per band and pooled spread over the faces of the
+  rows the bank shows, recomputed when that set changes (once a frame) and
+  drawn against only when it has moved more than 0.25 dB in a band or 1% of
+  the spread. Each face is drawn once per bank as an SVG image (an object
+  URL); after the bank changes, the bank's rows in view are redrawn the next
+  frame and the rest when the page is idle. A slot is fixed-size and present
+  whether or not its face has arrived, so no name moves for it.
 
 ## The breed job
 

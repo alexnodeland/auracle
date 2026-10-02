@@ -28,6 +28,7 @@
 - [Perceptual descriptors (φ_audio)](./features/audio.md)
 - [Structural descriptors (φ_struct)](./features/structural.md)
 - [Standardization](./features/standardization.md)
+- [Faces: a picture of the render](./features/faces.md)
 
 # The taste model
 

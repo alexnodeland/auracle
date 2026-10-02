@@ -14,6 +14,7 @@
 - [EVOLVE](./views/evolve.md)
 - [TASTE](./views/taste.md)
 - [The bank](./bank.md)
+- [A sound’s face](./faces.md)
 - [Reading and editing the rack](./rack.md)
 - [Wiring and the module rail](./wiring.md)
 - [Playing it](./playing.md)

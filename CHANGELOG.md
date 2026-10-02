@@ -36,6 +36,25 @@ changelog that edits its own past is not a record.
 - **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put
   them on the panel, and a MIDI controller's first eight knobs take the
   deck's first eight controls.
+### Added: every sound has a face
+
+- **A face beside every sound's name**: on the bank's rows, EVOLVE's cards,
+  PATCH's header and its teach strip, PERFORM's sound in hand and its offer,
+  and the warm start's cards. A face is the sound's spectrum from its own
+  render, stood upright (the lows at the base) and compared with the rest of
+  your bank: wide where this sound has more than your bank's sounds, narrow
+  where it has less, with faint layers for the phrase over time. It changes
+  when the sound's render does (an edit lands, an offer grows) or when the
+  bank changes enough to move it, and is redrawn in place. Measuring it
+  costs under 1% of each render, and it never holds up a sound you asked to
+  hear.
+- **A face never moves or shortens a name.** Every row and card keeps the
+  face's space whether or not it has arrived, and the bank is wider by the
+  face's column (280 px, 228 px under 1080 px wide).
+- **Share a sound as a card.** *Download as a picture…* has a new choice,
+  *the sound's card*: its face, its name and where it came from, 1200 × 630
+  at 2×, with the patch inside like every picture Auracle downloads, so
+  dropping it on Auracle opens the sound.
 
 ### Changed: the bank shows what a generation does
 

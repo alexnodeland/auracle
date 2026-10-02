@@ -39,8 +39,8 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
-**The cards.** Each card is one sound: its name, the style that rates it
-highest, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
+**The cards.** Each card is one sound: its [face](../faces.md) and its
+name, the style that rates it highest, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
 **PICK B**). The names come from what the sound is, so *Round Wash* and
 *Gritty Swell* mean something. **⇄ CIRCUIT** flips the waveform to the patch’s
 modules. **OPEN IN PATCH** opens the sound in [PATCH](./play.md) without

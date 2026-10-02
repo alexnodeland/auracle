@@ -34,8 +34,10 @@ reach.
 
 From the top:
 
-- **The header.** The sound’s name, a status line, **ARRANGE**, **STAGE ⇧F**,
-  and a small scope. The status line says what PERFORM is doing with the
+- **The header.** The sound’s [face](../faces.md), its name, a status line,
+  **ARRANGE**, **STAGE ⇧F**, and a small scope. The face is the sound as it
+  was last rendered, so turning a control doesn’t change it; keeping or taking
+  does. The status line says what PERFORM is doing with the
   sound: *listening to this sound…* while it measures a new one, then *4 of 6
   controls reach this patch*, with *re-checking* after it while it measures
   again in the background, or *listening to Bite…* while it measures a
@@ -51,7 +53,8 @@ From the top:
 - **Six pads:** **KEEP**, **BACK**, **OFFER**, **TAKE**, **PEEK**, and
   **FREEZE**.
 - **The B strip.** One line, labeled **B**, that says whether an offer is
-  waiting and where it came from: *no offer: press Offer to grow a variant
+  waiting and where it came from, with the offer’s own face once it has
+  grown: *no offer: press Offer to grow a variant
   from here* until there is one.
 - **XY.** Two named controls under one finger.
 - **UNDER THE HOOD.** The patch’s own knobs the controls and Wander are

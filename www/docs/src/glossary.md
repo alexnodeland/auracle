@@ -25,6 +25,12 @@ of it or at it (*23/24 modules*). **⋯** › **Show measurements** shows all
 three (*8/24 modules · 4/6 depth · 1/3 mod depth*). A patch at a ceiling has
 no room to grow.
 
+### Card
+
+The picture of a sound you download to share it: its face, its name and
+where it came from, with the patch inside. See
+[sharing a sound as a card](./faces.md#share-a-sound-as-a-card).
+
 ### Child, NEW
 
 A sound a generation bred. The children of the latest generation lead the
@@ -43,6 +49,12 @@ The strip under EVOLVE’s cards: what each generation did, step by step. Each
 step names the seed and the child, what changed, and how much more the model
 guessed you’d like the child than its seed (*liked +0.06*). See [the EVOLUTION
 strip](./views/evolve.md#the-evolution-strip).
+
+### Face
+
+A sound’s drawn shape, beside its name everywhere: its spectrum from its own
+render, low at the base, wide where it has more than the bank’s sounds and
+narrow where it has less. See [a sound’s face](./faces.md).
 
 ### Fair-test picks
 
