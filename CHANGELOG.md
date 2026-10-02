@@ -41,8 +41,8 @@ changelog that edits its own past is not a record.
   they used to pile up while you sang.
 - **CAPTURE records what is patched into it,** up to four seconds, and plays
   the take from the keys. Press RECORD on the module, play, and press
-  STOP; the new take goes into the sound as one undo step and is saved
-  with it.
+  STOP; the new take goes into the sound as an edit, one undo step, kept
+  with KEEP AS NEW like any other.
 - **A sound whose take couldn’t be read is kept safe** at the foot of the
   pool, under KEPT SAFE. RECORD AGAIN records it and brings it back.
 

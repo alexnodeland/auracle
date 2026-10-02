@@ -158,7 +158,13 @@ Each time you record, RECORD makes a new **take**. It goes into the sound as
 an edit: one undo step, and the module says how long it is (*take · 2.4 s*).
 **PLAY** sets how a key plays it: once to its end, while the key is held, or
 round and round. Recording doesn’t need MONITOR, and it doesn’t interrupt what
-the keys are playing. The take is saved with the sound.
+the keys are playing.
+
+The take is part of that edit, like a knob you turned. To keep the sound with
+it, press **KEEP AS NEW** ([keeping an edit](./rack.md#keep-an-edit-as-a-new-sound));
+until you do, the sound in the bank still holds the take it had. Moving to
+another sound while RECORD is lit stops it, and that recording is dropped:
+*Recording stopped: you moved to another sound.*
 
 **Kept safe.** If a saved sound’s take can’t be read when Auracle opens, and
 the take was all it played, the sound is kept out of the pool and

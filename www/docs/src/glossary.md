@@ -16,9 +16,9 @@ with AUDIO IN through. See [playing through Auracle](./playing-through.md).
 
 **TRACK** plays a chain from the pitch and the notes of an input. **CAPTURE**
 records what is patched into it: each time you press RECORD it makes a new
-**take**, saved with the sound and played from the keys. A sound whose take
-couldn’t be read is **kept
-safe**, out of the pool, until you record it again. See [playing through
+**take**, played from the keys, an edit you keep with KEEP AS NEW. A sound
+whose take couldn’t be read is **kept safe**, out of the pool, until you
+record it again. See [playing through
 Auracle](./playing-through.md#record-into-it-capture).
 
 ### Bank
