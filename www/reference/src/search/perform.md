@@ -483,11 +483,16 @@ like the six:
 | Character | Bite | mild · biting | `flux_mean` $+1$, `zcr_mean` $+1$ | An edge: the spectrum changing fast, and high partials (a filter that snaps open, a resonance that rings) |
 | Character | Lo-fi | clean · worn | `flatness_mean` $+1$, `rolloff_mean` $-1$, `motion_fast` $+1$ | Worn like tape: hiss, a dull top and flutter |
 
-Three things φ lacks shaped these. It has no low-mid band, so Warmth cannot be
-“weight in the low middle” directly. Defined with the spectrum’s top instead
-(`rolloff_mean` down with `bass_fraction` up), it moved with Body across the
-sounds ($r = 0.92$), and on 28 of the 40 presets where both it and Bright
-reached it was Bright’s gesture, so it reads the top of the keyboard instead.
+Three things φ lacks shaped these. It has no low-mid band, so Warmth is not
+quite the voice’s *warm*, “weight in the low middle, a soft top”. It measures
+weight low down (`bass_fraction`, below about 250 Hz) against a soft top of
+the keyboard (−`high_ratio`: the highest note quieter than the held one).
+That is close to the word, and not exactly it: a sound can gain low-middle
+warmth that this does not see, and lose some that it does not count.
+Defined with the spectrum’s top instead (`rolloff_mean` down with
+`bass_fraction` up), it moved with Body across the sounds ($r = 0.92$), and
+on 28 of the 40 presets where both it and Bright reached it was Bright’s
+gesture, which is why it reads the keyboard’s top and not the spectrum’s.
 φ has no bit-depth or bandwidth feature, so a crusher reaches Lo-fi only
 through the flatness it adds. And its only space coordinate is `tail_ratio`,
 which the amp release sets (a reverb’s tail is cut at note-off), so Distance
