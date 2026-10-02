@@ -454,6 +454,13 @@ pub struct CompiledVoice {
     /// Nothing in the engine raises one, so a measurement render never
     /// records; the host does, then reads the recording with [`Self::take`].
     pub records: HashMap<String, Arc<AtomicF64>>,
+    /// A follower's TRACK feeds, by the TRACK's node key: in a voice built by
+    /// [`compile_follower`], each TRACK reads its pitch, gate and level from
+    /// these instead of tracking its own input. Empty in any other voice.
+    pub track_feeds: HashMap<String, TrackFeed>,
+    /// Each TRACK's `PitchTracker`, by node key: what [`CompiledVoice::lead`]
+    /// reads to feed a follower. Empty in a follower.
+    trackers: Vec<(String, NodeId)>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
     /// Where each term node's audio leaves it: trace key → the **name** of the
@@ -474,7 +481,37 @@ pub struct CompiledVoice {
     pub taps: HashMap<String, (String, PortId)>,
 }
 
+/// The three signals a TRACK plays its branch with, held outside the patch:
+/// what a follower voice ([`compile_follower`]) reads in place of a tracker of
+/// its own. Written by [`CompiledVoice::lead`].
+#[derive(Clone, Debug, Default)]
+pub struct TrackFeed {
+    /// Pitch, V/Oct.
+    pub voct: Arc<AtomicF64>,
+    /// Gate, 0 or 5 V.
+    pub gate: Arc<AtomicF64>,
+    /// Level, 0 to 10 V.
+    pub level: Arc<AtomicF64>,
+}
+
 impl CompiledVoice {
+    /// Hand this voice's tracked signals, as they stand after its last tick,
+    /// to `follower`'s TRACKs (matched by node key). Call it every frame,
+    /// after this voice ticks and before the follower does, and the follower
+    /// plays each frame's tracked note exactly as this voice does, from its
+    /// first frame. Allocates nothing.
+    pub fn lead(&self, follower: &CompiledVoice) {
+        for (key, id) in &self.trackers {
+            let Some(feed) = follower.track_feeds.get(key) else {
+                continue;
+            };
+            let read = |port| self.patch.get_output_value(*id, port).unwrap_or(0.0);
+            feed.voct.set(read(10));
+            feed.gate.set(read(11));
+            feed.level.set(read(12));
+        }
+    }
+
     /// The take the CAPTURE at `key` holds right now: what it was compiled
     /// with, or what it has recorded since. `None` when there is no CAPTURE
     /// there, or (never expected) its state cannot be read as a take.
@@ -1126,6 +1163,12 @@ struct Compiler {
     track_gates: Vec<PortRef>,
     /// Every CAPTURE's record gate, by node key ([`CompiledVoice::records`]).
     records: HashMap<String, Arc<AtomicF64>>,
+    /// Building a follower ([`compile_follower`]): every TRACK reads a
+    /// [`TrackFeed`] instead of tracking, and its gate is not summed into the
+    /// amp's.
+    follow: bool,
+    /// A follower's feeds ([`CompiledVoice::track_feeds`]).
+    track_feeds: HashMap<String, TrackFeed>,
     /// Every constant [`Self::constant`] pinned, so a test build can check,
     /// once the whole patch is wired, that no cable landed on a pinned port
     /// afterwards (the end of [`compile`]).
@@ -2982,29 +3025,54 @@ impl Compiler {
                 listen,
                 ..
             } => {
-                let heard = self.build(listen, &format!("{key}/1"))?;
-                let sr = self.sr();
-                let range = map::pitch_range(*band);
-                let tr = self.patch.add_boxed(
-                    format!("{key}:track"),
-                    off_frame(move || PitchTracker::new(sr).with_range(range)),
-                );
-                self.feed(heard, tr.in_("in"))?;
-                self.knob(
-                    key,
-                    "tsens",
-                    *sensitivity,
-                    ParamMap::TrackSensitivity,
-                    false,
-                    tr.in_("threshold"),
-                )?;
+                let (voct, gate, level) = if self.follow {
+                    // A follower: the leading voice tracks, this one plays what
+                    // it tracked. Nothing listens here, so `/1` is not built.
+                    let feed = TrackFeed::default();
+                    let v = self.patch.add(
+                        format!("{key}:track_voct"),
+                        ExternalInput::voct(Arc::clone(&feed.voct)),
+                    );
+                    let g = self.patch.add(
+                        format!("{key}:track_gate"),
+                        ExternalInput::gate(Arc::clone(&feed.gate)),
+                    );
+                    let l = self.patch.add(
+                        format!("{key}:track_level"),
+                        ExternalInput::cv(Arc::clone(&feed.level)),
+                    );
+                    self.track_feeds.insert(key.to_string(), feed);
+                    (v.out("out"), g.out("out"), l.out("out"))
+                } else {
+                    let heard = self.build(listen, &format!("{key}/1"))?;
+                    let sr = self.sr();
+                    let range = map::pitch_range(*band);
+                    let tr = self.patch.add_boxed(
+                        format!("{key}:track"),
+                        off_frame(move || PitchTracker::new(sr).with_range(range)),
+                    );
+                    self.feed(heard, tr.in_("in"))?;
+                    self.knob(
+                        key,
+                        "tsens",
+                        *sensitivity,
+                        ParamMap::TrackSensitivity,
+                        false,
+                        tr.in_("threshold"),
+                    )?;
+                    (tr.out("voct"), tr.out("gate"), tr.out("level"))
+                };
                 let keys = (self.pitch_out, self.gate_out);
-                self.pitch_out = tr.out("voct");
-                self.gate_out = tr.out("gate");
+                self.pitch_out = voct;
+                self.gate_out = gate;
                 let played = self.build(input, &format!("{key}/0"));
                 (self.pitch_out, self.gate_out) = keys;
                 let played = played?;
-                self.track_gates.push(tr.out("gate"));
+                // A follower keeps its own key's gate on its amp: it sounds for
+                // its note, as the other voices of a chord do.
+                if !self.follow {
+                    self.track_gates.push(gate);
+                }
                 // Dynamics: a VCA on the played branch whose CV is
                 // `10 + 2d·(level − TRACK_FULL_LEVEL)`, i.e. `10·(1 − d) +
                 // 2d·level`: unity at d = 0, the tracked level (full at
@@ -3014,7 +3082,7 @@ impl Compiler {
                 let dip = self
                     .patch
                     .add(format!("{key}:tdip"), Offset::new(-TRACK_FULL_LEVEL));
-                self.patch.connect(tr.out("level"), dip.in_("in"))?;
+                self.patch.connect(level, dip.in_("in"))?;
                 let depth = self.patch.add(format!("{key}:tdepth"), Attenuverter::new());
                 self.patch.connect(dip.out("out"), depth.in_("in"))?;
                 self.knob(
@@ -3261,6 +3329,33 @@ pub fn compile_with_input(
     sample_rate: f64,
     input: Option<&Arc<AudioInputStream>>,
 ) -> Result<CompiledVoice, PatchError> {
+    compile_voice(tree, sample_rate, input, false)
+}
+
+/// [`compile_with_input`] for a voice that plays *under* another one, as a
+/// chord's second voice does: every TRACK in it reads the leading voice's
+/// tracked pitch, gate and level ([`CompiledVoice::track_feeds`], written by
+/// [`CompiledVoice::lead`]) instead of tracking the input itself, and its
+/// amp keeps its own key's gate.
+///
+/// So a chord voice that joins mid-phrase plays the note the input is on from
+/// its first frame, rather than C4 until a cold tracker settles, and it stops
+/// with its key, rather than sounding for as long as the input does. For a
+/// patch with no TRACK this is [`compile_with_input`] exactly.
+pub fn compile_follower(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
+    compile_voice(tree, sample_rate, input, true)
+}
+
+fn compile_voice(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+    follow: bool,
+) -> Result<CompiledVoice, PatchError> {
     let nesting = tree.root.depth() + tree.root.max_mod_depth();
     if nesting > COMPILE_MAX_NESTING {
         return Err(PatchError::CompilationFailed(format!(
@@ -3284,6 +3379,8 @@ pub fn compile_with_input(
         input: input.cloned(),
         track_gates: Vec::new(),
         records: HashMap::new(),
+        follow,
+        track_feeds: HashMap::new(),
         #[cfg(test)]
         pins: Vec::new(),
     };
@@ -3382,6 +3479,7 @@ pub fn compile_with_input(
 
     let params = std::mem::take(&mut c.params);
     let records = std::mem::take(&mut c.records);
+    let track_feeds = std::mem::take(&mut c.track_feeds);
     let recorded = std::mem::take(&mut c.taps);
     let mut patch = c.patch;
     patch.set_output(out.id());
@@ -3402,12 +3500,21 @@ pub fn compile_with_input(
         })
         .collect();
 
+    let trackers = names
+        .iter()
+        .filter_map(|(id, name)| {
+            name.strip_suffix(":track")
+                .map(|key| (key.to_string(), *id))
+        })
+        .collect();
     Ok(CompiledVoice {
         patch,
         pitch,
         gate,
         params,
         records,
+        track_feeds,
+        trackers,
         warnings,
         taps,
     })
@@ -3553,6 +3660,8 @@ mod tests {
             input: None,
             track_gates: Vec::new(),
             records: HashMap::new(),
+            follow: false,
+            track_feeds: HashMap::new(),
             pins: Vec::new(),
         };
         let adsr = c.patch.add("t:adsr", Adsr::new(SR));
