@@ -765,8 +765,8 @@ the voices' input in the worklet, and the clip in the engine.
   `--phos-a`, through `host.faceStats`/`host.faceColor`. The lane's
   `data-face` says whether it drew (`live`) or not (`none`: silence, or no
   stats under four faces); the level bar runs up the square's left edge.
-- **The voices.** The worklet node has one two-channel input. `audio-in.js`
-  connects the source of the bench's first AUDIO IN to it (`LivePoly` binds one
+- **The voices.** The worklet node has two two-channel inputs: the first is the voices', the second the recorder's (below). `audio-in.js`
+  connects the source of the bench's first AUDIO IN to the first (`LivePoly` binds one
   input stream that every AUDIO IN reads). Main posts `monitor {on}` to the
   worklet, on only while monitoring is on and an input is connected. On, the
   processor writes each quantum of the input into `LivePoly` (`input_ptr`,
@@ -809,20 +809,32 @@ the voices' input in the worklet, and the clip in the engine.
   voice as a follower (`compile_follower`). The lead renders its quantum
   first and copies its tracked signals per frame (`read_tracks`); each
   follower sets its feeds from that copy before each of its frames.
-- **Recording** (`takes.js`). RECORD posts `take_start {tree, key}` to the
-  worklet, which builds an instrument of its own in its port handler (one
-  voice, its key held, `set_record(key, true)`), writes the input into it
-  each quantum whether or not MONITOR is on, renders it and drops its output.
-  `take_stop {key}` (STOP, or `TAKE_SECONDS` and a quarter of a second) drops
-  the gate, reads `take_json(key)` and replies `take_done {key, take}` (or
-  `take_error`). On the bench the take goes out as `edit_structure` with
-  `set_take`, through the bench lane.
+- **Recording** (`takes.js`). RECORD first lends the input the AUDIO IN
+  under its CAPTURE reads (`audioIn.lend(slot)`, the slot found from the
+  CAPTURE's key, which may ask for permission). `audio-in.js` opens it and
+  connects it to the worklet's second input, the recorder's: the lent input
+  when there is one, else the bench's, so the voices go on reading the
+  bench's own. `lend` answers `{ready, release}`; RECORD waits on `ready`
+  (the line says *opening input…*) and starts only on `{ok: true}`, or says
+  why it can't (`TAKE_INPUT`: refused, missing, failed, unsupported,
+  unplugged). Then it posts `take_start {tree, key}` to the worklet, which
+  builds an instrument of its own in its port handler (one voice, its key
+  held, `set_record(key, true)`), writes the second input into it each
+  quantum whether or not MONITOR is on, renders it and drops its output.
+  `take_stop {key}` (STOP, or the engine's `take_seconds` and a quarter of a
+  second) drops the gate and replies `take_done {key, take}`: `take_json(key)`,
+  or no take when no quantum ran since `take_start` (the CAPTURE would read
+  back the take it was built with). `take_error {code}` says why there is
+  none (`not_ready`, `no_capture`, `failed`). On the bench the take goes out
+  as `edit_structure` with `set_take`, through the bench lane, and only to the
+  sound it was recorded for: RECORD remembers `wb.subjectId`, and a move to
+  another sound stops it and drops the take (`benchMoved`).
 - **Kept safe.** After a restore that held sounds back, main asks
   `held_sounds` (each with its term and the key of the capture to record
   again) and lists them at the foot of the pool. RECORD AGAIN records from
-  the saved term, lending the input it reads (`audioIn.lend`, which may ask
-  for one), and sends `readmit_held {id, take}`; the reply `readmitted`
-  carries the views when the sound is back.
+  the saved term the same way, lending the input that term's CAPTURE reads,
+  and sends `readmit_held {id, take}`; the reply `readmitted` carries the
+  views when the sound is back.
 
 ## The job slot
 

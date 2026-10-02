@@ -86,6 +86,7 @@ import {
   TAKE_TIPS,
   TAKE_SAID,
   TAKE_ERRORS,
+  TAKE_INPUT,
   takeLine,
   takeRolling,
   takeAgain,
@@ -670,4 +671,11 @@ test("CAPTURE says how long its take is, and what recording did, in the voice", 
   // nothing was recorded or changed.
   assert.deepEqual(Object.keys(TAKE_ERRORS).sort(), ["failed", "no_capture", "not_ready"]);
   for (const s of Object.values(TAKE_ERRORS)) assert.match(s, /nothing (was recorded|changed)/);
+  // An input that didn't open says so, and that nothing was recorded.
+  for (const s of Object.values(TAKE_INPUT)) {
+    voiced(s);
+    assert.ok(s.split(/[.…] /).length <= 2, s);
+    assert.match(s, /nothing was recorded/);
+  }
+  assert.match(TAKE_INPUT.refused, /refused/);
 });

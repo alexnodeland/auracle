@@ -406,10 +406,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         this.writeInput(this.poly, inp, n, false);
         if (this.polyB) this.writeInput(this.polyB, inp, n, true);
       }
-      // A recording runs on its own instrument, heard by no one: fed the
-      // input and rendered, its output dropped.
+      // A recording runs on its own instrument, heard by no one: fed its own
+      // input (the second) and rendered, its output dropped.
       if (this.taker) {
-        if (hasInput) this.writeInput(this.taker, inp, n, "t");
+        const tin = inputs[1];
+        if (tin && tin.length > 0 && tin[0].length === n) this.writeInput(this.taker, tin, n, "t");
         this.taker.process_ptr(n);
         this.takeFrames += n;
       }
@@ -581,11 +582,13 @@ export async function initLiveAudio(audioCtx, build, dest) {
 
   const bytes = await (await fetch(`./pkg/auracle_wasm_bg.wasm?v=${build}`)).arrayBuffer();
 
-  // One input: the live input AUDIO IN reads (audio-in.js connects it), two
-  // channels, a mono device up-mixed to both. Nothing connected is a quantum
-  // with no channels, and the worklet writes nothing then.
+  // Two inputs, two channels each, a mono device up-mixed to both: the live
+  // input the voices read (AUDIO IN's), and the one a recording reads (the
+  // input its CAPTURE listens to, which need not be the voices'). audio-in.js
+  // connects both. Nothing connected is a quantum with no channels, and the
+  // worklet writes nothing then.
   const node = new AudioWorkletNode(audioCtx, "auracle-voice", {
-    numberOfInputs: 1,
+    numberOfInputs: 2,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,

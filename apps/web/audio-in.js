@@ -89,6 +89,10 @@ export function createAudioIn(host) {
   const unplugged = new Set();     // device ids that went away while in use
   let want = [];                   // the bench's AUDIO INs: [{key, addr, slot}]
   let lent = [];                   // inputs lent for a recording (takes.js): [slot]
+  let waiters = [];                // lends waiting for their input: {slot, resolve}
+  let recordId = null;             // the device the recorder reads (the worklet's second input)
+  let recordSrc = null;            // its source, connected there
+  const openFailed = new Set();    // devices whose last open failed (not unplugged)
   let voiceId = null;              // the device the voices read
   let voiceSrc = null;             // its source, connected to the worklet's input
   let monitor = false;             // the player's switch (never saved)
@@ -334,6 +338,12 @@ export function createAudioIn(host) {
     const first = want.length ? entry(want[0].slot) : lent.length ? entry(lent[0]) : null;
     voiceId = first && streams.has(first.id) ? first.id : null;
     connectVoices();
+    // The recorder reads the worklet's second input: the input a recording
+    // was lent (the one its CAPTURE's AUDIO IN reads, which need not be the
+    // bench's), else the bench's.
+    const rec = lent.length ? entry(lent[lent.length - 1]) : first;
+    recordId = rec && streams.has(rec.id) ? rec.id : null;
+    connectRecord();
     maybeArm();
     paint();
     loop();
@@ -348,6 +358,7 @@ export function createAudioIn(host) {
     } catch (e) {
       // Gone between the list and the ask, or held by another app.
       if (e && (e.name === "NotFoundError" || e.name === "OverconstrainedError")) unplugged.add(id);
+      else openFailed.add(id);
     }
     opening.delete(id);
     if (!stream) return paint();
@@ -381,6 +392,7 @@ export function createAudioIn(host) {
     };
     streams.set(id, s);
     unplugged.delete(id);
+    openFailed.delete(id);
     if (track) track.addEventListener("ended", () => gone(id));
   }
 
@@ -393,6 +405,7 @@ export function createAudioIn(host) {
       try { voiceSrc.disconnect(); } catch (_) {}
       voiceSrc = null;
     }
+    if (recordSrc === s.source) recordSrc = null; // disconnected below, with every output
     try { s.source.disconnect(); } catch (_) {}
     s.stream.getTracks().forEach((t) => t.stop());
   }
@@ -438,6 +451,18 @@ export function createAudioIn(host) {
       }
     }
     sendMonitor();
+  }
+  /** Connect the recorder's input (the worklet's second) to `recordId`. */
+  function connectRecord() {
+    const live = host.live();
+    const src = recordId ? streams.get(recordId)?.source || null : null;
+    if (src === recordSrc) return;
+    if (recordSrc && live) { try { recordSrc.disconnect(live.node, 0, 1); } catch (_) {} }
+    recordSrc = null;
+    if (src && live) {
+      src.connect(live.node, 0, 1);
+      recordSrc = src;
+    }
   }
   function sendMonitor() {
     const live = host.live();
@@ -767,6 +792,7 @@ export function createAudioIn(host) {
   }
 
   function paint() {
+    settle(); // every change of permission or stream ends in a paint
     for (const lane of rackLanes()) paintLane(lane);
     // A lane drawn new, or one whose input closed, shows the level and face
     // as they are now (the meter loop runs only while an input is open).
@@ -818,29 +844,71 @@ export function createAudioIn(host) {
     host.showMenu(x, y, { title: W.INPUT_MENU.title, sub: W.INPUT_MENU.sub }, rows);
   }
 
-  /** Open input `slot` for a recording (a sound kept safe, which the bench
-   *  does not read), and connect it to the worklet if the bench reads no
-   *  input. Called inside the player's gesture (RECORD AGAIN), so with no
-   *  answer from the browser yet it asks, as adding AUDIO IN does. Returns
-   *  the release. */
+  /** Open input `slot` for a recording and connect it to the recorder (the
+   *  worklet's second input), whether or not the bench reads it: RECORD on a
+   *  CAPTURE, and RECORD AGAIN on a sound kept safe, which the bench does not
+   *  read. Called inside the player's gesture, so with no answer from the
+   *  browser yet it asks, as adding AUDIO IN does.
+   *
+   *  Returns `{ready, release}`. `ready` resolves `{ok: true}` once the input
+   *  is open and connected, or `{ok: false, why}` when it cannot be:
+   *  `refused`, `missing`, `failed`, `unsupported` (the browser's answer, as
+   *  AUDIO IN names it) or `unplugged`. A recording starts only on `ok`, so
+   *  it never records the silence of an input still opening. */
   function lend(slot) {
-    lent.push(slot | 0);
-    // RECORD AGAIN is the player's gesture: with no answer from the browser
-    // yet, it may ask, as adding AUDIO IN does.
+    slot |= 0;
+    lent.push(slot);
+    let resolveReady;
+    const ready = new Promise((r) => { resolveReady = r; });
+    const w = { slot, resolve: (v) => { waiters = waiters.filter((x) => x !== w); resolveReady(v); } };
+    waiters.push(w);
+    // The player's gesture: with no answer from the browser yet, it may ask.
     if (perm === "unknown") {
       queryPermission().then(() => (perm === "prompt" ? ask() : refresh()));
     } else if (perm === "prompt") {
       ask();
+    } else if (perm === "granted" && !enumerated) {
+      refresh();
     }
     reconcile();
     let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      const at = lent.indexOf(slot | 0);
-      if (at >= 0) lent.splice(at, 1);
-      reconcile();
+    return {
+      ready,
+      release: () => {
+        if (done) return;
+        done = true;
+        if (waiters.includes(w)) w.resolve({ ok: false, why: "released" });
+        const at = lent.indexOf(slot);
+        if (at >= 0) lent.splice(at, 1);
+        reconcile();
+      },
     };
+  }
+
+  /** Answer the lends whose input is ready, or cannot be. */
+  function settle() {
+    for (const w of [...waiters]) {
+      if (perm === "refused" || perm === "missing" || perm === "failed" || perm === "unsupported") {
+        w.resolve({ ok: false, why: perm });
+        continue;
+      }
+      if (perm !== "granted") continue; // still asking: wait
+      const e = entry(w.slot);
+      if (!e) {
+        if (enumerated) w.resolve({ ok: false, why: "missing" });
+        continue;
+      }
+      if (unplugged.has(e.id) || (enumerated && !present.has(e.id))) {
+        w.resolve({ ok: false, why: "unplugged" });
+        continue;
+      }
+      if (openFailed.has(e.id) && !opening.has(e.id)) {
+        w.resolve({ ok: false, why: "failed" });
+        continue;
+      }
+      const s = streams.get(e.id);
+      if (s && recordSrc === s.source) w.resolve({ ok: true });
+    }
   }
 
   return {
@@ -854,7 +922,7 @@ export function createAudioIn(host) {
     get monitor() { return monitor; },
     /** For the debugging handle: where each input stands. */
     state: () => ({
-      perm, monitor, voiceId, clipSource,
+      perm, monitor, voiceId, recordId, clipSource,
       capture: capture ? capture.phase : null,
       list: list.map((e) => (e ? { ...e } : null)),
       open: [...streams.keys()],

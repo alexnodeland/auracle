@@ -302,6 +302,7 @@ const takes = createTakes({
   renderBank: () => renderBank(),
   benchTree: () => wb.tree,
   nodeAt: (key) => nodeAtKey(key),
+  nodeIn: (tree, key) => (tree && tree.root ? nodeAtIn(tree, key) : null),
   setTake: (key, take, text) => setRackTake(key, take, text),
   benchId: () => wb.subjectId,
 });

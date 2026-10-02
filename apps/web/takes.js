@@ -20,9 +20,12 @@
 //   sound on the bench (`benchId`); moving to another sound stops the
 //   recording and drops it, and says so, rather than land the take on
 //   whichever sound is on the bench at STOP (`benchMoved`).
-// - **Input.** A recording reads the input its patch's AUDIO IN reads. On the
-//   bench that input is already open (the bench reads it); for a sound kept
-//   safe, audio-in.js lends it for the recording (`lend`).
+// - **Input.** A recording reads the input the AUDIO IN under its CAPTURE
+//   reads, through the worklet's second input: audio-in.js lends it (`lend`),
+//   whether the bench reads it (RECORD) or not (RECORD AGAIN on a sound kept
+//   safe, while the bench may read another). The recording starts only once
+//   that input is open and connected, so it never records an input still
+//   opening, and a refusal says so rather than record silence.
 
 const W = await import(new URL(`./words.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
@@ -36,15 +39,16 @@ export const TAKE_LANE_H = 30;
 
 export function createTakes(host) {
   // host: live(), note(text, opts), send(msg), setTake(key, take, text),
-  // lend(slot) → release, ensureAudio(), renderBank(), benchTree(), nodeAt(key),
-  // benchId() → the sound on the bench
-  let rolling = null;   // {key, held: entry|null, bench, moved, timer, release}
+  // lend(slot) → {ready, release}, ensureAudio(), renderBank(), benchTree(),
+  // nodeAt(key), nodeIn(tree, key), benchId() → the sound on the bench
+  let rolling = null;   // {key, held: entry|null, bench, moved, waiting, timer, release}
   let held = [];        // the sounds a restore kept safe: {id, name, auto_name, note, capture, tree}
   let limit = TAKE_SECONDS_UNTIL_READY; // seconds: the engine's take_seconds once it is ready
 
   // ---- recording ----
-  /** The input slot the first AUDIO IN under node `key` of `tree` reads, or
-   *  of the whole tree; null for a branch with no input. */
+  /** The input slot the first AUDIO IN under the CAPTURE at `key` of `tree`
+   *  reads (what it records); null for a CAPTURE that records a chain with no
+   *  input. */
   function inputSlot(tree, key) {
     let slot = null;
     const walk = (n) => {
@@ -54,7 +58,7 @@ export function createTakes(host) {
         if (v && typeof v === "object") walk(v);
       }
     };
-    walk(tree && tree.root);
+    walk(host.nodeIn(tree, key));
     return slot;
   }
 
@@ -63,26 +67,48 @@ export function createTakes(host) {
     const live = host.live();
     if (!live) return;
     host.ensureAudio();
-    let release = null;
-    if (heldEntry) {
-      try {
-        const slot = inputSlot(JSON.parse(treeJson), key);
-        if (slot != null) release = host.lend(slot);
-      } catch (_) { /* a tree that does not parse records nothing below */ }
-    }
-    rolling = { key, held: heldEntry || null, bench: heldEntry ? null : host.benchId(), moved: false, release, timer: null };
-    live.takeStart(treeJson, key);
-    // The take's own limit stops the recording; the control stops a moment
-    // after it, so the whole take is read back.
-    rolling.timer = setTimeout(() => stop(), limit * 1000 + 250);
-    host.note(heldEntry ? W.takeAgain(nameOf(heldEntry), limit) : W.takeRolling(limit), {
-      urgent: true, replace: "take",
-    });
+    let slot = null;
+    try { slot = inputSlot(JSON.parse(treeJson), key); } catch (_) { /* records nothing below */ }
+    const lease = slot != null ? host.lend(slot) : null;
+    const r = {
+      key, held: heldEntry || null, bench: heldEntry ? null : host.benchId(), moved: false,
+      waiting: !!lease, release: lease ? lease.release : null, timer: null,
+    };
+    rolling = r;
     paint();
+    const go = () => {
+      r.waiting = false;
+      live.takeStart(treeJson, key);
+      // The take's own limit stops the recording; the control stops a moment
+      // after it, so the whole take is read back.
+      r.timer = setTimeout(() => stop(), limit * 1000 + 250);
+      host.note(heldEntry ? W.takeAgain(nameOf(heldEntry), limit) : W.takeRolling(limit), {
+        urgent: true, replace: "take",
+      });
+      paint();
+    };
+    if (!lease) return go();
+    // The input first: open, connected to the recorder, permission included.
+    lease.ready.then((res) => {
+      if (rolling !== r) return; // stopped, or moved on, while it opened
+      if (res.ok) return go();
+      rolling = null;
+      r.release();
+      host.note(W.TAKE_INPUT[res.why] || W.TAKE_INPUT.failed, { urgent: true, replace: "take" });
+      paint();
+    });
   }
 
   function stop() {
     if (!rolling) return;
+    if (rolling.waiting) {
+      // Still waiting for the input: nothing was started, so nothing to read.
+      const r = rolling;
+      rolling = null;
+      if (r.release) r.release();
+      paint();
+      return;
+    }
     clearTimeout(rolling.timer);
     const live = host.live();
     if (live) live.takeStop(rolling.key);
@@ -207,7 +233,7 @@ export function createTakes(host) {
       if (t && t.textContent !== label) t.textContent = label;
     }
     const line = lane.querySelector(".take-line");
-    const text = mine ? W.TAKE_SILK.rolling : W.takeLine(takeSeconds(key));
+    const text = mine ? (rolling.waiting ? W.TAKE_SILK.opening : W.TAKE_SILK.rolling) : W.takeLine(takeSeconds(key));
     if (line && line.textContent !== text) line.textContent = text;
   }
 
@@ -285,6 +311,9 @@ export function createTakes(host) {
     readmitted,
     appendKept,
     /** For the debugging handle: what is rolling and what is kept safe. */
-    state: () => ({ rolling: rolling ? { key: rolling.key, held: rolling.held ? rolling.held.id : null } : null, held: held.map((h) => h.id) }),
+    state: () => ({
+      rolling: rolling ? { key: rolling.key, held: rolling.held ? rolling.held.id : null, waiting: rolling.waiting } : null,
+      held: held.map((h) => h.id),
+    }),
   };
 }

@@ -282,9 +282,11 @@ test("a recording stops when you move to another sound, and its take lands on ne
   expect(errors).toEqual([]);
 });
 
-test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { granted: true });
+/** A sound kept safe: Mic Loop saved on a first visit with its take made
+ *  unreadable, then a new visit (`extra`: an init script for it, after the
+ *  stub) that keeps it safe. Returns the new visit, at the pool, its kept-safe
+ *  row on screen. */
+async function keptSafeVisit(page, browser, info, { granted = true, extra = null } = {}) {
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
@@ -292,8 +294,8 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   await expect(page.locator("#rack-subject")).toContainText("Mic Loop", { timeout: 60_000 });
   const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
   await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
-  // The saved session, with that recording made unreadable (its length no
-  // longer agrees with its data).
+  // The saved session, with that take made unreadable (its length no longer
+  // agrees with its data).
   const record = await page.evaluate(() => new Promise((resolve) => {
     const req = indexedDB.open("auracle", 1);
     req.onsuccess = () => {
@@ -307,10 +309,11 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   // A new visit with that save.
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const next = await ctx.newPage();
-  const errors2 = [];
-  next.on("pageerror", (err) => errors2.push(err.message));
-  await next.addInitScript(GRANTED);
+  const errors = [];
+  next.on("pageerror", (err) => errors.push(err.message));
+  if (granted) await next.addInitScript(GRANTED);
   await next.addInitScript(STUB);
+  if (extra) await next.addInitScript(extra);
   await next.addInitScript(INIT);
   await next.goto("/pkg/build.json");
   await next.evaluate((rec) => new Promise((resolve) => {
@@ -330,12 +333,39 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   await next.locator('.bf[data-f="pool"]').click();
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
   await expect(row).toBeVisible({ timeout: 30_000 });
+  return { ctx, next, row, errors };
+}
+
+test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
+  test.setTimeout(300_000);
+  const errors = await boot(page, { granted: true });
+  const { ctx, next, row, errors: errors2 } = await keptSafeVisit(page, browser, info);
   await expect(next.locator("#bank-list .bank-group.kept")).toContainText("kept safe");
   await shotOf(next, "kept-safe", [next.locator("#bank-list .bank-group.kept"), row], { scroll: true });
   expect(await next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).count()).toBe(0);
 
+  // The bench reads input 2 (Fake Interface B), and Mic Loop input 1.
+  await openFile(next, { name: "Line B", tree: { amp, root: ain(1) } }, info.outputDir);
+  await expect(next.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 60_000 });
+  await next.locator('.bf[data-f="pool"]').click();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  const ins = () => next.evaluate(() => window.__aur.audioIn());
+  expect((await ins()).voiceId).toBe("mic-b");
+
+  // RECORD AGAIN while the browser is slow to open Mic Loop's input: the
+  // recording waits for it, and starts once it is open and connected.
+  await next.evaluate(() => { window.__pwMic.hold = new Promise((r) => (window.__pwRelease = r)); });
   await row.locator(".kept-rec").click();
-  await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).not.toBe(null);
+  await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: true });
+  await next.waitForTimeout(1500);
+  expect((await takes(next)).rolling).toMatchObject({ waiting: true });
+  expect((await ins()).recordId).toBe(null);
+  await next.evaluate(() => window.__pwRelease());
+  await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: false });
+  // It records Mic Loop's input, while the voices go on reading the bench's.
+  const st = await ins();
+  expect(st.recordId).toBe("mic-a");
+  expect(st.voiceId).toBe("mic-b");
   await next.waitForTimeout(1500);
   await row.locator(".kept-rec").click();
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
@@ -343,6 +373,28 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   await expect(next.locator("#bank-list .kept-row")).toHaveCount(0, { timeout: 30_000 });
   await expect(next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).first()).toBeVisible({ timeout: 30_000 });
   expect((await takes(next)).held).toEqual([]);
+  // The input lent for it is closed again: the bench reads only input 2.
+  await expect.poll(async () => (await ins()).open, { timeout: 10_000 }).toEqual(["mic-b"]);
+  await ctx.close();
+  expect(errors).toEqual([]);
+  expect(errors2).toEqual([]);
+});
+
+test("RECORD AGAIN says plainly when the browser refuses the input, and records nothing", async ({ page, browser }, info) => {
+  test.setTimeout(300_000);
+  const errors = await boot(page, { granted: true });
+  const { ctx, next, row, errors: errors2 } = await keptSafeVisit(page, browser, info, {
+    granted: false,
+    extra: "window.__pwMic.refuse = true;",
+  });
+  await row.locator(".kept-rec").click();
+  await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 15_000 })
+    .toContain("The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.");
+  await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toBe(null);
+  // Still kept safe, and RECORD AGAIN is there to press once it's allowed.
+  await expect(row).toBeVisible();
+  await expect(row.locator(".kept-rec")).toHaveText(/record again/i);
+  expect((await takes(next)).held.length).toBe(1);
   await ctx.close();
   expect(errors).toEqual([]);
   expect(errors2).toEqual([]);

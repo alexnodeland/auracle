@@ -257,6 +257,7 @@ export const TAKE_SILK = Object.freeze({
   record: "record",
   stop: "stop",
   rolling: "recording…",
+  opening: "opening input…",
   again: "record again",
   kept: "kept safe",
 });
@@ -280,6 +281,16 @@ export const TAKE_ERRORS = Object.freeze({
   not_ready: "The audio isn’t running yet, so nothing was recorded. Press RECORD again in a moment.",
   no_capture: "There’s no CAPTURE there to record into, so nothing was recorded.",
   failed: "The recording failed, so nothing changed. Press RECORD to try again.",
+});
+
+/** Why RECORD recorded nothing because its input did not open, by what
+ *  audio-in.js's `lend` answered. */
+export const TAKE_INPUT = Object.freeze({
+  refused: "The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.",
+  missing: "No input was found for that, so nothing was recorded. Plug in a microphone or an interface, then press RECORD again.",
+  failed: "The input didn’t open, so nothing was recorded. Close any app holding it, then press RECORD again.",
+  unsupported: "This browser doesn’t offer its inputs to web pages, so nothing was recorded.",
+  unplugged: "That input is unplugged, so nothing was recorded. Plug it back in, then press RECORD again.",
 });
 
 /** A CAPTURE's line: how long its take is. */
