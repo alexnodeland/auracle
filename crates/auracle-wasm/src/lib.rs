@@ -60,8 +60,8 @@ use auracle_grammar::{
     PatchTree, StructOp,
 };
 use auracle_session::{
-    run_walk, BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy,
-    SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
+    run_walk, BankEntry, EditOutcome, Engine, GuessMemory, GuessSkip, Origin, PreFeaturized,
+    Profile, RenderPolicy, SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -336,6 +336,15 @@ pub fn cable_levels(tree_json: &str, phrase_json: &str) -> String {
     cable_levels_json(&tree, &spec)
 }
 
+/// `{"reason": code}`: why a guess has nothing to say.
+fn refusal(code: &str) -> String {
+    #[derive(Serialize)]
+    struct Refusal<'a> {
+        reason: &'a str,
+    }
+    serde_json::to_string(&Refusal { reason: code }).unwrap_or_default()
+}
+
 fn cable_levels_json(tree: &PatchTree, spec: &PhraseSpec) -> String {
     auracle_features::cable_levels(tree, spec)
         .ok()
@@ -548,6 +557,9 @@ pub struct WasmEngine {
     /// by index — the same statelessness the pool fill gets from its draw
     /// stream.
     pending_bank: Vec<BankEntry>,
+    /// The model's guesses' skips and last taken guess, per patch (the pool
+    /// id the bench was opened from): what the ranking cannot remember.
+    guesses: GuessMemory,
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -680,6 +692,7 @@ impl WasmEngine {
             bench_phi: None,
             bench_phi_prev: None,
             pending_bank: Vec::new(),
+            guesses: GuessMemory::default(),
         }
     }
 
@@ -2097,6 +2110,7 @@ impl WasmEngine {
         match apply_struct_op(tree, &op) {
             Ok(edited) => {
                 self.bench_tree = Some(edited);
+                self.guess_observe();
                 String::new()
             }
             Err(e) => e.to_string(),
@@ -2144,6 +2158,7 @@ impl WasmEngine {
         // gesture that changed nothing but a wire.
         tree.ensure_uids();
         self.bench_tree = Some(tree);
+        self.guess_observe();
         String::new()
     }
 
@@ -2298,6 +2313,187 @@ impl WasmEngine {
             out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
         }
         out
+    }
+
+    /// The patch the bench's guesses are remembered under: the pool id it
+    /// was opened from.
+    fn guess_patch(&self) -> u64 {
+        self.bench_original.unwrap_or(0)
+    }
+
+    /// Whatever the bench just became, ask the guesses' memory whether it is
+    /// the patch as it was before its last taken guess: an undo (or the
+    /// module taken out again), which counts as a skip, logged as one.
+    fn guess_observe(&mut self) {
+        let patch = self.guess_patch();
+        let Some(tree) = &self.bench_tree else {
+            return;
+        };
+        if let Some(skip) = self.guesses.observe(patch, tree) {
+            self.log_guess("guess_skip", &skip, true);
+        }
+    }
+
+    /// One row of the implicit stream for a guess: logged, as a revert is,
+    /// and never evidence.
+    fn log_guess(&mut self, kind: &str, skip: &GuessSkip, undo: bool) {
+        #[derive(Serialize)]
+        struct Detail<'a> {
+            socket: &'a str,
+            family: &'a str,
+            undo: bool,
+        }
+        let detail = serde_json::to_string(&Detail {
+            socket: &skip.socket,
+            family: &skip.family,
+            undo,
+        })
+        .unwrap_or_default();
+        let patch = self.guess_patch();
+        self.engine
+            .log_event_detail(kind, patch, 0.0, &detail, Vec::new(), Vec::new());
+    }
+
+    /// What the model's guess for the patch in hand still owes (Plan-005
+    /// task 9d, [`auracle_session::Engine::guess_plan`]): `{"jobs":[{"key",
+    /// "cache","tree"}],"total","planned","skipped"}`, or `{"reason":
+    /// "no_taste"|"full"|"no_patch"}`. Renders nothing.
+    ///
+    /// Each job is one render, `tree` as JSON text: on the farm,
+    /// [`farm_render`] (`cache` is its key in the persistent store,
+    /// namespace first, as [`farm_key`] makes it) and then
+    /// [`Self::memo_absorb`]; with none, [`Self::memo_render`], one per turn.
+    /// `key` is the memo's: a job that does not vet goes into `failed_json`,
+    /// a JSON array of such keys. Ask again until `jobs` is empty, then
+    /// [`Self::guess_rank`] with the same arguments. While the patch itself
+    /// is unmeasured, it is the only job. `at` names one deeper socket by
+    /// its module's key (the output's candidates otherwise); `limit` is how
+    /// many candidates to render, likeliest first (0 for all;
+    /// `GUESS_FLOOR`, 8, with no farm).
+    pub fn guess_plan(&self, at: Option<String>, failed_json: &str, limit: u32) -> String {
+        #[derive(Serialize)]
+        struct Job {
+            key: String,
+            cache: String,
+            tree: String,
+        }
+        #[derive(Serialize)]
+        struct Plan {
+            jobs: Vec<Job>,
+            total: usize,
+            planned: usize,
+            skipped: usize,
+        }
+        let Some(tree) = &self.bench_tree else {
+            return refusal("no_patch");
+        };
+        let phrase = &self.engine.cfg.phrase;
+        match self.engine.guess_plan(
+            tree,
+            at.as_deref(),
+            self.guesses.skips(self.guess_patch()),
+            &key_set(failed_json),
+            limit as usize,
+        ) {
+            Ok(p) => serde_json::to_string(&Plan {
+                jobs: p
+                    .jobs
+                    .into_iter()
+                    .map(|j| Job {
+                        cache: persistent_key(&j.tree, phrase),
+                        tree: serde_json::to_string(&j.tree).unwrap_or_default(),
+                        key: j.key,
+                    })
+                    .collect(),
+                total: p.total,
+                planned: p.planned,
+                skipped: p.skipped,
+            })
+            .unwrap_or_else(|_| refusal("full")),
+            Err(r) => refusal(r.code()),
+        }
+    }
+
+    /// The model's guesses for the patch in hand, best first by the lower
+    /// bound of the gain, from the renders the memo holds
+    /// ([`auracle_session::Engine::guess_rank`]): `{"guesses":[{"op",
+    /// "kind","family","socket","lcb","mean","sd","p","why"}],"rendered",
+    /// "planned","total","skipped","against","observations"}`, or
+    /// `{"reason"}` as [`Self::guess_plan`] gives it, or `"unmeasured"` when
+    /// the patch itself has not been rendered. The same arguments as the
+    /// plan. Renders nothing.
+    ///
+    /// `op` is what TRY applies ([`Self::guess_take`]); `socket` and
+    /// `family` are what a skip covers ([`Self::guess_skip`]); `p` is the
+    /// pick forecast the app words; `why` the part of the gain that leads
+    /// (a PERFORM control and its end word, or a structural coordinate), or
+    /// null when no part leans the player's way.
+    pub fn guess_rank(&self, at: Option<String>, failed_json: &str, limit: u32) -> String {
+        let Some(tree) = &self.bench_tree else {
+            return refusal("no_patch");
+        };
+        match self.engine.guess_rank(
+            tree,
+            at.as_deref(),
+            self.guesses.skips(self.guess_patch()),
+            &key_set(failed_json),
+            limit as usize,
+        ) {
+            Ok(r) => serde_json::to_string(&r).unwrap_or_else(|_| refusal("full")),
+            Err(r) => refusal(r.code()),
+        }
+    }
+
+    /// Skip a guess: its family stays away from its socket for the patch in
+    /// hand. `guess_json` is a guess as [`Self::guess_rank`] gives it (its
+    /// `socket` and `family` are read). Logged, not evidence. False when it
+    /// does not parse or was already skipped.
+    pub fn guess_skip(&mut self, guess_json: &str) -> bool {
+        let Ok(skip) = serde_json::from_str::<GuessSkip>(guess_json) else {
+            return false;
+        };
+        let patch = self.guess_patch();
+        let fresh = self.guesses.skip(patch, skip.clone());
+        if fresh {
+            self.log_guess("guess_skip", &skip, false);
+        }
+        fresh
+    }
+
+    /// Take a guess: apply its `op` to the bench **without** re-rendering,
+    /// exactly as [`Self::edit_structure_apply`] does (and owing the same
+    /// [`Self::edit_revet`]), and remember it, so that undoing it counts as a
+    /// skip. Returns an empty string, or the reason the edit was refused.
+    /// Not evidence: the edit is an ordinary one, and keep as new is where
+    /// the player says what they thought of it.
+    pub fn guess_take(&mut self, guess_json: &str) -> String {
+        #[derive(serde::Deserialize)]
+        struct Taken {
+            op: StructOp,
+            socket: String,
+            family: String,
+        }
+        let taken: Taken = match serde_json::from_str(guess_json) {
+            Ok(t) => t,
+            Err(e) => return format!("the engine couldn’t read that edit ({e})"),
+        };
+        let Some(before) = self.bench_tree.clone() else {
+            return "there is no sound open to edit".into();
+        };
+        let err = match serde_json::to_string(&taken.op) {
+            Ok(op) => self.edit_structure_apply(&op),
+            Err(e) => format!("the engine couldn’t read that edit ({e})"),
+        };
+        if err.is_empty() {
+            let skip = GuessSkip {
+                socket: taken.socket,
+                family: taken.family,
+            };
+            let patch = self.guess_patch();
+            self.guesses.took(patch, skip.clone(), before);
+            self.log_guess("guess_take", &skip, false);
+        }
+        err
     }
 
     /// The cables of the patch in hand, measured: [`cable_levels`] for the
@@ -2782,6 +2978,150 @@ mod tests {
         }
         engine.fit();
         engine
+    }
+
+    /// Plan and render a guess the way the worker does with no farm
+    /// (`memo_render`, one job at a time, a job that does not vet into
+    /// `failed`), then rank. Returns the ranking and the failed keys.
+    fn guess_serial(engine: &WasmEngine, limit: u32) -> (serde_json::Value, String) {
+        let mut failed: Vec<String> = Vec::new();
+        for _ in 0..4 {
+            let fj = serde_json::to_string(&failed).unwrap();
+            let plan: serde_json::Value =
+                serde_json::from_str(&engine.guess_plan(None, &fj, limit)).unwrap();
+            let jobs = plan["jobs"].as_array().expect("jobs").clone();
+            if jobs.is_empty() {
+                break;
+            }
+            for j in jobs {
+                if !engine.memo_render(j["tree"].as_str().unwrap()) {
+                    failed.push(j["key"].as_str().unwrap().to_string());
+                }
+            }
+        }
+        let fj = serde_json::to_string(&failed).unwrap();
+        (
+            serde_json::from_str(&engine.guess_rank(None, &fj, limit)).unwrap(),
+            fj,
+        )
+    }
+
+    /// **The guess through the bindings, and an undo that counts as a skip.**
+    /// No guess before the fit; after it, the bench's patch is planned
+    /// first, then its candidates; the ranking runs by the lower bound.
+    /// Taking the top guess is an ordinary edit of the bench, and putting the
+    /// tree back (as ⌘Z does, through `edit_set_tree_apply`) skips that
+    /// family at that socket for this patch, logged as a skip; another
+    /// patch keeps its own (empty) skips.
+    #[test]
+    fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
+        let mut cold = WasmEngine::new(5, 6);
+        while cold.fill_step(3) > 0 {}
+        let first = serde_json::from_str::<Vec<serde_json::Value>>(&cold.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(cold.edit_begin(first));
+        assert_eq!(cold.guess_plan(None, "[]", 0), r#"{"reason":"no_taste"}"#);
+
+        let mut engine = taught_wasm(5);
+        assert_eq!(engine.guess_plan(None, "[]", 0), r#"{"reason":"no_patch"}"#);
+        let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        assert!(engine.edit_begin(ids[0]));
+        let before = engine.edit_tree_json();
+        let (rank, failed) = guess_serial(&engine, 8);
+        let guesses = rank["guesses"].as_array().expect("guesses").clone();
+        assert!(!guesses.is_empty(), "{rank}");
+        assert!(rank["planned"].as_u64().unwrap() <= 8);
+        for w in guesses.windows(2) {
+            assert!(w[0]["lcb"].as_f64().unwrap() >= w[1]["lcb"].as_f64().unwrap());
+        }
+        let top = guesses[0].clone();
+        assert_eq!(engine.guess_take(&top.to_string()), "");
+        engine.edit_revet();
+        assert_ne!(engine.edit_tree_json(), before, "the guess went in");
+        // ⌘Z: the tree before the guess comes back whole.
+        assert_eq!(engine.edit_set_tree_apply(&before), "");
+        engine.edit_revet();
+        let skip = |e: &WasmEngine| {
+            e.engine
+                .events
+                .iter()
+                .filter(|ev| ev.kind == "guess_skip")
+                .count()
+        };
+        assert_eq!(skip(&engine), 1, "the undo was not logged as a skip");
+        let again: serde_json::Value =
+            serde_json::from_str(&engine.guess_rank(None, &failed, 8)).unwrap();
+        assert!(again["skipped"].as_u64().unwrap() >= 1, "{again}");
+        assert!(again["guesses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["socket"] != top["socket"] || g["family"] != top["family"]));
+        assert!(!engine.guess_skip(&top.to_string()), "already skipped");
+        // Another patch has its own skips.
+        assert!(engine.edit_begin(ids[1]));
+        let other: serde_json::Value =
+            serde_json::from_str(&engine.guess_plan(None, "[]", 0)).unwrap();
+        assert_eq!(other["skipped"], 0, "{other}");
+        assert_eq!(skip(&engine), 1);
+    }
+
+    /// **A guess's renders respect the render namespace.** Each job's
+    /// `cache` key is the persistent store's (`farm_key`: this binary's
+    /// namespace, then the content address), and a farm row rendered under
+    /// another phrase is refused by `memo_absorb`, so the candidate stays
+    /// unrendered rather than ranked on another stimulus's φ.
+    #[test]
+    fn a_guess_respects_the_render_namespace() {
+        let mut engine = taught_wasm(6);
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let phrase = engine.phrase_json();
+        let ns = cache_namespace(&phrase);
+        let plan = |e: &WasmEngine| -> serde_json::Value {
+            serde_json::from_str(&e.guess_plan(None, "[]", 2)).unwrap()
+        };
+        // The patch first, if the memo lacks it.
+        let mut p = plan(&engine);
+        if p["jobs"][0]["tree"].as_str() == Some(engine.edit_tree_json().as_str()) {
+            assert!(engine.memo_render(p["jobs"][0]["tree"].as_str().unwrap()));
+            p = plan(&engine);
+        }
+        let jobs = p["jobs"].as_array().unwrap().clone();
+        assert!(!jobs.is_empty());
+        let mut other: PhraseSpec = serde_json::from_str(&phrase).unwrap();
+        other.seed ^= 1;
+        let other = serde_json::to_string(&other).unwrap();
+        for j in &jobs {
+            let tree = j["tree"].as_str().unwrap();
+            assert_eq!(j["cache"].as_str().unwrap(), farm_key(tree, &phrase));
+            assert!(j["cache"].as_str().unwrap().starts_with(&format!("{ns}/")));
+            let foreign = farm_render(tree, &other, false);
+            assert!(foreign.ok);
+            assert!(
+                !engine.memo_absorb(tree, &foreign.cached),
+                "a row from another stimulus was absorbed"
+            );
+        }
+        let r: serde_json::Value = serde_json::from_str(&engine.guess_rank(None, "[]", 2)).unwrap();
+        assert_eq!(r["rendered"], 0, "{r}");
+        // This stimulus's rows are taken, and ranked.
+        for j in &jobs {
+            let tree = j["tree"].as_str().unwrap();
+            let row = farm_render(tree, &phrase, false);
+            if row.ok {
+                assert!(engine.memo_absorb(tree, &row.cached));
+            }
+        }
+        let r: serde_json::Value = serde_json::from_str(&engine.guess_rank(None, "[]", 2)).unwrap();
+        assert!(r["rendered"].as_u64().unwrap() > 0, "{r}");
     }
 
     fn twins(seed: u64) -> (WasmEngine, WasmEngine) {

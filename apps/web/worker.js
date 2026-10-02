@@ -1120,6 +1120,52 @@ async function measure(m) {
     JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed), ctl)));
 }
 
+// ---------- the model's guess (Plan-005 task 9d) ----------
+//
+// The module the model guesses the player would add next to the patch in
+// hand, ranked by the lower bound of its gain. The engine plans the renders
+// (`guess_plan`: the patch first if it is unmeasured, then the output's
+// candidates in the order a crew that stops early should render them) and
+// ranks what the memo holds (`guess_rank`); it renders nothing itself.
+//
+// Here, with no crew, it renders the first `GUESS_FLOOR` candidates, one per
+// turn with the player answered between them, as PERFORM's measurement does,
+// and stops rendering once `GUESS_BUDGET_MS` of rendering is spent, ranking
+// what it has (`rendered` of `planned` says how much). A crew renders them
+// all with `farm_render` and `memo_absorb` (task 7 raises one for it; the
+// plan's `cache` keys the farm's store). A `later` job: it gives way to work
+// the player asks for and resumes where it stopped, since every render it
+// made is in the memo. The reply echoes `token` and carries the tree it
+// ranked, so a page that has moved on drops it.
+const GUESS_FLOOR = 8;
+const GUESS_BUDGET_MS = 3000;
+
+async function guessRun(m) {
+  const at = m.at || undefined;
+  const failed = m.failed || (m.failed = []);
+  const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
+  m.spent = m.spent || 0;
+  for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
+    const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
+    if (plan.reason) {
+      reply(plan);
+      return;
+    }
+    if (!plan.jobs.length) break;
+    for (const job of plan.jobs) {
+      const t = performance.now();
+      if (!engine.memo_render(job.tree)) failed.push(job.key);
+      m.spent += performance.now() - t;
+      if (await breathe(laneOf(m))) {
+        lanes[LATER].unshift(m);
+        return;
+      }
+      if (m.spent >= GUESS_BUDGET_MS) break;
+    }
+  }
+  reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
+}
+
 // ---------- a generation: the breed job ----------
 //
 // EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
@@ -1653,6 +1699,7 @@ function laneOf(m) {
     case "perform_drift":
     case "fit":
     case "cable_levels":
+    case "guess":
       return LATER;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
@@ -2459,6 +2506,16 @@ async function dispatch(m) {
       await holdFloor(m, () => measure(m));
       break;
     }
+    // The model's guess for the patch in hand (see `guessRun`), and a skip of
+    // one. Taking a guess is `edit_structure` with `guess`.
+    case "guess": {
+      await holdFloor(m, () => guessRun(m));
+      break;
+    }
+    case "guess_skip": {
+      post({ type: "guess_skipped", token: m.token ?? null, ok: engine.guess_skip(JSON.stringify(m.guess)) });
+      break;
+    }
     case "perform_apply":
       performReply(m, "perform_applied", "json", false, () =>
         engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
@@ -2696,7 +2753,11 @@ async function dispatch(m) {
       break;
     }
     case "edit_structure": {
-      const err = engine.edit_structure_apply(JSON.stringify(m.op));
+      // A taken guess (`m.guess`, a guess as `guess` replied it) is the same
+      // edit, remembered by the engine so that undoing it counts as a skip.
+      const err = m.guess
+        ? engine.guess_take(JSON.stringify(m.guess))
+        : engine.edit_structure_apply(JSON.stringify(m.op));
       if (err !== "") {
         post({ type: "edit_rejected", error: err });
         break;
