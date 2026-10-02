@@ -435,3 +435,155 @@ fn a_guess_is_keyed_under_the_engines_phrase() {
         assert_ne!(j.key, render_key(&j.tree, &other));
     }
 }
+
+fn phi_index(name: &str) -> usize {
+    Features::phi_names()
+        .iter()
+        .position(|n| n.split(':').next() == Some(name))
+        .unwrap_or_else(|| panic!("no φ coordinate {name}"))
+}
+
+/// **A control's reason names where its gain comes from.** A move whose
+/// centroid rises while its rolloff falls further reads "toward dark" along
+/// Bright, but a taste that cares only for the centroid gains from the rise:
+/// Bright must not be the reason. Over random tastes and moves, a control
+/// named is one the move and the lean point the same way along, its word is
+/// the side the move goes, and no reason names a move under 0.005σ.
+#[test]
+fn a_control_reason_names_where_its_gain_comes_from() {
+    let d = Features::phi_names().len();
+    let (centroid, rolloff) = (phi_index("centroid_mean"), phi_index("rolloff_mean"));
+    let mut theta = vec![0.0; d];
+    theta[centroid] = 1.0;
+    let mut dz = vec![0.0; d];
+    dz[centroid] = 1.0;
+    dz[rolloff] = -1.2;
+    let why = why_from(&theta, &dz, 0);
+    assert!(
+        why.as_ref().is_none_or(|w| w.control != Some("Bright")),
+        "{why:?}"
+    );
+
+    // A structural move too small to print is no reason.
+    let n_drive = phi_index("n_drive");
+    let mut dz = vec![0.0; d];
+    dz[n_drive] = 0.001;
+    let mut theta = vec![0.0; d];
+    theta[n_drive] = 50.0;
+    assert_eq!(why_from(&theta, &dz, 0), None);
+
+    let names: Vec<String> = Features::phi_names()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    let mut rng = StdRng::seed_from_u64(11);
+    let mut uniform = |lo: f64, hi: f64| lo + (hi - lo) * rand::Rng::gen::<f64>(&mut rng);
+    let mut named = 0;
+    for _ in 0..2000 {
+        let theta: Vec<f64> = (0..d).map(|_| uniform(-1.0, 1.0)).collect();
+        let dz: Vec<f64> = (0..d).map(|_| uniform(-2.0, 2.0)).collect();
+        let Some(w) = why_from(&theta, &dz, 0) else {
+            continue;
+        };
+        assert!(w.part > 0.0 && w.moved.abs() >= 0.005, "{w:?}");
+        if let Some(c) = w.control {
+            named += 1;
+            let ctl = CONTROLS.iter().find(|x| x.name == c).unwrap();
+            let e = direction(ctl, &names);
+            let lean: f64 = theta.iter().zip(&e).map(|(t, e)| t * e).sum();
+            assert_eq!(
+                lean > 0.0,
+                w.moved > 0.0,
+                "{c}: the lean and the move disagree"
+            );
+            assert_eq!(w.word, Some(if w.moved > 0.0 { ctl.high } else { ctl.low }));
+        }
+    }
+    assert!(named > 100, "only {named} control reasons were tried");
+}
+
+/// **A stale guess is not current.** A noise ranked for an empty socket is a
+/// guess for the empty patch; once the player has put a pluck there and a
+/// filter after it, the same edit would wipe both, so it is not current. A
+/// guess still offered for the new patch is.
+#[test]
+fn a_guess_ranked_on_an_earlier_tree_is_not_current() {
+    let mut empty = preset("Hornet");
+    empty.root = AudioNode::Silence { uid: Uid::mint() };
+    let noise = guess_candidates(&empty, None)
+        .into_iter()
+        .find(|c| c.kind == "noise")
+        .expect("noise in the empty socket");
+    assert!(guess_is_current(
+        &empty,
+        &noise.op,
+        &noise.socket,
+        &noise.family
+    ));
+    assert!(!guess_is_current(
+        &empty,
+        &noise.op,
+        OUTPUT_SOCKET,
+        &noise.family
+    ));
+    assert!(!guess_is_current(&empty, &noise.op, &noise.socket, "drive"));
+    let mut built = apply_struct_op(
+        &empty,
+        &StructOp::Replace {
+            key: "node".into(),
+            kind: NodeKind::Pluck,
+        },
+    )
+    .unwrap();
+    built = apply_struct_op(
+        &built,
+        &StructOp::Insert {
+            key: "node".into(),
+            kind: NodeKind::Filter,
+        },
+    )
+    .unwrap();
+    built.ensure_uids();
+    assert!(!guess_is_current(
+        &built,
+        &noise.op,
+        &noise.socket,
+        &noise.family
+    ));
+    let reverb = guess_candidates(&built, None)
+        .into_iter()
+        .find(|c| c.kind == "reverb")
+        .unwrap();
+    assert!(guess_is_current(
+        &built,
+        &reverb.op,
+        &reverb.socket,
+        &reverb.family
+    ));
+}
+
+/// The memory forgets its takes when told (a patch opened, the bench
+/// closed), keeps its skips, carries both to a patch kept as new, and does
+/// not report a skip it already had.
+#[test]
+fn the_memory_forgets_takes_and_carries_to_a_kept_patch() {
+    let tree = preset("Hornet");
+    let pick = |kind: &str| {
+        guess_candidates(&tree, None)
+            .into_iter()
+            .find(|c| c.kind == kind)
+            .unwrap()
+    };
+    let (c, d) = (pick("reverb"), pick("delay"));
+    let mut mem = GuessMemory::default();
+    mem.took(1, c.skip(), tree.clone());
+    mem.clear_taken();
+    assert_eq!(mem.observe(1, &tree), None, "a forgotten take");
+    mem.skip(1, c.skip());
+    mem.took(1, c.skip(), tree.clone());
+    assert_eq!(mem.observe(1, &tree), None, "already skipped: nothing new");
+    mem.took(1, d.skip(), tree.clone());
+    mem.carry(1, 2);
+    assert_eq!(mem.skips(2), [c.skip()]);
+    assert_eq!(mem.observe(2, &tree), Some(d.skip()), "the take came along");
+}

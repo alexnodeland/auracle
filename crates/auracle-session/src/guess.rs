@@ -90,7 +90,8 @@ const MOD_SHAPERS: [ModKind; 10] = [
 /// The family a module kind is counted in by φ (`n_<family>`), which is all
 /// the model can tell of it: a drive is a fold, a distortion, a bitcrush or a
 /// ring mod. `mix` is its own family and no coordinate of φ
-/// (`auracle-features/src/structural.rs`; `families_are_phis` holds the two
+/// (`auracle-features/src/structural.rs`; the test
+/// `every_candidate_adds_and_its_family_is_phis` holds the two
 /// together).
 pub fn node_family(kind: NodeKind) -> &'static str {
     match kind {
@@ -112,6 +113,42 @@ pub fn node_family(kind: NodeKind) -> &'static str {
         | NodeKind::Vibrato => "mod_fx",
         NodeKind::Reverb => "reverb",
         NodeKind::Comp | NodeKind::Duck | NodeKind::Gate => "dynamics",
+    }
+}
+
+/// Whether a guess may put `kind` in an empty socket. Exhaustive, with no
+/// catch-all, so a new source kind does not compile until someone decides:
+/// AUDIO IN must say no (it asks for a device and a permission, and a guess
+/// must not; the note's section 7). Processors are never placed in a socket.
+pub fn guessable_source(kind: NodeKind) -> bool {
+    match kind {
+        NodeKind::Vco
+        | NodeKind::Supersaw
+        | NodeKind::Noise
+        | NodeKind::Wavetable
+        | NodeKind::Pluck
+        | NodeKind::Formant => true,
+        NodeKind::Silence
+        | NodeKind::Mix
+        | NodeKind::Filter
+        | NodeKind::Eq
+        | NodeKind::Vocoder
+        | NodeKind::Fold
+        | NodeKind::Distortion
+        | NodeKind::Bitcrush
+        | NodeKind::RingMod
+        | NodeKind::Delay
+        | NodeKind::Granular
+        | NodeKind::Shift
+        | NodeKind::Chorus
+        | NodeKind::Phaser
+        | NodeKind::Flanger
+        | NodeKind::Tremolo
+        | NodeKind::Vibrato
+        | NodeKind::Reverb
+        | NodeKind::Comp
+        | NodeKind::Duck
+        | NodeKind::Gate => false,
     }
 }
 
@@ -144,7 +181,7 @@ fn name_of<T: Serialize>(k: &T) -> String {
 /// One module the model could guess, and the tree with it placed.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct GuessCandidate {
-    /// The edit that places it: what TRY applies.
+    /// The edit that places it: what taking the guess applies.
     pub op: StructOp,
     /// The module's kind, by its serde name (`filter`, `lfo`).
     pub kind: String,
@@ -244,10 +281,15 @@ pub struct GuessWhy {
     /// The structural coordinate (`n_drive`), when one carries the part.
     pub coordinate: Option<&'static str>,
     /// How far the guess moves along it, in standardized units: positive
-    /// toward the control's high word, or more of the coordinate.
+    /// toward the control's high word, or more of the coordinate. Never
+    /// under 0.005 in size, so a reason never reads "0.00σ".
     pub moved: f64,
-    /// That part of the gain, `θ · Δz` over its coordinates. Positive: your
-    /// picks lean the way it moves.
+    /// That part of the gain under the style's mean θ. For a control, the
+    /// gain's projection on its unit direction ê, `(θ·ê)(ê·Δz)`, so it is
+    /// positive only when the move and the lean point the same way and the
+    /// word names where the gain comes from; for a coordinate, `θ_j Δz_j`.
+    /// `Δz` is from the patch, or, for a patch that does not sound, from the
+    /// pool's average sound with the patch's own structure. Always positive.
     pub part: f64,
 }
 
@@ -354,13 +396,8 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
             continue;
         }
         if matches!(n, AudioNode::Silence { .. }) {
-            // Every source but the empty socket itself. When AUDIO IN joins
-            // the grammar it must be left out here: it asks for a device and
-            // a permission, and a guess must not (the note's section 7).
-            for k in NodeKind::ALL
-                .iter()
-                .filter(|k| k.is_source() && **k != NodeKind::Silence)
-            {
+            // The sources a guess may place ([`guessable_source`]).
+            for k in NodeKind::ALL.iter().filter(|k| guessable_source(**k)) {
                 ops.push((
                     StructOp::Replace {
                         key: key.clone(),
@@ -680,50 +717,70 @@ impl Engine {
 /// spans) or one structural coordinate the guess moves. `None` when no part
 /// is positive, so nothing leans your way.
 fn guess_why(post: &auracle_taste::TastePosterior, z: &[f64], zp: &[f64]) -> Option<GuessWhy> {
-    let names: Vec<String> = Features::phi_names()
-        .into_iter()
-        .map(String::from)
-        .collect();
     let dz: Vec<f64> = z.iter().zip(zp).map(|(a, b)| a - b).collect();
     let resp = post.responsibilities(z);
     let style = (0..resp.len())
         .max_by(|&i, &j| resp[i].total_cmp(&resp[j]).then(j.cmp(&i)))
         .unwrap_or(0);
-    let theta = post.theta_mean(style);
+    why_from(&post.theta_mean(style), &dz, style)
+}
+
+/// The smallest move a reason may name, in σ: anything less prints as 0.00.
+const WHY_MIN_MOVE: f64 = 0.005;
+
+/// [`guess_why`] for a given θ and Δz, over φ's coordinates.
+fn why_from(theta: &[f64], dz: &[f64], style: usize) -> Option<GuessWhy> {
+    let names: Vec<String> = Features::phi_names()
+        .into_iter()
+        .map(String::from)
+        .collect();
     let n_audio = AudioFeatures::NAMES.len();
     let mut best: Option<GuessWhy> = None;
     let mut consider = |w: GuessWhy| {
-        if w.part > 0.0 && best.as_ref().is_none_or(|b| w.part > b.part) {
+        if w.part > 0.0
+            && w.moved.abs() >= WHY_MIN_MOVE
+            && best.as_ref().is_none_or(|b| w.part > b.part)
+        {
             best = Some(w);
         }
     };
     for ctl in &CONTROLS {
         let e = direction(ctl, &names);
-        let on: Vec<usize> = (0..n_audio).filter(|&j| e[j] != 0.0).collect();
-        let moved: f64 = on.iter().map(|&j| e[j] * dz[j]).sum();
+        let lean: f64 = (0..n_audio).map(|j| theta[j] * e[j]).sum();
+        let moved: f64 = (0..n_audio).map(|j| e[j] * dz[j]).sum();
         consider(GuessWhy {
             style,
             control: Some(ctl.name),
             word: Some(if moved >= 0.0 { ctl.high } else { ctl.low }),
             coordinate: None,
             moved,
-            part: on.iter().map(|&j| theta[j] * dz[j]).sum(),
+            part: lean * moved,
         });
     }
     for (j, name) in StructFeatures::NAMES.iter().enumerate() {
         let k = n_audio + j;
-        if dz[k] != 0.0 {
-            consider(GuessWhy {
-                style,
-                control: None,
-                word: None,
-                coordinate: Some(name),
-                moved: dz[k],
-                part: theta[k] * dz[k],
-            });
-        }
+        consider(GuessWhy {
+            style,
+            control: None,
+            word: None,
+            coordinate: Some(name),
+            moved: dz[k],
+            part: theta[k] * dz[k],
+        });
     }
     best
+}
+
+/// Whether `op`, ranked as a guess at `socket` in `family`, is still a guess
+/// for `tree`: one of [`guess_candidates`] at its key, with the same socket
+/// and family. A guess ranked on an earlier tree (an empty socket since
+/// filled, a module since removed) is not. Renders nothing.
+pub fn guess_is_current(tree: &PatchTree, op: &StructOp, socket: &str, family: &str) -> bool {
+    let key = op_key(op);
+    !key.is_empty()
+        && guess_candidates(tree, Some(key))
+            .iter()
+            .any(|c| c.op == *op && c.socket == socket && c.family == family)
 }
 
 /// A guess taken on a patch: what undoing it looks like.
@@ -770,6 +827,27 @@ impl GuessMemory {
         true
     }
 
+    /// Forget every taken guess: another patch was opened, or the same one
+    /// again, or the bench was closed, and an edit back to a tree from
+    /// before is no longer an undo of a guess. Skips stay.
+    pub fn clear_taken(&mut self) {
+        self.taken.clear();
+    }
+
+    /// Keep as new made `to` from `from`, the same patch the player is
+    /// working on: it takes `from`'s skips and taken guesses with it.
+    pub fn carry(&mut self, from: u64, to: u64) {
+        if from == to {
+            return;
+        }
+        for skip in self.skips(from).to_vec() {
+            self.skip(to, skip);
+        }
+        if let Some(t) = self.taken.get(&from).cloned() {
+            self.taken.insert(to, t);
+        }
+    }
+
     /// A guess was taken on `patch`, which was `before` without it.
     pub fn took(&mut self, patch: u64, skip: GuessSkip, before: PatchTree) {
         let v = self.taken.entry(patch).or_default();
@@ -781,7 +859,8 @@ impl GuessMemory {
 
     /// The patch in hand is now `tree`. If that is the patch as it was
     /// before a guess taken on it (an undo, or the module taken out again),
-    /// that guess counts as skipped: returns the skip it recorded. Undoing
+    /// that guess counts as skipped: returns the skip, when it is a new one
+    /// (a family already skipped there is not skipped twice). Undoing
     /// two taken guesses passes through the tree before each, newest first,
     /// so each is skipped in turn. Compared by content, uids aside, as
     /// patches are everywhere.
@@ -789,8 +868,7 @@ impl GuessMemory {
         let v = self.taken.get_mut(&patch)?;
         let i = v.iter().rposition(|t| t.before == *tree)?;
         let t = v.remove(i);
-        self.skip(patch, t.skip.clone());
-        Some(t.skip)
+        self.skip(patch, t.skip.clone()).then_some(t.skip)
     }
 }
 
