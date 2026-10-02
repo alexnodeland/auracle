@@ -1,6 +1,6 @@
 // TRACK and CAPTURE in the app (Plan-007 tasks 5 and 6): the module rail,
 // one tracked live voice, CAPTURE's RECORD, and the sounds a restore kept safe
-// because their recording couldn't be read.
+// because their take couldn't be read.
 //
 // The browser's inputs are the stub audio_in.spec.js uses (tones per fake
 // input, never a real microphone), granted for the tab where a test says so.
@@ -13,10 +13,10 @@
 // - A tracked sound, monitored, plays from the input with no key down (one
 //   tracked voice), and keys played over it stop with their keys: after they
 //   are let go, the level is the tracked voice's alone again.
-// - CAPTURE's RECORD records what is patched into it and puts the recording
+// - CAPTURE's RECORD records what is patched into it and puts the new take
 //   in the sound, as an edit: the module then says how long it is, and a key
 //   plays it.
-// - A sound whose recording couldn't be read is kept safe, out of the pool,
+// - A sound whose take couldn't be read is kept safe, out of the pool,
 //   listed under *kept safe*; RECORD AGAIN records it and brings it back into
 //   the pool.
 const fs = require("fs");
@@ -133,7 +133,7 @@ test("a tracked sound plays from the input with one voice, and keys over it stop
   expect(errors).toEqual([]);
 });
 
-test("CAPTURE's RECORD puts a recording of its input in the sound, and a key plays it", async ({ page }, info) => {
+test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it", async ({ page }, info) => {
   const errors = await boot(page, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
@@ -143,7 +143,7 @@ test("CAPTURE's RECORD puts a recording of its input in the sound, and a key pla
   }, info.outputDir);
   const lane = page.locator("#rack-svg .take-lane").first();
   await expect(lane).toBeVisible({ timeout: 60_000 });
-  await expect(lane.locator(".take-line")).toHaveText("recording · 0.1 s");
+  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
   // Its input is open (the sound listens), so RECORD records the tone.
   await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
   await lane.locator(".take-rec").click();
@@ -153,25 +153,25 @@ test("CAPTURE's RECORD puts a recording of its input in the sound, and a key pla
   await lane.locator(".take-rec").click();
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
     .toMatch(/Recorded \d\.\d s into CAPTURE\./);
-  await expect(lane.locator(".take-line")).toHaveText(/^recording · 1\.\d s$/, { timeout: 30_000 });
+  await expect(lane.locator(".take-line")).toHaveText(/^take · 1\.\d s$/, { timeout: 30_000 });
   const len = await page.evaluate(() => {
     const t = window.__aur.wb.tree.root.Capture.take;
     return t ? t.length / t.sample_rate : 0;
   });
   console.log(`recorded ${len.toFixed(2)} s`);
   expect(len).toBeGreaterThan(1.0);
-  // A key plays it: the tone (440 Hz) comes back from the recording, with
+  // A key plays it: the tone (440 Hz) comes back from the take, with
   // nothing monitored.
   await page.waitForTimeout(1000);
   await page.keyboard.down("a");
   const played = await loudest(page, 440, 800);
   await page.keyboard.up("a");
-  console.log(`the recording, played from C4: ${played.toFixed(1)} dB at 440 Hz`);
+  console.log(`the take, played from C4: ${played.toFixed(1)} dB at 440 Hz`);
   expect(played).toBeGreaterThan(-60);
   expect(errors).toEqual([]);
 });
 
-test("a sound whose recording couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
+test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
   test.setTimeout(300_000);
   const errors = await boot(page, { granted: true });
   await openFile(page, {
@@ -214,7 +214,7 @@ test("a sound whose recording couldn't be read is kept safe, and RECORD AGAIN br
   await next.goto("/");
   await expect(next.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
-    .toContain("One sound’s recording couldn’t be read. It’s kept safe until you record it again.");
+    .toContain("One sound’s take couldn’t be read. It’s kept safe until you record it again.");
   await next.locator('.viewtab[data-view="play"]').click();
   await next.locator('.bf[data-f="pool"]').click();
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
@@ -227,7 +227,7 @@ test("a sound whose recording couldn't be read is kept safe, and RECORD AGAIN br
   await next.waitForTimeout(1500);
   await row.locator(".kept-rec").click();
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
-    .toContain("Mic Loop has its recording again, and it’s back in the pool.");
+    .toContain("Mic Loop has a new take, and it’s back in the pool.");
   await expect(next.locator("#bank-list .kept-row")).toHaveCount(0, { timeout: 30_000 });
   await expect(next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).first()).toBeVisible({ timeout: 30_000 });
   expect((await takes(next)).held).toEqual([]);

@@ -474,9 +474,9 @@ banned-words check in `make dev-check` reads the list after it.
 | **AUDIO IN** | The module that brings your own signal into a patch | mic node, input node |
 | **input** | A microphone or an interface the browser offers, numbered from 1 on AUDIO IN | device (except the browser’s own names) |
 | **monitor**, MONITOR | Hearing your input through the sound, at the speakers | listen (that is PERFORM’s *listening…*) |
-| **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample, recording, take |
-| **recording**, RECORD | What a CAPTURE holds, made by pressing RECORD on it | take, sample, loop |
-| **kept safe** | A sound whose recording couldn’t be read, out of the pool until it is recorded again | held, HELD, quarantined |
+| **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample; *recording* or *take* for the clip (a take is CAPTURE’s) |
+| **take**, RECORD | A CAPTURE’s recorded audio: RECORD makes a new take, and the module shows its length | recording (for the take itself), sample, loop |
+| **kept safe** | A sound whose take couldn’t be read, out of the pool until RECORD AGAIN makes a new take | held, HELD, quarantined |
 | **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |

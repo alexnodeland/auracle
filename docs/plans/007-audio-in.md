@@ -152,7 +152,7 @@ measured with audition clips, from quiver to the PATCH plate.
      line stop with their keys instead of stacking;
    - **the rail and the plates for TRACK and CAPTURE**; *done*: TRACK in
      DYNAMICS (its default listen branch an AUDIO IN, so placing it asks for
-     an input), CAPTURE in SPACE with RECORD and its recording's length on
+     an input), CAPTURE in SPACE with RECORD and its take's length on
      its plate (`takes.js`);
    - **AUDIO IN in the prior.** *Decided* (2026-10-02): not turned on. It
      is a player kind like TRACK and CAPTURE (task 2): never drawn, scored
@@ -221,7 +221,7 @@ measured with audition clips, from quiver to the PATCH plate.
    - a sound whose only source was a take that couldn't be read is **held**:
      restore keeps it out of the pool (never dealt, fitted, mapped, wired or
      bred), reports it apart from the repairs, and the app says "One sound's
-     recording couldn't be read. It's kept safe until you record it again."
+     take couldn't be read. It's kept safe until you record it again."
      once per set of such sounds; a save writes its take back JSON-equal to
      what was loaded; `Engine::readmit_held` (wasm `readmit_held`) brings it
      back with a readable take, measured as a new sound;

@@ -482,7 +482,7 @@ struct HeldView {
 }
 
 /// The sentence for a held sound.
-const HELD_NOTE: &str = "Its recording couldn’t be read. It’s kept safe until you record it again.";
+const HELD_NOTE: &str = "Its take couldn’t be read. It’s kept safe until you record it again.";
 
 /// [`WasmEngine::readmit_held`]'s reply.
 #[derive(Serialize)]
@@ -497,13 +497,13 @@ struct ReadmitReply {
 /// The sentence for a held sound that did not come back.
 fn readmit_note(e: &ReadmitError) -> &'static str {
     match e {
-        ReadmitError::NotHeld => "That sound isn’t waiting for a recording, so nothing changed.",
-        ReadmitError::NoTake => "That recording couldn’t be read, so the sound is still kept safe.",
+        ReadmitError::NotHeld => "That sound isn’t waiting for a new take, so nothing changed.",
+        ReadmitError::NoTake => "That take couldn’t be read, so the sound is still kept safe.",
         ReadmitError::NothingToReplace => {
-            "That sound has no lost recording to replace, so nothing changed."
+            "That sound has no lost take to replace, so nothing changed."
         }
         ReadmitError::DoesNotVet(_) => {
-            "With that recording it still makes no usable sound, so it’s still kept safe."
+            "With that take it still makes no usable sound, so it’s still kept safe."
         }
     }
 }
@@ -3591,7 +3591,7 @@ impl WasmEngine {
     }
 
     /// The sounds the last restore held back, as JSON
-    /// `[{"id":3,"capture":"node/1","tree":{…},"name":"…","note":"Its recording couldn’t be read. …"}]`:
+    /// `[{"id":3,"capture":"node/1","tree":{…},"name":"…","note":"Its take couldn’t be read. …"}]`:
     /// each one's only source was a CAPTURE whose take couldn't be read. They
     /// are not in the bank's pool (never dealt, ranked or bred) and are saved
     /// with the session unchanged. The capture plate (Plan-007 task 4) lists

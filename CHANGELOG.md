@@ -40,10 +40,10 @@ changelog that edits its own past is not a record.
   One voice tracks, and keys played over it stop when you let them go, where
   they used to pile up while you sang.
 - **CAPTURE records what is patched into it,** up to four seconds, and plays
-  the recording from the keys. Press RECORD on the module, play, and press
-  STOP; the recording goes into the sound as one undo step and is saved
+  the take from the keys. Press RECORD on the module, play, and press
+  STOP; the new take goes into the sound as one undo step and is saved
   with it.
-- **A sound whose recording couldn’t be read is kept safe** at the foot of the
+- **A sound whose take couldn’t be read is kept safe** at the foot of the
   pool, under KEPT SAFE. RECORD AGAIN records it and brings it back.
 
 ### Added: play through Auracle with AUDIO IN

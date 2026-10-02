@@ -252,7 +252,7 @@ pair.
 
 ### CAPTURE: a recorded take as a source
 
-`Capture` records what is patched into it and plays the recording back
+`Capture` records what is patched into it and plays the take back
 (RFC-008’s *resample*). It compiles to quiver’s `Capture` and is `#op` 21.
 
 | Knob | Site | Range |
@@ -281,7 +281,7 @@ costs the sound: the term loads with the take empty, and a restore counts the
 sound as repaired, so the app says so. When that take was the sound’s only
 source it no longer renders, and the restore **keeps it aside** (the engine’s
 held list) instead of dropping it: out of the pool, so nothing deals, fits or
-breeds it, reported apart from the repairs (“One sound’s recording couldn’t
+breeds it, reported apart from the repairs (“One sound’s take couldn’t
 be read. It’s kept safe until you record it again.”, once for each set of
 such sounds), and written back by every save with its take JSON-equal to what
 was loaded, until a readable take brings it back (`readmit_held`), measured

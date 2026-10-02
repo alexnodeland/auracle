@@ -647,9 +647,9 @@ test("a cable's measured level reads in decibels, or nothing at the probe's floo
   assert.equal(levelWord(null), "nothing");
 });
 
-test("CAPTURE says how long its recording is, and what recording did, in the voice", () => {
-  assert.equal(takeLine(0), "no recording yet");
-  assert.equal(takeLine(2.36), "recording · 2.4 s");
+test("CAPTURE says how long its take is, and what recording did, in the voice", () => {
+  assert.equal(takeLine(0), "no take yet");
+  assert.equal(takeLine(2.36), "take · 2.4 s");
   assert.equal(takeLanded(3.2), "Recorded 3.2 s into CAPTURE.");
   for (const s of Object.values(TAKE_SILK)) {
     voiced(s);

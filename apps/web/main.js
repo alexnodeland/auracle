@@ -1142,8 +1142,8 @@ function announceRepair() {
       try { localStorage.setItem("auracle-held-noted", set); } catch (_) {}
       note(
         r.held > 1
-          ? `${r.held} sounds’ recordings couldn’t be read. They’re kept safe until you record them again.`
-          : "One sound’s recording couldn’t be read. It’s kept safe until you record it again.",
+          ? `${r.held} sounds’ takes couldn’t be read. They’re kept safe until you record them again.`
+          : "One sound’s take couldn’t be read. It’s kept safe until you record it again.",
         { urgent: true },
       );
     }
@@ -15453,8 +15453,8 @@ const MODULES = [
     kind: "capture", tag: "Capture", name: "capture", sort: "proc", group: "space",
     ins: 1, modTarget: null, phi: null,
     tags: ["record", "sample", "loop", "resample", "take", "looper", "phrase", "input"],
-    blurb: "Records what is patched into it, up to four seconds, and plays the recording from the keys: once, while held, or round and round.",
-    heard: "its recording, played at the keys’ pitch. Until you record, it is silent.",
+    blurb: "Records what is patched into it, up to four seconds, and plays the take from the keys: once, while held, or round and round.",
+    heard: "its take, played at the keys’ pitch. Until you record, it is silent.",
     glyph:
       `<path class="gl-rule" d="M0 12 H20"/>` +
       `<path class="gl" d="M1 7 q1.4 -4 2.8 0 t2.8 0 t2.8 0"/>` +

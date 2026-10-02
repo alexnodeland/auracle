@@ -265,7 +265,7 @@ export const TAKE_SILK = Object.freeze({
 export const TAKE_TIPS = Object.freeze({
   record: "Record: what is patched into it",
   again: "Record it again: back into the pool",
-  kept: "Sounds whose recording couldn’t be read",
+  kept: "Sounds whose take couldn’t be read",
 });
 
 /** What recording says. */
@@ -274,9 +274,9 @@ export const TAKE_SAID = Object.freeze({
   unnamed: "That sound",
 });
 
-/** A CAPTURE's line: how long a recording it holds. */
+/** A CAPTURE's line: how long its take is. */
 export function takeLine(seconds) {
-  return seconds > 0 ? `recording · ${seconds.toFixed(1)} s` : "no recording yet";
+  return seconds > 0 ? `take · ${seconds.toFixed(1)} s` : "no take yet";
 }
 
 /** RECORD pressed on the module, and RECORD AGAIN on a sound kept safe. */
@@ -287,13 +287,13 @@ export function takeAgain(name, seconds) {
   return `Recording ${name} again, up to ${seconds} s. Press STOP to end it.`;
 }
 
-/** A recording in the sound you're playing, and one that brought a sound
+/** A new take in the sound you're playing, and one that brought a sound
  *  kept safe back. */
 export function takeLanded(seconds) {
   return `Recorded ${seconds.toFixed(1)} s into CAPTURE.`;
 }
 export function takeReadmitted(name) {
-  return `${name} has its recording again, and it’s back in the pool.`;
+  return `${name} has a new take, and it’s back in the pool.`;
 }
 
 // ---- a generation as it runs, and the lineage it leaves in the bank ----

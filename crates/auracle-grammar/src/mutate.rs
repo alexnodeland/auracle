@@ -1233,16 +1233,14 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
         StructOp::SetTake { key, take } => {
             if take.unreadable().is_some() {
                 return Err(StructError::Invalid(
-                    "that recording couldn’t be read, so the capture keeps its take".into(),
+                    "that take couldn’t be read, so the capture keeps the one it has".into(),
                 ));
             }
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
                 .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let AudioNode::Capture { take: held, .. } = slot else {
-                return Err(StructError::Invalid(
-                    "only a capture holds a recording".into(),
-                ));
+                return Err(StructError::Invalid("only a capture holds a take".into()));
             };
             *held = take.clone();
         }
@@ -1250,10 +1248,10 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
     finish(out)
 }
 
-/// The refusal for a fragment carrying a recording that couldn't be read:
+/// The refusal for a fragment carrying a take that couldn't be read:
 /// installed, it would play silence where the player sent a take.
 fn lost_take() -> StructError {
-    StructError::Invalid("that recording couldn’t be read, so nothing changed".into())
+    StructError::Invalid("that take couldn’t be read, so nothing changed".into())
 }
 
 /// The two audio children of a binary node, `(/0, /1)`, or `None` for
