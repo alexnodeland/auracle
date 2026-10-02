@@ -18,7 +18,7 @@ every view shares.
    the keybed.
 2. Turn a named control: drag it up or down. Double-click it to go back to the
    center.
-3. Press **OFFER**, hold **PEEK** to hear the variant it grew, then press
+3. Press **OFFER**, then hold **PEEK** to hear the variant it grew, or press
    **TAKE** to make it yours.
 4. Press **KEEP** when you like where you are. **BACK** returns there.
 5. Turn **WANDER** up, and let the sound move on its own.
@@ -326,21 +326,16 @@ never by a jump.
 - **BLEND** sets the mix, from *home* at the left to *offer* at the right.
 - **PEEK** plays B alone for as long as you hold it. Let go, and the mix
   returns to wherever BLEND is.
-- **TAKE** makes the offer your sound, once you have heard it.
+- **TAKE** makes the offer your sound.
 
 The named controls turn the sound you’re on, not the offer.
 
 **What you see is what happened.** An offer is grown from the sound you’re
 playing, so B grows out of the sound’s name into its place. TAKE fills B with
 green from the bottom, and B goes into the name: it is the sound you play
-now. NEXT folds B back into the name it grew from: it is dropped, nothing
+now, heard or not. NEXT folds B back into the name it grew from: it is dropped, nothing
 joins the pool, and you keep playing what you had. With reduced motion on,
 nothing moves: B fills for a moment when taken, and empties when passed.
-
-**TAKE waits until you have heard B.** Hold PEEK, or turn BLEND past half,
-for a second while a note plays. Until then TAKE reads *hear it first*, and
-pressing it anyway says why: *Hear B before you take it: hold PEEK, or turn
-BLEND past half, while a note plays.*
 
 ```admonish info collapsible=true title="How it works: matched loudness"
 The crossfade is equal-power, so the level stays roughly steady across it,
@@ -399,7 +394,7 @@ where it is, and the line reads *frozen*. Tap again to release it.
 | **BACK** | Glides back to home: the last sound you kept or opened |
 | **OFFER** | Grows a variant from here into B. The first is usually there at once, grown ahead once the sound has been steady for a few seconds and your hands have been off it for two |
 | **NEXT** | What OFFER reads while B holds an offer, with *passes on B* under it. It passes on B (B empties, BLEND glides home) and brings the next, which has been growing meanwhile |
-| **TAKE** | Makes the offer in B your sound, once you have heard it (until then it reads *hear it first*). It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
+| **TAKE** | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
 | **PEEK** | Hold to hear the offer alone |
 | **FREEZE** | Stops Wander where it is, and its line reads *frozen*. The same as tapping the WANDER dial; not the dock’s **HOLD**, which latches notes |
 
@@ -468,12 +463,12 @@ asks, without stopping the music. Once you have heard B, your answer counts:
 | Press **NEXT** | What you had over B: *Passed on B. That counts as a pick for what you had.* |
 
 Heard means PEEK held, or BLEND past half, for at least a second while notes
-were sounding. TAKE waits until then, so every take is a pick. An offer you
-pass without hearing it teaches nothing, and the pass says so: *Skipped B.
-Not counted, because you hadn’t heard it.*
+were sounding. An offer you answer without hearing it teaches nothing, and a
+pass says so: *Skipped B. Not counted, because you hadn’t heard it.*
 
 Each answer can be taken back while its toast is up. A take carries **DON’T
-COUNT IT** for eight seconds, since a take isn’t always a verdict. A pass carries **UNDO** for seven, which brings B back and
+COUNT IT** for eight seconds, since taking a sound to hear it in place isn’t
+always a verdict. A pass carries **UNDO** for seven, which brings B back and
 records nothing.
 
 KEEP, BACK, control turns, and Wander are logged with your session, and they

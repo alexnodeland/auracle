@@ -105,10 +105,13 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      and `wireKey` holds the set. A placed control is measured lazily and
      says *listening…* while it is. How it works covers every placed control.
      B grows from the sound's name, fills when taken and folds back when
-     passed (each motion names its engine source), and TAKE waits until B is
-     heard. Stage mode draws the output's spectrum. Not done: the faces the
-     prototype draws (the well, a face in stage mode) wait for task 3, so
-     the offer's motion anchors on the sound's name; the palette's preview of
+     passed (each motion names its engine source); the heard rule is
+     unchanged (an unheard take is allowed and records no pick). Stage mode
+     draws the output's spectrum for now: stage draws the face once task 3
+     lands (`stageDraw` in `perform.js` is the one function to swap, marked
+     `faces:`). Not done: the faces the prototype draws (the well, a face in
+     stage mode) wait for task 3, so the offer's motion anchors on the
+     sound's name; the palette's preview of
      an unplaced control needs the unverified wiring exposed (the reference's
      PERFORM page, "What is not done"); the prototype's well-and-panel layout
      waits for the shell (task 2).

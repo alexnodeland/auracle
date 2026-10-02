@@ -16,7 +16,7 @@ the bank head walks through what a generation is and what evolving costs.
   placed, hidden and ordered with ARRANGE and wired onto this patch's knobs
   by its own measured response (every preset's six ship measured), a Wander
   dial (still → ideas → drift → roam), pads to Keep, go Back, grow an Offer
-  into a second slot and Peek, Blend or Take it once heard, velocity →
+  into a second slot and Peek, Blend or Take it, velocity →
   timbre, and stage mode (⇧F). MIDI controllers auto-map onto the deck's
   first eight controls.
 - **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at

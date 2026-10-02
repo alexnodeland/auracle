@@ -30,10 +30,6 @@ changelog that edits its own past is not a record.
   because it is grown from the sound you're playing. Taken, it fills with
   green and goes into the name; passed, it folds back into it. With reduced
   motion on, nothing moves.
-- **TAKE waits until you have heard the offer.** Hold PEEK, or turn BLEND
-  past half, for a second while a note plays; until then TAKE reads *hear it
-  first*, and a press says why. An offer could be taken unheard, which
-  changed your sound and taught the model nothing.
 - **Stage mode.** <kbd>⇧F</kbd> puts the sound you're playing on the whole
   screen, drawn from what you hear, for a gig or a stream. The keys and
   Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.

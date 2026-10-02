@@ -1454,7 +1454,6 @@ export function createPerform(host) {
   // "what I had over B". Both directions, or the model would only ever hear
   // itself agreed with. An offer taken or passed unheard teaches nothing.
   const HEARD_MS = 1000;
-  const offerHeard = () => !!state.offer && (state.offer.heardMs || 0) >= HEARD_MS;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
     watchAnswer();
@@ -1473,12 +1472,7 @@ export function createPerform(host) {
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
     if (!o || !state.visible) return;
-    if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) {
-      const was = offerHeard();
-      o.heardMs = (o.heardMs || 0) + 250;
-      // Heard now: TAKE stops waiting.
-      if (!was && offerHeard()) paintPads();
-    }
+    if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
   }, 250);
 
   // An answer waits out a short window before it is sent, counted from when
@@ -1628,8 +1622,9 @@ export function createPerform(host) {
   //   asked by `perform_offer` with this sound's tree and knobs), so B grows
   //   out of the sound's name into its place;
   // - taken: B fills with the sound's green and goes into the name: the
-  //   bench takes its tree (`commitTree`, `edit_set_tree`), and a heard one
-  //   is recorded as a pick for it (`perform_record`, `record_tree_duel`);
+  //   bench takes its tree (`commitTree`, `edit_set_tree`), heard or not;
+  //   only a heard one is also recorded as a pick for it (`perform_record`,
+  //   `record_tree_duel`);
   // - folded: passed, B folds back into the name it grew from: it is emptied
   //   (`bClear`), nothing joins the pool, and a heard one is recorded as a
   //   pick for the sound you kept (`perform_record`).
@@ -1809,9 +1804,6 @@ export function createPerform(host) {
     state.offerWhy = o.why;
     presentOffer(o.src, o.at, true);
     state.offer.heardMs = o.heardMs || 0;
-    // Heard as far as it had been: TAKE says so again (it was painted with
-    // the offer, before this was known).
-    paintPads();
   }
 
   // Blend back to *home*: at once for the sound and the control's value (B
@@ -2578,14 +2570,6 @@ export function createPerform(host) {
 
   function take() {
     if (!state.offer) return host.note("Nothing offered yet. Press Offer, or turn Wander up.", { urgent: true });
-    // The heard rule: an offer is taken only once it has been heard (a
-    // second of Peek, or of Blend past half, while notes sound), so every
-    // Take is an answer and teaches the model. Booth attract mode plays by
-    // itself and is exempt (nothing it does is taught).
-    if (!state.quiet && !offerHeard()) {
-      host.note("Hear B before you take it: hold PEEK, or turn BLEND past half, while a note plays.", { urgent: true, replace: "pf-offer" });
-      return;
-    }
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
@@ -2713,7 +2697,7 @@ export function createPerform(host) {
       if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
       const aim = state.offer.aim;
       if (aim) body.append(aimNote(aim), document.createTextNode(" · "));
-      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek or slide Blend to hear it, then Take it`));
+      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek to hear it, slide Blend, or Take it`));
     }
     else body.textContent = "no offer: press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
@@ -2721,18 +2705,14 @@ export function createPerform(host) {
     paintPads();
   }
   // Take and Peek act on an offer; until there is one they look it.
-  // Waiting, not broken: a disabled pad says what it is waiting for. Take
-  // also waits for the offer to be heard (the heard rule, see `take`), and
-  // the attract hand is exempt.
+  // Waiting, not broken: a disabled pad says what it is waiting for. An
+  // offer not heard yet can still be taken (the heard rule decides only
+  // whether the answer counts, `holdAnswer`).
   function paintPads() {
     for (const k of ["take", "peek"]) {
       if (!padEls[k]) continue;
-      const wait = !state.offer ? "needs an offer" : k === "take" && !state.quiet && !offerHeard() ? "hear it first" : "";
-      // TAKE stays pressable while it waits, so a press is answered with
-      // why (`take`), not with nothing; it looks and reads as waiting.
-      if (k === "take") padEls[k].setAttribute("aria-disabled", String(!!wait));
-      else padEls[k].disabled = !!wait;
-      padEls[k].dataset.wait = wait;
+      padEls[k].disabled = !state.offer;
+      padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
     }
     // While B holds an offer, pressing Offer passes on it: the pad says so
     // before it is pressed, not in a toast after.
@@ -3177,7 +3157,7 @@ export function createPerform(host) {
   const STEPS = [
     { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
     { id: "turn", text: turnStep },
-    { id: "offer", text: () => "Press OFFER, hold PEEK, then TAKE it" },
+    { id: "offer", text: () => "Press OFFER, then hold PEEK or TAKE it" },
   ];
   // Step 2 names a control that turns on *this* patch. It used to say "Turn a
   // lit control: BRIGHT is a good start" on every patch, when the only
@@ -3688,7 +3668,6 @@ export function createPerform(host) {
       // Whatever attract blended in was heard by nobody in particular: an
       // offer it leaves behind starts unheard for the visitor.
       if (!on && state.offer) state.offer.heardMs = 0;
-      paintPads();
     },
     show() {
       state.visible = true;

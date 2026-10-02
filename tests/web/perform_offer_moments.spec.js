@@ -8,9 +8,9 @@
 //   tree, and it is the sound you play.
 // - Passed, B folds back into the name it grew from: it is dropped, and the
 //   sound you had is the sound you play.
-// - The heard rule: an offer can be taken only once it has been heard (a
-//   second of PEEK, or of BLEND past half, while a note sounds). Until then
-//   TAKE waits, and says so.
+// - The heard rule, unchanged: an offer can be taken heard or not, and only a
+//   heard one (a second of PEEK, or of BLEND past half, while a note sounds)
+//   is recorded as a pick.
 //
 // The motion is read where it is made: every `Element.animate` call is
 // recorded (by wrapping it before main.js runs), and each moment's keyframes
@@ -22,6 +22,22 @@ const { test, expect } = require("@playwright/test");
 const INIT = `(() => {
   const animate = Element.prototype.animate;
   const seen = (window.__anims = []);
+  // What the page asks the engine to record (a pick from an offer).
+  const records = (window.__records = []);
+  const Orig = window.Worker;
+  function Wrapped(url, o) {
+    const w = new Orig(url, o);
+    if (/worker\\.js/.test(String(url))) {
+      const post = w.postMessage.bind(w);
+      w.postMessage = (m, t) => {
+        if (m && m.type === "perform_record") records.push({ took: !!m.took });
+        return post(m, t);
+      };
+    }
+    return w;
+  }
+  Wrapped.prototype = Orig.prototype;
+  window.Worker = Wrapped;
   Element.prototype.animate = function (frames, opts) {
     const cls = String(this.className || "");
     if (/pf-(offer|ghost)/.test(cls)) {
@@ -126,27 +142,33 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   expect(errs).toEqual([]);
 });
 
-test("an offer not heard yet can't be taken: TAKE waits, and says why", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(300_000);
+test("an offer taken unheard becomes the sound but records no pick; heard, it records one", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(360_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  const records = () => page.evaluate(() => window.__records.length);
+  const picks = async () => Number(await page.locator("#duel-count").textContent());
+  const p0 = await picks();
+  // Unheard (no note sounding, no PEEK): TAKE is there, and takes it.
   await grow(page);
   const take = page.locator(".pf-pad", { hasText: "Take" });
-  await expect(take).toBeDisabled();
-  await expect(take).toHaveAttribute("data-wait", "hear it first");
-  // A press anyway: refused, with the reason, and the sound is unchanged.
+  await expect(take).toBeEnabled();
   const name = await page.locator(".pf-name").textContent();
-  await take.click({ force: true });
-  await expect(page.locator("#toasts")).toContainText("Hear B before you take it", { timeout: 5_000 });
-  await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/);
-  await expect(page.locator(".pf-name")).toHaveText(name);
-  // Heard: a second of PEEK while a note sounds, and TAKE is there.
-  await page.keyboard.down("a");
-  await peek(page, 1600);
-  await expect(take).toBeEnabled({ timeout: 5_000 });
-  await expect(take).toHaveAttribute("data-wait", "");
   await take.click();
   await expect(page.locator(".pf-name")).not.toHaveText(name, { timeout: 60_000 });
+  await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
+  // Past a take's eight-second window: nothing was sent to be recorded
+  // (`perform_record`, the engine's `record_tree_duel`), and no pick counted.
+  await page.waitForTimeout(10_000);
+  expect(await records(), "an unheard take records no pick").toBe(0);
+  expect(await picks()).toBe(p0);
+  // Heard (a second of PEEK with a note sounding): the same TAKE records one.
+  await page.keyboard.down("a");
+  await grow(page);
+  await peek(page, 1600);
+  await take.click();
+  await expect.poll(records, { timeout: 30_000 }).toBe(1);
+  await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
   await page.keyboard.up("a");
   expect(errs).toEqual([]);
 });

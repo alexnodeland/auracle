@@ -4,8 +4,7 @@
 // note, grow an offer, hear it (Peek held past a second), and answer it.
 // Asking for another (the Offer pad reads NEXT while B holds one) is a pass
 // (the played sound wins), Take is a take (the offer wins); each counts after
-// its undo window. An offer not heard can't be taken (TAKE waits until it
-// has been), and passed unheard it counts for nothing. The picks counter is the engine's own observation
+// its undo window, and an offer taken without being heard counts for nothing. The picks counter is the engine's own observation
 // count plus the EVOLVE picks, cuts and ratings it has not answered for yet,
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
@@ -50,13 +49,12 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await expect.poll(picks, { timeout: 60_000 }).toBe(p1 + 1);
   const p2 = await picks();
-  // an unheard offer can't be taken, and passed on it teaches nothing
+  // an unheard offer answered teaches nothing
   await grow();
-  await expect(page.locator(".pf-pad", { hasText: "Take" })).toBeDisabled();
-  await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
-  await expect(page.locator("#toasts")).toContainText("Skipped B. Not counted, because you hadn’t heard it.", { timeout: 10_000 });
-  // Past the pass's window, and past a whole offer's worth of engine time.
+  await page.locator(".pf-pad", { hasText: "Take" }).click();
+  // Past the settle window, and past a whole offer's worth of engine time.
   await page.waitForTimeout(12000);
+  await grow();
   const p3 = await picks();
   await page.keyboard.up("a");
   expect(p1).toBe(p0 + 1);

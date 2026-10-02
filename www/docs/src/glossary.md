@@ -126,8 +126,7 @@ See [the named controls](./views/perform.md#the-named-controls).
 A variant grown from the sound you’re playing, held in a second set of voices
 called **B** that plays every note you play. You hear it with **BLEND** or
 **PEEK**, at matched loudness, and it becomes your sound only if you press
-**TAKE**, which waits until you have heard it. An offer may add or change a
-module; Wander never does. See [Blend,
+**TAKE**. An offer may add or change a module; Wander never does. See [Blend,
 Peek, and the B slot](./views/perform.md#blend-peek-and-the-b-slot).
 
 ### Palette, panel

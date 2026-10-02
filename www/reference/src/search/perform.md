@@ -913,7 +913,7 @@ re-normalizing it.
   a second (`HEARD_MS`, in `perform.js`), Take, or asking for another offer, is
   recorded as a duel with the `PerformOffer`
   [provenance](../taste/likelihoods.md#edit-beats-original), and it counts as a
-  pick. Take waits until then, so every take is one.
+  pick.
 - **Combinations are not verified.** Each control is verified alone, at $v_0$.
 - **Motion hears one note.** Its axis is built from the held note’s span, with
   the [limits](../features/audio.md#what-it-cannot-say) that implies.

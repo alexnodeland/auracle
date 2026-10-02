@@ -109,8 +109,6 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   await toast.locator(".toast-undo").click();
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/);
   await expect(page.locator(".pf-offer-body")).toHaveText(bFirst);
-  // Heard before the pass, and heard still: TAKE does not wait to hear it.
-  await expect(page.locator(".pf-pad", { hasText: "Take" })).toBeEnabled();
   await page.waitForTimeout(9_000);
   expect(await picks(), "an undone pass is not recorded").toBe(p0);
 
