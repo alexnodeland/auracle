@@ -72,6 +72,12 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   stamp) rather than sleeping, and a cut (`clips`) removes a wait the viewer
   should not sit through. A hold that ends at a stamp still presses at its
   `at` time; only the release waits.
+- **A shot plays what the film cast** (RFC-007 part 2): a preset from the
+  shortlist in `www/brand/sound.json`, through `shotgen.CAST` and
+  `pick("cast")`, and an offer grown from one. `shotgen.dump` refuses
+  anything else unless the shot's `"uncast"` says why (a line names the
+  preset or describes its circuit, so it changes only with the script), and
+  `tools/test_shotgen.py` holds every generated walkthrough to it.
 - **Sessions are seeded, and a taught set-up re-deals the duel.** The first
   pair is dealt while the pool is still filling, the pair behind it is dealt
   ahead as soon as its sounds are in, and a pair is dealt again when one of its

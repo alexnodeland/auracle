@@ -7,6 +7,7 @@ www/brand/sound.json, or say why not.
 Plain files and the standard library: no browser, no audio.
 """
 import contextlib
+import glob
 import io
 import json
 import os
@@ -17,6 +18,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import shotgen  # noqa: E402
 import sound_defaults  # noqa: E402
+
+FILMS = os.path.join(os.path.dirname(HERE), "films")
+
 
 def spec(*shots, setup=()):
     return {"viewport": [1920, 1080], "dpr": 1, "query": "?film", "init": "", "setup": list(setup), "shots": list(shots)}
@@ -97,6 +101,19 @@ class Dump(unittest.TestCase):
         s = spec(shot("a", setup=[{"op": "preset", "name": "Slow Weather"}], uncast={"Loom": "stale"}))
         with self.assertRaises(SystemExit):
             shotgen.dump(s, self.out)
+
+
+class TheFilms(unittest.TestCase):
+    """Every walkthrough written by a generator is cast as it is committed."""
+
+    def test_every_generated_film_is_cast(self):
+        films = sorted(os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(FILMS, "*", "gen_shots.py")))
+        self.assertGreaterEqual(len(films), 8)
+        for f in films:
+            with open(os.path.join(FILMS, f, "shots.json"), encoding="utf-8") as fh:
+                s = json.load(fh)
+            with self.subTest(film=f), contextlib.redirect_stdout(io.StringIO()):
+                shotgen.casting(s)
 
 
 if __name__ == "__main__":

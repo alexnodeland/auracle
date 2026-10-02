@@ -1,6 +1,6 @@
 ---
 title: "Films: from script to the site"
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 related_adrs: [3, 4, 14]
 ---
 
@@ -79,6 +79,17 @@ duel after the fill (`shotgen.REDEAL`): it skips until the pair on the table is
 the fifth one the engine has dealt, each skip once the pair behind the table
 has been dealt, so the duel does not depend on how far the fill had got when
 the first pairs were dealt.
+
+Every walkthrough is **cast**
+([RFC-007](../proposals/007-the-sound-of-the-films.md) part 2): what a shot
+loads, opens or plays from the warm start is a preset from the shortlist in
+`www/brand/sound.json` (`shotgen.CAST`, `pick("cast")`), and an offer it
+grows is grown from one and logged. A shot that must keep another preset
+says why in its `"uncast"`: its line names the preset or describes its
+circuit, so it changes only with the script. `shotgen.dump` refuses
+anything else, and `tools/test_shotgen.py` (in `make dev-check`) holds the
+committed shots to it. What the session deals (the pool, a duel, the warm
+start's other cards) is logged, not cast, until the sonic floor (RFC-005).
 
 ## Readiness
 

@@ -39,7 +39,9 @@ by what you hear before what they are called. Leave the maths to *The math*.
    the master bus, so the voices and every audition are in it. Play musical
    material, not scattered keys: chords that change on the bar line, a
    bassline, a pad held while a control moves. When a demo has a tempo, use
-   66 BPM, the bed's tempo, in F (84 BPM for a film still on Study).
+   66 BPM, the bed's tempo, in F (84 BPM for a film still on Study). Play
+   what the film cast from the shortlist (`shotgen.CAST`), not what the seed
+   deals.
 2. **Show, then say.** The picture shows the thing happening while the
    narration names it; a callout points at it when the eye would not find it
    alone. Never describe a change you can't hear or see.
@@ -127,7 +129,7 @@ viewer sees what they will see.
 
 ### `view-perform`: PERFORM
 
-Cold open: Glass Pad chords while an XY gesture brings in Bright and Motion.
+Cold open: pad chords (Slow Weather) while an XY gesture brings in Bright and Motion.
 The chapters:
 
 - **Play it:** the computer keys (A–L and W–P, Z/X for octaves, Shift to

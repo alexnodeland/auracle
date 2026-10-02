@@ -92,8 +92,35 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
    - The two marks take the cues' place: `timeline.py` puts Bloom 1.75 s
      before a film's first word and Reach 1.75 s after its last, where every
      logo sting stood (an outro's end card), as each film moves to N3.
-7. **Casting:** the shot generators cast from the shortlist, including offers
-   a shot grows (the tour's cold open).
+7. **Casting.** *Done.* The shot generators cast from the shortlist in
+   `sound.json` (`cast.shortlist`), including offers a shot grows.
+   - `shotgen.CAST` names the preset each role plays, checked against the
+     wiring it ships with: Slow Weather for chords and swells (Glass Pad's
+     circuit under a reverb), Morph Pad for the honest controls (Space
+     toward far only, Grit a search control), Wobble Board for runs and
+     touch, Ceiling for the acid line (Acid Line's circuit), Held Under for
+     the bass and Rotor for a moving texture. `pick("cast")` is the warm
+     start's card on the list (Ceiling, in the seeded deal), played and
+     picked first, so it is what PERFORM opens and what My patches plays.
+   - An offer is grown from a cast preset and logged. The tour's cold open
+     grows its offer from Slow Weather (rehearsed: *reverb → eq, resonance
+     Q 0.8 → Q 0.9, detune 60% → 84%, +3 more*, then taken).
+   - `shotgen.dump` refuses an off-list preset unless the shot's `uncast`
+     gives the reason, and `tools/test_shotgen.py` holds every generated
+     walkthrough to it in `make dev-check`. The exceptions, each because a
+     line names the preset or describes its circuit: view-patch's one patch
+     (Glass Pad, seven shots: read3 to read5 and hear5), its chains (Ask The
+     Dice) and Steps (Loom); view-perform's Bell Jar (named9) and Loom
+     (dock5); sounddesign's Ask The Dice (chains2); composing's MIDI clock on
+     Loom (the one preset with a step sequencer). Task 8 moves them as it
+     re-scripts: view-patch onto Slow Weather.
+   - Not cast, and logged instead: what the session deals (the pool,
+     duels, the warm start's other two picks). Casting those waits for the
+     sonic floor (RFC-005). Composing's dropped picture stays a fixture of
+     First Bass, seen and not heard.
+   - Rehearsed (shared lane, 1 October): the tour's `to-open`, `to-first`
+     and `to-bank` and view-patch's `vp-cold` pass. Every other recast shot
+     is generated and validated; its full rehearsal is task 8's.
 8. **The words:** every script follows `www/brand/voice.md`'s spoken voice, and
    is re-voiced and re-timed.
    - **Known stale in the published films, fixed by re-voicing** (each line
@@ -114,6 +141,11 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
        `www/video/films/view-perform/film.js` ~229) and both storyboards'
        *held* for Wander's state (`playing/storyboard.md` ~45 and ~143, and
        `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80).
+   - **Casting left to the re-script** (task 7): the `uncast` shots above.
+     Each needs its line rewritten around a preset on the shortlist (or a
+     Steps module added on camera), then the shot recast. view-patch's
+     `KNOB_H` for Slow Weather is measured in its first rehearsal, as
+     Ceiling's was.
 9. **The re-mix:**
    - films that need no new footage are re-mixed and published after review;
    - the walkthroughs are re-recorded on a quiet machine (Plan-004 task 8).
