@@ -5165,7 +5165,7 @@ html.handheld .handheld-gate {
 
 /* ---------- PERFORM: the palette, How it works, the offer's moments ---------- */
 /* The header's two doors: arrange the panel, and stage mode. */
-.pf-actions { display: flex; align-items: center; gap: var(--s2); margin-left: auto; }
+.pf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-left: auto; }
 /* A control being measured (perform.js paintKnob): "listening…" in its own
    box over the line under the control, #live-wait's sign. The line keeps
    its box, hidden, so nothing around it moves. */
@@ -5224,7 +5224,6 @@ html.handheld .handheld-gate {
 .pp-name { font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--silk); overflow-wrap: anywhere; }
 .pp-ends { font-size: var(--t-value); color: var(--silk-dim); }
 .pp-wait { font-size: var(--t-value); color: var(--phos-b); white-space: nowrap; }
-.pp-wait:empty { display: none; }
 .pp-b {
   width: 28px;
   height: 28px;
@@ -5330,7 +5329,7 @@ html.st-on { overflow: hidden; }
 .st-tick { position: absolute; transform: translateY(-50%); font-size: var(--t-value); color: var(--silk-dim); pointer-events: none; }
 @media (max-width: 700px) {
   .st-hud { left: var(--s4); bottom: var(--s5); }
-  .st-hint { bottom: calc(var(--s7) + var(--s5)); white-space: normal; text-align: center; width: calc(100% - 2 * var(--s4)); }
+  .st-hint { bottom: calc(2 * var(--s7) + var(--s4)); white-space: normal; text-align: center; width: calc(100% - 2 * var(--s4)); }
   .st-leave { right: var(--s3); top: var(--s3); }
 }
 

@@ -97,9 +97,9 @@ function rangeOf(w) {
 // taken patch's own measurement. Pending is "not measured yet", never "can't",
 // so it wears neither the amber search look nor its gesture.
 const turns = (w) => !!(w && !w.search && !w.pending);
-// The named controls a wiring reaches: the ones `reaches(i)` says yes to.
+// The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
-  (wiring || []).map((w, i) => (turns(w) ? i : -1)).filter((i) => i >= 0);
+  (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
 // How far a search control has to be turned before letting go asks for
 // something (a graft or an offer). Short of it, it springs back and asks
 // nothing; the dial draws a notch there while it is being turned.
@@ -233,6 +233,9 @@ export function createPerform(host) {
   // of the palette in its order (the first steps' "Turn …", the XY pad).
   const REACH_FOR = [0, 2, 1, 3, 5, 4, ...PALETTE.map((_, k) => k).slice(6)];
   const preferOrder = () => REACH_FOR.map((k) => state.panel.indexOf(k)).filter((i) => i >= 0);
+  // Palette indices as positions on the panel (booth mode asks by position,
+  // as `reaches(i)` answers), leaving out what is not on it.
+  const onPanel = (ks) => ks.map((k) => state.panel.indexOf(k)).filter((i) => i >= 0);
 
   // ---------- layout ----------
   const head = el("div", "pf-head");
@@ -2076,7 +2079,7 @@ export function createPerform(host) {
     // caller and goes no further, whatever is sounding when it lands.
     if (p.prewarm) {
       if (m.error) console.warn("[perform] prewarm:", m.error);
-      p.prewarm(m.type === "perform_wired" && m.data ? reachOfWiring(m.data.wiring) : null);
+      p.prewarm(m.type === "perform_wired" && m.data ? onPanel(reachOfWiring(m.data.wiring)) : null);
       return true;
     }
     // A recorded pick is in the log whatever has happened to the sound since.
@@ -2987,7 +2990,9 @@ export function createPerform(host) {
     const name = el("div", "st-name", host.label());
     const where = el("div", "st-cat mono", "PERFORM · in hand");
     hud.append(name, where);
-    const hint = el("div", "st-hint mono", platformKeys("A to L play · Space plays the sound · ⇧F or Esc leaves"));
+    // What plays and what leaves, in the hands this screen has.
+    const touchOnly = !!window.matchMedia?.("(pointer: coarse)").matches;
+    const hint = el("div", "st-hint mono", touchOnly ? "tap to play the sound · × leaves" : platformKeys("A to L play · Space plays the sound · ⇧F or Esc leaves"));
     const leave = el("button", "st-leave util-btn", "×");
     leave.type = "button";
     leave.setAttribute("aria-label", platformKeys("Leave stage mode (⇧F or Esc)"));
@@ -3575,7 +3580,7 @@ export function createPerform(host) {
     // null when it has never been measured.
     reachOf(json) {
       const hit = json ? knownWiring(wireKey(json)) : null;
-      return hit ? reachOfWiring(hit.data.wiring) : null;
+      return hit ? onPanel(reachOfWiring(hit.data.wiring)) : null;
     },
     // A preset's tree as the pool holds it (uids aside), from the shipped
     // file: what the warm start pre-warms its cards from without inserting
@@ -3595,7 +3600,7 @@ export function createPerform(host) {
     prewarm(json, { fresh = false } = {}) {
       const key = wireKey(json);
       const hit = fresh ? wireCache.get(key) : knownWiring(key);
-      if (hit && (!fresh || hit.rev === wireRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
+      if (hit && (!fresh || hit.rev === wireRev())) return Promise.resolve(onPanel(reachOfWiring(hit.data.wiring)));
       return new Promise((resolve) => {
         const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
