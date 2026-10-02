@@ -1081,6 +1081,178 @@ self.addEventListener("unhandledrejection", (ev) => {
   });
 });
 
+// ---------- faces (Plan-005 task 3) ----------
+//
+// A face is the render's spectrum in 40 bands and 12 slices
+// (`auracle_features::face`), taken inside every featurization, so a pool
+// member's or an offer's face is in the engine's memo without a render of its
+// own (`WasmEngine::face_of`, `face_of_tree`). That memo is an LRU a
+// generation's walks churn, so a face is copied out the first time it is asked
+// for and kept here under its render namespace and render key
+// (`"<ns>/<key>"`, as `farm_key` names a farm row), and in IndexedDB beside
+// the render cache, stamped with the namespace as that cache is: a build
+// whose renders differ cannot read another's faces. Whitening against the
+// bank is main's (`faces.js`): it knows which rows the bank shows.
+//
+// `faces` (now lane) answers at once with what needs no render; what does,
+// a row stored before faces existed or a preset not yet heard, is rendered
+// one per turn in `later` (`face_render`), each answered as it lands, or as
+// failed. Every request is answered.
+const FACE_DB = "auracle-faces";
+const FACE_STORE = "faces";
+const FACE_META = "meta";
+const FACE_MAX_ROWS = 20000; // ~0.6 KB each; past it the store is dropped, as the render cache is
+let faceNs = null;
+let faceDb = null;
+let faceDbOpening = null;
+const faceMem = new Map(); // "<ns>/<key>" -> Uint8Array
+const faceRendering = new Set(); // keys with a `face_render` queued
+
+const idb = (req) =>
+  new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+// Never rejects: without IndexedDB a face costs a lookup or a render again
+// after a reload, nothing else.
+function faceStoreOpen() {
+  if (faceDbOpening) return faceDbOpening;
+  faceDbOpening = (async () => {
+    try {
+      if (!self.indexedDB || !faceNs) return null;
+      const open = indexedDB.open(FACE_DB, 1);
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        if (!db.objectStoreNames.contains(FACE_STORE)) db.createObjectStore(FACE_STORE);
+        if (!db.objectStoreNames.contains(FACE_META)) db.createObjectStore(FACE_META);
+      };
+      const db = await idb(open);
+      const prev = await idb(db.transaction(FACE_META, "readonly").objectStore(FACE_META).get("ns"));
+      const count = await idb(db.transaction(FACE_STORE, "readonly").objectStore(FACE_STORE).count());
+      if (prev !== faceNs || count > FACE_MAX_ROWS) {
+        await idb(db.transaction(FACE_STORE, "readwrite").objectStore(FACE_STORE).clear());
+        await idb(db.transaction(FACE_META, "readwrite").objectStore(FACE_META).put(faceNs, "ns"));
+      }
+      faceDb = db;
+      return db;
+    } catch (_) {
+      return null;
+    }
+  })();
+  return faceDbOpening;
+}
+
+async function faceStoreGet(keys) {
+  const db = await faceStoreOpen();
+  if (!db || !keys.length) return new Map();
+  try {
+    const store = db.transaction(FACE_STORE, "readonly").objectStore(FACE_STORE);
+    const got = await Promise.all(keys.map((k) => idb(store.get(k)).catch(() => null)));
+    return new Map(keys.map((k, i) => [k, got[i]]).filter(([, v]) => v instanceof Uint8Array));
+  } catch (_) {
+    return new Map();
+  }
+}
+
+function faceKeep(key, bytes) {
+  faceMem.set(key, bytes);
+  if (!faceDb) return;
+  try {
+    faceDb.transaction(FACE_STORE, "readwrite").objectStore(FACE_STORE).put(bytes, key);
+  } catch (_) { /* a failed write costs a lookup next boot */ }
+}
+
+// The key a face is filed under: a pool member's, or a tree's.
+function faceKeyOf(q) {
+  try {
+    if (q.id != null) return engine.face_key(q.id) || null;
+    return glue.farm_key(q.tree, engine.phrase_json()) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// A face the engine can give without a render, or null.
+function faceNow(q, render = false) {
+  const b = q.id != null ? engine.face_of(q.id, render) : engine.face_of_tree(q.tree, render);
+  return b && b.length ? new Uint8Array(b) : null;
+}
+
+// `m.ids`: pool members; `m.trees`: [{ref, tree}] (a preset, an offer, the
+// bench). `m.render`: render what has no face yet, in `later`.
+async function faces(m) {
+  const asks = [
+    ...(m.ids || []).map((id) => ({ id })),
+    ...(m.trees || []).map((t) => ({ ref: t.ref, tree: t.tree })),
+  ];
+  const items = [];
+  const failed = [];
+  const pending = [];
+  const stored = [];
+  const tag = (q) => (q.id != null ? { id: q.id } : { ref: q.ref });
+  for (const q of asks) {
+    q.key = faceKeyOf(q);
+    if (!q.key) {
+      failed.push(tag(q));
+      continue;
+    }
+    const known = faceMem.get(q.key) || faceNow(q);
+    if (known) {
+      if (!faceMem.has(q.key)) faceKeep(q.key, known);
+      items.push({ ...tag(q), key: q.key, face: known });
+    } else stored.push(q);
+  }
+  const fromStore = await faceStoreGet(stored.map((q) => q.key));
+  for (const q of stored) {
+    const b = fromStore.get(q.key);
+    if (b) {
+      faceMem.set(q.key, b);
+      items.push({ ...tag(q), key: q.key, face: b });
+    } else if (m.render) {
+      pending.push(tag(q));
+      if (!faceRendering.has(q.key)) {
+        faceRendering.add(q.key);
+        lanes[LATER].push({ type: "face_render", ...q });
+        schedulePump();
+      }
+    } else {
+      failed.push({ ...tag(q), missing: true });
+    }
+  }
+  post({ type: "faces", items, pending, failed });
+}
+
+// One render for a face nothing else had (`later`).
+function faceRender(q) {
+  faceRendering.delete(q.key);
+  let b = faceMem.get(q.key) || null;
+  if (!b) {
+    try {
+      b = faceNow(q, true);
+    } catch (err) {
+      post({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
+      throw err;
+    }
+    if (b) faceKeep(q.key, b);
+  }
+  const tag = q.id != null ? { id: q.id } : { ref: q.ref };
+  post(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
+}
+
+// After a render reaches main: its face, if main has not been sent it. The
+// buffer is posted first, so the keys never wait on a face.
+function faceAfterRender(id) {
+  try {
+    const key = engine.face_key(id);
+    if (!key || faceMem.has(key)) return;
+    const b = faceNow({ id });
+    if (!b) return;
+    faceKeep(key, b);
+    post({ type: "faces", items: [{ id, key, face: b }], pending: [], failed: [] });
+  } catch (_) { /* a face is a picture: its failure is not the render's */ }
+}
+
 // ---------- PERFORM's measurement, in pieces ----------
 //
 // Wiring the named controls is thirty-odd phrase renders (a Jacobian, then
@@ -1745,6 +1917,7 @@ function laneOf(m) {
     case "fit":
     case "cable_levels":
     case "guess":
+    case "face_render":
       return LATER;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
@@ -2036,6 +2209,7 @@ async function dispatch(m) {
         try {
           ns = mod.cache_namespace(engine.phrase_json()) || null;
         } catch (_) { /* older engine */ }
+        faceNs = ns;
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.
@@ -2292,6 +2466,12 @@ async function dispatch(m) {
     // pairs shown, not dealt: the check cadence and the repeat and exposure
     // penalties move here. A pair not dealt, or already counted, counts
     // nothing.
+    case "faces":
+      await faces(m);
+      break;
+    case "face_render":
+      faceRender(m);
+      break;
     case "duel_shown": {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
@@ -2332,6 +2512,7 @@ async function dispatch(m) {
         },
         [arr.buffer]
       );
+      faceAfterRender(m.id);
       break;
     }
     // The three vote routes answer with `recorded`: `false` when the engine

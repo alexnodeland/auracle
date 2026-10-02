@@ -52,7 +52,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, Audition, AuditionClip, CachedFeatures, ClipError, ClipSource, Features,
+    featurize_memo, Audition, AuditionClip, CachedFeatures, ClipError, ClipSource, Face, Features,
     FeaturizeError, PhraseSpec, RenderMemo, VetFailure,
 };
 use auracle_grammar::{
@@ -1147,6 +1147,77 @@ impl WasmEngine {
     /// rather than after they press ▶. Cheap and idempotent once resident.
     pub fn prefetch_render(&mut self, id: u32) -> bool {
         self.engine.render_of(id as u64).is_some()
+    }
+
+    // ------------------------------------------------------------------
+    // Faces (Plan-005 task 3; `auracle_features::face`)
+    // ------------------------------------------------------------------
+
+    /// The face of pool member `id` ([`auracle_features::Face`], its
+    /// [`auracle_features::FACE_LEN`] encoded bytes), or empty.
+    ///
+    /// From the featurization memo when the row there carries one (every
+    /// render since faces exist does), else from the audition if it is
+    /// resident. Only with `render` does it render the member (about half a
+    /// second): a row restored from a store written before faces existed.
+    /// A face is a picture of the render and never enters φ.
+    pub fn face_of(&mut self, id: u32, render: bool) -> Vec<u8> {
+        let Some(i) = self.engine.find(id as u64) else {
+            return Vec::new();
+        };
+        let key = self.engine.pool[i].key.clone();
+        if let Some(face) = self.engine.memo().get(&key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        let audio = match self.engine.pool[i].render.clone() {
+            Some(a) => Some(a),
+            None if render => self.engine.render_of(id as u64),
+            None => None,
+        };
+        audio
+            .map(|a| self.remember_face(&key, &a).bytes().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// `"<cache_namespace>/<render_key>"` of pool member `id` (as
+    /// [`farm_key`] names a tree's), the key a face is stored under; empty
+    /// for an id not in the pool.
+    pub fn face_key(&self, id: u32) -> String {
+        self.engine
+            .find(id as u64)
+            .map(|i| {
+                format!(
+                    "{}/{}",
+                    auracle_features::cache_namespace(&self.engine.cfg.phrase),
+                    self.engine.pool[i].key
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    /// The face of a tree (a preset, an offer, the patch on the bench), or
+    /// empty: from the memo (an offer, a PERFORM measurement or an edit has
+    /// featurized it), else, with `render`, by featurizing it. A tree that
+    /// does not vet has no face.
+    pub fn face_of_tree(&self, tree_json: &str, render: bool) -> Vec<u8> {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return Vec::new();
+        };
+        let spec = self.phrase();
+        let key = auracle_features::render_key(&tree, &spec);
+        if let Some(face) = self.engine.memo().get(&key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        if let Some(a) = self.engine.memo().get_audio(&key) {
+            return self.remember_face(&key, &a).bytes().to_vec();
+        }
+        if !render {
+            return Vec::new();
+        }
+        match featurize_memo(&tree, &spec, self.engine.memo(), false) {
+            Ok((cached, _)) => cached.face.map(|f| f.bytes().to_vec()).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
     }
 
     /// Featurization-memo counters as JSON
@@ -2787,6 +2858,17 @@ impl WasmEngine {
         self.engine.cfg.phrase.clone()
     }
 
+    /// The face of a stored audition, written back onto its memo row (when
+    /// the row is resident) so the next ask is a lookup.
+    fn remember_face(&self, key: &str, audio: &Audition) -> Face {
+        let face = Face::of_f32(&audio.samples, audio.sample_rate);
+        if let Some(mut row) = self.engine.memo().get(key) {
+            row.face = Some(face.clone());
+            self.engine.memo().put(row, None);
+        }
+        face
+    }
+
     /// Reconstitute a farm result. `None` is the "did not survive" answer that
     /// every absorb site treats as a vet failure.
     ///
@@ -4182,6 +4264,56 @@ mod tests {
             session_content(&farmed),
             "the farm boundary built a different session than the serial fill"
         );
+    }
+
+    /// A face is the picture of the audition the member plays from, taken
+    /// from the memo when its row has one and from a render when it has not
+    /// (a row stored before faces existed).
+    #[test]
+    fn a_members_face_is_its_stored_auditions_from_the_memo_or_a_render() {
+        let mut engine = WasmEngine::new(3, 8);
+        farm_fill(&mut engine, false);
+        let ids: Vec<u64> = engine.engine.pool.iter().map(|c| c.id).collect();
+        for &id in &ids {
+            // From the memo: the fill featurized it, and the face came with it.
+            let from_memo = engine.face_of(id as u32, false);
+            assert_eq!(from_memo.len(), auracle_features::FACE_LEN);
+            let stored = engine.engine.render_of(id).expect("renders");
+            let of_audition = Face::of_f32(&stored.samples, stored.sample_rate);
+            assert_eq!(
+                from_memo,
+                of_audition.bytes(),
+                "id {id}: the picture of the audition it plays"
+            );
+            assert!(engine
+                .face_key(id as u32)
+                .ends_with(&engine.engine.pool[engine.engine.find(id).unwrap()].key));
+        }
+        // A row without a face (stored before faces): none without a render,
+        // the same face with one.
+        let id = ids[0];
+        let i = engine.engine.find(id).unwrap();
+        let key = engine.engine.pool[i].key.clone();
+        let want = engine.face_of(id as u32, false);
+        let mut row = engine.engine.memo().get(&key).unwrap();
+        row.face = None;
+        engine.engine.memo().put(row, None);
+        engine.engine.pool[i].render = None;
+        let tree = serde_json::to_string(&engine.engine.pool[i].tree).unwrap();
+        if engine.engine.memo().get_audio(&key).is_none() {
+            assert!(
+                engine.face_of(id as u32, false).is_empty(),
+                "no face without a render"
+            );
+        }
+        assert_eq!(engine.face_of(id as u32, true), want);
+        assert_eq!(
+            engine.face_of_tree(&tree, false),
+            want,
+            "and the tree's face is the member's"
+        );
+        assert!(engine.face_of(9_999, true).is_empty());
+        assert!(engine.face_key(9_999).is_empty());
     }
 
     /// `render_of` hands WebAudio the audition at the level it is played at,

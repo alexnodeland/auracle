@@ -66,7 +66,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // the worklet will write a capture through (task 4). The `guess_*` four are
 // the model's guess (Plan-005 task 9d), and `edit_cable_levels` the cable
 // probe (9e). `held_sounds` and `readmit_held` are the sounds a restore held
-// back for an unreadable take (Plan-007 task 6).
+// back for an unreadable take (Plan-007 task 6). `face_of`, `face_key`,
+// `face_of_tree` and `preset_tree_json` are the faces the worker files and
+// posts (Plan-005 task 3).
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -80,12 +82,14 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "audition_clip", "set_audition_clip", "clear_audition_clip",
       "guess_plan", "guess_rank", "guess_skip", "guess_take", "edit_cable_levels",
       "held_sounds", "readmit_held",
+      "face_of", "face_key", "face_of_tree", "preset_tree_json",
     ];
     const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
     return {
       farm_walk: typeof mod.farm_walk,
       cache_namespace: typeof mod.cache_namespace,
       farm_render: typeof mod.farm_render,
+      farm_key: typeof mod.farm_key,
       missing: methods.filter((k) => typeof proto[k] !== "function"),
       liveMissing: live.filter((k) => typeof mod.LivePoly.prototype[k] !== "function"),
     };
@@ -93,6 +97,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
   expect(got.farm_walk).toBe("function");
   expect(got.cache_namespace).toBe("function");
   expect(got.farm_render).toBe("function");
+  expect(got.farm_key).toBe("function");
   expect(got.missing, "WasmEngine methods worker.js calls are missing").toEqual([]);
   expect(got.liveMissing, "LivePoly's input surface is missing").toEqual([]);
 });
