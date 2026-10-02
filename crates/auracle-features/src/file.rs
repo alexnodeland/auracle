@@ -65,6 +65,14 @@ pub const FILE_INPUT_MAX_SECONDS: f64 = 120.0;
 
 /// Fewest seconds of sound, after trimming, that can be measured: one
 /// loudness block (400 ms) plus room for its gate.
+///
+/// A shorter one-shot was measured and does not hold the mask. With a single
+/// G4 of 0.25 s added to [`recording_stimuli`], `zcr_mean` (rmse 0.55σ) and
+/// `bass_fraction` (0.62σ) miss [`SURVIVES_RMSE`]; at 0.5 s they still miss
+/// (0.54σ, 0.61σ), while the centroid, the rolloff and the flatness hold at
+/// both. One short note at one pitch says less about weight and brightness
+/// than a sound that moves, so the minimum stays here rather than measuring
+/// a one-shot on coordinates it cannot carry.
 pub const FILE_MIN_SECONDS: f64 = 0.5;
 
 /// Lowest sample rate accepted, Hz.
@@ -307,8 +315,12 @@ pub fn featurize_file(pcm: &[f32], sample_rate: f64) -> Result<FileFeatures, Fil
     if pcm.iter().any(|s| !s.is_finite()) {
         return Err(FileError::NonFinite);
     }
-    let x: Vec<f64> = pcm.iter().map(|&s| f64::from(s)).collect();
-    let (start, end) = sound_span(&x, sample_rate).ok_or(FileError::Silent)?;
+    // The input stays `f32` until it is cut to the sound: the envelope is
+    // read off the samples as they came, and only the span measured (at most
+    // `FILE_MAX_SECONDS`) is ever widened, by the resampler, at the phrase's
+    // rate. Widening the whole input first cost 8 bytes a sample of linear
+    // memory that wasm never gives back: 132 MB for two minutes at 96 kHz.
+    let (start, end) = sound_span(pcm, sample_rate).ok_or(FileError::Silent)?;
     let max_len = (FILE_MAX_SECONDS * sample_rate) as usize;
     let truncated = end - start > max_len;
     let end = end.min(start + max_len);
@@ -316,7 +328,7 @@ pub fn featurize_file(pcm: &[f32], sample_rate: f64) -> Result<FileFeatures, Fil
         return Err(FileError::TooShort);
     }
     let rate = PhraseSpec::default().sample_rate;
-    let mut samples = resample(&x[start..end], sample_rate, rate);
+    let mut samples = resample(&pcm[start..end], sample_rate, rate);
     let norm = normalize_to(&mut samples, rate, TARGET_LUFS).ok_or(FileError::Silent)?;
     let n = samples.len();
     let attack_end = ((attack_window_s() * rate) as usize).min(n);
@@ -344,11 +356,14 @@ pub fn featurize_file(pcm: &[f32], sample_rate: f64) -> Result<FileFeatures, Fil
 /// The span of `x` that holds its sound: from the first 10 ms window within
 /// [`TRIM_DB`] of the loudest to the end of the last. `None` for a buffer
 /// with nothing in it.
-fn sound_span(x: &[f64], sample_rate: f64) -> Option<(usize, usize)> {
+fn sound_span(x: &[f32], sample_rate: f64) -> Option<(usize, usize)> {
     let win = ((0.010 * sample_rate) as usize).max(1);
     let rms: Vec<f64> = x
         .chunks(win)
-        .map(|w| (w.iter().map(|s| s * s).sum::<f64>() / w.len() as f64).sqrt())
+        .map(|w| {
+            let e: f64 = w.iter().map(|&s| f64::from(s) * f64::from(s)).sum();
+            (e / w.len() as f64).sqrt()
+        })
         .collect();
     let peak = rms.iter().copied().fold(0.0, f64::max);
     // −150 dBFS: digital silence and dither-free fades, not a quiet sound.
@@ -370,9 +385,9 @@ const SINC_ZEROS: f64 = 16.0;
 /// samples unchanged, bit for bit (a render measured as a file is not
 /// touched). The cutoff is 0.97 of the lower Nyquist, so going down removes
 /// what the new rate cannot hold and going up adds nothing.
-pub fn resample(x: &[f64], from: f64, to: f64) -> Vec<f64> {
+pub fn resample<T: Copy + Into<f64>>(x: &[T], from: f64, to: f64) -> Vec<f64> {
     if from == to || x.is_empty() {
-        return x.to_vec();
+        return x.iter().map(|&v| v.into()).collect();
     }
     let ratio = from / to;
     let n_out = ((x.len() as f64) / ratio).floor() as usize;
@@ -414,7 +429,7 @@ pub fn resample(x: &[f64], from: f64, to: f64) -> Vec<f64> {
                 continue;
             }
             let h = table[j] + (g - j as f64) * (table[j + 1] - table[j]);
-            acc += x[k as usize] * h;
+            acc += x[k as usize].into() * h;
         }
         out.push(acc);
     }
