@@ -48,6 +48,12 @@ const init = `(() => {
     marks.push({
       index: d.index,
       child: d.child,
+      generation: d.generation,
+      // GENERATIONS as it reads now, and the generation the last status
+      // main.js was posted counted (a status predating the open generation
+      // counts it out).
+      gens: (document.getElementById("gen-count") || {}).textContent,
+      statusGen: state.status ? state.status.generation : null,
       retiring: d.retiring || [],
       breeding: !!document.querySelector("#evolve-btn.breeding"),
       rows: ids("[data-id]"),
@@ -414,6 +420,32 @@ test("Compare lists every change a long walk made, and the list scrolls", async 
   expect(fit.bottom).toBeLessThanOrEqual(fit.h);
   await page.locator("#compare-diff li").last().scrollIntoViewIfNeeded();
   await expect(page.locator("#compare-diff li").last()).toBeInViewport();
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("GENERATIONS counts a generation from its first child, with no pick since it opened", { tag: "@slow" }, async ({ page }) => {
+  // The guide says GENERATIONS counts a generation once its first child
+  // lands. With no status posted since the generation opened (no pick), it
+  // went on reading the count from before it, 0 with three children in New.
+  test.setTimeout(600_000);
+  const pageErrors = await taught(page);
+  await expect(page.locator("#gen-count")).toHaveText("0");
+  await page.locator("#evolve-btn").click();
+  await page.mouse.move(5, 5);
+  await expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.child > 0)), { timeout: 400_000 }).toBe(true);
+  const walks = await page.evaluate(() => window.__pwMarks.slice());
+  const first = walks.findIndex((s) => s.child > 0);
+  console.log(`walks: ${JSON.stringify(walks.map((s) => [s.index, s.child, s.breeding, s.gens, s.statusGen]))}`);
+  expect(walks[first].breeding, "the first child landed after the generation ended, so nothing was tested").toBe(true);
+  expect(walks[first].statusGen, "a status counting the generation came first, so nothing was tested").toBeLessThan(walks[first].generation);
+  // Read the moment each walk landed: nothing counted before its first
+  // child, and the generation counted from it on.
+  for (const s of walks.slice(0, first)) expect(s.gens, `after walk ${s.index}, no child yet`).toBe(String(s.generation - 1));
+  for (const s of walks.slice(first).filter((w) => w.breeding)) expect(s.gens, `after walk ${s.index}`).toBe(String(s.generation));
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
+  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
+  await expect(page.locator("#gen-count")).toHaveText(String(walks[first].generation));
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 

@@ -42,6 +42,10 @@ changelog that edits its own past is not a record.
   used to push the name to the right, and *may be replaced* followed the name
   and could cut it short. Every name in the bank starts a little further
   right to make that room.
+- **GENERATIONS counts a generation as soon as its first child lands**, as
+  the guide says. If you hadn't picked since pressing EVOLVE POOL, it kept
+  the count from before (0, with three children already in New) until the
+  generation ended.
 
 ### Fixed: Space and the settings on the rack
 

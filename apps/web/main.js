@@ -2739,13 +2739,15 @@ function renderPicks() {
 /** Generations that have bred. The engine counts a generation from the
  *  moment it opens, so any status posted while it breeds (a pick's) carries
  *  it already; GENERATIONS, the next-step chip and the EVOLUTION strip count
- *  it once a child of it has landed in the bank, or once it has finished. */
+ *  it once a child of it has landed in the bank, or once it has finished.
+ *  With no status since it opened, the last one predates it: a child landed
+ *  (`refine_child`, which carries no status) still counts it. */
 function gensBred() {
   const g = status.generation || 0;
   const open = breeding && breeding.generation;
-  if (!open || g < open) return g; // the status predates the open generation
+  if (!open) return g;
   const landed = bornGen === open && lastBorn.size > 0;
-  return landed ? open : open - 1;
+  return landed ? Math.max(g, open) : Math.min(g, open - 1);
 }
 function renderGenCount() {
   $("gen-count").textContent = gensBred();
