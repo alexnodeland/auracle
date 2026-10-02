@@ -91,6 +91,31 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      and plays both while both exist.
    - Replaced shows names only.
    - Each animation names its engine source (ADR-012).
+   - *Progress (2026-10-01):* built in today's bank, before the shell and
+     faces (tasks 2 and 3), so the bud and Compare draw names and phrases
+     where the specimen draws faces:
+     - the marks read `ratings.seeds` and `ratings.may_replace` at rest, and
+       the generation's own seeds and `retiring` while it runs;
+     - each walk's seed rides on `refine_child` (the job's `parent_id`, the
+       one worker addition), so a refused child fades beside its seed;
+     - the bank's rows keep a mark column left of the name, which NEW and the
+       unheard dot share.
+
+     Where the specimen and the engine differ, the engine was followed:
+     - seeds are the top `refine_seeds` (ten), not a quarter of the pool;
+     - a child is admitted against the weakest member it would displace with
+       what is already owed counted (the specimen's `floor[owed]` agrees);
+     - a duplicate or an unmoved walk breeds no child, so nothing fades for
+       it;
+     - the button says "joined the pool" where the specimen says "kept"
+       (the word table keeps "keep" for PERFORM's pad);
+     - the specimen pictures a child as its seed after a short walk, knobs
+       nudged and now and then a module swapped; the engine's 40-step walk
+       changed 26 sites in one child of a review run, so Compare lists every
+       change and its list scrolls;
+     - the specimen breeds one walk at a time; on the farm the last walks
+       are absorbed within milliseconds of each other, so their buds fly
+       together, as the generation's end is said.
 5. **PERFORM.**
    - The offer grows from the sound in hand, is filled when taken and folds
      back when passed. The heard rule is unchanged.
@@ -98,6 +123,27 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - The palette UI (place, hide, order, up to eight, persisted) is built over
      today's six controls. The rest arrive with task 9.
    - Stage mode (⇧F).
+   - *Done (2026-10-01), in today's PERFORM layout:* the palette's panel over
+     all eighteen (task 9c), placed, hidden and ordered, at most eight, saved
+     with the session as `perf.panel`. A measurement asks for the panel's
+     set in palette order, the page names each control back by its `index`,
+     and `wireKey` holds the set. A placed control is measured lazily and
+     says *listening…* while it is. How it works covers every placed control.
+     B grows from the sound's name, fills when taken and folds back when
+     passed (each motion names its engine source); the heard rule is
+     unchanged (an unheard take is allowed and records no pick). Stage mode
+     draws the output's spectrum for now: stage draws the face once task 3
+     lands (`stageDraw` in `perform.js` is the one function to swap, marked
+     `faces:`). Not done: the faces the prototype draws (the well, a face in
+     stage mode) wait for task 3, so the offer's motion anchors on the
+     sound's name; the palette's preview of
+     an unplaced control needs the unverified wiring exposed (the reference's
+     PERFORM page, "What is not done"); the prototype's well-and-panel layout
+     waits for the shell (task 2). Where the prototype and the engine
+     disagree, the engine's words stand: Body is "thin · full" (the
+     prototype says "thin · heavy"). Stage mode lights no note bands, unlike
+     the prototype: no note timings reach `perform.js`. ⇧F opens stage mode
+     in PERFORM only (ADR-009's note).
 6. **TASTE and LEARNING.**
    - A pick draws as an arrow from the sound passed to the sound kept, and
      every glow moves together.
@@ -124,9 +170,11 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      engine keeps none ([Measured (task 6)](#measured-task-6)).
 7. **PATCH.**
    - On touch, a tapped module opens a sheet with every setting.
-   - Cables carry light by signal. Measured levels wait for task 9.
+   - Cables carry light by signal. Measured levels at rest come from task
+     9(e)'s probe (`cable_levels`); the live meter covers sounding notes.
    - A new patch starts empty: remove a module with undo, clear it, skip a
-     suggestion. The suggestion itself is task 9.
+     guess. The guess itself is task 9(d), built; this task draws it and
+     raises a render crew for it.
 8. **Touch.**
    - A phone gets its own layout: a bottom bar, the bank and the palette as
      sheets, the keys as a drawer, swipe to keep.
@@ -143,9 +191,16 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      takes `controls`, the palette indices to wire; the page sends none yet,
      so it wires the six as before.
    - (d) The module suggestion: a design note first (Open 2). The note is
-     [`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md),
-     waiting on the maintainer's decision.
-   - (e) A cable-level probe.
+     [`docs/notes/suggest-2026-10/`](../notes/suggest-2026-10/README.md).
+     *Done (2026-10-01), engine and wasm side:* the model's guess, as the
+     maintainer decided it (`guess.rs` in `auracle-session`; the bindings
+     `guess_plan`, `guess_rank`, `guess_skip`, `guess_take`; the worker's
+     `guess` and `guess_skip`, with no crew yet)
+     ([Measured (task 9d)](#measured-task-9d)). The page draws nothing yet
+     (task 7).
+   - (e) A cable-level probe. *Done (2026-10-01):* `probe_cables` in
+     `auracle-features`, `edit_cable_levels` in wasm, the worker's
+     `cable_levels` ([Measured (task 9e)](#measured-task-9e)).
    - (f) Keeping a generation's replaced trees until the next one (Open 1).
      Done only if the maintainer decides to keep them.
 10. **Explain anything.** Each control gets a figure, and the first lesson
@@ -302,6 +357,48 @@ guide's figures (`www/landing/assets/screens`, `capture-screens.mjs`) and the
 films that show TASTE (view-taste, the tour, How Auracle learns) show the four
 tabs; and the bank's percentages follow `views.ranked`, the last refit's, while
 the map's cards follow every pick.
+
+## Measured (task 9d)
+
+`crates/auracle-session/examples/guess_cost.rs` (native) and `guess_cost.mjs`
+in `auracle-wasm` (the built package under node): the census's session (a pool
+of 40 from `shipped::boot`'s seed), each warm start (the three darkest or
+brightest of the nine), and for each patch the guess the worker makes with no
+crew (the first `GUESS_FLOOR`, 8) and then every candidate. CPU time, on an
+Apple M3 Max shared with other jobs (load 29 to 50):
+
+| Patch | Candidates | Renders, floor / all | Native CPU s, floor / all | wasm CPU s, floor / all |
+| --- | --- | --- | --- | --- |
+| Empty (Detune Dream or Sub & Sparkle, cleared) | 6 | 6 / 6 | 0.5 | 0.7 to 0.9 |
+| Five presets (Sub & Sparkle, Hornet, Tine, Detune Dream, Dub Echo) | 20 to 30 | 8 / 20 to 30 | 1.2 to 1.7 / 3.3 to 5.4 | 1.6 to 2.4 / 4.7 to 7.4 |
+| Deadfall, Ceiling | 30 | 8 / 30 | 3.0 to 3.4 / 11.0 to 12.3 | 3.3 to 4.2 / 12.0 to 14.5 |
+
+One render is a median 184 ms native and 251 ms in wasm; the plan and the
+ranking together cost 1 to 17 ms. The floor's first guess was all's first on
+all 18 native cases and 17 of 18 in wasm. What it guesses, and why (raw):
+
+- after the dark warm start, Hornet: *reverb at the output, it moves toward
+  still (−1.98σ), as your picks lean*, 67% · leaning; Sub & Sparkle: a filter,
+  toward dark (−1.06σ), 59% · leaning; Detune Dream: a mix, toward still
+  (−2.31σ), 72% · fairly sure.
+- after the bright warm start, the drive family leads on every preset (a
+  bitcrush on Hornet, 60%, "your picks lean toward more drive"); Dub Echo's
+  bitcrush and distortion both come out above zero at the lower bound; an
+  empty patch's first guess is noise, toward rough (+4.06σ), 73% · fairly sure.
+
+These reproduce the note's census lines exactly where they overlap. Found on
+the way: an empty patch's reasons named its kept amp envelope; the reason now
+measures from the average sound with the patch's own structure.
+
+## Measured (task 9e)
+
+`crates/auracle-features/examples/cable_probe.rs` over the 62 presets: a probed
+render took a median 0.99 times a plain one (162 against 165 ms of CPU), and
+all 62 rendered bit-identically with and without the probe.
+`crates/auracle-wasm/examples/cable_cost.mjs`: a median 160 to 206 ms per probe in
+wasm under node over two runs, against 183 to 238 ms for a render with φ. One render, so the probe
+runs once an edit settles, in the `later` lane, not per block; the live meter
+covers sounding notes.
 
 ## Done when
 

@@ -129,8 +129,14 @@ pub const QUIVER_DSP_VERSION: &str = "0.4.0";
 /// correctness and useful for operations: it makes a whole stimulus's rows a
 /// contiguous, droppable prefix instead of scattered keys that can only be
 /// evicted by trying them.
+///
+/// **The audition clip is not in it.** The farm's store is stamped with its
+/// namespace and cleared when the stamp changes, so a clip here would throw
+/// away every cached render each time the player captured one, though only
+/// the patches that listen measure differently. The clip is in those
+/// patches' [`render_key`]s instead, which every stored row's key carries.
 pub fn cache_namespace(spec: &PhraseSpec) -> String {
-    let spec_json = serde_json::to_string(spec).expect("PhraseSpec always serializes");
+    let spec_json = spec_key_json(spec);
     let h = fnv1a128(FNV_OFFSET_128, spec_json.as_bytes());
     format!("e{RENDER_EPOCH}:q{QUIVER_DSP_VERSION}:{h:032x}")
 }
@@ -142,13 +148,35 @@ pub fn cache_namespace(spec: &PhraseSpec) -> String {
 /// two engines with different phrases must never share an entry. A `0xff`
 /// separator (not a valid byte anywhere in either JSON) keeps the
 /// concatenation unambiguous.
+///
+/// # The audition clip
+///
+/// A patch that listens ([`PatchTree::listens`]) is measured with the
+/// stimulus's audition clip, so its address names the clip: after the spec, a
+/// `0xfe` separator and the clip's content id
+/// ([`AuditionClip::id`](crate::clip::AuditionClip::id), the reference's own
+/// when the spec has none). Two clips therefore never share a row. The clip's
+/// samples are never hashed here (its id already is a hash of them), and a
+/// patch that does not listen keys exactly as it did before clips existed,
+/// whatever clip the session holds, because its render does not depend on
+/// one.
 pub fn render_key(tree: &PatchTree, spec: &PhraseSpec) -> String {
     let tree_json = canonical_tree_json(tree);
-    let spec_json = serde_json::to_string(spec).expect("PhraseSpec always serializes");
+    let spec_json = spec_key_json(spec);
     let mut h = fnv1a128(FNV_OFFSET_128, tree_json.as_bytes());
     h = fnv1a128(h, &[0xff]);
     h = fnv1a128(h, spec_json.as_bytes());
+    if tree.listens() {
+        h = fnv1a128(h, &[0xfe]);
+        h = fnv1a128(h, spec.audition_clip().id().as_bytes());
+    }
     format!("{h:032x}")
+}
+
+/// The bytes a key hashes for a stimulus: the spec without its clip, which
+/// is the spec as it was serialized before clips existed.
+fn spec_key_json(spec: &PhraseSpec) -> String {
+    serde_json::to_string(&spec.without_clip()).expect("PhraseSpec always serializes")
 }
 
 /// Everything [`featurize`] produces except the samples — the persistable
@@ -542,6 +570,54 @@ mod tests {
             again.features.phi(),
             featurize(&t, &spec).unwrap().features.phi()
         );
+    }
+
+    /// **Two clips never share a row.** A patch that listens keys by its
+    /// clip (the reference's when the spec has none); a patch that does not
+    /// keys the same under any clip, exactly as before clips existed; and the
+    /// namespace, which stamps the farm's whole store, never sees the clip.
+    #[test]
+    fn the_clip_is_in_a_listening_key_and_nowhere_else() {
+        use crate::clip::AuditionClip;
+        use auracle_grammar::term::InputChannel;
+        let spec = PhraseSpec::default();
+        let clip = |hz: f64| {
+            let x: Vec<f32> = (0..4410)
+                .map(|i| (0.3 * (i as f64 * hz / 44_100.0 * std::f64::consts::TAU).sin()) as f32)
+                .collect();
+            AuditionClip::from_interleaved(&x, 1, 44_100.0, &spec).unwrap()
+        };
+        let with = |c: AuditionClip| PhraseSpec {
+            clip: Some(c),
+            ..spec.clone()
+        };
+        let (a, b) = (with(clip(220.0)), with(clip(330.0)));
+        let mut listens = tree(0.5);
+        listens.root = AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: 0,
+            gain: 0.5,
+            channel: InputChannel::Both,
+        };
+        let keys = [
+            render_key(&listens, &spec),
+            render_key(&listens, &a),
+            render_key(&listens, &b),
+        ];
+        assert!(
+            keys[0] != keys[1] && keys[1] != keys[2] && keys[0] != keys[2],
+            "a listening patch shared a key across clips: {keys:?}"
+        );
+        assert_eq!(render_key(&listens, &with(clip(220.0))), keys[1]);
+        let plain = tree(0.5);
+        assert_eq!(render_key(&plain, &spec), render_key(&plain, &a));
+        assert_eq!(render_key(&plain, &a), render_key(&plain, &b));
+        assert_eq!(cache_namespace(&spec), cache_namespace(&a));
+        assert_eq!(cache_namespace(&a), cache_namespace(&b));
+        // A spec with no clip serializes, and so keys, as it always did.
+        let json = serde_json::to_string(&spec).unwrap();
+        assert!(!json.contains("clip"));
+        assert_eq!(spec_key_json(&spec), json);
     }
 
     /// The version folded into the namespace is the version actually built.

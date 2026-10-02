@@ -19,6 +19,7 @@
 # Audition
 
 - [The standard phrase](./audition/phrase.md)
+- [Audition clips](./audition/clips.md)
 - [Loudness normalization](./audition/loudness.md)
 - [The vetting gate](./audition/vetting.md)
 
@@ -42,6 +43,7 @@
 - [Locks as conditional refinement](./search/locks.md)
 - [Refinement](./search/refinement.md)
 - [Performance controls](./search/perform.md)
+- [The model's guess](./search/guess.md)
 - [Acquisition](./search/acquisition.md)
 
 # Systems

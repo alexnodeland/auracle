@@ -135,15 +135,16 @@ why a plain hit rate would have flattered it.
 3. Play the new sounds as they land at the top of the bank.
 
 The model takes the ten sounds it rates highest and walks a short way from
-each, toward what it has learned. **EVOLVE POOL** becomes its own progress
-bar (**BREEDING 3/10**), with **STOP** beside it, and the job slot in the menu
-bar says the same in every view. A generation takes from under a minute to a
-few, depending on the machine, and the instrument keeps answering while it
-breeds.
+each, toward what it has learned. Hover **EVOLVE POOL** before you press it,
+and the bank marks those ten **SEED**. **EVOLVE POOL** becomes its own
+progress bar, saying each walk as it comes back (**WALK 3 OF 10** *joined the
+pool*), with **STOP** beside it, and the job slot in the menu bar counts the
+walks in every view. A generation takes from under a minute to a few,
+depending on the machine, and the instrument keeps answering while it breeds.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
-GEN 1**, tagged **NEW**. The **EVOLUTION** strip under the cards says what each
-step changed:
+GENERATION 1**, tagged **NEW**, with the seed it grew from under its name. The
+**EVOLUTION** strip under the cards says what each step changed:
 
 ```text
 gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,

@@ -30,7 +30,9 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   ([ADR-004](../../docs/decisions/004-descriptions-stay-true.md)). Numbers,
   patch names and percentages on screen come from the seeded session:
   re-check them after any engine change, or keep the narration from quoting
-  them.
+  them. The `gen_index` fix (a seed now deals the same pool in wasm as
+  natively) changed what every browser seed deals, so a patch name read off a
+  seeded session before it needs reading again.
 - **The spoken voice is [`www/brand/voice.md`](../brand/voice.md)'s**
   ([ADR-013](../../docs/decisions/013-one-voice.md)):
   - the narrator beside you, never a presenter;

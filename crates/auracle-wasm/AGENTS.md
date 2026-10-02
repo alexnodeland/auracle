@@ -14,13 +14,15 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/score.rs` | Renders a film score (`www/video/sound/*.json`) with the engine's own voices |
 | `examples/pick_belief.rs` | Measures what each pick's reply costs: the reweight, `belief`, and what a refit posts (ranked list, map, lenses), per number of lenses, at rest and with a generation open (`breed`) |
 | `examples/pick_belief.mjs` | The same loop against the built package under node, for the wasm figures (`make wasm` first) |
+| `examples/guess_cost.mjs` | What the model's guess costs in wasm under node: the bindings the worker calls (`guess_plan`, `memo_render`, `guess_rank`) after both warm starts, at the floor and in full (`make wasm` first); native twin `auracle-session`'s `guess_cost` |
+| `examples/cable_cost.mjs` | What the cable probe (`edit_cable_levels`) costs in wasm under node on every preset, beside a render with φ (`make wasm` first); native twin `auracle-features`'s `cable_probe` |
 | `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
 | `examples/selector_makeup.rs` | Measures the level a selector change (a wave, a filter mode) would play at if its tree reached the voices before its render, against what cheaper renders would estimate, over every preset's selector changes: why selectors wait for theirs |
 | `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
 | `examples/palette_census.rs` | The palette's eighteen directions (Plan-005 task 9c): their definitions and cosines, how often each reaches the presets alone and beside the six, and what measuring eighteen costs against six, on the shipped engine; `--prototype` adds the prototype's blends |
 | `examples/palette_cost.mjs` | The same measurement's cost in wasm under node, six against eighteen (`make wasm` first) |
-| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on, with the session engine inside it (`session`) for the measurement examples. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only) |
+| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on, with the session engine inside it (`session`) for the measurement examples. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only). Its `boot_probe` is also in the page's wasm (about 18 KB raw, 5 KB brotli): a test-only export that `tests/web/boot_agrees.spec.js` runs to compare the browser's pool with `tests/boot_probe.json` |
 
 ## Rules
 
@@ -49,6 +51,9 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
   start on its line.
 - **Every new binding needs its caller.** Add the method, call it from
   `worker.js`, and let `tests/web/smoke.spec.js` prove the binary exports it.
+  The one exception is `shipped::boot_probe`, a test-only export whose only
+  caller is `tests/web/boot_agrees.spec.js`; it costs the page about 18 KB raw.
+  Do not add another without the same reason.
 
 ## Tests
 

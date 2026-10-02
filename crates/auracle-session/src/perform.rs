@@ -710,8 +710,16 @@ pub fn graft_for(tree: &PatchTree, k: usize) -> Option<PatchTree> {
     }
     let node = insert_for(k)?;
     let same = |n: &AudioNode| std::mem::discriminant(n) == std::mem::discriminant(&node);
+    // Only what is heard counts as already having an EQ: a CAPTURE's `/0` is
+    // only what it records, and a TRACK's `/1` only what it follows, so an EQ
+    // there turns nothing the player hears.
     fn any(n: &AudioNode, f: &dyn Fn(&AudioNode) -> bool) -> bool {
-        f(n) || n.children().into_iter().any(|c| any(c, f))
+        let heard: Vec<&AudioNode> = match n {
+            AudioNode::Capture { .. } => Vec::new(),
+            AudioNode::Track { input, .. } => vec![input],
+            _ => n.children(),
+        };
+        f(n) || heard.into_iter().any(|c| any(c, f))
     }
     if any(&tree.root, &same) {
         return None;
@@ -1837,6 +1845,68 @@ mod tests {
         assert_eq!(long.root, short.root, "Space changes the release only");
         assert!(graft_for(&long, space).is_none(), "already long enough");
         assert!(insert_for(space).is_none() && graft_for(&short, 4).is_none());
+    }
+
+    /// An EQ nobody hears is not an EQ to turn: one inside what a CAPTURE
+    /// records, or inside what a TRACK follows, does not stop Bright grafting
+    /// one onto the output. One that is heard still does.
+    #[test]
+    fn an_unheard_eq_does_not_stop_the_graft() {
+        use auracle_grammar::term::{CaptureMode, InputChannel, PitchBand};
+        use auracle_grammar::{Take, INPUT_GAIN_UNITY, TRACK_SENSITIVITY_DEFAULT};
+        let bright = CONTROLS.iter().position(|c| c.name == "Bright").unwrap();
+        let eq_over_input = || AudioNode::Eq {
+            uid: Uid::NEW,
+            low: 0.5,
+            mid: 0.5,
+            high: 0.5,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+            input: Box::new(AudioNode::AudioIn {
+                uid: Uid::NEW,
+                input: 0,
+                gain: INPUT_GAIN_UNITY,
+                channel: InputChannel::Both,
+            }),
+        };
+        let base = preset_bank()[0].tree.clone();
+        let take = Take::from_samples(&[0.1, 0.2, 0.3], 44_100.0).unwrap();
+        let unheard = [
+            AudioNode::Capture {
+                uid: Uid::NEW,
+                play: CaptureMode::Once,
+                input: Box::new(eq_over_input()),
+                take,
+            },
+            AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.5,
+                input: Box::new(base.root.clone()),
+                listen: Box::new(eq_over_input()),
+            },
+        ];
+        for root in unheard {
+            let tree = PatchTree {
+                amp: base.amp.clone(),
+                root,
+            };
+            let grafted = graft_for(&tree, bright).expect("an unheard EQ blocked the graft");
+            assert!(
+                matches!(grafted.root, AudioNode::Eq { .. }),
+                "{}",
+                grafted.to_sexpr()
+            );
+        }
+        let heard = PatchTree {
+            amp: base.amp.clone(),
+            root: eq_over_input(),
+        };
+        assert!(
+            graft_for(&heard, bright).is_none(),
+            "a heard EQ is grafted twice"
+        );
     }
 
     #[test]

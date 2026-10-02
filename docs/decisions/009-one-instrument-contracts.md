@@ -16,6 +16,10 @@ Accepted. [ADR-016](016-space-plays-everywhere.md) supersedes one point:
 Space plays the sound you're playing in every view, and is not a PERFORM pad
 key.
 
+*Note (2026-10-02):* ⇧F in PERFORM opens stage mode, replacing F's accent
+there (Shift with a note key plays it harder); in every other view ⇧F is
+still the accented F. ADR-016 is unaffected.
+
 ## Context
 
 The interaction review (`docs/notes/interaction-2026-09/`) found that a

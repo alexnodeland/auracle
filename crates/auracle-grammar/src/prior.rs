@@ -8,7 +8,7 @@
 //! |---|---|---|
 //! | source-vs-processor | `<p>#leaf` | `Bernoulli(source_prob)` (forced at max depth) |
 //! | source kind | `<p>#src` | `Categorical(source_weights)` |
-//! | processor kind | `<p>#op` | `Categorical(op_weights)` |
+//! | processor kind | `<p>#op` | `Categorical(op_weights)`, plus the two player kinds ([`OpKind`]) |
 //! | modulation kind | `<p>/m#mod` | `Categorical(mod_weights)` (leaves only at max mod depth; never empty below a processor) |
 //! | CV-processor kind | `<p>/m#modop` | uniform over [`ModOp::ALL`] |
 //! | CV-combiner kind | `<p>/m#pairop` | uniform over [`PairOp::ALL`] |
@@ -43,21 +43,40 @@ use fugue_evo::inference::prior::GenomePrior;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::rng::gen_index;
+use crate::take::Take;
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Uid, Waveform,
+    AmpEnv, AudioNode, CaptureMode, DriveMode, FilterKind, InputChannel, ModNode, ModOp,
+    NoiseColor, PairOp, PatchTree, PitchBand, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 /// Source-kind categorical order: Vco, Supersaw, Noise, Wavetable, Pluck,
-/// Formant.
+/// Formant, Silence, AudioIn.
 ///
 /// These three counts are the **persisted wire format** — [`crate::genome`]
 /// writes the chosen index into the trace — so the orders are append-only.
-pub const N_SOURCES: usize = 7;
+pub const N_SOURCES: usize = 8;
 /// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus,
 /// Reverb, Distortion, Bitcrush, Phaser, RingMod, Flanger, Tremolo, Vibrato,
 /// Eq, Granular, Shift, Comp, Duck, Gate, Vocoder.
+///
+/// The kinds the prior **draws**, and the length of
+/// [`PatchGrammarPrior::op_weights`]. The `#op` categorical itself is
+/// [`N_OP_KINDS`] wide: the two player kinds follow these twenty.
 pub const N_OPS: usize = 20;
+/// `#op` index of [`AudioNode::Track`], the first player kind.
+pub const OP_TRACK: usize = N_OPS;
+/// `#op` index of [`AudioNode::Capture`], the second player kind.
+pub const OP_CAPTURE: usize = N_OPS + 1;
+/// How many player kinds follow the drawn ones at `#op`.
+pub const N_PLAYER_OPS: usize = 2;
+/// The `#op` categorical's arity: the twenty drawn kinds, then the player
+/// kinds. Append-only, like every categorical whose index a trace stores.
+pub const N_OP_KINDS: usize = N_OPS + N_PLAYER_OPS;
+/// The probability the scorer gives a player kind at `#op` (see [`OpKind`]):
+/// Silence's and AUDIO IN's source weight, the grammar's other two kinds a
+/// player puts in place.
+pub const PLAYER_OP_MASS: f64 = 0.005;
 /// Modulation-kind categorical order: None, Lfo, Env, Rand, Follow, Euclid,
 /// Op, Pair, Steps.
 ///
@@ -77,6 +96,10 @@ const MOD_OP: usize = 6;
 const MOD_PAIR: usize = 7;
 /// `#mod` index of [`ModNode::Steps`], the step-sequencer leaf.
 const MOD_STEPS: usize = 8;
+
+/// The continuous trace sites of an [`AudioNode::Track`], after its `#band`,
+/// in draw (and encode) order: sensitivity, dynamics.
+pub const TRACK_SITES: &[&str] = &["tsens", "tdyn"];
 
 /// The trace sites of a [`ModNode::Steps`], in draw (and encode) order: rate,
 /// length, glide, then the eight latent step values.
@@ -110,6 +133,7 @@ pub const SOURCE_LABELS: [&str; N_SOURCES] = [
     "pluck",
     "formant",
     "silence",
+    "audio in",
 ];
 
 /// Display labels for the `#op` categorical, in index order; sized by
@@ -136,6 +160,18 @@ pub const OP_LABELS: [&str; N_OPS] = [
     "gate",
     "vocoder",
 ];
+
+/// Display labels for the player kinds at `#op`, in index order after
+/// [`OP_LABELS`]; sized by [`N_PLAYER_OPS`].
+pub const PLAYER_OP_LABELS: [&str; N_PLAYER_OPS] = ["track", "capture"];
+
+/// The display label of any `#op` index: a drawn kind or a player kind.
+pub fn op_label(i: usize) -> Option<&'static str> {
+    OP_LABELS
+        .get(i)
+        .or_else(|| PLAYER_OP_LABELS.get(i.wrapping_sub(N_OPS)))
+        .copied()
+}
 
 /// Display labels for the `#mod` categorical, in index order; sized by
 /// [`N_MODS`].
@@ -178,7 +214,7 @@ pub struct PatchGrammarPrior {
     /// wrap at most two processors before it bottoms out in a leaf.
     pub max_mod_depth: usize,
     /// Weights over source kinds
-    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence]`.
+    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, AudioIn]`.
     pub source_weights: [f64; N_SOURCES],
     /// Weights over processor kinds
     /// `[Mix, Filter, Fold, Delay, Chorus, Reverb, Distortion, Bitcrush,
@@ -220,7 +256,16 @@ impl Default for PatchGrammarPrior {
             // player's edits, not by this number, which is unusual among kinds
             // and is the reason a rate this small is not a reason to leave it
             // out of φ.
-            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005],
+            //
+            // `AudioIn` is last, and **off**: [`AUDIO_IN_WEIGHT`] is 0 until
+            // the app can capture a live input (Plan-007 task 4). Until then a
+            // drawn listener would be heard through the reference clip in a
+            // duel or the bank and as silence from the keys and PERFORM, on a
+            // plate the player cannot use. At 0 the source table is exactly
+            // the one it was before the term existed, so every pool a seed
+            // deals is unchanged. [`PatchGrammarPrior::with_audio_in`] is the
+            // prior it is turned on to.
+            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005, AUDIO_IN_WEIGHT],
             // Filter carries subtractive identity and stays dominant — half
             // again the next-largest weight, and three to sixteen times any
             // of the colour and movement modules. Mix keeps branching alive;
@@ -306,6 +351,138 @@ impl Default for PatchGrammarPrior {
     }
 }
 
+/// AUDIO IN's source weight in the shipped prior: **0 until live capture
+/// works** (Plan-007 task 4).
+///
+/// Before the app can capture an input, a listener in the pool is a sound the
+/// player hears two ways: through the reference clip in a duel or a bank
+/// render, and as silence from the keys and PERFORM, which have no input to
+/// read. So the prior draws none. The term is otherwise whole (it compiles,
+/// renders with the audition clip, scores, and walks keep its input), and
+/// [`PatchGrammarPrior::with_audio_in`] is the prior with it on.
+///
+/// Turning it on is setting this to [`AUDIO_IN_ENABLED_WEIGHT`] when task 4
+/// lands. That setting is the one the paired `make revalidate` in Plan-007
+/// measured, so if nothing else has changed, it does not owe a new run. It
+/// does move what a seed deals, so it owes `make perform-wirings` and a
+/// re-pinned boot probe (`crates/auracle-wasm/tests/boot_agrees.rs`).
+///
+/// At 0 the grammar gives a tree containing an AUDIO IN `log p = −∞`, which
+/// is Silence's argument for never using 0: such a patch cannot be walked.
+/// That is safe only while nothing can put one in a session, and nothing in
+/// the app can yet (the node has no palette entry).
+pub const AUDIO_IN_WEIGHT: f64 = 0.0;
+
+/// AUDIO IN's weight once it is on: Silence's 0.5%, so a drawn tree reads an
+/// input about one time in a hundred. The input is the player's: a node that
+/// reads it arrives because a player patched one in, and the prior's job is
+/// to keep such a patch scoreable and breedable, not to fill the pool with
+/// inputs. Like Silence it is not tilted by taste (`Engine::biased_prior`).
+pub const AUDIO_IN_ENABLED_WEIGHT: f64 = 0.005;
+
+impl PatchGrammarPrior {
+    /// This prior with AUDIO IN drawn at [`AUDIO_IN_ENABLED_WEIGHT`]: what the
+    /// default becomes once live capture works, and what tests use to reach
+    /// the term through the prior today.
+    pub fn with_audio_in(mut self) -> Self {
+        self.source_weights[N_SOURCES - 1] = AUDIO_IN_ENABLED_WEIGHT;
+        self
+    }
+}
+
+/// The distribution of an AUDIO IN's `#input` site: which of the player's
+/// inputs the node reads.
+///
+/// Not a choice the grammar makes. The input belongs to the player
+/// ([ADR-015](../../../docs/decisions/015-audio-in.md)), so this has two jobs
+/// that no stock distribution does together:
+///
+/// - **A drawn node reads the first input.** `sample` always returns slot 0,
+///   so neither a fill nor a node born during a walk ever picks a device.
+/// - **Every slot carries the same mass.** `log_prob` is `0` on every slot in
+///   `0..INPUT_SLOTS` (and `−∞` outside), so a player's choice of input 3
+///   scores exactly as input 0 does: no slot is favoured, no hand-set input
+///   puts a patch outside the prior's support, and removing a node reading
+///   slot 3 is no cheaper than removing one reading slot 0.
+///
+/// It is unnormalized (each slot has mass 1), which is harmless: a constant
+/// cancels from every ratio the walks and the scoring take. The mismatch
+/// between what `sample` draws and what `log_prob` scores matters only to a
+/// proposal *on* this site, and a walk never accepts one: it locks every
+/// `#input` its seed holds (`auracle_session`'s `walk_on`).
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerInput;
+
+impl fugue::Distribution<usize> for PlayerInput {
+    fn sample(&self, _rng: &mut dyn rand::RngCore) -> usize {
+        0
+    }
+
+    fn log_prob(&self, x: &usize) -> f64 {
+        if *x < INPUT_SLOTS {
+            0.0
+        } else {
+            f64::NEG_INFINITY
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
+        Box::new(*self)
+    }
+}
+
+/// The distribution of an `#op` site: the drawn kinds by
+/// [`PatchGrammarPrior::op_weights`], and the two **player kinds**, TRACK and
+/// CAPTURE, which the prior never draws and always scores.
+///
+/// Like [`PlayerInput`], two jobs no stock distribution does together:
+///
+/// - **`sample` is today's draw, bit for bit.** It delegates to the
+///   categorical over the twenty drawn kinds, built exactly as before the
+///   player kinds existed, so it reads the stream the same way and returns
+///   the same index: every prior draw, and so every pool and every random
+///   tree statistic, is unchanged, and no draw holds a player kind.
+/// - **`log_prob` keeps a player's patch in support.** A drawn kind scores
+///   what it always scored. A player kind scores `ln(`[`PLAYER_OP_MASS`]`)`,
+///   finite: at weight zero a patch holding a TRACK would score `−∞`, and a
+///   walk refuses to start from one (`EvolutionChain::init_from` is `None`),
+///   so a player's tracked or captured sound could never be evolved.
+///
+/// The extra mass makes the scorer unnormalized, which is harmless: a walk
+/// holds every player kind's `#op` (`PatchTree::player_sites`), so that term
+/// is the same constant in every ratio the walk takes, and it cancels.
+#[derive(Clone)]
+pub struct OpKind {
+    drawn: Categorical,
+}
+
+impl OpKind {
+    /// The `#op` distribution for these drawn-kind weights.
+    pub fn new(op_weights: &[f64; N_OPS]) -> Self {
+        Self {
+            drawn: weighted_cat(op_weights),
+        }
+    }
+}
+
+impl fugue::Distribution<usize> for OpKind {
+    fn sample(&self, rng: &mut dyn rand::RngCore) -> usize {
+        fugue::Distribution::sample(&self.drawn, rng)
+    }
+
+    fn log_prob(&self, x: &usize) -> f64 {
+        match *x {
+            i if i < N_OPS => fugue::Distribution::log_prob(&self.drawn, &i),
+            i if i < N_OP_KINDS => PLAYER_OP_MASS.ln(),
+            _ => f64::NEG_INFINITY,
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
+        Box::new(self.clone())
+    }
+}
+
 fn child_key(key: &str, i: usize) -> String {
     format!("{key}/{i}")
 }
@@ -349,7 +526,7 @@ fn u01_seq(key: String, sites: &'static [&'static str]) -> Model<Vec<f64>> {
 impl PatchGrammarPrior {
     fn source_model(&self, key: String) -> Model<AudioNode> {
         let weights = self.source_weights;
-        // Five of the six sources own a modulation slot, so the source model
+        // Five of the eight sources own a modulation slot, so the source model
         // needs the grammar config the processor model already carried.
         let cfg = self.clone();
         sample(addr!(key.clone(), "src"), weighted_cat(&weights)).bind(move |src| match src {
@@ -468,12 +645,32 @@ impl PatchGrammarPrior {
                     })
                 })
             }
-            // Index 6. A catch-all rather than `6 =>` because the match is on
+            // Index 6. It samples no sites at all, which is what makes a hole
+            // the cheapest leaf in the grammar.
+            6 => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
+            // Index 7. A catch-all rather than `7 =>` because the match is on
             // a `usize` and needs one; `weighted_cat` cannot return anything
-            // above `N_SOURCES - 1`, so this arm is reached for 6 and nothing
-            // else. It samples no sites at all, which is what makes a hole the
-            // cheapest leaf in the grammar.
-            _ => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
+            // above `N_SOURCES - 1`, so this arm is reached for 7 and nothing
+            // else. `#input` is drawn from `PlayerInput`, which never picks a
+            // device: a node the grammar draws reads the first input.
+            _ => {
+                let k = key.clone();
+                sample(addr!(k.clone(), "input"), PlayerInput).bind(move |input| {
+                    let k2 = k.clone();
+                    sample(addr!(k2.clone(), "gain"), u01()).bind(move |gain| {
+                        sample(
+                            addr!(k2.clone(), "channel"),
+                            uniform_cat(InputChannel::ALL.len()),
+                        )
+                        .map(move |c| AudioNode::AudioIn {
+                            uid: Uid::NEW,
+                            input: input as u8,
+                            gain,
+                            channel: InputChannel::from_index(c),
+                        })
+                    })
+                })
+            }
         })
     }
 
@@ -626,7 +823,7 @@ impl PatchGrammarPrior {
             } else {
                 let cfg2 = cfg.clone();
                 let key2 = key.clone();
-                sample(addr!(key.clone(), "op"), weighted_cat(&cfg.op_weights))
+                sample(addr!(key.clone(), "op"), OpKind::new(&cfg.op_weights))
                     .bind(move |op| cfg2.op_model(key2.clone(), op, depth))
             }
         })
@@ -1064,6 +1261,45 @@ impl PatchGrammarPrior {
                     modulation: m,
                 },
             ),
+            // The player kinds. `OpKind` never samples them, so these two arms
+            // run only when a trace that holds one is scored or replayed (a
+            // walk over a player's patch). Draw order is the codec's.
+            OP_TRACK => {
+                let (ka, kb) = (child_key(&key, 0), child_key(&key, 1));
+                let (cfg_a, cfg_b) = (cfg.clone(), cfg.clone());
+                sample(
+                    addr!(key.clone(), "band"),
+                    uniform_cat(PitchBand::ALL.len()),
+                )
+                .bind(move |band| {
+                    u01_seq(key.clone(), TRACK_SITES).bind(move |p| {
+                        cfg_a.audio_model(ka, depth + 1).bind(move |input| {
+                            cfg_b
+                                .audio_model(kb, depth + 1)
+                                .map(move |listen| AudioNode::Track {
+                                    uid: Uid::NEW,
+                                    band: PitchBand::from_index(band),
+                                    sensitivity: p[0],
+                                    dynamics: p[1],
+                                    input: Box::new(input.clone()),
+                                    listen: Box::new(listen),
+                                })
+                        })
+                    })
+                })
+            }
+            OP_CAPTURE => {
+                let k0 = child_key(&key, 0);
+                sample(addr!(key, "play"), uniform_cat(CaptureMode::ALL.len())).bind(move |play| {
+                    cfg.audio_model(k0.clone(), depth + 1)
+                        .map(move |input| AudioNode::Capture {
+                            uid: Uid::NEW,
+                            play: CaptureMode::from_index(play),
+                            input: Box::new(input),
+                            take: Take::empty(),
+                        })
+                })
+            }
             _ => self.binary_mod_op(
                 key,
                 &["bands", "vatt", "vrel", "mdepth"],
@@ -1101,15 +1337,15 @@ impl PatchGrammarPrior {
             match weighted_choice(rng, &self.source_weights) {
                 0 => AudioNode::Vco {
                     uid: Uid::NEW,
-                    wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
-                    octave: rng.gen_range(0..5) as i8 - 2,
+                    wave: Waveform::from_index(gen_index(rng, Waveform::ALL.len())),
+                    octave: rng.gen_range(0i32..5) as i8 - 2,
                     detune: rng.gen(),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 1 => AudioNode::Supersaw {
                     uid: Uid::NEW,
-                    octave: rng.gen_range(0..5) as i8 - 2,
+                    octave: rng.gen_range(0i32..5) as i8 - 2,
                     detune: rng.gen(),
                     mix: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1117,19 +1353,19 @@ impl PatchGrammarPrior {
                 },
                 2 => AudioNode::Noise {
                     uid: Uid::NEW,
-                    color: NoiseColor::from_index(rng.gen_range(0..NoiseColor::ALL.len())),
+                    color: NoiseColor::from_index(gen_index(rng, NoiseColor::ALL.len())),
                 },
                 3 => AudioNode::Wavetable {
                     uid: Uid::NEW,
-                    table: TableShape::from_index(rng.gen_range(0..TableShape::ALL.len())),
-                    octave: rng.gen_range(0..5) as i8 - 2,
+                    table: TableShape::from_index(gen_index(rng, TableShape::ALL.len())),
+                    octave: rng.gen_range(0i32..5) as i8 - 2,
                     morph: rng.gen(),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 4 => AudioNode::Pluck {
                     uid: Uid::NEW,
-                    octave: rng.gen_range(0..5) as i8 - 2,
+                    octave: rng.gen_range(0i32..5) as i8 - 2,
                     damping: rng.gen(),
                     brightness: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1139,7 +1375,7 @@ impl PatchGrammarPrior {
                     uid: Uid::NEW,
                     vowel: rng.gen(),
                     shift: rng.gen(),
-                    octave: rng.gen_range(0..5) as i8 - 2,
+                    octave: rng.gen_range(0i32..5) as i8 - 2,
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
@@ -1151,7 +1387,15 @@ impl PatchGrammarPrior {
                 // two samplers are documented as agreeing, and
                 // `the_two_samplers_agree_on_kind_frequencies` now holds them
                 // to it.
-                _ => AudioNode::Silence { uid: Uid::NEW },
+                6 => AudioNode::Silence { uid: Uid::NEW },
+                // Index 7, and only 7. No draw for `input`: the prior never
+                // chooses a device ([`PlayerInput`]), so neither does this.
+                _ => AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: rng.gen(),
+                    channel: InputChannel::from_index(gen_index(rng, InputChannel::ALL.len())),
+                },
             }
         } else {
             match weighted_choice(rng, &self.op_weights) {
@@ -1163,7 +1407,7 @@ impl PatchGrammarPrior {
                 },
                 1 => AudioNode::Filter {
                     uid: Uid::NEW,
-                    kind: FilterKind::from_index(rng.gen_range(0..FilterKind::ALL.len())),
+                    kind: FilterKind::from_index(gen_index(rng, FilterKind::ALL.len())),
                     cutoff: rng.gen(),
                     resonance: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1208,7 +1452,7 @@ impl PatchGrammarPrior {
                     uid: Uid::NEW,
                     drive: rng.gen(),
                     tone: rng.gen(),
-                    mode: DriveMode::from_index(rng.gen_range(0..DriveMode::ALL.len())),
+                    mode: DriveMode::from_index(gen_index(rng, DriveMode::ALL.len())),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                     input: Box::new(self.sample_audio(rng, depth + 1)),
@@ -1344,7 +1588,7 @@ impl PatchGrammarPrior {
             0 => ModNode::None,
             1 => ModNode::Lfo {
                 uid: Uid::NEW,
-                wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
+                wave: Waveform::from_index(gen_index(rng, Waveform::ALL.len())),
                 rate: rng.gen(),
             },
             2 => ModNode::Env {
@@ -1376,7 +1620,7 @@ impl PatchGrammarPrior {
                 values: rng.gen(),
             },
             MOD_OP => {
-                let kind = ModOp::from_index(rng.gen_range(0..N_MOD_OPS));
+                let kind = ModOp::from_index(gen_index(rng, N_MOD_OPS));
                 let two = kind.param_sites().len() > 1;
                 let p0 = rng.gen();
                 // The one-parameter ops must not consume a second draw: their
@@ -1393,7 +1637,7 @@ impl PatchGrammarPrior {
             }
             _ => ModNode::Pair {
                 uid: Uid::NEW,
-                kind: PairOp::from_index(rng.gen_range(0..N_PAIR_OPS)),
+                kind: PairOp::from_index(gen_index(rng, N_PAIR_OPS)),
                 a: Box::new(self.sample_mod(rng, depth + 1, false)),
                 b: Box::new(self.sample_mod(rng, depth + 1, false)),
             },
@@ -1406,11 +1650,18 @@ fn weighted_choice<R: Rng>(rng: &mut R, weights: &[f64]) -> usize {
     let mut x = rng.gen::<f64>() * total;
     for (i, w) in weights.iter().enumerate() {
         x -= w;
-        if x <= 0.0 {
+        // A kind at weight 0 (AUDIO IN while it is off) is never drawn, even
+        // on the draw that lands exactly on a boundary.
+        if x <= 0.0 && *w > 0.0 {
             return i;
         }
     }
-    weights.len() - 1
+    // Rounding can leave a sliver past the last boundary; it belongs to the
+    // last kind that has any weight, not to a trailing kind at 0.
+    weights
+        .iter()
+        .rposition(|&w| w > 0.0)
+        .unwrap_or(weights.len() - 1)
 }
 
 impl GenomePrior for PatchGrammarPrior {
@@ -1532,5 +1783,94 @@ mod tests {
             prior.max_mod_depth + 1,
             "no term reached the depth bound, so this proved nothing"
         );
+    }
+
+    /// A kind at weight 0 is never drawn by the RNG sampler, at either edge
+    /// of the unit interval: not by a draw of exactly 0 when it comes first,
+    /// and not by the rounding sliver past the last boundary when it comes
+    /// last (AUDIO IN, while it is off, is the last source). Both used to
+    /// land on it.
+    #[test]
+    fn a_kind_at_weight_zero_is_never_drawn() {
+        /// An RNG whose every word is `w`: `gen::<f64>()` is 0 for 0 and the
+        /// largest value below 1 for `u64::MAX`.
+        struct Fixed(u64);
+        impl rand::RngCore for Fixed {
+            fn next_u32(&mut self) -> u32 {
+                self.0 as u32
+            }
+            fn next_u64(&mut self) -> u64 {
+                self.0
+            }
+            fn fill_bytes(&mut self, dest: &mut [u8]) {
+                dest.fill(self.0 as u8);
+            }
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+                self.fill_bytes(dest);
+                Ok(())
+            }
+        }
+        // Weights whose sum rounds so that the top of the interval falls past
+        // the last positive boundary.
+        assert_eq!(
+            weighted_choice(&mut Fixed(u64::MAX), &[0.19, 0.626, 0.166, 0.0]),
+            2
+        );
+        assert_eq!(weighted_choice(&mut Fixed(0), &[0.0, 1.0]), 1);
+        // The shipped sources at both edges.
+        let w = PatchGrammarPrior::default().source_weights;
+        assert_eq!(w[N_SOURCES - 1], AUDIO_IN_WEIGHT);
+        assert_ne!(weighted_choice(&mut Fixed(u64::MAX), &w), N_SOURCES - 1);
+        assert_eq!(weighted_choice(&mut Fixed(0), &w), 0);
+    }
+
+    /// **`#op` draws what it drew before the player kinds existed, bit for
+    /// bit.** For the default weights and for tilted ones, `OpKind` and the
+    /// categorical the prior used to build over `op_weights` return the same
+    /// index from the same stream, and leave the stream in the same state, so
+    /// no fill, walk or offer deals anything different. The drawn kinds score
+    /// exactly what they scored; the player kinds score finite; past them is
+    /// outside the support.
+    #[test]
+    fn op_kind_samples_what_the_old_table_sampled() {
+        use fugue::Distribution;
+        use rand::Rng;
+        let mut tilt = StdRng::seed_from_u64(0x0B5);
+        let mut tables = vec![PatchGrammarPrior::default().op_weights];
+        for _ in 0..8 {
+            let mut w = PatchGrammarPrior::default().op_weights;
+            for x in &mut w {
+                *x *= (tilt.gen::<f64>() * 2.0 - 1.0).exp();
+            }
+            tables.push(w);
+        }
+        for w in &tables {
+            let (new, old) = (OpKind::new(w), weighted_cat(w));
+            for seed in 0..50u64 {
+                let mut a = StdRng::seed_from_u64(seed);
+                let mut b = StdRng::seed_from_u64(seed);
+                for _ in 0..400 {
+                    let (x, y) = (new.sample(&mut a), old.sample(&mut b));
+                    assert_eq!(x, y, "#op drew {x}, the old table {y}");
+                    assert!(x < N_OPS, "a player kind was drawn");
+                }
+                assert_eq!(
+                    a.gen::<u64>(),
+                    b.gen::<u64>(),
+                    "the stream moved differently"
+                );
+            }
+            for i in 0..N_OPS {
+                assert_eq!(new.log_prob(&i).to_bits(), old.log_prob(&i).to_bits());
+            }
+            for i in [OP_TRACK, OP_CAPTURE] {
+                assert_eq!(new.log_prob(&i), PLAYER_OP_MASS.ln());
+            }
+            assert_eq!(new.log_prob(&N_OP_KINDS), f64::NEG_INFINITY);
+        }
+        assert_eq!(op_label(OP_TRACK), Some("track"));
+        assert_eq!(op_label(OP_CAPTURE), Some("capture"));
+        assert_eq!(op_label(N_OPS - 1), Some("vocoder"));
+        assert_eq!(op_label(N_OP_KINDS), None);
     }
 }

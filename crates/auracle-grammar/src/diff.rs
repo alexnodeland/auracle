@@ -42,7 +42,8 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 // `crate::prior`'s tables, whose lengths are the arity
                 // constants, so a production cannot be added without a label.
                 "src" => name(&crate::prior::SOURCE_LABELS),
-                "op" => name(&crate::prior::OP_LABELS),
+                // The twenty drawn kinds, then the two player kinds.
+                "op" => crate::prior::op_label(*i).map(str::to_string),
                 "mod" => name(&crate::prior::MOD_LABELS),
                 "table" => name(&[
                     "sine",
@@ -56,6 +57,12 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 ]),
                 "dmode" => name(&["soft", "hard", "tube"]),
                 "oct" => Some(format!("{:+}", *i as i8 - 2)),
+                // An AUDIO IN's input is numbered from one, as the rack's
+                // selector shows it, and its channel by name.
+                "input" => Some((i + 1).to_string()),
+                "channel" => name(&["left", "right", "both"]),
+                "band" => name(&["low", "mid", "high"]),
+                "play" => name(&["once", "hold", "loop"]),
                 _ => None,
             }
             .unwrap_or_else(|| i.to_string())
@@ -113,7 +120,10 @@ mod tests {
     #[test]
     fn every_categorical_index_has_a_label() {
         let u = |i: usize| ChoiceValue::Usize(i);
-        assert_eq!(display_value("src", &u(N_SOURCES - 1)), "silence");
+        assert_eq!(display_value("src", &u(N_SOURCES - 1)), "audio in");
+        assert_eq!(display_value("src", &u(6)), "silence");
+        assert_eq!(display_value("input", &u(0)), "1");
+        assert_eq!(display_value("channel", &u(2)), "both");
         assert_eq!(display_value("op", &u(N_OPS - 1)), "vocoder");
         assert_eq!(display_value("op", &u(15)), "shift");
         assert_eq!(display_value("mod", &u(N_MODS - 1)), "steps");

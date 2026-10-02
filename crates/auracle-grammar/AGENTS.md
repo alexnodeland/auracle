@@ -16,6 +16,8 @@ in [`../AGENTS.md`](../AGENTS.md).
 | `diff.rs` | What changed between two trees, in address terms (the lineage log and offer strips read it) |
 | `presets.rs` | The hand-made library. The warm start deals from it. |
 | `steps.rs` | The timbral step sequencer (`ModNode::Steps`) |
+| `take.rs` | `Take`: a CAPTURE's recording, saved in the term as quiver's `Capture` state and bounded like an audition clip; an unreadable one loads empty |
+| `rng.rs` | `gen_index`: an index drawn as a `u64` on every target. Use it for any index drawn from an RNG that reaches a seeded result, never `gen_range(0..len)` over a `usize` (wasm32 reads it through `next_u32`) |
 | `genome.rs` | `PatchTree` as a fugue-evo genome |
 
 ## Rules

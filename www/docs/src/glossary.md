@@ -28,12 +28,14 @@ no room to grow.
 ### Child, NEW
 
 A sound a generation bred. The children of the latest generation lead the
-**POOL** tab under **NEW · GEN 3**, each tagged **NEW**.
+**POOL** tab under **NEW · GENERATION 3**, each tagged **NEW**, with a green
+dot until you hear it. Under a child’s name, the bank says which seed it grew
+from and what changed; click that line to compare the two.
 
 ### Control
 
-One of PERFORM’s eight round controls: the six named controls, **BLEND**, and
-**WANDER**.
+One of PERFORM’s round controls: the named controls on your panel (the six
+to start, up to eight), **BLEND**, and **WANDER**.
 
 ### EVOLUTION strip
 
@@ -112,9 +114,10 @@ headed **MODULES**, is the list on PATCH’s right that you add them from. See
 
 ### Named control
 
-One of PERFORM’s six controls named for what you hear: **BRIGHT**, **SNAP**,
-**MOTION**, **BODY**, **GRIT**, and **SPACE**. Each has the same name and the
-same two end words on every sound. What it turns is measured for each sound: up
+One of PERFORM’s controls named for what you hear: **BRIGHT**, **SNAP**,
+**MOTION**, **BODY**, **GRIT**, and **SPACE** to start, and any of the twelve
+more in [the palette](./views/perform.md#the-palette). Each has the same name
+and the same two end words on every sound. What it turns is measured for each sound: up
 to four of that patch’s knobs, the ones that move the sound most purely that
 way. Until it’s measured, it reads *listening…* and does nothing.
 
@@ -127,6 +130,13 @@ called **B** that plays every note you play. You hear it with **BLEND** or
 **PEEK**, at matched loudness, and it becomes your sound only if you press
 **TAKE**. An offer may add or change a module; Wander never does. See [Blend,
 Peek, and the B slot](./views/perform.md#blend-peek-and-the-b-slot).
+
+### Palette, panel
+
+PERFORM’s **palette** is the eighteen controls the instrument can measure, in
+six families. Your **panel** is the ones you place on PERFORM, up to eight, in
+your order; **ARRANGE** places, hides, and orders them. See [the
+palette](./views/perform.md#the-palette).
 
 ### Pair
 
@@ -182,7 +192,9 @@ EVOLVE’s line says *● learning from your last 6 picks…* until it lands, th
 ### Replaced
 
 What happens to the pool’s lowest-rated unsaved sounds when a generation ends,
-or when a preset joins the pool. The toast names them.
+or when a preset joins the pool. The toast names them, and **REPLACED ·
+GENERATION 3** at the foot of the pool lists what the latest generation
+replaced. Only their names are kept.
 
 ### Search control
 
@@ -194,13 +206,19 @@ SPACE turned up), or an offer grows in B, aimed the way you turned it. See
 
 ### Seed
 
-The sound a child grew from. (A random number generator’s seed is always
-called a random seed.)
+The sound a child grew from. A generation breeds from the ten the model
+rates highest; hover **EVOLVE POOL** and the bank marks them **SEED**. (A
+random number generator’s seed is always called a random seed.)
 
 ### Set aside
 
 The strip under the rack, labeled **SET ASIDE**. Anything you unplug, delete,
 or bypass goes there instead of vanishing, and stays across a reload.
+
+### Stage mode
+
+<kbd>⇧F</kbd> in PERFORM: the sound you’re playing on the whole screen,
+drawn from what you hear. See [stage mode](./views/perform.md#stage-mode).
 
 ### Standardizer
 

@@ -222,8 +222,6 @@ export function createMidi(host) {
     clock: new ClockTempo(),
     lastBpm: null,
     ticks: null, // clock ticks since the last Start; null when stopped
-    pressureSlot: 0, // Bright
-    modSlot: 2, // Motion
     down: new Set(), // notes this tab is holding from MIDI
     pedal: false, // the sustain pedal is down
     bent: false, // the pitch wheel is off centre
@@ -256,6 +254,15 @@ export function createMidi(host) {
   }
 
   const slotName = (i) => (host.controlNames()[i] || `control ${i + 1}`);
+  // Pressure plays Bright and the mod wheel Motion, wherever the player has
+  // put them on PERFORM's panel (a slot is a place on the deck), and nothing
+  // while they are not on it.
+  const slotOf = (name) => {
+    const i = host.controlNames().indexOf(name);
+    return i >= 0 && i < SLOTS ? i : -1;
+  };
+  const pressureSlot = () => slotOf("Bright");
+  const modSlot = () => slotOf("Motion");
   const usedSlots = () => new Set([...state.map.values()].map((m) => m.slot));
 
   // `how` is "learned" (LEARN, onto the row the player chose) or "claimed"
@@ -303,7 +310,7 @@ export function createMidi(host) {
     // pushing it adds Motion on top of wherever the control is.
     if (cc === CC_MOD && !m) {
       state.expressed = true;
-      host.perform()?.setExpression("mod", state.modSlot, value / 127);
+      host.perform()?.setExpression("mod", modSlot(), value / 127);
       return;
     }
     if (!m) return;
@@ -357,7 +364,7 @@ export function createMidi(host) {
         // Press harder, brighter — an offset under the player's own turn, so
         // letting go returns exactly to where the control was.
         state.expressed = true;
-        host.perform()?.setExpression("pressure", state.pressureSlot, m.value);
+        host.perform()?.setExpression("pressure", pressureSlot(), m.value);
         break;
       case "cc":
         if (m.cc === CC_SUSTAIN) {
@@ -474,9 +481,9 @@ export function createMidi(host) {
           ? "move a knob…"
           : bound
             ? `CC ${bound[0].split(":")[1]}${bound[1].mode !== "abs" ? " · endless" : ""}`
-            : i === state.modSlot
+            : i === modSlot()
               ? "mod wheel"
-              : i === state.pressureSlot
+              : i === pressureSlot()
                 ? "pressure"
                 : "·";
       const learn = document.createElement("button");

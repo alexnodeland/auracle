@@ -10,7 +10,7 @@
 //! [`StructFeatures`] keeps a raw counter per kind — the Styles tab and the
 //! auto-namer both want "two filters", not "two subtractive stages" — but
 //! [`StructFeatures::NAMES`] and [`StructFeatures::to_vec`] collapse the
-//! forty-three productions into nineteen family counts plus seven term-level
+//! forty-six productions into nineteen family counts plus seven term-level
 //! numbers — five about modulation and the amp envelope, two about how the
 //! term is arranged. Two reasons, and the second is the load-bearing one:
 //!
@@ -124,6 +124,37 @@
 //! wave-2C additions specifically: `n_mod_shape` 1.6, `n_mod_logic` 1.3,
 //! `mod_depth_mean` 3.8, with `mod_density` rising from 2.7 to 4.1 as the one
 //! visible cost of adding a second modulation-shape coordinate beside it.
+//!
+//! # Audio in: counted, and not a column
+//!
+//! An AUDIO IN is a source leaf, so the shape numbers count it with no help
+//! (`chain_balance` and `frac_sidechained` read arity from
+//! `AudioNode::children`, where it is childless), and it has a raw counter,
+//! `n_audio_in`, so `size ≡ Σ n_*` still holds. It is not a column of φ, on
+//! three arguments:
+//!
+//! - **The proposal said φ keeps its shape** (RFC-008). A column is a change
+//!   to every saved profile's feature list and a migration.
+//! - **It would be a near-indicator.** The prior draws it into about one tree
+//!   in a hundred; its prevalence, like a hole's, is set by players patching
+//!   one in, and until they can, the column would be zero in nearly every row.
+//! - **No dependency comes back without it.** The leaf identity above gains a
+//!   term, but that identity cannot be reconstructed from the retained columns
+//!   in the first place: it needs each binary count separately, and ring mod
+//!   and the vocoder are only ever visible summed into families. An uncounted
+//!   leaf leaves it exactly as unreachable.
+//!
+//! What the model hears of an input patch it hears through φ_audio: the patch
+//! is rendered with the session's audition clip, so what its effects do to a
+//! signal is measured like any other sound.
+//!
+//! TRACK and CAPTURE (Plan-007 tasks 5 and 6) are counted the same way, for
+//! the same reasons and one more: the prior never draws either (they are
+//! player kinds), so a column would be zero in every drawn row. Each has a
+//! raw counter, `n_track` and `n_capture`, and no column. The shape numbers
+//! see them through `AudioNode::children` like any other node: a TRACK is a
+//! binary node (the branch it plays, the one it follows), a CAPTURE a unary
+//! one over the branch it records.
 //!
 //! # The families, and why each one is one column
 //!
@@ -359,6 +390,23 @@ pub struct StructFeatures {
     /// edits and not by the prior — the one kind in the grammar of which that
     /// is true.
     pub n_silence: f64,
+    /// Number of AUDIO IN sources. **Not a φ coordinate**, which keeps φ's
+    /// shape what it was ([RFC-008](../../../docs/proposals/008-audio-in.md):
+    /// the structural features count the new kind, φ does not grow); see the
+    /// module doc's *Audio in* section. Kept for display, and so that every
+    /// arm of the walk still bumps exactly one counter.
+    ///
+    /// `#[serde(default)]` for the reason [`Self::n_steps`] gives: a cached
+    /// row written before the field existed came from a term without one.
+    #[serde(default)]
+    pub n_audio_in: f64,
+    /// Number of TRACKs. **Not a φ coordinate**; see the module doc's *Audio
+    /// in* section. Kept for display, and so every arm bumps one counter.
+    #[serde(default)]
+    pub n_track: f64,
+    /// Number of CAPTUREs. **Not a φ coordinate**, as [`Self::n_track`].
+    #[serde(default)]
+    pub n_capture: f64,
     /// Number of Mix nodes. **Not a φ coordinate** — see the module doc's
     /// exact identity. Kept for display.
     pub n_mix: f64,
@@ -948,6 +996,10 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
             f.n_silence += 1.0;
             (None, None)
         }
+        AudioNode::AudioIn { .. } => {
+            f.n_audio_in += 1.0;
+            (None, None)
+        }
         AudioNode::Wavetable { modulation, .. } => {
             f.n_wavetable += 1.0;
             (None, Some(modulation))
@@ -1108,6 +1160,17 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
             walk(carrier, f, t, d + 1);
             walk(modulator, f, t, d + 1);
             return;
+        }
+        // Two branches and no slot.
+        AudioNode::Track { input, listen, .. } => {
+            f.n_track += 1.0;
+            walk(input, f, t, d + 1);
+            walk(listen, f, t, d + 1);
+            return;
+        }
+        AudioNode::Capture { input, .. } => {
+            f.n_capture += 1.0;
+            (Some(input), None)
         }
     };
     if let Some(m) = modulation {

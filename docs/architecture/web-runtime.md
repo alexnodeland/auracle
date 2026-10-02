@@ -56,7 +56,8 @@ served within a lane (`laneOf` in `worker.js`):
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
-  offers, Wander's drift, booth pre-warms).
+  offers, Wander's drift, booth pre-warms, the model's guess, the cable
+  probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
 so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
@@ -102,8 +103,9 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
   so the seeds and what may be replaced.
 
-Main keeps the latest as `views.ratings`, and TASTE draws from it
-(`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
+Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
+`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`), and TASTE
+draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
 arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
 every halo on the map moves to the ratings it carries, in one tween; a views
 post settles every halo and every place at once. LEARNING's arrow (which way
@@ -119,8 +121,9 @@ The engine keeps no history of its ratings, its map or its θ, so the page
 keeps what it was sent (`taste-geom.js`: `recordEntry`, `attachStyles`,
 `entryView`). One entry per change: each `status` with `ratings` (a pick, a
 star, a cut, a PERFORM answer), and each views post with a new map (a refit,
-or a generation when the engine's generation count moved), with the picks
-TAUGHT counted, the observation count, whether a fit existed and the pick's
+or a generation when the engine's generation count moved), with the engine's
+pick count (not TAUGHT, which also counts picks inside their undo window), the
+observation count, whether a fit existed and the pick's
 two sounds. Maps are kept once and referenced. After each `status` with
 `ratings`, main asks for `styles` (a `later`-lane request, 0.6 to 12 ms by the
 lenses) and the reply is kept with the entry whose observation count it
@@ -149,9 +152,65 @@ is the next press of EVOLVE POOL, and they are what to mark. While a
 generation is open or a ⚡ walk is out, a press would wait its turn (see
 [The worker's lanes](#the-workers-lanes)), so they describe one that has not
 started. What the running generation will replace is `refine_child`'s
-`retiring`; its seeds are the last `seeds` posted before it opened, and
-each child's seed comes with it in the lineage `refine_child` carries. Read
-`ratings.may_replace` and `ratings.seeds` only at rest.
+`retiring` (said *will be replaced*: it only grows, one per child admitted).
+A save, a preset or a kept edit joining the pool can change it too
+(`eviction_order` passes over saved sounds, and a new member moves the
+lowest), so while a generation is open the `pinned`, `preset_loaded` and
+`committed` replies carry `retiring` as well (`openRetiring` in
+`worker.js`), and main repaints the marks from it.
+Its seeds come with its progress: every `refine_progress` carries `seeds`,
+`refine_jobs`' parents in job order (job `i` walks from `seeds[i]`). Main
+used to take the last `ratings.seeds` posted before the generation opened,
+which `next_seeds` and `refine_jobs` share a rule with, but with no boot
+crew a generation can open between fill batches, and `fill_step` posts no
+ratings, so that copy could be stale. Each walk's seed also comes with it as
+`refine_child`'s `seed` (the job's `parent_id`), which for a child it
+admitted is also its lineage event's parent. Read `ratings.may_replace` and
+`ratings.seeds` only at rest.
+
+While a ⚡ walk is out (no generation open), the bank marks its seed and the
+first `pool + 1 − pool_target` of `ratings.may_replace` (one with the pool at
+size): ⚡'s child is trimmed against at once when it is absorbed
+(`evict_to_size` with the seed protected), lowest first by
+`eviction_order`, which passes over a seed in flight, and `may_replace` ranks
+the same way.
+
+## The model's guess and the cable probe
+
+Two Plan-005 task 9 surfaces the page does not call yet (PATCH's task 7 draws
+them). Both are about the patch in hand, and each reply carries the tree it
+was computed for (`edit_tree_json`), so a page that has moved on drops it, as
+it drops a stale pre-placement audition.
+
+- **`guess`** (`later`, holds the floor; `{token, at?}`): the module the model
+  guesses the player would add next
+  ([reference](../../www/reference/src/search/guess.md)). `guessRun` asks the
+  engine what it owes (`guess_plan`: the patch first if unmeasured, then the
+  output's candidates in render order), renders the first `GUESS_FLOOR` (8)
+  with `memo_render`, one per turn, breathing between them as PERFORM's
+  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of render
+  time is spent (render time only, checked after each render, so it can run
+  over by one), and posts `guess` with `{token, tree, data}`: the ranking
+  (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
+  the grammar's ceiling, `no_patch` with nothing open). It gives way to work
+  the player asks for and resumes from the memo. `at`, a module's key, ranks
+  that deeper socket instead of the output's. Rendering the candidates on a
+  crew (`farm_render`, then `memo_absorb`; each job's `cache` is its key in
+  the farm's store) is not wired yet.
+- **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
+  edit with the same replies, remembered so that a later edit back to the
+  tree before it (⌘Z) counts as a skip. A guess no longer current for the
+  patch (ranked on an earlier tree) is refused with `edit_rejected` and its
+  reason. A crash in `guessRun` still answers: `guess` with `{token, error}`.
+- **`guess_skip`** (`now`; `{token, guess}`): keeps that guess's family away
+  from its socket for this patch, and answers `guess_skipped` with `{token,
+  ok}`. Skips and takes are logged, never evidence.
+- **`cable_levels`** (`later`; `{token}`): every audio cable of the patch in
+  hand, measured on one render of the phrase (`edit_cable_levels`), keyed as
+  the rack draws them (`from`, `to`, and both uids), in the live meter's dB
+  scale; posted as `cable_levels` with `{token, tree, levels}`. One render
+  (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
+  sound, the worklet's meter reads the cables live.
 
 ## The breed job
 
@@ -167,11 +226,21 @@ turn (`genStep`), so the pool is the serial path's whichever worker finished
 first.
 
 - **Children as they land.** Each absorbed job is posted as `refine_child`
-  with the ranked rows and `refine_retiring`; the bank shows the child at
-  once in a "new · gen N" group at the top of the pool, without re-sorting
-  the ranked rows. Nothing is retired until the finish.
-- **Progress.** `refine_progress` carries the jobs absorbed, the total and an
-  estimate (`eta`, ms) from this session's own walk times.
+  with the ranked rows, the lineage, `refine_retiring`, the engine's reason
+  when it bred nothing (`last_refine_reason`) and the job's seed; the bank
+  shows the child at once in a "new · generation N" group at the top of the
+  pool, without re-sorting the ranked rows, with its seed and what changed
+  from the lineage, and EVOLVE POOL says what the walk came back as. Where
+  the seed's row is in view, the child buds from it into its row, and a
+  child the engine refused (`not_admitted`) buds beside it and fades
+  (`budFrom`, `fadeBeside`). A bud flies between two rows' places as they
+  were when it left, so when the bank is drawn again (the next child of a
+  burst) every bud in flight lands at once (`landFlights`). Nothing is
+  retired until the finish; then the
+  bank lists what was replaced by name (the engine drops the trees).
+- **Progress.** `refine_progress` carries the jobs absorbed, the total, an
+  estimate (`eta`, ms) from this session's own walk times, and the
+  generation's `seeds`.
 - **Judged at the start.** Admission and the finish's retirements rank
   under the posterior the generation opened with (`judge` in `engine.rs`),
   not the one picks made meanwhile have reweighted, so which children are
@@ -296,13 +365,22 @@ differently) is played at once and re-measured.
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
 binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without
-them the engine wires the six. The page sends none yet, so every wiring it
-measures, caches and ships is the six's. The palette's panel (Plan-005 task 5)
-will ask for the controls placed on it. Each wiring in the reply carries its
-palette `index`, and the panel must name a control back by it (an aimed
-offer's `control`, a graft's `k`), not by its position, which follows the
-order asked; and `wireKey` must then hold the set asked for as well as the
-patch.
+them the engine wires the six. The page asks for the controls on the player's
+panel (`state.panel`, at most eight, saved as `perf.panel` with the session):
+nothing for the six, so their request, key and shipped file are what they
+were, and otherwise the panel's set in palette order (`setOf`), so the answer
+depends on the set and not on the order the panel shows it in. Each wiring in
+the reply carries its palette `index`, and the page lays it on the panel by
+that index (`alignWiring`) and names a control back by it (an aimed offer's
+`control`, a graft's `k`, `indexAt`), never by its position. `wireKey` holds
+the set as well as the patch (`#controls=` and the set, empty for the six),
+and for a sound with an AUDIO IN the audition clip, on the patch's part
+before the set (`wireKeyOf`: `patch|clip:<id>#controls=<set>`). A
+placed control is measured lazily, on the sound in hand and only in sight
+(`measurePanel`), borrowing what other sets of that patch measured
+(`borrowWiring`) meanwhile; a measurement of a set the panel has since left is
+cached and not played. Changing the panel rebuilds the deck (`setPanel`), never
+under a held pointer (`panelLater`).
 
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when
@@ -322,8 +400,10 @@ same `wireKey`. The player's own cache is asked first, then the file. A first
 measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
 fetch cannot hold a patch on *listening…*; a file that lands later still
 serves the presets opened after it. A shipped
-wiring is always re-measured in the background (it was taken under a native
-standardizer, not the session's). A stale file wires controls to the wrong
+wiring is always re-measured in the background (it was taken under the
+standardizer of the shipped seed's pool, not the session's, whose seed is its
+own; the shipped seed deals the same pool natively and in wasm, pinned by
+`boot_agrees`, so the file is what a wasm engine booted from it would measure). A stale file wires controls to the wrong
 knobs until that re-check lands, and the re-check then re-centres them, so
 `make test` guards it two ways. `shipped_preset_wirings_are_current` compares
 fingerprints of each preset and of the measurement's named inputs (phrase,

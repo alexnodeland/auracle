@@ -43,6 +43,8 @@ use quiver::{AtomicF64, ExternalInput};
 
 use crate::prior::STEPS_SITES;
 use crate::steps::StepsCv;
+use crate::take::{Take, TAKE_SECONDS};
+use crate::term::CaptureMode;
 /// The live-only handle a `steps` module's transport position rides on
 /// (`<key>#~sync`). Never a trace site; the live engine finds it by suffix.
 pub const STEPS_SYNC_SITE: &str = "~sync";
@@ -203,6 +205,17 @@ pub enum ParamMap {
     FeedbackBipolar,
     /// Crossfader position (`(2x−1)·5 V`).
     XfadePos,
+    /// An AUDIO IN's gain, in dB across the knob
+    /// ([`INPUT_GAIN_DB_MIN`]..[`INPUT_GAIN_DB_MAX`]), as the linear factor
+    /// quiver's `AudioInput` reads on its `gain` port.
+    InputGain,
+    /// A TRACK's sensitivity, as the gate threshold quiver's `PitchTracker`
+    /// reads on its `level` scale: geometric from [`TRACK_GATE_LOUD`] down to
+    /// [`TRACK_GATE_QUIET`] volts, so up opens on a quieter input.
+    TrackSensitivity,
+    /// A TRACK's dynamics, as the attenuverter level (`10·x` V, a gain of
+    /// `2x`) that sets how far the tracked level moves its VCA.
+    TrackDynamics,
     /// Wavefolder threshold (`0.1 + 0.9·x`).
     FoldThreshold,
     /// Shelf/bell gain on a ±5 V port (`(2x−1)·5`), where knob centre must be
@@ -307,6 +320,9 @@ impl ParamMap {
             ParamMap::Feedback => map::feedback(x),
             ParamMap::FeedbackBipolar => map::feedback_bipolar(x),
             ParamMap::XfadePos => map::xfade_pos(x),
+            ParamMap::InputGain => map::input_gain(x),
+            ParamMap::TrackSensitivity => map::track_threshold(x),
+            ParamMap::TrackDynamics => map::track_dynamics(x),
             ParamMap::FoldThreshold => map::fold_threshold(x),
             ParamMap::GainBipolar => map::gain_bipolar(x),
             ParamMap::FormantShift => map::formant_shift(x),
@@ -433,6 +449,18 @@ pub struct CompiledVoice {
     /// (`node/0#cut`, `amp#attack`, `node/0#table`, `node/0#oct`, …).
     /// Everything the panel can move without a recompile.
     pub params: HashMap<String, ParamHandle>,
+    /// Each CAPTURE's record gate, keyed by the node's key (`node/0`): raise
+    /// it (to 5 V) to record from the top of the buffer, drop it to stop.
+    /// Nothing in the engine raises one, so a measurement render never
+    /// records; the host does, then reads the recording with [`Self::take`].
+    pub records: HashMap<String, Arc<AtomicF64>>,
+    /// A follower's TRACK feeds, by the TRACK's node key: in a voice built by
+    /// [`compile_follower`], each TRACK reads its pitch, gate and level from
+    /// these instead of tracking its own input. Empty in any other voice.
+    pub track_feeds: HashMap<String, TrackFeed>,
+    /// Each TRACK's `PitchTracker`, by node key: what [`CompiledVoice::lead`]
+    /// reads to feed a follower. Empty in a follower.
+    trackers: Vec<(String, NodeId)>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
     /// Where each term node's audio leaves it: trace key → the **name** of the
@@ -453,7 +481,125 @@ pub struct CompiledVoice {
     pub taps: HashMap<String, (String, PortId)>,
 }
 
+/// A gate that stays high for at most [`TAKE_SECONDS`] after it rises: a
+/// CAPTURE's record gate goes through one, so no press records more than a
+/// take may hold at the voice's rate. Low until the gate falls and rises
+/// again. Allocates nothing.
+pub struct RecordWindow {
+    sample_rate: f64,
+    /// Samples left in this press; 0 once spent.
+    left: usize,
+    held: bool,
+    spec: quiver::port::PortSpec,
+}
+
+impl RecordWindow {
+    /// A window for a voice at `sample_rate`.
+    pub fn new(sample_rate: f64) -> Self {
+        use quiver::port::{PortDef, PortSpec, SignalKind};
+        Self {
+            sample_rate,
+            left: 0,
+            held: false,
+            spec: PortSpec {
+                inputs: vec![PortDef::new(0, "in", SignalKind::Gate)],
+                outputs: vec![PortDef::new(10, "out", SignalKind::Gate)],
+            },
+        }
+    }
+
+    /// Samples one press may record.
+    pub fn max_samples(&self) -> usize {
+        (TAKE_SECONDS * self.sample_rate).floor() as usize
+    }
+}
+
+impl GraphModule for RecordWindow {
+    fn port_spec(&self) -> &quiver::port::PortSpec {
+        &self.spec
+    }
+
+    fn tick(&mut self, inputs: &quiver::port::PortValues, outputs: &mut quiver::port::PortValues) {
+        let high = inputs.get_or(0, 0.0) > 2.5;
+        if high && !self.held {
+            self.left = self.max_samples();
+        }
+        self.held = high;
+        let open = high && self.left > 0;
+        if open {
+            self.left -= 1;
+        }
+        outputs.set(10, if open { GATE_TRUE } else { GATE_FALSE });
+    }
+
+    fn reset(&mut self) {
+        self.left = 0;
+        self.held = false;
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: f64) {
+        if sample_rate > 0.0 && sample_rate.is_finite() {
+            self.sample_rate = sample_rate;
+        }
+    }
+
+    fn type_id(&self) -> &'static str {
+        "auracle_record_window"
+    }
+}
+
+/// The three signals a TRACK plays its branch with, held outside the patch:
+/// what a follower voice ([`compile_follower`]) reads in place of a tracker of
+/// its own. Written by [`CompiledVoice::lead`].
+#[derive(Clone, Debug, Default)]
+pub struct TrackFeed {
+    /// Pitch, V/Oct.
+    pub voct: Arc<AtomicF64>,
+    /// Gate, 0 or 5 V.
+    pub gate: Arc<AtomicF64>,
+    /// Level, 0 to 10 V.
+    pub level: Arc<AtomicF64>,
+}
+
 impl CompiledVoice {
+    /// Hand this voice's tracked signals, as they stand after its last tick,
+    /// to `follower`'s TRACKs (matched by node key). Call it every frame,
+    /// after this voice ticks and before the follower does, and the follower
+    /// plays each frame's tracked note exactly as this voice does, from its
+    /// first frame. Allocates nothing.
+    pub fn lead(&self, follower: &CompiledVoice) {
+        for (key, id) in &self.trackers {
+            let Some(feed) = follower.track_feeds.get(key) else {
+                continue;
+            };
+            let read = |port| self.patch.get_output_value(*id, port).unwrap_or(0.0);
+            feed.voct.set(read(10));
+            feed.gate.set(read(11));
+            feed.level.set(read(12));
+        }
+    }
+
+    /// The take the CAPTURE at `key` holds right now: what it was compiled
+    /// with, or what it has recorded since. `None` only when there is no
+    /// CAPTURE there: a take it was compiled with passed the bound, and a
+    /// recording stops at [`TAKE_SECONDS`] at this voice's rate (the record
+    /// gate goes through [`RecordWindow`]), even into a buffer a longer,
+    /// higher-rate take enlarged, so its state always reads as a take.
+    ///
+    /// Reads the module's own saved state, which is the take's saved form, so
+    /// what comes back is bit for bit what it recorded. Allocates; not for the
+    /// audio thread.
+    pub fn take(&self, key: &str) -> Option<Take> {
+        let id = self.patch.get_node_id_by_name(&format!("{key}:capture"))?;
+        let (_, _, module) = self.patch.nodes().find(|(n, _, _)| *n == id)?;
+        match module.serialize_state() {
+            None => Some(Take::empty()),
+            Some(state) => serde_json::from_value::<crate::take::SavedTake>(state)
+                .ok()
+                .and_then(|saved| Take::from_saved(&saved).ok()),
+        }
+    }
+
     /// Where the amp envelope is right now, 0..1 — quiver's 0–10 V `env`
     /// output scaled back down.
     ///
@@ -564,8 +710,70 @@ impl CompiledVoice {
     }
 }
 
+/// The quietest an AUDIO IN's gain knob goes, in dB: far enough down to tuck
+/// a hot line input under a patch, never so far that the knob's bottom is
+/// silence (a silent branch is what the vet refuses).
+pub const INPUT_GAIN_DB_MIN: f64 = -24.0;
+/// The loudest, in dB: quiver's `AudioInput::MAX_GAIN` is 4 (+12 dB), and a
+/// quiet microphone needs most of it.
+pub const INPUT_GAIN_DB_MAX: f64 = 12.0;
+/// The normalized gain at 0 dB: two thirds of the way up the knob. What a
+/// player's AUDIO IN starts at.
+pub const INPUT_GAIN_UNITY: f64 = -INPUT_GAIN_DB_MIN / (INPUT_GAIN_DB_MAX - INPUT_GAIN_DB_MIN);
+
+/// The gate threshold a TRACK's sensitivity knob reaches at its bottom, in
+/// volts on quiver's `PitchTracker` level scale (a full-scale sine reads
+/// 10 V): about 12 dB under a full-scale sine, so only a strong input opens it.
+pub const TRACK_GATE_LOUD: f64 = 2.5;
+/// The threshold at the knob's top, 40 dB lower, so a quiet microphone opens
+/// it. Knob centre is quiver's own default, 0.25 V.
+pub const TRACK_GATE_QUIET: f64 = 0.025;
+/// The tracked level, in volts on the same scale, at which a TRACK with its
+/// dynamics all the way up plays the branch at full level (an input 6 dB
+/// under a full-scale sine). Louder holds at full level; quieter plays
+/// quieter, in proportion.
+pub const TRACK_FULL_LEVEL: f64 = 5.0;
+/// The normalized sensitivity at quiver's default threshold (0.25 V): the
+/// geometric middle of the knob. What a player's TRACK starts at.
+pub const TRACK_SENSITIVITY_DEFAULT: f64 = 0.5;
+
 /// Bounded musical mappings from normalized genome parameters.
 mod map {
+    use super::{INPUT_GAIN_DB_MAX, INPUT_GAIN_DB_MIN, TRACK_GATE_LOUD, TRACK_GATE_QUIET};
+    use crate::term::{InputChannel, PitchBand};
+
+    /// A TRACK's sensitivity as its gate threshold, in volts on the tracker's
+    /// level scale: geometric, because level is.
+    pub fn track_threshold(x: f64) -> f64 {
+        TRACK_GATE_LOUD * (TRACK_GATE_QUIET / TRACK_GATE_LOUD).powf(x.clamp(0.0, 1.0))
+    }
+    /// A TRACK's dynamics as an attenuverter level: `10·x` V is a gain of
+    /// `2x`, which takes the VCA to 10 V at `TRACK_FULL_LEVEL` (see the arm).
+    pub fn track_dynamics(x: f64) -> f64 {
+        10.0 * x.clamp(0.0, 1.0)
+    }
+    /// The grammar's band as quiver's (the two index orders agree).
+    pub fn pitch_range(b: PitchBand) -> quiver::prelude::PitchRange {
+        match b {
+            PitchBand::Low => quiver::prelude::PitchRange::Low,
+            PitchBand::Mid => quiver::prelude::PitchRange::Mid,
+            PitchBand::High => quiver::prelude::PitchRange::High,
+        }
+    }
+
+    /// An AUDIO IN's gain: dB linear across the knob, as a linear factor.
+    pub fn input_gain(x: f64) -> f64 {
+        let db = INPUT_GAIN_DB_MIN + (INPUT_GAIN_DB_MAX - INPUT_GAIN_DB_MIN) * x;
+        10f64.powf(db / 20.0)
+    }
+    /// The grammar's channel as quiver's (the two index orders agree).
+    pub fn input_channel(c: InputChannel) -> quiver::io::InputChannel {
+        match c {
+            InputChannel::Left => quiver::io::InputChannel::Left,
+            InputChannel::Right => quiver::io::InputChannel::Right,
+            InputChannel::Both => quiver::io::InputChannel::Both,
+        }
+    }
     /// Resonance: cap below self-oscillation screech.
     pub fn resonance(x: f64) -> f64 {
         0.85 * x
@@ -1017,6 +1225,20 @@ struct Compiler {
     /// between one and half a dozen quiver nodes, and which of them carries
     /// the audio out is a fact about the arm that built it.
     taps: Vec<(String, PortRef)>,
+    /// The stream every AUDIO IN reads, or `None` for an unbound (silent) one.
+    /// See [`compile_with_input`].
+    input: Option<Arc<AudioInputStream>>,
+    /// Every TRACK's gate output: summed into the amp envelope's gate with the
+    /// keys', so a tracked note opens the voice as a key does.
+    track_gates: Vec<PortRef>,
+    /// Every CAPTURE's record gate, by node key ([`CompiledVoice::records`]).
+    records: HashMap<String, Arc<AtomicF64>>,
+    /// Building a follower ([`compile_follower`]): every TRACK reads a
+    /// [`TrackFeed`] instead of tracking, and its gate is not summed into the
+    /// amp's.
+    follow: bool,
+    /// A follower's feeds ([`CompiledVoice::track_feeds`]).
+    track_feeds: HashMap<String, TrackFeed>,
     /// Every constant [`Self::constant`] pinned, so a test build can check,
     /// once the whole patch is wired, that no cable landed on a pinned port
     /// afterwards (the end of [`compile`]).
@@ -1843,6 +2065,33 @@ impl Compiler {
             AudioNode::Silence { .. } => {
                 let z = self.patch.add(format!("{key}:silence"), Vca::new());
                 Ok(Sig::mono(z.out("out")))
+            }
+            // quiver's `AudioInput` on the caller's stream. Its `out` carries
+            // the chosen channel at quiver's audio level (a full-scale input is
+            // ±5 V, as a full-scale oscillator is), so everything downstream
+            // meets it as it would meet a source. `input` is not compiled in:
+            // which stream a node reads is the caller's binding, one stream for
+            // every slot today (see `compile_with_input`).
+            //
+            // The gain is a live knob into the module's own `gain` port
+            // (unipolar CV into unipolar CV, so no new warning class), and the
+            // channel is baked like a VCO's waveform: changing it recompiles.
+            AudioNode::AudioIn { gain, channel, .. } => {
+                let module = match &self.input {
+                    Some(stream) => AudioInput::new(Arc::clone(stream)),
+                    None => AudioInput::unbound(),
+                }
+                .with_channel(map::input_channel(*channel));
+                let n = self.patch.add(format!("{key}:audio_in"), module);
+                self.knob(
+                    key,
+                    "gain",
+                    *gain,
+                    ParamMap::InputGain,
+                    false,
+                    n.in_("gain"),
+                )?;
+                Ok(Sig::mono(n.out("out")))
             }
             AudioNode::Wavetable {
                 table,
@@ -2832,7 +3081,165 @@ impl Compiler {
                 )?;
                 Ok(Sig::mono(vc.out("out")))
             }
+            // The input plays `/0`. The tracker is built on `/1` first, and
+            // while `/0` is built its pitch and gate stand in for the keys':
+            // every source, pluck, mod envelope and capture in the played
+            // branch reads them where it would read the keys. Restored before
+            // the result is looked at, so a sibling branch (a mix's other
+            // input) is still played by the keys.
+            AudioNode::Track {
+                band,
+                sensitivity,
+                dynamics,
+                input,
+                listen,
+                ..
+            } => {
+                let (voct, gate, level) = if self.follow {
+                    // A follower: the leading voice tracks, this one plays what
+                    // it tracked. Nothing listens here, so `/1` is not built.
+                    let feed = TrackFeed::default();
+                    let v = self.patch.add(
+                        format!("{key}:track_voct"),
+                        ExternalInput::voct(Arc::clone(&feed.voct)),
+                    );
+                    let g = self.patch.add(
+                        format!("{key}:track_gate"),
+                        ExternalInput::gate(Arc::clone(&feed.gate)),
+                    );
+                    let l = self.patch.add(
+                        format!("{key}:track_level"),
+                        ExternalInput::cv(Arc::clone(&feed.level)),
+                    );
+                    self.track_feeds.insert(key.to_string(), feed);
+                    (v.out("out"), g.out("out"), l.out("out"))
+                } else {
+                    let heard = self.build(listen, &format!("{key}/1"))?;
+                    let sr = self.sr();
+                    let range = map::pitch_range(*band);
+                    let tr = self.patch.add_boxed(
+                        format!("{key}:track"),
+                        off_frame(move || PitchTracker::new(sr).with_range(range)),
+                    );
+                    self.feed(heard, tr.in_("in"))?;
+                    self.knob(
+                        key,
+                        "tsens",
+                        *sensitivity,
+                        ParamMap::TrackSensitivity,
+                        false,
+                        tr.in_("threshold"),
+                    )?;
+                    (tr.out("voct"), tr.out("gate"), tr.out("level"))
+                };
+                let keys = (self.pitch_out, self.gate_out);
+                self.pitch_out = voct;
+                self.gate_out = gate;
+                let played = self.build(input, &format!("{key}/0"));
+                (self.pitch_out, self.gate_out) = keys;
+                let played = played?;
+                // A follower keeps its own key's gate on its amp: it sounds for
+                // its note, as the other voices of a chord do.
+                if !self.follow {
+                    self.track_gates.push(gate);
+                }
+                // Dynamics: a VCA on the played branch whose CV is
+                // `10 + 2d·(level − TRACK_FULL_LEVEL)`, i.e. `10·(1 − d) +
+                // 2d·level`: unity at d = 0, the tracked level (full at
+                // TRACK_FULL_LEVEL, the VCA clamps above) at d = 1. Built from
+                // an offset, the live depth knob on an attenuverter, and an
+                // offset back up, so turning it costs no recompile.
+                let dip = self
+                    .patch
+                    .add(format!("{key}:tdip"), Offset::new(-TRACK_FULL_LEVEL));
+                self.patch.connect(level, dip.in_("in"))?;
+                let depth = self.patch.add(format!("{key}:tdepth"), Attenuverter::new());
+                self.patch.connect(dip.out("out"), depth.in_("in"))?;
+                self.knob(
+                    key,
+                    "tdyn",
+                    *dynamics,
+                    ParamMap::TrackDynamics,
+                    false,
+                    depth.in_("level"),
+                )?;
+                let cv = self.patch.add(format!("{key}:tcv"), Offset::new(10.0));
+                self.patch.connect(depth.out("out"), cv.in_("in"))?;
+                let left = self.track_vca(key, "", played.left, cv.out("out"))?;
+                Ok(match played.right {
+                    Some(r) => Sig::stereo(left, self.track_vca(key, "R", r, cv.out("out"))?),
+                    None => Sig::mono(left),
+                })
+            }
+            // quiver's `Capture`, holding the take. `/0` is built and fed to
+            // its input, so the host can record it through the record gate;
+            // what the arm hands on is the playback. The buffer is quiver's
+            // default length at this rate (the take's bound, `TAKE_SECONDS`),
+            // and a take recorded at another rate plays at its own speed.
+            AudioNode::Capture {
+                play, input, take, ..
+            } => {
+                let rec = self.build(input, &format!("{key}/0"))?;
+                let sr = self.sr();
+                let take = take.clone();
+                let cap = self.patch.add_boxed(
+                    format!("{key}:capture"),
+                    off_frame(move || {
+                        let mut c = Capture::with_seconds(sr, TAKE_SECONDS);
+                        if let Some(rate) = take.sample_rate() {
+                            c.set_recording(take.samples(), rate);
+                        }
+                        c
+                    }),
+                );
+                self.feed(rec, cap.in_("in"))?;
+                let record = Arc::new(AtomicF64::new(GATE_FALSE));
+                let gate = self.patch.add(
+                    format!("{key}:rec"),
+                    ExternalInput::gate(Arc::clone(&record)),
+                );
+                // At most `TAKE_SECONDS` of recording per press, at this
+                // rate: the buffer can be longer than that (a higher-rate
+                // take loaded into it grows it), and a longer recording would
+                // be a take its own loader refuses.
+                let window = self
+                    .patch
+                    .add(format!("{key}:recwin"), RecordWindow::new(self.sr()));
+                self.patch.connect(gate.out("out"), window.in_("in"))?;
+                self.patch.connect(window.out("out"), cap.in_("record"))?;
+                self.records.insert(key.to_string(), record);
+                // Pitched by whoever plays this branch: C4 (0 V) plays the
+                // take at the speed it was recorded.
+                self.patch.connect(self.pitch_out, cap.in_("voct"))?;
+                match play {
+                    CaptureMode::Once => {
+                        self.patch.connect(self.gate_out, cap.in_("trig"))?;
+                    }
+                    CaptureMode::Hold => {
+                        self.patch.connect(self.gate_out, cap.in_("gate"))?;
+                    }
+                    CaptureMode::Loop => {
+                        self.constant(GATE_TRUE, cap.id(), "loop")?;
+                        self.patch.connect(self.gate_out, cap.in_("gate"))?;
+                    }
+                }
+                Ok(Sig::mono(cap.out("out")))
+            }
         }
+    }
+
+    /// One channel of a TRACK's dynamics: a VCA on `from` under `cv`.
+    fn track_vca(
+        &mut self,
+        key: &str,
+        side: &str,
+        from: PortRef,
+        cv: PortRef,
+    ) -> Result<PortRef, PatchError> {
+        let v = self.patch.add(format!("{key}:tvca{side}"), Vca::new());
+        self.patch.connect(from, v.in_("in"))?;
+        self.patch.connect(cv, v.in_("cv"))?;
+        Ok(v.out("out"))
     }
 }
 
@@ -2895,6 +3302,12 @@ fn makes_dc(node: &AudioNode) -> bool {
         | AudioNode::Duck { input, .. }
         | AudioNode::Gate { input, .. } => makes_dc(input),
         AudioNode::Vocoder { .. } => false,
+        // The played branch is what is heard; `/1` reaches only the tracker,
+        // as a compressor's sidechain reaches only its detector.
+        AudioNode::Track { input, .. } => makes_dc(input),
+        // A take recorded from an input can carry the input's offset, so a
+        // capture pays for the blocker as an AUDIO IN does.
+        AudioNode::Capture { .. } => true,
         AudioNode::Vco { .. }
         | AudioNode::Supersaw { .. }
         | AudioNode::Noise { .. }
@@ -2903,6 +3316,11 @@ fn makes_dc(node: &AudioNode) -> bool {
         | AudioNode::Formant { .. }
         // A constant zero has no offset to block.
         | AudioNode::Silence { .. } => false,
+        // A host input can carry an offset of its own (a cheap interface's
+        // converter, a phantom-powered mic settling), and the amp envelope
+        // would turn it into a thump on every note. So an input always pays
+        // for the blocker.
+        AudioNode::AudioIn { .. } => true,
         AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => makes_dc(a) || makes_dc(b),
         AudioNode::Filter { kind, input, .. } => {
             matches!(kind, FilterKind::Ladder) || makes_dc(input)
@@ -2959,12 +3377,63 @@ fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn Grap
     Box::new(make())
 }
 
-/// Compile a patch term into a playable voice at the given sample rate.
+/// Compile a patch term into a playable voice at the given sample rate, with
+/// every AUDIO IN unbound (silent).
+///
+/// Right for every caller that does not play an input: the rack's knob
+/// table, PERFORM's live-knob list, and any patch that does not listen
+/// ([`PatchTree::listens`]), which compiles to the same voice either way. A
+/// caller that plays a patch that listens binds a stream with
+/// [`compile_with_input`].
 ///
 /// Refuses, with [`PatchError::CompilationFailed`], a term nested deeper than
 /// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
 /// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
+    compile_with_input(tree, sample_rate, None)
+}
+
+/// [`compile`], with every [`AudioNode::AudioIn`] reading `input`.
+///
+/// One stream for every AUDIO IN in the patch, whatever its `input` slot: the
+/// session's audition clip in a measurement render
+/// (`auracle_features::render_phrase`, on a host-clock stream), and the live
+/// voice's one input in the instrument (`auracle_wasm`'s `LivePoly`, on a
+/// cursor stream). Every compiled copy of a patch may share the one `Arc`:
+/// quiver's `AudioInput` fans one stream out to any number of readers.
+/// `None` builds each AUDIO IN on a stream nothing writes, so it is silent.
+pub fn compile_with_input(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
+    compile_voice(tree, sample_rate, input, false)
+}
+
+/// [`compile_with_input`] for a voice that plays *under* another one, as a
+/// chord's second voice does: every TRACK in it reads the leading voice's
+/// tracked pitch, gate and level ([`CompiledVoice::track_feeds`], written by
+/// [`CompiledVoice::lead`]) instead of tracking the input itself, and its
+/// amp keeps its own key's gate.
+///
+/// So a chord voice that joins mid-phrase plays the note the input is on from
+/// its first frame, rather than C4 until a cold tracker settles, and it stops
+/// with its key, rather than sounding for as long as the input does. For a
+/// patch with no TRACK this is [`compile_with_input`] exactly.
+pub fn compile_follower(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+) -> Result<CompiledVoice, PatchError> {
+    compile_voice(tree, sample_rate, input, true)
+}
+
+fn compile_voice(
+    tree: &PatchTree,
+    sample_rate: f64,
+    input: Option<&Arc<AudioInputStream>>,
+    follow: bool,
+) -> Result<CompiledVoice, PatchError> {
     let nesting = tree.root.depth() + tree.root.max_mod_depth();
     if nesting > COMPILE_MAX_NESTING {
         return Err(PatchError::CompilationFailed(format!(
@@ -2985,6 +3454,11 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         gate_out: gate_in.out("out"),
         params: HashMap::new(),
         taps: Vec::new(),
+        input: input.cloned(),
+        track_gates: Vec::new(),
+        records: HashMap::new(),
+        follow,
+        track_feeds: HashMap::new(),
         #[cfg(test)]
         pins: Vec::new(),
     };
@@ -2995,6 +3469,13 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // Mandatory voice stage: amp ADSR → VCA → limiter → stereo out.
     let adsr = c.patch.add("voice:adsr", Adsr::new(sample_rate));
     c.patch.connect(c.gate_out, adsr.in_("gate"))?;
+    // A TRACK's gate opens the voice the way a key does. quiver sums every
+    // cable into a port, and the envelope reads anything above 2.5 V as high,
+    // so the sum is an OR: a key, a tracked note, or both (10 V) play it, and
+    // a key let go while the input still sounds (10 V to 5 V) holds it open.
+    for g in std::mem::take(&mut c.track_gates) {
+        c.patch.connect(g, adsr.in_("gate"))?;
+    }
     c.knob(
         "amp",
         "attack",
@@ -3075,6 +3556,8 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     }
 
     let params = std::mem::take(&mut c.params);
+    let records = std::mem::take(&mut c.records);
+    let track_feeds = std::mem::take(&mut c.track_feeds);
     let recorded = std::mem::take(&mut c.taps);
     let mut patch = c.patch;
     patch.set_output(out.id());
@@ -3095,11 +3578,21 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         })
         .collect();
 
+    let trackers = names
+        .iter()
+        .filter_map(|(id, name)| {
+            name.strip_suffix(":track")
+                .map(|key| (key.to_string(), *id))
+        })
+        .collect();
     Ok(CompiledVoice {
         patch,
         pitch,
         gate,
         params,
+        records,
+        track_feeds,
+        trackers,
         warnings,
         taps,
     })
@@ -3242,6 +3735,11 @@ mod tests {
             gate_out: gate.out("out"),
             params: HashMap::new(),
             taps: Vec::new(),
+            input: None,
+            track_gates: Vec::new(),
+            records: HashMap::new(),
+            follow: false,
+            track_feeds: HashMap::new(),
             pins: Vec::new(),
         };
         let adsr = c.patch.add("t:adsr", Adsr::new(SR));

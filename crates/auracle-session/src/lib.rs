@@ -29,6 +29,7 @@ pub mod belief;
 pub mod calib;
 pub mod engine;
 pub mod farm;
+pub mod guess;
 pub mod map;
 pub mod migrate;
 pub mod naming;
@@ -39,12 +40,17 @@ pub mod walk;
 pub use belief::{Belief, BeliefRow};
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
-    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
-    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
-    RefineOutcome, RenderPolicy, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
-    MIN_SESSION_OBS, OBS_PER_STYLE,
+    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
+    Contribution, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent,
+    Origin, Profile, ReadmitError, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig,
+    SessionState, EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS, OBS_PER_STYLE,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
+pub use guess::{
+    guess_candidates, guess_is_current, guessable_insert, guessable_source, Guess, GuessCandidate,
+    GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
+    GUESS_FLOOR, GUESS_TAKEN_KEEP,
+};
 pub use map::{MapPoint, TasteMap};
 pub use naming::{claim_name, NameScale};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
@@ -3312,6 +3318,43 @@ mod tests {
         );
     }
 
+    /// A check shown and answered before the first fit is used up by its
+    /// answer, though there was no forecast to score. It used to stay
+    /// pending, and the next answer on the same pair (after the fit, on a
+    /// pair the model had chosen, or the same question put back up) was
+    /// scored as that old check.
+    #[test]
+    fn a_check_answered_before_the_first_fit_is_not_scored_again() {
+        let mut rng = StdRng::seed_from_u64(0xC4EC);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 8,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let first = engine.deal_duel_except(&mut rng, &[]).unwrap();
+        assert!(first.random_check, "with no fit every pair is a check");
+        let (ia, ib) = (engine.pool[first.a].id, engine.pool[first.b].id);
+        assert!(engine.duel_shown(ia, ib));
+        engine.record_duel(first.a, first.b, true);
+        for _ in 0..8 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let before = engine.calibration().check_n;
+        // The same pair answered again, not dealt as a check this time.
+        engine.record_duel(first.a, first.b, false);
+        assert_eq!(
+            engine.calibration().check_n,
+            before,
+            "an answer before the fit left its check pending for a later answer"
+        );
+    }
+
     /// something: its standardized vectors are inverted back to raw values,
     /// re-projected by name, and the votes survive the feature-set change
     /// that motivated the whole exercise.
@@ -3834,6 +3877,67 @@ mod tests {
         );
     }
 
+    /// **A farm on a stale clip still builds the serial pool.** The farm
+    /// measures with the clip its phrase carries, and after a capture (or a
+    /// restore that installed a clip) it can be a phrase behind. Every draw
+    /// that listens then comes back measured, or vetted out, under the old
+    /// clip. Absorption measures those draws here, so the pool is the one the
+    /// serial fold builds with the session's own clip. Without that, the
+    /// pool admits the old clip's φ under a key that names it.
+    #[test]
+    fn a_farm_on_a_stale_clip_still_builds_the_serial_pool() {
+        const SEED: u64 = 0x5EED_A0D1;
+        // AUDIO IN as the likeliest source, so a six-patch pool holds
+        // listeners.
+        let mut prior = PatchGrammarPrior::default();
+        prior.source_weights[auracle_grammar::prior::N_SOURCES - 1] = 2.0;
+        let cfg = || SessionConfig {
+            pool_size: 6,
+            ..fast()
+        };
+        let mut serial = Engine::new(prior.clone(), cfg());
+        serial.begin_session();
+        serial.set_fill_seed(SEED);
+        serial.fill_pool(&mut StdRng::seed_from_u64(0xDEAD));
+        assert!(
+            serial.pool.iter().filter(|c| c.tree.listens()).count() >= 2,
+            "the pool holds too few listeners to test"
+        );
+
+        let mut farm = Engine::new(prior, cfg());
+        farm.begin_session();
+        farm.set_fill_seed(SEED);
+        let stale = auracle_features::PhraseSpec {
+            clip: Some(sweep_clip(&farm.cfg.phrase)),
+            ..farm.cfg.phrase.clone()
+        };
+        loop {
+            let wave = farm.fill_draw(3);
+            if wave.is_empty() {
+                break;
+            }
+            for d in wave {
+                let pre = if d.dup {
+                    None
+                } else {
+                    PreFeaturized::render(d.tree, &stale, false).ok()
+                };
+                farm.absorb_prior(d.index, pre);
+            }
+        }
+        assert_eq!(
+            pool_signature(&serial),
+            pool_signature(&farm),
+            "a farm a clip behind built another pool"
+        );
+        let keys = |e: &Engine| e.pool.iter().map(|c| c.key.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            keys(&serial),
+            keys(&farm),
+            "a listener kept the old clip's key"
+        );
+    }
+
     /// The wire is `f32`, and that has to be invisible.
     ///
     /// A farm result's audition crosses as `Float32Array` and is rebuilt on
@@ -3971,5 +4075,491 @@ mod tests {
         let vx: f64 = xs.iter().map(|x| (x - mx) * (x - mx)).sum();
         let vy: f64 = ys.iter().map(|y| (y - my) * (y - my)).sum();
         cov / (vx.sqrt() * vy.sqrt() + 1e-12)
+    }
+
+    // ---- audition clips (Plan-007 task 3) ----
+
+    /// A patch that listens: the input through a lowpass.
+    fn listening_patch() -> auracle_grammar::PatchTree {
+        use auracle_grammar::term::{AmpEnv, AudioNode, FilterKind, InputChannel, ModNode};
+        auracle_grammar::PatchTree {
+            amp: AmpEnv {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: auracle_grammar::Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: auracle_grammar::Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+                modulation: ModNode::None,
+            },
+        }
+    }
+
+    /// A captured clip: a falling sweep, the phrase's length.
+    fn sweep_clip(spec: &auracle_features::PhraseSpec) -> auracle_features::AuditionClip {
+        let x: Vec<f32> = (0..spec.total_samples())
+            .map(|i| {
+                let t = i as f64 / spec.sample_rate;
+                let hz = 1200.0 * (-t / 2.5).exp() + 80.0;
+                (0.4 * (std::f64::consts::TAU * hz * t).sin()) as f32
+            })
+            .collect();
+        auracle_features::AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
+    }
+
+    /// An engine with one patch that listens and one that does not.
+    fn listening_engine() -> (Engine, u64, u64) {
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        // A fill gives the session its standardizer; then room for two more,
+        // so neither insert evicts anything.
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0xC11F));
+        engine.cfg.pool_size += 2;
+        let listens = engine
+            .insert_preset(listening_patch(), "listens")
+            .expect("a listening patch vets on the reference");
+        let deaf = engine
+            .insert_preset(auracle_grammar::presets()[0].1.clone(), "deaf")
+            .expect("a preset vets");
+        (engine, listens, deaf)
+    }
+
+    /// Setting a clip measures again the members that listen, and only them:
+    /// the listener's key and φ move, the other's do not.
+    #[test]
+    fn a_new_clip_remeasures_only_the_patches_that_listen() {
+        let (mut engine, listens, deaf) = listening_engine();
+        // What a measurement wrote on a member: its key and its raw φ.
+        let at = |e: &Engine, id: u64| {
+            let c = &e.pool[e.find(id).unwrap()];
+            (c.key.clone(), c.features.phi())
+        };
+        let (before_l, before_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_eq!(
+            engine.audition_clip_status().source,
+            auracle_features::ClipSource::Reference
+        );
+        let clip = sweep_clip(&engine.cfg.phrase);
+        let change = engine.set_audition_clip(Some(clip.clone()));
+        assert_eq!(change.remeasured, vec![listens]);
+        assert!(change.unmeasured.is_empty());
+        let (after_l, after_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_ne!(
+            before_l.0, after_l.0,
+            "the listener's key names the new clip"
+        );
+        assert_ne!(before_l.1, after_l.1, "and its φ was measured with it");
+        assert_eq!(
+            before_d, after_d,
+            "a patch that does not listen is untouched"
+        );
+        let status = engine.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Captured);
+        assert_eq!(status.id, clip.id());
+        // Setting the same clip again changes nothing.
+        assert_eq!(engine.set_audition_clip(Some(clip)), ClipChange::default());
+    }
+
+    /// The clip is saved with the session and restored before the bank is
+    /// measured, so a reload measures a listening patch exactly as before.
+    #[test]
+    fn a_clip_is_saved_with_the_session_and_restored() {
+        let (mut engine, listens, _) = listening_engine();
+        let clip = sweep_clip(&engine.cfg.phrase);
+        engine.set_audition_clip(Some(clip.clone()));
+        let phi = engine.pool[engine.find(listens).unwrap()].features.phi();
+        let saved = serde_json::to_string(&engine.export_state()).unwrap();
+        // The bound, in the file: 16-bit samples, five seconds of mono.
+        let state: SessionState = serde_json::from_str(&saved).unwrap();
+        let data = state.audition_clip.as_ref().unwrap()["data"]
+            .as_str()
+            .unwrap()
+            .len();
+        assert_eq!(data, (clip.frames() * 2).div_ceil(3) * 4);
+        assert!(
+            clip.seconds() <= auracle_features::MAX_CLIP_SECONDS,
+            "a clip is never longer than the bound"
+        );
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.cfg.phrase.clip = None;
+        back.import_state(state);
+        let status = back.audition_clip_status();
+        assert_eq!(status.id, clip.id());
+        assert_eq!(status.unreadable, None);
+        assert_eq!(back.pool[back.find(listens).unwrap()].features.phi(), phi);
+    }
+
+    /// A clip the session file holds but that cannot be read costs the
+    /// session its clip and nothing else: the bank and the log come back, the
+    /// patches that listen are measured with the reference, and the status
+    /// says why.
+    #[test]
+    fn an_unreadable_clip_restores_as_the_reference_and_says_so() {
+        let (mut engine, listens, _) = listening_engine();
+        engine.set_audition_clip(Some(sweep_clip(&engine.cfg.phrase)));
+        let mut state = engine.export_state();
+        state.audition_clip.as_mut().unwrap()["channels"] = 7.into();
+        let text = serde_json::to_string(&state).unwrap();
+        let state: SessionState = serde_json::from_str(&text).expect("the session still parses");
+        let mut back = Engine::new(PatchGrammarPrior::default(), fast());
+        assert_eq!(back.import_state(state), engine.pool.len());
+        let status = back.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Reference);
+        assert!(status.unreadable.is_some(), "the fallback is reported");
+        let c = &back.pool[back.find(listens).unwrap()];
+        assert_eq!(
+            c.key,
+            auracle_features::render_key(&c.tree, &auracle_features::PhraseSpec::default()),
+            "measured with the reference"
+        );
+    }
+
+    // ---- CAPTURE takes in the session file (Plan-007 task 6) ----
+
+    /// A sound that mixes a CAPTURE holding a take (a decaying tone, two
+    /// seconds at the phrase's rate, recorded from an input) with a keyed
+    /// VCO, so it still sounds, and still measures, without its take.
+    fn captured_patch() -> auracle_grammar::PatchTree {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel, Waveform};
+        use auracle_grammar::ModNode;
+        let sr = auracle_features::PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..(2.0 * sr) as usize)
+            .map(|i| {
+                let t = i as f64 / sr;
+                (0.6 * (-t * 1.5).exp() * (std::f64::consts::TAU * 196.0 * t).sin()) as f32
+            })
+            .collect();
+        auracle_grammar::PatchTree {
+            amp: AmpEnv {
+                attack: 0.02,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: auracle_grammar::Uid::NEW,
+                balance: 0.4,
+                a: Box::new(AudioNode::Capture {
+                    uid: auracle_grammar::Uid::NEW,
+                    play: CaptureMode::Once,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: auracle_grammar::Uid::NEW,
+                        input: 0,
+                        gain: auracle_grammar::INPUT_GAIN_UNITY,
+                        channel: InputChannel::Both,
+                    }),
+                    take: auracle_grammar::Take::from_samples(&x, sr).unwrap(),
+                }),
+                b: Box::new(AudioNode::Vco {
+                    uid: auracle_grammar::Uid::NEW,
+                    wave: Waveform::Triangle,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+            },
+        }
+    }
+
+    /// The take of the CAPTURE at `node/0`.
+    fn capture_take(tree: &auracle_grammar::PatchTree) -> auracle_grammar::Take {
+        match tree.root.children().first() {
+            Some(auracle_grammar::AudioNode::Capture { take, .. }) => take.clone(),
+            n => panic!("no capture at node/0: {n:?}"),
+        }
+    }
+
+    /// An engine holding one captured sound.
+    fn capture_engine() -> (Engine, u64) {
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0xCA97));
+        engine.cfg.pool_size += 1;
+        let id = engine
+            .insert_preset(captured_patch(), "captured")
+            .expect("a captured sound vets");
+        (engine, id)
+    }
+
+    /// **A take is saved with its sound, held to its bound, and comes back
+    /// bit for bit**, so the restored sound measures exactly as before and
+    /// nothing is reported as repaired.
+    #[test]
+    fn a_take_is_saved_with_its_sound_and_restored() {
+        let (engine, id) = capture_engine();
+        let before = &engine.pool[engine.find(id).unwrap()];
+        let (tree, phi) = (before.tree.clone(), before.features.phi());
+        let text = serde_json::to_string(&engine.export_state()).unwrap();
+        let state: SessionState = serde_json::from_str(&text).unwrap();
+        // The bound, in the file: f32 samples in base64, no longer than the
+        // take's seconds at its rate.
+        let saved = serde_json::to_value(&state).unwrap();
+        let entry = saved["bank"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .expect("the captured sound is in the bank");
+        let take = &entry["tree"]["root"]["Mix"]["a"]["Capture"]["take"];
+        let length = take["length"].as_u64().unwrap() as usize;
+        assert_eq!(take["format"], auracle_grammar::TAKE_FORMAT);
+        assert_eq!(
+            take["data"].as_str().unwrap().len(),
+            (length * 4).div_ceil(3) * 4
+        );
+        assert!(
+            length as f64 <= auracle_grammar::TAKE_SECONDS * take["sample_rate"].as_f64().unwrap()
+        );
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(state);
+        let after = &back.pool[back.find(id).unwrap()];
+        assert_eq!(after.tree, tree, "the take came back different");
+        assert_eq!(capture_take(&after.tree), capture_take(&tree));
+        assert!(!capture_take(&tree).is_empty());
+        assert_eq!(
+            after.features.phi(),
+            phi,
+            "the restored sound measures differently"
+        );
+        assert_eq!(back.repair_report(), (0, 0, 0));
+    }
+
+    /// **A take the session file holds but that cannot be read costs the sound
+    /// its take and nothing else**: the bank comes back whole, the capture is
+    /// in place and empty, the sound is measured again without it (its φ
+    /// moves), and the restore reports one repaired sound, which the app tells
+    /// the player.
+    ///
+    /// A sound whose only source is its take would restore silent and fail
+    /// the vet, and `import_state` drops any entry that no longer renders;
+    /// that rule is restore-wide and is left as it is here.
+    #[test]
+    fn an_unreadable_take_restores_the_sound_empty_and_says_so() {
+        let (engine, id) = capture_engine();
+        let phi = engine.pool[engine.find(id).unwrap()].features.phi();
+        let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+        for e in saved["bank"].as_array_mut().unwrap() {
+            if e["id"] == id {
+                // A length the data does not hold.
+                e["tree"]["root"]["Mix"]["a"]["Capture"]["take"]["length"] = 7.into();
+            }
+        }
+        let state: SessionState = serde_json::from_value(saved).expect("the session still parses");
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        assert_eq!(
+            back.import_state(state.clone()),
+            engine.pool.len(),
+            "the bank came back whole"
+        );
+        let c = &back.pool[back.find(id).unwrap()];
+        assert!(
+            capture_take(&c.tree).is_empty(),
+            "the unreadable take was kept"
+        );
+        assert_ne!(
+            c.features.phi(),
+            phi,
+            "measured as if the take were still there"
+        );
+        assert_eq!(back.repair_report().0, 1, "the restore did not say so");
+        // The farm's restore comes back the same: each entry rendered from its
+        // own term (which no longer holds the take), absorbed in bank order.
+        let mut farmed = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        let bank = farmed.import_state_deferred(state);
+        for entry in bank {
+            let Ok(pre) = PreFeaturized::render(entry.tree.clone(), &engine.cfg.phrase, false)
+            else {
+                continue;
+            };
+            farmed.absorb_bank_entry(entry, pre);
+        }
+        assert_eq!(farmed.finish_restore(), engine.pool.len());
+        assert_eq!(farmed.repair_report().0, 1);
+        let f = &farmed.pool[farmed.find(id).unwrap()];
+        assert_eq!(f.tree, c.tree);
+        assert_eq!(f.features.phi(), c.features.phi());
+    }
+
+    // ---- held sounds: a take that was the sound's only source ----
+
+    /// A sound that is nothing but a CAPTURE with its take, in an engine.
+    fn capture_only_engine() -> (Engine, u64, auracle_grammar::Take) {
+        let mut tree = captured_patch();
+        let capture = match &tree.root {
+            auracle_grammar::AudioNode::Mix { a, .. } => (**a).clone(),
+            n => panic!("{n:?}"),
+        };
+        tree.root = capture;
+        let take = capture_take_at_root(&tree);
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0x4E1D));
+        engine.cfg.pool_size += 1;
+        let id = engine
+            .insert_preset(tree, "only its take")
+            .expect("a capture with its take vets");
+        (engine, id, take)
+    }
+
+    fn capture_take_at_root(tree: &auracle_grammar::PatchTree) -> auracle_grammar::Take {
+        match &tree.root {
+            auracle_grammar::AudioNode::Capture { take, .. } => take.clone(),
+            n => panic!("no capture at the root: {n:?}"),
+        }
+    }
+
+    /// The session file with the take of sound `id` (a capture at the root)
+    /// corrupted: a length its data does not hold.
+    fn with_corrupt_take(engine: &Engine, id: u64) -> (serde_json::Value, serde_json::Value) {
+        let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+        let mut corrupt = serde_json::Value::Null;
+        for e in saved["bank"].as_array_mut().unwrap() {
+            if e["id"] == id {
+                let take = &mut e["tree"]["root"]["Capture"]["take"];
+                take["length"] = 7.into();
+                corrupt = take.clone();
+            }
+        }
+        assert!(!corrupt.is_null(), "sound {id} has no take in the file");
+        (saved, corrupt)
+    }
+
+    /// **A sound whose only source is an unreadable take is held, not lost.**
+    /// The restore leaves it out of the pool and reports it as held, apart
+    /// from the repairs; a save writes its take back JSON-equal to what was
+    /// loaded, and the next restore holds it again. It is never
+    /// dealt or ranked.
+    #[test]
+    fn a_sound_whose_only_take_is_unreadable_is_held_through_save_and_restore() {
+        let (engine, id, _) = capture_only_engine();
+        let (saved, corrupt) = with_corrupt_take(&engine, id);
+        let state: SessionState = serde_json::from_value(saved).unwrap();
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        let restored = back.import_state(state);
+        assert_eq!(
+            restored,
+            engine.pool.len() - 1,
+            "the held sound is not in the pool"
+        );
+        assert!(back.find(id).is_none());
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(back.held()[0].id, id);
+        assert_eq!(back.held()[0].name.as_deref(), Some("only its take"));
+        assert_eq!(
+            back.repair_report(),
+            (0, 0, 0),
+            "held is reported apart from repaired"
+        );
+        // Never dealt, never ranked.
+        let mut rng = StdRng::seed_from_u64(0xDEA1);
+        for _ in 0..60 {
+            let (a, b) = back.next_duel(&mut rng).expect("a duel");
+            assert!(back.pool[a].id != id && back.pool[b].id != id);
+        }
+        assert!(back.ranked().iter().all(|(i, _, _)| back.pool[*i].id != id));
+        // Saved again, the take is JSON-equal to what was loaded.
+        let resaved = serde_json::to_value(back.export_state()).unwrap();
+        let entry = resaved["bank"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .expect("a save keeps the held sound");
+        assert_eq!(entry["tree"]["root"]["Capture"]["take"], corrupt);
+        // And the next restore holds it again.
+        let state: SessionState = serde_json::from_value(resaved).unwrap();
+        let mut again = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        again.import_state(state);
+        assert_eq!(again.held().len(), 1);
+        assert_eq!(again.held()[0].id, id);
+        // A new sound never takes the held sound's id.
+        let new = again
+            .insert_preset(auracle_grammar::presets()[0].1.clone(), "new")
+            .unwrap();
+        assert_ne!(new, id);
+    }
+
+    /// **A held sound comes back with a readable take**, measured as a new
+    /// sound in the pool under its own id and name, and is no longer held. An
+    /// unknown id or an empty take is refused and changes nothing.
+    #[test]
+    fn a_held_sound_is_readmitted_with_a_readable_take() {
+        let (engine, id, take) = capture_only_engine();
+        let (saved, _) = with_corrupt_take(&engine, id);
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(serde_json::from_value(saved).unwrap());
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(
+            back.readmit_held(id + 999, take.clone()),
+            Err(ReadmitError::NotHeld)
+        );
+        assert_eq!(
+            back.readmit_held(id, auracle_grammar::Take::empty()),
+            Err(ReadmitError::NoTake)
+        );
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(back.readmit_held(id, take.clone()), Ok(id));
+        assert!(back.held().is_empty());
+        let c = &back.pool[back.find(id).expect("in the pool")];
+        assert_eq!(capture_take_at_root(&c.tree), take);
+        assert_eq!(c.name.as_deref(), Some("only its take"));
+        let original = &engine.pool[engine.find(id).unwrap()];
+        assert_eq!(
+            c.features.phi(),
+            original.features.phi(),
+            "measured as it sounds"
+        );
+        // Saved once, not twice.
+        let bank = back.export_state().bank;
+        assert_eq!(bank.iter().filter(|e| e.id == id).count(), 1);
+    }
+
+    /// A file that repeats an id cannot make one held sound drop another:
+    /// two entries under one id, each a capture whose only take is
+    /// unreadable, are both held and both saved again.
+    #[test]
+    fn a_repeated_id_never_drops_a_held_sound() {
+        let (engine, id, _) = capture_only_engine();
+        let (mut saved, _) = with_corrupt_take(&engine, id);
+        let bank = saved["bank"].as_array_mut().unwrap();
+        let mut twin = bank.iter().find(|e| e["id"] == id).unwrap().clone();
+        twin["name"] = "its twin".into();
+        bank.push(twin);
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(serde_json::from_value(saved).unwrap());
+        let names: Vec<_> = back.held().iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert_eq!(
+            back.export_state()
+                .bank
+                .iter()
+                .filter(|e| e.id == id)
+                .count(),
+            2
+        );
     }
 }

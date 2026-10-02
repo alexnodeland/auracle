@@ -28,6 +28,21 @@ A proposal $x \to x'$ is rejected if it **changes, deletes, or creates** any
 address in $\mathcal{L}$. Rejection happens outside the kernel: the move is
 simply not taken.
 
+Every walk adds one set of locks of its own: the `#input` of each
+[AUDIO IN](../genome/grammar.md#audio-in-the-players-input) in its seed. The
+input a node reads is the player’s, so a walk conditions on it as on a
+player’s lock, and the node stays where it was with the input it had. A node
+the walk grows reads the first input (the grammar never chooses one).
+
+It holds the `#op` of each
+[TRACK and CAPTURE](../genome/grammar.md#player-kinds-scored-and-never-drawn)
+the same way. The prior never draws either, so a step that regrew one away
+could never grow it back. Holding a node’s `#op` holds the node and every node
+above it, since regrowing any subtree that contains it would redraw that site;
+its knobs and everything beside it stay free. A capture’s take is not a site at
+all, so no walk can propose a new one, and the walk carries it onto every term
+it scores, and onto the term it returns.
+
 ## Why all three, and why both directions
 
 The third, *creates*, is the one that gets omitted, and omitting it breaks the

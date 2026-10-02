@@ -18,6 +18,7 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 | | |
 |---|---|
 | <kbd>a</kbd> <kbd>w</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>d</kbd> <kbd>f</kbd> <kbd>t</kbd> <kbd>g</kbd> <kbd>y</kbd> <kbd>h</kbd> <kbd>u</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>o</kbd> <kbd>l</kbd> <kbd>p</kbd> <kbd>;</kbd> <kbd>'</kbd> | Play notes |
+| <kbd>Shift</kbd> and a note key | The note, harder: an accent. In PERFORM, <kbd>⇧F</kbd> is stage mode instead (below) |
 | <kbd>z</kbd> / <kbd>x</kbd> | Octave down / up |
 
 ```admonish note
@@ -42,7 +43,7 @@ are stepping through them with the arrow keys.
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | The key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, or put down a module you picked up |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
 
 ## In EVOLVE
 
@@ -91,6 +92,7 @@ with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 | <kbd>Enter</kbd> | Open the sound |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate it |
 | <kbd>m</kbd> | Save it |
+| <kbd>c</kbd> | Compare a bred sound with its seed |
 
 In **PRESETS** the cursor keys work the same, <kbd>Home</kbd> and
 <kbd>End</kbd> jump to the first and last row, <kbd>Enter</kbd> opens the
@@ -127,6 +129,10 @@ The search finds a module by sound as well as by name: *grit*, *vowel*,
 
 ## In PERFORM
 
+| | |
+|---|---|
+| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and in every other view <kbd>⇧F</kbd> is the accented F |
+
 A focused control (reach it with <kbd>Tab</kbd>):
 
 | | |
@@ -157,9 +163,9 @@ with knobs, and they work too.
 | Note on and off | Plays, with velocity |
 | Pitch bend | Bends every voice. Two semitones each way by default; 7, 12, 24, or 48 in the MIDI panel |
 | Sustain pedal (CC 64) | Sustains. Notes you release while it’s down ring until it lifts |
-| Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control |
-| Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter |
-| Any other CC | The first eight you move take PERFORM’s controls, in order. Reserved CCs are never taken (below) |
+| Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control. With MOTION off PERFORM’s panel, it adds nothing |
+| Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter. With BRIGHT off the panel, it adds nothing |
+| Any other CC | The first eight you move take the first eight controls on PERFORM’s deck, in order. Reserved CCs are never taken (below) |
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off, all notes off: the same as **◼** |
 | CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
@@ -180,7 +186,9 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
    control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
-The panel lists PERFORM’s eight controls and what drives each. A row with no
+The panel lists the first eight controls on PERFORM’s deck and what drives
+each. A row is a place on the deck: after you [arrange PERFORM’s
+panel](./views/perform.md#the-palette), a row names whatever sits there now. A row with no
 knob bound says what does drive it: *mod wheel* on MOTION, *pressure* on
 BRIGHT, and *·* elsewhere. Below the rows: a switch for *first knobs you turn
 claim free controls*, the bend range, and the incoming clock’s tempo.
@@ -188,8 +196,10 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 ### Knobs you turn
 
 With that switch on, the first eight different knobs you move take PERFORM’s
-controls in the order you move them: BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE,
-BLEND, and WANDER. Each is announced (*CC 74 now moves Bright, the first free
+controls in the order you move them, in the deck’s order: with the six,
+BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE, BLEND, and WANDER. With seven on the
+panel, WANDER falls past the eighth, and with eight BLEND does too: MIDI
+doesn’t reach what falls past. Each is announced (*CC 74 now moves Bright, the first free
 control.*). The mod wheel is left out, because it already means something.
 
 Some controllers are never taken, by the switch or by **LEARN**, because MIDI

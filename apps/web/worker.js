@@ -729,6 +729,22 @@ const EMPTY_F32 = new Float32Array(0);
 // opening a newer save, a new enum variant, one corrupt bank tree). The
 // `_checked` / `_v2` forms say `unparseable` for the second case, and that
 // verdict goes to main as `restore_failed`, which is what stops the write.
+// The session's audition clip as the engine reports it, or null from a binary
+// too old to say.
+function auditionClip() {
+  try {
+    return JSON.parse(engine.audition_clip());
+  } catch (_) {
+    return null;
+  }
+}
+
+// A restore installs the session's saved clip (or the reference, with why),
+// so main hears which one after every restore.
+function postClip() {
+  post({ type: "audition_clip", clip: auditionClip() });
+}
+
 function restoreFailed(status) {
   post({ type: "restore_failed", status });
   return 0;
@@ -744,6 +760,7 @@ function restoreSerial(saved) {
     return engine.import_session(saved);
   }
   if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+  postClip();
   return verdict.restored | 0;
 }
 async function restoreSession(saved, farmed, stages) {
@@ -766,6 +783,7 @@ async function restoreSession(saved, farmed, stages) {
     }
   }
   if (!Array.isArray(jobs) || jobs.length === 0) {
+    postClip();
     try { return engine.restore_finish(); } catch (_) { return 0; }
   }
 
@@ -827,6 +845,7 @@ async function restoreSession(saved, farmed, stages) {
   for (let i = next; i < jobs.length; i++) {
     if (engine.bank_render(i)) landed++;
   }
+  postClip();
   return engine.restore_finish();
 }
 
@@ -1159,6 +1178,62 @@ async function measure(m) {
     JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed), ctl)));
 }
 
+// ---------- the model's guess (Plan-005 task 9d) ----------
+//
+// The module the model guesses the player would add next to the patch in
+// hand, ranked by the lower bound of its gain. The engine plans the renders
+// (`guess_plan`: the patch first if it is unmeasured, then the output's
+// candidates in the order a crew that stops early should render them) and
+// ranks what the memo holds (`guess_rank`); it renders nothing itself.
+//
+// Here, with no crew, it renders the first `GUESS_FLOOR` candidates, one per
+// turn with the player answered between them, as PERFORM's measurement does,
+// and stops rendering once `GUESS_BUDGET_MS` of rendering is spent, ranking
+// what it has (`rendered` of `planned` says how much). The budget counts
+// render time only, checked after each render, so it can run over by one
+// render. A crew renders them
+// all with `farm_render` and `memo_absorb` (task 7 raises one for it; the
+// plan's `cache` keys the farm's store). A `later` job: it gives way to work
+// the player asks for and resumes where it stopped, since every render it
+// made is in the memo. The reply echoes `token` and carries the tree it
+// ranked, so a page that has moved on drops it.
+const GUESS_FLOOR = 8;
+const GUESS_BUDGET_MS = 3000;
+
+async function guessRun(m) {
+  const at = m.at || undefined;
+  const failed = m.failed || (m.failed = []);
+  const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
+  m.spent = m.spent || 0;
+  try {
+    for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
+      const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
+      if (plan.reason) {
+        reply(plan);
+        return;
+      }
+      if (!plan.jobs.length) break;
+      for (const job of plan.jobs) {
+        const t = performance.now();
+        if (!engine.memo_render(job.tree)) failed.push(job.key);
+        m.spent += performance.now() - t;
+        if (await breathe(laneOf(m))) {
+          lanes[LATER].unshift(m);
+          return;
+        }
+        if (m.spent >= GUESS_BUDGET_MS) break;
+      }
+    }
+    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
+  } catch (err) {
+    // Answered, as `measure` answers: the page holds a guess open until its
+    // reply lands. A trap still poisons the engine, through `dispatch`.
+    const message = String((err && err.message) || err);
+    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    if (isFatal(err, message)) throw err;
+  }
+}
+
 // ---------- a generation: the breed job ----------
 //
 // EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
@@ -1199,6 +1274,14 @@ function refineRetiring() {
   }
 }
 
+/** What the open generation's end will replace now, for a reply that can
+ *  change it (a save, a preset or a kept edit joining the pool: each moves
+ *  the pool's lowest unsaved members); undefined with none open, so main
+ *  keeps its own. */
+function openRetiring() {
+  return gen ? refineRetiring() : undefined;
+}
+
 /** Milliseconds this generation still owes, from this session's walk times,
  *  or null before any walk has finished. */
 function genEta(g) {
@@ -1226,6 +1309,10 @@ function genProgress(g) {
     eta: genEta(g),
     farm: g.farmed,
     workers: g.farmed ? farmCrew() : 0,
+    // The generation's seeds, best first (`refine_jobs`' parents: job `i`
+    // walks from `seeds[i]`), so main marks this generation's and not the
+    // next one's, whatever ratings it last heard.
+    seeds: g.parents,
   });
 }
 
@@ -1436,6 +1523,10 @@ function genLanded(g, child) {
     index: g.next - 1,
     child: child > 0 ? child : 0,
     reason,
+    // The job's parent (`WalkJob.parent_id`): the seed this walk started
+    // from. An admitted child's lineage event names it too; a refused one's
+    // is recorded nowhere else, and the bank fades it beside this seed.
+    seed: g.parents[g.next - 1],
     done: g.next,
     total: g.total,
     ranked: JSON.parse(engine.ranked()),
@@ -1693,6 +1784,8 @@ function laneOf(m) {
     case "fit":
     // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
     case "styles":
+    case "cable_levels":
+    case "guess":
       return LATER;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
@@ -1984,7 +2077,10 @@ async function dispatch(m) {
         try {
           ns = mod.cache_namespace(engine.phrase_json()) || null;
         } catch (_) { /* older engine */ }
-        post({ type: "ready", ceilings, ns });
+        // The audition clip sounds with an AUDIO IN are measured with (the
+        // built-in reference until an input is captured). PERFORM keys the
+        // wiring of a sound that listens by it.
+        post({ type: "ready", ceilings, ns, clip: auditionClip() });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.
@@ -2040,7 +2136,10 @@ async function dispatch(m) {
           // ever appears when it is true.
           try {
             const rep = JSON.parse(engine.repair_report());
-            if (rep.terms || rep.cells || rep.dropped) post({ type: "repaired", repair: rep });
+            // Which sounds are kept for a recording that couldn't be read, so
+            // main says so once per set rather than on every boot.
+            if (rep.held) rep.heldIds = JSON.parse(engine.held_sounds()).map((h) => h.id);
+            if (rep.terms || rep.cells || rep.dropped || rep.held) post({ type: "repaired", repair: rep });
           } catch (_) { /* an engine without the report is an engine with nothing to report */ }
         }
 
@@ -2412,6 +2511,7 @@ async function dispatch(m) {
         outcome: m.outcome || "none",
         views: tasteViews(),
         status: status(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2513,6 +2613,16 @@ async function dispatch(m) {
     // leave (say) an offer "in flight" forever and refuse the next one.
     case "perform_wire": {
       await holdFloor(m, () => measure(m));
+      break;
+    }
+    // The model's guess for the patch in hand (see `guessRun`), and a skip of
+    // one. Taking a guess is `edit_structure` with `guess`.
+    case "guess": {
+      await holdFloor(m, () => guessRun(m));
+      break;
+    }
+    case "guess_skip": {
+      post({ type: "guess_skipped", token: m.token ?? null, ok: engine.guess_skip(JSON.stringify(m.guess)) });
       break;
     }
     case "perform_apply":
@@ -2621,6 +2731,17 @@ async function dispatch(m) {
       post({ type: "described", id: m.id, rack: JSON.parse(engine.describe_of(m.id)) });
       break;
     }
+    // The cables of the patch in hand, measured (Plan-005 task 9e): one
+    // render of the phrase with every audio cable read after every tick
+    // (`edit_cable_levels`), each keyed as the rack draws it. `later`: it is
+    // asked once an edit has settled, and nobody is waiting on it. The reply
+    // carries the tree it measured, so a page that has moved on drops it;
+    // `levels` is null with nothing open.
+    case "cable_levels": {
+      const levels = JSON.parse(engine.edit_cable_levels());
+      post({ type: "cable_levels", token: m.token ?? null, tree: engine.edit_tree_json(), levels });
+      break;
+    }
     case "set_style_name": {
       // The name, and nothing else. Posting fresh views here was the first
       // post since the last fit, so a rename also showed every reweighting
@@ -2657,8 +2778,11 @@ async function dispatch(m) {
         ok,
         budget,
         ranked: JSON.parse(engine.ranked()),
-        // A save changes what a generation may replace.
+        // A save changes what a generation may replace, and while one is
+        // open, what its end will: a saved sound leaves `retiring` and the
+        // next lowest unsaved one takes its place (`openRetiring`).
         ratings: engineRatings(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2689,7 +2813,7 @@ async function dispatch(m) {
       post({
         type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
         prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
-        views: tasteViews(), status: status(),
+        views: tasteViews(), status: status(), retiring: openRetiring(),
       });
       // A preset clicked open: main answers `preset_loaded` with the bench
       // open (`edit_begin`), a round trip in which the engine is free to
@@ -2741,7 +2865,11 @@ async function dispatch(m) {
       break;
     }
     case "edit_structure": {
-      const err = engine.edit_structure_apply(JSON.stringify(m.op));
+      // A taken guess (`m.guess`, a guess as `guess` replied it) is the same
+      // edit, remembered by the engine so that undoing it counts as a skip.
+      const err = m.guess
+        ? engine.guess_take(JSON.stringify(m.guess))
+        : engine.edit_structure_apply(JSON.stringify(m.op));
       if (err !== "") {
         post({ type: "edit_rejected", error: err });
         break;
@@ -2757,6 +2885,40 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
+    // The session's audition clip (Plan-007 task 3, ADR-015): what a sound
+    // with an AUDIO IN is measured with. Capturing one is task 4's (the
+    // permission flow and the worklet's input); these are the engine's side,
+    // so a capture has somewhere to land. `samples` is a Float32Array of
+    // `channels` interleaved, at `sampleRate`; without it the clip goes back
+    // to the built-in reference. A new clip changes the phrase the farm was
+    // handed at boot, and until task 4 sends it again the farm measures sounds
+    // that listen with the old one; their keys differ, so the engine measures
+    // those itself rather than trust the farm's rows.
+    case "audition_clip": {
+      postClip();
+      break;
+    }
+    case "set_audition_clip": {
+      const reply = m.samples
+        ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
+        : engine.clear_audition_clip();
+      post({ type: "audition_clip", ...JSON.parse(reply) });
+      break;
+    }
+    // Sounds the last restore held back: a capture's recording couldn't be
+    // read and it was the sound's only source, so they are kept out of the
+    // pool and saved unchanged (Plan-007 task 6). The capture plate (task 4)
+    // lists them and sends a new recording; until then nothing asks.
+    case "held_sounds": {
+      post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
+      break;
+    }
+    case "readmit_held": {
+      const reply = JSON.parse(engine.readmit_held(m.id >>> 0, m.take || ""));
+      post({ type: "readmitted", ...reply, status: status() });
+      if (reply.ok) post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
+      break;
+    }
     case "export": {
       // `reason` is echoed so main can name a safety copy for what it is.
       post({ type: "exported", json: engine.export_profile(), reason: m.reason || null });

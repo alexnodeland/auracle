@@ -45,6 +45,10 @@ fn enum_arity(site: &str) -> Option<usize> {
         "oct" => Some(5),
         "table" => Some(8),
         "dmode" => Some(3),
+        "input" => Some(crate::term::INPUT_SLOTS),
+        "channel" => Some(crate::term::InputChannel::ALL.len()),
+        "band" => Some(crate::term::PitchBand::ALL.len()),
+        "play" => Some(crate::term::CaptureMode::ALL.len()),
         _ => None,
     }
 }
