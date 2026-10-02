@@ -205,6 +205,79 @@ export function bredRatings(seedName, seedP, childName, childP) {
   return `when it bred them, it rated ${seedName} ${guessLabel(seedP)} and ${childName} ${guessLabel(childP)}`;
 }
 
+/** The word on a bank row while EVOLVE POOL is pointed at:
+ *  - `seed`: a generation breeds from it (`ratings.seeds`, or the running
+ *    generation's own);
+ *  - `may`: a generation opened now may replace it (`ratings.may_replace`; no
+ *    sound outside the list can go at its end), or ⚡'s child would, if the
+ *    pool takes it;
+ *  - `will`: the running generation's end will replace it, stopped now or
+ *    run out (`refine_child`'s `retiring`: the lowest unsaved members, as
+ *    many as its children put the pool over size, under the posterior it
+ *    opened with, so a child taken in adds one and takes none away). Each
+ *    child still to come adds the next lowest, so it is not the whole of
+ *    what may go: "will", not "may".
+ *  The longest fits the stars' place on the narrowest bank (200 px). */
+export function markWord(kind) {
+  return kind === "seed" ? "seed" : kind === "may" ? "may be replaced" : kind === "will" ? "will be replaced" : "";
+}
+
+// ---- what changed from a seed to its child ----
+
+/** The sites of a module, as `tree_diff` names them: its kind (`op`, `src`,
+ *  `mod`), whose value is the module's name, or the empty slot's. */
+export const STRUCT_SITES = new Set(["op", "src", "mod"]);
+/** Grammar bookkeeping a player never sees (a leaf's kind flips whenever a
+ *  module is swapped, which says it better). */
+export const SKIP_SITES = new Set(["leaf", "uid"]);
+
+/** What changed from a seed to its child (a `LineageEvent`'s `diff`), each
+ *  change a phrase, the modules first and then the knobs (`knob(d, site)`
+ *  words one).
+ *
+ *  `tree_diff` is positional: a module inserted above others shifts their
+ *  addresses, so one change to what the patch holds can show as several
+ *  swaps, removals and additions, and a module that only moved shows as gone
+ *  in one place and new in another. So the modules are counted, not read
+ *  entry by entry: every module site nets its old name −1 and its new name
+ *  +1. A swap `X → Y` is said only where it accounts for a lost X and a
+ *  gained Y (walked in the diff's order, one of each consumed per swap);
+ *  what is left is said as `+name` or `−name`, `×n` for more than one. A
+ *  module that moved nets to nothing and is not said. */
+export function changeParts(diff, knob = (d, site) => `${site} ${d.before} → ${d.after}`) {
+  // "no mod" / "none" are the empty slot, not a module.
+  const empty = (v) => v == null || /^(no\b|none$)/.test(v);
+  const net = new Map(); // module name -> gained (+) or lost (−), first seen first
+  const bump = (name, n) => net.set(name, (net.get(name) || 0) + n);
+  const swaps = [];
+  const knobs = [];
+  for (const d of diff || []) {
+    const site = d.addr.split("#").pop();
+    if (SKIP_SITES.has(site)) continue;
+    if (STRUCT_SITES.has(site)) {
+      if (!empty(d.before)) bump(d.before, -1);
+      if (!empty(d.after)) bump(d.after, 1);
+      if (!empty(d.before) && !empty(d.after) && d.before !== d.after) swaps.push([d.before, d.after]);
+      continue;
+    }
+    if (d.before == null || d.after == null) continue; // a knob of a module added or removed
+    knobs.push(knob(d, site));
+  }
+  const mods = [];
+  for (const [x, y] of swaps) {
+    if (net.get(x) < 0 && net.get(y) > 0) {
+      mods.push(`${x} → ${y}`);
+      bump(x, 1);
+      bump(y, -1);
+    }
+  }
+  for (const [name, n] of net) {
+    if (n > 0) mods.push(`+${name}${n > 1 ? ` ×${n}` : ""}`);
+    else if (n < 0) mods.push(`−${name}${n < -1 ? ` ×${-n}` : ""}`);
+  }
+  return [...mods, ...knobs];
+}
+
 /** "a", "a and b", "a, b, and c" (the serial comma, always). */
 export function series(parts) {
   if (parts.length <= 1) return parts.join("");

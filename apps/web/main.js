@@ -126,7 +126,8 @@ const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, coun
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
-  walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings,
+  walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
+  changeParts, STRUCT_SITES, SKIP_SITES,
 } = await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -19724,8 +19725,7 @@ const SITE_NAMES = {
   rsize: "reverb size", rdamp: "reverb damp", rmix: "reverb mix",
 };
 
-const STRUCT_SITES = new Set(["op", "src", "mod"]);
-const SKIP_SITES = new Set(["leaf", "uid"]);
+// STRUCT_SITES and SKIP_SITES come from words.js, with `changeParts`.
 
 function humanizeDiff(diff) {
   if (!diff || diff.length === 0) return "no visible change";
@@ -19778,38 +19778,16 @@ function lineageOf(id) {
 }
 
 // What changed from a seed to its child, each change in `humanizeDiff`'s
-// words, the modules first (one swapped, added or removed is what a player
-// hears first) and then the knobs. For the bank's lineage line and Compare.
+// words: the modules counted, not read entry by entry (words.js
+// `changeParts`, which says why), then the knobs in their own units.
 function diffParts(diff) {
-  const swaps = [];
-  const net = new Map(); // module name -> modules gained (+) or lost (−)
-  const knobs = [];
-  for (const d of diff || []) {
-    const site = d.addr.split("#").pop();
-    if (SKIP_SITES.has(site)) continue;
-    if (STRUCT_SITES.has(site)) {
-      // "no mod" / "none" are the empty slot, not a module.
-      const empty = (v) => v == null || /^(no\b|none$)/.test(v);
-      if (!empty(d.before) && !empty(d.after)) swaps.push(`${d.before} → ${d.after}`);
-      else if (!empty(d.after)) net.set(d.after, (net.get(d.after) || 0) + 1);
-      else if (!empty(d.before)) net.set(d.before, (net.get(d.before) || 0) - 1);
-      continue;
-    }
-    if (d.before == null || d.after == null) continue; // a knob of a module added or removed
+  return changeParts(diff, (d, site) => {
     const name = SITE_NAMES[site] || site;
     const latent = (v) => /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
-    knobs.push(latent(d.before) && latent(d.after)
+    return latent(d.before) && latent(d.after)
       ? `${name} ${knobUnit(d.addr, Number(d.before))} → ${knobUnit(d.addr, Number(d.after))}`
-      : `${name} ${d.before} → ${d.after}`);
-  }
-  // A module the walk removed in one place and added in another moved: the
-  // patch holds as many as before, so it is not a change in what it has.
-  const mods = [];
-  for (const [name, n] of net) {
-    if (n > 0) mods.push(`+${name}${n > 1 ? ` ×${n}` : ""}`);
-    else if (n < 0) mods.push(`−${name}${n < -1 ? ` ×${-n}` : ""}`);
-  }
-  return [...swaps, ...mods, ...knobs];
+      : `${name} ${d.before} → ${d.after}`;
+  });
 }
 
 /** The lineage line's "what changed": the first three changes, and a count. */

@@ -22,6 +22,8 @@ import {
   fromLine,
   grownFrom,
   bredRatings,
+  changeParts,
+  markWord,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -239,4 +241,53 @@ test("a key chord is written in the platform's own words", () => {
   assert.equal(onApple({ platform: "Linux x86_64" }), false);
   assert.equal(onApple({ userAgentData: { platform: "macOS" }, platform: "" }), true);
   assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
+});
+
+test("what changed counts the modules: a tree re-laid by an insertion says only what it gained and lost", () => {
+  // A seed mix(filter(vco), pluck) and a child with a delay inserted above:
+  // `tree_diff` is positional, so the addresses shift. Before: filter, mix,
+  // delay, pluck. After: delay, delay, mix. Net: delay +1, filter −1,
+  // pluck −1, mix 0. Read entry by entry it said "filter → delay, mix →
+  // delay, −delay, −pluck, +mix".
+  const diff = [
+    { addr: "r#op", before: "filter", after: "delay" },
+    { addr: "r/0#op", before: "mix", after: "delay" },
+    { addr: "r/0/0#op", before: "delay", after: null },
+    { addr: "r/1#src", before: "pluck", after: null },
+    { addr: "r/0/1#op", before: null, after: "mix" },
+  ];
+  assert.deepEqual(changeParts(diff), ["filter → delay", "−pluck"]);
+});
+
+test("what changed: a moved module is not said, a swap is, and counts carry ×n", () => {
+  // Moved: gone in one place, new in another.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: "delay", after: null },
+    { addr: "r/1/0#op", before: null, after: "delay" },
+  ]), []);
+  // A plain swap.
+  assert.deepEqual(changeParts([{ addr: "r#op", before: "filter", after: "delay" }]), ["filter → delay"]);
+  // Two of one kind gained, one lost; the empty slot is not a module.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: null, after: "chorus" },
+    { addr: "r/1#op", before: null, after: "chorus" },
+    { addr: "r/2#mod", before: "lfo", after: "no mod" },
+    { addr: "r/3#mod", before: "none", after: null },
+  ]), ["+chorus ×2", "−lfo"]);
+  // Knobs follow the modules, worded by the caller; a removed module's knobs
+  // and the grammar's bookkeeping are not changes of their own.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#cut", before: "0.41", after: "0.62" },
+    { addr: "r/1#op", before: null, after: "delay" },
+    { addr: "r/1#time", before: null, after: "0.30" },
+    { addr: "r/1#leaf", before: "a", after: "b" },
+  ], (d, site) => `${site}: ${d.before} → ${d.after}`), ["+delay", "cut: 0.41 → 0.62"]);
+});
+
+test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
+  assert.equal(markWord("seed"), "seed");
+  assert.equal(markWord("may"), "may be replaced");
+  assert.equal(markWord("will"), "will be replaced");
+  assert.equal(markWord("other"), "");
+  for (const k of ["seed", "may", "will"]) voiced(markWord(k));
 });
