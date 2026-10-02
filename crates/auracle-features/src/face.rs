@@ -194,7 +194,10 @@ fn shape(power: &[f64], weights: &[Vec<(usize, f64)>], frames: usize) -> [u8; FA
     out
 }
 
-fn analyze(n: usize, sample_rate: f64, sample: impl Fn(usize) -> f64) -> Face {
+/// Summed power per FFT bin, per slice, and how many frames each slice got:
+/// Hann frames of [`FRAME`], hop [`HOP`], each in the slice its center falls
+/// in.
+fn slice_power(n: usize, sample: impl Fn(usize) -> f64) -> (Vec<Vec<f64>>, [usize; FACE_SLICES]) {
     let bins = FRAME / 2 + 1;
     let hann: Vec<f64> = (0..FRAME)
         .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / FRAME as f64).cos())
@@ -220,6 +223,12 @@ fn analyze(n: usize, sample_rate: f64, sample: impl Fn(usize) -> f64) -> Face {
         frames[t] += 1;
         pos += HOP;
     }
+    (acc, frames)
+}
+
+fn analyze(n: usize, sample_rate: f64, sample: impl Fn(usize) -> f64) -> Face {
+    let bins = FRAME / 2 + 1;
+    let (acc, frames) = slice_power(n, sample);
     let weights = band_weights(sample_rate);
     let mut bytes = Vec::with_capacity(FACE_LEN);
     // The long-term spectrum: every frame's power, averaged.
@@ -427,6 +436,57 @@ mod tests {
             let bytes: Vec<u8> = (0..n).map(|i| (i * 37 + 11) as u8).collect();
             assert_eq!(b64_decode(&b64_encode(&bytes)).unwrap(), bytes);
         }
+    }
+
+    /// The fixture `apps/web/tests/fixtures/steady-face.json`: a steady
+    /// signal's face and its mean power per FFT bin (dB, the first 1024 bins,
+    /// as an `AnalyserNode` of fftSize 2048 gives them), so the app's live
+    /// bands (`faces.js` `liveBands`, stage mode's trail) are checked against
+    /// this measurement rather than a copy of it. Fails when the analysis has
+    /// moved and the fixture has not; `AURACLE_UPDATE_FIXTURES=1` rewrites it.
+    #[test]
+    fn the_steady_fixture_is_current() {
+        // A 220 Hz sawtooth with a little noise under it, steady throughout.
+        let mut s = 0x2545_F491_4F6C_DD1Du64;
+        let x: Vec<f64> = (0..N)
+            .map(|i| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                let noise = (s >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
+                let phase = (i as f64 * 220.0 / SR).fract();
+                0.4 * (2.0 * phase - 1.0) + 0.02 * noise
+            })
+            .collect();
+        let face = Face::of_f64(&x, SR);
+        let (acc, frames) = slice_power(x.len(), |i| x[i] as f32 as f64);
+        let total: usize = frames.iter().sum();
+        let bins_db: Vec<f64> = (0..FRAME / 2)
+            .map(|j| {
+                let p = acc.iter().map(|a| a[j]).sum::<f64>() / total as f64;
+                (db(p) * 1000.0).round() / 1000.0
+            })
+            .collect();
+        let json = serde_json::to_string(&serde_json::json!({
+            "about": "A steady signal's face and its mean power per FFT bin (dB). Written by auracle-features' face::tests::the_steady_fixture_is_current; do not edit.",
+            "sample_rate": SR,
+            "fft_size": FRAME,
+            "bins_db": bins_db,
+            "face": face,
+        }))
+        .unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/web/tests/fixtures/steady-face.json");
+        if std::env::var_os("AURACLE_UPDATE_FIXTURES").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, format!("{json}\n")).unwrap();
+        }
+        let have = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(
+            have.trim_end(),
+            json,
+            "the fixture is stale: run with AURACLE_UPDATE_FIXTURES=1"
+        );
     }
 
     #[test]

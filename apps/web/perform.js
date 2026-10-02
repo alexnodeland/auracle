@@ -3258,7 +3258,9 @@ export function createPerform(host) {
   //   coordinates, over it: the vessel's outline lit by how loud it is, and
   //   the live outline, both left to fade like phosphor. In silence the trail
   //   fades and is then cleared, and only the face is left.
-  let stageBaseKey = "";
+  // What the still layer was drawn for: the size and the face object `faceOf`
+  // gave (the same object until the tree or the bank changes).
+  let stageBase = null;
   let stageBuf = null;
   let stageLast = null; // the last frame's live spectrum, against the bank
   let stageLoud = 0; // how loud, eased (the mock's `s.loud`)
@@ -3275,9 +3277,9 @@ export function createPerform(host) {
     const green = st.ink.green;
     const f = st.face;
     // The still layer: the face, drawn when what it shows changed.
-    const key = `${W}x${H}@${dpr}|${st.tree || ""}|${f ? `${f.stats.mean[0]}:${f.stats.spread}:${f.face.ltas.join(",")}` : ""}`;
-    if (key !== stageBaseKey) {
-      stageBaseKey = key;
+    const b = stageBase;
+    if (!b || b.W !== W || b.H !== H || b.dpr !== dpr || b.f !== f) {
+      stageBase = { W, H, dpr, f };
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, W, H);
       // A pool of the sound's light under it, as the mock lays the glass.
@@ -3316,9 +3318,9 @@ export function createPerform(host) {
     if (!an || !f) return;
     if (!stageBuf || stageBuf.length !== an.frequencyBinCount) stageBuf = new Float32Array(an.frequencyBinCount);
     an.getFloatFrequencyData(stageBuf);
-    const { db, peak } = liveBands(stageBuf, an.context.sampleRate / 2);
-    // How loud: −80 dBFS in the loudest band is nothing, −20 is all.
-    const target = clamp((peak + 80) / 60, 0, 1);
+    const { db, top } = liveBands(stageBuf, an.context.sampleRate / 2);
+    // How loud: −80 dBFS in the loudest bin is nothing, −20 is all.
+    const target = clamp((top + 80) / 60, 0, 1);
     stageLoud += (target - stageLoud) * (target > stageLoud ? 0.5 : 0.08);
     if (target < 0.05) {
       stageLast = null;

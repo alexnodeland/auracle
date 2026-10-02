@@ -31,7 +31,9 @@ export const FACE_SPREAD_FLOOR_DB = 3;
 /** The bank's mean and spread are drawn against again only when they have
  *  moved by more than this since the faces were last drawn: a band's mean by
  *  FACE_RESTAT_DB, or the spread by FACE_RESTAT_SPREAD of itself. Less moves
- *  a 40 px face by under a tenth of a pixel, and a card's by under one. */
+ *  a row's face by under a tenth of a pixel at the usual spread (~13 dB) and
+ *  about a third of one at the 3 dB floor; the card's by under half a pixel,
+ *  and about two at the floor. */
 export const FACE_RESTAT_DB = 0.25;
 export const FACE_RESTAT_SPREAD = 0.01;
 /** A slice this far (dB) under the phrase's loudest draws no layer, and one
@@ -66,26 +68,57 @@ export function bandEdgesHz() {
   return out;
 }
 
-/** What sounds now, in the face's bands: an analyser's dB per bin (`bins`,
- *  0 Hz to `nyquist`) as each band's loudest bin (the bin a band narrower
- *  than one sits in), in dB re the loudest band, floored as a face is, and
- *  how loud the loudest band is (dBFS). So it can be drawn against the bank
- *  in the face's own coordinates. */
-export function liveBands(bins, nyquist) {
+/** Each band's FFT bins and the fraction of each bin's width inside it,
+ *  over the band's width in bins, for `n` bins from 0 Hz at `binHz` apart:
+ *  summing `power[j] · w` gives the band's mean power density. The same
+ *  weights as `auracle_features::face::band_weights`, so a band narrower
+ *  than a bin reads the bin it sits in. */
+export function bandWeights(n, binHz) {
   const edges = bandEdgesHz();
+  const out = [];
+  for (let b = 0; b < FACE_BANDS; b++) {
+    const lo = edges[b] / binHz;
+    const hi = Math.min(edges[b + 1] / binHz, n - 1 + 0.5);
+    const width = Math.max(hi - lo, Number.MIN_VALUE);
+    const ws = [];
+    for (let j = Math.max(0, Math.floor(lo + 0.5)); j < Math.min(n, Math.ceil(hi + 0.5)); j++) {
+      const z = Math.min(hi, j + 0.5) - Math.max(lo, j - 0.5);
+      if (z > 0) ws.push([j, z / width]);
+    }
+    out.push(ws);
+  }
+  return out;
+}
+
+const weightCache = new Map(); // "n|binHz" -> bandWeights
+
+/** What sounds now, in the face's measure: an analyser's dB per bin (`bins`,
+ *  `n` of them from 0 Hz to `nyquist`) as each band's mean power density over
+ *  its edges, the face's own reading (`bandWeights`), in dB re the densest
+ *  band and floored as a face is. `peak` is that densest band (dB), `top`
+ *  the loudest single bin (dBFS), for how loud it is. So it is drawn against
+ *  the bank in the face's coordinates, and a steady sound's live bands are
+ *  its face's (tests/faces.test.mjs, against the engine's fixture). */
+export function liveBands(bins, nyquist) {
   const n = bins.length;
+  const ck = `${n}|${nyquist}`;
+  let weights = weightCache.get(ck);
+  if (!weights) {
+    weights = bandWeights(n, nyquist / n);
+    weightCache.set(ck, weights);
+  }
   const db = new Float64Array(FACE_BANDS);
   let peak = -Infinity;
+  let top = -Infinity;
+  for (let i = 0; i < n; i++) if (bins[i] > top) top = bins[i];
   for (let b = 0; b < FACE_BANDS; b++) {
-    const i0 = Math.min(n - 1, Math.max(0, Math.floor((edges[b] / nyquist) * n)));
-    const i1 = Math.min(n - 1, Math.max(i0, Math.floor((edges[b + 1] / nyquist) * n)));
-    let v = -Infinity;
-    for (let i = i0; i <= i1; i++) v = Math.max(v, bins[i]);
-    db[b] = v;
-    peak = Math.max(peak, v);
+    let p = 0;
+    for (const [j, w] of weights[b]) p += Math.pow(10, bins[j] / 10) * w;
+    db[b] = p > 0 ? 10 * Math.log10(p) : -Infinity;
+    if (db[b] > peak) peak = db[b];
   }
   for (let b = 0; b < FACE_BANDS; b++) db[b] = Number.isFinite(peak) ? Math.max(FACE_FLOOR_DB, db[b] - peak) : FACE_FLOOR_DB;
-  return { db, peak };
+  return { db, peak, top };
 }
 
 /** The bank's mean per band and its spread, over the long-term spectra of the
