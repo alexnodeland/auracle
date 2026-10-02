@@ -93,17 +93,39 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await expect.poll(measuredHere, { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 15_000 }).toBe(true);
 
-  // A new structure is unlit until it is measured: no estimate is drawn. With
-  // no probe out, the next one is asked once this edit settles, and takes
-  // 4 s at the engine, so the rack as rebuilt is read before it can land.
+  // A new structure is unlit until it is measured: no estimate is drawn.
+  // Whether its probe lands before a test can look is the app's to win (an
+  // owed probe can measure it at once), so the spec does not race it: every
+  // paint of the rack is recorded with the tree on the bench at that moment,
+  // and every paint of the new tree made before its levels arrived must be
+  // unlit, with hollow marks. The rebuild for a reply is painted in that
+  // reply's task, before any later message, so there is always one.
+  await page.evaluate(() => {
+    const paints = (window.__pwPaints = []);
+    const svg = document.getElementById("rack-svg");
+    new MutationObserver(() => {
+      paints.push({
+        t: performance.now(),
+        tree: window.__pwLast.bench && window.__pwLast.bench.treeJson,
+        wires: [...svg.querySelectorAll("path.wire.audio[data-from]")].map((w) => Number(w.style.strokeOpacity)),
+        marks: [...svg.querySelectorAll(".cable-mark")].map((m) => m.classList.contains("unknown")),
+      });
+    }).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class"] });
+  });
   await page.locator('#nb-groups .nb-item[data-kind="filter"]').click();
   await page.locator('#rack-svg .jack[data-childkey="node"]').click();
   await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="filter"]').length), { timeout: 30_000 }).toBe(1);
-  expect(await measuredHere(), "the new structure was measured before it was read").toBe(false);
-  const unmeasured = await drawn(page);
-  for (const w of unmeasured.wires) expect(w.opacity, `${w.key} before its level`).toBeCloseTo(0.2, 2);
-  for (const m of unmeasured.marks) expect(m.unknown).toBe(true);
   await expect.poll(measuredHere, { timeout: 30_000 }).toBe(true);
+  const early = await page.evaluate(() => {
+    const tree = window.__pwLast.bench.treeJson;
+    const landed = window.__pwReplies.find((r) => r.type === "cable_levels" && r.tree === tree);
+    return window.__pwPaints.filter((p) => p.tree === tree && p.t < landed.t);
+  });
+  expect(early.length, "the new structure was never painted before its levels").toBeGreaterThan(0);
+  for (const p of early) {
+    for (const o of p.wires) expect(o, "a cable lit before its level").toBeCloseTo(0.2, 2);
+    expect(p.marks.every((u) => u), "a level mark lit before its level").toBe(true);
+  }
   await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 15_000 }).toBe(true);
   await slowWorker(page, {});
   // Never more than one probe at the engine: a probe asked while one was
@@ -119,5 +141,31 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
     return max;
   });
   expect(most, "probes piled up at the engine").toBe(1);
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+// The probe is a render on the engine's one thread, so one started the moment
+// PATCH comes into view is one the player's next click waits behind. Made as
+// slow as a CI runner's render here, opens in quick succession on arriving
+// were announced ("Opened …", which means the open kept you waiting) until
+// the probe waited for the bench to be quiet after an arrival (`ARRIVE_MS`).
+test("sounds opened right after arriving in PATCH are not kept waiting behind a cable probe", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await boot(page, { warmed: true, slow: true });
+  await page.locator('.viewtab[data-view="evolve"]').click();
+  await expect(page.locator("#view-evolve")).toBeVisible();
+  await slowWorker(page, { cable_levels: 900, guess: 900 });
+  await page.locator('.viewtab[data-view="play"]').click();
+  const n0 = await page.evaluate(() => window.__pwToasts.length);
+  const rows = page.locator("#bank-list .bank-item");
+  for (const i of [1, 2]) {
+    await page.waitForTimeout(300);
+    await rows.nth(i).locator(".bi-name").click();
+    await page.waitForFunction((id) => window.__aur.wb.subjectId === id, Number(await rows.nth(i).getAttribute("data-id")), { timeout: 30_000 });
+  }
+  await page.waitForTimeout(1000);
+  const said = await page.evaluate((n) => window.__pwToasts.slice(n), n0);
+  for (const t of said) expect(t, "an open was kept waiting").not.toMatch(/Opened/);
+  await slowWorker(page, {});
   expect(errors, errors.join("\n")).toEqual([]);
 });

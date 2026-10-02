@@ -82,6 +82,13 @@ async function boot(page, { warmed = true, query = "", slow = false } = {}) {
       await route.fulfill({ response: resp, body: SLOW + body, contentType: "text/javascript" });
     });
   }
+  // AURACLE_CPU_THROTTLE=4 runs the page's main thread four times slower
+  // (CDP), so the races a slower CI runner loses show up on a fast machine.
+  const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
+  if (rate > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+  }
   await page.goto(`/${query}`);
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
   return errors;
@@ -112,11 +119,20 @@ const slowWorker = (page, map) =>
  *  once one lands after `after` (an earlier request can answer for a sound
  *  the page has since left, and the page drops it). */
 async function rankedGuess(page, after = 0, timeout = 60_000) {
+  // A ranking with a guess in it: an empty one (its time ran out before any
+  // candidate was heard) is asked again by the page, and a refusal is said.
   const pick = (t) => {
     const bench = window.__pwLast.bench && window.__pwLast.bench.treeJson;
-    return window.__pwReplies.filter((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses && r.tree === bench).pop() || null;
+    return window.__pwReplies.filter((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses && r.data.guesses.length && r.tree === bench).pop() || null;
   };
-  await expect.poll(() => page.evaluate(pick, after), { timeout }).not.toBeNull();
+  try {
+    await expect.poll(() => page.evaluate(pick, after), { timeout }).not.toBeNull();
+  } catch (err) {
+    const seen = await page.evaluate((t) => window.__pwReplies
+      .filter((r) => r.type === "guess" && r.t > t)
+      .map((r) => r.error || (r.data && (r.data.reason || `${(r.data.guesses || []).length} of ${r.data.rendered}/${r.data.planned}/${r.data.total}`))), after);
+    throw new Error(`no ranking with a guess in it: ${JSON.stringify(seen)}\n${err.message}`);
+  }
   return page.evaluate(pick, after);
 }
 
@@ -140,7 +156,14 @@ async function guessAfter(page, after, timeout = 90_000) {
   const find = (t) => {
     const ask = window.__pwPosted.find((p) => p.type === "guess" && p.t >= t);
     if (!ask) return null;
-    return window.__pwReplies.find((r) => r.type === "guess" && r.token === ask.token && r.data) || null;
+    const r = window.__pwReplies.find((x) => x.type === "guess" && x.token === ask.token && x.data);
+    if (!r) return null;
+    // An empty ranking is asked again by the page: the answer is the next one.
+    if (r.data.guesses && !r.data.guesses.length && r.data.rendered < r.data.planned) {
+      const later = window.__pwReplies.filter((x) => x.type === "guess" && x.t > r.t && x.data && x.data.guesses && x.data.guesses.length);
+      return later[0] || null;
+    }
+    return r;
   };
   try {
     await expect.poll(() => page.evaluate(find, after), { timeout }).not.toBeNull();
