@@ -441,8 +441,21 @@ Jacobian, the ridge solve onto at most four knobs, the purity and reach gate,
 separation, and verification on real renders (`Engine::wire_named`; the
 arithmetic alone, unverified and without a render, is `wire_set`). The first
 six entries are `CONTROLS`, at the same indices, so an index names the same
-control in either list. The app still asks for the six (`perform_wire`
-without `controls`); the palette’s panel is Plan-005 task 5.
+control in either list. The app wires the controls the player has placed on
+PERFORM’s panel, at most eight (`PANEL_MAX` in `perform.js`): for the six it
+sends no `controls`, so the request is the one it always was, and for any
+other panel it sends the panel’s set.
+
+**The set is asked for in palette order,** whatever order the panel shows.
+`separate` makes the later of two collinear controls the search control, so
+the order asked is part of the answer; asking in palette order makes the
+answer a function of the set alone, so reordering the panel costs no renders,
+and the six keep the precedence the census above measured them with (“beside
+the six”). The page keys its cache of wirings (`wireKey`) by the patch and the
+set: the patch’s own key for the six, which is the key every kept and shipped
+wiring already had, and that key with `#controls=` and the set for any other.
+A set not measured on a patch yet borrows, control by control, from any set
+that was (`borrowWiring`), and is measured behind it.
 
 **How a control is named across the boundary.** `perform_wire`’s `controls` is
 a JSON array of palette indices, read entry by entry: a non-negative whole
@@ -610,6 +623,12 @@ needs all eighteen. To keep within today’s budget:
    there, so it costs only its own four renders, and two more if it is
    retried at half travel.
 
+The app does the second and the third: it measures the panel’s set and
+nothing off the panel, on the sound in hand, when PERFORM is in sight
+(`measurePanel` in `perform.js`), and the engine’s memo holds the Jacobian
+from the six’s measurement. The first, a preview of every palette entry by
+prediction, is not built (below).
+
 The shipped preset wirings stay the six’s. With the twelve’s wirings beside
 them, `apps/web/perform-wirings.json` would weigh 391,740 bytes instead of
 173,171 (2.3 times), fetched by every visitor for controls the panel does not
@@ -631,9 +650,8 @@ with Heft and the end words below on 2026-10-01
   the walk behind it (`Engine::drift`). Breath would read as Air’s breathiness,
   and Sweep Machine is a preset.
 
-Heft (slight · heavy), the twelfth, is new. The new words get their rows in
-the voice’s word table with the palette’s panel, when the app first shows
-them.
+Heft (slight · heavy), the twelfth, is new. The four have their rows in the
+voice’s word table.
 
 ## Drift: a local walk on the live knobs
 
@@ -869,15 +887,15 @@ re-normalizing it.
   and is not built. Nor is the aim itself tuned per patch or per player:
   repeated turns the same way do not ask harder, and Wander’s offers are not
   aimed at the last control turned (RFC-002’s open questions).
-- **The palette is measured, not yet played.** The engine defines and
-  measures all eighteen directions, and the app still wires and shows the six:
-  placing controls on the panel is Plan-005 task 5. The twelve have no
+- **The palette doesn’t preview.** A palette entry not on the panel is not
+  measured, so the palette shows nothing of what it would do to this sound.
+  The preview by prediction from the Jacobian (the first of the budget’s three
+  points, above) needs the unverified wiring (`wire_set`) exposed to the page,
+  and is not built. The twelve have no
   [grafts](#the-measurements-and-what-reproduces-them) yet, so a search control
-  among them asks for an aimed offer only. The page’s wiring cache is keyed
-  by the patch alone (`wireKey` in `perform.js`), which is right while every
-  measurement is of the six; once the panel asks for other controls, the key
-  must hold the set asked for too, or a wiring of one set is played for
-  another.
+  among them asks for an aimed offer only. The shipped preset wirings are the
+  six’s, so a preset opened with a palette control on the panel plays the six
+  at once and measures the rest.
 - **The directions are fixed, not personal.** The eighteen are the same for
   every player. A control along a fitted style $\theta_k$ is [a different and
   more interesting
