@@ -19,8 +19,50 @@
 //
 // Nothing here opens a modal. A player mid-phrase cannot answer a dialog.
 
+// The palette's words (names, end words, what each does), with this module's
+// own build stamp so a new build fetches both together.
+const { PALETTE, FAMILIES, onThisSound, panelCount } = await import(`./words.js${new URL(import.meta.url).search}`);
+
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
+// The panel: which of the palette's eighteen controls sit on PERFORM, in the
+// player's order, as palette indices (`perform::PALETTE`). The six are the
+// default, and at most eight sit there at once: each placed control is
+// measured on every sound (about five renders each), and eight keeps a
+// measurement near the six's (the reference's PERFORM page, "What it costs").
+const PANEL_DEFAULT = [0, 1, 2, 3, 4, 5];
+const PANEL_MAX = 8;
+// A stored panel is read entry by entry, as the engine reads `controls`
+// (`palette_set`): whole numbers in range, each once, at most eight. Nothing
+// valid left (or nothing stored) is the six.
+function validPanel(raw) {
+  if (!Array.isArray(raw)) return PANEL_DEFAULT.slice();
+  const out = [];
+  for (const v of raw) {
+    if (Number.isInteger(v) && v >= 0 && v < PALETTE.length && !out.includes(v)) out.push(v);
+    if (out.length >= PANEL_MAX) break;
+  }
+  return out.length ? out : PANEL_DEFAULT.slice();
+}
+// A set of controls as a measurement asks for it: sorted by palette index.
+// The engine wires and separates in the order asked (`separate`: of two
+// controls that are one gesture on a patch, the later is the search
+// control), so the order is part of the answer. Asking in palette order
+// makes the answer the panel's set, whatever order the player has put it in:
+// reordering costs no renders, the six come first as the census measured
+// them ("beside the six"), and the six asked in order is today's
+// measurement, keyed and shipped as before.
+const setOf = (panel) => [...panel].sort((a, b) => a - b);
+const SIX_KEY = PANEL_DEFAULT.join(",");
+// The set's part of a cache key: empty for the six, so their wirings keep
+// the keys they were cached and shipped under.
+const setKey = (set) => {
+  const s = setOf(set || PANEL_DEFAULT).join(",");
+  return s === SIX_KEY ? "" : s;
+};
+// A palette index from a wiring entry: its `index`, or for a wiring kept
+// before the engine sent one, the palette entry of the same name.
+const indexOf = (w) => (w && Number.isInteger(w.index) ? w.index : w ? PALETTE.findIndex((c) => c.name === w.name) : -1);
 // Wander landmarks on the dial's 0..1 travel: still, then ideas (variants
 // appear in B), drift and roam. The middle zone was called "offer", the Offer
 // pad's word and Blend's; it is "ideas", as the films say.
@@ -103,13 +145,17 @@ function wanderPace(w) {
 export function createPerform(host) {
   const root = host.root;
   root.innerHTML = "";
+  // The panel as the player left it (`perf.panel`, saved with the session by
+  // main.js): read through the host, which owns persisted state.
+  const firstPanel = validPanel(host.panel ? host.panel() : null);
   const state = {
+    panel: firstPanel,
     home: null,
     cur: null,
     wire: null, // [{name, low, high, knobs:[[addr,gain]], purity, reach, position, search}]
     grafted: new Set(), // control names already given a module on this patch
     intent: null, // {i, dir, at}: a turn waiting on its graft to be measured
-    c: [0, 0, 0, 0, 0, 0],
+    c: firstPanel.map(() => 0),
     sent: new Map(), // addr -> value last written to the voices
     // addr -> value a hand wrote in PATCH since this tree arrived (see
     // `knobSet`). Read only where a knob's base is taken from a measurement
@@ -154,11 +200,48 @@ export function createPerform(host) {
     if (!state.quiet) host.logImplicit(kind, detail);
   };
 
+  // ---------- the panel ----------
+  // Everything below that says `i` for a named control means its position on
+  // the panel (its knob, its slot in `state.c` and `state.wire`, the XY pad's
+  // axes, a MIDI slot). Across the boundary a control is its palette index
+  // (`indexAt`), the `index` the engine puts on each wiring.
+  const controls = () => state.panel.map((k) => PALETTE[k]);
+  const indexAt = (i) => {
+    const w = state.wire && state.wire[i];
+    const k = indexOf(w);
+    return k >= 0 ? k : state.panel[i];
+  };
+  // A control the panel holds and no measurement has wired yet: "not
+  // measured", which reads listening… and turns nothing (see `turns`).
+  const unmeasured = (k) => ({
+    name: PALETTE[k].name, index: k, low: PALETTE[k].low, high: PALETTE[k].high,
+    knobs: [], purity: 0, reach: 0, position: 0, search: false, pending: true,
+  });
+  // A measurement's wirings (in the order they were asked for, each with its
+  // palette `index`) laid onto the panel's positions by that index. A control
+  // the measurement did not wire is unmeasured.
+  function alignWiring(entries) {
+    const by = new Map();
+    for (const w of entries || []) {
+      const k = indexOf(w);
+      if (k >= 0 && !by.has(k)) by.set(k, w);
+    }
+    return state.panel.map((k) => by.get(k) || unmeasured(k));
+  }
+  // The positions of the panel's controls in the order a first gesture
+  // reaches for them: Bright, Motion, Snap, Body, Space, Grit, then the rest
+  // of the palette in its order (the first steps' "Turn …", the XY pad).
+  const REACH_FOR = [0, 2, 1, 3, 5, 4, ...PALETTE.map((_, k) => k).slice(6)];
+  const preferOrder = () => REACH_FOR.map((k) => state.panel.indexOf(k)).filter((i) => i >= 0);
+
   // ---------- layout ----------
   const head = el("div", "pf-head");
   const title = el("div", "pf-title");
   const nameEl = el("div", "pf-name", "·");
   const statusEl = el("div", "pf-status mono", "");
+  // What PERFORM is doing with the sound, announced politely: the one live
+  // region for a measurement (the controls' own waiting signs are silent).
+  statusEl.setAttribute("role", "status");
   title.append(nameEl, statusEl);
   const scope = el("canvas", "pf-scope");
   scope.width = 360;
@@ -236,13 +319,21 @@ export function createPerform(host) {
     const name = el("div", "pf-k-name", spec.name);
     const ends = el("div", "pf-k-ends mono", `${spec.low} · ${spec.high}`);
     const sub = el("div", "pf-k-sub mono", "");
-    wrap.append(s, name, ends, sub);
+    // A control being measured says so in its own box over the line under
+    // it (#live-wait's sign: the line keeps its box, hidden, so nothing
+    // moves). The status line above the deck is the one that announces it.
+    const wait = el("div", "pf-k-wait mono", "");
+    wait.setAttribute("aria-hidden", "true");
+    const line = el("div", "pf-k-line");
+    line.append(sub, wait);
+    wrap.append(s, name, ends, line);
+    if (spec.kind === "named") wrap.dataset.index = String(spec.index);
     wrap.tabIndex = 0;
     wrap.setAttribute("role", "slider");
     wrap.setAttribute("aria-label", spec.name);
     wrap.setAttribute("aria-valuemin", "-1");
     wrap.setAttribute("aria-valuemax", "1");
-    const k = { i, spec, wrap, svg: s, sub, value: spec.initial || 0 };
+    const k = { i, spec, wrap, svg: s, sub, wait, value: spec.initial || 0 };
     bindDrag(k);
     deck.append(wrap);
     knobs.push(k);
@@ -302,6 +393,11 @@ export function createPerform(host) {
       // control this patch can't reach.
       const pending = !w || !!w.pending;
       const listening = w ? !!w.pending : state.measuring;
+      // Listening for real: a measurement that will wire this control is
+      // out (a first one, a re-check, or the panel's new set).
+      const waiting = pending && (state.measuring || state.revalidating || inFlight("perform_wire"));
+      k.wrap.classList.toggle("waiting", waiting);
+      if (k.wait.textContent !== (waiting ? "listening…" : "")) k.wait.textContent = waiting ? "listening…" : "";
       k.wrap.classList.toggle("search", search);
       k.wrap.classList.toggle("unwired", pending);
       k.wrap.classList.toggle("pending", pending);
@@ -443,6 +539,7 @@ export function createPerform(host) {
     };
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      k.held = true;
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
       k.drawn = null;
       k.atStop = false;
@@ -476,6 +573,8 @@ export function createPerform(host) {
     });
     const end = (e) => {
       clearTimeout(hearTimer);
+      k.held = false;
+      queueMicrotask(panelLater);
       const held = k.wrap.hasPointerCapture(e.pointerId);
       if (held) k.wrap.releasePointerCapture(e.pointerId);
       // One of three: a turn is let go (`onRelease`, which springs back a
@@ -770,7 +869,7 @@ export function createPerform(host) {
     off.value = "-1";
     off.textContent = "loudness only";
     sel.append(off);
-    host.controls.forEach((c, i) => {
+    controls().forEach((c, i) => {
       const w = state.wire && state.wire[i];
       const [lo, hi] = rangeOf(w);
       const o = document.createElement("option");
@@ -820,21 +919,16 @@ export function createPerform(host) {
   const GRAFTS = { Bright: "tone EQ", Body: "tone EQ", Space: "longer release" };
 
   // A search control's offer is aimed the way the control was turned
-  // (`Engine::offer_toward`, ADR-008), and B says how far it went. The words
-  // for "more of it" each way, [down, up], in the controls' own terms.
-  const AIM_WORDS = {
-    Bright: ["darker", "brighter"],
-    Snap: ["softer", "snappier"],
-    Motion: ["stiller", "more restless"],
-    Body: ["thinner", "fuller"],
-    Grit: ["smoother", "grittier"],
-    Space: ["closer", "farther"],
-  };
-  // `{k, sign}` for control `i` turned `dir` (+1 up, −1 down), with its word.
+  // (`Engine::offer_toward`, ADR-008), and B says how far it went, in the
+  // control's own words for "more of it" each way (words.js `PALETTE`'s
+  // `aim`). `{k, sign}` for the control at panel position `i` turned `dir`
+  // (+1 up, −1 down): `k` is its palette index, the wiring's `index`, which
+  // is how the engine names it (`perform_offer`'s `control`). Never the
+  // position: on a panel in another order, position 0 is not Bright.
   function aimAt(i, dir) {
-    const c = host.controls[i];
-    const words = c && AIM_WORDS[c.name];
-    return words ? { k: i, sign: dir > 0 ? 1 : -1, word: words[dir > 0 ? 1 : 0] } : null;
+    const k = indexAt(i);
+    const c = PALETTE[k];
+    return c ? { k, sign: dir > 0 ? 1 : -1, word: c.aim[dir > 0 ? 1 : 0] } : null;
   }
 
   // A knob as a player names it: "cutoff", or with its module, "filter
@@ -872,6 +966,11 @@ export function createPerform(host) {
     if (!fromMidi) host.controlMoved?.(k.i);
     if (k.spec.kind === "named") {
       state.c[k.i] = k.value;
+      // How it works opens on the control last touched.
+      if (howAt !== state.panel[k.i]) {
+        howAt = state.panel[k.i];
+        renderHow();
+      }
       const w = state.wire && state.wire[k.i];
       if (turns(w)) {
         push();
@@ -953,6 +1052,7 @@ export function createPerform(host) {
   }
 
   function onRelease(k) {
+    if (k.dead) return;
     if (k.spec.kind === "wander") return wanderLetGo();
     if (k.spec.kind !== "named") return;
     const w = state.wire && state.wire[k.i];
@@ -979,7 +1079,8 @@ export function createPerform(host) {
         state.grafted.add(w.name);
         state.intent = { i: k.i, dir: up ? 1 : -1, at: performance.now() };
         host.note(`${w.name}: giving it a ${graft} to turn…`, { replace: `pf-graft:${w.name}` });
-        request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
+        // Named by its palette index, as every control is to the engine.
+        request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: indexAt(k.i) });
       } else {
         const aim = aimAt(k.i, up ? 1 : -1);
         host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low}, so it’s growing ${aim ? `a ${aim.word}` : "an"} offer instead.`, { replace: "pf-offer", urgent: true });
@@ -1011,6 +1112,11 @@ export function createPerform(host) {
     const D = 2400;
     const path = (u) => (u < 0.25 ? -4 * u : u < 0.75 ? -1 + 4 * (u - 0.25) : 1 - 4 * (u - 0.75)) ;
     const tick = () => {
+      // The panel was rebuilt under the sweep: stop it, and its note.
+      if (k.dead) {
+        if (!playing) host.noteOff(48);
+        return;
+      }
       const u = (performance.now() - t0) / D;
       if (u >= 1) {
         k.value = start;
@@ -1076,12 +1182,23 @@ export function createPerform(host) {
   // set said "measuring…" again after every visitor reset. The wiring itself
   // is uid-free (its knobs are trace addresses), and the engine already
   // treats two trees that differ only in uids as the same patch.
-  function wireKey(json) {
+  //
+  // …and by the controls measured. A measurement wires the set it was asked
+  // for (`controls`, in palette order, `setOf`), and a control's wiring
+  // depends on the set: of two that are one gesture on a patch, the later is
+  // the search control (`separate`). So a wiring of one set is never played
+  // for another: the key is the patch's, then `#controls=` and the set, and
+  // for the six it is the patch's alone, as it was before the palette (the
+  // shipped file and every cache already hold the six under that key).
+  function wireKey(json, set) {
+    let base;
     try {
-      return JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+      base = JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
     } catch {
       return json;
     }
+    const sk = setKey(set);
+    return sk ? `${base}#controls=${sk}` : base;
   }
   const wireCache = (() => {
     try {
@@ -1163,8 +1280,8 @@ export function createPerform(host) {
       keep.forEach(([k, v]) => wireCache.set(k, v));
     }
   }
-  function rememberWiring(json, data, rev) {
-    const key = wireKey(json);
+  function rememberWiring(json, data, rev, set) {
+    const key = wireKey(json, set);
     wireCache.delete(key);
     while (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
     wireCache.set(key, { data: structuredClone(data), rev });
@@ -1184,8 +1301,13 @@ export function createPerform(host) {
   function wire() {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
-    const key = first ? wireKey(state.cur.json) : null;
-    const hit = first ? knownWiring(key) : null;
+    const set = setOf(state.panel);
+    const key = first ? wireKey(state.cur.json, set) : null;
+    // The panel's own set measured before, or failing that, what any other
+    // set measured of this patch, control by control (`borrowWiring`): the
+    // controls they share play at once, and the rest listen until the
+    // panel's set is measured.
+    const hit = first ? knownWiring(key) || borrowWiring(state.cur.json, set) : null;
     if (first && !hit && !shippedLoaded) {
       // The shipped file is a local fetch of a few milliseconds, begun when
       // PERFORM was built; a patch asked about before it lands waits for it
@@ -1206,17 +1328,17 @@ export function createPerform(host) {
       // A hit is a use: it moves to the young end, so the patches played
       // most — a booth's demo set, round every few minutes — are the last
       // ones the cache lets go.
-      if (!hit.shipped) {
+      if (!hit.shipped && !hit.borrowed) {
         wireCache.delete(key);
         wireCache.set(key, hit);
       }
       applyWired(structuredClone(hit.data));
-      markWired(hit.shipped ? "shipped" : "cached");
+      markWired(hit.shipped ? "shipped" : hit.borrowed ? "borrowed" : "cached");
       knobs.forEach(paintKnob);
       renderHood();
-      if (!hit.shipped && hit.rev === wireRev()) return;
+      if (!hit.shipped && !hit.borrowed && hit.rev === wireRev()) return;
       // Playable now; the fresh measurement lands when it lands.
-      if (!heldForOpen("revalidate")) revalidate();
+      if (!heldForOpen("revalidate")) revalidate(!!hit.borrowed);
       return;
     }
     if (heldForOpen("measure")) {
@@ -1230,17 +1352,49 @@ export function createPerform(host) {
     // A first measurement is of the tree as it stands, because it is cached
     // under that tree's text; knobs turned in PATCH since are laid over it
     // when it lands (`applyWired`).
-    const req = request("perform_wire", { tree: state.cur.json, overrides: first ? [] : overrides() });
-    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev() };
+    const req = request("perform_wire", { tree: state.cur.json, overrides: first ? [] : overrides(), ...asked(set) });
+    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), set };
   }
 
-  function revalidate() {
+  // What a `perform_wire` request carries to name its set: nothing for the
+  // six (the engine's default, so the request is the one it always was),
+  // otherwise `controls`, the set in palette order.
+  const asked = (set) => (setKey(set) ? { controls: setOf(set) } : {});
+
+  // A wiring for the panel's set from measurements of other sets of the same
+  // patch: each control the panel holds, from a kept measurement that wired
+  // it (the player's cache, then the shipped file). Null when none did. Each
+  // control's wiring there depends on what was wired before it, so this is
+  // played as a stale one is, and the panel's own set is measured behind it.
+  function borrowWiring(json, set) {
+    const base = wireKey(json);
+    const want = new Set(set);
+    const found = new Map();
+    let data = null;
+    const look = (key, v) => {
+      if (!v || !v.data || (key !== base && !key.startsWith(`${base}#controls=`))) return;
+      for (const w of v.data.wiring || []) {
+        const k = indexOf(w);
+        if (want.has(k) && !found.has(k)) found.set(k, w);
+      }
+      if (!data) data = v.data;
+    };
+    for (const [key, v] of wireCache) look(key, v);
+    look(base, shipped.get(base));
+    if (!found.size || !data) return null;
+    return { data: { ...data, wiring: [...found.values()] }, rev: "", borrowed: true };
+  }
+
+  // `foreground`: the panel holds controls nobody has measured on this patch,
+  // and the player is waiting on them, so this is not background work.
+  function revalidate(foreground = false) {
     state.revalidating = true;
     renderStatus();
     // Background (`bg`): the patch is already playable from its last
     // measurement, so this waits behind anything the player asks for.
-    const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true };
+    const set = setOf(state.panel);
+    const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: !foreground, ...asked(set) });
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true, set };
   }
 
   // The sound has moved a long way from where its wiring was measured (a
@@ -1257,8 +1411,9 @@ export function createPerform(host) {
     if (state.revalidating && inFlight("perform_wire")) return renderStatus();
     state.revalidating = true;
     renderStatus();
-    const req = request("perform_wire", { tree: state.cur.json, overrides: overrides(), bg: true });
-    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true, nocache: true };
+    const set = setOf(state.panel);
+    const req = request("perform_wire", { tree: state.cur.json, overrides: overrides(), bg: true, ...asked(set) });
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: wireRev(), quiet: true, nocache: true, set };
   }
 
   // A patch on its way out is not measured. A measurement is thirty-odd
@@ -1724,7 +1879,9 @@ export function createPerform(host) {
     state.playableAt = performance.now();
     state.c = state.c.map(() => 0);
     recentreAll();
-    state.wire = data.wiring;
+    // Laid onto the panel by each wiring's palette index, never by its place
+    // in the reply (`alignWiring`).
+    state.wire = alignWiring(data.wiring);
     if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
     // Touch follows the player's choice if this patch can play it, and
     // otherwise falls back to the first control it can (Bright, Snap,
@@ -1769,13 +1926,17 @@ export function createPerform(host) {
   // under it stops at the centre on that side, as a drag would. Only a
   // wiring that turns different knobs re-centres (`applyWired`).
   const wiredKnobs = (w) => (w && !w.search && !w.pending ? w.knobs.map(([a]) => a).sort().join("|") : w && w.search ? "search" : "");
+  // A control that was not measured yet turns nothing, and is at the centre
+  // (`springBack`), so whatever it is wired to now moves nothing yet: it
+  // never makes two wirings different.
   function sameKnobs(a, b) {
-    return !!a && !!b && a.length === b.length && a.every((w, i) => wiredKnobs(w) === wiredKnobs(b[i]));
+    return !!a && !!b && a.length === b.length && a.every((w, i) => (w && w.pending) || wiredKnobs(w) === wiredKnobs(b[i]));
   }
   function applyRechecked(data) {
     const old = state.wire;
+    const fresh = alignWiring(data.wiring);
     const addrs = state.cur ? [...state.cur.knobs.keys()].sort().join("|") : "";
-    if (!state.cur || state.carried || !sameKnobs(old, data.wiring) || [...data.addrs].sort().join("|") !== addrs) {
+    if (!state.cur || state.carried || !sameKnobs(old, fresh) || [...data.addrs].sort().join("|") !== addrs) {
       applyWired(data);
       return;
     }
@@ -1785,7 +1946,7 @@ export function createPerform(host) {
     };
     const base = new Map(state.cur.knobs);
     old.forEach((w, i) => {
-      const nw = data.wiring[i];
+      const nw = fresh[i];
       if (!turns(w) || !state.c[i]) return;
       const cOld = cl(w, state.c[i]);
       const cNew = cl(nw, state.c[i]);
@@ -1800,7 +1961,7 @@ export function createPerform(host) {
     for (const [a, v] of base) base.set(a, clamp(v, 0, KNOB_MAX));
     state.cur.knobs = base;
     state.wiredAt = new Map(data.addrs.map((a, i) => [a, data.values[i]]));
-    state.wire = data.wiring;
+    state.wire = fresh;
     state.carried = false;
     state.measuring = false;
     push();
@@ -1816,7 +1977,7 @@ export function createPerform(host) {
     state.applyThen.delete(m.req);
     // A measurement is kept even when the player has already moved on: it
     // is still true of that patch, and flicking back is the common case.
-    if (p.cacheAs && !p.cacheAs.nocache && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev);
+    if (p.cacheAs && !p.cacheAs.nocache && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev, p.cacheAs.set);
     // A pre-warm (see `prewarm` below) was for the cache alone: it answers its
     // caller and goes no further, whatever is sounding when it lands.
     if (p.prewarm) {
@@ -1833,11 +1994,24 @@ export function createPerform(host) {
     if (p.gen !== state.gen) return true;
     if (m.error) console.warn(`[perform] ${p.kind}:`, m.error);
     if (m.type === "perform_wired") {
+      // A measurement of a set the panel no longer holds (the player placed
+      // or hid a control while it ran) is kept in the cache, above, and not
+      // played: the panel's own set is measured, or already is.
+      const forPanel = setOf(p.cacheAs?.set || PANEL_DEFAULT).join(",") === setOf(state.panel).join(",");
+      if (!forPanel && state.wire && m.data) {
+        state.revalidating = inFlight("perform_wire");
+        measurePanel();
+        knobs.forEach(paintKnob);
+        renderStatus();
+        renderPalette();
+        return true;
+      }
       if (p.cacheAs && p.cacheAs.quiet) {
         // A background re-measurement of a patch already playing from its
         // last one: never clears a working wiring, and never re-centres the
-        // controls under a moving hand — it waits for a pause.
-        state.revalidating = false;
+        // controls under a moving hand — it waits for a pause. Another
+        // measurement still out (the panel's new set) keeps it re-checking.
+        state.revalidating = inFlight("perform_wire");
         if (m.data) {
           if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
           else applyRechecked(m.data);
@@ -1851,6 +2025,8 @@ export function createPerform(host) {
         knobs.forEach(paintKnob);
         renderHood();
         renderStatus();
+        renderHow();
+        renderPalette();
         return true;
       }
       if (!m.data) {
@@ -1860,9 +2036,14 @@ export function createPerform(host) {
       } else {
         applyWired(m.data);
         markWired("measured");
+        // The panel changed while its first measurement ran: the controls
+        // it shares play now, and its own set is measured next.
+        if (!forPanel) measurePanel();
       }
       knobs.forEach(paintKnob);
       renderHood();
+      renderHow();
+      renderPalette();
       return true;
     }
     if (m.type === "perform_drifted") {
@@ -2015,7 +2196,7 @@ export function createPerform(host) {
       state.cur.knobs = here;
       state.home.knobs = new Map(here);
       state.wiredAt = new Map(here);
-      state.wire = carried;
+      state.wire = alignWiring(carried);
       // A borrowed wiring: the XY keeps its axes (see pickXY) until the
       // taken patch's own measurement says which controls reach it.
       state.carried = true;
@@ -2026,8 +2207,9 @@ export function createPerform(host) {
       recentreAll();
       sendTouch();
       state.revalidating = true;
-      const req = request("perform_wire", { tree: json, overrides: [] });
-      state.pending.get(req).cacheAs = { json, rev: wireRev(), quiet: true, carried: true };
+      const set = setOf(state.panel);
+      const req = request("perform_wire", { tree: json, overrides: [], ...asked(set) });
+      state.pending.get(req).cacheAs = { json, rev: wireRev(), quiet: true, carried: true, set };
       renderStatus();
     } else if (state.visible) wire();
     knobs.forEach(paintKnob);
@@ -2392,7 +2574,11 @@ export function createPerform(host) {
     else if (state.wire) {
       const n = state.wire.filter(turns).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
-      if (state.revalidating || state.measuring) parts.push("re-checking");
+      // A control placed on the panel and not measured on this sound yet is
+      // named while its measurement is out: the controls beside it play on.
+      const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length && !state.carried).map((w) => w.name);
+      if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
+      else if (state.revalidating || state.measuring) parts.push("re-checking");
     }
     statusEl.textContent = parts.join(" · ");
   }
@@ -2432,21 +2618,231 @@ export function createPerform(host) {
     }
   }
 
+  // ---------- how it works ----------
+  // Every control on the panel, a tap apart, opened on the one you last
+  // touched: what you hear it do, what it listens to, and what it turns on
+  // this sound, read from this sound's wiring (`perform_wire`'s entry for it,
+  // found by its palette index). Then how the deck works, for every control
+  // at once. Closed at rest; nothing here is drawn as motion.
   why.innerHTML = "";
-  const whyBtn = el("button", "pf-why-btn util-btn", "how this works");
+  const whyBtn = el("button", "pf-why-btn util-btn", "how it works");
   whyBtn.type = "button";
   const whyBody = el("div", "pf-why-body hidden");
-  whyBody.innerHTML =
-    "<p>Each control is a direction in what the instrument can hear: <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, and <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a sound opens, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
+  const howList = el("div", "pf-how-list");
+  howList.setAttribute("role", "group");
+  howList.setAttribute("aria-label", "Your controls");
+  const howOne = el("div", "pf-how-one");
+  const howAll = el("div", "pf-how-all");
+  howAll.innerHTML =
+    "<p>Each control is a direction in what the instrument can hear. When a sound opens, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction, and each half is checked on real renders. Hover a control to see which knobs and how purely.</p>" +
     "<p>The amber dot on a control’s ring is where this sound measures on it, compared with the sounds in your session. A control that turns only one way on this sound says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the center on the other. One that reads <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>" +
     "<p>A control drawn in amber can’t be reached by this patch’s knobs (a patch with no drive can’t get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session’s sounds) or that it didn’t get there. Short of the notch it springs back and asks nothing.</p>" +
     "<p><b>Wander</b> sets how alive the sound is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to freeze it; touching any other control pauses it for a few seconds.</p>";
+  whyBody.append(howList, howOne, howAll);
+  // Which control How it works opens on: the one last touched (a palette
+  // index), else the panel's first.
+  let howAt = null;
+  function howFocus() {
+    return howAt != null && state.panel.includes(howAt) ? howAt : state.panel[0];
+  }
+  function renderHow() {
+    if (whyBody.classList.contains("hidden")) return;
+    const at = howFocus();
+    const keep = howList.contains(document.activeElement) ? document.activeElement.dataset.index : null;
+    howList.innerHTML = "";
+    state.panel.forEach((k) => {
+      const c = PALETTE[k];
+      const b = el("button", "pf-how-tab", c.name);
+      b.type = "button";
+      b.dataset.index = String(k);
+      b.setAttribute("aria-pressed", String(k === at));
+      b.onclick = () => {
+        howAt = k;
+        renderHow();
+      };
+      howList.append(b);
+      if (keep === String(k)) queueMicrotask(() => b.focus({ preventScroll: true }));
+    });
+    const i = state.panel.indexOf(at);
+    const c = PALETTE[at];
+    const w = state.wire && state.wire[i];
+    const [lo, hi] = rangeOf(w);
+    const on = onThisSound(c.name, {
+      pending: !w || !!w.pending,
+      search: !!(w && w.search),
+      knobs: turns(w) ? w.knobs.map(([a]) => knobWord(a, true)) : [],
+      only: turns(w) && lo === 0 && hi > 0 ? c.high : turns(w) && hi === 0 && lo < 0 ? c.low : "",
+    });
+    howOne.innerHTML = "";
+    const h = el("div", "pf-how-h");
+    h.append(el("span", "pf-how-name", c.name), el("span", "pf-how-ends mono", `${c.low} · ${c.high}`));
+    howOne.append(h, el("p", "pf-how-hear", c.hear), el("p", "pf-how-how", c.how), el("p", "pf-how-here", on));
+  }
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
     whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));
+    renderHow();
   };
   whyBtn.setAttribute("aria-expanded", "false");
   why.append(whyBtn, whyBody);
+
+  // ---------- the palette ----------
+  // Which controls sit on the panel, and in what order: place, hide and order
+  // up to PANEL_MAX of the palette's eighteen. A panel, not a dialog
+  // (nothing here opens a modal): the keys play through it, Esc or × puts it
+  // away. Each row's mark says what the control does on this sound, from its
+  // wiring: it turns, nothing here turns it, or it is being listened to. A
+  // control not on the panel is not measured, so it carries no mark.
+  // Marks sit in a cell every row reserves, left of the name: a name never
+  // moves for a mark, and is never cut short by one.
+  const arrangeBtn = el("button", "pf-arrange util-btn", "arrange");
+  arrangeBtn.type = "button";
+  arrangeBtn.title = "Place, hide and order your controls";
+  arrangeBtn.setAttribute("aria-haspopup", "dialog");
+  arrangeBtn.setAttribute("aria-expanded", "false");
+  const pal = el("div", "pp hidden");
+  pal.setAttribute("role", "dialog");
+  pal.setAttribute("aria-label", "Your controls");
+  document.body.append(pal);
+  const palOpen = () => !pal.classList.contains("hidden");
+  function openPalette() {
+    pal.classList.remove("hidden");
+    arrangeBtn.setAttribute("aria-expanded", "true");
+    renderPalette();
+    placePalette();
+    pal.querySelector(".pp-x")?.focus({ preventScroll: true });
+  }
+  function closePalette(back = true) {
+    if (!palOpen()) return;
+    pal.classList.add("hidden");
+    arrangeBtn.setAttribute("aria-expanded", "false");
+    if (back && state.visible) arrangeBtn.focus({ preventScroll: true });
+  }
+  arrangeBtn.onclick = () => (palOpen() ? closePalette() : openPalette());
+  // Over the deck it arranges, as wide as it needs; on a narrow screen, a
+  // sheet along the bottom (style.css).
+  function placePalette() {
+    if (!palOpen()) return;
+    const r = deck.getBoundingClientRect();
+    if (!r.width) return;
+    pal.style.left = `${Math.round(r.left)}px`;
+    pal.style.top = `${Math.round(r.top)}px`;
+  }
+  window.addEventListener("resize", placePalette);
+  // Esc puts it away wherever focus is, before anything else takes the key.
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Escape" || !palOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closePalette();
+    },
+    true,
+  );
+  // What a placed control does on this sound, for its row's mark.
+  function markOf(i) {
+    const w = state.wire && state.wire[i];
+    if (!w || w.pending) {
+      const waiting = state.measuring || state.revalidating || inFlight("perform_wire");
+      return waiting ? ["listening", "listening…"] : ["unmeasured", "not measured on this sound yet"];
+    }
+    if (w.search) return ["search", "nothing here turns it: turn it to ask for an offer"];
+    return ["turns", `turns ${knobWords(w.knobs.map(([a]) => a))}`];
+  }
+  function palRow(k, placedAt) {
+    const c = PALETTE[k];
+    const placed = placedAt >= 0;
+    const row = el("div", `pp-row${placed ? " on" : ""}`);
+    row.dataset.index = String(k);
+    const mark = el("span", "pp-mark");
+    mark.setAttribute("aria-hidden", "true");
+    const txt = el("span", "pp-txt");
+    txt.append(el("span", "pp-name", c.name), el("span", "pp-ends mono", `${c.low} · ${c.high}`));
+    // The waiting sign (#live-wait's): its own box beside the words.
+    const wait = el("span", "pp-wait mono", "");
+    row.append(mark, txt, wait);
+    const btn = (cls, glyph, label, on, disabled) => {
+      const b = el("button", `pp-b ${cls}`, glyph);
+      b.type = "button";
+      b.setAttribute("aria-label", label);
+      b.title = label;
+      b.disabled = !!disabled;
+      b.onclick = on;
+      return b;
+    };
+    const n = state.panel.length;
+    if (placed) {
+      const [m, said] = markOf(placedAt);
+      mark.dataset.mark = m;
+      mark.title = said;
+      txt.title = said;
+      if (m === "listening") wait.textContent = "listening…";
+      row.append(
+        btn("pp-up", "↑", `Move ${c.name} earlier`, () => movePanel(k, -1), placedAt === 0),
+        btn("pp-down", "↓", `Move ${c.name} later`, () => movePanel(k, 1), placedAt === n - 1),
+        btn("pp-hide", "×", `Hide ${c.name}`, () => hidePanel(k), n <= 1),
+      );
+    } else {
+      row.append(btn("pp-place", "+", `Place ${c.name}`, () => placePanel(k), n >= PANEL_MAX));
+    }
+    return row;
+  }
+  function renderPalette() {
+    if (!palOpen()) return;
+    const keep = pal.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
+    const n = state.panel.length;
+    pal.innerHTML = "";
+    const head = el("div", "pp-head");
+    const words = el("div", "pp-words");
+    words.append(el("div", "pp-title", "Your controls"), el("p", "pp-sub mono", panelCount(n, PANEL_MAX)));
+    const x = el("button", "pp-x util-btn", "×");
+    x.type = "button";
+    x.setAttribute("aria-label", "Close");
+    x.title = "Close · Esc";
+    x.onclick = () => closePalette();
+    head.append(words, x);
+    const body = el("div", "pp-body");
+    const on = el("div", "pp-sec");
+    on.append(el("div", "pp-h", "On the panel"), ...state.panel.map((k, i) => palRow(k, i)));
+    body.append(on);
+    for (const fam of FAMILIES) {
+      const rest = PALETTE.map((c, k) => k).filter((k) => PALETTE[k].family === fam && !state.panel.includes(k));
+      if (!rest.length) continue;
+      const sec = el("div", "pp-sec");
+      sec.append(el("div", "pp-h", fam), ...rest.map((k) => palRow(k, -1)));
+      body.append(sec);
+    }
+    pal.append(head, body);
+    // Focus stays on the button it was on, or the row's next useful one.
+    if (keep) {
+      const b = [...pal.querySelectorAll("button")].find((e) => e.getAttribute("aria-label") === keep && !e.disabled);
+      (b || x).focus({ preventScroll: true });
+    }
+  }
+  function placePanel(k) {
+    if (state.panel.length >= PANEL_MAX || state.panel.includes(k)) return;
+    setPanel([...state.panel, k]);
+    // From the + to the new row's place in the panel's list.
+    pal.querySelector(`.pp-row.on[data-index="${k}"] .pp-hide`)?.focus({ preventScroll: true });
+  }
+  function hidePanel(k) {
+    if (state.panel.length <= 1) return;
+    setPanel(state.panel.filter((x) => x !== k));
+    pal.querySelector(`.pp-row[data-index="${k}"] .pp-place`)?.focus({ preventScroll: true });
+  }
+  function movePanel(k, d) {
+    const a = state.panel.slice();
+    const i = a.indexOf(k);
+    const j = i + d;
+    if (i < 0 || j < 0 || j >= a.length) return;
+    [a[i], a[j]] = [a[j], a[i]];
+    setPanel(a);
+  }
+
+  const actions = el("div", "pf-actions");
+  actions.append(arrangeBtn);
+  head.insertBefore(actions, scope);
 
   // ---------- first steps ----------
   // For someone who walks up to it cold — no staff, no manual. Three moves
@@ -2465,13 +2861,13 @@ export function createPerform(host) {
   // cannot turn), and Bright is itself one on some patches. Both ways first,
   // in the order the XY pad picks (Bright, Motion, Snap…), then one way.
   function turnStep() {
-    const order = [0, 2, 1, 3, 5, 4];
+    const order = preferOrder();
     const w = state.wire;
     if (!w) return "Turn a named control: drag up or down";
     const both = order.find((i) => turns(w[i]) && rangeOf(w[i])[0] < 0 && rangeOf(w[i])[1] > 0);
-    if (both != null) return `Turn ${host.controls[both].name.toUpperCase()}: drag up or down`;
+    if (both != null) return `Turn ${controls()[both].name.toUpperCase()}: drag up or down`;
     const one = order.find((i) => turns(w[i]));
-    if (one != null) return `Turn ${host.controls[one].name.toUpperCase()}: drag ${rangeOf(w[one])[1] > 0 ? "up" : "down"}`;
+    if (one != null) return `Turn ${controls()[one].name.toUpperCase()}: drag ${rangeOf(w[one])[1] > 0 ? "up" : "down"}`;
     return "Turn a named control: drag up or down";
   }
   const stepsDone = new Set();
@@ -2512,7 +2908,10 @@ export function createPerform(host) {
   // Named-control indices on each axis. Until the player picks, the pad
   // follows the patch: its two axes are the first two controls this patch
   // reaches (see pickXY), so the first thing under a finger always moves.
-  const XY = { x: 0, y: 2, chosen: false };
+  // Positions on the panel; until a wiring says what reaches, the first two
+  // a gesture reaches for (Bright × Motion on the six).
+  let xyHeld = false;
+  const XY = { x: preferOrder()[0] ?? 0, y: preferOrder()[1] ?? preferOrder()[0] ?? 0, chosen: false };
   const xySels = {};
   const xyHead = el("div", "pf-xy-head mono");
   const xyField = el("div", "pf-xy-field");
@@ -2525,12 +2924,7 @@ export function createPerform(host) {
   const axisSel = (axis) => {
     const sel = el("select", "perf-sel");
     sel.setAttribute("aria-label", `XY pad ${axis} axis`);
-    (host.controls || []).forEach((c, i) => {
-      const o = el("option", null, c.name);
-      o.value = String(i);
-      sel.append(o);
-    });
-    sel.value = String(XY[axis]);
+    fillAxis(sel, axis);
     sel.onchange = () => {
       XY[axis] = Number(sel.value);
       XY.chosen = true;
@@ -2541,6 +2935,16 @@ export function createPerform(host) {
     xySels[axis] = sel;
     return sel;
   };
+  // An axis's choices are the controls on the panel, in its order.
+  function fillAxis(sel, axis) {
+    sel.innerHTML = "";
+    controls().forEach((c, i) => {
+      const o = el("option", null, c.name);
+      o.value = String(i);
+      sel.append(o);
+    });
+    sel.value = String(XY[axis]);
+  }
   xyHead.append(el("span", "pf-xy-cap", "XY"), axisSel("x"), el("span", null, "×"), axisSel("y"));
   xy.append(xyHead, xyField);
 
@@ -2559,8 +2963,7 @@ export function createPerform(host) {
   // seconds later.
   function pickXY() {
     if (XY.chosen || !state.wire || state.carried) return;
-    const order = [0, 2, 1, 3, 5, 4];
-    const reach = order.filter((i) => xyReach(i));
+    const reach = preferOrder().filter((i) => xyReach(i));
     if (reach.length < 2 || (xyReach(XY.x) && xyReach(XY.y))) return;
     [XY.x, XY.y] = reach.slice(0, 2);
     if (xySels.x) xySels.x.value = String(XY.x);
@@ -2613,6 +3016,7 @@ export function createPerform(host) {
   };
   xyField.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    xyHeld = true;
     xyField.focus({ preventScroll: true });
     xyField.setPointerCapture(e.pointerId);
     ensureWired();
@@ -2622,6 +3026,8 @@ export function createPerform(host) {
     if (xyField.hasPointerCapture(e.pointerId)) setXY(...xyAt(e));
   });
   const xyEnd = (e) => {
+    xyHeld = false;
+    queueMicrotask(panelLater);
     if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
     for (const i of [XY.x, XY.y]) logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
   };
@@ -2640,10 +3046,134 @@ export function createPerform(host) {
   });
 
   // ---------- build ----------
-  const NAMED = host.controls; // [{name, low, high}] in engine order
-  NAMED.forEach((c, i) => makeKnob(i, { kind: "named", name: c.name, low: c.low, high: c.high }));
-  makeKnob(6, { kind: "blend", name: "Blend", low: "home", high: "offer", initial: 0 });
-  makeKnob(7, { kind: "wander", name: "Wander", low: "still", high: "roam", initial: 0 });
+  // The deck: the panel's controls in its order, then Blend and Wander.
+  // Rebuilt only when the panel changes (`setPanel`), never under a held
+  // pointer.
+  function buildDeck() {
+    for (const k of knobs) {
+      k.dead = true;
+      if (k.tween) cancelAnimationFrame(k.tween);
+      clearTimeout(k.keyTimer);
+      clearTimeout(k.bumpTimer);
+    }
+    knobs.length = 0;
+    deck.innerHTML = "";
+    controls().forEach((c, i) =>
+      makeKnob(i, { kind: "named", name: c.name, low: c.low, high: c.high, index: state.panel[i], initial: state.c[i] || 0 }),
+    );
+    const n = state.panel.length;
+    makeKnob(n, { kind: "blend", name: "Blend", low: "home", high: "offer", initial: state.blend });
+    makeKnob(n + 1, { kind: "wander", name: "Wander", low: "still", high: "roam", initial: state.wander });
+    // Eight columns hold the six and Blend and Wander; a longer panel widens
+    // the row by a column a control (a count, not a size).
+    deck.style.setProperty("--pf-cols", String(Math.max(8, n + 2)));
+    knobs.forEach(paintKnob);
+  }
+  buildDeck();
+
+  // ---------- placing controls ----------
+  // A new panel from the palette: `next` as palette indices, in the player's
+  // order. Each control keeps its turn and its wiring, by index. One taken
+  // off has its turn folded into the knobs first, so nothing you hear moves.
+  // One put on is unmeasured until the panel's set is measured
+  // (`measurePanel`), and says listening… meanwhile; the others play on. The
+  // deck is never rebuilt under a held pointer: the change waits for the
+  // hand to let go (`panelLater`).
+  function setPanel(raw) {
+    const next = validPanel(raw);
+    if (next.join(",") === state.panel.join(",")) return false;
+    if (knobs.some((k) => k.held) || xyHeld) {
+      state.panelLater = next;
+      return true;
+    }
+    state.panelLater = null;
+    const old = state.panel;
+    const was = (k) => old.indexOf(k);
+    if (state.cur && state.wire) {
+      old.forEach((k, i) => {
+        if (next.includes(k)) return;
+        const w = state.wire[i];
+        if (!turns(w) || !state.c[i]) return;
+        const [lo, hi] = rangeOf(w);
+        const c = clamp(state.c[i], lo, hi);
+        for (const [a, g] of w.knobs) {
+          if (state.cur.knobs.has(a)) state.cur.knobs.set(a, clamp(state.cur.knobs.get(a) + c * g, 0, KNOB_MAX));
+        }
+      });
+    }
+    state.c = next.map((k) => (was(k) >= 0 ? state.c[was(k)] : 0));
+    const entries = state.wire;
+    state.panel = next;
+    if (entries) state.wire = alignWiring(entries);
+    for (const [src, x] of state.expr) {
+      const j = next.indexOf(old[x.i]);
+      if (j < 0) state.expr.delete(src);
+      else x.i = j;
+    }
+    if (state.touch.i >= 0) state.touch.i = next.indexOf(old[state.touch.i]);
+    const xi = next.indexOf(old[XY.x]);
+    const yi = next.indexOf(old[XY.y]);
+    if (xi < 0 || yi < 0) {
+      XY.chosen = false;
+      const o = preferOrder();
+      XY.x = xi >= 0 ? xi : o.find((i) => i !== yi) ?? 0;
+      XY.y = yi >= 0 ? yi : o.find((i) => i !== XY.x) ?? XY.x;
+    } else [XY.x, XY.y] = [xi, yi];
+    state.intent = null;
+    host.setPanel?.(next);
+    buildDeck();
+    fillAxis(xySels.x, "x");
+    fillAxis(xySels.y, "y");
+    paintXY();
+    push();
+    sendTouch();
+    renderHood();
+    renderStatus();
+    renderSteps();
+    renderHow();
+    renderPalette();
+    measurePanel();
+    return true;
+  }
+  function panelLater() {
+    if (state.panelLater && !knobs.some((k) => k.held) && !xyHeld) setPanel(state.panelLater);
+  }
+
+  // Measure the panel's set on the sound under the hands, lazily: only in
+  // sight (a hidden PERFORM measures on `show`), and only what is not known
+  // already. A set measured before plays at once and keeps the sound where it
+  // is (`applyRechecked`); one not measured yet is asked for in front of
+  // background work, because the player is waiting on the control just
+  // placed. Each placed control costs its own renders (about five; the
+  // Jacobian's are in the engine's memo), so nothing is measured that is not
+  // on the panel.
+  function measurePanel() {
+    if (!state.cur || !state.visible) return;
+    if (!state.wire) {
+      if (!state.measuring) wire();
+      return;
+    }
+    const set = setOf(state.panel);
+    const hit = knownWiring(wireKey(state.cur.json, set));
+    if (hit) {
+      applyRechecked(structuredClone(hit.data));
+      knobs.forEach(paintKnob);
+      renderHood();
+      renderStatus();
+      if (!hit.shipped && hit.rev === wireRev()) return;
+    }
+    const same = (p) => p.kind === "perform_wire" && p.gen === state.gen && p.cacheAs && !p.cacheAs.nocache && setOf(p.cacheAs.set || PANEL_DEFAULT).join(",") === set.join(",");
+    if ([...state.pending.values()].some(same)) return;
+    // A measurement of a set the panel left still finishes, for the cache,
+    // but behind the player's work (`retire` drops a measurement to the
+    // background lane).
+    const left = [...state.pending.entries()]
+      .filter(([, p]) => p.kind === "perform_wire" && p.gen === state.gen && p.cacheAs && p.cacheAs.set && !same(p))
+      .map(([req]) => req);
+    if (left.length) host.send({ type: "retire", reqs: left });
+    revalidate(!hit && state.wire.some((w) => w.pending));
+    knobs.forEach(paintKnob);
+  }
 
   pad("keep", "Keep", "Make this sound home: Back returns here", keep);
   pad("back", "Back", "Glide back to the last sound you kept", back);
@@ -2792,6 +3322,13 @@ export function createPerform(host) {
       });
     },
     hasOffer: () => !!state.offer,
+    // The panel, for MIDI and booth mode: a slot is a position on the deck
+    // (the panel's controls in its order, then Blend and Wander).
+    controlNames: () => [...controls().map((c) => c.name), "Blend", "Wander"],
+    controlName: (i) => (controls()[i] ? controls()[i].name : ""),
+    panel: () => state.panel.slice(),
+    setPanel,
+    openPalette,
     // Re-draw every control (after "Show measurements" changes).
     repaint() {
       knobs.forEach(paintKnob);
@@ -2838,9 +3375,15 @@ export function createPerform(host) {
       nameEl.textContent = host.label();
       const t = host.liveTree();
       if (t && t.json && (!state.cur || state.cur.json !== t.json)) patchChanged(t.json, t.makeup);
+      // The panel as saved, if it arrived after PERFORM was built (the
+      // session is restored while the engine boots).
+      const saved = validPanel(host.panel ? host.panel() : null);
+      if (saved.join(",") !== state.panel.join(",")) setPanel(saved);
       // Measured lazily: a patch that changed while PERFORM was hidden is
-      // wired the first time it is looked at, not every time it changed.
+      // wired the first time it is looked at, not every time it changed;
+      // and a control placed on the panel is measured once it is in sight.
       if (state.cur && !state.wire && !state.measuring) wire();
+      else if (state.cur && state.wire && !state.carried && state.wire.some((w) => w.pending)) measurePanel();
       const live = host.live();
       if (live && state.offer) live.bMix(state.blend);
       renderStatus();
@@ -2851,6 +3394,7 @@ export function createPerform(host) {
     // hears a blend it cannot see. The offer itself stays for coming back.
     hide() {
       state.visible = false;
+      closePalette(false);
       const live = host.live();
       if (live && state.offer) live.bMix(0);
       // Out of sight, a measurement is nobody's to wait on. It still

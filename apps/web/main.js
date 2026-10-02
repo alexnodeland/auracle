@@ -3899,7 +3899,9 @@ function healParamMiss(addr) {
 }
 
 // ---------- PERFORM ----------
-// The named controls, in the engine's order (auracle_session::perform::CONTROLS).
+// The six named controls, in the engine's order (auracle_session::perform::CONTROLS):
+// what MIDI and booth mode name before PERFORM is built. Once it is, they
+// ask it for the panel (perform.js, words.js `PALETTE`).
 const PERFORM_CONTROLS = [
   { name: "Bright", low: "dark", high: "bright" },
   { name: "Snap", low: "bloom", high: "snap" },
@@ -3913,8 +3915,14 @@ async function bootPerform() {
   const { createPerform } = await import(`./perform.js?v=${BUILD}`);
   perform = createPerform({
     root: $("view-perform"),
-    controls: PERFORM_CONTROLS,
     ink: INK,
+    // Which palette controls sit on PERFORM, in order: the player's, saved
+    // with the session as part of `perf` (perform.js validates it).
+    panel: () => perf.panel,
+    setPanel: (p) => {
+      perf.panel = p;
+      scheduleSave();
+    },
     send,
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
@@ -4190,7 +4198,7 @@ async function bootBooth() {
     quiet: (on) => {
       boothQuiet = !!on;
     },
-    controlName: (k) => (PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
+    controlName: (k) => (perform ? perform.controlName(k) : PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
     // Attract's opens are the app's, not the visitor's (see openOnBench): a
     // load in flight is registered like a click, so a visitor who opens
     // something else meanwhile keeps it.
@@ -5083,7 +5091,7 @@ async function bootMidi() {
     transportStart: () => live && live.transportStart && live.transportStart(),
     transportBeats: (b) => live && live.transportBeats && live.transportBeats(b),
     perform: () => perform,
-    controlNames: () => [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"],
+    controlNames: () => (perform ? perform.controlNames() : [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"]),
     setBpm: (bpm) => {
       perf.bpm = Math.max(30, Math.min(300, bpm));
       $("bpm").value = String(Math.round(perf.bpm));
