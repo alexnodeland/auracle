@@ -158,7 +158,11 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
      - the callouts *Freeze: held* (`www/video/films/playing/film.js` ~109,
        `www/video/films/view-perform/film.js` ~229) and both storyboards'
        *held* for Wander's state (`playing/storyboard.md` ~45 and ~143, and
-       `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80).
+       `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80);
+     - the PERFORM view film's storyboard quotes *grittier by 3.9σ* "in this
+       session" (`view-perform/storyboard.md` ~184). Offers for a given seed
+       changed when each offer began walking on a stream of its own, so that
+       figure is not reproducible any more: re-check it at the rehearsal.
    - **Casting left to the re-script** (task 7): the `uncast` shots above.
      Each needs its line rewritten around a preset on the shortlist (or a
      Steps module added on camera), then the shot recast. view-patch's

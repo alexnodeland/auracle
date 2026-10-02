@@ -419,6 +419,7 @@ attached.
 | `cargo run -p auracle-features --example jacobian_probe --release > jac.csv` | $\partial\varphi_{\text{audio}}/\partial\text{knob}$ for every preset: the raw material for both purity rows |
 | `cargo run -p auracle-features --example leverage_probe --release > leverage.csv` | Per-knob leverage for every preset |
 | `cargo run -p auracle-session --example perform_wiring --release -- "First Bass"` | The shipped wiring on named presets: knobs, purity, reach, position, search |
+| `cargo run -p auracle-session --example offer_cost --release -- 12 3 20` | What an offer, an aimed offer and a drift cost, per preset and as a distribution, and how much of it is renders (`offer_cost.mjs` in `auracle-wasm`'s examples is the wasm twin) |
 | `cargo run -p auracle-session --example perform_inserts --release` | For each preset’s search controls, whether PERFORM’s graft is transparent and whether it makes the control reachable |
 | `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool, with verification, and how the gate would read with purity against the whole of φ |
 | `cargo run -p auracle-wasm --example palette_census --release -- 3 --prototype` | The [palette](#the-palette-eighteen-directions): the eighteen directions, their cosines, how often each reaches the presets, and what measuring them costs natively |
@@ -676,7 +677,7 @@ $$
 
 accepted with probability $\min\!\big(1,\ \pi_\beta(x')/\pi_\beta(x)\big)$. The
 reflected Gaussian is symmetric, so there is no Hastings correction
-(`Engine::local_walk`). Refinement’s kernel, fugue’s adaptive single-site MH,
+(`Engine::drift`). Refinement’s kernel, fugue’s adaptive single-site MH,
 starts every fresh chain with a wide proposal on a unit-interval knob: measured
 over 12 presets, an 8-step “drift” moved some knob by 0.3–0.85 of its range. A
 drift should wander, and how far is the Wander dial’s to say.
