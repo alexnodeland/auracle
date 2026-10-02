@@ -2281,8 +2281,9 @@ worker.onmessage = (e) => {
         landedNow.add(m.childId);
         unheard.add(m.childId);
         // ⚡'s admission replaced what it displaced at once (one generation
-        // of one walk): Replaced holds those names.
-        replacedLast = { gen: m.status.generation, names: evolveEvicted.map((id) => knownNames.get(id) || "a sound") };
+        // of one walk): Replaced holds those names. A child that displaced
+        // nothing (the pool was filling) leaves the last generation's.
+        if (evolveEvicted.length) replacedLast = { gen: m.status.generation, names: evolveEvicted.map((id) => knownNames.get(id) || "a sound") };
       }
       const zapBud = m.childId > 0 ? budStart(m.childId) : false;
       applyStatus(m.status);
