@@ -112,10 +112,16 @@ measured with audition clips, from quiver to the PATCH plate.
    - the live worklet's input;
    - the AUDIO IN plate: device select, level meter, live face;
    - monitoring off, with a headphones note;
-   - **held sounds** (task 6): the bank shows the sounds a restore held back
-     because a CAPTURE's recording couldn't be read (`held_sounds`), and opens
-     one on the bench to record it again, then sends the take
-     (`readmit_held`); both are wired in `worker.js` with nothing asking yet;
+   - **held sounds** (task 6), owed: a bank surface for the sounds a restore
+     kept aside because a CAPTURE's recording couldn't be read
+     (`held_sounds`), which opens one on the bench to record it again and
+     sends the take (`readmit_held`); both are wired in `worker.js` with
+     nothing asking yet, and the restore's note says so once per set;
+   - **TRACK live**: a key let go while the input still sounds holds its
+     voice open (the tracker's gate is summed into the amp's), so voices can
+     stack while the player plays keys over a sung line, each a copy of the
+     tracked note. The audition render's chord voices are followers that
+     stop with their key; `LivePoly` has no follower yet;
    - **turning AUDIO IN on in the prior** once a player can hear a live input:
      set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
      task 2 measured exactly that setting, so if nothing else has changed it
@@ -182,10 +188,13 @@ measured with audition clips, from quiver to the PATCH plate.
      (it is not a trace site), and carry it onto every term they score.
    - a sound whose only source was a take that couldn't be read is **held**:
      restore keeps it out of the pool (never dealt, fitted, mapped, wired or
-     bred), reports it apart from the repairs, and the app says "its
-     recording couldn't be read"; a save writes it back with the take's bytes
-     as loaded; `Engine::readmit_held` (wasm `readmit_held`) brings it back
-     with a readable take, measured as a new sound.
+     bred), reports it apart from the repairs, and the app says "One sound's
+     recording couldn't be read. It's kept safe until you record it again."
+     once per set of such sounds; a save writes its take back JSON-equal to
+     what was loaded; `Engine::readmit_held` (wasm `readmit_held`) brings it
+     back with a readable take, measured as a new sound;
+   - a recording stops at `TAKE_SECONDS` at the voice's rate
+     (`RecordWindow`), so it always reads back as a take.
    - Open: `LivePoly`'s record and read-back bindings and the record control,
      and showing held sounds in the bank (task 4).
 7. **The guide and the reference:** a guide page on playing through Auracle,

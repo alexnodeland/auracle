@@ -219,9 +219,22 @@ branch, the tracker’s pitch and gate stand where the keys’ stand everywhere
 else: a VCO there sings the tracked note (its octave knob still transposes it),
 a pluck is plucked and a mod envelope fires on every tracked onset. The
 tracker’s gate is also summed into the voice’s amp envelope with the keys’
-(either opens it), so a note sung into an AUDIO IN sounds the way a key does.
-Outside `/0` the keys play the patch as before, so a mix can hold a tracked side
-and a keyed side.
+(either opens it), so a note sung into an AUDIO IN sounds the way a key does,
+and a key let go while the input still sounds holds the voice open until the
+input stops. Outside `/0` the keys play the patch as before, so a mix can hold
+a tracked side and a keyed side.
+
+Three consequences worth knowing:
+
+- **A chord collapses.** Every voice of a chord plays the one tracked note
+  inside `/0`: there is one input, and one pitch in it. In the audition
+  phrase the dyad’s second voice is a *follower*: it plays the note the main
+  voice’s tracker hears from its first frame, and its amp keeps its own key’s
+  gate, so it stops with the dyad.
+- **Before the first tracked note**, `/0` plays C4 (the tracker’s 0 V), and
+  between notes it holds the last note it tracked.
+- **The tracker hears what is there.** Where one note still rings under the
+  next, YIN can read the pair (see below).
 
 Rendered on the [audition clip](../audition/clips.md), a TRACK plays the
 reference figure’s notes: thirteen of its fourteen within 1.4 cents, and the
@@ -256,13 +269,21 @@ no higher than `MAX_TAKE_RATE` (192 kHz), a length no longer than
 `TAKE_SECONDS` (4 s, quiver’s default `Capture` buffer) at that rate, and the
 data’s length checked before it is decoded. A take that breaks a rule never
 costs the sound: the term loads with the take empty, and a restore counts the
-sound as repaired, so the app says so. When that take was the sound's only
-source it no longer renders, and the restore **holds it back** instead of
-dropping it: out of the pool, so nothing deals, fits or breeds it, reported
-apart from the repairs ("its recording couldn't be read"), and written back
-by every save with the take's bytes as they were loaded, until a readable
-take brings it back (`readmit_held`), measured as a new sound. A take is not a trace site, so no walk
-can propose a new one.
+sound as repaired, so the app says so. When that take was the sound’s only
+source it no longer renders, and the restore **keeps it aside** (the engine’s
+held list) instead of dropping it: out of the pool, so nothing deals, fits or
+breeds it, reported apart from the repairs (“One sound’s recording couldn’t
+be read. It’s kept safe until you record it again.”, once for each set of
+such sounds), and written back by every save with its take JSON-equal to what
+was loaded, until a readable take brings it back (`readmit_held`), measured
+as a new sound. A fragment sent with a take that couldn’t be read
+(`SetTake`, `ReplaceTree`, `InsertTree`) is refused. A take is not a trace
+site, so no walk can propose a new one, and an edit that changes only a take
+logs a lineage event whose diff is empty.
+
+A recording stops at `TAKE_SECONDS` at the voice’s rate (the record gate goes
+through a window that closes then), even into a buffer a longer, higher-rate
+take has enlarged, so what a capture records always reads back as a take.
 
 Recording is the host’s. A compiled voice has a record gate per capture and
 reads the take back from quiver’s state, and `StructOp::SetTake` puts it in the
