@@ -800,6 +800,9 @@ async function restoreSession(saved, farmed, stages) {
     console.warn("[auracle] verdicted restore unavailable:", err);
     try {
       jobs = JSON.parse(engine.import_session_deferred(saved));
+      // As on the v2 path: the import installed the saved clip after the
+      // crew's handshake.
+      if (auditionClip()?.source === "captured") farmResendPhrase();
     } catch (err2) {
       console.warn("[auracle] deferred restore unavailable:", err2);
       return restoreSerial(saved);

@@ -1941,10 +1941,12 @@ impl LivePoly {
 
     /// Hold the patch open for its input, or let it close.
     ///
-    /// Every patch ends in the amp envelope, gated by the keys, so a patch
-    /// that listens is silent with no key down however loud its input is: an
-    /// AUDIO IN into a filter would be heard only while a note is held, and a
-    /// patch played by its input (a tracker) not at all. With `on`, a patch
+    /// Every patch ends in the amp envelope, gated by the keys, and a voice
+    /// with no key down parks once its tail is silent, so a patch that listens
+    /// is silent with no key down however loud its input is: an AUDIO IN into
+    /// a filter would be heard only while a note is held, and a patch played
+    /// by its input (a TRACK, whose gate opens the amp) only by a voice a key
+    /// had left running. With `on`, a patch
     /// that listens sounds its **open voice**: one more voice of the patch,
     /// gated as if [`OPEN_NOTE`] were held at full velocity, so the input
     /// sounds through the whole patch, amp envelope included (it settles at
@@ -1957,7 +1959,9 @@ impl LivePoly {
     /// you can hear (no drone from a patch with no input). It is kept across
     /// patch swaps: a swap to a patch that listens opens the new open voice,
     /// carrying the old one's envelope as a held note's is carried, and a swap
-    /// to one that does not lets it ring out. `off` releases it into its tail.
+    /// to one that does not ends it with the old voices, under the swap's
+    /// fade. `off` releases it into its tail, and it parks once that is
+    /// silent.
     ///
     /// Allocation free: the open voice is compiled with the patch (in
     /// [`Self::new`] or the swap's rebuild), never here.

@@ -455,12 +455,25 @@ registerProcessor("auracle-voice", EvoVoiceProcessor);
 // back in one block. The ?film capture hook creates one on the master bus,
 // and AUDIO IN one on an input, for the clip (audio-in.js).
 class TapProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.blocks = null;
+    // A one-shot tap (AUDIO IN's clip, processorOptions.once) ends its
+    // processor once its take is handed back or dropped, so a finished or
+    // cancelled capture leaves nothing running. The ?film hook's tap is
+    // turned on and off again, so it lives on.
+    this.once = !!(options && options.processorOptions && options.processorOptions.once);
+    this.done = false;
+    // The most channels the input carried while rolling: a mono microphone
+    // is one, whatever its track's settings say (Safari says nothing).
+    this.channels = 0;
     this.port.onmessage = (e) => {
       if (e.data.type === "on") {
         this.blocks = [];
+        this.channels = 0;
+      } else if (e.data.type === "drop") {
+        this.blocks = null;
+        if (this.once) this.done = true;
       } else if (e.data.type === "off" && this.blocks) {
         let total = 0;
         for (const b of this.blocks) total += b.length;
@@ -468,15 +481,18 @@ class TapProcessor extends AudioWorkletProcessor {
         let o = 0;
         for (const b of this.blocks) { all.set(b, o); o += b.length; }
         this.blocks = null;
-        this.port.postMessage({ type: "tap_done", samples: all, sampleRate }, [all.buffer]);
+        if (this.once) this.done = true;
+        this.port.postMessage({ type: "tap_done", samples: all, sampleRate, channels: this.channels }, [all.buffer]);
       }
     };
   }
   process(inputs) {
+    if (this.done) return false;
     if (this.blocks) {
       // Interleaved stereo; a quantum with nothing connected is silence,
       // so the take keeps wall time.
       const inp = inputs[0] || [];
+      if (inp.length > this.channels) this.channels = inp.length;
       const l = inp[0];
       const r = inp[1] || l;
       const n = l ? l.length : 128;

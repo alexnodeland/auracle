@@ -74,6 +74,8 @@ export function createAudioIn(host) {
   let permQueried = false;
   let list = load();               // slot → {id, label}
   let present = new Map();         // device id → label, from enumerateDevices
+  let groups = new Map();          // device id → groupId, the same listing
+  let pseudo = new Map();          // "default"/"communications" → {groupId, label}
   let enumerated = false;
   const streams = new Map();       // device id → {stream, track, source, analyser, buf, channels, db}
   const opening = new Set();       // device ids with a getUserMedia out
@@ -85,6 +87,7 @@ export function createAudioIn(host) {
   let monitorSent = false;         // what the worklet was last told
   let clipSource = null;           // the session's clip: "captured" | "reference"
   let capture = null;              // {id, phase: "armed"|"rolling"|"sent", tap, mute, timer}
+  let clipRefused = false;         // the engine refused this session's last capture
   let raf = 0;
 
   // ---- the input list ----
@@ -118,22 +121,54 @@ export function createAudioIn(host) {
     save();
   }
 
-  async function enumerate() {
+  /** Read the browser's list of inputs. With `adopt`, each named input the
+   *  list has not seen takes the next number. */
+  async function enumerate(adopt = true) {
     if (!md || !md.enumerateDevices) return;
     let all = [];
     try { all = await md.enumerateDevices(); } catch (_) { return; }
     const next = new Map();
+    const nextGroups = new Map();
+    const nextPseudo = new Map();
     for (const d of all) {
+      if (d.kind !== "audioinput" || !d.deviceId) continue;
       // The browser's pseudo-devices are other names for real ones: a slot is
-      // a device, so only the real ones are listed.
-      if (d.kind !== "audioinput" || !d.deviceId || d.deviceId === "default" || d.deviceId === "communications") continue;
+      // a device, so only the real ones are listed, and a pseudo-device is
+      // kept only to be resolved to its real one (`realId`).
+      if (isPseudo(d.deviceId)) {
+        nextPseudo.set(d.deviceId, { groupId: d.groupId || "", label: d.label || "" });
+        continue;
+      }
       next.set(d.deviceId, d.label || "");
+      nextGroups.set(d.deviceId, d.groupId || "");
     }
     present = next;
+    groups = nextGroups;
+    pseudo = nextPseudo;
     enumerated = true;
     // Only with permission does the browser name its devices; nameless ids
     // are not worth a slot.
-    if (perm === "granted") for (const [id, label] of present) if (label) adoptDevice(id, label);
+    if (adopt && perm === "granted") for (const [id, label] of present) if (label) adoptDevice(id, label);
+  }
+
+  /** Chrome's and Edge's other names for a real input. */
+  function isPseudo(id) {
+    return id === "default" || id === "communications";
+  }
+
+  /** The real input a stream's settings name. An unconstrained ask in Chrome
+   *  and Edge answers with the pseudo-device `default`, which is not in the
+   *  list of inputs: it is resolved to the real one by its group (the same
+   *  hardware), else by its label ("Default - X" is X). Null when it cannot
+   *  be. Call after `enumerate`. */
+  function realId(id, groupId, label) {
+    if (id && !isPseudo(id)) return id;
+    const p = pseudo.get(id) || {};
+    const group = groupId || p.groupId;
+    if (group) for (const [rid, g] of groups) if (g === group) return rid;
+    const name = (label || p.label || "").replace(/^(Default|Communications) - /, "");
+    if (name) for (const [rid, l] of present) if (l === name) return rid;
+    return null;
   }
 
   async function queryPermission() {
@@ -204,11 +239,18 @@ export function createAudioIn(host) {
     }
     perm = "granted";
     const track = stream.getAudioTracks()[0];
-    const id = (track && track.getSettings && track.getSettings().deviceId) || "";
-    const label = (track && track.label) || "";
-    if (id) {
-      adoptDevice(id, label);
-      present.set(id, label);
+    const settings = (track && track.getSettings && track.getSettings()) || {};
+    // Granted, the browser names its inputs: the list first, so a pseudo-
+    // device in the stream's settings can be resolved to the real input,
+    // which is numbered before the rest (the input the browser opened is 1).
+    await enumerate(false);
+    const id = realId(settings.deviceId || "", settings.groupId || "", (track && track.label) || "");
+    if (!id) {
+      // A stream that names no input it can be filed under is not kept: the
+      // bench opens what it reads by id, below.
+      stream.getTracks().forEach((t) => t.stop());
+    } else {
+      adoptDevice(id, present.get(id) || (track && track.label) || "");
       if (!streams.has(id)) {
         adopt(id, stream);
         // The ask answers before the edit that placed the module lands, so the
@@ -220,7 +262,8 @@ export function createAudioIn(host) {
         stream.getTracks().forEach((t) => t.stop());
       }
     }
-    await enumerate();
+    // Every other input the browser lists takes the next number.
+    for (const [rid, l] of present) if (l) adoptDevice(rid, l);
     reconcile();
   }
 
@@ -233,6 +276,12 @@ export function createAudioIn(host) {
       if (m.kind !== "audio_in") continue;
       const k = (m.knobs || []).find((x) => x.addr.endsWith("#input"));
       want.push({ key: m.key, addr: k ? k.addr : null, slot: k ? Math.max(0, Math.round(k.value)) : 0 });
+    }
+    // MONITOR ends with the last AUDIO IN on the bench, so the next sound
+    // that listens does not come up monitored without a press.
+    if (!want.length && monitor) {
+      monitor = false;
+      sendMonitor();
     }
     if (want.length && perm === "unknown") {
       queryPermission().then(refresh);
@@ -389,25 +438,25 @@ export function createAudioIn(host) {
     host.note(monitor ? W.INPUT_SAID.monitorOn : W.INPUT_SAID.monitorOff, { urgent: true, replace: "audio-in-monitor" });
     paint();
   }
-  /** Back to how a load starts: monitoring off (booth's new visitor). */
-  function reset() {
-    monitor = false;
-    sendMonitor();
-    paint();
-  }
 
   // ---- the clip ----
   /** Arm a first-listen capture on the voices' input, if the session has no
-   *  captured clip and none is under way. `force` is NEW CLIP. */
+   *  captured clip, none is under way, and the engine has not refused one
+   *  this session (then only NEW CLIP captures again, as the reference
+   *  page says). `force` is NEW CLIP. */
   function maybeArm(force = false) {
     if (capture || !voiceId) return;
-    if (!force && clipSource !== "reference") return;
+    if (!force && (clipSource !== "reference" || clipRefused)) return;
+    if (force) clipRefused = false;
     capture = { id: voiceId, phase: "armed" };
   }
   function startCapture() {
     const s = streams.get(capture.id);
     if (!s) return cancelCapture();
-    const tap = new AudioWorkletNode(ctx, "auracle-tap", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    // One-shot: its processor ends once the take is handed back or dropped.
+    const tap = new AudioWorkletNode(ctx, "auracle-tap", {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { once: true },
+    });
     const mute = ctx.createGain();
     mute.gain.value = 0;
     s.source.connect(tap);
@@ -419,10 +468,13 @@ export function createAudioIn(host) {
     c.channels = s.channels;
     tap.port.onmessage = (e) => {
       if (e.data.type !== "tap_done" || capture !== c) return;
+      c.done = true;
       teardownTap(c);
       let samples = e.data.samples;
-      // The tap hands back two channels; a mono device is one, so the clip
-      // (saved with the session) is not twice the size it needs to be.
+      // The tap hands back two channels; a mono input is one (by its track's
+      // settings, or by what the tap heard, where the settings say nothing),
+      // so the clip, saved with the session, is not twice the size it needs.
+      if (e.data.channels === 1) c.channels = 1;
       if (c.channels === 1) {
         const mono = new Float32Array(samples.length >> 1);
         for (let i = 0; i < mono.length; i++) mono[i] = samples[2 * i];
@@ -441,6 +493,9 @@ export function createAudioIn(host) {
   }
   function teardownTap(c) {
     clearTimeout(c.timer);
+    // A capture cancelled while it rolls drops its take, so the processor
+    // stops recording and ends rather than run on unheard.
+    if (c.tap && !c.done) { try { c.tap.port.postMessage({ type: "drop" }); } catch (_) {} }
     try { c.tap && c.tap.disconnect(); } catch (_) {}
     try { c.mute && c.mute.disconnect(); } catch (_) {}
     const s = streams.get(c.id);
@@ -468,6 +523,8 @@ export function createAudioIn(host) {
     if (m && m.clip && typeof m.clip.source === "string") clipSource = m.clip.source;
     if (m && typeof m.ok === "boolean") {
       capture = null;
+      // Refused (silent): no capture again by itself until NEW CLIP.
+      clipRefused = !m.ok;
       host.note(m.note, { urgent: true, replace: "audio-in-clip" });
     } else if (m && m.clip && m.clip.unreadable && m.clip.note) {
       // A restore whose saved clip didn't load (the status carries its note).
@@ -554,7 +611,7 @@ export function createAudioIn(host) {
     dev.appendChild(dt);
     if (interactive) {
       const tt = el("title", {});
-      tt.textContent = "Input: pick a microphone or interface";
+      tt.textContent = W.INPUT_TIPS.line;
       dev.appendChild(tt);
       dev.setAttribute("role", "button");
       dev.setAttribute("tabindex", "-1");
@@ -582,9 +639,9 @@ export function createAudioIn(host) {
     // Monitoring, the clip, and the ask (in place of both while there is no
     // input). Half the width each.
     const bw = (left - 6) / 2;
-    button(lane, inset, 26, bw, W.INPUT_SILK.monitor, "ain-monitor", "Monitor: hear your input through the sound", () => setMonitor(!monitor), interactive);
-    button(lane, inset + bw + 6, 26, bw, W.INPUT_SILK.newClip, "ain-clip", "New clip: what the model hears it through", () => newClip(), interactive);
-    button(lane, inset, 26, left, W.INPUT_SILK.allow, "ain-ask", "Allow input: ask the browser for one", () => ask(), interactive);
+    button(lane, inset, 26, bw, W.INPUT_SILK.monitor, "ain-monitor", W.INPUT_TIPS.monitor, () => setMonitor(!monitor), interactive);
+    button(lane, inset + bw + 6, 26, bw, W.INPUT_SILK.newClip, "ain-clip", W.INPUT_TIPS.newClip, () => newClip(), interactive);
+    button(lane, inset, 26, left, W.INPUT_SILK.allow, "ain-ask", W.INPUT_TIPS.allow, () => ask(), interactive);
     const note = el("text", { x: inset + 8, y: 58 }, "ain-note");
     note.textContent = W.INPUT_SILK.headphones;
     lane.appendChild(note);
@@ -599,7 +656,7 @@ export function createAudioIn(host) {
     if (perm !== "granted") return { slot, state: perm === "unknown" || perm === "prompt" ? "unasked" : perm, label: "" };
     const e = entry(slot);
     if (!e) return { slot, state: "empty", label: "" };
-    const label = labelOf(e.id) || `input ${slot + 1}`;
+    const label = labelOf(e.id) || W.inputName(slot);
     if (unplugged.has(e.id) || (enumerated && !present.has(e.id))) return { slot, state: "unplugged", label, id: e.id };
     if (!streams.has(e.id)) return { slot, state: "opening", label, id: e.id };
     return { slot, state: e.id === voiceId ? "live" : "meter", label, id: e.id };
@@ -622,7 +679,7 @@ export function createAudioIn(host) {
     if (shown.length > LINE_CHARS) shown = `${shown.slice(0, LINE_CHARS - 1)}…`;
     if (dt && dt.textContent !== shown) dt.textContent = shown;
     const dev = lane.querySelector(".ain-dev");
-    if (dev && dev.hasAttribute("role")) dev.setAttribute("aria-label", `Input ${text}`);
+    if (dev && dev.hasAttribute("role")) dev.setAttribute("aria-label", W.inputLineName(text));
     const noInput = perm !== "granted";
     const live = st.state === "live";
     const toggle = (sel, on) => lane.querySelector(sel)?.classList.toggle("hidden", !on);
@@ -676,13 +733,13 @@ export function createAudioIn(host) {
       if (!e) continue;
       const here = !unplugged.has(e.id) && (!enumerated || present.has(e.id));
       rows.push({
-        label: W.inputRow(slot, labelOf(e.id) || `input ${slot + 1}`),
-        sub: slot === w.slot ? "in use" : here ? "" : "unplugged",
+        label: W.inputRow(slot, labelOf(e.id) || W.inputName(slot)),
+        sub: slot === w.slot ? W.INPUT_MENU.inUse : here ? "" : W.INPUT_MENU.unplugged,
         run: () => { if (slot !== w.slot) host.setKnob(w.addr, slot); },
       });
     }
     if (!rows.length) return ask();
-    host.showMenu(x, y, { title: "audio in", sub: "input" }, rows);
+    host.showMenu(x, y, { title: W.INPUT_MENU.title, sub: W.INPUT_MENU.sub }, rows);
   }
 
   return {
@@ -690,7 +747,6 @@ export function createAudioIn(host) {
     follow,
     drawLane,
     clip,
-    reset,
     ask,
     setMonitor,
     get monitor() { return monitor; },

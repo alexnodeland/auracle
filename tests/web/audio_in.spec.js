@@ -57,16 +57,21 @@ const STUB = `(() => {
     ],
     tracks: [],
     queries: 0,
+    // Set before boot: Fake Mic A is mono and its track's settings name no
+    // channel count, as Safari's do.
+    monoA: (() => { try { return sessionStorage.getItem("__pwMonoA") === "1"; } catch (_) { return false; } })(),
   });
   let ctx = null;
   const toneCtx = () => ctx || (ctx = new AudioContext());
-  function tone(freq) {
+  function tone(freq, mono) {
     const c = toneCtx();
     const o = c.createOscillator();
     o.frequency.value = freq;
     const g = c.createGain();
     g.gain.value = 0.25;
-    const d = c.createMediaStreamDestination();
+    const d = mono
+      ? new MediaStreamAudioDestinationNode(c, { channelCount: 1, channelCountMode: "explicit" })
+      : c.createMediaStreamDestination();
     o.connect(g).connect(d);
     o.start();
     return { stream: d.stream, osc: o };
@@ -81,20 +86,34 @@ const STUB = `(() => {
     const want = c && c.audio && c.audio.deviceId && c.audio.deviceId.exact;
     const dev = want ? mic.devices.find((d) => d.deviceId === want && d.present) : mic.devices.find((d) => d.present);
     if (!dev) throw new DOMException("Requested device not found", "NotFoundError");
-    const { stream, osc } = tone(dev.freq);
+    const mono = mic.monoA && dev.deviceId === "mic-a";
+    const { stream, osc } = tone(dev.freq, mono);
     const track = stream.getAudioTracks()[0];
-    track.getSettings = () => ({ deviceId: dev.deviceId, channelCount: 2, groupId: dev.groupId });
-    Object.defineProperty(track, "label", { value: dev.label });
+    // As Chrome and Edge answer: an unconstrained ask opens the pseudo-device
+    // "default", whose settings and label name it, not the real input.
+    const asDefault = !want;
+    track.getSettings = () => ({
+      deviceId: asDefault ? "default" : dev.deviceId,
+      groupId: dev.groupId,
+      ...(mono ? {} : { channelCount: 2 }),
+    });
+    Object.defineProperty(track, "label", { value: asDefault ? "Default - " + dev.label : dev.label });
     mic.tracks.push({ id: dev.deviceId, track, osc });
     return stream;
   };
-  md.enumerateDevices = async () =>
-    mic.devices.filter((d) => d.present).map((d) => ({
+  // As Chrome and Edge list them: the pseudo-device "default" first, in the
+  // group of the input it stands for, then the real inputs.
+  md.enumerateDevices = async () => {
+    const real = mic.devices.filter((d) => d.present);
+    const first = real[0];
+    const listed = first ? [{ deviceId: "default", groupId: first.groupId, label: "Default - " + first.label }, ...real] : real;
+    return listed.map((d) => ({
       deviceId: mic.granted ? d.deviceId : "",
       groupId: d.groupId,
       kind: "audioinput",
       label: mic.granted ? d.label : "",
     }));
+  };
   if (navigator.permissions) {
     const query = navigator.permissions.query.bind(navigator.permissions);
     navigator.permissions.query = async (d) => {
@@ -148,6 +167,15 @@ const INIT = `(() => {
       w.addEventListener("message", (e) => {
         const d = e.data;
         if (!d || typeof d.type !== "string") return;
+        // The engine refusing a capture, on demand (this listener runs before
+        // main's, on the same data): what it says of a silent one.
+        if (window.__pwRefuseClip && d.type === "audition_clip" && d.ok === true) {
+          window.__pwRefuseClip = false;
+          d.ok = false;
+          d.note = "That capture was silent, so nothing changed. Check the input, then capture again.";
+          d.clip = { ...d.clip, source: "reference" };
+          delete d.views;
+        }
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
         if (d.type === "__pw_phrase") phrases.push({ t: performance.now(), clip: d.clip });
@@ -157,6 +185,14 @@ const INIT = `(() => {
   }
   Wrapped.prototype = Orig.prototype;
   window.Worker = Wrapped;
+
+  // What the capture's tap is told: on, off (hand the take back), drop.
+  const tapSaid = (window.__pwTapSaid = []);
+  const portPost = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (m, ...rest) {
+    if (m && (m.type === "on" || m.type === "off" || m.type === "drop")) tapSaid.push(m.type);
+    return portPost.call(this, m, ...rest);
+  };
 
   const toasts = (window.__pwToasts = []);
   document.addEventListener("DOMContentLoaded", () => {
@@ -322,6 +358,14 @@ test("the browser is asked for an input only when AUDIO IN is added", async ({ p
   await page.evaluate(() => window.__pwRelease());
   await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 15_000 });
   await expect(lane(page).locator(".ain-dev-text")).toHaveText("1 · Fake Mic A");
+  expect(await calls(page)).toBe(1);
+  // The browser opened its pseudo-device "default" (as Chrome and Edge do);
+  // input 1 is the real input it stands for, and it stays open past the
+  // hold the ask keeps on its stream.
+  expect((await state(page)).list[0].id).toBe("mic-a");
+  await page.waitForTimeout(16_000);
+  await expect(lane(page)).toHaveAttribute("data-state", "live");
+  expect(await page.evaluate(() => window.__pwLiveTracks())).toEqual({ "mic-a": 1 });
   expect(await calls(page)).toBe(1);
   expect(errors).toEqual([]);
 });
@@ -578,5 +622,70 @@ test("an unplugged input silences its module and says so, and plays again when i
   await expect.poll(() => loudest(page, 440, 600), { timeout: 15_000 }).toBeGreaterThan(-60);
   console.log(`unplugged: ${gone.toFixed(1)} dB at 440 Hz`);
   expect(gone).toBeLessThan(-100);
+  expect(errors).toEqual([]);
+});
+
+test("a capture cut short drops its take, and the tap stops", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect.poll(async () => (await state(page)).capture, { timeout: 15_000 }).toBe("rolling");
+  // Another sound, with no AUDIO IN: its input closes under the capture.
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
+  await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(0, { timeout: 30_000 });
+  await expect.poll(() => page.evaluate(() => window.__pwTapSaid), { timeout: 5_000 }).toContain("drop");
+  // Nothing comes of it: no clip goes to the engine.
+  await page.waitForTimeout(8_000);
+  expect(await page.evaluate(() => window.__pwSent.length)).toBe(0);
+  expect((await state(page)).capture).toBe(null);
+  expect(errors).toEqual([]);
+});
+
+test("a refused capture is not taken again by itself; NEW CLIP takes another", async ({ page }) => {
+  const errors = await boot(page);
+  await page.evaluate(() => { window.__pwRefuseClip = true; });
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect.poll(() => page.evaluate(() => window.__pwSent.length), { timeout: 20_000 }).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
+    .toContain("That capture was silent, so nothing changed.");
+  // The input still carries a signal, and nothing captures by itself.
+  await page.waitForTimeout(10_000);
+  expect(await page.evaluate(() => window.__pwSent.length)).toBe(1);
+  expect((await state(page)).capture).toBe(null);
+  await lane(page).locator(".ain-clip").click();
+  await expect.poll(() => page.evaluate(() => window.__pwSent.length), { timeout: 20_000 }).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test("MONITOR ends when the last AUDIO IN leaves the sound you're playing", async ({ page }, info) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await lane(page).locator(".ain-monitor").click();
+  expect((await state(page)).monitor).toBe(true);
+  // A sound with no AUDIO IN: monitoring ends with it.
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
+  await expect(page.locator("#rack-svg .ain-lane")).toHaveCount(0, { timeout: 30_000 });
+  expect((await state(page)).monitor).toBe(false);
+  // The next sound that listens comes up unmonitored, and silent.
+  await openFile(page, { name: "Mic Pad", tree: { amp, root: ain(0) } }, info.outputDir);
+  await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 60_000 });
+  await expect(lane(page).locator(".ain-monitor")).toHaveAttribute("aria-pressed", "false");
+  await page.waitForTimeout(1500);
+  expect(await loudest(page, 440, 1200)).toBeLessThan(-100);
+  expect(errors).toEqual([]);
+});
+
+test("a mono input with no channel count in its settings is captured as one channel", async ({ page }) => {
+  await page.addInitScript(() => { try { sessionStorage.setItem("__pwMonoA", "1"); } catch (_) {} });
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await placeAudioIn(page);
+  await expect.poll(() => page.evaluate(() => window.__pwSent.length), { timeout: 20_000 }).toBe(1);
+  const sent = await page.evaluate(() => window.__pwSent[0]);
+  console.log(`mono clip sent: ${sent.frames} frames × ${sent.channels}`);
+  expect(sent.channels).toBe(1);
   expect(errors).toEqual([]);
 });

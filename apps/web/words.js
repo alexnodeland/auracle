@@ -160,7 +160,7 @@ export const INPUT_SAID = Object.freeze({
   missing: "No input was found, so AUDIO IN stays in the patch, silent. Plug in a microphone or an interface, then press ASK AGAIN.",
   failed: "The input didn’t open, so AUDIO IN is silent. Close any app holding it, then press ASK AGAIN.",
   unsupported: "This browser doesn’t offer its inputs to web pages, so AUDIO IN stays silent.",
-  monitorOn: "Monitoring on: your input plays through the sound with no key down. Use headphones, or the speakers feed back into the microphone.",
+  monitorOn: "Monitoring on: your input plays through the sound at its sustain level, with no key down. Use headphones, or the speakers feed back into the microphone.",
   monitorOff: "Monitoring off: your input reaches the meter, not the speakers.",
   monitorNone: "Nothing to monitor yet: AUDIO IN has no input.",
   clipNone: "Nothing to capture yet: AUDIO IN has no input.",
@@ -209,7 +209,7 @@ export function inputLine(state, slot, label) {
     case "live": return `${n} · ${label}`;
     case "meter": return `${n} · ${label} · meter only`;
     case "unplugged": return `${n} · ${label} · unplugged`;
-    case "empty": return `${n} · no device`;
+    case "empty": return `${n} · nothing plugged in`;
     case "opening": return `${n} · ${label} · opening…`;
     case "asking": return "asking…";
     case "refused": return "input refused";
@@ -220,10 +220,35 @@ export function inputLine(state, slot, label) {
   }
 }
 
-/** A device's row in the AUDIO IN input menu: "2 · Scarlett 2i2". */
+/** An input's row in the AUDIO IN input menu: "2 · Scarlett 2i2". */
 export function inputRow(slot, label) {
   return `${(slot | 0) + 1} · ${label}`;
 }
+
+/** An input the browser has not named: "input 3". */
+export function inputName(slot) {
+  return `input ${(slot | 0) + 1}`;
+}
+
+/** The input line as a control's name, for a screen reader: the whole line,
+ *  which the module may have cut to fit. */
+export function inputLineName(line) {
+  return `Input ${line}`;
+}
+
+/** AUDIO IN's tooltips (a name and what it does) and its input menu. */
+export const INPUT_TIPS = Object.freeze({
+  line: "Input: pick a microphone or interface",
+  monitor: "Monitor: hear your input through the sound",
+  newClip: "New clip: what the model hears it through",
+  allow: "Allow input: ask the browser for one",
+});
+export const INPUT_MENU = Object.freeze({
+  title: "audio in",
+  sub: "input",
+  inUse: "in use",
+  unplugged: "unplugged",
+});
 
 // ---- a generation as it runs, and the lineage it leaves in the bank ----
 

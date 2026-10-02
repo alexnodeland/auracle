@@ -36,6 +36,10 @@ import {
   clipArmed,
   inputLine,
   inputRow,
+  inputName,
+  inputLineName,
+  INPUT_TIPS,
+  INPUT_MENU,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -347,7 +351,19 @@ test("AUDIO IN says which input it reads, or why it has none, in the voice", () 
   assert.equal(inputLine("live", 0, "Fake Mic A"), "1 · Fake Mic A");
   assert.equal(inputLine("meter", 1, "Interface"), "2 · Interface · meter only");
   assert.equal(inputLine("unplugged", 2, "USB mic"), "3 · USB mic · unplugged");
-  assert.equal(inputLine("empty", 4), "5 · no device");
+  assert.equal(inputLine("empty", 4), "5 · nothing plugged in");
+  assert.equal(inputName(2), "input 3");
+  assert.equal(inputLineName("1 · Fake Mic A"), "Input 1 · Fake Mic A");
+  // A tooltip is a name and what it does, at most eight words.
+  for (const s of Object.values(INPUT_TIPS)) {
+    voiced(s);
+    assert.ok(s.split(/\s+/).length <= 8, s);
+  }
+  for (const s of Object.values(INPUT_MENU)) voiced(s);
+  // The approved word is "input", not "device" (voice.md's word table).
+  for (const s of [...Object.values(INPUT_SAID), ...Object.values(INPUT_TIPS), inputLine("empty", 0)]) {
+    assert.doesNotMatch(s, /device/, s);
+  }
   assert.equal(inputLine("refused", 0), "input refused");
   assert.equal(inputLine("unasked", 0), "no input yet");
   assert.equal(inputRow(1, "Interface"), "2 · Interface");
