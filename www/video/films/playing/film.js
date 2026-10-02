@@ -82,7 +82,7 @@ export async function build(stage) {
         cam: [[0, 1.0, 0.5, 0.5], ["controls1:named-0.4", ...aim(1.28, 1086, 330)], ["controls3:ride-0.5", ...aim(1.12, 1086, 480)], ["controls4:press-0.2", ...aim(1.25, 1040, 400)]],
         callouts: [
           { at: "controls1:same", until: "controls2", mark: "deck", side: "bottom", ox: -300, dx: -40, dy: 110, text: "the same six names on every patch" },
-          { at: "controls2:interrupts", until: "controls3", mark: "space", side: "bottom", dx: 60, dy: 130, text: "the note plays on" },
+          { at: "controls2:interrupts", until: "controls3", mark: "turned", side: "bottom", dx: 60, dy: 130, text: "the note plays on" },
           { at: "controls3:swell", until: "controls4", mark: "hood", side: "top", ox: -150, dx: 60, dy: -80, text: "the real knobs it turns" },
           { at: "controls4:long", mark: "body", side: "bottom", dx: 80, dy: 140, text: "long press: hear it" },
         ],

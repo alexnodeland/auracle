@@ -14,8 +14,7 @@ case>/` (`bloom/`, `n3/`, `study/`). The format is in the header of
 | `reach.json` | **Reach**, the exit mark: F4 G4 C5 A4 over I, IV, iv, I in F; 4.5 s at 60 BPM | Generated, from `m1_reach.json` |
 | `n3.json` | **N3**, the bed: the F2/C3 drone, the chord pad, the burble and one sigh, three 8-bar cycles at 66 BPM, each part on its own track | Generated, from `n3.json` |
 | `study.json` | Study, the bed the films play today (F Lydian, 84 BPM, two 16-bar loops) | By hand. Replaced by N3 (Plan-006) |
-| `signal.json` | Signal, the launch film's bed (D minor, 100 BPM) | By hand. Replaced by N3 (Plan-006) |
-| `stingers.json` | The cues the films lay in today: whoosh, blip, offer_shimmer, logo_sting | By hand. Removed with every cue; the two marks take their place (Plan-006) |
+| `signal.json` | Signal, the launch film's bed (D minor, 100 BPM). Its riser and its closing hit are gone (no cues, ADR-014): its last section is the finale ringing out | By hand. Replaced by N3 (Plan-006) |
 | `analyze.py` | Measures a rendered score: loudness, peaks, DC, band balance and loop seams | By hand |
 
 The generated scores carry the auditioned notes exactly. Their cast comes from

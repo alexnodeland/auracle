@@ -698,7 +698,6 @@ function sceneOutro({ stage, beat, line }) {
       place(lock, { x: left + markPx + gap, y: 380, ay: 0.5 });
       const v1 = voiceLine(over, "Every claim here has *a measurement behind it*, in the reference. Read it, run it, and change it.", { y: 580, size: 48 });
       const links = ["reference", "API docs", "source"].map((s, i) => place(el("div", { class: "pill a" }, over, `${s}  ▸`), { x: 960 + (i - 1) * 300, y: 720, ax: 0.5, ay: 0.5 }));
-      stage.sfx("logo_sting", b.t0 - 0.1, -2);
       return (tl, t) => {
         const u = ramp(t, b.t0 - 0.2, b.t0 + 0.7, E.out4);
         mk.update({ tile: u, outer: u, inner: ramp(t, b.t0 - 0.3, b.t0 + 0.4), core: E.outBack(ramp(t, b.t0 - 0.3, b.t0 + 0.2, E.lin)) });

@@ -159,7 +159,7 @@
     },
     {
       "id": "end",
-      "music": "sting",
+      "music": "end",
       "lead": 0.3,
       "tail": 3.2,
       "lines": [

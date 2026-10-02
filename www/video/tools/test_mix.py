@@ -93,6 +93,42 @@ class TheLadder(unittest.TestCase):
         self.assertFalse(hasattr(mix, "cue_files"))
 
 
+class NothingAsksForACue(unittest.TestCase):
+    """No cues anywhere (ADR-014): the stage has no sound cue for a film to
+    call, no film calls one, and no score keeps a cue's parts. Plain files,
+    so it runs without the audio packages."""
+
+    VIDEO = os.path.dirname(HERE)
+
+    def sources(self, *dirs, ext=(".js", ".mjs")):
+        for d in dirs:
+            for root, _, files in os.walk(os.path.join(self.VIDEO, d)):
+                for f in files:
+                    if f.endswith(ext):
+                        yield os.path.join(root, f)
+
+    def test_the_stage_and_the_films_have_no_sound_cue(self):
+        called = []
+        for p in self.sources("stage", "films", "tools"):
+            with open(p, encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    if ".sfx(" in line or "sfx(name" in line or "__stage.cues" in line:
+                        called.append(f"{os.path.relpath(p, self.VIDEO)}:{i}")
+        self.assertEqual(called, [])
+
+    def test_no_score_keeps_a_cue(self):
+        self.assertFalse(os.path.exists(os.path.join(self.VIDEO, "sound", "stingers.json")))
+        cue_parts = {"riser", "boom", "boom_body", "whoosh", "blip", "shimmer", "sting"}
+        for p in self.sources("sound", ext=(".json",)):
+            with open(p, encoding="utf-8") as f:
+                score = json.load(f)
+            if "tracks" not in score:
+                continue
+            names = {t.get("name", "") for t in score["tracks"]}
+            sections = {s.get("name", "") for s in score.get("sections", [])}
+            self.assertFalse((names | sections) & cue_parts, os.path.relpath(p, self.VIDEO))
+
+
 @unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")
 class UnderTheVoice(unittest.TestCase):
     def test_the_duck_and_the_carve_are_sound_jsons(self):
@@ -205,8 +241,8 @@ class EachPartInItsPlace(unittest.TestCase):
 
 class Film:
     """A short synthetic film in a throwaway copy of www/video/: lines of
-    "speech", a score with every role on its own stem, the two marks, one demo
-    in the app's sound, and two cues the picture still asks for."""
+    "speech", a score with every role on its own stem, the two marks, and one
+    demo in the app's sound."""
 
     LINES = [("a1", 7.0, 9.0), ("a2", 9.6, 12.0), ("b1", 21.0, 23.5)]
     DEMO = {"line": "a2", "id": "d", "pause": 12.0, "t0": 12.7, "off": 17.2, "tail_s": 1.0, "next": 21.0}
@@ -230,7 +266,6 @@ class Film:
             "film": "f", "duration": self.DURATION,
             "lines": [{"id": lid, "text": "A line.", "t0": t0, "t1": t1} for lid, t0, t1 in self.LINES],
             "demos": [self.DEMO], "marks": self.MARKS})
-        self.json("out/f/cues.json", [{"name": "whoosh", "t": 1.0}, {"name": "blip", "t": 2.0}])
         # The score's origin is the entrance; its stems run from there.
         length = self.DURATION - self.MARKS["entrance"]
         ex = self.MARKS["exit"] - self.MARKS["entrance"]
@@ -337,21 +372,6 @@ class AFilmMixedToTheLadder(unittest.TestCase):
         said = [l for l in self.log.splitlines() if l.startswith("app:")]
         self.assertEqual(said, ["app: 1 demo window → -18.0 LUFS; elsewhere at its gain_db"])
 
-    def test_the_cues_are_not_laid_and_the_mix_says_so_once(self):
-        said = [l for l in self.log.splitlines() if l.startswith("cues:")]
-        self.assertEqual(said, ["cues: 2 in cues.json (blip, whoosh) not laid: the films have no cues (ADR-014)"])
-
-    def test_the_mix_is_the_same_without_the_cues(self):
-        with_cues = mix.load(os.path.join(self.film.root, "out/f/mix.wav"))
-        os.remove(os.path.join(self.film.root, "out/f/cues.json"))
-        try:
-            _, log = self.film.mix()
-            without = mix.load(os.path.join(self.film.root, "out/f/mix.wav"))
-        finally:
-            self.film.json("out/f/cues.json", [{"name": "whoosh", "t": 1.0}, {"name": "blip", "t": 2.0}])
-        self.assertNotIn("cues:", log)
-        self.assertTrue(np.array_equal(with_cues, without))
-
 
 @unittest.skipUnless(HAVE_AUDIO, "mix.py needs numpy and scipy (make film-setup)")
 class AMixThatWouldBeWrongStops(unittest.TestCase):
@@ -452,6 +472,18 @@ class AFilmNotYetOnN3(unittest.TestCase):
         self.assertLess(level_db(mixed[int(14.5 * SR):int(18.5 * SR)]), level_db(mixed[int(0.5 * SR):int(6.5 * SR)]) - 40,
                         "the bed is out where its level says -60")
         self.assertEqual(report["marks"], [])
+
+    def test_a_section_the_render_lacks_stops_the_mix(self):
+        # A bed rendered by section, one of them missing (a score renamed
+        # since it was rendered): its bars would be silent, so the mix stops.
+        sec = os.path.join(self.film.root, "sections")
+        os.makedirs(sec)
+        mix.write(os.path.join(sec, "a.wav"), tone(220, 8.0, -26))
+        self.film.json("films/f/arrangement.json", {"bed": "signal", "sections": [
+            {"section": "a", "bars": 2, "t0": 0.0}, {"section": "end", "bars": 2, "t0": 8.0}]})
+        with self.assertRaises(SystemExit) as e:
+            self.run_mix("--music", sec)
+        self.assertIn("end.wav", str(e.exception))
 
     def test_its_loudness_and_follower_are_the_ones_it_was_mixed_with(self):
         x = np.random.default_rng(9).standard_normal((3 * SR, 2)).astype(np.float32) * 0.1

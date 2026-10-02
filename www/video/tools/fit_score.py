@@ -7,7 +7,7 @@ usage: fit_score.py SCORE.json OUT.json name=bars [name=bars ...]
 
 A score (www/video/sound/*.json) is written in sections of a composed length,
 with some events anchored to where a section starts (an intro's first chord,
-its first bells) and some to where it ends (a riser into the next downbeat, a
+its first notes) and some to where it ends (a phrase into the next downbeat, a
 final chord). Most of a score is patterns that fill whatever length they are
 given. This retimes a section from M bars to N:
 

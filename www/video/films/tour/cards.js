@@ -62,7 +62,6 @@ function titleCard(stage, b, l2) {
       const sub = textBlock(layer, { x: 960, y: 610, w: 1400, cls: "mono", size: 26, align: "center", ax: 0.5, ay: 0.5 });
       Object.assign(sub.style, { letterSpacing: "0.26em", textTransform: "uppercase", color: ink("--silk-dim") });
       sub.textContent = "a tour of the instrument";
-      stage.sfx("whoosh", b.t0 - 0.35, -10);
       return (tl) => {
         glass.style.opacity = ramp(tl, -0.35, 0.1, E.io2);
         const u = ramp(tl, -0.1, 0.8, E.out4);

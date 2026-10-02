@@ -2334,7 +2334,6 @@ function sceneOutro({ stage, beat, line }) {
       const v1 = voiceLine(over, "*One compiler* serves search and stage, so what you play is _what the model measured_.");
       const tMe = wordTime(l1, "measured");
       const tLk = l1.t1 + 0.25;
-      stage.sfx("logo_sting", tLk - 0.1, -2);
       return (tl, t) => {
         const dOut = 1 - ramp(t, tLk - 0.35, tLk + 0.1);
         diag.style.opacity = diagU.style.opacity = dOut;
