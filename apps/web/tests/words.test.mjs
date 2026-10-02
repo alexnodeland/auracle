@@ -470,7 +470,9 @@ test("every palette control has a figure, and each figure says what was measured
   assert.deepEqual(Object.keys(FIGURE_OF).sort(), PALETTE.map((c) => c.name).sort());
   for (const c of PALETTE) {
     const st = { at: 1, knobs: ["filter cutoff", "env / out decay"], only: "" };
-    const s = explainSays(c, st, FACTS_MADE, FACTS_TURNED);
+    const said = explainSays(c, st, FACTS_MADE, FACTS_TURNED);
+    assert.ok(!/\d (k?Hz|dB|ms|s|octave)\b/.test(said), `a number keeps its unit: ${said}`);
+    const s = said.replace(/\u00a0/g, " ");
     voiced(s);
     assert.ok(s.startsWith(`Turned to ${c.high}, `), s);
     assert.ok(s.endsWith(" Here it turns filter cutoff and env / out decay."), s);
@@ -482,21 +484,21 @@ test("every palette control has a figure, and each figure says what was measured
   }
   const bright = PALETTE[0];
   assert.equal(
-    explainSays(bright, { at: 1, knobs: ["filter cutoff"] }, FACTS_MADE, FACTS_TURNED),
+    explainSays(bright, { at: 1, knobs: ["filter cutoff"] }, FACTS_MADE, FACTS_TURNED).replace(/\u00a0/g, " "),
     "Turned to bright, its center moves from 359 Hz to 2.5 kHz. Here it turns filter cutoff.",
   );
   const snap = PALETTE[1];
   assert.equal(
-    explainSays(snap, { at: -0.4, knobs: ["env / out attack"], only: "bloom" }, FACTS_MADE, FACTS_TURNED),
+    explainSays(snap, { at: -0.4, knobs: ["env / out attack"], only: "bloom" }, FACTS_MADE, FACTS_TURNED).replace(/\u00a0/g, " "),
     "Turned 40% toward bloom, its attack goes from 5.7 ms to 447 ms. Here it turns env / out attack, toward bloom only.",
   );
   const space = PALETTE.find((c) => c.name === "Space");
   assert.equal(
-    explainSays(space, { search: true }, FACTS_MADE, null),
+    explainSays(space, { search: true }, FACTS_MADE, null).replace(/\u00a0/g, " "),
     "Nothing here turns SPACE: turn it past the notch, and it asks for an offer instead. Here its last 300 ms sits 60 dB under the phrase.",
   );
   const grit = PALETTE.find((c) => c.name === "Grit");
-  assert.ok(explainSays(grit, { at: 1, knobs: [] }, FACTS_MADE, FACTS_TURNED).includes("goes from −40 dB to −24 dB, where noise is 0 dB"));
+  assert.ok(explainSays(grit, { at: 1, knobs: [] }, FACTS_MADE, FACTS_TURNED).replace(/\u00a0/g, " ").includes("goes from −40 dB to −24 dB, where noise is 0 dB"));
   assert.equal(explainSays(bright, { pending: true }, null, null), "BRIGHT hasn’t been measured on this sound yet. It turns once it has.");
   assert.equal(explainSays(bright, { at: 1 }, null, null), EXPLAIN_UI.listening);
   assert.equal(turnedWord(bright, 0.995), "turned to bright");

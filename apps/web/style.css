@@ -6184,9 +6184,10 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
    A fixed height and a border on every button, so pressing moves nothing. */
 .xp-sw { display: flex; flex-wrap: wrap; gap: var(--s1); }
 .xp-sw button {
-  flex: 1 1 0;
-  min-width: 0;
+  /* Whole names, never cut: eight wrap onto a second row. */
+  flex: 1 0 auto;
   height: 28px;
+  padding: 0 var(--s1);
   border-radius: var(--r1);
   border: 1px solid var(--hairline);
   background: none;
@@ -6197,8 +6198,6 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   color: var(--silk-dim);
   cursor: pointer;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .xp-sw button:hover { color: var(--silk); border-color: var(--silk-dim); }
 .xp-sw button[aria-pressed="true"] { color: var(--phos-a); border-color: var(--phos-a-deep); background: var(--phos-a-06); }

@@ -716,6 +716,11 @@ export function turnedWord(c, at) {
  *  names in words, the one end it turns to if only one); `made` and `turned`
  *  are `Facts` (null while listening; `turned` null when nothing turns it). */
 export function explainSays(c, st, made, turned) {
+  // A number keeps its unit on its line ("250 Hz", never "250" then "Hz").
+  return keepUnits(saysOf(c, st, made, turned));
+}
+const keepUnits = (s) => s.replace(/(\d) (?=(k?Hz|dB|ms|s|octave)\b)/g, "$1\u00a0");
+function saysOf(c, st, made, turned) {
   const NAME = c.name.toUpperCase();
   const fact = SAY_FACT[c.name];
   if (st.pending) return `${NAME} hasn’t been measured on this sound yet. It turns once it has.`;
