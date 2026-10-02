@@ -18,7 +18,21 @@ FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 sys.path.insert(0, os.path.join(VIDEO, "tools"))
 sys.dont_write_bytecode = True  # no __pycache__ beside the tools
-from shotgen import INIT, QUIET, taught, dump  # noqa: E402  (the team's shared pieces)
+from shotgen import INIT, QUIET, CAST, taught, dump  # noqa: E402  (the team's shared pieces)
+
+# Cast from the films' shortlist (shotgen.CAST). The acid line that opens and
+# closes the film is Ceiling where it was Acid Line: a ladder filter at the
+# root over a saw an octave down, the same node#cut and node#res. The film's
+# one patch (title2) stays Glass Pad, because read3 to read5 and hear5
+# describe its circuit (a stack of saws, a filter an LFO sweeps, a chorus
+# that widens it) and every chapter between them takes that patch apart; the
+# chains stay on Ask The Dice (move2 describes its sample and hold, quantizer
+# and slew) and Steps on Loom (the one preset with a step sequencer). Slow
+# Weather is Glass Pad's circuit under a reverb, so the re-script (Plan-006
+# task 8) can move the film onto it.
+ACID = CAST["acid"]
+ONE_PATCH = "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"
+UNCAST = {"Glass Pad": ONE_PATCH}
 
 tl = json.load(open(f"{FDIR}/timeline.json"))
 BEAT = {b["id"]: b for b in tl["beats"]}
@@ -117,7 +131,7 @@ def run(beat_id, frm, to, prog=None, pre=PRE, tail_end=False, gap=0.11):
 
 # A knob's box, as footage.mjs measures it (label, dial and value), in px: a
 # path's points are fractions of the box.
-KNOB_H = {"Acid Line": 116.7, "Glass Pad": 86.9}
+KNOB_H = {"Acid Line": 116.7, "Glass Pad": 86.9, "Ceiling": 69.0}  # Ceiling: rehearsed 1 October
 
 
 def sweep(sel, h, moves, ms):
@@ -155,7 +169,7 @@ shots = []
 shots.append({
     "id": "vp-cold", "beat": "cold", "pre": 0.5,
     "dur": round(BEAT["title"]["t1"] - BEAT["cold"]["t0"] + 0.5 + 0.8, 3),
-    "setup": bench("Acid Line",
+    "setup": bench(ACID,
         TEMPO,
         {"op": "click", "sel": "#hold-btn"},
         {"op": "click", "sel": "#arp-btn"},
@@ -173,7 +187,7 @@ shots.append({
         # Fmaj7 latched: the bed's first chord, so the title lands on it.
         {"at": 0.9, "snap": "beat", "op": "hold", "keys": ["f", "h", "k", ";"], "ms": 260},
         # Up over 3 s, then back down over 3 s, in one press.
-        {"at": 2.6, **sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-64, 50], 6000)},
+        {"at": 2.6, **sweep("#rack-svg [data-addr='node#cut']", KNOB_H[ACID], [-64, 50], 6000)},
         {"at": 9.5, "op": "log", "name": "cut", "js": val("node#cut")},
         # Unlatched on the title's downbeat, where the bed comes in.
         {"at": 10.9, "snap": "bar", "op": "click", "sel": "#hold-btn"},
@@ -183,6 +197,7 @@ shots.append({
 # ---- read: the circuit, heard as chords ----------------------------------
 shots.append({
     "id": "vp-read", "beat": "read", "pre": PRE,
+    "uncast": UNCAST,
     "setup": bench("Glass Pad"),
     "marks": {"rack": "#rack-scroll", "saw": "#rack-svg g.mod-group[data-key='node/0/0']", "filter": "#rack-svg g.mod-group[data-key='node/0']",
               "chorus": "#rack-svg g.mod-group[data-key='node']", "amp": "#rack-svg g.mod-group[data-key='amp']", "lfo": "#rack-svg g.mod-group[data-key='node/0/m']",
@@ -197,6 +212,7 @@ shots.append({
 H = BEAT["hear"]
 shots.append({
     "id": "vp-hear", "beat": "hear", "pre": PRE,
+    "uncast": UNCAST,
     "setup": bench("Glass Pad"),
     "marks": {"play": "#rack-play", "subject": "#rack-subject", "belief": "#belief", "chip": ".nb-chip[data-kind='chorus']", "dock": "#spec-dock"},
     "actions": [
@@ -225,6 +241,7 @@ shots.append({
 TRAY_N = "document.querySelectorAll('#tray-items .tray-item').length"
 shots.append({
     "id": "vp-change", "beat": "change", "pre": PRE,
+    "uncast": UNCAST,
     "clips": [["change2-0.6", "@ready2-0.2"], ["change3-1.1", "@ready3-0.2"], ["change4-0.6", "@ready4-0.2"]],
     "setup": bench("Glass Pad"),
     "marks": {"rack": "#rack-scroll", "cut": "#rack-svg [data-addr='node/0#cut']", "chorus": "#rack-svg g.mod-group[data-key='node']",
@@ -279,6 +296,7 @@ shots.append({
 A = BEAT["add"]
 shots.append({
     "id": "vp-add", "beat": "add", "pre": PRE,
+    "uncast": UNCAST,
     "setup": bench("Glass Pad",
         log("scrollers", "[...document.querySelectorAll('#nodebank *')].filter(e => e.scrollHeight > e.clientHeight + 20 && getComputedStyle(e).overflowY !== 'visible').map(e => (e.id || e.className) + ':' + e.scrollHeight + '/' + e.clientHeight).join(' | ')"),
     ),
@@ -331,6 +349,7 @@ shots.append({
 # ---- move: a chain of modulators playing a melody; a wrap ----------------
 shots.append({
     "id": "vp-move", "beat": "move", "pre": PRE,
+    "uncast": {"Ask The Dice": "move2 describes its sample and hold, quantizer and slew"},
     "setup": bench("Ask The Dice", KNOBS_LOG),
     "marks": {"rack": "#rack-scroll", "rand": "#rack-svg g.mod-group[data-kind='rand']", "quantize": "#rack-svg g.mod-group[data-kind='quantize']",
               "slew": "#rack-svg g.mod-group[data-kind='slew']", "vco": "#rack-svg g.mod-group[data-kind='vco']",
@@ -361,6 +380,7 @@ shots.append({
 # ---- steps: Loom's filter walks a pattern; draw it; sync it to 84 --------
 shots.append({
     "id": "vp-steps", "beat": "steps", "pre": PRE,
+    "uncast": {"Loom": "steps1 to steps3 show a step sequencer on a filter: Loom is the one preset with one"},
     "setup": bench("Loom", TEMPO, {"op": "click", "sel": "#hold-btn"}, KNOBS_LOG),
     "marks": {"rack": "#rack-scroll", "steps": "#rack-svg g.mod-group[data-kind='steps']", "filter": "#rack-svg g.mod-group[data-key='node/0']",
               "s1": "#rack-svg [data-addr='node/0/m#s1']", "s3": "#rack-svg [data-addr='node/0/m#s3']", "len": "#rack-svg [data-addr='node/0/m#slen']",
@@ -400,6 +420,7 @@ shots.append({
 LOCK_CUT = "lock3:and-0.3"
 shots.append({
     "id": "vp-lock", "beat": "lock", "pre": PRE,
+    "uncast": UNCAST,
     "clips": [[LOCK_CUT, "@benched-0.6"]],
     # This session's first ⚡ from Glass Pad with these locks finds nothing
     # ("⚡ evolution's proposal did not survive the vet or beat its parent —
@@ -471,6 +492,7 @@ shots.append({
 PICK_SIDE = "b"
 shots.append({
     "id": "vp-keep", "beat": "keep", "pre": PRE,
+    "uncast": UNCAST,
     "setup": bench("Glass Pad",
         {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
         {"op": "wait", "ms": 2500},
@@ -505,6 +527,7 @@ shots.append({
 # ---- take: a file, a picture, a drop; the lineage ------------------------
 shots.append({
     "id": "vp-take", "beat": "take", "pre": PRE,
+    "uncast": UNCAST,
     "clips": [["take2:opens-0.5", "@opened-0.3"]],
     "setup": bench("Glass Pad",
         {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
@@ -563,7 +586,7 @@ shots.append({
 shots.append({
     "id": "vp-together", "beat": "together", "pre": PRE,
     "dur": round(BEAT["outro"]["t1"] - BEAT["together"]["t0"] + PRE + 0.8, 3),
-    "setup": bench("Acid Line",
+    "setup": bench(ACID,
         TEMPO,
         {"op": "click", "sel": "#hold-btn"},
         {"op": "click", "sel": "#arp-btn"},
@@ -581,7 +604,7 @@ shots.append({
         # The cutoff up, then part of the way back, in one press; then the
         # resonance nudged.
         {"at": "together2:Shape", "op": "seq", "steps": [
-            sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-52, 16], 2600),
+            sweep("#rack-svg [data-addr='node#cut']", KNOB_H[ACID], [-52, 16], 2600),
             {"op": "wait", "ms": 250},
             {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900},
         ]},

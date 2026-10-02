@@ -151,6 +151,7 @@
       "pre": 3.4,
       "own_setup": true,
       "clips": [["point4", "@learned-0.3"]],
+      "cast": ["the shortlist"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -159,9 +160,9 @@
         {"op": "wait", "ms": 1000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "sub": "#warmstart .warm-sub", "pad": ".warm-item[data-ve-pick='1']", "padplay": ".warm-item[data-ve-pick='1'] + .wi-play"},
+      "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "sub": "#warmstart .warm-sub", "pad": ".warm-item[data-ve-pick='1']", "castplay": ".warm-item:has(.wi-name:text-is('Cathedral')) + .wi-play, .warm-item:has(.wi-name:text-is('Long Room')) + .wi-play, .warm-item:has(.wi-name:text-is('Rotor')) + .wi-play, .warm-item:has(.wi-name:text-is('Morph Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Tidal')) + .wi-play, .warm-item:has(.wi-name:text-is('Slow Weather')) + .wi-play, .warm-item:has(.wi-name:text-is('Wobble Board')) + .wi-play, .warm-item:has(.wi-name:text-is('Falling Sign')) + .wi-play, .warm-item:has(.wi-name:text-is('Solo Flight')) + .wi-play, .warm-item:has(.wi-name:text-is('Telegraph')) + .wi-play, .warm-item:has(.wi-name:text-is('Choirboy')) + .wi-play, .warm-item:has(.wi-name:text-is('Fifth Wheel')) + .wi-play, .warm-item:has(.wi-name:text-is('Held Under')) + .wi-play, .warm-item:has(.wi-name:text-is('Heartbeat')) + .wi-play, .warm-item:has(.wi-name:text-is('Ceiling')) + .wi-play, .warm-item:has(.wi-name:text-is('Dub Echo')) + .wi-play"},
       "actions": [
-        {"at": "point2:Play", "op": "click", "sel": ".warm-item[data-ve-pick='1'] + .wi-play"},
+        {"at": "point2:Play", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Cathedral')) + .wi-play, .warm-item:has(.wi-name:text-is('Long Room')) + .wi-play, .warm-item:has(.wi-name:text-is('Rotor')) + .wi-play, .warm-item:has(.wi-name:text-is('Morph Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Tidal')) + .wi-play, .warm-item:has(.wi-name:text-is('Slow Weather')) + .wi-play, .warm-item:has(.wi-name:text-is('Wobble Board')) + .wi-play, .warm-item:has(.wi-name:text-is('Falling Sign')) + .wi-play, .warm-item:has(.wi-name:text-is('Solo Flight')) + .wi-play, .warm-item:has(.wi-name:text-is('Telegraph')) + .wi-play, .warm-item:has(.wi-name:text-is('Choirboy')) + .wi-play, .warm-item:has(.wi-name:text-is('Fifth Wheel')) + .wi-play, .warm-item:has(.wi-name:text-is('Held Under')) + .wi-play, .warm-item:has(.wi-name:text-is('Heartbeat')) + .wi-play, .warm-item:has(.wi-name:text-is('Ceiling')) + .wi-play, .warm-item:has(.wi-name:text-is('Dub Echo')) + .wi-play"},
         {"at": "point2:closest", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item[data-ve-pick='1']"}, {"op": "wait", "ms": 300}, {"op": "click", "sel": ".warm-item[data-ve-pick='2']"}, {"op": "wait", "ms": 300}, {"op": "click", "sel": ".warm-item[data-ve-pick='3']"}, {"op": "mark", "name": "go", "sel": "#warm-go"}]},
         {"at": "point3:passed+0.2", "op": "click", "sel": "#warm-go"},
         {"at": "point3:passed+0.4", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},

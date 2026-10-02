@@ -8,7 +8,7 @@
 // at every chapter's turn, and the outro.
 //
 // The structure, and what the music does:
-// - open: the cold open. Glass Pad plays the bed's own changes, one chord a
+// - open: the cold open. Slow Weather plays the bed's own changes, one chord a
 //   bar, while an XY gesture brings in Bright and Motion. No words, no bed.
 // - title: the title card over the same shot, which runs on (silent: the
 //   app's sound is placed over its own beat only). The bed comes in.
@@ -18,7 +18,7 @@
 //   turn's plan entry says `meta: {pre: 0.5}` and `clips: []`, so both
 //   entries put the shot's start at the same film time and the picture runs
 //   on unbroken (validate.mjs checks it). Nothing is played during a turn.
-// - together: all of it at once, on Acid Line; the outro borrows its shot,
+// - together: all of it at once, on Ceiling; the outro borrows its shot,
 //   which clicks the PATCH tab on "PATCH", so the offer just taken is the
 //   sound opened in PATCH. The bed returns under the outro.
 //
@@ -30,10 +30,11 @@
 //   dock chapter runs on Loom: on a patch without one, Sync changes nothing
 //   you could hear.
 // - The PERFORM wiring is measured per session, and the seeded session
-//   decides it. As rehearsed (plain session): Glass Pad reaches Bright both
-//   ways, Snap only toward bloom, Motion only toward restless and Space only
-//   toward far; Body and Grit are search controls. Bell
-//   Jar's Bright turns its wavefolder's threshold. Each shot logs its wiring.
+//   decides it. Each chapter is cast for what it shows (gen_shots.py): the
+//   honest controls on Morph Pad, which ships with Space toward far only and
+//   Grit a search control; the rest on Slow Weather, whose controls turn
+//   both ways. Bell Jar's Bright turns its wavefolder's threshold. Each shot
+//   logs its wiring.
 // - Presets ship wired, so Bell Jar plays the moment it is opened and the
 //   status line reads "re-checking" while PERFORM measures it again; the
 //   named chapter says so (named8) and has no cut. Off camera, every set-up

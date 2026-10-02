@@ -21,7 +21,23 @@ import sys
 
 FILM = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(FILM, "..", "..", "tools"))
-from shotgen import INIT as SEED_INIT, FILLED, QUIET, taught, dump  # noqa: E402
+from shotgen import INIT as SEED_INIT, FILLED, QUIET, CAST, taught, dump  # noqa: E402
+
+# Cast from the films' shortlist (shotgen.CAST), each for what its chapter
+# shows, by the wiring it ships with:
+# - CHORDS, Slow Weather, where Glass Pad played: every named control but
+#   Space turns both ways (so the XY pad's Bright and Motion both move it),
+#   and Wander and Offer grow from it;
+# - FAR, Morph Pad, for the honest controls: Space turns toward far only and
+#   Grit cannot reach this patch, as honest2 to honest5 say;
+# - LEAD, Wobble Board, where Tine played the keys: a quick attack for runs
+#   and accents, and Bright for the touch row;
+# - ACID, Ceiling, where Acid Line played the arpeggio: a ladder filter over
+#   a saw an octave down, Acid Line's circuit.
+# Two chapters keep a preset their lines name: named9 is "On Bell Jar…", and
+# dock5 is Sync putting "Loom's filter" in time (Loom is the one preset with a
+# step sequencer). They change with the script (Plan-006 task 8).
+CHORDS, FAR, LEAD, ACID = CAST["pad"], CAST["pad_far"], CAST["lead"], CAST["acid"]
 
 tl = json.load(open(os.path.join(FILM, "timeline.json")))
 B = {b["id"]: b for b in tl["beats"]}
@@ -187,10 +203,10 @@ def lit(at, name):
 shots = []
 
 # ---------------------------------------------------------------- cold open
-# Glass Pad, the bed's own changes (F Lydian: Fmaj7 | G/F | Em7 | Am7), one
-# chord a bar from the film's first frame; from the second bar an XY gesture
-# brings in Bright and Motion (Motion only turns toward restless on this
-# patch, so the gesture stays in the pad's upper half). The shot runs on
+# Slow Weather, the bed's own changes (F Lydian: Fmaj7 | G/F | Em7 | Am7),
+# one chord a bar from the film's first frame; from the second bar an XY
+# gesture brings in Bright and Motion, in the pad's upper half (toward
+# bright and restless). The shot runs on
 # through the title, which reuses it (the app is silent there: app_audio.py
 # places its sound over the open beat only).
 o = B["open"]
@@ -203,16 +219,16 @@ open_actions += [
 shots.append({
     "id": "vp-open", "beat": "open", "pre": 0.5,
     "dur": round(B["title"]["t1"] + 0.25 - (o["t0"] - 0.5) + 0.8, 3),
-    "setup": perform("Glass Pad"),
+    "setup": perform(CHORDS),
     "marks": {"xy": ".pf-xy-field", "deck": ".pf-deck", "hood": ".pf-hood", "keybed": "#piano", "bright": BRIGHT, "motion": MOTION},
     "actions": open_actions,
 })
 
 # ---------------------------------------------------------------- play it
-# Tine (an electric-piano pluck), so runs, accents and touch speak clearly.
+# Wobble Board (a lead with a quick attack), so runs, accents and touch speak clearly.
 shots.append({
     "id": "vp-play", "beat": "play", "pre": turn_pre("play", "turn-play"),
-    "setup": perform("Tine"),
+    "setup": perform(LEAD),
     "marks": {"keybed": "#piano", "oct": "#oct-label", "e4": ".pkey[data-note='64']", "midi": "#midi-ind", "touch": ".pf-touch", "tsel": "#pf-touch-sel", "scope": ".pf-scope", "deck": ".pf-deck"},
     "actions": [
         *run("play1:notes", ["a", "s", "d", "f", "g", "h", "j", "k", "l"], step=0.17, start=0.35),
@@ -237,7 +253,7 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- named controls
-# Glass Pad under a held Fmaj7: Bright ridden up, then down with the hood in
+# Slow Weather under a held Fmaj7: Bright ridden up, then down with the hood in
 # frame, then a long press on Bright; then Bell Jar is opened from the bank.
 # It ships wired, so it plays at once (no cut: there is no wait to skip)
 # while the status line says "re-checking" as PERFORM measures it again under
@@ -255,7 +271,8 @@ while t6 + 0.3 + len(quarters) * 0.714 + 0.6 <= t9 - 0.05:
     quarters.append(len(quarters))
 shots.append({
     "id": "vp-named", "beat": "named", "pre": turn_pre("named", "turn-named"),
-    "setup": perform("Glass Pad"),
+    "uncast": {"Bell Jar": "named9 names it: on Bell Jar, Bright folds the wave"},
+    "setup": perform(CHORDS),
     "marks": {"deck": ".pf-deck", "bright": BRIGHT, "hood": ".pf-hood", "status": ".pf-status", "name": ".pf-name"},
     "actions": [
         hold("named1-0.3", ["f", "h", "k", ";"], until="named5-0.15"),
@@ -283,7 +300,7 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- honest controls
-# Glass Pad: Space reaches only toward far ("turns toward far only"); Grit is a
+# Morph Pad: Space reaches only toward far ("turns toward far only"); Grit is a
 # search control. A short chord before and after Space goes up, so the tail
 # is heard; then a held chord while Grit is turned: it springs back, the
 # toast says a grittier offer is growing, B counts while it grows (the beat
@@ -295,7 +312,7 @@ shots.append({
     # Off camera: Space dragged the closed way (the guide says it will not go
     # past the centre), where the dial and the sound end up logged, then
     # double-clicked back to the centre.
-    "setup": perform("Glass Pad", [
+    "setup": perform(FAR, [
         {"op": "drag", "sel": SPACE, "dy": 60, "ms": 500},
         {"op": "log", "name": "space dragged down", "js": "document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuenow') + ' / ' + document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuetext') + ' / pointer ' + document.querySelector(\"" + SPACE + " .pf-k-ptr\").getAttribute('transform')"},
         {"op": "dblclick", "sel": SPACE},
@@ -323,7 +340,7 @@ shots.append({
 # ---------------------------------------------------------------- the XY pad
 shots.append({
     "id": "vp-xy", "beat": "xy", "pre": turn_pre("xy", "turn-xy"),
-    "setup": perform("Glass Pad"),
+    "setup": perform(CHORDS),
     "marks": {"xy": ".pf-xy-field", "xyhead": ".pf-xy-head", "ysel": ".pf-xy-head select >> nth=1", "bright": BRIGHT, "motion": MOTION, "deck": ".pf-deck"},
     "actions": [
         {"at": "xy2:Choose", "op": "select", "sel": ".pf-xy-head select >> nth=1", "value": 4},
@@ -347,7 +364,7 @@ shots.append({
 # past half), so the new one is peeked before Take, not taken unheard.
 shots.append({
     "id": "vp-offer", "beat": "offer", "pre": turn_pre("offer", "turn-offer"), "own_setup": True,
-    "setup": taught_perform("Glass Pad"),
+    "setup": taught_perform(CHORDS),
     "marks": {"offer-pad": OFFER, "offer": ".pf-offer", "blend": BLEND, "peek": PAD("Peek"), "take": PAD("Take"), "deck": ".pf-deck"},
     "actions": [
         hold("offer1-0.3", ["f", "h", "k", ";"], ms="end"),
@@ -395,7 +412,7 @@ shots.append({
 shots.append({
     "id": "vp-wander", "beat": "wander", "pre": turn_pre("wander", "turn-wander"), "own_setup": True,
     "clips": [["wander4:knobs", "@drift-0.4"]],
-    "setup": taught_perform("Glass Pad"),
+    "setup": taught_perform(CHORDS),
     "marks": {"wander": WANDER, "offer": ".pf-offer", "hood": ".pf-hood", "freeze": PAD("Freeze"), "keep": PAD("Keep"), "back": PAD("Back"), "deck": ".pf-deck"},
     "actions": [
         hold("wander1-0.3", ["f", "h", "k", ";"], ms="end"),
@@ -431,9 +448,11 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- the dock
-# Loom at 84 (its one step sequencer is what Sync puts on the tempo).
+# Loom at 84 (its one step sequencer is what Sync puts on the tempo; dock5
+# names it).
 shots.append({
     "id": "vp-dock", "beat": "dock", "pre": turn_pre("dock", "turn-dock"),
+    "uncast": {"Loom": "dock5 names Loom's filter, and Loom is the one preset with a step sequencer for Sync"},
     "setup": perform("Loom", [
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         {"op": "eval", "js": "const g=document.getElementById('arp-gate'); g.value='0.85'; g.dispatchEvent(new Event('input'))"},
@@ -477,7 +496,7 @@ shots.append({
 # ---------------------------------------------------------------- MIDI
 shots.append({
     "id": "vp-midi", "beat": "midi", "pre": turn_pre("midi", "turn-midi"),
-    "setup": perform("Glass Pad"),
+    "setup": perform(CHORDS),
     "marks": {"ind": "#midi-ind", "bright": BRIGHT, "motion": MOTION, "hood": ".pf-hood", "deck": ".pf-deck"},
     "actions": [
         hold("midi1-0.3", ["a", "d", "g"], ms="end"),
@@ -508,7 +527,7 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- together (taught)
-# Acid Line at 84, 1/16 up·down, latched on the beat's first downbeat (as the
+# Ceiling at 84, 1/16 up·down, latched on the beat's first downbeat (as the
 # card clears); Wander up to drift; Offer (the spare lands at once) and Blend
 # ridden past half; Take on the downbeat. Wander in drift asks for its first
 # move 1.5 s after it is let go, but the Offer, Blend and Take that follow are
@@ -522,7 +541,7 @@ pre_tg = turn_pre("together", "turn-together")
 shots.append({
     "id": "vp-together", "beat": "together", "pre": pre_tg, "own_setup": True,
     "dur": round(B["outro"]["t1"] + 0.3 - (tg["t0"] - pre_tg) + 0.8, 3),
-    "setup": taught_perform("Acid Line", [
+    "setup": taught_perform(ACID, [
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         {"op": "click", "sel": "#hold-btn"},
         {"op": "click", "sel": "#arp-btn"},
