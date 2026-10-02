@@ -6580,10 +6580,10 @@ function renderCompare() {
   compareDrawn = said;
   $("compare-title").textContent = `${kid.name} · what changed`;
   $("compare-say").textContent = grownFrom(seedName, ev.generation);
+  // Every change the event records, one a line (the list scrolls past ten):
+  // a 40-step walk can change two dozen sites, and a cut list would hide them.
   const parts = diffParts(ev.diff);
-  const shown = parts.slice(0, 8);
-  $("compare-diff").innerHTML = shown.map((t) => `<li>${esc(t)}</li>`).join("") +
-    (parts.length > shown.length ? `<li class="cmp-more">+${parts.length - shown.length} more</li>` : "") ||
+  $("compare-diff").innerHTML = parts.map((t) => `<li>${esc(t)}</li>`).join("") ||
     `<li>${esc(humanizeDiff(ev.diff))}</li>`;
   // The walk can step down: a child rated below its seed is exploring, by the
   // EVOLUTION strip's own rule.

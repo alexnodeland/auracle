@@ -4223,9 +4223,14 @@ html:not(.engineer) .dn-sig { display: none; }
   font-size: var(--t-body);
   color: var(--silk);
 }
+/* Every change, one a line; past about ten lines the list scrolls, so
+   Compare stays beside the row it was opened from. */
 .compare .cmp-diff {
   display: grid;
   gap: 2px;
+  max-height: 13.5em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin: var(--s2) 0 0;
   padding: 0;
   list-style: none;

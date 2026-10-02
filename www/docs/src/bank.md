@@ -100,8 +100,10 @@ Click the line under a bred sound’s name. Compare opens beside the bank:
   growing out of it into its own. Only the two ends are the engine’s: a walk
   keeps no record of its steps, so the frames between are the one shape
   turning into the other, not the walk’s path.
-- **What changed**, one change a line: modules added (**+**) or removed
-  (**−**), a module swapped (`filter → delay`), and knobs in their own units.
+- **What changed**, every change the walk made, one a line: modules added
+  (**+**) or removed (**−**), a module swapped (`filter → delay`), and knobs
+  in their own units. A walk can change a couple of dozen things, and past
+  about ten lines the list scrolls.
 - **What the model rated each when it bred them**, in its own words: *when it
   bred them, it rated Soft Pad 60% · leaning and Warm Drone 2 52% · a hunch*.
   A child rated well below its seed is marked *exploring*, as the

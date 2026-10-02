@@ -384,6 +384,39 @@ test("Compare shows a child beside its seed, what changed and both ratings, and 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
+test("Compare lists every change a long walk made, and the list scrolls", async ({ page }) => {
+  // A 40-step walk can change two dozen sites (26 in one review run). Compare
+  // showed the first eight and "+18 more"; the release notes say every change.
+  const pageErrors = await boot(page);
+  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.views, null, { timeout: 60_000 });
+  const s = await state(page);
+  const [seed, kid] = [s.ranked[1], s.ranked[3]];
+  const mods = Array.from({ length: 14 }, (_, i) => `mod${i + 1}`);
+  const ev = {
+    generation: 1, kind: "refine", parent_id: seed.id, child_id: kid.id,
+    diff: mods.map((m, i) => ({ addr: `node/${i}#op`, before: null, after: m })),
+    parent_utility: 0.4, child_utility: 0.5,
+  };
+  await inject(page, { type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
+  // The row's line keeps to three and a count.
+  await expect(row(page, kid.id).locator(".bi-from")).toHaveText(`from ${seed.name} · +mod1, +mod2, +mod3, +11 more`);
+  await row(page, kid.id).locator(".bi-from").click();
+  await expect(page.locator("#compare")).toBeVisible();
+  await expect(page.locator("#compare-diff li")).toHaveText(mods.map((m) => `+${m}`));
+  // Long, it scrolls inside Compare, and Compare stays in the window.
+  const fit = await page.evaluate(() => {
+    const l = document.getElementById("compare-diff");
+    const b = document.getElementById("compare").getBoundingClientRect();
+    return { scrolls: l.scrollHeight > l.clientHeight + 1, top: b.top, bottom: b.bottom, h: window.innerHeight };
+  });
+  expect(fit.scrolls, "fourteen changes did not scroll").toBe(true);
+  expect(fit.top).toBeGreaterThanOrEqual(0);
+  expect(fit.bottom).toBeLessThanOrEqual(fit.h);
+  await page.locator("#compare-diff li").last().scrollIntoViewIfNeeded();
+  await expect(page.locator("#compare-diff li").last()).toBeInViewport();
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
 test("a child the pool would not take buds beside its seed and is gone, and EVOLVE POOL says why", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await taught(page);
