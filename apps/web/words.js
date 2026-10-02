@@ -242,7 +242,8 @@ export const SKIP_SITES = new Set(["leaf", "uid"]);
  *  entry by entry: every module site nets its old name −1 and its new name
  *  +1. A swap `X → Y` is said only where it accounts for a lost X and a
  *  gained Y (walked in the diff's order, one of each consumed per swap);
- *  what is left is said as `+name` or `−name`, `×n` for more than one. A
+ *  what is left is said as `+name` (all the gains) then `−name` (all the
+ *  losses), `×n` for more than one. A
  *  module that moved nets to nothing and is not said. */
 export function changeParts(diff, knob = (d, site) => `${site} ${d.before} → ${d.after}`) {
   // "no mod" / "none" are the empty slot, not a module.
@@ -271,10 +272,9 @@ export function changeParts(diff, knob = (d, site) => `${site} ${d.before} → $
       bump(y, -1);
     }
   }
-  for (const [name, n] of net) {
-    if (n > 0) mods.push(`+${name}${n > 1 ? ` ×${n}` : ""}`);
-    else if (n < 0) mods.push(`−${name}${n < -1 ? ` ×${-n}` : ""}`);
-  }
+  // What it gained, then what it lost, each in the order first seen.
+  for (const [name, n] of net) if (n > 0) mods.push(`+${name}${n > 1 ? ` ×${n}` : ""}`);
+  for (const [name, n] of net) if (n < 0) mods.push(`−${name}${n < -1 ? ` ×${-n}` : ""}`);
   return [...mods, ...knobs];
 }
 

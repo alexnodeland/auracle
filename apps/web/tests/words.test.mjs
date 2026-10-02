@@ -265,6 +265,11 @@ test("what changed: a moved module is not said, a swap is, and counts carry ×n"
     { addr: "r/0#op", before: "delay", after: null },
     { addr: "r/1/0#op", before: null, after: "delay" },
   ]), []);
+  // Gains before losses, whatever order the diff lists them in.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: "delay", after: null },
+    { addr: "r/1#op", before: null, after: "chorus" },
+  ]), ["+chorus", "−delay"]);
   // A plain swap.
   assert.deepEqual(changeParts([{ addr: "r#op", before: "filter", after: "delay" }]), ["filter → delay"]);
   // Two of one kind gained, one lost; the empty slot is not a module.

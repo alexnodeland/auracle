@@ -6457,8 +6457,10 @@ const seeding = new Set(); // seeds whose bud is out: their rail is lit
 // Buds in flight, each with what ends it. A bud flies between two rows' places
 // as they were when it left; when the bank is drawn again those places can
 // move (the next child of a burst lands and pushes the rows down), so every
-// bud in flight lands at once rather than fly from or to the wrong row.
-const flights = new Map(); // Animation -> end()
+// bud in flight lands at once rather than fly from or to the wrong row. A
+// refused child's chip only fades where it was placed, beside its seed, so it
+// is left to finish: its reason stays readable through a burst.
+const flights = new Map(); // Animation -> end(), for buds that travel
 function landFlights() {
   for (const [anim, end] of [...flights]) {
     anim.onfinish = anim.oncancel = null;
@@ -6466,12 +6468,15 @@ function landFlights() {
     end();
   }
 }
-function flown(anim, end) {
+function flown(anim, end, { travels = true } = {}) {
+  let ended = false;
   const done = () => {
-    if (!flights.delete(anim)) return;
+    if (ended) return;
+    ended = true;
+    flights.delete(anim);
     end();
   };
-  flights.set(anim, done);
+  if (travels) flights.set(anim, done);
   anim.onfinish = done;
   anim.oncancel = done;
 }
@@ -6564,7 +6569,7 @@ function fadeBeside(seedId, said) {
     chip.remove();
     seedLit(seedId, false);
   };
-  flown(anim, end);
+  flown(anim, end, { travels: false }); // placed beside its seed, it stays
 }
 
 /** One more of generation `gen` bred and not in New. */
