@@ -721,7 +721,7 @@ mod tests {
                     s.spawn(move || {
                         let mut rng = StdRng::seed_from_u64(0x70A2_0000 + w);
                         walk_on(
-                            PatchGrammarPrior::default().with_audio_in(),
+                            PatchGrammarPrior::default(),
                             1.0,
                             RefineKeep::Last,
                             tilted,
