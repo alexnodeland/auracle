@@ -469,7 +469,7 @@ fn clip_note(status: &ClipStatus) -> &'static str {
 /// One sound the last restore held back, as [`WasmEngine::held_sounds`]
 /// lists it. Ids are `u32` at the boundary.
 #[derive(Serialize)]
-struct HeldView {
+struct HeldView<'a> {
     id: u32,
     /// The node key of the CAPTURE to record again
     /// (`PatchTree::lost_take_key`): what the page records into and
@@ -478,8 +478,10 @@ struct HeldView {
     capture: Option<String>,
     /// Its term, as it was saved, so the page can record it again without
     /// opening it (a held sound is not in the pool, and the bench opens pool
-    /// sounds).
-    tree: serde_json::Value,
+    /// sounds). Serialized from its type, in declaration order (ADR-002),
+    /// as every tree the page is sent is: not through a `Value`, whose map
+    /// sorts the keys.
+    tree: &'a auracle_grammar::PatchTree,
     /// The player's name for it, if it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
@@ -3613,7 +3615,7 @@ impl WasmEngine {
             .map(|e| HeldView {
                 id: e.id as u32,
                 capture: e.tree.lost_take_key(),
-                tree: serde_json::to_value(&e.tree).unwrap_or(serde_json::Value::Null),
+                tree: &e.tree,
                 name: e.name.clone(),
                 auto_name: e.auto_name.clone(),
                 note: HELD_NOTE,
@@ -6457,6 +6459,14 @@ mod tests {
         let listed_tree: PatchTree =
             serde_json::from_value(listed[0]["tree"].clone()).expect("the held term");
         assert_eq!(listed_tree.lost_take_key().as_deref(), Some("node"));
+        // …serialized from its type, in declaration order (ADR-002), not
+        // through a `Value`'s sorted map (which put a Capture's `input`
+        // before its `play`).
+        let own = serde_json::to_string(&engine.engine.held()[0].tree).unwrap();
+        assert!(
+            engine.held_sounds().contains(&own),
+            "the held term is not listed as it serializes"
+        );
         assert!(listed[0]["note"]
             .as_str()
             .unwrap()
