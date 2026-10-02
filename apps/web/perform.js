@@ -101,6 +101,51 @@ const turns = (w) => !!(w && !w.search && !w.pending);
 // The palette indices of the controls a wiring reaches.
 const reachOfWiring = (wiring) =>
   (wiring || []).map((w, i) => (turns(w) ? (Number.isInteger(w.index) ? w.index : i) : -1)).filter((i) => i >= 0);
+// What knob `addr` sounds at: its base plus every control that turns it, each
+// at its value clamped to the range its wiring supports, the sum clamped to
+// the knob's travel once. `wire` and `values` are aligned by panel position;
+// a value is a control's turn plus any expression on it. Pure, so the
+// sounding value can be tested away from the page (tests/perform.test.mjs).
+export function soundingOf(base, addr, wire, values) {
+  let v = base;
+  (wire || []).forEach((w, i) => {
+    const c0 = values[i] || 0;
+    if (!turns(w) || !c0) return;
+    const [lo, hi] = rangeOf(w);
+    const c = clamp(c0, lo, hi);
+    for (const [a, g] of w.knobs) if (a === addr) v += c * g;
+  });
+  return clamp(v, 0, KNOB_MAX);
+}
+// The bases that keep every knob sounding where it does when the controls
+// at the positions `keep` says false leave the panel: for each knob, what it
+// sounds at now (`soundingOf`, with those controls' turns and no expression
+// on them, which is released), less what the controls that stay add to it.
+// Not clamped here: `soundingOf` clamps the sum once, so a base past the end
+// of a knob's travel with a kept control pulling back sounds exactly as
+// before (base 0.85, a hidden +0.30 and a kept −0.25 sound at 0.90 before
+// and after; a base clamped to 1.0 would sound at 0.75).
+export function foldHidden(bases, wire, values, keep) {
+  const kept = values.map((v, i) => (keep[i] ? v : 0));
+  const out = new Map();
+  for (const [a, b] of bases) {
+    const target = soundingOf(b, a, wire, values);
+    out.set(a, target - keptSum(a, wire, kept));
+  }
+  return out;
+}
+// What the controls with non-zero `values` add to knob `addr`, unclamped.
+function keptSum(addr, wire, values) {
+  let v = 0;
+  (wire || []).forEach((w, i) => {
+    const c0 = values[i] || 0;
+    if (!turns(w) || !c0) return;
+    const [lo, hi] = rangeOf(w);
+    const c = clamp(c0, lo, hi);
+    for (const [a, g] of w.knobs) if (a === addr) v += c * g;
+  });
+  return v;
+}
 // How far a search control has to be turned before letting go asks for
 // something (a graft or an offer). Short of it, it springs back and asks
 // nothing; the dial draws a notch there while it is being turned.
@@ -700,21 +745,18 @@ export function createPerform(host) {
   }
 
   // ---------- the sound ----------
+  // Each named control's value now: its turn plus any expression on it.
+  function controlValues() {
+    return state.c.map((c, i) => {
+      let p = 0;
+      for (const x of state.expr.values()) if (x.i === i) p += x.v;
+      return c + p;
+    });
+  }
   function liveValue(addr) {
     const base = state.cur.knobs.get(addr);
     if (base == null) return null;
-    let v = base;
-    if (state.wire) {
-      state.wire.forEach((w, i) => {
-        let p = 0;
-        for (const x of state.expr.values()) if (x.i === i) p += x.v;
-        if (!turns(w) || !(state.c[i] + p)) return;
-        const [lo, hi] = rangeOf(w);
-        const c = clamp(state.c[i] + p, lo, hi);
-        for (const [a, g] of w.knobs) if (a === addr) v += c * g;
-      });
-    }
-    return clamp(v, 0, KNOB_MAX);
+    return soundingOf(base, addr, state.wire, controlValues());
   }
 
   function overrides() {
@@ -3445,18 +3487,20 @@ export function createPerform(host) {
     state.panelLater = null;
     const old = state.panel;
     const was = (k) => old.indexOf(k);
-    if (state.cur && state.wire) {
-      old.forEach((k, i) => {
-        if (next.includes(k)) return;
-        const w = state.wire[i];
-        if (!turns(w) || !state.c[i]) return;
-        const [lo, hi] = rangeOf(w);
-        const c = clamp(state.c[i], lo, hi);
-        for (const [a, g] of w.knobs) {
-          if (state.cur.knobs.has(a)) state.cur.knobs.set(a, clamp(state.cur.knobs.get(a) + c * g, 0, KNOB_MAX));
-        }
-      });
+    const sameSet = setOf(old).join(",") === setOf(next).join(",");
+    const keep = old.map((k) => next.includes(k));
+    // A wheel or pressure held on a control taken off is let go: its offset
+    // is not folded in (the next value from it lands on nothing).
+    for (const [src, x] of state.expr) if (!keep[x.i]) state.expr.delete(src);
+    // What a control taken off was doing stays in the knobs, so nothing you
+    // hear moves (`foldHidden`).
+    if (state.cur && state.wire && keep.some((k) => !k)) {
+      const values = state.c.map((c, i) => (keep[i] ? controlValues()[i] : c));
+      state.cur.knobs = foldHidden(state.cur.knobs, state.wire, values, keep);
     }
+    // The touch control, taken off: velocity moves to the first control left
+    // that turns both ways, or plays loudness only, and says which.
+    const touchGone = state.touch.i >= 0 && !keep[state.touch.i];
     state.c = next.map((k) => (was(k) >= 0 ? state.c[was(k)] : 0));
     const entries = state.wire;
     state.panel = next;
@@ -3466,7 +3510,12 @@ export function createPerform(host) {
       if (j < 0) state.expr.delete(src);
       else x.i = j;
     }
-    if (state.touch.i >= 0) state.touch.i = next.indexOf(old[state.touch.i]);
+    if (touchGone) {
+      const both = (i) => turns(state.wire?.[i]) && rangeOf(state.wire[i])[0] < 0 && rangeOf(state.wire[i])[1] > 0;
+      const to = preferOrder().find(both);
+      state.touch.i = to ?? -1;
+      host.note(to != null ? `Touch now plays ${PALETTE[next[to]].name}.` : "Touch plays loudness only: no control left on the panel turns both ways.", { replace: "pf-touch" });
+    } else if (state.touch.i >= 0) state.touch.i = next.indexOf(old[state.touch.i]);
     const xi = next.indexOf(old[XY.x]);
     const yi = next.indexOf(old[XY.y]);
     if (xi < 0 || yi < 0) {
@@ -3488,7 +3537,8 @@ export function createPerform(host) {
     renderSteps();
     renderHow();
     renderPalette();
-    measurePanel();
+    // A new order of the same set is the same measurement: nothing to ask.
+    if (!sameSet) measurePanel();
     return true;
   }
   function panelLater() {

@@ -133,7 +133,13 @@ Bite…*). The controls beside it keep playing. A set of controls measured on
 a sound before is kept, so on that sound it plays at once, after a reload too.
 
 Hiding a control you have turned leaves the sound where it is: what it was
-doing stays in the knobs. Reordering costs nothing at all.
+doing stays in the knobs, and the controls you keep turn on from there.
+**BACK** returns to the last sound you kept, from before it; ⌘Z doesn’t,
+because hiding a control is not an edit of the patch. A mod wheel or
+pressure held on the control you hide is let go. If **TOUCH** was playing
+it, velocity moves to the first control left that turns both ways, or to
+loudness only, and a note says which. Reordering costs nothing at all: the
+same controls are the same measurement.
 
 ```admonish info collapsible=true title="How it works: measuring a sound’s controls"
 The first time PERFORM plays a sound, it nudges each of the patch’s knobs
