@@ -164,6 +164,14 @@ export function createTakes(host) {
     }, [m.buf.buffer]);
   }
 
+  /** The edit on the bench was kept as new: the sound `from` is `to` now, the
+   *  same tree under the child's id. A recording for it, rolling or being
+   *  rendered, follows it rather than read the new id as a move. */
+  function benchKept(from, to) {
+    if (rolling && !rolling.held && rolling.bench === from) rolling.bench = to;
+    for (const r of rendering.values()) if (!r.held && r.bench === from) r.bench = to;
+  }
+
   /** The worker's take, rendered from what was recorded. */
   function rendered(m) {
     const r = rendering.get(m.id);
@@ -346,6 +354,7 @@ export function createTakes(host) {
     paint,
     onWorklet,
     benchMoved,
+    benchKept,
     rendered,
     recordAgain,
     /** The sounds kept safe, in the order they are listed. */

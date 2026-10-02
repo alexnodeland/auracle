@@ -2861,6 +2861,8 @@ worker.onmessage = (e) => {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       if (m.id > 0) {
+        // The same sound under its new id: a recording rolling for it follows.
+        takes.benchKept(wb.subjectId, m.id);
         wb.subjectId = m.id;
         wb.dirty = false;
         benchDirtyWhy = null;

@@ -19,6 +19,11 @@
 // - A sound whose take couldn't be read is kept safe, out of the pool,
 //   listed under *kept safe*; RECORD AGAIN records it and brings it back into
 //   the pool.
+// - A take lands only on the sound it was recorded for: moving to another
+//   sound stops RECORD and drops it; a keep as new is the same sound, and the
+//   take lands on it. A STOP with nothing recorded sends no take.
+// - RECORD waits for its input to open, records the one its CAPTURE reads
+//   (while the bench reads another), and says so when the browser refuses it.
 // - The bank's cursor reaches a sound kept safe past the pool's last row, and
 //   Enter presses RECORD AGAIN.
 // - AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk: the
@@ -348,6 +353,36 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
   await expect(row).toBeVisible({ timeout: 30_000 });
   return { ctx, next, row, errors };
 }
+
+test("a recording goes on through a keep as new, and its take lands on the kept sound", async ({ page }, info) => {
+  const errors = await boot(page, { granted: true });
+  await openFile(page, {
+    name: "Mic Loop",
+    tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
+  }, info.outputDir);
+  const lane = page.locator("#rack-svg .take-lane").first();
+  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s", { timeout: 60_000 });
+  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  // An edit to keep: CAPTURE's PLAY from hold to the next.
+  await page.locator('#rack-svg g[data-addr$="#play"]').first().click();
+  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
+  await lane.locator(".take-rec").click();
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: false });
+  // Kept as new while RECORD is lit (the express path: no card).
+  const before = await page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null));
+  await page.evaluate(() => { document.getElementById("improve-check").checked = true; });
+  await page.locator("#rack-commit").click();
+  await expect.poll(() => page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null)), { timeout: 60_000 })
+    .not.toBe(before);
+  await page.waitForTimeout(1200);
+  await page.locator("#rack-svg .take-lane .take-rec").first().click();
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
+    .toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  expect(await page.evaluate(() => window.__pwToasts.join("\n"))).not.toContain("you moved to another sound");
+  await expect(page.locator("#rack-svg .take-lane .take-line").first()).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
+  await expect(page.locator("#rack-svg .take-lane .take-line").first()).not.toHaveText("take · 0.1 s");
+  expect(errors).toEqual([]);
+});
 
 test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
   test.setTimeout(300_000);
