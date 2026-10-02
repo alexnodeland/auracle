@@ -516,6 +516,10 @@ fn refused_note(e: &ClipError) -> &'static str {
 struct JobsReply<'a> {
     context: Option<&'a WalkContext>,
     jobs: &'a [WalkJob],
+    /// Why nothing was opened, for a breed toward a sound of your own
+    /// (`Engine::own_breed_blocked`: `no_sound`, `untaught`, `stale_sound`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
 }
 
 /// `⚡ evolve from this` as a job ([`WasmEngine::refine_from_job`]): the
@@ -568,7 +572,7 @@ struct OwnReply<'a> {
     /// The pool ids a breed toward it would start from, nearest first;
     /// empty before there is a taste to breed with.
     #[serde(skip_serializing_if = "Option::is_none")]
-    seeds: Option<Vec<u64>>,
+    seeds: Option<Vec<u32>>,
 }
 
 #[derive(Serialize)]
@@ -1419,10 +1423,12 @@ impl WasmEngine {
             Some((ctx, jobs)) => JobsReply {
                 context: Some(ctx),
                 jobs,
+                reason: None,
             },
             None => JobsReply {
                 context: None,
                 jobs: &[],
+                reason: None,
             },
         };
         serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
@@ -1559,11 +1565,20 @@ impl WasmEngine {
     /// before in place. `z` is every coordinate of φ in `phi_names` order,
     /// `null` where a file does not measure it; distances are in σ over the
     /// coordinates it does. `nearest_presets` is empty until
-    /// [`WasmEngine::own_presets_set`] has run. Costs the file's analysis and
-    /// one map frame: measured in wasm (`examples/own_cost.mjs`, a loaded
-    /// M3 Max), 0.19 s for 30 s at 44.1 kHz and 0.71 s at 48 kHz, most of
-    /// it the resampling; 0.16 s for 10 s at 48 kHz. One uninterruptible
-    /// call: the worker answers nothing else meanwhile.
+    /// [`WasmEngine::own_presets_set`] has run.
+    ///
+    /// The caller sends the file mixed to mono, at most 120 s (`too_long`
+    /// means cut it and send it again) and at most 48 kHz: the samples are
+    /// copied into linear memory, which never shrinks (two minutes grow it by
+    /// about 42 MB at 48 kHz and 108 MB at 192 kHz). `too_short` is under
+    /// half a second of sound, which does not measure what a file is placed
+    /// by; there is nothing to retry. After any refusal, ask
+    /// [`WasmEngine::own_sound`] to redraw the sound still kept.
+    ///
+    /// Costs the file's analysis and one map frame, in one uninterruptible
+    /// call. For 30 s of sound, measured in wasm under node
+    /// (`examples/own_cost.mjs`, an M3 Max under load): 0.16 s at 44.1 kHz,
+    /// 0.31 s at 48, 0.52 s at 96 and 0.94 s at 192, most of it resampling.
     pub fn own_sound_set(&mut self, pcm: &[f32], sample_rate: f64, name: Option<String>) -> String {
         match auracle_features::featurize_file(pcm, sample_rate) {
             Ok(f) => {
@@ -1633,7 +1648,13 @@ impl WasmEngine {
                     })
                     .collect(),
             ),
-            seeds: Some(self.engine.own_seeds()),
+            seeds: Some(
+                self.engine
+                    .own_seeds()
+                    .into_iter()
+                    .map(|id| id as u32)
+                    .collect(),
+            ),
         };
         serde_json::to_string(&reply).unwrap_or_else(|_| "null".into())
     }
@@ -1667,10 +1688,12 @@ impl WasmEngine {
             Some((ctx, jobs)) => JobsReply {
                 context: Some(ctx),
                 jobs,
+                reason: None,
             },
             None => JobsReply {
                 context: None,
                 jobs: &[],
+                reason: Some(self.engine.own_breed_blocked().unwrap_or("untaught")),
             },
         };
         serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
@@ -3899,6 +3922,12 @@ mod tests {
         assert!(early.get("z").is_some_and(|z| z.is_null()), "{early}");
         assert!(early["map"].is_null());
         assert_eq!(early["nearest"], serde_json::json!([]));
+        // A breed before any taste opens nothing and says so.
+        let none: serde_json::Value = serde_json::from_str(&fresh.refine_toward_jobs()).unwrap();
+        assert!(none["context"].is_null());
+        assert_eq!(none["reason"], "untaught");
+        // The taste's own generation carries no reason key at all.
+        assert!(!fresh.refine_jobs().contains("reason"));
 
         let mut engine = taught_wasm(0x0A1D);
         assert_eq!(engine.own_sound(), "null");
@@ -3972,6 +4001,8 @@ mod tests {
         assert_eq!(again["z"], engine_z(&engine));
         assert!(engine.own_sound_clear());
         assert_eq!(engine.own_sound(), "null");
+        let gone: serde_json::Value = serde_json::from_str(&engine.refine_toward_jobs()).unwrap();
+        assert_eq!(gone["reason"], "no_sound");
     }
 
     fn engine_z(e: &WasmEngine) -> serde_json::Value {

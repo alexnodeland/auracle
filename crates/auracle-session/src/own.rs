@@ -386,6 +386,26 @@ impl Engine {
         Some(self.open_jobs(rng, ctx, rows))
     }
 
+    /// Why a breed toward the sound of your own would open nothing now, or
+    /// `None` when [`Self::refine_toward_jobs`] would open a generation. A
+    /// code the app words, never text: `no_sound` (none brought, or put
+    /// down), `untaught` (no fitted taste yet, so nothing breeds, as EVOLVE
+    /// POOL does not), or `stale_sound` (a sound saved under coordinates
+    /// today's φ no longer has, so nothing of it can be measured: bring the
+    /// file again).
+    pub fn own_breed_blocked(&self) -> Option<&'static str> {
+        if self.own.is_none() {
+            return Some("no_sound");
+        }
+        if self.posterior.is_none() || self.standardizer.is_none() {
+            return Some("untaught");
+        }
+        if self.own_toward(OWN_GAMMA).is_none() {
+            return Some("stale_sound");
+        }
+        None
+    }
+
     /// The ids of the pool members a toward generation opened now would
     /// breed from, nearest first ([`Self::refine_toward_jobs`]). Empty when
     /// it would open nothing.
@@ -595,7 +615,21 @@ mod tests {
                 .is_none(),
             "no sound, no generation"
         );
+        assert_eq!(engine.own_breed_blocked(), Some("no_sound"));
+        let mut untaught = Engine::new(PatchGrammarPrior::default(), SessionConfig::default());
+        untaught.own_set("Glass Pad", &recording("Glass Pad"));
+        assert_eq!(untaught.own_breed_blocked(), Some("untaught"));
+        let mut stale = OwnSound::from_file("Old", &recording("Glass Pad"));
+        for (name, _) in &mut stale.features {
+            *name = name.replace(":p2", ":p1");
+        }
+        engine.own = Some(stale);
+        assert_eq!(engine.own_breed_blocked(), Some("stale_sound"));
+        assert!(engine
+            .refine_toward_jobs(&mut StdRng::seed_from_u64(1))
+            .is_none());
         engine.own_set("Glass Pad", &recording("Glass Pad"));
+        assert_eq!(engine.own_breed_blocked(), None);
         let parents = engine.own_seeds();
         let (ctx, jobs) = engine
             .refine_toward_jobs(&mut StdRng::seed_from_u64(1))

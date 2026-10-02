@@ -1291,10 +1291,12 @@ function breedOpen(toward = false) {
   // retires leave main's bank now and are named, rather than going silently
   // inside `refine_jobs` and staying live in main until the first child.
   poolTrim();
+  let towardReason = null;
   if (toward) {
     const reply = typeof engine.refine_toward_jobs === "function"
       ? JSON.parse(engine.refine_toward_jobs())
       : { context: null, jobs: [] };
+    towardReason = reply.reason || null;
     if (reply.context) {
       ctx = JSON.stringify(reply.context);
       jobs = reply.jobs.map((j) => JSON.stringify(j));
@@ -1314,11 +1316,14 @@ function breedOpen(toward = false) {
   if (parents.length === 0) {
     // No posterior yet — nothing to refine *toward*. Report it rather than
     // burning a minute to produce nothing. A breed toward a sound of your own
-    // also opens nothing without the sound: `no_sound` says which.
-    const noSound = toward && engine.own_sound() === "null";
+    // says which of its reasons it is (`Engine::own_breed_blocked`): no
+    // taste yet (`untaught`), no sound (`no_sound`), or a sound saved under
+    // coordinates φ no longer has (`stale_sound`: bring the file again).
+    const reason = toward ? towardReason || "untaught" : "untaught";
     post({
       type: "refined", views: tasteViews(), status: status(), born: [],
-      untaught: !noSound, ...(toward ? { toward: true, no_sound: noSound } : {}),
+      untaught: reason === "untaught",
+      ...(toward ? { toward: true, reason, no_sound: reason === "no_sound", stale_sound: reason === "stale_sound" } : {}),
     });
     return;
   }
@@ -1362,23 +1367,31 @@ function poolTrim() {
 // Every preset's measurement, for the presets nearest a sound of your own:
 // the wirings the app ships (`perform-wirings.json`, `make perform-wirings`)
 // carry each preset's audio φ, so the engine names the nearest presets
-// without rendering sixty of them. Fetched once, the first time a sound is
-// brought; with no file (an old bundle, a blocked fetch) only pool members
-// are named as nearest.
-let ownPresets = null;
-function ownPresetsReady() {
-  if (!ownPresets) {
-    ownPresets = (async () => {
-      if (typeof engine.own_presets_set !== "function") return;
+// without rendering sixty of them. Fetched once, from the first own-sound
+// request, and **never awaited by one**: a request answered while the fetch
+// is out names only pool members, and when the file lands the sound in hand
+// (if any) is posted again, re-ranked. Awaiting it inside `dispatch` let
+// requests behind it (a clear, a breed) overtake the set that started it.
+// With no file (an old bundle, a blocked fetch) only pool members are named.
+let ownPresets = false;
+function ownPresetsFetch() {
+  if (ownPresets || typeof engine.own_presets_set !== "function") return;
+  ownPresets = true;
+  fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href))
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (!text || poisoned) return;
       try {
-        const r = await fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href));
-        if (r.ok) engine.own_presets_set(await r.text());
-      } catch (_) {
-        /* the nearest presets are a convenience, never load-bearing */
+        engine.own_presets_set(text);
+        const sound = JSON.parse(engine.own_sound());
+        if (sound) post({ type: "own_sound", sound, presets: true });
+      } catch (err) {
+        engineError("own_sound", null, err);
       }
-    })();
-  }
-  return ownPresets;
+    })
+    .catch(() => {
+      /* the nearest presets are a convenience, never load-bearing */
+    });
 }
 
 async function breedFarm(g) {
@@ -1777,9 +1790,15 @@ function laneOf(m) {
     case "refine":
     case "refine_from":
       return SOON;
-    // A file's analysis is one uninterruptible call of up to 0.7 s (30 s at
-    // 48 kHz, `own_cost.mjs`): the player's gestures queued meanwhile first.
+    // A sound of your own: all three in one lane, so they are answered in
+    // the order they were asked (a clear never overtakes the set before it).
+    // `soon`, because a file's analysis is one uninterruptible call: for 30
+    // s of sound, 0.16 s at 44.1 kHz, 0.31 s at 48, 0.52 s at 96 and 0.94 s
+    // at 192 (`own_cost.mjs`), so the player's gestures queued first go first.
+    // The page sends at most 48 kHz, which bounds it near a third of a second.
     case "own_sound_set":
+    case "own_sound":
+    case "own_sound_clear":
       return SOON;
     case "perform_wire":
     case "perform_offer":
@@ -2462,13 +2481,13 @@ async function dispatch(m) {
     // starts from). The session saves it as features, never the audio, and
     // `own_sound` asks for it again after a reload or when the pool moved.
     case "own_sound_set": {
-      await ownPresetsReady();
+      ownPresetsFetch();
       const sound = JSON.parse(engine.own_sound_set(m.pcm, m.sampleRate, m.name || undefined));
       post({ type: "own_sound", sound });
       break;
     }
     case "own_sound": {
-      await ownPresetsReady();
+      ownPresetsFetch();
       post({ type: "own_sound", sound: JSON.parse(engine.own_sound()) });
       break;
     }

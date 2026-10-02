@@ -55,7 +55,9 @@ use crate::structural::StructFeatures;
 /// Most seconds of a file that are measured, from where its sound starts.
 /// The rest is ignored (and [`FileFeatures::truncated`] says so): a long
 /// recording's first half minute is a fair sample of what it is, and the
-/// measurement stays well under a second.
+/// measurement stays near a third of a second at 48 kHz in wasm (about a
+/// second at 192 kHz, most of it resampling: `auracle-wasm`'s
+/// `examples/own_cost.mjs`).
 pub const FILE_MAX_SECONDS: f64 = 30.0;
 
 /// Longest input accepted at all, in seconds. A guard on memory, not on
