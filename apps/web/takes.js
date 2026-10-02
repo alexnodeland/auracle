@@ -138,6 +138,7 @@ export function createTakes(host) {
     btn.setAttribute("role", "button");
     btn.setAttribute("tabindex", "-1");
     btn.setAttribute("aria-label", W.TAKE_TIPS.record);
+    btn.dataset.stop = "take-rec"; // on the rack's roving stop, after the knobs
     const run = () => {
       if (rolling) return stop();
       const tree = host.benchTree();

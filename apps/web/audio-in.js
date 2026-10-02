@@ -622,6 +622,7 @@ export function createAudioIn(host) {
       g.setAttribute("role", "button");
       g.setAttribute("tabindex", "-1");
       g.setAttribute("aria-label", title);
+      g.dataset.stop = cls; // on the rack's roving stop, after the knobs
       g.addEventListener("click", (ev) => {
         ev.stopPropagation();
         run(ev);
@@ -659,6 +660,7 @@ export function createAudioIn(host) {
       dev.setAttribute("role", "button");
       dev.setAttribute("tabindex", "-1");
       dev.setAttribute("aria-haspopup", "menu");
+      dev.dataset.stop = "ain-dev"; // on the rack's roving stop, after the knobs
       const run = () => {
         const r = dev.getBoundingClientRect();
         menu(m.key, r.left, r.bottom + 2);

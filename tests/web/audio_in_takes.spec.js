@@ -19,6 +19,9 @@
 // - A sound whose take couldn't be read is kept safe, out of the pool,
 //   listed under *kept safe*; RECORD AGAIN records it and brings it back into
 //   the pool.
+// - AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk: the
+//   arrows reach them after a module's knobs, Enter or Space presses them,
+//   and the focus stays on a button the press redrew.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
@@ -66,6 +69,46 @@ async function loudest(page, hz, ms = 1200, { rms = false } = {}) {
 }
 const takes = (page) => page.evaluate(() => window.__aur.takes());
 
+// AURACLE_SHOTS=dir saves the states a reviewer looks at, each after the rack
+// has settled (a placement moves the plates).
+const SHOTS = process.env.AURACLE_SHOTS || null;
+async function shotOf(page, name, boxes, { scroll = false } = {}) {
+  if (!SHOTS || boxes.length === 0) return;
+  await page.waitForTimeout(1500);
+  // A list's rows: brought into view once the list has settled.
+  if (scroll) await boxes[0].evaluate((el) => el.scrollIntoView({ block: "center" }));
+  const bs = (await Promise.all(boxes.map((l) => l.boundingBox()))).filter(Boolean);
+  // The boxes with a margin, within the viewport.
+  const m = 24;
+  const vp = page.viewportSize();
+  const x0 = Math.max(0, Math.min(...bs.map((b) => b.x)) - m);
+  const y0 = Math.max(0, Math.min(...bs.map((b) => b.y)) - m);
+  const x1 = Math.min(vp.width, Math.max(...bs.map((b) => b.x + b.width)) + m);
+  const y1 = Math.min(vp.height, Math.max(...bs.map((b) => b.y + b.height)) + m);
+  if (bs.length === 0 || x1 <= x0 || y1 <= y0) {
+    console.log(`shot ${name} not taken: nothing on screen (${JSON.stringify(bs)})`);
+    return;
+  }
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS, `${name}.png`), clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } });
+}
+const plate = (page, kind) => page.locator(`#rack-svg g.mod-group[data-kind='${kind}']`).first();
+
+/** Arrow right from where the keyboard is until it stands on the plate
+ *  button `stop` (a `data-stop`); how many presses that took. */
+async function walkTo(page, stop, max = 24) {
+  for (let n = 1; n <= max; n++) {
+    await page.keyboard.press("ArrowRight");
+    const on = await page.evaluate(() => document.activeElement?.getAttribute("data-stop"));
+    if (on === stop) return n;
+  }
+  throw new Error(`the arrows never reached ${stop}`);
+}
+const focused = (page) => page.evaluate(() => {
+  const a = document.activeElement;
+  return { stop: a?.getAttribute("data-stop") || null, addr: a?.getAttribute("data-addr") || null, tab: a?.getAttribute("tabindex") };
+});
+
 /** A take in its saved form: `n` samples of a 330 Hz tone at 44.1 kHz. */
 function takeOf(n) {
   const f = new Float32Array(n);
@@ -106,6 +149,7 @@ test("a tracked sound plays from the input with one voice, and keys over it stop
   await lane.locator(".ain-monitor").click();
   await expect.poll(() => loudest(page, 440, 600), { timeout: 15_000 }).toBeGreaterThan(-60);
   await page.waitForTimeout(1500);
+  await shotOf(page, "track-plate", [plate(page, "track"), plate(page, "audio_in")]);
   const alone = await loudest(page, 440, 1500);
   const lead = await loudest(page, 440, 1500, { rms: true });
   // Keys over it: three held, then let go.
@@ -137,7 +181,7 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   const errors = await boot(page, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
-    // A short recording to start from (a sound that plays nothing is not
+    // A short take to start from (a sound that plays nothing is not
     // taken into the pool): RECORD replaces it.
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
@@ -154,6 +198,7 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
     .toMatch(/Recorded \d\.\d s into CAPTURE\./);
   await expect(lane.locator(".take-line")).toHaveText(/^take · 1\.\d s$/, { timeout: 30_000 });
+  await shotOf(page, "capture-plate", [plate(page, "capture"), plate(page, "audio_in")]);
   const len = await page.evaluate(() => {
     const t = window.__aur.wb.tree.root.Capture.take;
     return t ? t.length / t.sample_rate : 0;
@@ -220,6 +265,7 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(next.locator("#bank-list .bank-group.kept")).toContainText("kept safe");
+  await shotOf(next, "kept-safe", [next.locator("#bank-list .bank-group.kept"), row], { scroll: true });
   expect(await next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).count()).toBe(0);
 
   await row.locator(".kept-rec").click();
@@ -234,4 +280,58 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   await ctx.close();
   expect(errors).toEqual([]);
   expect(errors2).toEqual([]);
+});
+
+test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed with it", async ({ page }, info) => {
+  const errors = await boot(page, { granted: true });
+  await openFile(page, {
+    name: "Mic Loop",
+    tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
+  }, info.outputDir);
+  const take = page.locator("#rack-svg .take-lane").first();
+  const input = page.locator("#rack-svg .ain-lane").first();
+  await expect(take).toBeVisible({ timeout: 60_000 });
+  await expect(input).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+
+  // CAPTURE: from its plate, past its knob, to RECORD; Enter rolls, Enter
+  // stops, and the take lands.
+  await plate(page, "capture").focus();
+  const toRec = await walkTo(page, "take-rec");
+  expect((await focused(page)).tab).toBe("0");
+  await page.keyboard.press("Enter");
+  await expect(take.locator(".take-rec")).toHaveClass(/\bon\b/);
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
+    .toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  await expect(take.locator(".take-line")).toHaveText(/^take · 1\.\d s$/, { timeout: 30_000 });
+  // The take is an edit, so the rack was drawn again: the keyboard is still
+  // on RECORD.
+  await expect.poll(async () => (await focused(page)).stop, { timeout: 10_000 }).toBe("take-rec");
+
+  // AUDIO IN: its input line, then MONITOR; Space presses MONITOR, and the
+  // arrows go on to NEW CLIP. ALLOW INPUT is hidden while the input is open,
+  // so the walk passes it by.
+  await plate(page, "audio_in").focus();
+  const toLine = await walkTo(page, "ain-dev");
+  await page.keyboard.press("ArrowRight");
+  expect((await focused(page)).stop).toBe("ain-monitor");
+  await page.keyboard.press(" ");
+  await expect(input.locator(".ain-monitor")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowRight");
+  expect((await focused(page)).stop).toBe("ain-clip");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  expect((await focused(page)).stop).toBe("ain-dev");
+  // Enter on the input line opens the input menu, as a click does.
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#ctx-menu")).toBeVisible();
+  await expect(page.locator("#ctx-menu .cm-item").first()).toHaveText(/^1 · Fake Mic A/);
+  await page.keyboard.press("Escape");
+  // Escape on a button backs out to its plate, as on a knob.
+  await plate(page, "audio_in").locator("[data-stop='ain-monitor']").focus();
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-kind"))).toBe("audio_in");
+  console.log(`arrows from the plate: ${toRec} to RECORD, ${toLine} to AUDIO IN's input line`);
+  expect(errors).toEqual([]);
 });

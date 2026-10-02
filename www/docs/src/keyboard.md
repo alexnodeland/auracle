@@ -76,10 +76,11 @@ with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 
 | | |
 |---|---|
-| <kbd>←</kbd> <kbd>→</kbd> | Move between controls |
+| <kbd>←</kbd> <kbd>→</kbd> | Move between controls: a module’s knobs, then its buttons (AUDIO IN’s input, **MONITOR** and **NEW CLIP**; CAPTURE’s **RECORD**) |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Turn the focused knob |
 | <kbd>Shift</kbd> and <kbd>↑</kbd> / <kbd>↓</kbd> | Fine |
 | <kbd>Space</kbd> or <kbd>Enter</kbd> / <kbd>⇧</kbd> and either | Cycle the focused setting (a wave, a filter mode) forward / back. A click leaves no focus on a setting, so Space after a click plays. |
+| <kbd>Space</kbd> or <kbd>Enter</kbd> on a button | Press it (AUDIO IN’s input opens its menu) |
 | <kbd>L</kbd> | Lock the focused control |
 
 ## The bank

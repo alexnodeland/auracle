@@ -5461,7 +5461,8 @@ document.addEventListener("keydown", (e) => {
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   // A focused control keeps only the keys it uses. A button uses Space and
   // Enter; tabs, menu items, options, knobs and sliders also steer with the
-  // arrows and Home/End. Swallowing every non-note key made one click on HOLD
+  // arrows and Home/End (a rack plate's buttons, `data-stop`, move on with
+  // them). Swallowing every non-note key made one click on HOLD
   // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
   // elsewhere.
   //
@@ -5471,7 +5472,7 @@ document.addEventListener("keydown", (e) => {
   // from the keyboard cycling). A knob, a PERFORM control or the XY pad keeps
   // its focus after a drag, and Space there did nothing at all; a chip a
   // click focused cycled again (a click now leaves no focus on a chip).
-  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
+  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], [data-stop], input[type=range]";
   const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
   if (ctl) {
     const activates = e.key === "Enter" || (e.key === " " && (ctl.matches("button") || e.defaultPrevented));
@@ -11778,6 +11779,9 @@ function markRackFocus() {
   // module does — the same slice `lockIdOf` takes.
   const hash = addr ? addr.indexOf("#") : -1;
   if (hash >= 0) return { mid, param: addr.slice(hash) };
+  // A plate's button (`data-stop`) is named by which button it is.
+  const stop = a.getAttribute?.("data-stop");
+  if (stop) return { mid, stop };
   for (const attr of ["data-childkey", "data-modkey", "data-outkey"]) {
     const v = a.getAttribute?.(attr);
     // A socket is named by which socket it is: `/0`, `/1`, or the module's
@@ -11796,7 +11800,10 @@ function restoreRackFocus(mark) {
   if (!g) return;
   let el = g;
   if (mark.param) el = g.querySelector(`[data-addr$="${mark.param}"]`) || g;
-  else if (mark.attr) {
+  else if (mark.stop) {
+    const b = g.querySelector(`[data-stop="${mark.stop}"]`);
+    el = b && shownControl(b) ? b : g;
+  } else if (mark.attr) {
     el = [...g.querySelectorAll(`.jack[${mark.attr}]`)]
       .find((j) => j.getAttribute(mark.attr).endsWith(mark.tail)) || g;
   }
@@ -14770,9 +14777,18 @@ function attachEnumSweep(el, txt, knob) {
 // ---------- rack keyboard navigation ----------
 // One roving tab stop for the whole rack: Tab enters, arrows move between
 // controls, Up/Down turn the focused knob (Shift = fine), Enter cycles an
-// enum, L toggles its lock.
+// enum, L toggles its lock. A plate's buttons that are not knobs (AUDIO IN's
+// input line, MONITOR, NEW CLIP and ALLOW INPUT; CAPTURE's RECORD) carry
+// `data-stop` (named for which button it is, so a rebuild puts the focus
+// back on it): the arrows reach them after the knobs, and Enter or Space is
+// their own. One hidden in its current state is passed over.
+// (Declarations, not consts: a rebuild's focus restore can run before the
+// module's evaluation reaches here.)
+function shownControl(el) {
+  return !el.closest(".hidden");
+}
 function rackControls() {
-  return [...$("rack-svg").querySelectorAll("[data-addr]")];
+  return [...$("rack-svg").querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);
 }
 /** Every module plate, in layout order. */
 function rackPlates() {
@@ -14781,7 +14797,7 @@ function rackPlates() {
 /** Everything the one roving stop can sit on. Plates and knobs share it, so
  *  Tab always returns to wherever the keyboard last was inside the rack. */
 function rackStops() {
-  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr]")];
+  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr], [data-stop]")];
 }
 function setRackStop(el) {
   for (const e of rackStops()) e.setAttribute("tabindex", e === el ? "0" : "-1");
@@ -14826,7 +14842,7 @@ function focusPlate(el, say) {
     nbAnnounce(
       `${isPlaceholderKey(key) ? "empty socket" : m?.title || key}, ` +
       `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
-      `Enter for the structure menu, right and left for its knobs.`,
+      `Enter for the structure menu, right and left for its controls.`,
     );
   }
 }
@@ -14838,12 +14854,12 @@ let nudge = null; // {id, at} — the last knob nudged, and when
 
 $("rack-svg").addEventListener("keydown", (e) => {
   const plate = e.target.closest?.("g.mod-group");
-  if (plate && !e.target.closest?.("[data-addr]")) {
+  if (plate && !e.target.closest?.("[data-addr], [data-stop]")) {
     const plates = rackPlates();
     const i = plates.indexOf(plate);
     const key = plate.getAttribute("data-key");
     const mod = wb.rack?.modules.find((x) => x.key === key);
-    const knobs = [...plate.querySelectorAll("[data-addr]")];
+    const knobs = [...plate.querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);
     const box = plate.getBoundingClientRect();
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -14881,7 +14897,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     }
     return;
   }
-  const kg = e.target.closest?.("[data-addr]");
+  const kg = e.target.closest?.("[data-addr], [data-stop]");
   if (!kg) return;
   // Escape backs out to the plate the knob is on, which is the only way to
   // reach the structural verbs without reaching for the mouse again.
@@ -14892,6 +14908,16 @@ $("rack-svg").addEventListener("keydown", (e) => {
   }
   const els = rackControls();
   const i = els.indexOf(kg);
+  // A plate's button: the arrows move on, and Enter or Space was its own.
+  if (!kg.dataset.addr) {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      focusRackControl(i + (e.key === "ArrowRight" ? 1 : -1));
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+    }
+    return;
+  }
   const knob = knobByAddr(kg.dataset.addr);
   if (!knob) return;
   const step = e.shiftKey ? 0.002 : 0.02;
