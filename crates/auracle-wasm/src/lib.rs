@@ -609,9 +609,18 @@ pub struct WasmEngine {
     /// by index — the same statelessness the pool fill gets from its draw
     /// stream.
     pending_bank: Vec<BankEntry>,
-    /// The model's guesses' skips and last taken guess, per patch (the pool
-    /// id the bench was opened from): what the ranking cannot remember.
+    /// The model's guesses' skips and last taken guess, per patch: what the
+    /// ranking cannot remember.
     guesses: GuessMemory,
+    /// The patch the bench's guesses are filed under: the pool id it was
+    /// opened from, until keep as new moves it to the new sound's id.
+    ///
+    /// Not `bench_original`, which stays the id the bench was opened from
+    /// after a commit (a later commit duel plays against it, and the page
+    /// does not reopen the kept sound): skips made after keep as new were
+    /// filed under the old id, so the kept sound, opened again, offered
+    /// them back.
+    guess_key: Option<u64>,
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -745,6 +754,7 @@ impl WasmEngine {
             bench_phi_prev: None,
             pending_bank: Vec::new(),
             guesses: GuessMemory::default(),
+            guess_key: None,
         }
     }
 
@@ -2082,6 +2092,7 @@ impl WasmEngine {
                 // never start empty for a candidate that renders fine.
                 self.bench_render = self.engine.render_of(id);
                 self.bench_original = Some(id);
+                self.guess_key = Some(id);
                 // A different patch entirely: nothing about the last one's φ
                 // is a "before" for anything this one does.
                 self.bench_phi = Some(self.engine.pool[i].features.phi());
@@ -2373,9 +2384,10 @@ impl WasmEngine {
     }
 
     /// The patch the bench's guesses are remembered under: the pool id it
-    /// was opened from.
+    /// was opened from, or the sound keep as new last made from it
+    /// (`guess_key`).
     fn guess_patch(&self) -> u64 {
-        self.bench_original.unwrap_or(0)
+        self.guess_key.unwrap_or(0)
     }
 
     /// Whatever the bench just became, ask the guesses' memory whether it is
@@ -2621,9 +2633,11 @@ impl WasmEngine {
             .commit_edit(self.bench_original, tree, outcome)
             .unwrap_or(0);
         // The new sound is the patch the player is working on: it keeps the
-        // guesses' skips and takes.
-        if let (true, Some(from)) = (id > 0, self.bench_original) {
+        // guesses' skips and takes, and the skips and takes made from here
+        // on are filed under it.
+        if let (true, Some(from)) = (id > 0, self.guess_key) {
             self.guesses.carry(from, id);
+            self.guess_key = Some(id);
         }
         id as u32
     }
@@ -2736,6 +2750,7 @@ impl WasmEngine {
         self.bench_tree = None;
         self.bench_render = None;
         self.bench_original = None;
+        self.guess_key = None;
         self.bench_vet_ok = false;
         self.bench_vet_silent = false;
         self.bench_phi = None;
@@ -3456,6 +3471,41 @@ mod tests {
         assert!(
             !engine.guess_skip(&reverb),
             "the skip stayed with the old id"
+        );
+    }
+
+    /// **Keep as new carries the skips made after it.** The page does not
+    /// reopen the kept sound, so the bench is still "opened from" the old
+    /// id (`bench_original`, what a later commit duel plays against). A skip
+    /// made after the commit is a skip on the kept sound: opened again, it
+    /// is still skipped there, and the sound it was made from never had it.
+    #[test]
+    fn keep_as_new_carries_the_skips_made_after_it() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let original = pool_ids(&engine)[0];
+        assert!(engine.edit_begin(original));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert_eq!(
+            engine.edit_original_id(),
+            original,
+            "a commit duel still plays against the sound it was opened from"
+        );
+        // After keep as new, on the same bench: skip a reverb.
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        assert!(engine.edit_begin(kept));
+        assert!(
+            !engine.guess_skip(&reverb),
+            "a skip made after keep as new was filed under the old id"
+        );
+        assert!(engine.edit_begin(original));
+        assert!(
+            engine.guess_skip(&reverb),
+            "the sound it was kept from took a skip made on the kept one"
         );
     }
 
