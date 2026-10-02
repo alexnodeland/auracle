@@ -9,20 +9,23 @@
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
 const { test, expect } = require("@playwright/test");
+const budget = require("./perform_budget.js");
 
 // How long an offer takes to grow is the renders it is made of (about twenty
 // phrase renders), so it is a real wait whose length is the machine's: 3 s on
 // a laptop and a minute and more on a loaded CI runner, where the first spare
 // took 62 s. Waiting for one is waiting for the engine, not for a bug, so the
-// bound is the runner's. What must not wait for an offer, the pick that
-// answers one and the Keep, is held to its own tight bounds below and in
+// bound is the runner's: `offerBudget` (perform_budget.js), from a step
+// measured here. What must not wait for an offer, the pick that answers one
+// and the Keep, is held to its own tight bounds below and in
 // perform_offer_latency.spec.js.
-const OFFER_MS = process.env.CI ? 240_000 : 90_000;
 
 test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow" }, async ({ page }) => {
-  // Four offers grown on demand, each OFFER_MS at the worst.
-  test.setTimeout(process.env.CI ? 900_000 : 240_000);
+  // The boot and the fixed waits; each of the four waits on an offer adds a
+  // budget below.
+  test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
@@ -34,6 +37,7 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   // patch's (the first pool patch lands on the bench at boot).
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });
   await page.waitForSelector(".pf-status:has-text('controls reach')", { timeout: 90000 });
+  const OFFER_MS = await budget.offerBudget(page, { waits: 4 });
   const picks = async () => Number(await page.locator("#duel-count").textContent());
   const p0 = await picks();
   await page.keyboard.down("a");

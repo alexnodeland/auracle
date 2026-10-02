@@ -71,6 +71,10 @@ waits on a fixed timer is better made faster than tagged.
   1.5 s is a flake waiting to happen. When the app gets faster, a spec that
   expected to see an intermediate state may miss it: accept either state
   rather than slowing the app down.
+- **Waiting on PERFORM's engine** (an offer or a drift growing, or the work
+  queued ahead of it) is renders, seconds each on a CI runner: bound it with
+  `offerBudget` from `perform_budget.js`, not a fixed number
+  ([`testing.md` § Rules](../../docs/architecture/testing.md#rules)).
 - **Seed and skip the warm start deliberately**: `boot(page, { warmed })`
   helpers exist in the newer specs; reuse them rather than clicking through.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
