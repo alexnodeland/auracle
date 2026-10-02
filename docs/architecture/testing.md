@@ -109,8 +109,10 @@ engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
 control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
 index and its marks (a measurement each: 13 to 16 and 13 to 15 s there),
 and both tests in `perform_offer_moments.spec.js` (offers grown, heard and
-answered: 17 to 19 and 31 s there). Twenty-two tests, ~20 min in one
-worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
+answered: 17 to 19 and 31 s there), and `audio_in.spec.js`'s capture handed
+to a standing crew (28 s on a 16-core M3 Max, not yet on CI: six picks, a
+refit and a ⚡ walk to raise the crew, then a capture). Twenty-three tests,
+~20 min in one worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
 

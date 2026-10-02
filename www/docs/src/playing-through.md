@@ -15,8 +15,8 @@ knobs.</p>
 
 The browser is asked only then: never when Auracle opens, and never when you
 open a sound that already has AUDIO IN. Once you’ve allowed an input, a sound
-with AUDIO IN opens it by itself. Before that, its module shows **ALLOW
-INPUT**.
+with AUDIO IN opens it by itself wherever the browser says it remembers your
+answer (Chrome and Edge do). Otherwise its module shows **ALLOW INPUT**.
 
 What AUDIO IN hears stays in this browser. Nothing is sent anywhere.
 
@@ -67,8 +67,9 @@ standard phrase does.
 
 ## Your inputs
 
-The first time you allow an input, each device the browser lists gets an input
-number, in the order it lists them. The number stays with the device: a sound
+The first time you allow an input, the device the browser opens is input 1,
+and each other device it lists gets the next number. The number stays with
+the device: a sound
 saved on input 2 reads the same interface next time, and a device you plug in
 later takes the next free number. There are eight.
 
