@@ -39,7 +39,7 @@ the bank head walks through what a generation is and what evolving costs.
 
 ## The node bank
 
-The rail on the right of PATCH is the instrument's **catalogue** — forty-two
+The rail on the right of PATCH is the instrument's **catalogue** — forty-three
 modules in ten signal-flow groups (sources → shape → filter → space → motion
 → dynamics → combine → modulation → shape cv → combine cv), not one alphabetical shelf. Every entry carries four things at
 rest: a **transfer-function glyph** (what this does to a wave — never a

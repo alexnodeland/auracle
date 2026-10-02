@@ -29,16 +29,16 @@ AUDIO IN has three settings and a row under them:
 | **INPUT** | Which of your inputs it reads, numbered from 1 |
 | **GAIN** | Its level, from −24 to +12 dB (unity at 67%) |
 | **CHANNEL** | Left, right, or both summed. A mono microphone is the same on all three |
-| The input line | The device on that input (*1 · MacBook Pro Microphone*). Click it to pick another |
+| The input line | The input’s name (*1 · MacBook Pro Microphone*). Click it to pick another |
 | The square | Your input’s level, before the patch |
 | **MONITOR** | Hear your input through the sound |
 | **NEW CLIP** | Capture a new clip for the model (see [the clip](#the-clip-what-the-model-hears)) |
 
 ## Hear it: MONITOR
 
-Monitoring starts off every time Auracle opens. While it is off, your input
-moves the level and nothing else, and the keys play the sound with its AUDIO
-IN silent.
+Monitoring starts off every time Auracle opens, and it turns off when you
+open a sound with no AUDIO IN. While it is off, your input moves the level and
+nothing else, and the keys play the sound with its AUDIO IN silent.
 
 1. Put on headphones. A microphone near your speakers hears the sound it is
    making and feeds back.
@@ -67,16 +67,15 @@ standard phrase does.
 
 ## Your inputs
 
-The first time you allow an input, the device the browser opens is input 1,
-and each other device it lists gets the next number. The number stays with
-the device: a sound
-saved on input 2 reads the same interface next time, and a device you plug in
-later takes the next free number. There are eight.
+The first time you allow an input, the microphone or interface the browser
+opens is input 1, and each other one it lists gets the next number. The number
+stays with what you plugged in: a sound saved on input 2 reads the same
+interface next time, and one you plug in later takes the next free number. There are eight.
 
 To change a module’s input, click its input line and pick one. It is one undo
 step, like any setting.
 
-**One device, one stream.** A device is opened once, however many modules read
+**One input, one stream.** An input is opened once, however many modules read
 it, and every one of them shows its level.
 
 **The keys hear one input.** The sound you play takes one input at a time: the
@@ -84,7 +83,7 @@ first AUDIO IN’s, in the patch’s order. Another AUDIO IN set to a different
 input shows that input’s level, and its input line says *meter only*. In the
 sound, it hears the first one’s input.
 
-**Unplugged.** If a device goes away, its modules say *unplugged* and go
+**Unplugged.** If an input goes away, its modules say *unplugged* and go
 silent, and a toast says so. Plug it back in and it opens again by itself, and
 MONITOR picks up where it was.
 

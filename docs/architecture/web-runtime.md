@@ -499,7 +499,10 @@ the voices' input in the worklet, and the clip in the engine.
 - **Inputs.** The engine's `input` knob is a slot (1 to 8); the slot → device
   list is JS-owned (`auracle-inputs` in localStorage). `renderRack` calls
   `audioIn.follow(rack)` on every redraw, which opens one `getUserMedia`
-  stream per device the bench reads and closes the rest. Each stream's one
+  stream per device the bench reads and closes the rest. Chrome and Edge
+  answer an unconstrained ask with the pseudo-device `default`, which
+  `realId` resolves to the real input (its group, else its label) before it
+  is numbered. Each stream's one
   source node fans out to an analyser per device (every module's meter), the
   worklet's input, and the clip's capture. `devicechange` and a track's
   `ended` silence what read a device that went, and reopen it when it is back.
@@ -512,7 +515,8 @@ the voices' input in the worklet, and the clip in the engine.
   `set_open(true)`; off, it writes nothing, calls `clear_input` and
   `set_open(false)`. The input view into wasm memory is re-made whenever
   `view.buffer !== wasm.memory.buffer` or the pointer moved, checked every
-  quantum, and nothing is allocated per quantum. Monitoring is never saved.
+  quantum, and nothing is allocated per quantum. Monitoring is never saved,
+  and it ends when the bench has no AUDIO IN left.
 - **The open voice.** Every patch ends in its amp envelope, gated by the keys,
   so a patch that listens would be silent with no key down. `LivePoly` builds
   such a patch one voice longer and `set_open(true)` holds that voice at C4,
@@ -520,8 +524,10 @@ the voices' input in the worklet, and the clip in the engine.
   the parameter table, carried across swaps like a held note. A patch that
   does not listen has none.
 - **The clip.** On first listen (the voices' input over −50 dBFS and the
-  session's clip still the reference) or NEW CLIP, `audio-in.js` records 6 s
-  of the source through an `auracle-tap` worklet node and posts
+  session's clip still the reference, and no capture refused since) or NEW CLIP, `audio-in.js` records 6 s
+  of the source through a one-shot `auracle-tap` worklet node (it ends its
+  processor once its take is handed back, or dropped when the capture is cut
+  short) and posts
   `set_audition_clip {samples, channels, sampleRate}` (transferred) to the
   engine worker, in the `now` lane. The reply is `audition_clip` with `ok`,
   the engine's `note`, `clip`, `remeasured` and `unmeasured`, `farmResent`

@@ -34,7 +34,7 @@ It is kept as you play:
 | Layout and settings | Rack positions, the keybed’s size and width, the scope, and the module rail |
 | **SET ASIDE** | What you unplugged, across reloads |
 | The clip | The seconds of your input AUDIO IN captured for the model, with the session |
-| Your inputs | Which device each AUDIO IN input number means, by the browser’s name for it |
+| Your inputs | Which microphone or interface each AUDIO IN input number means: the browser’s id for it and its name |
 
 AUDIO IN’s input is played and measured in the tab, and only the clip is kept.
 Monitoring is never kept: it starts off every time.

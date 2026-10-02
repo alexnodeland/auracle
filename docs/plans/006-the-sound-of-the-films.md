@@ -158,7 +158,16 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
      - the callouts *Freeze: held* (`www/video/films/playing/film.js` ~109,
        `www/video/films/view-perform/film.js` ~229) and both storyboards'
        *held* for Wander's state (`playing/storyboard.md` ~45 and ~143, and
-       `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80).
+       `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80);
+     - three films count *forty-two modules*; AUDIO IN (Plan-007 task 4) made
+       it forty-three: the circuit film's line (`www/video/films/circuit/script.json`
+       ~72), the DSP film's line (`dsp/script.json` ~62, published in
+       `www/docs/src/films.md` ~158, `dsp.vtt` ~23 and `films.json` ~345) and
+       its pill *the palette · 42 modules · 10 groups* (`dsp/film.js` ~630,
+       its comment ~2375), and the PATCH view film's line
+       (`view-patch/script.json` ~178), its callout *42 modules*
+       (`view-patch/film.js` ~150) and storyboard (`view-patch/storyboard.md`
+       ~168).
    - **Casting left to the re-script** (task 7): the `uncast` shots above.
      Each needs its line rewritten around a preset on the shortlist (or a
      Steps module added on camera), then the shot recast. view-patch's

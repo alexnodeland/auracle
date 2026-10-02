@@ -20,10 +20,10 @@ changelog that edits its own past is not a record.
   off every time Auracle opens, so a microphone never reaches the speakers
   until you ask; the module’s square shows your input’s level either way.
   Use headphones.
-- **Pick the input on the module.** Each device gets an input number that
-  stays with it, a device is opened once however many modules read it, and
-  one that is unplugged goes silent and says so, then plays again when it is
-  back.
+- **Pick the input on the module.** Each microphone or interface gets an
+  input number that stays with it, an input is opened once however many
+  modules read it, and one that is unplugged goes silent and says so, then
+  plays again when it is back.
 - **The model hears a sound with AUDIO IN through a clip of your playing**:
   six seconds captured the first time your input carries a signal, saved with
   your session. NEW CLIP captures another. Until there is one, it hears a
