@@ -593,6 +593,61 @@ mod tests {
         );
     }
 
+    /// A patch that listens (AUDIO IN) has the face of what it heard: the
+    /// face is taken from the listening render like any other, so a clip of a
+    /// 1 kHz tone lights the band holding 1 kHz, and two clips give two
+    /// faces, each on its own row.
+    #[test]
+    fn a_listening_patch_has_the_face_of_its_clip() {
+        use crate::clip::AuditionClip;
+        use crate::face::{band_edges_hz, FACE_BANDS};
+        use auracle_grammar::term::InputChannel;
+        let spec = PhraseSpec::default();
+        let clip = |hz: f64| {
+            let n = (spec.total_seconds() * 44_100.0) as usize;
+            let x: Vec<f32> = (0..n)
+                .map(|i| (0.3 * (i as f64 * hz / 44_100.0 * std::f64::consts::TAU).sin()) as f32)
+                .collect();
+            PhraseSpec {
+                clip: Some(AuditionClip::from_interleaved(&x, 1, 44_100.0, &spec).unwrap()),
+                ..spec.clone()
+            }
+        };
+        let mut listens = tree(0.5);
+        listens.root = AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: 0,
+            gain: 0.5,
+            channel: InputChannel::Both,
+        };
+        let memo = RenderMemo::default();
+        let face_of = |s: &PhraseSpec| {
+            featurize_memo(&listens, s, &memo, false)
+                .expect("a listening render vets")
+                .0
+                .face
+                .expect("it has a face")
+        };
+        let (low, high) = (face_of(&clip(1000.0)), face_of(&clip(4000.0)));
+        assert_ne!(low, high, "two clips, two faces");
+        let edges = band_edges_hz();
+        let band = |hz: f64| {
+            (0..FACE_BANDS)
+                .find(|&b| hz >= edges[b] && hz < edges[b + 1])
+                .unwrap()
+        };
+        assert_eq!(
+            low.ltas_db()[band(1000.0)],
+            0.0,
+            "1 kHz lights its own band"
+        );
+        assert_eq!(
+            high.ltas_db()[band(4000.0)],
+            0.0,
+            "4 kHz lights its own band"
+        );
+    }
+
     /// **Two clips never share a row.** A patch that listens keys by its
     /// clip (the reference's when the spec has none); a patch that does not
     /// keys the same under any clip, exactly as before clips existed; and the
