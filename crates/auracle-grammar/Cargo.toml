@@ -14,8 +14,7 @@ fugue-evo.workspace = true
 fugue-ppl.workspace = true
 rand.workspace = true
 serde.workspace = true
-thiserror.workspace = true
-
-[dev-dependencies]
-# The old-save fixtures in `genome` are JSON, the shape sessions persist in.
+# A CAPTURE's take reads through a JSON value, so an unreadable one loads
+# empty instead of failing the sound around it (`take`).
 serde_json.workspace = true
+thiserror.workspace = true

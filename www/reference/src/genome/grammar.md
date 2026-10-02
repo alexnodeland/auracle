@@ -131,14 +131,17 @@ slot that must be filled is filled.
 
 A modulation slot hangs off every module with somewhere to send it. The
 exceptions are the ones without: `Noise`, whose only site is a color switch,
-`AudioIn`, whose only continuous knob is a level, and `Mix` / `RingMod`, whose
-two inputs are both audio and whose single knob is the blend. Having two audio children is **not** itself an exception: the four
+`AudioIn`, whose only continuous knob is a level, `Mix` / `RingMod`, whose
+two inputs are both audio and whose single knob is the blend, and the two
+[player kinds](#player-kinds-scored-and-never-drawn), `Track` and `Capture`,
+whose knobs are how they listen and play. Having two audio children is **not** itself an exception: the four
 sidechained productions (comp, duck, gate, and vocoder) take two subterms and
 carry a slot as well.
 
 ## The modules
 
-Forty-four modules: **8 sources**, **20 processors**, **16 modulators**.
+Forty-six modules: **8 sources**, **22 processors** (20 the prior draws and
+2 [player kinds](#player-kinds-scored-and-never-drawn)), **16 modulators**.
 
 ```text
 sources     Vco  Supersaw  NoiseGenerator  Wavetable  KarplusStrong  FormantOsc
@@ -146,16 +149,18 @@ sources     Vco  Supersaw  NoiseGenerator  Wavetable  KarplusStrong  FormantOsc
 processors  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush
             Phaser  RingMod  Flanger  Tremolo  Vibrato  Eq  Granular  Shift
             Comp  Duck  Gate  Vocoder
+            PitchTracker (Track)  Capture        (player kinds)
 modulators  Lfo  Adsr  SampleAndHold  SlewLimiter  EnvelopeFollower  …
             StepsCv (Auracle's own: a step sequencer whose values are ports)
 ```
 
-Six processors are **binary**:
+Seven processors are **binary**:
 
 | Production | Second input | |
 |---|---|---|
 | `Mix`, `RingMod` | Audio | Merges two chains into one |
 | `Comp`, `Duck`, `Gate`, `Vocoder` | **Control** | Real sidechaining, in a typed tree |
+| `Track` | **Control** | The signal that plays the first branch |
 
 A compressor’s sidechain is not an audio input, and the type system makes
 wiring it as one impossible.
@@ -195,6 +200,118 @@ table is the one it had before the term. It is turned on at `Silence`’s 0.5%
 tilt: whether a patch listens is a choice a player makes by patching an input
 in. At 0 a tree holding one has $\log p = -\infty$ and cannot be walked,
 which is safe only because nothing can place one yet.
+
+### TRACK: an input plays the patch
+
+`Track` lets a voice or an instrument play the patch the way the keys do
+(RFC-008’s *play the patch*). It compiles to quiver’s `PitchTracker`, which
+reads pitch by YIN, a gate and a level from its `/1` branch (usually an AUDIO
+IN), and it is `#op` 20.
+
+| Knob | Site | Range |
+|---|---|---|
+| band | `#band` | low (40–500 Hz), mid (70–1000 Hz) or high (140–2000 Hz): the band the tracker searches |
+| sensitivity | `#tsens` | $\mathrm{Uniform}(0,1)$, the gate threshold on the tracker’s level scale, geometric from `TRACK_GATE_LOUD` (2.5 V) down to `TRACK_GATE_QUIET` (0.025 V); quiver’s own 0.25 V at the knob’s center. Up opens on a quieter input |
+| dynamics | `#tdyn` | $\mathrm{Uniform}(0,1)$: how far the input’s level shapes the played branch, from not at all to fully (full level at `TRACK_FULL_LEVEL`, 5 V, an input 6 dB under a full-scale sine) |
+
+**The input is the keyboard for `/0`.** While the compiler builds the played
+branch, the tracker’s pitch and gate stand where the keys’ stand everywhere
+else: a VCO there sings the tracked note (its octave knob still transposes it),
+a pluck is plucked and a mod envelope fires on every tracked onset. The
+tracker’s gate is also summed into the voice’s amp envelope with the keys’
+(either opens it), so a note sung into an AUDIO IN sounds the way a key does,
+and a key let go while the input still sounds holds the voice open until the
+input stops. Outside `/0` the keys play the patch as before, so a mix can hold
+a tracked side and a keyed side.
+
+Three consequences worth knowing:
+
+- **A chord collapses.** Every voice of a chord plays the one tracked note
+  inside `/0`: there is one input, and one pitch in it. In the audition
+  phrase the dyad’s second voice is a *follower*: it plays the note the main
+  voice’s tracker hears from its first frame, and its amp keeps its own key’s
+  gate, so it stops with the dyad.
+- **Before the first tracked note**, `/0` plays C4 (the tracker’s 0 V), and
+  between notes it holds the last note it tracked.
+- **The tracker hears what is there.** Where one note still rings under the
+  next, YIN can read the pair (see below).
+
+Rendered on the [audition clip](../audition/clips.md), a TRACK plays the
+reference figure’s notes: thirteen of its fourteen within 1.4 cents, and the
+D4 that sounds over a still-ringing E4 17 cents sharp, because YIN hears the
+pair.
+
+### CAPTURE: a recorded take as a source
+
+`Capture` records what is patched into it and plays the recording back
+(RFC-008’s *resample*). It compiles to quiver’s `Capture` and is `#op` 21.
+
+| Knob | Site | Range |
+|---|---|---|
+| play | `#play` | once (each note plays the take to its end), hold (while the note is held) or loop (round and round while held) |
+
+**Its output is its take, not its input.** `/0` is what it records; it is built
+and running, and never heard. So inserting a CAPTURE turns the chain below it
+into what is recorded, and the patch plays the take instead. Each note plays
+the take at the keys’ pitch, C4 at the speed it was recorded; an empty take
+plays silence, as an unplugged socket does.
+
+**The take is the sound’s content**, saved in the term:
+
+```json
+"take": {"format": "f32le-base64", "sample_rate": 48000.0, "length": 96000, "data": "…"}
+```
+
+It is quiver’s own `Capture` state, lossless, so a reloaded take plays back
+bit for bit. A take is bounded the way an [audition
+clip](../audition/clips.md#stored-with-the-session) is: the format tag, a rate
+no higher than `MAX_TAKE_RATE` (192 kHz), a length no longer than
+`TAKE_SECONDS` (4 s, quiver’s default `Capture` buffer) at that rate, and the
+data’s length checked before it is decoded. A take that breaks a rule never
+costs the sound: the term loads with the take empty, and a restore counts the
+sound as repaired, so the app says so. When that take was the sound’s only
+source it no longer renders, and the restore **keeps it aside** (the engine’s
+held list) instead of dropping it: out of the pool, so nothing deals, fits or
+breeds it, reported apart from the repairs (“One sound’s recording couldn’t
+be read. It’s kept safe until you record it again.”, once for each set of
+such sounds), and written back by every save with its take JSON-equal to what
+was loaded, until a readable take brings it back (`readmit_held`), measured
+as a new sound. A fragment sent with a take that couldn’t be read
+(`SetTake`, `ReplaceTree`, `InsertTree`) is refused. A take is not a trace
+site, so no walk can propose a new one, and an edit that changes only a take
+logs a lineage event whose diff is empty.
+
+A recording stops at `TAKE_SECONDS` at the voice’s rate (the record gate goes
+through a window that closes then), even into a buffer a longer, higher-rate
+take has enlarged, so what a capture records always reads back as a take.
+
+Recording is the host’s. A compiled voice has a record gate per capture and
+reads the take back from quiver’s state, and `StructOp::SetTake` puts it in the
+term. Nothing in the engine raises the gate, so a measurement render never
+records and a capture measures the same every time.
+
+### Player kinds: scored and never drawn
+
+`Track` and `Capture` are **player kinds**: a sound has one because a player put
+it there. The prior must never draw them (a drawn tree that tracks or captures
+would move every random-tree statistic, and a capture with nothing recorded is
+silence), but it must not score them at zero either: a tree the prior gives
+$\log p = -\infty$ cannot start a walk, so a player’s tracked sound could never
+be evolved.
+
+The `#op` site’s distribution, `OpKind`, does both, as `PlayerInput` does for
+`#input`. Its `sample` is the categorical over the twenty drawn kinds, exactly
+as before, so it returns the same index from the same stream and every draw is
+unchanged. Its `log_prob` scores a drawn kind as before and a player kind at
+`PLAYER_OP_MASS` (0.005, the weight of the grammar’s other two kinds a player
+puts in place). The extra mass leaves the scorer unnormalized, which is
+harmless: a walk [holds](../search/locks.md) every player kind’s `#op`, so the
+term is the same constant in every ratio it takes. `N_OPS`, which the
+refinement budget scales with, still counts the twenty drawn kinds.
+
+While AUDIO IN's weight is 0, a TRACK or CAPTURE whose input chain holds an
+AUDIO IN still scores $-\infty$ under the shipped prior, for that AUDIO IN, and
+cannot be walked; it can be from the moment AUDIO IN is turned on.
 
 ## What is not in the grammar
 
