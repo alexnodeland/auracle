@@ -2225,6 +2225,7 @@ async function dispatch(m) {
           ns = mod.cache_namespace(engine.phrase_json()) || null;
         } catch (_) { /* older engine */ }
         faceNs = ns;
+        faceStoreOpen(); // ready for the first faces copied out of the memo
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.

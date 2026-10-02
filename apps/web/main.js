@@ -420,7 +420,9 @@ function facesChanged() {
     facePaintQueued = false;
     faceRestat();
     paintFaces();
-    imageSync(); // a card waiting on its face
+    // A card waiting on its face. Only the card: the rack's readout builds the
+    // rack to measure it, and this runs on every bank render.
+    if (imageState.scope === "card") imageSync();
   });
 }
 /** The bank's mean and spread, over the faces of the rows the bank shows
@@ -519,6 +521,8 @@ function faceSlot(kind, t, { lazy = false } = {}) {
 let faceSeer = null;
 /** Ask for the lazy slots under `root` as they come into view. */
 function faceWhenSeen(root) {
+  // A list rebuilt drops its old slots: stop watching them.
+  if (faceSeer) faceSeer.disconnect();
   if (!faceSeer) {
     faceSeer = new IntersectionObserver((seen) => {
       for (const e of seen) {
