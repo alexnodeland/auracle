@@ -191,6 +191,21 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
       ([A sound of your own](../../www/reference/src/features/own-sound.md)).
       Breeding needs a fitted taste, as EVOLVE POOL does; Hold it is audio
       in (RFC-008).
+    - *Decided for the card (maintainer, 2026-10-02):*
+      - **Before the first fit**, Breed toward it adds the nearest presets
+        (`own_nearest_presets`, then `load_preset`), as the prototype does.
+        That is true, since it is adding presets, and needs no taste. After
+        the first fit it is the tilted generation (`refine` with
+        `toward: true`).
+      - **Playback:** the page keeps the decoded audio in IndexedDB, so the
+        recording plays after a reload and sits in the bank as the
+        prototype shows. It stays out of duels; the engine keeps only its
+        measurement.
+      - **Hold it** plays the recording through the named controls once
+        audio in is live: the UI stream's work, with Plan-007.
+      - **Buds** show the children growing from their parents, the pool
+        members nearest the sound, and leaning toward the recording, never
+        out of the dropped face (ADR-012).
 12. **Found along the way** (RFC-006), each a small change with its check:
     - the guide's "crossover";
     - the `not_admitted` text;
