@@ -31,8 +31,12 @@
 //!
 //! ```bash
 //! cargo run -p auracle-session --example own_census --release -- \
-//!     [sessions=2] [targets=6] [gammas=0.5,1,2] [seeds=5]
+//!     [sessions=3] [targets=6] [gammas=1,2,4,8] [seeds=5]
 //! ```
+//!
+//! The defaults are the run the reference's tables come from (about half an
+//! hour on an M3 Max under load); every arm and session is deterministic, so
+//! the same arguments print the same numbers.
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -126,6 +130,10 @@ struct Arm {
     moved: usize,
     /// Walks that ended on a patch that does not vet.
     unvetted: usize,
+    /// The end's distance to the recording for **every** walk, in job order,
+    /// `None` where the end did not vet: what the arms are paired on, walk
+    /// by walk, so a walk one arm lost cannot shift the pairing.
+    by_walk: Vec<Option<f64>>,
 }
 
 #[derive(Default)]
@@ -215,14 +223,13 @@ fn run_session(seed: u64, targets: &[&Preset], gammas: &[f64], seeds: usize) -> 
             for (a, res) in results.iter().enumerate() {
                 let arm = &mut arms[a];
                 for (j, r) in jobs.iter().zip(res) {
-                    let Some(z0) = z_of(engine, &j.seed) else {
-                        continue;
-                    };
                     let end = r.child.as_ref().unwrap_or(&j.seed);
-                    let Some(z1) = z_of(engine, end) else {
+                    let (Some(z0), Some(z1)) = (z_of(engine, &j.seed), z_of(engine, end)) else {
                         arm.unvetted += 1;
+                        arm.by_walk.push(None);
                         continue;
                     };
+                    arm.by_walk.push(Some(toward.distance(&z1)));
                     let u0 = utility(engine, &j.seed).unwrap_or(0.0);
                     let u1 = utility(engine, end).unwrap_or(0.0);
                     arm.d0.push(toward.distance(&z0));
@@ -320,12 +327,12 @@ fn run_session(seed: u64, targets: &[&Preset], gammas: &[f64], seeds: usize) -> 
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let sessions: usize = args.first().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let sessions: usize = args.first().and_then(|s| s.parse().ok()).unwrap_or(3);
     let n_targets: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(6);
     let gammas: Vec<f64> = args
         .get(2)
         .map(|s| s.as_str())
-        .unwrap_or("0.5,1,2")
+        .unwrap_or("1,2,4,8")
         .split(',')
         .filter_map(|g| g.parse().ok())
         .collect();
@@ -369,6 +376,7 @@ fn main() {
                 acc.t1.extend(x.t1);
                 acc.moved += x.moved;
                 acc.unvetted += x.unvetted;
+                acc.by_walk.extend(x.by_walk);
             }
         }
         for (acc, x) in place.err.iter_mut().zip(p.err) {
@@ -399,7 +407,7 @@ fn main() {
             "ΔE[u]",
             "end to preset"
         );
-        let untilted_d1 = arms[0].d1.clone();
+        let untilted = arms[0].by_walk.clone();
         for (a, arm) in arms.iter().enumerate() {
             let label = if a == 0 {
                 "untilted".to_string()
@@ -431,16 +439,18 @@ fn main() {
                 );
             }
             if a > 0 {
+                // Walk by walk: the same job in both arms, both ends vetted.
                 let paired: Vec<f64> = arm
-                    .d1
+                    .by_walk
                     .iter()
-                    .zip(&untilted_d1)
-                    .map(|(t, u)| t - u)
+                    .zip(&untilted)
+                    .filter_map(|(t, u)| Some((*t)? - (*u)?))
                     .collect();
                 let (m, se) = mean_se(&paired);
                 println!(
-                    "{:<10} end minus untilted end, paired: {m:+.2} ± {se:.2} σ",
-                    ""
+                    "{:<10} end minus untilted end, paired by walk ({}): {m:+.2} ± {se:.2} σ",
+                    "",
+                    paired.len()
                 );
             }
         }
