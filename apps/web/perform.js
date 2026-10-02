@@ -3069,7 +3069,8 @@ export function createPerform(host) {
     },
     true,
   );
-  let stageBuf = null;
+  // The loop: size the canvas, follow the name, and hand one frame's state
+  // to `stageDraw`, which is all that knows what the stage looks like.
   function stageFrame() {
     const s = stageOn;
     if (!s) return;
@@ -3082,16 +3083,38 @@ export function createPerform(host) {
       s.cv.height = Math.round(H * dpr);
     }
     if (s.name.textContent !== host.label()) s.name.textContent = host.label();
-    const g = s.cv.getContext("2d");
-    const still = stillMotion();
+    stageDraw(s.cv.getContext("2d"), {
+      W,
+      H,
+      dpr,
+      still: stillMotion(),
+      ink: host.ink,
+      ticks: s.ticks,
+      analyser: host.outAnalyser ? host.outAnalyser() : host.live()?.analyser,
+      tree: state.cur ? state.cur.json : null,
+    });
+  }
+
+  // One frame of the stage, from `st`: the canvas's size in CSS pixels
+  // (`W`, `H`) and its pixel ratio, reduced motion (`still`), the inks, the
+  // frequency marks (`ticks`, page elements), the output's analyser and the
+  // tree of the sound in hand.
+  // faces: the mock draws the held sound's face here, its vessel at the full
+  // height of the stage (Plan-005 task 3, `claude/faces`). Until faces land
+  // this draws the output's spectrum, mirrored in the face's coordinates
+  // (lows at the base); the faces integration replaces this function's body
+  // with the vessel, drawn from the sound's face and lit by what sounds.
+  let stageBuf = null;
+  function stageDraw(g, st) {
+    const { W, H, dpr } = st;
     // Phosphor: what was drawn fades rather than vanishing. Under reduced
     // motion, each frame is only what sounds now.
-    if (still) g.clearRect(0, 0, s.cv.width, s.cv.height);
+    if (st.still) g.clearRect(0, 0, W * dpr, H * dpr);
     else {
       g.save();
       g.globalCompositeOperation = "destination-out";
       g.globalAlpha = 0.16;
-      g.fillRect(0, 0, s.cv.width, s.cv.height);
+      g.fillRect(0, 0, W * dpr, H * dpr);
       g.restore();
     }
     const h = Math.min(H * 0.74, W * 1.1) * dpr;
@@ -3101,12 +3124,12 @@ export function createPerform(host) {
     // The frequency axis, beside the shape: where 100 Hz, 1 kHz and 10 kHz
     // sit, so a lit band can be read. Words on the page, not on the canvas,
     // which holds only what sounds.
-    s.ticks.forEach((t, j) => {
+    st.ticks.forEach((t, j) => {
       const hz = [100, 1000, 10000][j];
       t.style.top = `${((base - (Math.log(hz / ST_LO) / Math.log(ST_HI / ST_LO)) * h) / dpr).toFixed(1)}px`;
       t.style.right = `${((W * dpr - (cx - w / 2)) / dpr + 16).toFixed(1)}px`;
     });
-    const an = host.outAnalyser ? host.outAnalyser() : host.live()?.analyser;
+    const an = st.analyser;
     if (!an) return;
     if (!stageBuf || stageBuf.length !== an.frequencyBinCount) stageBuf = new Float32Array(an.frequencyBinCount);
     an.getFloatFrequencyData(stageBuf);
@@ -3136,9 +3159,9 @@ export function createPerform(host) {
     }
     for (let b = ST_BANDS - 1; b >= 0; b--) g.lineTo(cx - (half[b] * w) / 2, base - (b / (ST_BANDS - 1)) * h);
     g.closePath();
-    g.strokeStyle = host.ink.green;
+    g.strokeStyle = st.ink.green;
     g.lineWidth = 2 * dpr;
-    g.shadowColor = host.ink.green;
+    g.shadowColor = st.ink.green;
     g.shadowBlur = 18 * dpr * loud;
     g.globalAlpha = 0.9;
     g.stroke();
