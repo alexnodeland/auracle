@@ -327,6 +327,12 @@
                for every patch, and the cell keeps its place when empty. -->
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
+            <!-- A patch from nothing, at the right of the name's row as the
+                 specimen has it: NEW PATCH, then CLEAR and BACK TO ‹name›
+                 while one is open. Filled by patch.js (`renderTools`). The
+                 callout gives way to it (it ellipsizes), so neither row of
+                 the header grows. -->
+            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
           </div>
           <!-- The act the whole app is for, on the name's row: beside the
                thing it breeds from, and above the locks that prepare it. -->
@@ -471,6 +477,10 @@
                 <span class="fh-copy">This layout has spread past the frame.</span>
                 <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
               </div>
+              <!-- The model's guess for the next module: GUESS · FILTER and its
+                   reason in the model's italic, over the rack's top left. Its
+                   module is drawn at its socket in the rack (patch.js). -->
+              <div class="guess-read" id="guess-read" role="status" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
             <!-- The final say on the split below, and the in-house pattern for

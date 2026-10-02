@@ -240,26 +240,41 @@ the same way.
 
 ## The model's guess and the cable probe
 
-Two Plan-005 task 9 surfaces the page does not call yet (PATCH's task 7 draws
-them). Both are about the patch in hand, and each reply carries the tree it
+Two Plan-005 task 9 surfaces, drawn by PATCH (task 7, `apps/web/patch.js`).
+Both are about the patch in hand, and each reply carries the tree it
 was computed for (`edit_tree_json`), so a page that has moved on drops it, as
 it drops a stale pre-placement audition.
 
-- **`guess`** (`later`, holds the floor; `{token, at?}`): the module the model
+- **`guess`** (`later`; `{token, at?}`): the module the model
   guesses the player would add next
-  ([reference](../../www/reference/src/search/guess.md)). `guessRun` asks the
-  engine what it owes (`guess_plan`: the patch first if unmeasured, then the
-  output's candidates in render order), renders the first `GUESS_FLOOR` (8)
-  with `memo_render`, one per turn, breathing between them as PERFORM's
-  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of render
-  time is spent (render time only, checked after each render, so it can run
-  over by one), and posts `guess` with `{token, tree, data}`: the ranking
-  (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
-  the grammar's ceiling, `no_patch` with nothing open). It gives way to work
-  the player asks for and resumes from the memo. `at`, a module's key, ranks
-  that deeper socket instead of the output's. Rendering the candidates on a
-  crew (`farm_render`, then `memo_absorb`; each job's `cache` is its key in
-  the farm's store) is not wired yet.
+  ([reference](../../www/reference/src/search/guess.md)). It holds the
+  floor throughout, in two phases:
+  - `guessCrewPhase`: it plans first, and a refusal (`no_taste`, `full`) or
+    a guess the memo already holds raises no crew. Otherwise, where a walk
+    crew can be had
+    (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
+    walks), it plans every candidate (`guess_plan` with limit 0) and hands
+    them out one `farm_render` per idle worker (the farm's `job`, its `done`
+    routed by `guessDone`; a lost worker gives its job back, `guessLost`),
+    absorbing each with `memo_absorb` as it lands, for at most
+    `GUESS_BUDGET_MS` (3 s) of wall-clock time from when the crew is up
+    (`crewRenders`). The crew's idle timer starts when it ends.
+  - `guessRun`: renders with `memo_render` whatever of the
+    first `GUESS_FLOOR` (8) is still owed (nothing after a crew that rendered
+    them; all of them with none), one per turn, breathing between them as
+    PERFORM's measurement does, and stops rendering once `GUESS_BUDGET_MS` of
+    render time is spent (render time only, checked after each render, so it
+    can run over by one).
+  
+  It posts `guess` with `{token, tree, data}`: the ranking (`guess_rank`,
+  over every candidate after a crew, the first eight without), or `{reason}`
+  (`no_taste` before the first fit, `full` at the grammar's ceiling,
+  `no_patch` with nothing open). It gives way to work the player asks for and
+  resumes from the memo. `at`, a module's key, ranks that deeper socket
+  instead of the output's. PATCH keeps one `guess` out at a time, asks once
+  the bench settles after an open or a structural edit, a refit or a skip
+  (never after a knob turn alone), and drops a ranking made on a structure
+  it has since left.
 - **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
   edit with the same replies, remembered so that a later edit back to the
   tree before it (⌘Z) counts as a skip. A guess no longer current for the
@@ -273,7 +288,26 @@ it drops a stale pre-placement audition.
   the rack draws them (`from`, `to`, and both uids), in the live meter's dB
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
-  sound, the worklet's meter reads the cables live.
+  sound, the worklet's meter reads the cables live. PATCH asks once the bench
+  has settled (`benchSettled`, no knob held, about 450 ms after an edit's
+  reply, and 1.2 s after an open or PATCH coming into view, `ARRIVE_MS`, so
+  a click on another sound is not left waiting behind a render) and only
+  while PATCH is shown, with at most one probe at the
+  engine (one asked meanwhile waits for its answer, then measures the tree
+  on screen), keys each level by the cable's `from>to`, and drops a reply whose `tree` is not the bench's
+  (`benchTreeJson`), asking again. At rest a cable's light is its measured
+  level (patch.js `restLevel`, read by `buildRack` and `repaintMeasuredFlow`);
+  a structure not measured yet is unlit, with hollow marks.
+
+PATCH's own module (`patch.js`, created as `patchView` in main.js) also holds
+a patch from nothing (NEW PATCH: one `edit_set_tree` that sets the root to an
+empty `Silence` socket and keeps the amp; CLEAR, BACK TO ‹name›) and the module
+sheet on touch, whose sliders write through `sendEdit` and the one ordered
+lane, holding `knobDragging` while a finger is down so no knob is rebuilt
+under it. It reaches main.js only through the host it is handed, and main
+calls it back at a handful of points: `onWorker` (its three replies),
+`benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
+`committed`, and `shown`/`hidden`.
 
 ## The breed job
 

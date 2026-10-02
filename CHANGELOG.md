@@ -27,6 +27,35 @@ changelog that edits its own past is not a record.
   one offer had got when another began no longer changes what either finds.
   They are the same kind of walk on the same target as before.
 
+### Added: PATCH builds from nothing, guesses the next module, and lights each cable by its level
+
+- **NEW PATCH** empties the sound you're playing down to its amp envelope, so
+  you can build one module at a time. It is named *New patch*, its caption
+  counts its modules and says *nothing to hear yet* until it makes a sound,
+  **CLEAR** empties it again, and **BACK TO** *the sound's name* (or Esc)
+  returns to where you started. A new patch with modules in it waits for you
+  under NEW PATCH. Deleting a source now leaves its socket empty, set aside
+  with an undo, where it used to be refused, so a patch can be taken back to
+  nothing one module at a time.
+- **The model guesses the next module.** Once it has fitted your taste,
+  PATCH shows *GUESS · REVERB* over the rack with its reason in the model's
+  italic (*it moves toward still, as your picks lean · 67% · leaning*), and
+  draws the module dashed amber where it would go. Click it to add it; its ×
+  skips it, and that kind stays away from that place for this patch. Undoing
+  a guess you added counts as a skip. When it isn't sure the module helps,
+  the line ends *it may not help*. Before the warm start it shows nothing. It
+  renders the candidates on a render crew where the machine has cores to
+  spare, and the likeliest eight on the engine's own thread where it hasn't.
+- **Each green cable carries light by its level.** Once an edit settles, the
+  engine renders the phrase once more and measures every audio cable; a
+  cable's brightness is that level, and a mark on its middle lights one bar
+  per third of the meter's range, with the number on hover. Before, a cable's
+  brightness at rest was an estimate from the mixers above it. Modulation
+  cables are not measured, and carry no mark.
+- **On a touch screen, a tapped module opens a sheet with every setting**:
+  each knob as a wide slider with − and + steps, each named setting as its
+  choices, and REMOVE MODULE at its foot.
+
 ### Changed: TASTE draws each pick, and LEARNING is the model room
 
 - **A pick draws as an arrow on TASTE's map, and every glow moves with
