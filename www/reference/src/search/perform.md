@@ -612,7 +612,8 @@ show yet.
 
 ### Names
 
-Three of the prototype’s names are changed, as proposals for the maintainer
+Three of the prototype’s names are changed, and the maintainer approved them
+with Heft and the end words below on 2026-10-01
 ([voice](https://github.com/alexnodeland/auracle/blob/main/www/brand/voice.md)):
 
 - **Round** (hard · round) for Softness (hard · soft): the voice’s word table
@@ -625,8 +626,9 @@ Three of the prototype’s names are changed, as proposals for the maintainer
   the walk behind it (`Engine::drift`). Breath would read as Air’s breathiness,
   and Sweep Machine is a preset.
 
-Heft (slight · heavy), the twelfth, is new. A word new to the app gets its row
-in the voice’s word table before it appears there.
+Heft (slight · heavy), the twelfth, is new. The new words get their rows in
+the voice’s word table with the palette’s panel, when the app first shows
+them.
 
 ## Drift: a local walk on the live knobs
 

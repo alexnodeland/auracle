@@ -198,10 +198,12 @@ wasm (`palette_cost.mjs`, every fourth preset) the eighteen take a mean
 Decisions:
 - The prototype's blends of the six are not used: five pairs were one
   direction. Each of the twelve is its own direction over φ.
-- The twelfth control is Heft, in Weight. Round, Throb and Sway are proposed
-  for the prototype's Softness, Wobble and Drift (the voice's word table
-  defines round; Wobble Board is a preset; drift is WANDER's). Each new word
-  needs its row in `www/brand/voice.md` before the palette's panel shows it.
+- The twelfth control is Heft, in Weight. Round, Throb and Sway replace the
+  prototype's Softness, Wobble and Drift (the voice's word table defines
+  round; Wobble Board is a preset; drift is WANDER's). The maintainer
+  approved the four names and their end words on 2026-10-01. Each new word
+  gets its row in `www/brand/voice.md` with the palette's panel, when the
+  app first shows it.
 - The engine wires the six unless the worker names others (`controls` on
   `perform_wire`), so the app is unchanged. The palette's panel (task 5)
   sends the controls placed on it, and names each one back by the wiring's

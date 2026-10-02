@@ -429,9 +429,12 @@ Each is decided as its task in Plan-005 comes up.
    reaches between 47% (Throb) and 94% (Distance) of the 62 presets, and a
    median preset is reached by 12 of the eighteen against 3 of the six.
    Measuring all eighteen doubles a measurement's renders (median 25 to 49),
-   so the panel verifies only the controls placed on it. The twelfth is Heft
-   (Weight), and three of the prototype's names are proposed instead
-   (Round for Softness, Throb for Wobble, Sway for Drift). The definitions,
+   so the panel verifies only the controls placed on it. The definitions,
    tables and cost are in the reference
    ([The palette](../../www/reference/src/search/perform.md#the-palette-eighteen-directions))
    and [Plan-005](../plans/005-the-sound-at-the-centre.md#measured-task-9c).
+   *Names approved (2026-10-01):* the maintainer approved Round
+   (hard · round) for Softness, Throb (steady · throbbing) for Wobble, Sway
+   (fixed · swaying) for Drift, and Heft (slight · heavy) as the twelfth,
+   in Weight. Their rows in `www/brand/voice.md`'s word table come with the
+   palette's panel, when the app first shows them.
