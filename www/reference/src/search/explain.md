@@ -22,8 +22,8 @@ The engine side lives in `auracle_features::explain` (the portrait),
 ## What a figure asks for
 
 When a player asks about the control at panel position $i$ (? with the
-pointer over it or focus on it, its ? chip, or a long press on a touch
-screen), PERFORM hands over the performed state twice, as knob overrides on
+pointer over it or keyboard focus on it, its ? chip, or a long press on a
+touch screen), PERFORM hands over the performed state twice, as knob overrides on
 the tree it is playing (`explainOf`):
 
 - **made**: every knob as it sounds now, but with control $i$ at $c = 0$
@@ -43,10 +43,18 @@ $k$'s unit direction in σ (`along`, the same dot product as a wiring's
 `position`). A render that does not vet answers `{error}`.
 
 Replies are cached by the page under the control, the tree, both override
-sets and the model's observation count, so switching back to a control costs
-nothing. An open figure follows its control: a turn, once it has rested for
-300 ms (`FOLLOW_MS`), a new measurement or a drift changes what `explainOf`
-returns, and the figure asks again.
+sets and the wiring's words (measured or not, a search control or not, the
+knobs it turns), so switching back to a control costs nothing; the page does
+not read `along`, so the model's revision is not in the key. One request is
+out at a time: a key asked for while one is out is not queued, and when the
+reply lands the answer is built again and asks for whatever its control is
+then, as the lesson does. An open figure follows its control: a turn, once it
+has rested for 300 ms (`FOLLOW_MS`; the page's 400 ms check leaves a turn in
+progress to it), a new measurement or a drift changes what `explainOf`
+returns, and the figure asks again. Measured in the browser, a three-second
+drag with an answer open sends at most two requests
+(`explain.spec.js`). While they render, the last figure stays, dimmed, under
+*measuring…*.
 
 ## The portrait
 
@@ -71,9 +79,16 @@ against the bank, which is why the lesson calls it "its spectrum".
 `centroid_mean`, `rolloff_mean` and `zcr_mean` from φ's log axis to Hz;
 `attack_s` to ms; `crest` and `high_ratio` to dB; `tail_ratio` to the last
 300 ms against the phrase in dB (floored at −60, φ's own floor); `rms_mean` to
-dBFS; `bass_fraction` to %; `held_centroid_std` in octaves; and the three
-motion bands from φ's $0.5\log_2$ of a variance to a standard deviation in
-octaves. `facts_read_phi_in_its_units` pins each inversion.
+dBFS; `bass_fraction` to %; `held_centroid_std` from φ's log axis to
+octaves (one unit of that axis is the span from 20 Hz to Nyquist, about
+10.1 octaves at 44.1 kHz, so it is multiplied by
+$\log_2(f_\text{Nyquist}/20)$); and the three motion bands from φ's
+$0.5\log_2$ of a variance to a standard deviation. That deviation is not in
+octaves alone: each band sums the variance of the held note's brightness, in
+octaves, and its level, in doublings (6 dB), floored at 0.01, so the sentence
+gives it as a number with both named, and its floor as *none*.
+`facts_read_phi_in_its_units` pins the inversions to Hz, ms, dB, %, octaves
+and the bands. `flux_mean` stays the index φ keeps, 0 to 1, said as one.
 
 ## What each figure draws
 
@@ -90,10 +105,10 @@ coordinate made then turned:
 | PUNCH | the level | the peaks over the average (`crest`) |
 | HEFT | the level | the frames' level (`rms_mean`) |
 | SPACE, DISTANCE, HAZE | the level, the last 300 ms shaded | the tail (`tail_ratio`) |
-| MOTION | the held note's brightness or level, whichever the turn moved more (an octave against 6 dB, φ's currency) | the brightness's wander (`held_centroid_std`) |
-| THROB, SWAY | the same | the 2–8 Hz or 0.5–2 Hz band (`motion_mid`, `motion_slow`) |
+| MOTION | the held note's brightness or level, whichever the turn moved more (an octave against 6 dB, φ's currency) | the brightness's wander (`held_centroid_std`), in octaves |
+| THROB, SWAY | the same | the 2–8 Hz or 0.5–2 Hz band (`motion_mid`, `motion_slow`), brightness and level together |
 | GRIT, LO-FI | the held note's harmonics | flatness, in dB (`flatness_mean`) |
-| BITE | the held note's harmonics | the frame-to-frame change (`flux_mean`) |
+| BITE | the held note's harmonics | the frame-to-frame change (`flux_mean`), an index from 0 to 1 |
 
 The sentence's second half is the wiring's: the knobs it turns on this
 sound. For a search control it is the panel's own words (nothing here turns
@@ -108,10 +123,10 @@ Under reduced motion every figure is drawn whole at once.
 
 ## The lesson's filter
 
-The lesson renders the sound in hand three ways, each one `lesson_filter`
-call in `soon`: as it is (no cutoff: the first step's shape and sound), and
-through a lowpass at the cutoff the player drags to, one request out at a
-time with the latest cutoff waiting for it.
+The lesson renders the sound in hand with `lesson_filter`, one call in `soon`
+per render: once as it is (no cutoff: the first step's shape and sound), and
+once for each cutoff the player drags to, one request out at a time with the
+latest cutoff waiting for it.
 
 - **The filter** is the grammar's own: an `AudioNode::Filter` of kind
   `SvfLp` at the knob `cutoff`, resonance `LESSON_RESONANCE` (0.345, a
@@ -119,6 +134,21 @@ time with the latest cutoff waiting for it.
   3 dB down at it), inserted on the output below any stereo effect that ends
   the chain (`insert_at_output`, the walk the Bright and Body grafts already
   use). The patch itself is never changed.
+- **A patch with no room** for one more module (the grammar's size ceilings:
+  16 of 150 pool draws of the shipped seed, none of the 62 presets) gets the
+  same filter after the whole voice instead (`placement: "after"`):
+  `lowpass_apply` runs quiver's `Svf` over the rendered phrase, vetted and
+  normalized again. Nothing keytracks it there, so its corner is the held
+  note's on every note, and the lesson says so.
+  `a_patch_with_no_room_gets_the_filter_after_it` pins it. Measured by
+  `explain_lesson` on those draws at a cutoff of 0.5: 133 rendered inside,
+  16 after, 1 silent.
+- **When a render fails**, the reply's `error` stands for its portrait
+  (`no_tree`, `silent`, `vet`). The page says why in a sentence (words.js
+  `lessonTrouble`), draws no curve or readout for that cutoff and plays
+  nothing under *through it*; a cutoff that failed may render at another, so
+  a drag still asks. When the sound itself fails, or its tree cannot be read,
+  the lesson asks nothing more.
 - **Its cutoff** is the knob's corner on the held note, `cutoff_hz`: quiver's
   `20 · 1000^x` Hz, which keytracking (`KEYTRACK_AMT`, half an octave per
   octave from C4) leaves unmoved on C4. PATCH prints a filter's cutoff knob in
@@ -131,7 +161,9 @@ time with the latest cutoff waiting for it.
   gain on a sine at C4 within 0.25 dB, for four cutoffs and resonances.
 - **Its sound** is the filtered render's audition at the level every audition
   plays at (`audition_pcm`), looped by the page and swapped in place when a
-  new cutoff lands.
+  new cutoff lands. Every render is normalized to −18 LUFS (`TARGET_LUFS`)
+  as the pool's are, so a lower cutoff is heard darker, not quieter, and its
+  spectrum is drawn against its own loudest band.
 
 ## What it costs
 
@@ -163,6 +195,9 @@ prototype. The app's controls are not effects, so the engine was followed:
 - **SNAP, MOTION, GRIT and SPACE** were an envelope, an LFO, a waveshaper's
   curve and a reverb's tail. The app draws the onset, the held note's
   brightness, its harmonics, and the phrase's level and tail, as rendered.
+- **The patch with no room.** The specimen's filter is a knob on its fixed
+  chain; the app's goes after the voice on the one pool sound in ten that
+  has no room for it, and says so.
 - **The lesson's filter is added, not BRIGHT.** The specimen's lesson drags
   BRIGHT; the app's adds the grammar's lowpass to a copy, so "BRIGHT turns a
   filter like this one, on any sound" became a sentence from this sound's

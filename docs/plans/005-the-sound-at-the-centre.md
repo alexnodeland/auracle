@@ -245,6 +245,22 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
       - ⌘K's two entries wait for the shell (task 2), and the specimen's
         other askables (a bank row's liking, the pair, the map's directions,
         the face) for their tasks.
+    - *After review (2026-10-02):*
+      - the lesson's filter cannot go inside a patch at the grammar's size
+        ceilings: 16 of 150 pool draws of the shipped seed (none of the 62
+        presets), measured with `explain_lesson` at a cutoff of 0.5 (133
+        inside, 16 with no room, 1 silent). Those sounds now get the same
+        filter after the voice (`lowpass_apply` over the rendered phrase, its
+        corner the held note's on every note), and the lesson says so; a
+        render that still fails is said in words, drawn and played as
+        nothing;
+      - a figure keeps one request out (a drag with an answer open sends at
+        most two), and says *measuring…* while it waits (voice.md's new row;
+        *listening…* stays PERFORM's);
+      - the maintainer approved **cutoff**, **lowpass**, **lesson** and
+        **figure**/**answer** as words, with rows in voice.md;
+      - left for faces (#102): sharing the band constants with `face.rs`
+        and drawing the face at the `faces:` marker.
 11. **A sound of your own.**
     - φ is computed from a decoded file (`auracle-features`, a wasm binding).
     - The sound takes its place on the map, and its nearest sounds are shown.

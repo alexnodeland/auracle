@@ -26,7 +26,9 @@ changelog that edits its own past is not a record.
   sound.** A lowpass filter from the instrument's own modules goes on the
   sound you're playing; drag its cutoff, see the filter's curve and the
   sound's shape change, and hear it, rendered at each position. The sound
-  itself is left as it was.
+  itself is left as it was. A sound with no room for one more module gets
+  the filter after it instead, and the lesson says so; a render that fails
+  is said, and nothing is played in its place.
 - On a touch screen, a long press on a control now opens its answer, whose
   **HEAR IT** plays the sweep the long press used to.
 

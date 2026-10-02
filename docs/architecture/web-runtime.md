@@ -237,17 +237,24 @@ figure is what the engine measured on the sound in hand, never a recipe
   between the two, and answers `explain` with `{token, tree, k, made,
   turned}` or `{…, error}`. A render that does not vet answers `{error}` in
   its place. The page keys replies by the control, the tree, both override
-  sets and the observation count, and drops a reply whose token it no
-  longer waits for after caching it.
+  sets and the wiring's words, keeps one request out at a time (a key
+  asked for meanwhile is not queued; the answer asks for its control's
+  current key when the reply lands), and leaves a turn in progress to its
+  300 ms follow timer, so a drag never stacks renders in `soon`: walks
+  yield to `soon`, and a pile of figures there would hold a generation up.
 - **`explain_lesson`** (`soon`; `{token, tree, overrides, cutoff}`): one
   `lesson_filter` render, the performed state with the grammar's lowpass at
-  `cutoff` on its output (none: the sound as it is), answered with `{token,
-  tree, cutoff, data, buffer, sampleRate}` (`buffer` transferred). The page
-  keeps one out at a time and sends the latest cutoff when it lands.
+  `cutoff` on its output (none: the sound as it is; no room for one more
+  module: after the voice, `placement: "after"`), answered with `{token,
+  tree, cutoff, data, buffer, sampleRate}` (`buffer` transferred, empty when
+  `data.error`). The page keeps one out at a time and sends the latest
+  cutoff when it lands; after a failed plain render, or a tree it cannot
+  read, it asks nothing more.
 
 Neither touches the pool, the bench or the log. An open figure follows its
 control (perform.js calls `host.controlTurned`, and the figure asks again
-once the turn has rested for 300 ms) and closes when its view does. A long
+once the turn has rested for 300 ms) and closes when its view does, and when
+booth mode's attract starts (`host.attractStarted`). A long
 press on a control on a touch screen asks (`host.askHold`) instead of
 sweeping; with a mouse it still sweeps.
 
