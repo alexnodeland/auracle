@@ -45,7 +45,6 @@ use auracle_taste::{
     TasteModel, TastePosterior,
 };
 use fugue::Trace;
-use fugue_evo::inference::model::EvolutionModel;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -53,8 +52,7 @@ use serde::{Deserialize, Serialize};
 use crate::calib::{calibration, Calibration, Forecast};
 use crate::farm::{draw_seed, Draw, PreFeaturized};
 use crate::naming::{claim_name, NameScale};
-use crate::surrogate::SurrogateFitness;
-use crate::walk::{run_walk, walk_on, walk_seed, WalkContext, WalkJob, WalkResult};
+use crate::walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult};
 
 /// The φ coordinate names, as owned strings (what the log records).
 pub fn phi_names() -> Vec<String> {
@@ -2088,7 +2086,7 @@ impl Engine {
     /// spurious kind, which produces more evidence about it, which is not the
     /// same as producing more evidence *for* it. A coefficient whose σ equals
     /// its mean tilts half as hard; one that is mostly noise tilts not at all.
-    fn biased_prior(&self) -> PatchGrammarPrior {
+    pub(crate) fn biased_prior(&self) -> PatchGrammarPrior {
         let mut prior = self.prior.clone();
         let eta = self.cfg.proposal_tilt;
         let Some(p) = &self.posterior else {
@@ -2327,220 +2325,6 @@ impl Engine {
             self.style_names.resize(k + 1, String::new());
         }
         self.style_names[k] = name.trim().chars().take(24).collect();
-    }
-
-    /// [`Self::refine_one`] for the performance surfaces, which walk without
-    /// inserting anything into the pool (see [`crate::perform`]). Never
-    /// [`RefineOutcome::NoTaste`]: without a posterior it walks the vetted
-    /// prior instead.
-    pub(crate) fn refine_walk<R: Rng>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        locked: &HashSet<String>,
-        steps: usize,
-    ) -> Result<PatchTree, RefineOutcome> {
-        if self.posterior.is_some() && self.standardizer.is_some() {
-            return self.refine_one(rng, seed, locked, steps);
-        }
-        let fitness = crate::perform::VetOnlyFitness {
-            phrase: self.cfg.phrase.clone(),
-            memo: self.memo.clone(),
-        };
-        self.walk_with(rng, seed, locked, steps, fitness)
-    }
-
-    /// The same locked walk on a fitness the caller built: PERFORM's aimed
-    /// offer ([`Engine::offer_toward`]) hands it a
-    /// [`crate::perform::TiltedFitness`] around the target
-    /// [`Self::refine_walk`] would choose.
-    pub(crate) fn walk_fitness<R, F>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        locked: &HashSet<String>,
-        steps: usize,
-        fitness: F,
-    ) -> Result<PatchTree, RefineOutcome>
-    where
-        R: Rng,
-        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.walk_with(rng, seed, locked, steps, fitness)
-    }
-
-    /// A **local** Metropolis walk over the knobs in `free` for the
-    /// performance drift: each step picks one free knob uniformly, proposes
-    /// `v + σ·N(0, 1)` reflected into the knob domain, and accepts on the
-    /// same target the refinement walks use — `π_β ∝ p_grammar · exp(β·E[u])`
-    /// scored by the same [`EvolutionModel`] (or the vetted prior before any
-    /// taste, as [`Self::refine_walk`]). The reflected Gaussian is symmetric,
-    /// so the ratio is the target ratio alone and the walk is exact MH.
-    ///
-    /// Why not [`Self::walk_with`]: fugue's adaptive single-site kernel
-    /// starts each fresh chain with a wide proposal on a unit-interval knob,
-    /// and measured over 12 presets an 8-step "drift" moved some knob by 0.3–
-    /// 0.85 of its range — a jump, glided. A drift should wander, and how
-    /// far is the Wander dial's to say: `sigma`.
-    pub(crate) fn local_walk<R: Rng>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        free: &[String],
-        steps: usize,
-        sigma: f64,
-    ) -> Result<PatchTree, RefineOutcome> {
-        if free.is_empty() {
-            return Err(RefineOutcome::NoMove);
-        }
-        match (&self.posterior, &self.standardizer) {
-            (Some(p), Some(s)) => {
-                let fitness = SurrogateFitness {
-                    posterior: Arc::clone(p),
-                    standardizer: Arc::clone(s),
-                    phrase: self.cfg.phrase.clone(),
-                    memo: self.memo.clone(),
-                };
-                self.local_walk_on(rng, seed, free, steps, sigma, fitness)
-            }
-            _ => {
-                let fitness = crate::perform::VetOnlyFitness {
-                    phrase: self.cfg.phrase.clone(),
-                    memo: self.memo.clone(),
-                };
-                self.local_walk_on(rng, seed, free, steps, sigma, fitness)
-            }
-        }
-    }
-
-    /// [`Self::local_walk`] over one fitness, with the target model built
-    /// once: `biased_prior` clones the prior and scans the pool, and doing
-    /// that per step made every drift step pay it again.
-    fn local_walk_on<R, F>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        free: &[String],
-        steps: usize,
-        sigma: f64,
-        fitness: F,
-    ) -> Result<PatchTree, RefineOutcome>
-    where
-        R: Rng,
-        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
-        let score = |t: &PatchTree| -> f64 { model.score(t).1.total_log_weight() };
-        let mut cur = seed.clone();
-        let mut w = score(&cur);
-        if !w.is_finite() {
-            return Err(RefineOutcome::OutsideSupport);
-        }
-        let sigma = sigma.clamp(1e-3, 0.5);
-        for _ in 0..steps {
-            let addr = &free[gen_index(rng, free.len())];
-            let Some(v) = crate::perform::continuous_knobs(&cur)
-                .into_iter()
-                .find_map(|(a, v)| (a == *addr).then_some(v))
-            else {
-                continue;
-            };
-            // Box–Muller: one standard normal from two uniforms.
-            let (u1, u2): (f64, f64) = (rng.gen::<f64>().max(1e-300), rng.gen());
-            let z = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
-            let mut nv = v + sigma * z;
-            // Reflect into [0, PARAM_MAX]: symmetric, so no Hastings term.
-            let top = auracle_grammar::PARAM_MAX;
-            for _ in 0..4 {
-                if nv < 0.0 {
-                    nv = -nv;
-                } else if nv > top {
-                    nv = 2.0 * top - nv;
-                } else {
-                    break;
-                }
-            }
-            let nv = auracle_grammar::clamp_param(nv);
-            let Ok(cand) =
-                auracle_grammar::set_param(&cur, addr, auracle_grammar::ParamValue::Continuous(nv))
-            else {
-                continue;
-            };
-            let nw = score(&cand);
-            if nw.is_finite() && (nw >= w || rng.gen::<f64>().ln() < nw - w) {
-                cur = cand;
-                w = nw;
-            }
-        }
-        cur.clamp_domains();
-        if cur == *seed {
-            Err(RefineOutcome::NoMove)
-        } else {
-            Ok(cur)
-        }
-    }
-
-    /// Run locked MH refinement from one seed. Returns the end state if it
-    /// differs from the seed, otherwise the reason it does not.
-    fn refine_one<R: Rng>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        locked: &HashSet<String>,
-        steps: usize,
-    ) -> Result<PatchTree, RefineOutcome> {
-        let (posterior, standardizer) = match (&self.posterior, &self.standardizer) {
-            (Some(p), Some(s)) => (Arc::clone(p), Arc::clone(s)),
-            _ => return Err(RefineOutcome::NoTaste),
-        };
-        let fitness = SurrogateFitness {
-            posterior,
-            standardizer,
-            phrase: self.cfg.phrase.clone(),
-            memo: self.memo.clone(),
-        };
-        self.walk_with(rng, seed, locked, steps, fitness)
-    }
-
-    /// The locked walk ([`crate::walk`]'s `walk_on`) on this engine's current
-    /// target: the prior tilted by the posterior as the pool stands now, and
-    /// the configured β and keep rule. [`Self::refine_one`] hands it the taste
-    /// surrogate; the performance surfaces hand it
-    /// [`crate::perform::VetOnlyFitness`] when no taste has been fitted yet.
-    fn walk_with<R, F>(
-        &self,
-        rng: &mut R,
-        seed: &PatchTree,
-        locked: &HashSet<String>,
-        steps: usize,
-        fitness: F,
-    ) -> Result<PatchTree, RefineOutcome>
-    where
-        R: Rng,
-        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        walk_on(
-            self.biased_prior(),
-            self.cfg.beta,
-            self.cfg.refine_keep,
-            fitness,
-            rng,
-            seed,
-            locked,
-            steps,
-        )
     }
 
     /// How many distinct candidate pairs the exposure tally currently tracks.
@@ -3352,7 +3136,7 @@ impl Engine {
         // The one place a refined child meets its seed, and therefore the one
         // place its node identities can be recovered.
         //
-        // `refine_one` runs typed MH over the *trace*, and every accepted step
+        // the locked walk (`walk::walk_on`) runs typed MH over the *trace*, and every accepted step
         // rebuilds the whole genome through `crate::genome`'s decoder — a trace
         // is a map from address to value and has no room for a uid, so what
         // comes back is structurally almost the seed and completely anonymous.

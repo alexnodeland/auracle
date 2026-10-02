@@ -41,11 +41,13 @@ const logNote = (text, detail) =>
 
 // ---------- long-op signalling ----------
 //
-// `engine.fit()`, PERFORM's offers and drifts, and a walk run here (a
-// generation's or ⚡'s, when there is no farm to walk it) are *synchronous*
-// wasm calls that run for seconds. For their whole duration this worker
-// services no messages at all: a `render` asked for the instant the user
-// pressed ▶ sits in the queue behind them.
+// `engine.fit()`, a walk run here (a generation's or ⚡'s, when there is no
+// farm to walk it), and PERFORM's offers and drifts on a binary without jobs
+// (see `walkRun`) are *synchronous* wasm calls that run for seconds. For their
+// whole duration this worker services no messages at all: a `render` asked
+// for the instant the user pressed ▶ sits in the queue behind them. (PERFORM's
+// offers and drifts are otherwise cut into steps and still announce
+// themselves, so "busy" there means "long work is in hand", not "deaf".)
 //
 // That is a latency problem, not a correctness one — but main can only tell a
 // slow render from a lost one by the clock, and on that clock a live render
@@ -1413,6 +1415,99 @@ async function measure(m) {
     JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed), ctl)));
 }
 
+// ---------- PERFORM's walks, in pieces ----------
+//
+// An offer is a walk of twenty steps (forty in Roam, up to four times that
+// with locks, and an aimed one may walk up to three times), each step a phrase
+// render, and it was one synchronous call: about 18 renders for the Offer
+// button's, 25 for a search control's. A pick (`perform_record`, in `now`)
+// asked for while a *spare* was growing in the background waited for all of
+// them. On a CI runner that was 62 s for the first spare, and a keep, a pick
+// and a re-centre all stood behind it. Wander's drift (12 renders) did the
+// same.
+//
+// The engine now begins an offer or a drift as a job (`perform_offer_begin`,
+// `perform_drift_begin`) that this thread advances one step (one proposal: at
+// most one render) at a time
+// (`perform_job_step`), answering the player between steps (`breathe`) as
+// `measure` does between renders. It holds the floor, so two do not take twice
+// as long each. A spare nobody is waiting for (`later`) gives the floor up the
+// moment long work the player asked for is waiting, and goes back to the front
+// of its lane with its job intact. A walk whose patch was left behind
+// (`retire`) is dropped at its next step instead of finishing for nothing.
+//
+// The result is the offer the one call gives. The job draws from its own
+// stream, seeded when it begins, and reads the target as it stood then, so the
+// player's answer in between, or another walk, cannot change what it finds
+// (natively `a_stepped_walk_is_the_walk`; in the bindings
+// `a_stepped_offer_gives_the_reply_the_one_call_gives`).
+async function walkRun(m) {
+  const drift = m.type === "perform_drift";
+  const [type, field] = drift ? ["perform_drifted", "drift"] : ["perform_offered", "offer"];
+  const ov = JSON.stringify(m.overrides || []);
+  const locks = JSON.stringify(m.locks || []);
+  const control = Number.isInteger(m.control) ? m.control : undefined;
+  const sign = Number.isFinite(m.sign) ? m.sign : undefined;
+  if (typeof engine.perform_job_step !== "function") {
+    // A binary without the jobs (see this file's header): the one call.
+    performReply(m, type, field, true, () =>
+      JSON.parse(
+        drift
+          ? engine.perform_drift(m.tree, ov, locks, m.steps || 12, m.sigma || 0.05)
+          : engine.perform_offer(m.tree, ov, locks, m.steps || 40, control, sign),
+      ));
+    return;
+  }
+  const retired = () => {
+    if (m.job != null) engine.perform_job_drop(m.job);
+    m.job = null;
+    post({ type, req: m.req, [field]: null, error: "retired" });
+  };
+  beginLongOp();
+  try {
+    if (m.retired) return retired();
+    if (m.job == null) {
+      const begun = JSON.parse(
+        drift
+          ? engine.perform_drift_begin(m.tree, ov, locks, m.steps || 12, m.sigma || 0.05)
+          : engine.perform_offer_begin(m.tree, ov, locks, m.steps || 40, control, sign),
+      );
+      // A walk that cannot start answers as the one call would: `{reason}`,
+      // or null for a tree that does not parse.
+      if (!begun || begun.job == null) {
+        post({ type, req: m.req, [field]: begun });
+        return;
+      }
+      m.job = begun.job;
+    }
+    while (engine.perform_job_step(m.job, 1)) {
+      const yields = await breathe(laneOf(m));
+      if (m.retired) return retired();
+      if (yields) {
+        // Paused where it stands: the job keeps its place in the engine, and
+        // this request goes back to the front of its lane.
+        lanes[LATER].unshift(m);
+        return;
+      }
+    }
+    const job = m.job;
+    m.job = null;
+    post({ type, req: m.req, [field]: JSON.parse(engine.perform_job_finish(job)) });
+  } catch (err) {
+    const message = String((err && err.message) || err);
+    try {
+      if (m.job != null) engine.perform_job_drop(m.job);
+    } catch (_) {
+      /* a poisoned engine: reported below */
+    }
+    m.job = null;
+    post({ type, req: m.req, [field]: null, error: message });
+    if (isFatal(err, message)) throw err;
+  } finally {
+    endLongOp();
+  }
+}
+
 // ---------- the model's guess (Plan-005 task 9d) ----------
 //
 // The module the model guesses the player would add next to the patch in
@@ -1434,7 +1529,9 @@ async function measure(m) {
 // is spent, ranking what it has (`rendered` of `planned` says how much). The
 // budget counts render time only, checked after each render, so it can run
 // over by one render. A `later` job: it gives way to work the player asks for
-// and resumes where it stopped, since every render it made is in the memo.
+// and resumes where it stopped, since every render it made is in the memo. The
+// crew phase does not hold the floor (it renders nothing on this thread, and
+// waiting for a crew is not work); only the floor's renders do.
 // The reply echoes `token` and carries the tree it ranked, so a page that has
 // moved on drops it.
 const GUESS_FLOOR = 8;
@@ -1444,6 +1541,8 @@ const GUESS_BUDGET_MS = 3000;
 // their own sequence; the farm echoes `i` in `done`, which no fill is
 // listening for while a walk crew stands.
 const guessInflight = new Map();
+// The crew phases of the guesses asked for, one at a time and in order.
+let guessCrewTail = Promise.resolve();
 let guessSeq = 0;
 const guessBusy = () => guessInflight.size > 0;
 
@@ -2437,7 +2536,10 @@ self.onmessage = (e) => {
     if (i >= 0) {
       const [q] = lanes[LATER].splice(i, 1);
       q.bg = false;
-      lanes[SOON].push(q);
+      // A walk that had given way (it holds its job) was asked for before
+      // anything now waiting in `soon`: it goes first, not behind it.
+      if (q.job != null) lanes[SOON].unshift(q);
+      else lanes[SOON].push(q);
     }
     if (runnable()) schedulePump();
     return;
@@ -2452,6 +2554,8 @@ self.onmessage = (e) => {
   if (m.type === "retire") {
     const reqs = new Set(m.reqs || []);
     if (floor && floor.m && floor.m.type === "perform_wire" && reqs.has(floor.m.req)) floor.m.bg = true;
+    // A walk running now stops at its next step (see `walkRun`).
+    if (floor && floor.m && /^perform_(offer|drift)$/.test(floor.m.type) && reqs.has(floor.m.req)) floor.m.retired = true;
     const mine = (q) => reqs.has(q.req) && q.type.startsWith("perform_");
     for (const q of lanes[SOON].filter((q) => mine(q) && q.type === "perform_wire")) {
       lanes[SOON].splice(lanes[SOON].indexOf(q), 1);
@@ -2460,6 +2564,16 @@ self.onmessage = (e) => {
     }
     for (const lane of [SOON, LATER]) {
       for (const q of lanes[lane].filter((q) => mine(q) && q.type !== "perform_wire")) {
+        // A walk paused part-way (see `walkRun`) still holds its job. A
+        // poisoned engine throws here, and the requests behind this one
+        // must still be answered.
+        if (q.job != null) {
+          try {
+            engine.perform_job_drop(q.job);
+          } catch (_) {
+            /* reported by the next request that reaches the engine */
+          }
+        }
         if (q.type === "perform_offer") {
           post({ type: "perform_offered", req: q.req, offer: null, error: "retired" });
         } else if (q.type === "perform_drift") {
@@ -3138,13 +3252,25 @@ async function dispatch(m) {
     // The model's guess for the patch in hand (see `guessRun`), and a skip of
     // one. Taking a guess is `edit_structure` with `guess`.
     case "guess": {
-      // The floor for the whole guess, crew phase included: while it waits
-      // for a crew no other long job may take the floor from under it (one
-      // long job at a time); `now` work is still served between awaits.
-      await holdFloor(m, async () => {
-        if (await guessCrewPhase(m)) return;
-        await guessRun(m);
-      });
+      // The crew phase does not hold the floor. It renders nothing here: it
+      // waits for a crew to spawn and for its workers' replies, up to several
+      // seconds, and a floor held across that made a pressed Offer, EVOLVE's
+      // `refine` and the measurement of the sound in hand wait for it though
+      // nothing was running on this thread. So it runs detached, as a
+      // generation's walks do (one guess at a time: `guessCrewTail`), and
+      // when it is over the guess goes back to the front of `later` with
+      // `crewed` set, and takes the floor then for the floor's own renders.
+      if (!m.crewed) {
+        guessCrewTail = guessCrewTail
+          .then(async () => {
+            if (await guessCrewPhase(m)) return;
+            lanes[LATER].unshift(m);
+          })
+          .catch((err) => engineError("guess", null, err))
+          .finally(schedulePump);
+        break;
+      }
+      await holdFloor(m, () => guessRun(m));
       break;
     }
     // A patch of its own (PATCH's NEW PATCH): the guesses' key from here on
@@ -3162,8 +3288,7 @@ async function dispatch(m) {
         engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
       break;
     case "perform_drift":
-      performReply(m, "perform_drifted", "drift", true, () =>
-        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12, m.sigma || 0.05)));
+      await holdFloor(m, () => walkRun(m));
       break;
     case "perform_graft":
       performReply(m, "perform_grafted", "graft", false, () =>
@@ -3187,17 +3312,7 @@ async function dispatch(m) {
     // (aimed, and its reply says how far it `moved`); the Offer button's and
     // Wander's carry neither, and are not aimed.
     case "perform_offer":
-      performReply(m, "perform_offered", "offer", true, () =>
-        JSON.parse(
-          engine.perform_offer(
-            m.tree,
-            JSON.stringify(m.overrides || []),
-            JSON.stringify(m.locks || []),
-            m.steps || 40,
-            Number.isInteger(m.control) ? m.control : undefined,
-            Number.isFinite(m.sign) ? m.sign : undefined,
-          ),
-        ));
+      await holdFloor(m, () => walkRun(m));
       break;
     case "tree_json": {
       post({

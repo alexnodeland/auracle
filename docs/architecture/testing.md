@@ -81,6 +81,7 @@ runners). Rust tests over a minute, named in the `Makefile` as
 | `auracle-session tests::closed_loop_learns_synthetic_taste` | 76 s |
 | `auracle-session tests::closed_loop_learns_motion_rate` | 72 s |
 | `auracle-session perform::tests::drift_is_local_and_follows_sigma` | 71 s |
+| `auracle-session perform::tests::a_stepped_walk_is_the_walk` | 41 s on a 16-core M3 Max (a preset, two seeds, three kinds of walk, each stepped two ways beside the one call), not yet timed on CI; `auracle-wasm tests::a_stepped_offer_gives_the_reply_the_one_call_gives` (27 s there) stays in the fast tier |
 | `auracle-wasm tests::farm_walks_breed_the_serial_generation` | 70 s |
 | `auracle-session tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one` | 63 s |
 
@@ -103,7 +104,8 @@ held-engine reload test, which boots twice like them; the reload-at-once
 test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
-`perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
+`perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (a boot, a
+measurement and a minute: not yet timed on CI), `perform_recentre.spec.js`'s glide home
 (54 s), `perform_teaches.spec.js` (54 s), three that wait on PERFORM's
 engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
 control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
@@ -114,7 +116,7 @@ fit after the warm start before PATCH guesses (the guess drawn, added,
 skipped and undone; the floor with no crew; keep as new; a new patch's own
 skips; a stale take: 15 to
 25 s each on a 16-core M3 Max, not yet on CI, where the warm start, a fit and
-a render crew's spawn come first). Twenty-seven tests, ~21 min in one
+a render crew's spawn come first). Twenty-eight tests, ~21 min in one
 worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
@@ -156,6 +158,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and how it works say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
+| `perform_offer_latency.spec.js` | With a very long spare offer growing, a pick (`perform_record`) is answered within max(2 s, twice a measured step) and a Keep says so within max(4 s, six steps), the spare still growing (the page's CPU is throttled 4x, which need not reach the engine worker, so the bounds rest on the measured step); leaving the patch (`retire`) stops the running walk, answered `retired` |
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's name, a taken B fills and goes into the name, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one |
 | `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |

@@ -176,7 +176,14 @@ to a pinned `role="alert"` strip that stays until resolved.
   (`perform_wire_plan` names the renders still owed without rendering,
   `memo_render` makes one, `perform_wire_known` finishes from the memo — the
   same numbers as `perform_wire`, pinned natively by
-  `a_planned_measurement_is_the_measurement`). A *later* measurement gives
+  `a_planned_measurement_is_the_measurement`). So are PERFORM's offers and
+  drifts (`walkRun`): `perform_offer_begin` / `perform_drift_begin` start a
+  job in the engine, `perform_job_step` advances it one MH step (at most one
+  render) per turn with a `breathe` between, and `perform_job_finish` is the
+  reply; a spare (*later*) pauses with its job intact when *soon* work
+  arrives, and `retire` drops a paused or running walk. Before this a spare
+  offer was one call of 18 to 60 renders and a pick (`perform_record`) waited
+  behind it. A *later* measurement gives
   the floor up to *soon* work and resumes from the memo. `refine` and
   `refine_from` are **walk jobs** instead: their walks run on the farm, they
   never hold the floor, and only a `fit` or another `refine` waits for a

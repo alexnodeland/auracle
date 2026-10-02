@@ -206,7 +206,7 @@ function wanderZone(w) {
 // aims at one audible change per phrase; Roam at one per bar or two.
 function wanderPace(w) {
   const z = wanderZone(w);
-  // sigma is the walk's step on a knob's 0..1 range (Engine::local_walk).
+  // sigma is the walk's step on a knob's 0..1 range (Engine::drift).
   // Measured over 12 presets: sigma 0.05 × 8 steps moves the farthest knob
   // ~0.06–0.14, 0.08 × 18 ~0.15–0.33, 0.15 × 40 ~0.25–0.6.
   if (z === "drift") {

@@ -60,9 +60,65 @@ served within a lane (`laneOf` in `worker.js`):
   probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
-so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
-answering every `now` request that arrived meanwhile. One long job holds the
-floor at a time. A hidden PERFORM's measurement drops to `later`.
+so long jobs are cut into pieces and `breathe` between pieces, answering every
+`now` request that arrived meanwhile. One long job holds the floor at a time.
+A hidden PERFORM's measurement drops to `later`. The jobs cut this way are
+PERFORM's measurement (`measure`, a render at a time), the model's guess and
+PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
+most one render, at a time; below).
+
+### Offers and drifts are jobs
+
+An offer is 20 steps (40 in *roam*), times up to four under locks, and an aimed
+one may walk up to three times: 12 renders for a drift, 20 to 60 for an offer,
+and past 120 for a roam offer that is aimed and locked. As one wasm call they kept the worker deaf for all of them, and it
+did not matter which lane they were in, because the lane decides when a call
+*starts*. A spare offer grown in the background (`later`) therefore stood in
+front of a pick (`perform_record`, `now`), a Keep, a ▶ and a bench open: the
+first spare took 62 s on a CI runner, and everything the player did in that
+minute waited (`perform_teaches`, `perform_recentre` and `perform_next` timed
+out on it).
+
+Now `perform_offer` and `perform_drift` begin a **job** in the engine
+(`perform_offer_begin`, `perform_drift_begin`: a handle) and `walkRun` advances
+it one step at a time (`perform_job_step`), `breathe`ing between steps, and
+asks for the reply when it is done (`perform_job_finish`). It holds the floor
+like `measure` does, with these rules:
+
+- A player's request waits for the step in progress, at most one render. A
+  gesture that is several round trips to the worker (a Keep) waits for one
+  step per trip.
+- A spare or Wander's drift (`later`) gives the floor up when long work the
+  player asked for is waiting (a pressed Offer, a measurement), goes back to
+  the front of `later` with its job intact (ahead of anything waiting in `later`
+  and of the faces lane below it, which only starts when nothing above it is
+  ready and the floor is free), and resumes after it. A claim on a
+  spare (`promote`) stops it giving way, and a claimed spare that had already
+  given way goes to the front of `soon`.
+- `retire` (the page left the patch, or a turn replaced an aimed offer) stops a
+  walk that is running at its next step, drops one that is paused, and answers
+  `retired`, instead of walking to the end for nothing.
+- A binary without the jobs (a stale cache) takes the one call, as it always
+  did.
+
+What this does not do is shorten an offer: a pressed Offer still takes its
+renders, and on a slow machine that is a wait the player sees (B counts the
+seconds). It stops the wait being everyone's.
+
+**Determinism** ([ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+A job takes one draw of the session's PERFORM stream when it begins and walks
+on a generator of its own seeded from it, and it reads the target (the tilted
+prior, the posterior, the standardizer, β) as it stood when it began, and
+says in its reply what was true then (`taste`, how far it `moved`). The render
+memo is not part of that target: it is a shared, bounded cache that keeps
+changing under the job, and it only saves renders (a hit is bit-identical to a
+miss).
+Which step ran when, what the player recorded meanwhile, and what other walk
+was begun or paused beside it change nothing it finds. The engine's own
+`offer`, `offer_toward` and `drift` are the job run to the end on a caller's
+generator, so stepping and not stepping are one walk
+(`a_stepped_walk_is_the_walk`; in the bindings
+`a_stepped_offer_gives_the_reply_the_one_call_gives`).
 
 A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
 the farm and never hold the floor, so every lane is served while they run.
@@ -193,9 +249,9 @@ it drops a stale pre-placement audition.
 
 - **`guess`** (`later`; `{token, at?}`): the module the model
   guesses the player would add next
-  ([reference](../../www/reference/src/search/guess.md)). It holds the
-  floor throughout, in two phases:
-  - `guessCrewPhase`: it plans first, and a refusal (`no_taste`, `full`) or
+  ([reference](../../www/reference/src/search/guess.md)). It runs in two
+  phases, and only the second holds the floor:
+  - `guessCrewPhase`, detached from the pump (one guess's at a time): it plans first, and a refusal (`no_taste`, `full`) or
     a guess the memo already holds raises no crew. Otherwise, where a walk
     crew can be had
     (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
@@ -204,8 +260,12 @@ it drops a stale pre-placement audition.
     routed by `guessDone`; a lost worker gives its job back, `guessLost`),
     absorbing each with `memo_absorb` as it lands, for at most
     `GUESS_BUDGET_MS` (3 s) of wall-clock time from when the crew is up
-    (`crewRenders`). The crew's idle timer starts when it ends.
-  - `guessRun`: renders with `memo_render` whatever of the
+    (`crewRenders`). The crew's idle timer starts when it ends. It renders
+    nothing on the worker's thread, so it must not stop `soon` work starting:
+    held on the floor, it made a pressed Offer, `refine` and the measurement
+    of the sound in hand wait for a crew's spawn and its renders (about 4 s,
+    up to 18 s). When it ends the guess goes back to the front of `later`.
+  - `guessRun`, holding the floor: renders with `memo_render` whatever of the
     first `GUESS_FLOOR` (8) is still owed (nothing after a crew that rendered
     them; all of them with none), one per turn, breathing between them as
     PERFORM's measurement does, and stops rendering once `GUESS_BUDGET_MS` of
