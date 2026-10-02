@@ -1552,7 +1552,7 @@ worker.onmessage = (e) => {
       break;
     }
     // One job of the generation absorbed, in job order: its child (if it
-    // bred one) goes into the bank's "new · gen N" group at once, playable,
+    // bred one) goes into the bank's "new · generation N" group at once, playable,
     // without re-sorting the ranked rows. Nothing leaves the bank until the
     // generation ends.
     case "refine_child": {
@@ -3012,7 +3012,7 @@ function renderNextStep() {
   el.onclick = act || null;
 }
 
-/** The bank's "new · gen N" group, in view and flashed once. */
+/** The bank's "new · generation N" group, in view and flashed once. */
 function showNewGroup() {
   if (bankFilter !== "pool") selectBank("pool");
   const head = document.querySelector("#bank-list .bank-group");
