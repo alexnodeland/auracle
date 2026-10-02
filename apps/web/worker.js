@@ -903,6 +903,9 @@ function tasteViews() {
     // The numbers LEARNING's math states (`modelFacts`): a fit changes
     // how many styles it was allowed.
     facts: modelFacts(),
+    // Every pool member's standardized φ (`poolFeatures`): LEARNING shades the
+    // map by one coordinate while its weight is pointed at.
+    features: poolFeatures(),
     // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
     // shipped in `styles`; this is what θ is *worth* — adding one filter is a
     // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
@@ -987,6 +990,17 @@ function engineForecasts() {
 function modelFacts() {
   try {
     return JSON.parse(engine.model_facts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every pool member's z, in φ's order (`WasmEngine::pool_features`): the
+// coordinates θ weighs. Rides every views post; `null` from a binary
+// without the call.
+function poolFeatures() {
+  try {
+    return JSON.parse(engine.pool_features());
   } catch (_) {
     return null;
   }
@@ -1677,6 +1691,8 @@ function laneOf(m) {
       return m.bg ? LATER : SOON;
     case "perform_drift":
     case "fit":
+    // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
+    case "styles":
       return LATER;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
@@ -2220,6 +2236,20 @@ async function dispatch(m) {
     // nothing.
     case "duel_shown": {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
+      break;
+    }
+    // The styles (θ with its spread, shares, exemplars) under the posterior as
+    // it stands, asked for after every pick: a pick reweights the draws, so
+    // θ's mean moves with it, and LEARNING's bars and its replay follow.
+    // `observations` says which pick it is after. 0.6 to 12 ms in wasm by the
+    // lenses (Plan-005, Measured (task 6)), so it waits in `later`. Always
+    // answered: `null` before the first fit.
+    case "styles": {
+      let styles = null;
+      try {
+        styles = JSON.parse(engine.styles());
+      } catch (_) { /* older engine */ }
+      post({ type: "styles", styles, observations: status().observations });
       break;
     }
     case "calibration": {

@@ -1737,6 +1737,29 @@ impl WasmEngine {
         serde_json::to_string(&self.engine.forecasts).unwrap_or_else(|_| "[]".into())
     }
 
+    /// Every pool member's standardized features, as JSON:
+    ///
+    /// ```json
+    /// {"names":["centroid_mean:p2", …],"rows":[{"id":12,"z":[0.41,-1.2, …]}, …]}
+    /// ```
+    ///
+    /// `z` is the candidate's φ through the current standardizer
+    /// (`Candidate::phi_std`), in `names` order: the coordinates θ is a
+    /// weight on. LEARNING shades the map by one of them while a weight is
+    /// pointed at. Members not yet featurized, or everything before a
+    /// standardizer exists, are left out. 40 × 44 numbers: cheap enough to
+    /// ride every views post.
+    pub fn pool_features(&self) -> String {
+        let rows: Vec<serde_json::Value> = self
+            .engine
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .map(|c| serde_json::json!({ "id": c.id, "z": c.phi_std }))
+            .collect();
+        serde_json::json!({ "names": Features::phi_names(), "rows": rows }).to_string()
+    }
+
     /// The numbers LEARNING's math states, read from the engine rather than
     /// written twice:
     ///
@@ -2718,6 +2741,24 @@ mod tests {
         assert_eq!(last["p_a"].as_f64().unwrap(), pred, "{last}");
         assert_eq!(last["chose_a"], serde_json::json!(false));
         assert_eq!(last["provenance"], serde_json::json!("duel"));
+
+        // The pool's z, one row per featurized member, in φ's order: exactly
+        // the coordinates θ weighs.
+        let f: serde_json::Value = serde_json::from_str(&taught.pool_features()).unwrap();
+        assert_eq!(f["names"].as_array().unwrap().len(), names.len());
+        let rows = f["rows"].as_array().unwrap();
+        let pool: Vec<_> = taught
+            .engine
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .collect();
+        assert_eq!(rows.len(), pool.len());
+        for (row, c) in rows.iter().zip(&pool) {
+            assert_eq!(row["id"], serde_json::json!(c.id));
+            let z: Vec<f64> = serde_json::from_value(row["z"].clone()).unwrap();
+            assert_eq!(z, c.phi_std, "z is the member's standardized φ");
+        }
     }
 
     /// The menu bar's TAUGHT tooltip splits the count by kind from
