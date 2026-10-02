@@ -59,7 +59,7 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   whole pipeline (grammar edits, rendering and φ, the taste model, the
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js`, `patch.js` or `live-audio.js`, to `crates/auracle-session` or
+  `farm.js`, `perform.js`, `patch.js`, `live-audio.js` or `explain.js`, to `crates/auracle-session` or
   `crates/auracle-wasm`, to a spec file holding an `@slow` test, or to the
   suite's config and lockfile. Not `main.js`: every view lives there, so it
   would make nearly every app PR a slow run. A `main.js` change that reaches
@@ -119,9 +119,12 @@ skips; a stale take: 15 to
 25 s each on a 16-core M3 Max, not yet on CI, where the warm start, a fit and
 a render crew's spawn come first), and `audio_in.spec.js`'s capture handed
 to a standing crew (28 s on a 16-core M3 Max, not yet on CI: six picks, a
-refit and a ⚡ walk to raise the crew, then a capture). Twenty-nine tests,
-~21 min in one worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
-tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
+refit and a ⚡ walk to raise the crew, then a capture), and
+`explain.spec.js`'s eighteen figures (the panel arranged twice, each set
+measured, and a figure asked of each control: 31 s on a 16-core M3 Max, not
+yet on CI). Thirty tests, ~21 min in one worker; the other 87 took ~16.6 min
+when last timed (at 80), and the fast tier's five runners take 2.6–3.9 min
+each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
 
 **Exactly one tier each.** The fast tier is defined as the complement of the
@@ -165,6 +168,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's name, a taken B fills and goes into the name, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one |
 | `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |
+| `explain.spec.js` | Each control on the panel opens its figure (by ?, by its chip, from the switcher and the arrow keys), asked of the engine for that control on the sound in hand, and a view change puts it away; every one of the palette's eighteen opens its figure (`@slow`); a control asked about before it is measured answers once it is, a search control too; a turn with an answer open asks at most twice; Space plays with an answer open and in the lesson, after a click on their buttons too, and NEXT takes Enter only; the lesson says why a render failed (injected), draws and plays nothing for it, says when the filter goes after a sound with no room, and asks nothing more after the sound itself fails; ? is the key map's once the pointer has left a control a mouse turned, and never opens over an answer; a long press on a touch screen opens the answer and a moving finger does not (CDP touch); with a bank of faces, BRIGHT's figure and the lesson draw the sound's face from the portrait's own; with no answer or lesson open, a pressed Offer grows with no explain request sent, and an answer put away cancels its waiting request (answered as `cancelled`); `AURACLE_CPU_THROTTLE=4` runs them at a quarter speed, the engine worker too (`perform_budget.js`); a figure's sentence is built from the worker's reply (BRIGHT's center, made and turned) and follows its control when turned; the lesson on filters renders the sound in hand, its cutoff's readout is the reply's and the filtered top sits lower, and another sound gives another lesson; under reduced motion a figure is drawn whole and holds, and with motion MOTION's runs; asking moves no control's or bank row's label |
 | `perform_aimed.spec.js` | A search control's offer is asked for aimed (control and way), B counts while it grows and then says how far it moved, in amber; the Offer pad's offer is not aimed |
 | `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
 | `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass; a drift's re-check is background; a stalled shipped-wirings fetch still lets a preset be measured |

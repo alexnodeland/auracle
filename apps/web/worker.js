@@ -2362,6 +2362,10 @@ function laneOf(m) {
     case "perform_wire":
     case "perform_offer":
       return m.bg ? LATER : SOON;
+    // A figure or the lesson, asked for by the player (Plan-005 task 10).
+    case "explain":
+    case "explain_lesson":
+      return SOON;
     case "perform_drift":
     case "fit":
     // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
@@ -2551,6 +2555,21 @@ self.onmessage = (e) => {
   }
   if (m.type === "refine_from_stop") {
     evolveStop();
+    return;
+  }
+  // An answer or the lesson put away: its requests still waiting in `soon`
+  // are nobody's now, and must not stand ahead of what the player asks next
+  // (a pressed Offer). Each is answered, as every request is, with
+  // `error: "cancelled"`; one already rendering finishes.
+  if (m.type === "explain_cancel") {
+    for (const lane of lanes) {
+      for (let i = lane.length - 1; i >= 0; i--) {
+        const q = lane[i];
+        if (q.type !== m.kind) continue;
+        lane.splice(i, 1);
+        post({ type: q.type, token: q.token ?? null, tree: q.tree, k: q.k, cutoff: q.cutoff, error: "cancelled" });
+      }
+    }
     return;
   }
   // Background work became the player's: Offer claimed a spare still waiting
@@ -3419,6 +3438,48 @@ async function dispatch(m) {
     case "cable_levels": {
       const levels = JSON.parse(engine.edit_cable_levels());
       post({ type: "cable_levels", token: m.token ?? null, tree: engine.edit_tree_json(), levels });
+      break;
+    }
+    // Explain anything (Plan-005 task 10): a control's figure is the
+    // performed state rendered twice, the control at its centre (`made`) and
+    // turned (`turned`, absent for a control nothing turns), each measured by
+    // `explain_render`, one render per turn with the player's gestures served
+    // between. The lesson on filters is one render of the sound in hand with
+    // the grammar's lowpass on it (`lesson_filter`), and its audition. Both
+    // are `soon`: the player asked. Every request is answered, one that fails
+    // with its `error`, and each reply carries the tree it was asked about.
+    case "explain": {
+      const reply = { type: "explain", token: m.token ?? null, tree: m.tree, k: m.k };
+      try {
+        await holdFloor(m, async () => {
+          const k = Number.isInteger(m.k) ? m.k : undefined;
+          const one = (ov) => JSON.parse(engine.explain_render(m.tree, JSON.stringify(ov || []), k));
+          reply.made = one(m.made);
+          if (m.turned) {
+            await breathe(SOON);
+            reply.turned = one(m.turned);
+          }
+        });
+        post(reply);
+      } catch (err) {
+        post({ ...reply, error: String((err && err.message) || err) });
+        throw err;
+      }
+      break;
+    }
+    case "explain_lesson": {
+      const reply = { type: "explain_lesson", token: m.token ?? null, tree: m.tree, cutoff: m.cutoff };
+      try {
+        // No cutoff: the sound in hand as it is, the lesson's first step.
+        const r = engine.lesson_filter(m.tree, JSON.stringify(m.overrides || []), Number.isFinite(m.cutoff) ? m.cutoff : undefined);
+        const data = JSON.parse(r.json);
+        const buffer = new Float32Array(r.take_samples());
+        r.free();
+        post({ ...reply, data, buffer, sampleRate: engine.sample_rate() }, buffer.length ? [buffer.buffer] : []);
+      } catch (err) {
+        post({ ...reply, error: String((err && err.message) || err) });
+        throw err;
+      }
       break;
     }
     case "set_style_name": {

@@ -11,6 +11,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `lib.rs` | `WasmEngine`: every method `worker.js` calls; `Streams` (one RNG per consumer); `TreeReply`; the farm's stateless exports (`farm_render`, `farm_walk`) |
 | `live.rs` | `LivePoly`: N compiled copies of the patch played from the render thread; the arpeggiator |
 | `level.rs` | One level policy for everything the player hears (live makeup) |
+| `explain.rs` | Explain anything (Plan-005 task 10): `explain_render`, a performed state's render measured for a control's figure, and `lesson_filter`, the sound in hand through the grammar's lowpass for the lesson on filters, with the filter's response and the audition (`ExplainRender`) |
 | `examples/score.rs` | Renders a film score (`www/video/sound/*.json`) with the engine's own voices |
 | `examples/pick_belief.rs` | Measures what each pick's reply costs: the reweight, `belief`, and what a refit posts (ranked list, map, lenses), per number of lenses, at rest and with a generation open (`breed`) |
 | `examples/pick_belief.mjs` | The same loop against the built package under node, for the wasm figures (`make wasm` first) |
@@ -18,6 +19,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/cable_cost.mjs` | What the cable probe (`edit_cable_levels`) costs in wasm under node on every preset, beside a render with φ (`make wasm` first); native twin `auracle-features`'s `cable_probe` |
 | `examples/face_cost.mjs` | What a face costs in wasm: featurizing the same seeded pool with and without one (pass a package built before faces), and the analysis alone from a resident audition (`make wasm` first) |
 | `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
+| `examples/explain_cost.mjs` | What a figure and the lesson cost in wasm under node on every preset (`explain_render`, `lesson_filter`), beside a render with φ, and a figure's reply size (`make wasm` first) |
 | `examples/offer_cost.mjs` | What a PERFORM offer, an aimed offer and a drift cost in wasm under node, per preset, and with `--chunked` the longest single call the worker would be deaf for (`make wasm` first); native twin `auracle-session`'s `offer_cost` |
 | `examples/own_cost.mjs` | What a sound of your own costs in wasm under node: `own_sound_set` on a decoded file (by length and rate), `own_sound`, `own_presets_set`, and one walk of a breed toward it (`make wasm` first) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |

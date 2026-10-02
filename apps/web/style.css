@@ -6161,6 +6161,237 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   .pf-xy-field { height: 118px; }
 }
 
+/* ---------- Explain anything (explain.js, Plan-005 task 10) ----------
+   The ? chip beside a control, a touch's hold ring, the answer (a figure, a
+   sentence) and the lesson on filters. The chip and the answer are fixed
+   overlays: nothing in a row moves for them. Among the popovers (40–45),
+   the answer above the palette; the lesson is a dialog over the views, and
+   while it is open the toasts and the alarm are lifted over it, as stage
+   mode lifts them. */
+.xp-chip {
+  position: fixed;
+  z-index: 46;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--silk);
+  background: var(--panel-hi);
+  border: 1px solid var(--plate-edge);
+  box-shadow: var(--cast);
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity var(--d-state), transform var(--d-state) var(--e-settle), border-color var(--d-press);
+}
+.xp-chip.on { opacity: 1; transform: none; pointer-events: auto; }
+.xp-chip:hover { border-color: var(--phos-a-deep); color: var(--phos-a); }
+/* A finger held on a control: a ring fills for as long as the hold takes
+   (PERFORM's long press), then the answer opens. */
+@property --xp-k { syntax: "<number>"; inherits: false; initial-value: 0; }
+.xp-ring {
+  position: fixed;
+  z-index: 95;
+  width: 64px;
+  height: 64px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(var(--phos-a) calc(var(--xp-k) * 1turn), var(--phos-a-12) 0);
+  -webkit-mask: radial-gradient(circle, transparent 27px, var(--black) 28px);
+  mask: radial-gradient(circle, transparent 27px, var(--black) 28px);
+}
+.xp-ring.on { opacity: 1; --xp-k: 1; transition: --xp-k calc(var(--d-move) + var(--d-press)) linear; }
+.xp-ring.done { --xp-k: 1; animation: xp-ring-done var(--d-state) var(--e-settle) forwards; }
+@keyframes xp-ring-done { 0% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.35); } }
+
+.xp {
+  position: fixed;
+  z-index: 45;
+  width: min(360px, calc(100vw - 2 * var(--s3)));
+  box-sizing: border-box;
+  padding: var(--s3) var(--s3) var(--s3);
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+  box-shadow: var(--shadow-pop);
+  display: none;
+  outline: none;
+}
+.xp.on { display: grid; gap: var(--s2); }
+/* The caret, on the edge facing what was asked, at its center. */
+.xp[data-side]::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--pop-hi);
+  border: 1px solid var(--hairline);
+  transform: rotate(45deg);
+}
+.xp[data-side="below"]::before { top: -6px; left: calc(var(--cx) - 5px); border-right: 0; border-bottom: 0; }
+.xp[data-side="above"]::before { bottom: -6px; left: calc(var(--cx) - 5px); border-left: 0; border-top: 0; background: var(--pop-lo); }
+.xp[data-side="right"]::before { left: -6px; top: calc(var(--cy) - 5px); border-top: 0; border-right: 0; }
+.xp[data-side="left"]::before { right: -6px; top: calc(var(--cy) - 5px); border-bottom: 0; border-left: 0; }
+.xp-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); }
+.xp-title { font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--silk); }
+.xp-x {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--silk-mute);
+  font-size: var(--t-body);
+  cursor: pointer;
+}
+.xp-x:hover { color: var(--silk); background: var(--plate-hi); }
+.xp-x:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+.xp-fig {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r2);
+  background: var(--bezel);
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+}
+/* The last measurement, kept while the next one renders. */
+.xp-fig.old { opacity: 0.45; }
+/* Every control on the panel, a tap apart; the pressed one is the answer's.
+   A fixed height and a border on every button, so pressing moves nothing. */
+.xp-sw { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.xp-sw button {
+  /* Whole names, never cut: eight wrap onto a second row. */
+  flex: 1 0 auto;
+  height: 28px;
+  padding: 0 var(--s1);
+  border-radius: var(--r1);
+  border: 1px solid var(--hairline);
+  background: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.xp-sw button:hover { color: var(--silk); border-color: var(--silk-dim); }
+.xp-sw button[aria-pressed="true"] { color: var(--phos-a); border-color: var(--phos-a-deep); background: var(--phos-a-06); }
+.xp-sw button:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+.xp-say { margin: 0; font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.45; color: var(--silk); }
+.xp-acts { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.xp-learn { display: inline-flex; align-items: center; gap: var(--s2); }
+.xp-sub { font-family: var(--font-mono); font-size: var(--t-label); letter-spacing: 0; text-transform: none; color: var(--silk-dim); }
+@media (pointer: coarse) { .xp-sw button { height: 40px; } }
+@media (max-width: 700px) {
+  .xp { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; border-radius: var(--r3) var(--r3) 0 0; }
+  .xp[data-side]::before { display: none; }
+}
+@media (max-height: 500px) {
+  .xp { max-height: calc(100vh - 16px); overflow-y: auto; }
+}
+
+/* The lesson: a dialog, the shape beside the words. */
+.xl {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  place-items: center;
+  background: var(--scrim-82);
+  backdrop-filter: blur(3px);
+  padding: var(--s4);
+}
+.xl.on { display: grid; }
+html.xl-on .toasts { z-index: 61; }
+html.xl-on .alarm { z-index: 62; }
+.xl-panel {
+  width: min(760px, 100%);
+  box-sizing: border-box;
+  max-height: calc(100vh - 2 * var(--s4));
+  overflow-y: auto;
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+  box-shadow: var(--shadow-pop);
+  padding: var(--s4) var(--s5);
+  display: grid;
+  gap: var(--s3);
+}
+.xl-top { display: flex; justify-content: space-between; align-items: center; }
+.xl-cap { font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--silk); }
+.xl-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--s5); align-items: center; min-height: 320px; }
+.xl-shape { width: 200px; height: 300px; border-radius: var(--r2); background: var(--bezel); border: 1px solid var(--hairline); }
+.xl-body { display: grid; gap: var(--s3); align-content: center; min-width: 0; }
+.xl-body p { margin: 0; font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.45; color: var(--silk-dim); max-width: 46ch; }
+.xl-body .xl-try { color: var(--silk); }
+.xl-body .xl-trouble { color: var(--silk); }
+.xl-body .xl-trouble.fail { color: var(--led-red); }
+.xl-body .xl-trouble:empty { display: none; }
+.xl-panel:focus { outline: none; }
+.xl-h { margin: 0; font-family: var(--font-silk); font-size: var(--t-title); font-weight: 500; line-height: 1.15; color: var(--silk); text-wrap: balance; }
+.xl-filter {
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 320 / 150;
+  border-radius: var(--r2);
+  background: var(--bezel);
+  border: 1px solid var(--hairline);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.xl-filter:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.xl-list { margin: 0; padding-left: var(--s4); display: grid; gap: var(--s2); font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.45; color: var(--silk); }
+.xl-body .util-btn { justify-self: start; }
+.xl-nav { display: flex; align-items: center; gap: var(--s3); border-top: 1px solid var(--hairline); padding-top: var(--s3); }
+.xl-pips { display: flex; gap: var(--s1); }
+.xl-pips i { width: 7px; height: 7px; border-radius: 50%; background: var(--plate-edge); }
+.xl-pips i.on { background: var(--phos-a); }
+.xl-count { margin-right: auto; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-mute); }
+.xl-next { display: inline-flex; align-items: center; gap: var(--s2); }
+.xl-next.primary { color: var(--phos-a); border-color: var(--phos-a-deep); }
+.xl-next kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 var(--s1);
+}
+@media (pointer: coarse) { .xp kbd, .xl kbd, .xp-chip { display: none; } }
+@media (max-width: 700px) {
+  .xl { padding: 0; place-items: end stretch; }
+  .xl-panel { border-radius: var(--r3) var(--r3) 0 0; max-height: 92vh; padding: var(--s4); }
+  .xl-main { grid-template-columns: 1fr; justify-items: center; gap: var(--s4); min-height: 0; }
+  .xl-shape { width: 120px; height: 180px; }
+  .xl-panel[data-step="1"] .xl-main { grid-template-columns: 88px minmax(0, 1fr); justify-items: stretch; align-items: start; gap: var(--s3); }
+  .xl-panel[data-step="1"] .xl-shape { width: 88px; height: 132px; position: sticky; top: 0; }
+  .xl-panel[data-step="1"] .xl-body > p.xl-p { display: none; }
+  .xl-panel[data-step="1"] .xl-filter { grid-column: 1 / -1; }
+}
+@media (max-height: 500px) {
+  .xl { padding: var(--s2); }
+  .xl-main { grid-template-columns: 96px minmax(0, 1fr); min-height: 0; gap: var(--s3); align-items: start; }
+  .xl-shape { width: 96px; height: 144px; }
+  .xl-body > p.xl-p { display: none; }
+  .xl-filter { max-height: 120px; width: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .xp-ring.done { animation: none; opacity: 0; }
+}
+
 /* =====================================================================
    PATCH, Plan-005 task 7 (patch.js): the model's guess, each cable's
    measured level, a patch from nothing, and the module sheet on touch.

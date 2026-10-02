@@ -181,7 +181,8 @@ drift walk](../../reference/search/perform.html) has the wiring in full.
 | <kbd>Shift</kbd> and drag | Fine |
 | Double-click | Back to the center |
 | Near the center | A light detent, so you can find the center by feel |
-| Long-press, about half a second, without moving | Hear it |
+| Long-press, about half a second, without moving | Hear it; on a touch screen, see it (its figure) |
+| <kbd>?</kbd> with the pointer over it, or its **?** chip | See what it does: its figure |
 
 Turning a control changes knob values only. The voices take them without
 rebuilding the patch, so a held chord keeps sounding through the turn.
@@ -195,12 +196,110 @@ takeover](../keyboard.md#soft-takeover)).
 
 ### Long-press to hear it
 
-A long-press plays the control to you. Over about two and a half seconds it
-sweeps to the low end, across to the high end, and back to where it was. If no
-note is held, it plays a C3 for the length of the sweep.
+A long-press with a mouse plays the control to you. Over about two and a half
+seconds it sweeps to the low end, across to the high end, and back to where it
+was. If no note is held, it plays a C3 for the length of the sweep. On a touch
+screen a long press opens the control's figure instead (below), and its **HEAR
+IT** plays the same sweep.
 
 This is the quickest way to learn what a control does on this sound, since the
 same name moves different knobs on different patches.
+
+### Ask what it does
+
+Point at a control and a small **?** appears beside it. Press it, or press
+<kbd>?</kbd> while the pointer is over the control or it has focus, or hold it
+on a touch screen (a ring fills under your finger, then it opens). An answer
+opens beside the control: **BRIGHT · WHAT IT DOES**, a figure, and a sentence.
+
+The figure is the sound in your hands rendered twice, once with the control
+at its center and once turned, and each render measured the way the model
+hears it. A turn means where you have the control; at the center, a full turn
+toward the end it opens to. The render with the control at its center is
+dashed, the turned one lit. What the figure draws is the measurement the
+control listens to:
+
+| Control | The figure |
+|---|---|
+| **BRIGHT**, **BODY**, **WARMTH**, **AIR** | The sound's [face](../faces.md), low at the base (its spectrum stood up while your bank holds under four faces), beside how much each band rose or fell (±24 dB), with a dotted line at what the control listens to: the center for BRIGHT, where the top rolls off for AIR, 250 Hz for the weight |
+| **SNAP**, **ROUND** | The first note's first 400 ms, with a tick where each reaches 90% of its peak |
+| **SPACE**, **DISTANCE**, **HAZE**, **PUNCH**, **THUMP**, **HEFT** | The phrase's level over its five seconds, with the notes above it; for the space controls, the last 300 ms shaded |
+| **MOTION**, **THROB**, **SWAY** | The held note's brightness or its level over time, whichever the turn moved more, running at its own pace |
+| **GRIT**, **BITE**, **LO-FI** | The held note's harmonics, up to 4 kHz, and what lies between them |
+
+The sentence says the measurement before and after, in its own unit, then
+what the control turns on this sound: *Turned to bright, its center moves
+from 359 Hz to 2.5 kHz. Here it turns filter cutoff.* A control nothing here
+turns says so, and gives the measurement as it stands. While the two renders
+are made (about half a second), the figure reads *measuring…*; one you have
+asked about before opens at once.
+
+The figure draws itself in, band by band or along time, and holds; MOTION's
+keeps running while it is open. Click it to draw it again. Under reduced
+motion it is drawn whole at once.
+
+Every control on the panel is a tap away under the figure, or an arrow key.
+Turn the control while its answer is open and the answer follows: a moment
+after your hand rests, it is measured again, and the last figure stays,
+dimmed, under *measuring…* until the new one is drawn. A control placed from
+the palette and asked about before it has been measured says so, and answers
+once it has. <kbd>Esc</kbd>, the ×, a click
+elsewhere, another view, or booth mode's attract puts it away. **HEAR IT**
+plays the long-press sweep. <kbd>Space</kbd> still plays the sound while it
+is open, after a click on one of its buttons too, and <kbd>?</kbd>
+answers for the control under the pointer, or one you reached with the
+keyboard; a control you just turned with the mouse, once the pointer has
+left it, is not asked again, and <kbd>?</kbd> opens the key map instead.
+
+### Learn: what a filter does
+
+BRIGHT's answer has a **LEARN: WHAT A FILTER DOES** button, a lesson of about
+a minute that uses the sound in your hands as its example. It has three steps;
+<kbd>Enter</kbd> or **NEXT** moves on, and <kbd>Space</kbd> plays the step's
+sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
+
+1. **A sound has a shape.** The sound's [face](../faces.md), low at the base:
+   wide where it has more than most of your sounds, narrow where it has less
+   (with under four faces in your bank, its spectrum stood up instead). Play
+   it, and a bright line shows what you hear as it plays, against the same
+   bank.
+2. **A filter lets some through.** A lowpass filter from the instrument's own
+   modules is put on the sound, and you drag its **cutoff** along the graph
+   (or use the arrow keys, and <kbd>Home</kbd> and <kbd>End</kbd> for its
+   ends). Each position is rendered: the filter's own curve
+   lights the graph, the shape's top narrows above the cutoff while the
+   unfiltered shape stays dashed behind it, and **PLAY … THROUGH IT** plays
+   the filtered sound, looping, so a new cutoff is heard in place. Each
+   cutoff is played as loud as the sound itself (every phrase the instrument
+   plays is set to one loudness), so you hear it darken, not fade. The
+   cutoff is the knob's value in its own unit on the held note, as PATCH
+   shows a filter's cutoff.
+
+   A sound with no room for one more module (about one pool sound in ten;
+   none of the presets) gets the filter after it instead, at one cutoff for
+   every note, and the lesson says so. If the filtered sound doesn't render
+   at a cutoff (it goes silent, or doesn't pass the
+   [vet](../glossary.md#vetting)), the
+   lesson says that too, draws no curve for it, and plays nothing under
+   **THROUGH IT**; another cutoff may. If the sound itself doesn't render,
+   the lesson says why and has nothing to play.
+3. **What to remember.** What a lowpass does, and what BRIGHT turns on this
+   sound: a filter's cutoff on some sounds, other knobs on others.
+
+The filter is only the lesson's. **DONE** (or <kbd>Esc</kbd>) leaves the
+sound as it was. The keyboard plays the sound without it.
+
+```admonish info collapsible=true title="How it works: a figure"
+A control is a direction in what the instrument can hear, wired to the knobs
+of each sound, so its figure can't be drawn from a recipe. PERFORM hands the
+engine the sound as you are playing it, twice, and the engine renders and
+measures each: its spectrum, its first note's attack, its level, its held
+note's brightness and harmonics, and the same measurements the model is
+taught with. The lesson's filter is the instrument's own lowpass, inserted
+at the output below any reverb, chorus, phaser or flanger that ends the
+chain, and its curve is measured from the filter itself.
+[Explaining a control](../../reference/search/explain.html) has the details.
+```
 
 ### Half-closed controls
 
@@ -286,6 +385,7 @@ get smoother, and one with no tail can’t get closer.
 
 ## How it works
 
+To see what one control does to this sound, [ask it](#ask-what-it-does).
 **HOW IT WORKS**, below the hood, opens on the control you last touched, with
 every control on the panel a tap away. For each, it says what you hear it do
 (*A soft attack and few harmonics.*), what it listens to, and what it does on

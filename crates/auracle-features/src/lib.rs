@@ -38,6 +38,7 @@
 pub mod audio;
 pub mod cache;
 pub mod clip;
+pub mod explain;
 pub mod face;
 pub mod file;
 pub mod loudness;

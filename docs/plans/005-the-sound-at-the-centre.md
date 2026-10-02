@@ -339,6 +339,63 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      Done only if the maintainer decides to keep them.
 10. **Explain anything.** Each control gets a figure, and the first lesson
     ("what a filter does") uses the sound in hand.
+    - *Done (2026-10-02), to prototype v2's `explain.js`, for the controls:*
+      `apps/web/explain.js`. ? over a control or with it in focus, its ?
+      chip, or a long press on a touch screen opens its answer: a figure and
+      a sentence, with every placed control a tap away, following the
+      control as it turns. The engine renders the performed state twice, the
+      control at its center and turned (`WasmEngine::explain_render`,
+      `auracle_features::explain::Portrait`), and each figure draws the
+      measurement its direction is made of: the spectrum and its difference
+      band by band, the onset, the phrase's level and tail, the held note's
+      brightness or level at its real rate, or its harmonics, as made dashed
+      and turned lit. BRIGHT's answer opens the lesson, which renders the
+      sound in hand through the grammar's SVF lowpass at the cutoff the
+      player drags (`WasmEngine::lesson_filter`), with the filter's response
+      from quiver's own filter (`auracle_grammar::lowpass_response`) and its
+      audition. A figure is two renders in `soon` (207 ms each, median, over
+      the presets in wasm), the lesson one per cutoff
+      ([Explaining a control](../../www/reference/src/search/explain.md)).
+    - *Where the specimen and the engine differ, the engine was followed:*
+      - the specimen's controls are effects (BRIGHT a lowpass at a cutoff,
+        SNAP an envelope, MOTION an LFO, GRIT a waveshaper, SPACE a reverb);
+        the app's are directions in φ wired to each patch's knobs, so each
+        figure draws two measured renders and names the knobs the wiring
+        turns, never a cutoff the control does not have;
+      - the specimen's lesson drags BRIGHT; the app's puts the grammar's
+        lowpass on a copy, so step three says what BRIGHT turns on this
+        sound, from its wiring, and Done leaves the sound as it was;
+      - the shape is the render's face (task 3, merged): `Portrait::face`,
+        drawn with `drawVessel` against the bank, the band constants shared
+        with `face.rs`; with under four faces in the bank the raw spectrum
+        stands in, and the copy says "its spectrum";
+      - the keys play the sound in hand without the lesson's filter; the
+        lesson's sound is the filtered phrase, looped and swapped in place;
+      - a palette control's preview as a recipe over the six (the
+        specimen's `macroAnswer`) is not drawn: each of the eighteen is its
+        own direction, measured once placed;
+      - on a touch screen a long press opens the figure (RFC-006 §9) rather
+        than the sweep, which the answer's HEAR IT plays; with a mouse the
+        long press still sweeps;
+      - ⌘K's two entries wait for the shell (task 2), and the specimen's
+        other askables (a bank row's liking, the pair, the map's directions,
+        the face) for their tasks.
+    - *After review (2026-10-02):*
+      - the lesson's filter cannot go inside a patch at the grammar's size
+        ceilings: 16 of 150 pool draws of the shipped seed (none of the 62
+        presets), measured with `explain_lesson` at a cutoff of 0.5 (133
+        inside, 16 with no room, 1 silent). Those sounds now get the same
+        filter after the voice (`lowpass_apply` over the raw render, then vetted, its
+        corner the held note's on every note), and the lesson says so; a
+        render that still fails is said in words, drawn and played as
+        nothing;
+      - a figure keeps one request out (a drag with an answer open sends at
+        most two), and says *measuring…* while it waits (voice.md's new row;
+        *listening…* stays PERFORM's);
+      - the maintainer approved **cutoff**, **lowpass**, **lesson** and
+        **figure**/**answer** as words, with rows in voice.md;
+      - after faces (#102) merged, the portrait's bands are `face.rs`'s and
+        the figures and the lesson draw the face.
 11. **A sound of your own.**
     - φ is computed from a decoded file (`auracle-features`, a wasm binding).
     - The sound takes its place on the map, and its nearest sounds are shown.

@@ -650,8 +650,14 @@ export function createPerform(host) {
         wanderGrab();
       } else touch();
       if (k.spec.kind === "named") {
+        const touchHold = e.pointerType === "touch";
         hearTimer = setTimeout(() => {
-          if (!moved) hearIt(k);
+          // On touch a long press asks what the control does (explain.js:
+          // its figure, which can play the same sweep); with a mouse it is
+          // still the sweep by ear.
+          if (moved) return;
+          if (touchHold && host.askHold?.(k.wrap)) return;
+          hearIt(k);
         }, 550);
       }
     });
@@ -1053,6 +1059,8 @@ export function createPerform(host) {
 
   function onKnob(k, fromMidi) {
     if (!fromMidi) host.controlMoved?.(k.i);
+    // An open figure follows its control (explain.js).
+    host.controlTurned?.(k.i);
     if (k.spec.kind === "named") {
       state.c[k.i] = k.value;
       // How it works opens on the control last touched.
@@ -3846,6 +3854,58 @@ export function createPerform(host) {
       });
     },
     hasOffer: () => !!state.offer,
+    // Explain anything (explain.js, Plan-005 task 10): what the figure of the
+    // control at panel position `i` renders. The performed state twice, as
+    // knob overrides: `made`, every knob as it sounds with this control at
+    // its center, and `turned`, the same with it at `at`, where the player
+    // has it or, at the center, a full turn toward the end it opens to (null
+    // when nothing turns it). With the control's wiring in words: the knobs
+    // it turns, whether it is a search control or not measured yet, the one
+    // end it turns toward, and whether a knob is a filter's cutoff. Null
+    // before a patch is under PERFORM's hands.
+    explainOf(i) {
+      const k = knobs[i];
+      if (!state.cur || !k || k.spec.kind !== "named") return null;
+      const w = state.wire && state.wire[i];
+      const vals = controlValues();
+      const [lo, hi] = rangeOf(w);
+      const v = vals[i] || 0;
+      const toward = hi > 0 ? 1 : lo < 0 ? -1 : 0;
+      const held = clamp(v, lo, hi);
+      const at = Math.abs(held) >= 0.05 ? held : toward;
+      const over = (c) => {
+        const vv = vals.slice();
+        vv[i] = c;
+        const out = [...state.cur.knobs.keys()].map((a) => [a, soundingOf(state.cur.knobs.get(a), a, state.wire, vv)]);
+        for (const [a, x] of state.hand) if (!state.cur.knobs.has(a)) out.push([a, x]);
+        return out;
+      };
+      const addrs = turns(w) ? w.knobs.map(([a]) => a) : [];
+      return {
+        i,
+        index: indexAt(i),
+        tree: state.cur.json,
+        value: v,
+        at,
+        pending: !w || !!w.pending,
+        search: !!(w && w.search),
+        knobs: addrs.map((a) => knobWord(a, true)),
+        cut: addrs.some((a) => a.endsWith("#cut")),
+        only: turns(w) && lo === 0 && hi > 0 ? k.spec.high : turns(w) && hi === 0 && lo < 0 ? k.spec.low : "",
+        made: over(0),
+        turned: turns(w) && at !== 0 ? over(at) : null,
+      };
+    },
+    // The control at panel position `i` explains itself by ear: its sweep
+    // through both ends and back (`hearIt`), as a long press does.
+    hear(i) {
+      const k = knobs[i];
+      if (k && k.spec.kind === "named") hearIt(k);
+    },
+    // The sound in hand as it sounds now, every control where it is: the tree
+    // and its knob overrides (the lesson on filters starts from it). Null
+    // before a patch is under PERFORM's hands.
+    sounding: () => (state.cur ? { tree: state.cur.json, overrides: overrides() } : null),
     // The panel, for MIDI and booth mode: a slot is a position on the deck
     // (the panel's controls in its order, then Blend and Wander).
     controlNames: () => [...controls().map((c) => c.name), "Blend", "Wander"],
@@ -3885,6 +3945,9 @@ export function createPerform(host) {
     followTree,
     setQuiet(on) {
       state.quiet = !!on;
+      // Attract plays the instrument by itself: an answer or a lesson a
+      // visitor left open is put away (explain.js).
+      if (on) host.attractStarted?.();
       // Whatever attract blended in was heard by nobody in particular: an
       // offer it leaves behind starts unheard for the visitor.
       if (!on && state.offer) state.offer.heardMs = 0;

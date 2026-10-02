@@ -64,7 +64,8 @@ jobs:
   # generations, walks, their ordering), PERFORM (perform.js) and the worklet it
   # plays offers through (live-audio.js), PATCH's guess (patch.js, which the
   # guess specs drive after a warm start); AUDIO IN (audio-in.js), whose
-  # capture hands a standing walk crew the new phrase; the engine crates those scripts call
+  # capture hands a standing walk crew the new phrase; the answers and the
+  # lesson (explain.js), whose figures ask the engine in `soon`; the engine crates those scripts call
   # into for walks and measurement (auracle-session, auracle-wasm); a spec file
   # that holds an @slow test; the suite's config and lockfile. NOT main.js:
   # every view lives in it, so it would make almost every app PR a slow run.
@@ -131,7 +132,7 @@ jobs:
             if [ -f "$f" ] && grep -q '@slow' "$f"; then slow_spec=true; fi
           done
 
-          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|patch|live-audio|audio-in)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
+          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|patch|live-audio|audio-in|explain)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
             browser=true
           else
             browser=false

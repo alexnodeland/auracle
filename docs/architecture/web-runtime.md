@@ -54,7 +54,8 @@ served within a lane (`laneOf` in `worker.js`):
   `breed_step`s), and runs between that job's pieces. A `now` render of the
   same id supersedes it.
 - **soon**: long work the player asked for (a generation, a pressed offer, the
-  first measurement of the patch in their hands).
+  first measurement of the patch in their hands, a control's figure, the
+  lesson on filters).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
   offers, Wander's drift, booth pre-warms, the model's guess, the cable
   probe).
@@ -381,6 +382,49 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
   per bank and size; a dot until the face lands, and the map is redrawn as
   faces do.
+
+## A control's figure and the lesson on filters
+
+Explain anything (Plan-005 task 10, `apps/web/explain.js`): a control's
+figure is what the engine measured on the sound in hand, never a recipe
+([reference](../../www/reference/src/search/explain.md)).
+
+- **`explain`** (`soon`; `{token, tree, made, turned, k}`): PERFORM's
+  `explainOf(i)` gives the performed tree and two sets of knob overrides,
+  the control at its center (`made`) and turned (`turned`, absent when
+  nothing turns it). The worker holds the floor and renders each with
+  `explain_render` (featurize, then `auracle_features::explain::portrait`,
+  and `along`, the render's place on palette control `k`), breathing
+  between the two, and answers `explain` with `{token, tree, k, made,
+  turned}` or `{…, error}`. A render that does not vet answers `{error}` in
+  its place. The page keys replies by the control, the tree, both override
+  sets and the wiring's words, keeps one request out at a time (a key
+  asked for meanwhile is not queued; the answer asks for its control's
+  current key when the reply lands), and leaves a turn in progress to its
+  300 ms follow timer, so a drag never stacks renders in `soon`: walks
+  yield to `soon`, and a pile of figures there would hold a generation up.
+- **`explain_lesson`** (`soon`; `{token, tree, overrides, cutoff}`): one
+  `lesson_filter` render, the performed state with the grammar's lowpass at
+  `cutoff` on its output (none: the sound as it is; no room for one more
+  module: after the voice, `placement: "after"`), answered with `{token,
+  tree, cutoff, data, buffer, sampleRate}` (`buffer` transferred, empty when
+  `data.error`). The page keeps one out at a time and sends the latest
+  cutoff when it lands; after a failed plain render, or a tree it cannot
+  read, it asks nothing more.
+
+- **`explain_cancel`** (`{kind}`, answered on arrival, never queued): an
+  answer or the lesson put away. Every `explain` or `explain_lesson` request
+  of that kind still waiting is taken out of its lane and answered with
+  `error: "cancelled"` (the page keeps nothing for it), so none stands in
+  `soon` ahead of what the player asks next; one already rendering
+  finishes. With nothing open the page sends neither request.
+
+Neither touches the pool, the bench or the log. An open figure follows its
+control (perform.js calls `host.controlTurned`, and the figure asks again
+once the turn has rested for 300 ms) and closes when its view does, and when
+booth mode's attract starts (`host.attractStarted`). A long
+press on a control on a touch screen asks (`host.askHold`) instead of
+sweeping; with a mouse it still sweeps.
 
 ## The breed job
 

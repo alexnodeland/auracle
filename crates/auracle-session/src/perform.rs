@@ -725,6 +725,16 @@ pub fn graft_for(tree: &PatchTree, k: usize) -> Option<PatchTree> {
     if any(&tree.root, &same) {
         return None;
     }
+    insert_at_output(tree, node)
+}
+
+/// `tree` with the mono module `node` (its input a placeholder) inserted at
+/// the output, below any stereo effect that ends the chain, or `None` where
+/// the insert would break the grammar's size ceilings. The EQ a graft gives
+/// Bright and Body goes in here ([`graft_for`]), and so does the filter the
+/// app's lesson on filters puts on the sound in hand (`auracle_wasm`,
+/// `lesson_filter`).
+pub fn insert_at_output(tree: &PatchTree, node: AudioNode) -> Option<PatchTree> {
     // Below any stereo tail, not after it: the EQ is mono, and grafted onto
     // a reverb or chorus at the output it folded the patch to one channel
     // (Ghost Bell moved 0.27σ). The stereo modules have one input, at `/0`.
