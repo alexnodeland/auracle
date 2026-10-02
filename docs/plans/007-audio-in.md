@@ -53,21 +53,21 @@ measured with audition clips, from quiver to the PATCH plate.
      live, `channel` left, right or both;
    - described as `audio_in`, "audio in", with `NodeKind::AudioIn` in the
      edit vocabulary;
-   - prior weight 0 for now (`AUDIO_IN_WEIGHT` in `prior.rs`), so no fill or
-     walk draws one and every seed deals the pool it dealt before the term.
-     Before the app can capture, a drawn listener would be heard as the
-     reference pluck in a duel or the bank and as silence from the keys and
-     PERFORM, on a plate the player cannot use. Task 4 turns it on at
-     `AUDIO_IN_ENABLED_WEIGHT`, Silence's 0.5%, untilted by taste
-     (`PatchGrammarPrior::with_audio_in` is that prior, and the tests reach the
-     term through it);
+   - a **player kind** (the maintainer's decision, 2026-10-02, replacing the
+     plan to turn its weight on): source weight 0 (`AUDIO_IN_WEIGHT`), so no
+     fill, walk or offer draws one and every seed deals the pool it dealt
+     before the term, while `SourceKind` scores a player's at
+     `PLAYER_SOURCE_MASS`, so a listening patch is in support and is bred
+     like any other. `boot_probe.json` and `perform-wirings.json` are
+     unchanged (the latter regenerated equal apart from node uids, which
+     differ run to run);
    - every walk locks each `#input` its seed holds, so the node and its input
      stay;
    - φ keeps its shape: a display counter, `n_audio_in`, and no column.
-   - Open: the node bank entry, the device list and the face are task 4's,
-     and so is turning the weight on (see task 4).
+   - Open: the face is task 4's (see task 4).
 
-   The paired `make revalidate` measured the prior **at 0.5%**: before is
+   The paired `make revalidate` below measured the term drawn **at 0.5%**,
+   the setting that was planned and not shipped: before is
    main at 728dd65, after is this branch with the term at 0.5% (16-seed climb
    re-run on the rebased heads, byte-identical). Nothing moved beyond noise.
    The one row that moved the wrong way, locked refine at 160 steps, is
@@ -91,9 +91,9 @@ measured with audition clips, from quiver to the PATCH plate.
 3. **Audition clips:**
    - a built-in reference signal; *done*: a plucked figure (A2 to E4, a noise
      pick on every note, a quiet tail), deterministic, mono;
-   - capturing a few seconds on first listen; *open*, the web half (task 4).
-     The engine takes a capture through `WasmEngine::set_audition_clip` and
-     the worker's `set_audition_clip` message;
+   - capturing a few seconds on first listen; *done* (task 4's web half): 6 s
+     of the input once it carries a signal, through the worker's
+     `set_audition_clip` message to `WasmEngine::set_audition_clip`;
    - storing clips with the session; *done*: one session clip, saved as 16-bit
      base64 and bounded like quiver's `Capture`; an unreadable one restores as
      the reference and says so;
@@ -103,31 +103,55 @@ measured with audition clips, from quiver to the PATCH plate.
      carries the clip, and `LivePoly` binds a cursor-mode input stream. A
      fill's farm result for a listener measured under another clip (or vetted
      out under one) is measured on the engine instead (`Engine::absorb_prior`),
-     and a restore's falls back to `bank_render`. Open: re-sending the farm's
-     phrase (task 4), and a clip per input.
-4. **Web capture:**
-   - the permission flow, only when a node is added;
+     and a restore's falls back to `bank_render`. The farm's phrase is re-sent
+     after a capture and a restore that installs one (task 4). Open: a clip
+     per input.
+4. **Web capture.** *Done* (web), except the live face
+   (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
+   `tests/web/audio_in.spec.js`):
+   - the permission flow, only when a node is added; *done*: `queueStruct`
+     asks inside the gesture; a sound that listens opened later opens its
+     input only if the browser already granted one, otherwise the module
+     shows ALLOW INPUT; a refusal keeps the node, silent, with ASK AGAIN;
    - `enumerateDevices`, and one capture stream per input fanned out to every
-     node that uses it;
-   - the live worklet's input;
-   - the AUDIO IN plate: device select, level meter, live face;
-   - monitoring off, with a headphones note;
-   - **held sounds** (task 6), owed: a bank surface for the sounds a restore
+     node that uses it; *done*: slot → device in `auracle-inputs`, one
+     `getUserMedia` per device the bench reads, one source fanned out to each
+     module's meter, the voices and the capture; unplug and replug handled.
+     `LivePoly` binds one stream, so the voices hear the first AUDIO IN's
+     device and a module on another input is metered only (said on it);
+   - the live worklet's input; *done*: the voice node has one input, written
+     through `input_ptr`/`write_input` before `process_ptr` for A and B, the
+     view re-checked every quantum. A patch that listens is held open by an
+     **open voice** (`LivePoly::set_open`): one more voice of the patch, built
+     with it, gated at C4 outside the keys' allocation while monitoring is on;
+   - the AUDIO IN plate: device select, level meter, live face; *done*: the
+     input line opens the input menu, and the square draws the input's face
+     (`createLiveMeter` on the level's own analyser frame, eased, drawn by
+     `drawVessel` against the bank's `faceStats`) with a level bar at its
+     left edge; with no stats (under four faces) the bar alone;
+   - monitoring off, with a headphones note; *done*: MONITOR, off on every
+     load and never saved, USE HEADPHONES under it and in its toast;
+   - the clip on first listen (task 3's web half); *done*: 6 s of the voices'
+     input once it carries a signal, sent as `set_audition_clip`; NEW CLIP
+     captures again. One clip for every input (a clip per input stays open);
+   - the farm's phrase re-sent after a capture and after a restore that
+     installs a clip; *done* (`farmResendPhrase`);
+   - **held sounds** (task 6), owed (the second web PR): a bank surface for the sounds a restore
      kept aside because a CAPTURE's recording couldn't be read
      (`held_sounds`), which opens one on the bench to record it again and
      sends the take (`readmit_held`); both are wired in `worker.js` with
      nothing asking yet, and the restore's note says so once per set;
-   - **TRACK live**: a key let go while the input still sounds holds its
+   - **TRACK live**, owed (the second web PR): a key let go while the input still sounds holds its
      voice open (the tracker's gate is summed into the amp's), so voices can
      stack while the player plays keys over a sung line, each a copy of the
      tracked note. The audition render's chord voices are followers that
      stop with their key; `LivePoly` has no follower yet;
-   - **turning AUDIO IN on in the prior** once a player can hear a live input:
-     set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
-     task 2 measured exactly that setting, so if nothing else has changed it
-     owes no new run; it does owe `make perform-wirings` and a re-pinned boot
-     probe (`UPDATE_BOOT_PROBE=1`, `crates/auracle-wasm/tests/boot_agrees.rs`),
-     because the pool a seed deals moves.
+   - **AUDIO IN in the prior.** *Decided* (2026-10-02): not turned on. It
+     is a player kind like TRACK and CAPTURE (task 2): never drawn, scored
+     finite, so a player's listening patch is bred and no draw moved (no
+     revalidate, perform-wirings or boot probe owed). ⚡ and generations walk a
+     listening seed, on the farm as on the engine, with the session's clip
+     and the seed's takes.
 
    Constraints the engine half leaves for this task:
    - **Re-send the farm's phrase** after a capture *and* after any restore
@@ -159,16 +183,17 @@ measured with audition clips, from quiver to the PATCH plate.
    - a **player kind**: `OpKind` never draws it and scores it finite
      (`PLAYER_OP_MASS`), so draws, the pool and φ are unchanged and no
      revalidate is owed, while a player's tracked sound stays evolvable
-     (once AUDIO IN is on: while its weight is 0, an AUDIO IN under a
-     TRACK still scores −∞);
+     (its AUDIO IN scores finite too, as a player kind at `#src`);
    - every walk holds its `#op` (`PatchTree::player_sites`), so the node,
      the chain it plays and the input chain it follows stay;
    - rendered on the reference clip, it plays the figure's notes (thirteen of
      fourteen within 1.4 cents; one over a ringing note, 17 cents).
-   - Open: live, `LivePoly` runs a voice only while a key is held, so a
-     tracked patch sounds from the input alone once the web task keeps a
-     voice running for it (and a tracker holding the gate defeats the
-     stolen-voice regate); the node bank entry and the plate.
+   - Open: live, `LivePoly` ran a voice only while a key was held. Task 4's
+     open voice (`LivePoly::set_open`) now holds one open while the input is
+     monitored, which is what a tracked patch needs to sound from the input
+     alone; it has not been measured with a TRACK yet. Still open: a tracker
+     holding the gate defeats the stolen-voice regate, and the node bank
+     entry and the plate (the second web PR).
 6. **Capture** (record and play back) in quiver and the grammar. A captured
    buffer is saved with the sound. quiver's half is done (`Capture`, 0.4.0,
    which saves its take with the patch). *Done* (engine):
@@ -199,8 +224,8 @@ measured with audition clips, from quiver to the PATCH plate.
      and showing held sounds in the bank (task 4).
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
-   is *done* (*Audition clips*, with the AUDIO IN term on the grammar page);
-   the guide page waits for task 4.
+   is *done* (*Audition clips*, with the AUDIO IN term on the grammar page),
+   and so is the guide page (*Playing through Auracle*, with task 4).
 
 ## Done when
 

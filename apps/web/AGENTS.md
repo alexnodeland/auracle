@@ -15,7 +15,8 @@ the long-form notes are this directory's `README.md`.
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
-| `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator |
+| `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
+| `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste.js` | main thread | TASTE's map (a pick's arrow, the halos moving with the ratings, a refit settling them) and LEARNING's room (weights, direction, forecasts, copy as JSON, the math), drawn from what `main.js` holds |

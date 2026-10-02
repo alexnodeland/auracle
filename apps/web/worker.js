@@ -160,9 +160,10 @@ const farm = [];   // {port, ready, alive, job}
 // ports whose workers are already gone.
 const farmPreDead = new Set();
 
-function farmSetup(ports) {
-  // What each worker checks its own binary against (farm.js, `phrase`): the
-  // render namespace this worker's binary computes for the phrase.
+// The farm's handshake: the phrase every render and walk is measured on, and
+// the render namespace this worker's binary computes for it (what each farm
+// worker checks its own binary against; farm.js, `phrase`).
+function farmPhrase() {
   const phrase = engine.phrase_json();
   let ns = null;
   try {
@@ -170,6 +171,24 @@ function farmSetup(ports) {
   } catch (_) {
     ns = null;
   }
+  return { phrase, ns };
+}
+
+// The phrase carries the session's audition clip, so a capture or a restore
+// that installs a saved clip changes it after the crew standing was handed the
+// old one. Until a worker has the new one, its render of a sound that listens
+// carries the old clip's key, the engine refuses it, and the sound is measured
+// serially here instead (Plan-007 task 4). Port messages arrive in order, so a
+// job sent after this is rendered with the new clip.
+function farmResendPhrase() {
+  if (!farm.some((f) => f.alive)) return 0;
+  const { phrase, ns } = farmPhrase();
+  farmSay({ type: "phrase", json: phrase, ns });
+  return farm.filter((f) => f.alive).length;
+}
+
+function farmSetup(ports) {
+  const { phrase, ns } = farmPhrase();
   for (let k = 0; k < ports.length; k++) {
     const f = { port: ports[k], ready: false, alive: !farmPreDead.has(k), job: null, index: k };
     if (!f.alive) {
@@ -776,12 +795,19 @@ async function restoreSession(saved, farmed, stages) {
     const verdict = JSON.parse(engine.import_session_deferred_v2(saved));
     if (verdict.status === "unparseable") return restoreFailed(verdict.status);
     jobs = verdict.jobs;
+    // The import installed the session's saved clip; the crew was handed the
+    // phrase before it. Re-sent before any bank job goes out, so the farm
+    // renders the bank's listeners with the clip they were saved with.
+    if (auditionClip()?.source === "captured") farmResendPhrase();
   } catch (err) {
     // A binary without the v2 surface (stale cache): the un-verdicted form, and
     // failing that the serial path.
     console.warn("[auracle] verdicted restore unavailable:", err);
     try {
       jobs = JSON.parse(engine.import_session_deferred(saved));
+      // As on the v2 path: the import installed the saved clip after the
+      // crew's handshake.
+      if (auditionClip()?.source === "captured") farmResendPhrase();
     } catch (err2) {
       console.warn("[auracle] deferred restore unavailable:", err2);
       return restoreSerial(saved);
@@ -3538,24 +3564,31 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
-    // The session's audition clip (Plan-007 task 3, ADR-015): what a sound
-    // with an AUDIO IN is measured with. Capturing one is task 4's (the
-    // permission flow and the worklet's input); these are the engine's side,
-    // so a capture has somewhere to land. `samples` is a Float32Array of
-    // `channels` interleaved, at `sampleRate`; without it the clip goes back
-    // to the built-in reference. A new clip changes the phrase the farm was
-    // handed at boot, and until task 4 sends it again the farm measures sounds
-    // that listen with the old one; their keys differ, so the engine measures
-    // those itself rather than trust the farm's rows.
+    // The session's audition clip (Plan-007, ADR-015): what a sound with an
+    // AUDIO IN is measured with. A capture arrives from audio-in.js on first
+    // listen or NEW CLIP: `samples` is a Float32Array of `channels`
+    // interleaved, at `sampleRate`; without it the clip goes back to the
+    // built-in reference. A clip the engine takes changes the phrase, so the
+    // crew standing (if any) is handed it again (`farmResendPhrase`), and the
+    // listeners it measured again move their ratings, so the views go with
+    // the reply.
     case "audition_clip": {
       postClip();
       break;
     }
     case "set_audition_clip": {
-      const reply = m.samples
+      const reply = JSON.parse(m.samples
         ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
-        : engine.clear_audition_clip();
-      post({ type: "audition_clip", ...JSON.parse(reply) });
+        : engine.clear_audition_clip());
+      let resent = 0;
+      if (reply.ok) resent = farmResendPhrase();
+      const moved = reply.ok && (reply.remeasured?.length || reply.unmeasured?.length);
+      post({
+        type: "audition_clip",
+        ...reply,
+        farmResent: resent,
+        ...(moved ? { views: tasteViews(), status: status() } : {}),
+      });
       break;
     }
     // Sounds the last restore held back: a capture's recording couldn't be

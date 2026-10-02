@@ -164,7 +164,7 @@ The chapters:
   this patch).
 - **Changing it:** turn any knob while playing, with no recompile. Bypass,
   unplug (HELD) and ⌘Z.
-- **The node bank:** 42 modules. Preview before you place; green inserts,
+- **The node bank:** 43 modules. Preview before you place; green inserts,
   amber replaces. Modulation chains (S&H → quantize → slew).
 - **Steps:** a sequencer for timbre, on the tempo.
 - **Locks and ⚡ evolve from this:** lock what you love, and breed the rest.

@@ -19,6 +19,7 @@
 - [Reading and editing the rack](./rack.md)
 - [Wiring and the module rail](./wiring.md)
 - [Playing it](./playing.md)
+- [Playing through Auracle](./playing-through.md)
 
 # Teaching it
 

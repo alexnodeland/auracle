@@ -4,6 +4,14 @@
 [reference](../reference/) defines the same things in full; this page is for
 reading the app.</p>
 
+### AUDIO IN, input, MONITOR, clip
+
+**AUDIO IN** is the module that brings your own signal into a patch. An
+**input** is a microphone or an interface the browser offers, numbered from 1.
+**MONITOR** plays your input through the sound at the speakers; it starts off
+every time. A **clip** is the seconds of your input the model hears a sound
+with AUDIO IN through. See [playing through Auracle](./playing-through.md).
+
 ### Bank
 
 The rail on the left, with three tabs: **POOL** (the sounds the model weighs

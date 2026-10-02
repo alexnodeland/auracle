@@ -2142,10 +2142,11 @@ impl Engine {
             // amplifying holes into the pool is a failure a listener notices
             // immediately.
             0.0,
-            // `AudioIn` is not tilted either, and for the reason the grammar
-            // gives it a Silence-sized weight: the input is the player's.
-            // Whether a patch listens is a choice they make by patching one
-            // in, and it has no φ column a coefficient could be read from.
+            // `AudioIn` is not tilted either. It is a player kind
+            // (`SourceKind` in the grammar's prior): its sampling weight is 0,
+            // so no generation draws one and no multiplier could move it.
+            // Whether a patch listens is the player's choice, made by patching
+            // one in, and it has no φ column a coefficient could be read from.
             0.0,
         ];
         let src = tilt_weights(&prior.source_weights, &sources, eta);

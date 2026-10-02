@@ -55,6 +55,10 @@ the face.
   beside **B** once an offer has grown. B grows out of the face, and goes
   back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen,
   and what you play is drawn over it.
+- **AUDIO IN**, in the square on the module in the rack: the face of your
+  input as it plays, drawn from the last few hundredths of a second, before
+  the patch. It is there only while the input carries a signal. See
+  [playing through Auracle](./playing-through.md#the-module).
 - **[The warm start](./getting-started/first-session.md#2-pick-the-three-youd-reach-for)**,
   on each of the nine cards.
 - **[TASTE](./views/taste.md)**: each sound on the map is its face, sized by

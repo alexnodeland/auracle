@@ -150,6 +150,106 @@ export function evolveRefusal(reason, name) {
   }
 }
 
+// ---- AUDIO IN: your input in the patch (Plan-007 task 4) ----
+
+/** What AUDIO IN says as it asks for an input, is refused one, or loses one.
+ *  Plain sentences; the silk labels on the module are `INPUT_SILK`. */
+export const INPUT_SAID = Object.freeze({
+  asking: "AUDIO IN asks the browser for a microphone or an interface. What it hears stays in this browser.",
+  refused: "The browser was refused the input, so AUDIO IN stays in the patch, silent. Allow the microphone in this site’s settings, then press ASK AGAIN.",
+  missing: "No input was found, so AUDIO IN stays in the patch, silent. Plug in a microphone or an interface, then press ASK AGAIN.",
+  failed: "The input didn’t open, so AUDIO IN is silent. Close any app holding it, then press ASK AGAIN.",
+  unsupported: "This browser doesn’t offer its inputs to web pages, so AUDIO IN stays silent.",
+  monitorOn: "Monitoring on: your input plays through the sound at its sustain level, with no key down. Use headphones, or the speakers feed back into the microphone.",
+  monitorOff: "Monitoring off: your input reaches the meter, not the speakers.",
+  monitorNone: "Nothing to monitor yet: AUDIO IN has no input.",
+  clipNone: "Nothing to capture yet: AUDIO IN has no input.",
+});
+
+/** The labels on the AUDIO IN module: silk, set in capitals by CSS. */
+export const INPUT_SILK = Object.freeze({
+  monitor: "monitor",
+  newClip: "new clip",
+  allow: "allow input",
+  askAgain: "ask again",
+  headphones: "use headphones",
+});
+
+/** An input that went away, and the same one back. `label` is the browser's
+ *  name for the device. */
+export function inputGone(label) {
+  return `${label || "The input"} was unplugged, so AUDIO IN is silent until it’s back.`;
+}
+export function inputBack(label) {
+  return `${label || "The input"} is back.`;
+}
+
+/** The clip being captured: `seconds` of `label` (Plan-007's audition clip). */
+export function clipCapturing(label, seconds) {
+  return `Capturing ${seconds} s of ${label || "your input"} as the clip the model hears it through…`;
+}
+/** NEW CLIP pressed: the capture waits for the input to carry a signal. */
+export function clipArmed(label, seconds) {
+  return `The next ${seconds} s of ${label || "your input"} become the clip, from the moment it carries a signal. Play into it.`;
+}
+
+/** The AUDIO IN module's input line: which input it reads, or why none.
+ *  `slot` counts from 0, as the engine's `input` knob does; it is shown
+ *  from 1, as a desk numbers its inputs. `state`:
+ *  - `live`: its input is open (`label` is the device);
+ *  - `meter`: open for the meter only, because the keys read another input;
+ *  - `unplugged`: the device it was given is gone;
+ *  - `opening`: allowed, and its stream not open yet;
+ *  - `empty`: no device has been given that slot;
+ *  - `unasked`, `asking`, `refused`, `missing`, `failed`, `unsupported`:
+ *    no input at all yet, and why. */
+export function inputLine(state, slot, label) {
+  const n = `${(slot | 0) + 1}`;
+  switch (state) {
+    case "live": return `${n} · ${label}`;
+    case "meter": return `${n} · ${label} · meter only`;
+    case "unplugged": return `${n} · ${label} · unplugged`;
+    case "empty": return `${n} · nothing plugged in`;
+    case "opening": return `${n} · ${label} · opening…`;
+    case "asking": return "asking…";
+    case "refused": return "input refused";
+    case "missing": return "no input found";
+    case "failed": return "input didn’t open";
+    case "unsupported": return "no inputs in this browser";
+    default: return "no input yet";
+  }
+}
+
+/** An input's row in the AUDIO IN input menu: "2 · Scarlett 2i2". */
+export function inputRow(slot, label) {
+  return `${(slot | 0) + 1} · ${label}`;
+}
+
+/** An input the browser has not named: "input 3". */
+export function inputName(slot) {
+  return `input ${(slot | 0) + 1}`;
+}
+
+/** The input line as a control's name, for a screen reader: the whole line,
+ *  which the module may have cut to fit. */
+export function inputLineName(line) {
+  return `Input ${line}`;
+}
+
+/** AUDIO IN's tooltips (a name and what it does) and its input menu. */
+export const INPUT_TIPS = Object.freeze({
+  line: "Input: pick a microphone or interface",
+  monitor: "Monitor: hear your input through the sound",
+  newClip: "New clip: what the model hears it through",
+  allow: "Allow input: ask the browser for one",
+});
+export const INPUT_MENU = Object.freeze({
+  title: "audio in",
+  sub: "input",
+  inUse: "in use",
+  unplugged: "unplugged",
+});
+
 // ---- a generation as it runs, and the lineage it leaves in the bank ----
 
 /** What one walk came back as, for EVOLVE POOL's narration ("walk 3 of 10 ·

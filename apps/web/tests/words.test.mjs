@@ -52,6 +52,18 @@ import {
   bredRatings,
   changeParts,
   markWord,
+  INPUT_SAID,
+  INPUT_SILK,
+  inputGone,
+  inputBack,
+  clipCapturing,
+  clipArmed,
+  inputLine,
+  inputRow,
+  inputName,
+  inputLineName,
+  INPUT_TIPS,
+  INPUT_MENU,
   guessWhy,
   guessLine,
   guessRefusal,
@@ -427,6 +439,42 @@ test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
   assert.equal(markWord("will"), "will be replaced");
   assert.equal(markWord("other"), "");
   for (const k of ["seed", "may", "will"]) voiced(markWord(k));
+});
+
+test("AUDIO IN says which input it reads, or why it has none, in the voice", () => {
+  // The slot is the engine's (from 0); the line counts from 1, as a desk does.
+  assert.equal(inputLine("live", 0, "Fake Mic A"), "1 · Fake Mic A");
+  assert.equal(inputLine("meter", 1, "Interface"), "2 · Interface · meter only");
+  assert.equal(inputLine("unplugged", 2, "USB mic"), "3 · USB mic · unplugged");
+  assert.equal(inputLine("empty", 4), "5 · nothing plugged in");
+  assert.equal(inputName(2), "input 3");
+  assert.equal(inputLineName("1 · Fake Mic A"), "Input 1 · Fake Mic A");
+  // A tooltip is a name and what it does, at most eight words.
+  for (const s of Object.values(INPUT_TIPS)) {
+    voiced(s);
+    assert.ok(s.split(/\s+/).length <= 8, s);
+  }
+  for (const s of Object.values(INPUT_MENU)) voiced(s);
+  // The approved word is "input", not "device" (voice.md's word table).
+  for (const s of [...Object.values(INPUT_SAID), ...Object.values(INPUT_TIPS), inputLine("empty", 0)]) {
+    assert.doesNotMatch(s, /device/, s);
+  }
+  assert.equal(inputLine("refused", 0), "input refused");
+  assert.equal(inputLine("unasked", 0), "no input yet");
+  assert.equal(inputRow(1, "Interface"), "2 · Interface");
+  for (const s of Object.values(INPUT_SAID)) voiced(s);
+  for (const s of Object.values(INPUT_SILK)) {
+    voiced(s);
+    // Silk: one to three words, a lowercase source, no punctuation.
+    assert.ok(s.split(" ").length <= 3 && s === s.toLowerCase() && !/[.,:!?]/.test(s), s);
+  }
+  for (const s of [inputGone("Fake Mic A"), inputBack("Fake Mic A"), clipCapturing("Fake Mic A", 6), clipArmed("Fake Mic A", 6), inputLine("opening", 0, "Fake Mic A")]) voiced(s);
+  // A toast is at most two sentences.
+  for (const s of Object.values(INPUT_SAID)) assert.ok(s.split(/[.…] /).length <= 2, s);
+  // The refusal says why and what to do; monitoring on says to use headphones.
+  assert.match(INPUT_SAID.refused, /refused/);
+  assert.match(INPUT_SAID.refused, /ASK AGAIN/);
+  assert.match(INPUT_SAID.monitorOn, /headphones/);
 });
 
 test("the model's guess says why in its own words, its forecast with a word, and when it may not help", () => {

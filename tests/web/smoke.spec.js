@@ -63,18 +63,19 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The three `audition_clip` methods are the
 // session's clip (Plan-007 task 3), and the live voice's input surface is what
-// the worklet will write a capture through (task 4). The `guess_*` four are
-// the model's guess (Plan-005 task 9d), with `guess_patch_as` the key a new
-// patch files its guesses under (task 7), and `edit_cable_levels` the cable
-// probe (9e). `held_sounds` and `readmit_held` are the sounds a restore held
-// back for an unreadable take (Plan-007 task 6). The `own_*` methods and
-// `refine_toward_jobs` are a sound of your own (Plan-005 task 11): a
-// decoded file measured, and a generation bred toward it. `face_of`,
-// `face_key`, `face_of_tree` and `preset_tree_json` are the faces the worker
-// files and posts (Plan-005 task 3). The `perform_*job*` methods and the two
-// `_begin`s are PERFORM's offers and drifts as walks the worker steps a render
-// at a time (`walkRun`); without them it falls back to the one uninterruptible
-// call, which is how a pick came to wait a minute.
+// the worklet writes the player's input through, with the open voice that
+// holds a patch that listens open while it is monitored (task 4). The
+// `guess_*` four are the model's guess (Plan-005 task 9d), with
+// `guess_patch_as` the key a new patch files its guesses under (task 7), and
+// `edit_cable_levels` the cable probe (9e). `held_sounds` and `readmit_held`
+// are the sounds a restore held back for an unreadable take (Plan-007 task 6).
+// The `own_*` methods and `refine_toward_jobs` are a sound of your own (Plan-005
+// task 11): a decoded file measured, and a generation bred toward it.
+// `face_of`, `face_key`, `face_of_tree` and `preset_tree_json` are the faces
+// the worker files and posts (Plan-005 task 3). The `perform_*job*` methods
+// and the two `_begin`s are PERFORM's offers and drifts as walks the worker
+// steps a render at a time (`walkRun`); without them it falls back to the one
+// uninterruptible call, which is how a pick came to wait a minute.
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -92,7 +93,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "perform_offer_begin", "perform_drift_begin", "perform_job_step", "perform_job_finish", "perform_job_drop",
       "face_of", "face_key", "face_of_tree", "preset_tree_json", "face_of_key",
     ];
-    const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
+    const live = ["input_ptr", "input_capacity", "write_input", "clear_input", "set_open", "open_sounding"];
     return {
       farm_walk: typeof mod.farm_walk,
       cache_namespace: typeof mod.cache_namespace,

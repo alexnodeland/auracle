@@ -1082,13 +1082,9 @@ mod tests {
     #[test]
     fn everything_a_hand_can_reach_has_finite_prior() {
         use mutate::{ModKind, NodeKind, StructOp};
-        // With AUDIO IN on. Nothing else's mass depends on its weight, so for
-        // every other kind this is the default grammar; and the app places no
-        // AUDIO IN until live capture works, which is when the default turns
-        // it on (`AUDIO_IN_WEIGHT`, Plan-007 task 4). Until then a placed one
-        // scores −∞ under the default, which
-        // `audio_in_is_rare_and_the_prior_never_picks_an_input` pins.
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // The shipped grammar: AUDIO IN, TRACK and CAPTURE are player kinds,
+        // never drawn and scored finite, so every one a hand places is here.
+        let prior = PatchGrammarPrior::default();
         let finite = |what: &str, t: &PatchTree| {
             let lp = log_prior(&prior, t);
             assert!(lp.is_finite(), "{what}: log-prior is {lp}");
@@ -1284,9 +1280,9 @@ mod tests {
     #[test]
     fn the_two_samplers_agree_on_kind_frequencies() {
         use std::collections::BTreeMap;
-        // With AUDIO IN on, so both samplers have every kind to agree on; the
-        // default differs only in drawing none.
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // Drawing AUDIO IN, so both samplers have every kind to agree on; the
+        // shipped weights differ only in drawing none.
+        let prior = drawing_audio_in();
         let n = 3000;
         let count = |trees: &[PatchTree]| -> (BTreeMap<String, f64>, f64) {
             let mut c: BTreeMap<String, f64> = BTreeMap::new();
@@ -1895,6 +1891,15 @@ mod tests {
 
     // ---- AUDIO IN (ADR-015, Plan-007 task 2) ----
 
+    /// The shipped prior with AUDIO IN drawn at Silence's rate, for the
+    /// tests that need the samplers to produce one (the shipped weights
+    /// never do: it is a player kind).
+    fn drawing_audio_in() -> PatchGrammarPrior {
+        let mut prior = PatchGrammarPrior::default();
+        prior.source_weights[prior::SRC_AUDIO_IN] = 0.005;
+        prior
+    }
+
     fn listening(input: u8, channel: term::InputChannel) -> PatchTree {
         let mut t = presets::presets()[0].1.clone();
         t.amp = term::AmpEnv {
@@ -1979,16 +1984,17 @@ mod tests {
         assert!(tree.listens() && !presets::presets()[0].1.listens());
     }
 
-    /// Off in the shipped prior, rare once on, and the prior never picks a
-    /// device.
+    /// **AUDIO IN is a player kind: never drawn, scored finite, and the prior
+    /// never picks a device.**
     ///
-    /// The default prior draws no AUDIO IN from either sampler and gives one
-    /// no mass, because live capture is not built yet (`AUDIO_IN_WEIGHT`).
-    /// With the term on ([`PatchGrammarPrior::with_audio_in`]), a drawn AUDIO
-    /// IN is rare and reads the first input, and a tree reading any other
-    /// slot scores exactly what the same tree reading slot 0 does.
+    /// The shipped prior draws no AUDIO IN from either sampler, and scores a
+    /// player's at the player mass (`PLAYER_SOURCE_MASS`), so a listening
+    /// patch is inside its support and can be walked. Where a prior does draw
+    /// one (a test's), a drawn AUDIO IN reads the first input, and a tree
+    /// reading any other slot scores exactly what the same tree reading slot
+    /// 0 does, under both priors.
     #[test]
-    fn audio_in_is_rare_and_the_prior_never_picks_an_input() {
+    fn audio_in_is_a_player_kind_and_the_prior_never_picks_an_input() {
         let off = PatchGrammarPrior::default();
         let mut rng = StdRng::seed_from_u64(0xA0D1_0000);
         for _ in 0..3000 {
@@ -2002,13 +2008,16 @@ mod tests {
             );
         }
         let lp = log_prior(&off, &listening(0, term::InputChannel::Both));
-        assert_eq!(
-            lp,
-            f64::NEG_INFINITY,
-            "the shipped prior gives an input mass"
+        assert!(
+            lp.is_finite(),
+            "the shipped prior scores a player's input {lp}"
         );
+        for slot in 1..term::INPUT_SLOTS as u8 {
+            let at = log_prior(&off, &listening(slot, term::InputChannel::Both));
+            assert_eq!(at, lp, "slot {slot} scores differently from slot 0");
+        }
 
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        let prior = drawing_audio_in();
         let n = 3000;
         let mut rng = StdRng::seed_from_u64(0xA0D1_0001);
         let mut drawn = Vec::new();
@@ -2057,9 +2066,8 @@ mod tests {
     /// same choices.
     #[test]
     fn audio_in_round_trips_at_every_slot_and_channel() {
-        // Scored with the term on: the default prior gives it no mass while
-        // live capture is not built (`AUDIO_IN_WEIGHT`).
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // Scored by the shipped prior, which scores a player's AUDIO IN.
+        let prior = PatchGrammarPrior::default();
         for slot in 0..term::INPUT_SLOTS as u8 {
             for channel in term::InputChannel::ALL {
                 let t = listening(slot, channel);
@@ -2357,10 +2365,9 @@ mod tests {
     /// kind costs the same prior mass wherever it sits.
     #[test]
     fn player_kinds_round_trip_and_score_finite() {
-        // These trees listen through an AUDIO IN, which the shipped prior
-        // scores at −∞ until live capture works; with it on, what is left to
-        // score is the player kinds themselves.
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // These trees listen through an AUDIO IN, a player kind too, which
+        // the shipped prior scores finite as it does TRACK and CAPTURE.
+        let prior = PatchGrammarPrior::default();
         let mut trees = Vec::new();
         for band in term::PitchBand::ALL {
             trees.push(patch(tracked(band, 0.5)));

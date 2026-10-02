@@ -192,14 +192,15 @@ evolvable, as slot 0. A refinement walk locks every `#input` its seed holds
 ([locks](../search/locks.md)): it may change the gain, the channel and
 everything the signal goes through, and never the input or the node itself.
 
-Its prior weight is **0 for now** (`AUDIO_IN_WEIGHT`): until the app can
-capture a live input, a drawn one would be heard through the reference clip in
-a duel and as silence from the keys, so the prior draws none and its source
-table is the one it had before the term. It is turned on at `Silence`’s 0.5%
-(`AUDIO_IN_ENABLED_WEIGHT`, `PatchGrammarPrior::with_audio_in`), with no taste
-tilt: whether a patch listens is a choice a player makes by patching an input
-in. At 0 a tree holding one has $\log p = -\infty$ and cannot be walked,
-which is safe only because nothing can place one yet.
+**AUDIO IN is a player kind**, like TRACK and CAPTURE below: the prior never
+draws one, and scores a player’s. Its source weight is 0
+(`AUDIO_IN_WEIGHT`), with no taste tilt, so no fill, walk or offer deals an
+input and the source table draws exactly what it drew before the term:
+whether a patch listens is a choice a player makes by patching one in. The
+`#src` site’s distribution, `SourceKind`, samples that table unchanged and
+scores AUDIO IN at `PLAYER_SOURCE_MASS` (0.005) where the table gives it
+none, so a listening patch is inside the support and ⚡ and generations walk
+it, holding the node by its `#input`.
 
 ### TRACK: an input plays the patch
 
@@ -309,9 +310,8 @@ harmless: a walk [holds](../search/locks.md) every player kind’s `#op`, so the
 term is the same constant in every ratio it takes. `N_OPS`, which the
 refinement budget scales with, still counts the twenty drawn kinds.
 
-While AUDIO IN's weight is 0, a TRACK or CAPTURE whose input chain holds an
-AUDIO IN still scores $-\infty$ under the shipped prior, for that AUDIO IN, and
-cannot be walked; it can be from the moment AUDIO IN is turned on.
+A TRACK or CAPTURE whose input chain holds an AUDIO IN scores finite too:
+`SourceKind` does for that AUDIO IN what `OpKind` does for the TRACK.
 
 ## What is not in the grammar
 
