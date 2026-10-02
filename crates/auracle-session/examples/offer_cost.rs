@@ -1,9 +1,11 @@
 //! What a PERFORM offer costs, per preset, and where the time goes.
 //!
-//! The worker serves `perform_offer` as one call it cannot interrupt, so what
-//! this prints is how long the thread is deaf to the player's next gesture
-//! (`docs/architecture/web-runtime.md`). A session is set up as the app has
-//! one (a filled pool, a taste taught by a synthetic listener). Then, for
+//! This is what the web worker had to wait for before offers and drifts were
+//! jobs it steps (`docs/architecture/web-runtime.md`): the whole of one call.
+//! Now it is the sum of the steps, and the worker is deaf to the player for one
+//! of them (about the one-render time this prints last). A session is set up
+//! as the app has one (a filled pool, a taste taught by a synthetic listener).
+//! Then, for
 //! every preset in the sample, on a memo holding only the patch (the app has
 //! measured that one already, so the first proposals all miss):
 //!

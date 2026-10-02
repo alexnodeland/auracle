@@ -1,9 +1,12 @@
 //! PERFORM's walks as jobs that can be paused: an offer, an aimed offer and a
 //! drift, each a walk the caller advances a few steps at a time.
 //!
-//! A step of these walks is at most one phrase render, and a render is the
-//! unit the web worker can be interrupted at. An offer is twenty steps, or
-//! up to eighty with locks, or up to three such walks when it is aimed, and
+//! A step of these walks is one proposal, so at most one phrase render, and a
+//! render is the unit the web worker can be interrupted at. (Starting the next
+//! walk of an aimed offer scores where the last one ended, which the memo
+//! holds, so the pause between walks costs a lookup, not a render.) An offer is
+//! twenty steps, or up to eighty with locks, or up to three such walks when it
+//! is aimed, and
 //! as one call it kept the worker deaf to the player for the whole of it
 //! (`docs/architecture/web-runtime.md`). As a [`PerformJob`] the worker
 //! advances it one step per turn and answers the player between steps, the way
@@ -20,10 +23,15 @@
 //! chunking test pins that for several chunk sizes (`a_stepped_walk_is_the_walk`).
 //!
 //! What the job reads of the engine it reads **when it is made**: the tilted
-//! prior, the posterior and standardizer (shared, not copied), β, the keep rule
-//! and the memo. Something the player does meanwhile (a pick recorded between
-//! two steps) leaves the walk on the target it began on, which is what it
-//! would have had if the pick had waited for the end.
+//! prior, the posterior and standardizer (shared, not copied), β and the keep
+//! rule. Something the player does meanwhile (a pick recorded between two
+//! steps, a refit, an import) leaves the walk on the target it began on, which
+//! is what it would have had if that had waited for the end. The render memo is
+//! the exception in form only: it is a shared, bounded cache, so it keeps
+//! changing under the job, but it only saves renders (a hit is bit-identical to
+//! a miss), so it is not part of the target. For an aimed offer, how far it
+//! `moved` is measured under the standardizer it began with too
+//! ([`PerformJob::finish_moved`]).
 //!
 //! [`step`]: PerformJob::step
 //! [`Engine::offer`]: crate::Engine::offer
@@ -246,7 +254,7 @@ impl PerformJob {
         }
     }
 
-    /// Advance up to `n` steps (a step is at most one render). True while
+    /// Advance up to `n` steps (a step is one proposal: at most one render). True while
     /// there is more to do. Between two calls the job may sit for as long as
     /// anyone likes; what the steps draw is the only thing they share with
     /// the rest of the world.
@@ -292,6 +300,23 @@ impl PerformJob {
     pub fn run(mut self, rng: &mut dyn RngCore) -> Result<PatchTree, RefineOutcome> {
         while self.step(rng, usize::MAX) {}
         self.finish()
+    }
+
+    /// [`Self::finish`], and for an aimed offer how far it went along the
+    /// control's direction, in σ, positive toward the control's high word: the
+    /// same number as [`crate::Engine::moved_along`], but under the standardizer
+    /// the job began with, so an import or a refit between steps cannot change
+    /// it. `None` for an offer or drift that was not aimed, for a walk that did
+    /// not move, and when either end does not vet.
+    pub fn finish_moved(self) -> (Result<PatchTree, RefineOutcome>, Option<f64>) {
+        let moved = match (&self.out, &self.aim) {
+            (Some(Ok(t)), Some(aim)) => match (aim.home, aim.tilt.along(t)) {
+                (Some(h), Some(a)) => Some(a - h),
+                _ => None,
+            },
+            _ => None,
+        };
+        (self.finish(), moved)
     }
 
     /// The verdict: the end state if it differs from where the walk began,

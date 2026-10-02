@@ -790,10 +790,10 @@ struct Held {
     rng: StdRng,
     /// The performed state it grows from.
     home: PatchTree,
-    /// `Some(k)` for a search control's offer, `None` for the Offer
-    /// button's and for a drift.
-    control: Option<u32>,
     drift: bool,
+    /// Whether the walk's target was taste-directed when it began: what the
+    /// reply says, whatever was imported or fitted since.
+    taste: bool,
 }
 
 impl WasmEngine {
@@ -803,13 +803,18 @@ impl WasmEngine {
         &mut self,
         made: Result<auracle_session::PerformJob, auracle_session::RefineOutcome>,
         home: PatchTree,
-        control: Option<u32>,
         drift: bool,
     ) -> String {
         match made {
             Ok(job) => {
+                // The next handle not in hand (a handle counts up and skips 0,
+                // so only a walk held across four billion others could be
+                // met on the way round).
+                while self.next_job == 0 || self.jobs.contains_key(&self.next_job) {
+                    self.next_job = self.next_job.wrapping_add(1);
+                }
                 let id = self.next_job;
-                self.next_job = self.next_job.wrapping_add(1).max(1);
+                self.next_job = self.next_job.wrapping_add(1);
                 let rng = StdRng::seed_from_u64(self.rng.perform.next_u64());
                 self.jobs.insert(
                     id,
@@ -817,8 +822,8 @@ impl WasmEngine {
                         job,
                         rng,
                         home,
-                        control,
                         drift,
+                        taste: self.engine.has_taste(),
                     },
                 );
                 serde_json::json!({ "job": id }).to_string()
@@ -847,8 +852,9 @@ impl WasmEngine {
         &self,
         grown: Result<PatchTree, auracle_session::RefineOutcome>,
         home: &PatchTree,
-        control: Option<u32>,
+        moved: Option<f64>,
         drift: bool,
+        taste: bool,
     ) -> String {
         let t = match grown {
             Ok(t) => t,
@@ -861,7 +867,7 @@ impl WasmEngine {
                 tree: &t,
                 knobs: Some(&knobs),
                 makeup: None,
-                taste: Some(self.engine.has_taste()),
+                taste: Some(taste),
                 diff: None,
                 moved: None,
             });
@@ -872,12 +878,11 @@ impl WasmEngine {
         // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
         // kHz") instead of only "an offer is waiting".
         let diff = auracle_grammar::tree_diff(home, &t);
-        let moved = control.and_then(|k| self.engine.moved_along(home, &t, k as usize));
         tree_reply(&TreeReply {
             tree: &t,
             knobs: None,
             makeup: Some(makeup),
-            taste: Some(self.engine.has_taste()),
+            taste: Some(taste),
             diff: Some(&diff),
             moved,
         })
@@ -2115,7 +2120,7 @@ impl WasmEngine {
             ),
             None => self.engine.offer_job(&tree, &locks, steps),
         };
-        self.hold(made, tree, control, false)
+        self.hold(made, tree, false)
     }
 
     /// Begin [`Self::perform_drift`] as a job, as
@@ -2135,10 +2140,11 @@ impl WasmEngine {
         let made = self
             .engine
             .drift_job(&tree, &locks, steps.max(1) as usize, sigma);
-        self.hold(made, tree, None, true)
+        self.hold(made, tree, true)
     }
 
-    /// Advance walk `job` by up to `n` steps, each at most one phrase render:
+    /// Advance walk `job` by up to `n` steps, each one proposal (at most one
+    /// phrase render):
     /// the unit the worker can be interrupted at. True while there is more to
     /// do; false once the walk has its verdict (or `job` is not a walk in
     /// hand), and then [`Self::perform_job_finish`] answers.
@@ -2147,13 +2153,6 @@ impl WasmEngine {
             Some(h) => h.job.step(&mut h.rng, n.max(1) as usize),
             None => false,
         }
-    }
-
-    /// Steps left in the walk `job` is on, a floor on what is left when it is
-    /// an aimed offer that may walk again; 0 for a walk not in hand. For the
-    /// worker's trace, not for deciding anything.
-    pub fn perform_job_left(&self, job: u32) -> u32 {
-        self.jobs.get(&job).map_or(0, |h| h.job.left() as u32)
     }
 
     /// The reply of walk `job`, as [`Self::perform_offer`] or
@@ -2168,23 +2167,18 @@ impl WasmEngine {
         let Held {
             job,
             home,
-            control,
             drift,
+            taste,
             ..
         } = h;
-        let grown = job.finish();
-        self.job_reply(grown, &home, control, drift)
+        let (grown, moved) = job.finish_moved();
+        self.job_reply(grown, &home, moved, drift, taste)
     }
 
     /// Give up walk `job` (its patch was left behind): nothing is answered
     /// and the handle is spent. False for a walk not in hand.
     pub fn perform_job_drop(&mut self, job: u32) -> bool {
         self.jobs.remove(&job).is_some()
-    }
-
-    /// Walks begun and not yet answered or dropped (a leak check for tests).
-    pub fn perform_jobs_held(&self) -> u32 {
-        self.jobs.len() as u32
     }
 
     /// Why the most recent `refine_seed`/`refine_from` returned what it did,
@@ -4776,7 +4770,7 @@ mod tests {
                 continue;
             };
             let job = job as u32;
-            assert_eq!(stepped.perform_jobs_held(), 1);
+            assert_eq!(stepped.jobs.len(), 1);
             let mut steps = 0;
             while stepped.perform_job_step(job, 1) {
                 steps += 1;
@@ -4790,7 +4784,7 @@ mod tests {
             }
             assert!(steps > 1, "a walk of several renders is several steps");
             assert_eq!(stepped.perform_job_finish(job), want);
-            assert_eq!(stepped.perform_jobs_held(), 0, "the handle was spent");
+            assert_eq!(stepped.jobs.len(), 0, "the handle was spent");
             compared += 1;
         }
         assert!(compared > 0, "no walk began, so nothing was compared");
@@ -4807,7 +4801,51 @@ mod tests {
         {
             assert!(stepped.perform_job_drop(job as u32));
             assert!(!stepped.perform_job_drop(job as u32));
-            assert_eq!(stepped.perform_jobs_held(), 0);
+            assert_eq!(stepped.jobs.len(), 0);
+        }
+    }
+
+    /// A walk's reply says what was true when it began. A drift begun before
+    /// any taste existed says `taste: false` even if a posterior was fitted
+    /// before it finished (an import, a refit): it was walked on the grammar.
+    #[test]
+    fn a_walk_replies_with_the_state_it_began_in() {
+        let mut engine = WasmEngine::new(7, 12);
+        engine.engine.cfg.mcmc_samples = 3_000;
+        engine.engine.cfg.mcmc_warmup = 1_000;
+        while engine.fill_step(4) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree = engine.edit_tree_json();
+        assert!(!engine.engine.has_taste(), "an untaught engine");
+        let begun: serde_json::Value =
+            serde_json::from_str(&engine.perform_drift_begin(&tree, "[]", "[]", 6, 0.15)).unwrap();
+        let job = begun["job"].as_u64().expect("a drift begins") as u32;
+        assert!(engine.perform_job_step(job, 1));
+        for _ in 0..16 {
+            let [a, b]: [u64; 2] = serde_json::from_str::<Option<[u64; 2]>>(&engine.next_duel())
+                .unwrap()
+                .expect("a duel");
+            engine.record_duel(a as u32, b as u32, (a * 7 + b) % 3 != 0);
+        }
+        engine.fit();
+        assert!(engine.engine.has_taste(), "taught while the drift was out");
+        while engine.perform_job_step(job, 1) {}
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.perform_job_finish(job)).unwrap();
+        if reply.get("reason").is_none() {
+            assert_eq!(reply["taste"], false, "{reply}");
+        }
+        // A walk begun now is taste-directed.
+        let begun: serde_json::Value =
+            serde_json::from_str(&engine.perform_drift_begin(&tree, "[]", "[]", 6, 0.15)).unwrap();
+        assert!(begun.get("job").is_some(), "a drift begins");
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.run_job(&begun.to_string())).unwrap();
+        if reply.get("reason").is_none() {
+            assert_eq!(reply["taste"], true, "{reply}");
         }
     }
 

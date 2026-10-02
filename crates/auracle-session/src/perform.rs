@@ -1574,9 +1574,9 @@ impl Engine {
     }
 
     /// [`Self::offer`] as a [`PerformJob`]: the same walk, advanced a few
-    /// steps at a time (a step is at most one render), so a caller can answer
+    /// steps at a time (a step is one proposal: at most one render), so a caller can answer
     /// the player between them. The target (the tilted prior, the posterior,
-    /// β, the memo) is the one the engine has now, and stays the walk's.
+    /// β) is the one the engine has now, and stays the walk's.
     pub fn offer_job(
         &self,
         tree: &PatchTree,
@@ -2391,9 +2391,14 @@ mod tests {
     /// with another walk begun and run to its end after the first
     /// chunk (a pressed Offer over a paused spare), ends on exactly the tree
     /// (or exactly the reason there is none) that the one-call form ends on:
-    /// `Engine::offer`, `offer_aimed` and `drift`, the calls the app made
-    /// before walks could be paused. That the aimed case really walks again
-    /// is checked too, or the multi-walk path would be going untested.
+    /// `Engine::offer`, `offer_aimed` and `drift`. Those are the job run to the
+    /// end, so this pins that pausing changes nothing; that the jobs match the
+    /// calls the app made before walks could be paused was checked by running
+    /// the previous source and this over the same seeds (identical trees, in
+    /// the commit that introduced them), not pinned here, because a walk's
+    /// exact tree is not the same across platforms. That the aimed case
+    /// really walks again is checked too, or the multi-walk path would be
+    /// going untested.
     #[test]
     fn a_stepped_walk_is_the_walk() {
         use crate::engine::{Engine, SessionConfig};
