@@ -379,6 +379,28 @@ pub fn resample(x: &[f64], from: f64, to: f64) -> Vec<f64> {
     // Cutoff as a fraction of the input rate (cycles per input sample).
     let fc = 0.5 * 0.97 * (to / from).min(1.0);
     let half = (SINC_ZEROS / (2.0 * fc)).ceil() as isize;
+    // The kernel, tabulated once on a fine grid and read by linear
+    // interpolation: evaluating a sine and two cosines per tap cost 4.6 s
+    // for half a minute at 48 kHz in wasm, and the table's error (under
+    // 1e-6 of the tap) is far below the kernel's own stopband.
+    let table: Vec<f64> = (0..=(half as usize) * KERNEL_GRID + 1)
+        .map(|i| {
+            let d = i as f64 / KERNEL_GRID as f64;
+            let w = d / half as f64; // 0..1 across half the kernel
+            if w >= 1.0 {
+                return 0.0;
+            }
+            let arg = 2.0 * fc * d;
+            let sinc = if arg < 1e-12 {
+                1.0
+            } else {
+                (std::f64::consts::PI * arg).sin() / (std::f64::consts::PI * arg)
+            };
+            let t = std::f64::consts::PI * (w + 1.0); // π..2π
+            let blackman = 0.42 - 0.5 * t.cos() + 0.08 * (2.0 * t).cos();
+            2.0 * fc * sinc * blackman
+        })
+        .collect();
     let len = x.len() as isize;
     let mut out = Vec::with_capacity(n_out);
     for i in 0..n_out {
@@ -386,25 +408,21 @@ pub fn resample(x: &[f64], from: f64, to: f64) -> Vec<f64> {
         let c = p.floor() as isize;
         let mut acc = 0.0;
         for k in (c - half + 1).max(0)..=(c + half).min(len - 1) {
-            let d = p - k as f64;
-            let w = d / half as f64; // −1..1 across the kernel
-            if w.abs() >= 1.0 {
+            let g = (p - k as f64).abs() * KERNEL_GRID as f64;
+            let j = g as usize;
+            if j + 1 >= table.len() {
                 continue;
             }
-            let arg = 2.0 * fc * d;
-            let sinc = if arg.abs() < 1e-12 {
-                1.0
-            } else {
-                (std::f64::consts::PI * arg).sin() / (std::f64::consts::PI * arg)
-            };
-            let t = std::f64::consts::PI * (w + 1.0); // 0..2π
-            let blackman = 0.42 - 0.5 * t.cos() + 0.08 * (2.0 * t).cos();
-            acc += x[k as usize] * 2.0 * fc * sinc * blackman;
+            let h = table[j] + (g - j as f64) * (table[j + 1] - table[j]);
+            acc += x[k as usize] * h;
         }
         out.push(acc);
     }
     out
 }
+
+/// Points per input sample in the resampling kernel's table.
+const KERNEL_GRID: usize = 512;
 
 #[cfg(test)]
 mod tests {

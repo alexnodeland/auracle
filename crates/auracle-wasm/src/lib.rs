@@ -1518,8 +1518,11 @@ impl WasmEngine {
     /// before in place. `z` is every coordinate of φ in `phi_names` order,
     /// `null` where a file does not measure it; distances are in σ over the
     /// coordinates it does. `nearest_presets` is empty until
-    /// [`WasmEngine::own_presets_set`] has run. Costs the file's analysis
-    /// (well under a second for the 30 s it measures) and one map frame.
+    /// [`WasmEngine::own_presets_set`] has run. Costs the file's analysis and
+    /// one map frame: measured in wasm (`examples/own_cost.mjs`, a loaded
+    /// M3 Max), 0.19 s for 30 s at 44.1 kHz and 0.71 s at 48 kHz, most of
+    /// it the resampling; 0.16 s for 10 s at 48 kHz. One uninterruptible
+    /// call: the worker answers nothing else meanwhile.
     pub fn own_sound_set(&mut self, pcm: &[f32], sample_rate: f64, name: Option<String>) -> String {
         match auracle_features::featurize_file(pcm, sample_rate) {
             Ok(f) => {
