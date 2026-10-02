@@ -3,19 +3,20 @@
 // - A guess looks like a guess. DIRECTIONS drew every coefficient as the same
 //   glowing bar under "Longer bar = stronger pull", when at 58 picks 35 of 36
 //   intervals crossed zero; STYLES drew them with no interval at all; PATCH's
-//   node bank called the same number "no lean" and drew a dot. All three now
-//   draw one mark (taste-geom `pullMark`): settled, a solid bar; a guess, a
-//   hollow outline with its whisker at full strength and a "?" on its label.
+//   node bank called the same number "no lean" and drew a dot. LEARNING's
+//   weights and the node bank now draw one mark (taste-geom `pullMark`):
+//   settled, a solid bar; a guess, a hollow outline with its whisker at full
+//   strength and a "?" in the slot left of its label.
 // - Every early state counts from where the player is. MAP said "Start 6
-//   quick picks →" at five picks of six, and TRUST's twenty guesses sat
-//   behind the same six-pick button.
-// - The map's footer and caption are in words, and say what a click does.
+//   quick picks →" at five picks of six; TASTE and LEARNING now say how many
+//   picks are left before it fits, and LEARNING says what it has none of yet.
+// - The map's footer is in words.
 //
 // The engine worker is reached the way failure_flows.spec.js reaches it: by
-// wrapping `Worker` before main.js runs. A pull's look is checked twice: in
-// the canvas's own description (its aria-label, which names every guess with
-// its "?"), and in the pixels, on a fit whose two coefficients the spec
-// chooses — one settled, one a guess — delivered as the worker would.
+// wrapping `Worker` before main.js runs. A weight's look is checked twice: in
+// the weights' own description (their aria-label, which counts the guesses),
+// and in the bars, on a fit whose two coefficients the spec chooses — one
+// settled, one a guess — delivered as the worker would.
 const { test, expect } = require("@playwright/test");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
@@ -72,9 +73,9 @@ async function warmStartAndFit(page) {
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
 }
 
-async function tasteTab(page, tab) {
-  await page.locator('.viewtab[data-view="taste"]').click();
-  await page.locator(`.tab[data-tab="${tab}"]`).click();
+async function openView(page, view) {
+  await page.locator(`.viewtab[data-view="${view}"]`).click();
+  await expect(page.locator(`#view-${view}`)).toBeVisible();
 }
 
 /** Hand main.js a fit whose leading style has exactly two coefficients: a
@@ -96,23 +97,7 @@ async function injectTwoPulls(page, sure, unsure) {
   }, [sure, unsure]);
 }
 
-/** Solid style-colour pixels (the first style is the amber token) in a band
- *  of the TASTE canvas: full alpha, red high, blue low. A hollow outline is
- *  drawn at 0.45 alpha and the whisker in silk, so neither counts. */
-function solidAmberIn(page, band) {
-  return page.evaluate((b) => {
-    const c = document.getElementById("taste-crt");
-    const ctx = c.getContext("2d");
-    const x0 = Math.round(b.x0 * c.width), x1 = Math.round(b.x1 * c.width);
-    const y0 = Math.round(b.y0 * c.height), y1 = Math.round(b.y1 * c.height);
-    const px = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
-    let n = 0;
-    for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 200 && px[i] > 200 && px[i + 2] < 150) n += 1;
-    return n;
-  }, band);
-}
-
-test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the module rail, and the guess above the rack is a percentage and a word", async ({ page }) => {
+test("a guess is drawn hollow with a ?, in LEARNING's weights and the module rail, and the guess above the rack is a percentage and a word", async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await boot(page, { warmed: false });
   await warmStartAndFit(page);
@@ -123,37 +108,41 @@ test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the module rai
   await expect(page.locator("#belief .bl-sure")).toHaveText(/^· (a hunch|leaning|fairly sure)$/);
   await expect(page.locator("#belief")).not.toContainText(/model's guess/i);
 
-  // A real early fit: eighteen preferences, and the model says how few of its
-  // pulls it is sure of.
-  await tasteTab(page, "dir");
-  await expect(page.locator("#taste-caption")).toHaveText(
-    "Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how far it could be off.",
-  );
-  const label = await page.locator("#taste-crt").getAttribute("aria-label");
-  const m = /^Directions: (\d+) settled, (\d+) still a guess \(marked \?\)\. (.*)$/.exec(label || "");
-  expect(m, `the canvas says what it draws: ${label}`).not.toBeNull();
+  // A real early fit: eighteen picks, and LEARNING says how few of its
+  // weights it is sure of.
+  await openView(page, "learning");
+  const label = await page.locator("#md-bars").getAttribute("aria-label");
+  const m = /^.+: (\d+) settled, (\d+) still a guess$/.exec(label || "");
+  expect(m, `the weights say what they draw: ${label}`).not.toBeNull();
   const [settled, guesses] = [Number(m[1]), Number(m[2])];
-  expect(guesses, "an eighteen-preference fit is mostly guesses").toBeGreaterThan(0);
-  const rows = m[3].split(", ");
-  expect(rows.filter((r) => r.endsWith("?")).length).toBe(guesses);
-  expect(rows.length).toBe(settled + guesses);
+  expect(guesses, "an eighteen-pick fit is mostly guesses").toBeGreaterThan(0);
+  await expect(page.locator("#md-bars .md-row")).toHaveCount(settled + guesses);
+  await expect(page.locator("#md-bars .md-row.guess")).toHaveCount(guesses);
+  await expect(page.locator("#md-bars .md-row.guess .md-mark").first()).toHaveText("?");
+  await expect(page.locator("#md-bars .md-row.guess .md-bar.hollow")).toHaveCount(guesses);
 
-  await page.locator('.tab[data-tab="styles"]').click();
-  await expect(page.locator("#taste-caption")).toContainText("Hollow, with a ?: still a guess");
-  await expect(page.locator("#taste-crt")).toHaveAttribute("aria-label", /^Styles: \d+ settled, [1-9]\d* still a guess/);
-
-  // The pixels, on two coefficients chosen here: filter's family settled
-  // (0.5 ± 0.1), the vco's a guess (0.4 ± 0.6, an interval across zero).
+  // Two weights chosen here: filter's family settled (0.5 ± 0.1), the vco's
+  // a guess (0.4 ± 0.6, an interval across zero). The settled one is filled,
+  // the guess hollow, with its whisker across the zero line.
   await injectTwoPulls(page, "n_filter", "n_vco");
-  await page.locator('.tab[data-tab="dir"]').click();
-  await expect(page.locator("#taste-crt")).toHaveAttribute("aria-label", /^Directions: 1 settled, 1 still a guess \(marked \?\)\. [^?]+, [^,]+\?$/);
-  // Two rows at h/3 and 2h/3, bars rightward from the centre line at 0.6 w;
-  // the band sits inside both bars (0.5 and 0.4 of the 0.3 w half-width).
-  const bar = (y) => ({ x0: 0.62, x1: 0.70, y0: y - 0.012, y1: y + 0.012 });
-  const solidSettled = await solidAmberIn(page, bar(1 / 3));
-  const solidGuess = await solidAmberIn(page, bar(2 / 3));
-  expect(solidSettled, "the settled pull is a filled bar").toBeGreaterThan(40);
-  expect(solidGuess, "the guess is not filled").toBe(0);
+  await expect(page.locator("#md-bars")).toHaveAttribute("aria-label", /: 1 settled, 1 still a guess$/);
+  const bars = await page.evaluate(() => [...document.querySelectorAll("#md-bars .md-row")].map((r) => {
+    const b = r.querySelector(".md-bar");
+    const w = r.querySelector(".md-whisker");
+    return {
+      word: r.querySelector(".md-word").textContent,
+      mark: r.querySelector(".md-mark").textContent,
+      fill: getComputedStyle(b).backgroundColor,
+      lo: parseFloat(w.style.left),
+      hi: parseFloat(w.style.left) + parseFloat(w.style.width),
+    };
+  }));
+  expect(bars.map((b) => b.mark)).toEqual(["", "?"]);
+  expect(bars[0].fill, "the settled weight is a filled bar").not.toBe("rgba(0, 0, 0, 0)");
+  expect(bars[1].fill, "the guess is not filled").toBe("rgba(0, 0, 0, 0)");
+  expect(bars[1].lo, "a guess's whisker starts left of zero").toBeLessThan(50);
+  expect(bars[1].hi, "…and ends right of it").toBeGreaterThan(50);
+  expect(bars[0].lo, "a settled whisker sits clear of zero").toBeGreaterThan(50);
 
   // PATCH's node bank draws the same two marks: the vco a hollow bar whose
   // whisker crosses the zero rule, the filter a solid one clear of it.
@@ -193,19 +182,20 @@ test("a guess is drawn hollow with a ?, in DIRECTIONS, STYLES and the module rai
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("TASTE's early states count what is left, and the map says what a click does", async ({ page }) => {
+test("TASTE's and LEARNING's early states count what is left, and the map says what it shows", async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await boot(page, { warmed: true });
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
 
-  // No fit yet: MAP, STYLES and DIRECTIONS count the picks to the first one.
-  await tasteTab(page, "map");
-  await expect(page.locator("#crt-empty #ce-cta")).toHaveText("6 more picks →", { timeout: 30_000 });
-  await page.locator('.tab[data-tab="styles"]').click();
-  await expect(page.locator("#crt-empty")).toContainText("Your first style appears at pick 6; more split off as you teach it.");
-  await page.locator('.tab[data-tab="trust"]').click();
-  await expect(page.locator("#crt-empty")).toContainText("After 20 guesses it grades itself here.");
-  await expect(page.locator("#crt-empty #ce-cta")).toHaveText("20 to go →");
+  // No fit yet: both count the picks to the first one, and LEARNING says
+  // what it has none of yet.
+  await openView(page, "taste");
+  await expect(page.locator("#taste-sub")).toHaveText("6 more picks and it fits your taste.", { timeout: 30_000 });
+  await expect(page.locator("#taste-legend .tl-words")).toHaveText("still a guess");
+  await openView(page, "learning");
+  await expect(page.locator("#md-sub")).toHaveText("6 more picks and it fits your taste.");
+  await expect(page.locator("#md-weights-none")).toHaveText("none yet: it weighs nothing until it first fits");
+  await expect(page.locator("#md-fc .md-fcnote")).toHaveText("none yet: it starts guessing when it first fits");
 
   // Five picks in, the count has moved with them.
   await page.locator('.viewtab[data-view="evolve"]').click();
@@ -214,20 +204,19 @@ test("TASTE's early states count what is left, and the map says what a click doe
     await page.locator("#choose-a").click();
     await page.waitForTimeout(400);
   }
-  await tasteTab(page, "map");
-  await expect(page.locator("#crt-empty #ce-cta")).toHaveText("1 more pick →");
-  await expect(page.locator("#crt-empty")).toContainText("In 1 more pick it redraws your taste map");
-  await page.locator('.tab[data-tab="styles"]').click();
-  await expect(page.locator("#crt-empty")).toContainText("Your first style appears at pick 6;");
+  await openView(page, "taste");
+  await expect(page.locator("#taste-sub")).toHaveText("1 more pick and it fits your taste.");
 
-  // The sixth redraws it: the map lights, captioned in words.
+  // The sixth fits it: the halos light, and the map says what it shows.
   await page.locator('.viewtab[data-view="evolve"]').click();
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
   await page.locator("#choose-a").click();
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  await tasteTab(page, "map");
-  await expect(page.locator("#taste-caption")).toHaveText(
-    "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
-  );
+  await openView(page, "taste");
+  await expect(page.locator("#taste-sub")).toHaveText("From 6 picks.");
+  await expect(page.locator("#taste-legend .tl-words")).toHaveText("it likes more");
+  await expect(page.locator("#taste-foot")).toHaveText(/^A flat view of \d+ sounds: close dots usually sound alike \(it shows \d+% of how they differ\)\.$/);
+  await openView(page, "learning");
+  await expect(page.locator("#md-fc .md-fcnote")).toHaveText(/^(none yet: it guesses before each pick from here|expected \d+% · was \d+%)$/);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

@@ -16,6 +16,22 @@ import {
   leanSentence,
   onApple,
   platformKeys,
+  fittedFrom,
+  mapFoot,
+  haloLegend,
+  pickSaid,
+  refitSaid,
+  weightSaid,
+  weightsMore,
+  directionLegend,
+  forecastNote,
+  noForecasts,
+  stripSaid,
+  mathLines,
+  copyLabel,
+  plateGuess,
+  NO_WEIGHTS,
+  TASTE_LABELS,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -205,4 +221,45 @@ test("a key chord is written in the platform's own words", () => {
   assert.equal(onApple({ platform: "Linux x86_64" }), false);
   assert.equal(onApple({ userAgentData: { platform: "macOS" }, platform: "" }), true);
   assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
+});
+
+test("TASTE and LEARNING say what the model was fitted from, or how far it is", () => {
+  assert.equal(fittedFrom({ fitted: true, picks: 18 }), "From 18 picks.");
+  assert.equal(fittedFrom({ fitted: true, picks: 1, stars: 2, cuts: 1 }), "From 1 pick, 2 stars, and 1 cut.");
+  assert.equal(fittedFrom({ fitted: false, left: 3 }), "3 more picks and it fits your taste.");
+  assert.equal(fittedFrom({ fitted: false, left: 1 }), "1 more pick and it fits your taste.");
+  assert.equal(fittedFrom({ fitted: false, left: 0 }), "Fitting your taste…");
+});
+
+test("TASTE's and LEARNING's sentences are in the voice", () => {
+  const facts = { audio: 18, structural: 26, draws: 500, styles: 2, styles_max: 5, obs_per_style: 20 };
+  const all = [
+    fittedFrom({ fitted: true, picks: 18 }), mapFoot(40, 0.312), haloLegend(true), haloLegend(false),
+    pickSaid("Glass Pad", "Soft Wash"), pickSaid(null, null), refitSaid(), weightSaid("grit", -0.12, 0.3, true),
+    weightsMore(true, 44, 6), weightsMore(false, 44, 6), directionLegend({ r2: 0.16 }), directionLegend(null),
+    forecastNote({ expected: 0.64, was: 0.58 }), noForecasts(true), noForecasts(false), stripSaid(1),
+    ...mathLines(facts, 6), copyLabel("idle"), copyLabel("copied"), copyLabel("select"), plateGuess(0.59), NO_WEIGHTS,
+    ...Object.values(TASTE_LABELS),
+  ];
+  for (const s of all) {
+    voiced(s);
+    assert.ok(!/\b(lens|posterior|preference|vote|duel|export)\b/i.test(s), `the word table: ${s}`);
+    assert.ok(s.split(/\s+/).length <= 25, `no block past 25 words: ${s}`);
+  }
+  assert.equal(mapFoot(40, 0.312), "A flat view of 40 sounds: close dots usually sound alike (it shows 31% of how they differ).");
+  assert.equal(pickSaid("Glass Pad", "Soft Wash"), "You picked Glass Pad over Soft Wash. Every rating moved.");
+  assert.equal(weightSaid("grit", -0.12, 0.3, true), "grit: likes less, −0.12 ± 0.30, still a guess");
+  assert.equal(directionLegend({ r2: 0.16 }), "the arrow: liking rises · explains 16%");
+  assert.equal(plateGuess(0.59), "would like: 59% · leaning", "a percentage, never alone: with its word");
+});
+
+test("the math states the engine's numbers, and nothing else", () => {
+  const lines = mathLines({ audio: 18, structural: 26, draws: 500, styles: 2, styles_max: 5, obs_per_style: 20 }, 6);
+  assert.equal(lines.length, 5);
+  assert.match(lines[0], /18 audio and 26 structural features/);
+  assert.match(lines[2], /It holds 500 draws of w\. Each pick reweights them, and every 6 picks it fits them again\./);
+  assert.match(lines[3], /one more style for every 20 things it learns from, up to 5\./);
+  // Other numbers, other words: nothing in it is written down twice.
+  const other = mathLines({ audio: 20, structural: 30, draws: 250, styles: 1, styles_max: 3, obs_per_style: 10 }, 8);
+  assert.match(other.join(" "), /20 audio and 30 structural.*250 draws.*every 8 picks.*every 10 things.*up to 3/);
 });

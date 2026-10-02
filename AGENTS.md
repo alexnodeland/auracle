@@ -20,7 +20,7 @@ deeper material. Read those when a task takes you into their area, not before.
 | `crates/auracle-taste` | The taste model: max-of-experts utility, MCMC posterior, standardizer | same |
 | `crates/auracle-session` | The two-loop engine: pool, duels, refits, refinement, PERFORM, persistence | same |
 | `crates/auracle-wasm` | `WasmEngine` for the worker, `LivePoly` for the AudioWorklet | same |
-| `apps/web` | The instrument: `main.js`, `worker.js`, `farm.js`, `perform.js`, `live-audio.js`, `midi.js`, `booth.js` | [`apps/web/AGENTS.md`](apps/web/AGENTS.md) |
+| `apps/web` | The instrument: `main.js`, `worker.js`, `farm.js`, `perform.js`, `taste.js`, `live-audio.js`, `midi.js`, `booth.js` | [`apps/web/AGENTS.md`](apps/web/AGENTS.md) |
 | `tests/web` | Playwright specs against the real app and the built wasm | [`tests/web/AGENTS.md`](tests/web/AGENTS.md) |
 | `www` | The site: landing, guide (`www/docs`), reference (`www/reference`), theme, figures | [`www/AGENTS.md`](www/AGENTS.md) |
 | `www/video` | The films: scripts, shots, stage, voice, score, mix, publish | [`www/video/AGENTS.md`](www/video/AGENTS.md) |

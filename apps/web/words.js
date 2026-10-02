@@ -173,6 +173,141 @@ export function leanSentence(style, share, mean, std) {
     `${mean >= 0 ? "toward" : "away from"} it (θ ${sign}${Math.abs(mean).toFixed(2)} ± ${std.toFixed(2)}).`;
 }
 
+// ---------- TASTE and LEARNING ----------
+
+/** The line under TASTE's and LEARNING's title: what the model was fitted
+ *  from, in the kinds TAUGHT counts ("From 18 picks and 2 stars."), or how
+ *  far it is from its first fit. `left` is picks until the refit that fits
+ *  it, 0 while that fit is due or running. */
+export function fittedFrom({ fitted = false, picks = 0, stars = 0, cuts = 0, left = 0 } = {}) {
+  if (fitted) {
+    const parts = [count(picks, "pick")];
+    if (stars) parts.push(count(stars, "star"));
+    if (cuts) parts.push(count(cuts, "cut"));
+    return `From ${series(parts)}.`;
+  }
+  return left > 0 ? `${count(left, "more pick")} and it fits your taste.` : "Fitting your taste…";
+}
+
+/** The map's footer: how many sounds, and how much of how they differ two
+ *  axes can hold (`TasteMap::explained`). */
+export function mapFoot(n, share) {
+  return `A flat view of ${count(n, "sound")}: close dots usually sound alike (it shows ${pctOf(share)}% of how they differ).`;
+}
+
+/** The map legend's words beside its halos. */
+export function haloLegend(fitted) {
+  return fitted ? "it likes more" : "still a guess";
+}
+
+/** What a pick taught, for the map's live region (the arrow drawn on it). */
+export function pickSaid(picked, passed) {
+  return picked && passed ? `You picked ${picked} over ${passed}. Every rating moved.` : "Every rating moved.";
+}
+
+/** What a refit did, for the map's live region. */
+export function refitSaid() {
+  return "It fitted your taste again. Every rating settled.";
+}
+
+/** A weight row's words for a screen reader: the quality, which way it
+ *  leans, the weight and its spread, and whether it is still a guess. */
+export function weightSaid(word, mean, std, guess) {
+  const sign = mean >= 0 ? "+" : "−";
+  const way = mean >= 0 ? "likes more" : "likes less";
+  return `${word}: ${way}, ${sign}${Math.abs(mean).toFixed(2)} ± ${Math.max(0, std).toFixed(2)}${guess ? ", still a guess" : ""}`;
+}
+
+/** The disclosure under the weights: all of them, or the few that weigh most. */
+export function weightsMore(open, all, few) {
+  return open ? `the ${few} that weigh most` : `all ${all} weights`;
+}
+
+/** The direction panel's legend. `g` is `likingGradient`'s answer, null
+ *  until the ratings spread (no fit yet). */
+export function directionLegend(g) {
+  return g ? `the arrow: liking rises · explains ${pctOf(g.r2)}%` : "no direction yet";
+}
+
+/** Under the forecasts' count: what it expected against what it got. */
+export function forecastNote(score) {
+  return `expected ${pctOf(score.expected)}% · was ${pctOf(score.was)}%`;
+}
+
+/** The weights panel before the first fit, when there are none. */
+export const NO_WEIGHTS = "none yet: it weighs nothing until it first fits";
+
+/** The forecasts panel with none to show: before the first fit, when there
+ *  is nothing to forecast with, or after it, before the next pick. */
+export function noForecasts(fitted) {
+  return fitted ? "none yet: it guesses before each pick from here" : "none yet: it starts guessing when it first fits";
+}
+
+/** The forecast strip's words for a screen reader. */
+export function stripSaid(n) {
+  return `${count(n, "forecast")}: the chance it gave the sound you picked.`;
+}
+
+/** The math, in sentences, from the engine's own numbers
+ *  (`WasmEngine::model_facts`) and the app's refit cadence. Each under 25
+ *  words. */
+export function mathLines(facts, fitEvery) {
+  const f = facts || {};
+  return [
+    `φ is a sound’s ${f.audio} audio and ${f.structural} structural features, standardized, and w holds one weight for each.`,
+    "A pick moves w along φ(picked) − φ(passed), so every sound’s rating moves at once, not only the two you heard.",
+    `It holds ${f.draws} draws of w. Each pick reweights them, and every ${fitEvery} picks it fits them again.`,
+    `It is allowed one more style for every ${f.obs_per_style} things it learns from, up to ${f.styles_max}.`,
+    "It rates a sound by the style that likes it most.",
+  ];
+}
+
+/** The short labels TASTE and LEARNING draw: silk labels lowercase (CSS sets
+ *  them in capitals), tooltips a name and a key. */
+export const TASTE_LABELS = {
+  play: "▶ play",
+  open: "open",
+  openTitle: "Open it · Enter",
+  noGuess: "no guess yet",
+  chipTitle: "Show its weights",
+  nameTitle: "Name this style",
+  exemplarTitle: "Hear the sound it rates highest",
+  noExemplarTitle: "Nothing to play for this style yet",
+  stripEnd: "100% for the one picked",
+  stripEndShort: "100%",
+};
+
+/** The card beside a sound on the map: the bank's number for it, as a
+ *  prediction ("would like: 59% · leaning"). */
+export function plateGuess(like) {
+  return `would like: ${guessLabel(like)}`;
+}
+
+/** A play button's tooltip: the sound's name. */
+export function playTitle(name) {
+  return `Play ${name}`;
+}
+
+/** A style chip, for a screen reader: its name and its share of the pool. */
+export function chipSaid(name, share) {
+  return `${name}, ${pctOf(share)}% of the pool`;
+}
+
+/** The weights' own label, for a screen reader: how many are settled. */
+export function weightsSaid(style, settled, guesses) {
+  return `${style}: ${settled} settled, ${guesses} still a guess`;
+}
+
+/** The direction panel, for a screen reader. */
+export function directionSaid(name, legend) {
+  return `The pool on the map${name ? `, ${name} ringed` : ""}. ${legend}.`;
+}
+
+/** The copy button's label as it answers. */
+export function copyLabel(state) {
+  return state === "copied" ? "copied" : state === "select" ? "select and copy" : "copy as JSON";
+}
+
 /** Whether this browser is on an Apple platform, whose keyboards say ⌘. */
 export function onApple(nav = globalThis.navigator) {
   const p = (nav && (nav.userAgentData?.platform || nav.platform)) || "";

@@ -91,7 +91,7 @@ test("with no films published, there is no chip", async ({ page }) => {
   // wait for it rather than checking once, or it opens over the tabs below.
   await expect(page.locator("#warmstart")).toBeVisible({ timeout: 60_000 });
   await page.locator("#warm-skip").click();
-  for (const v of ["perform", "play", "evolve", "taste"]) {
+  for (const v of ["perform", "play", "evolve", "taste", "learning"]) {
     await page.locator(`.viewtab[data-view="${v}"]`).click();
     await expect(page.locator("#film-chip")).toBeHidden();
   }

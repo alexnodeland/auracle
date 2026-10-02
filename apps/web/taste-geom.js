@@ -1,10 +1,12 @@
-// The TASTE view's geometry: how big a MAP dot is, how long a DIRECTIONS
-// bar and its whisker are, and whether a pull is drawn settled or as a guess
-// (in STYLES, DIRECTIONS and PATCH's node bank alike). All are claims about
-// uncertainty, and all were drawn so that the uncertainty could not be seen —
-// nothing on screen looked broken, which is why they live here, pure, with
-// unit tests beside them (tests/taste-geom.test.mjs). main.js draws; this
-// decides the lengths and the marks.
+// TASTE's and LEARNING's geometry: how big a dot on the map is, how long a
+// weight's bar and its whisker are, and whether a weight is drawn settled or
+// as a guess (in LEARNING and PATCH's module rail alike); where each sound
+// sits on the map and how its halo glows; which way liking rises; and how
+// the forecasts score. Most are claims about uncertainty, and the first ones
+// were drawn so that the uncertainty could not be seen — nothing on screen
+// looked broken, which is why they live here, pure, with unit tests beside
+// them (tests/taste-geom.test.mjs). taste.js and main.js draw; this decides
+// the lengths, the places and the marks.
 
 // ---------- MAP: size is how unsure it is ----------
 // It was `base + min(1, sd) · 3.5` px. In a taught session (56 picks) sd ran
@@ -156,4 +158,181 @@ export function countPulls(marks) {
     else settled += 1;
   }
   return { settled, guesses };
+}
+
+// ---------- TASTE's map: where each sound sits, and its glow ----------
+// Prototype v2 (docs/notes/vision-2026-09/prototype/taste.js) draws every
+// sound where the engine's map puts it (`taste_map`: the pool on the two
+// principal axes of φ, map.rs), opened up just enough that no two sit on each
+// other, with the model's liking as an amber halo behind it.
+
+/** The bank's number for a sound: the logistic of its posterior-mean
+ *  utility (`BeliefRow::mean`, `MapPoint::utility`), the % on every bank row. */
+export function liking(mean) {
+  const u = Number(mean);
+  return 1 / (1 + Math.exp(-(Number.isFinite(u) ? u : 0)));
+}
+
+/** The halo behind a sound it has a guess about: its radius in px for a mark
+ *  of size `s0`, and its alpha at the centre (`a0`) and halfway out (`a1`).
+ *  The prototype's curve: liking to the 1.6, so a sound it barely likes
+ *  glows faintly and one it likes most reaches nearly twice the mark. */
+export function haloOf(like, s0) {
+  const k = Math.pow(Math.max(0, Math.min(1, Number(like) || 0)), 1.6);
+  return { r: s0 * (0.5 + 1.45 * k), a0: 0.03 + 0.42 * k, a1: 0.015 + 0.14 * k };
+}
+
+/** The map's frame for a canvas `w` × `h` CSS px holding `n` sounds: the
+ *  margins `mapLayout` keeps (`box`), the mark size the halos are drawn to
+ *  (`s0`, sized to the room the sounds share: legible on a small screen,
+ *  never crowding a large one), and the nearest two marks may sit (`minD`). */
+export function mapFrame(w, h, n) {
+  const small = w < 520;
+  const m = small ? Math.max(22, w * 0.06) : Math.max(48, w * 0.07);
+  const s0 = Math.round(Math.max(20, Math.min(32, Math.sqrt((w * h) / Math.max(1, n)) * 0.5)));
+  return { box: { w, h, left: m, right: m, top: small ? 48 : 56, bottom: small ? 40 : 48 }, s0, minD: s0 * 1.05 };
+}
+
+/** How far each axis is pulled toward its ranks: about halfway, as the
+ *  prototype does, so the crowded middle opens while every sound keeps its
+ *  order along both axes (a monotone stretch, not a new map). */
+export const MAP_RANK_PULL = 0.55;
+
+/** Screen positions for the map's pool points `[{id, x, y}]` (the engine's
+ *  coordinates) in a box `{w, h, left, right, top, bottom}` (size and px
+ *  margins): each axis min–max scaled, pulled toward its ranks, then relaxed
+ *  so no two marks sit closer than `minD` px, each held toward its own place.
+ *  Pure and deterministic: the same points give the same layout. Returns a
+ *  Map from id to `{x, y}`. y grows downward with the engine's second
+ *  coordinate, as the map has always been drawn. */
+export function mapLayout(points, box, minD, iterations = 90) {
+  const pts = (points || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+  const out = new Map();
+  if (!pts.length) return out;
+  const n = pts.length;
+  const iw = Math.max(1, box.w - box.left - box.right);
+  const ih = Math.max(1, box.h - box.top - box.bottom);
+  const norm = (k) => {
+    const vs = pts.map((p) => p[k]);
+    const lo = Math.min(...vs);
+    const span = Math.max(...vs) - lo;
+    const order = pts.map((_, i) => i).sort((a, b) => pts[a][k] - pts[b][k] || a - b);
+    const rank = new Array(n);
+    order.forEach((i, r) => { rank[i] = n > 1 ? r / (n - 1) : 0.5; });
+    return pts.map((p, i) => (1 - MAP_RANK_PULL) * (span > 1e-12 ? (p[k] - lo) / span : 0.5) + MAP_RANK_PULL * rank[i]);
+  };
+  const nx = norm("x");
+  const ny = norm("y");
+  const arr = pts.map((p, i) => {
+    const ax = box.left + nx[i] * iw;
+    const ay = box.top + ny[i] * ih;
+    return { id: p.id, ax, ay, x: ax, y: ay };
+  });
+  const xmin = box.left * 0.5;
+  const xmax = box.w - box.right * 0.5;
+  const ymin = box.top * 0.6;
+  const ymax = box.h - box.bottom * 0.6;
+  for (let it = 0; it < iterations; it++) {
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i];
+        const b = arr[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= minD) continue;
+        if (d < 1e-3) { dx = Math.cos(i + j); dy = Math.sin(i + j); d = 1; }
+        const push = (minD - d) / 2;
+        const ux = dx / d;
+        const uy = dy / d;
+        a.x -= ux * push; a.y -= uy * push;
+        b.x += ux * push; b.y += uy * push;
+      }
+    }
+    for (const a of arr) {
+      a.x += (a.ax - a.x) * 0.06;
+      a.y += (a.ay - a.y) * 0.06;
+      a.x = Math.max(xmin, Math.min(xmax, a.x));
+      a.y = Math.max(ymin, Math.min(ymax, a.y));
+    }
+  }
+  for (const a of arr) out.set(a.id, { x: a.x, y: a.y });
+  return out;
+}
+
+// ---------- LEARNING: which way liking rises on the map ----------
+
+const finitePoint = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.like);
+
+/** Least squares of liking on the map's two axes, over points
+ *  `[{x, y, like}]` in whatever coordinates they are drawn in: the direction
+ *  liking rises (`gx`, `gy`, liking per unit of x and of y), how much of
+ *  liking's spread across the map that plane explains (`r2`, 0–1), and the
+ *  points' centre (`cx`, `cy`). `null` with fewer than three points, none
+ *  spread over both axes, or every liking the same. The arrow summarizes the engine's ratings on the
+ *  engine's map; it is not a quantity the engine computes. */
+export function likingGradient(points) {
+  const ps = (points || []).filter(finitePoint);
+  const n = ps.length;
+  if (n < 3) return null;
+  let sx = 0, sy = 0, sl = 0;
+  for (const p of ps) { sx += p.x; sy += p.y; sl += p.like; }
+  const mx = sx / n, my = sy / n, ml = sl / n;
+  let cxx = 0, cyy = 0, cxy = 0, cxl = 0, cyl = 0, sst = 0;
+  for (const p of ps) {
+    const dx = p.x - mx, dy = p.y - my, dl = p.like - ml;
+    cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; cxl += dx * dl; cyl += dy * dl; sst += dl * dl;
+  }
+  const det = cxx * cyy - cxy * cxy;
+  // No spread in liking (no fit yet: every rating 0) is no direction at all.
+  if (!(sst > 1e-12) || !(det > 1e-9 * Math.max(1e-12, cxx * cyy))) return null;
+  const gx = (cyy * cxl - cxy * cyl) / det;
+  const gy = (cxx * cyl - cxy * cxl) / det;
+  let sse = 0;
+  for (const p of ps) {
+    const fit = ml + gx * (p.x - mx) + gy * (p.y - my);
+    sse += (p.like - fit) ** 2;
+  }
+  return { gx, gy, r2: sst > 1e-12 ? Math.max(0, 1 - sse / sst) : 0, cx: mx, cy: my };
+}
+
+/** The arrow's length in px for a gradient `g` (liking per px) over a map
+ *  `span` px across, with `room` px to draw in: longer as liking changes more
+ *  across the map, the whole of `room` once it changes by 0.55 or more. */
+export function arrowLength(g, span, room) {
+  if (!g) return 0;
+  return room * Math.min(1, Math.hypot(g.gx, g.gy) * span * 1.8);
+}
+
+/** The heading `k` (0–1) of the way from angle `a0` to `a1`, in radians,
+ *  turning the shorter way round. */
+export function turnBetween(a0, a1, k) {
+  let da = a1 - a0;
+  while (da > Math.PI) da -= 2 * Math.PI;
+  while (da < -Math.PI) da += 2 * Math.PI;
+  return a0 + da * k;
+}
+
+// ---------- LEARNING: the forecasts, scored ----------
+
+/** The engine's forecasts (`WasmEngine::forecasts`: `{p_a, chose_a,
+ *  random_check, provenance}`, each taken before its answer) as the chance
+ *  each gave the sound you picked, oldest first, and whether it guessed it. */
+export function scoredForecasts(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((f) => f && Number.isFinite(f.p_a))
+    .map((f) => {
+      const p = f.chose_a ? f.p_a : 1 - f.p_a;
+      return { p, hit: p > 0.5, check: !!f.random_check, provenance: f.provenance || "duel" }; // voice: name
+    });
+}
+
+/** Hits out of forecasts, and what it expected against what it got: the
+ *  mean chance it gave the side it guessed, against the share it got right.
+ *  `null` with no forecasts. */
+export function forecastScore(scored) {
+  if (!scored || !scored.length) return null;
+  const hits = scored.filter((f) => f.hit).length;
+  const expected = scored.reduce((s, f) => s + Math.max(f.p, 1 - f.p), 0) / scored.length;
+  return { hits, n: scored.length, expected, was: hits / scored.length };
 }
