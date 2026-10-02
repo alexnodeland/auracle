@@ -37,6 +37,7 @@ use auracle_features::{
     featurize_memo, render_playback, Audition, Features, PhraseSpec, RenderMemo,
 };
 use auracle_grammar::prior::N_OPS;
+use auracle_grammar::rng::gen_index;
 use auracle_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree};
 use auracle_taste::{
     Feedback, FitSet, Observation, ObservationLog, Provenance, Standardizer, TasteConfig,
@@ -969,8 +970,8 @@ fn thompson_pair<R: Rng>(
             })
             .unwrap_or(cands[0])
     };
-    let s1 = &posterior.samples[rng.gen_range(0..n)];
-    let s2 = &posterior.samples[rng.gen_range(0..n)];
+    let s1 = &posterior.samples[gen_index(rng, n)];
+    let s2 = &posterior.samples[gen_index(rng, n)];
     let a = champion(s1, None);
     let b = champion(s2, None);
     if a == b {
@@ -2284,7 +2285,7 @@ impl Engine {
         }
         let sigma = sigma.clamp(1e-3, 0.5);
         for _ in 0..steps {
-            let addr = &free[rng.gen_range(0..free.len())];
+            let addr = &free[gen_index(rng, free.len())];
             let Some(v) = crate::perform::continuous_knobs(&cur)
                 .into_iter()
                 .find_map(|(a, v)| (a == *addr).then_some(v))
@@ -3345,8 +3346,8 @@ impl Engine {
             return None;
         }
         let uniform = |rng: &mut R| -> (usize, usize) {
-            let i = rng.gen_range(0..cands.len());
-            let mut j = rng.gen_range(0..cands.len() - 1);
+            let i = gen_index(rng, cands.len());
+            let mut j = gen_index(rng, cands.len() - 1);
             if j >= i {
                 j += 1;
             }
@@ -3440,8 +3441,8 @@ impl Engine {
     ) -> (usize, usize, f64) {
         let s_n = posterior.samples.len();
         if s_n == 0 {
-            let i = rng.gen_range(0..cands.len());
-            let mut j = rng.gen_range(0..cands.len() - 1);
+            let i = gen_index(rng, cands.len());
+            let mut j = gen_index(rng, cands.len() - 1);
             if j >= i {
                 j += 1;
             }

@@ -286,8 +286,10 @@ same `wireKey`. The player's own cache is asked first, then the file. A first
 measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
 fetch cannot hold a patch on *listening…*; a file that lands later still
 serves the presets opened after it. A shipped
-wiring is always re-measured in the background (it was taken under a native
-standardizer, not the session's). A stale file wires controls to the wrong
+wiring is always re-measured in the background (it was taken under the
+standardizer of the shipped seed's pool, not the session's, whose seed is its
+own; the shipped seed deals the same pool natively and in wasm, pinned by
+`boot_agrees`, so the file is what a wasm engine booted from it would measure). A stale file wires controls to the wrong
 knobs until that re-check lands, and the re-check then re-centres them, so
 `make test` guards it two ways. `shipped_preset_wirings_are_current` compares
 fingerprints of each preset and of the measurement's named inputs (phrase,
