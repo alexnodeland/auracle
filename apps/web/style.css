@@ -5279,6 +5279,7 @@ html.handheld .handheld-gate {
    name when taken, or folds back into it when passed. Under reduced motion
    nothing moves, and B shows the taken state as a fill for a moment. */
 .pf-offer { transform-origin: 0 0; position: relative; }
+.pf-offer.moving { pointer-events: none; }
 .pf-offer-ghost {
   position: fixed;
   z-index: 30;

@@ -1654,7 +1654,14 @@ export function createPerform(host) {
     const from = nameEl.getBoundingClientRect();
     const to = offerCard.getBoundingClientRect();
     if (!from.width || !to.width) return;
-    offerCard.animate([{ transform: onto(from, to), opacity: 0.25 }, { transform: "none", opacity: 1 }], { duration: ms, easing: easeOf("--e-settle") });
+    // While it grows it passes through the pads below it, and a press on
+    // PEEK or TAKE in that moment must reach the pad, not B.
+    offerCard.classList.add("moving");
+    const grown = offerCard.animate([{ transform: onto(from, to), opacity: 0.25 }, { transform: "none", opacity: 1 }], { duration: ms, easing: easeOf("--e-settle") });
+    const still = () => offerCard.classList.remove("moving");
+    grown.onfinish = still;
+    grown.oncancel = still;
+    setTimeout(still, ms + 100);
   }
   // A copy of B as it was, to move while B itself is already what it is now.
   function ghost(name) {
