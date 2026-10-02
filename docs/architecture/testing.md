@@ -59,7 +59,7 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   whole pipeline (grammar edits, rendering and φ, the taste model, the
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js` or `live-audio.js`, to `crates/auracle-session` or
+  `farm.js`, `perform.js`, `patch.js` or `live-audio.js`, to `crates/auracle-session` or
   `crates/auracle-wasm`, to a spec file holding an `@slow` test, or to the
   suite's config and lockfile. Not `main.js`: every view lives there, so it
   would make nearly every app PR a slow run. A `main.js` change that reaches
@@ -104,7 +104,11 @@ test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s) and `perform_teaches.spec.js` (54 s). Seventeen tests, ~19 min in one
+(54 s), `perform_teaches.spec.js` (54 s), and `patch_guess.spec.js`'s four
+that fit after the warm start before PATCH guesses (the guess drawn, added,
+skipped and undone; the floor with no crew; keep as new; a stale take: 15 to
+25 s each on a 16-core M3 Max, not yet on CI, where the warm start, a fit and
+a render crew's spawn come first). Seventeen tests before those four, ~19 min in one
 worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.

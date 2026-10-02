@@ -354,6 +354,17 @@ export function createPatch(host) {
     });
     layer.appendChild(plate);
     svg.appendChild(layer);
+    // Over a narrow socket the words can be wider than the plate: condensed
+    // to fit, as the rack's own silkscreen is (`fitLabels`).
+    for (const t of [t1, t2, t3]) {
+      const avail = at.w - (t === t1 ? 40 : 24);
+      let w = 0;
+      try { w = t.getBBox().width; } catch (_) { w = 0; }
+      if (w > avail) {
+        t.setAttribute("textLength", avail.toFixed(1));
+        t.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
+    }
   }
 
   // The module rail's row for the guessed kind carries an amber mark, left of
