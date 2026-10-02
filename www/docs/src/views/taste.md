@@ -57,7 +57,7 @@ green ring moves to it when it’s yours.
 
 The card’s percentage is the model’s rating after your last pick. The bank’s
 rows show the rating from the last refit, so between refits the two can
-differ by a point or two.
+differ.
 
 From the keyboard: Tab to the map, then the arrow keys move to the nearest
 sound in that direction, <kbd>Enter</kbd> opens it, and <kbd>Esc</kbd> closes
