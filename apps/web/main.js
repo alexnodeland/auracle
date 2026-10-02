@@ -8111,7 +8111,9 @@ function playBench() {
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
-    heard(wb.subjectId); // a child on the bench, heard: its unheard dot goes
+    // A child on the bench as it was bred, heard: its unheard dot goes. An
+    // edit of it is another sound.
+    if (!wb.dirty) heard(wb.subjectId);
     return;
   }
   // A refusal of the press (Space reaches here with ▶ disabled): it jumps the
