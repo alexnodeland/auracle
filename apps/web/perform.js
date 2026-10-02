@@ -3891,6 +3891,9 @@ export function createPerform(host) {
     followTree,
     setQuiet(on) {
       state.quiet = !!on;
+      // Attract plays the instrument by itself: an answer or a lesson a
+      // visitor left open is put away (explain.js).
+      if (on) host.attractStarted?.();
       // Whatever attract blended in was heard by nobody in particular: an
       // offer it leaves behind starts unheard for the visitor.
       if (!on && state.offer) state.offer.heardMs = 0;

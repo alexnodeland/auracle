@@ -65,7 +65,7 @@ export function createExplain(host) {
   const { words, tok, canvasFont, motionMs, INK, inkAlpha } = host;
   const {
     PALETTE, FIGURE_OF, EXPLAIN_UI: UI, explainTitle, explainSays, explainAlt, hzWord, msWord, dbWord,
-    LESSON_TITLE, LESSON_BUTTON, LESSON_LENGTH, lessonSteps, cutoffWord, lessonPlay, stepOf,
+    LESSON_TITLE, LESSON_BUTTON, LESSON_LENGTH, lessonSteps, cutoffWord, lessonPlay, stepOf, lessonTrouble,
   } = words;
   const hair = () => tok("--hairline");
   const mute = () => tok("--silk-mute");
@@ -505,8 +505,16 @@ export function createExplain(host) {
     if (t) showChip(t);
     else if (current && !e.target.closest?.(".xp")) hideChip();
   });
+  // Which control the keyboard put focus on, if any. A control a mouse turned
+  // keeps focus too, and Chrome then counts any key (the Shift of a ?) as
+  // keyboard focus, so the page keeps the distinction itself: focus that
+  // arrives within a moment of a press is the pointer's.
+  let pressedAt = 0;
+  let keyFocus = null;
+  document.addEventListener("pointerdown", () => (pressedAt = performance.now()), true);
   document.addEventListener("focusin", (e) => {
     const t = e.target.closest?.("[data-ask]");
+    keyFocus = t && performance.now() - pressedAt > 300 ? t : null;
     if (t) showChip(t);
   });
   document.addEventListener("scroll", () => chip.classList.remove("on"), true);
@@ -530,10 +538,20 @@ export function createExplain(host) {
         close();
         return;
       }
-      if (e.key !== "?" || e.metaKey || e.ctrlKey || e.target.closest?.("input, textarea, select")) return;
+      if (e.key !== "?" || e.metaKey || e.ctrlKey || e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+      // The control under the pointer, or one the keyboard put focus on: a
+      // control a mouse turned keeps focus, but ? over somewhere else is the
+      // key map's.
       const focused = document.activeElement?.closest?.("[data-ask]");
-      const t = focused || (current && current.matches(":hover") ? current : null);
-      if (!t) return;
+      const t = (focused && focused === keyFocus ? focused : null) || (current && current.matches(":hover") ? current : null);
+      if (!t) {
+        // With an answer or the lesson open, ? never puts the key map over it.
+        if (pop.classList.contains("on") || lesson.classList.contains("on")) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       ask(t);
@@ -547,6 +565,9 @@ export function createExplain(host) {
   // answer opens. Moving, or lifting early, is an ordinary touch. The ring
   // waits a moment, so a tap or the start of a turn never shows it.
   const RING_DELAY_MS = 140;
+  // A move this far is a turn, not a hold: PERFORM's knob counts 3 px of
+  // travel as moved, and its long press then does nothing.
+  const HOLD_SLOP_PX = 3;
   const ring = el("div", "xp-ring");
   ring.setAttribute("aria-hidden", "true");
   document.body.append(ring);
@@ -582,7 +603,7 @@ export function createExplain(host) {
   document.addEventListener(
     "pointermove",
     (e) => {
-      if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) endHold();
+      if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP_PX) endHold();
     },
     true,
   );
@@ -610,6 +631,11 @@ export function createExplain(host) {
   pop.tabIndex = -1;
   document.body.append(pop);
   let shown = null; // {i, el, st, c, key}
+  // The sentence: one element, a polite live region, so what was measured is
+  // read once it lands (the figure's own text says only what is drawn).
+  const sayEl = el("p", "xp-say");
+  sayEl.setAttribute("role", "status");
+  sayEl.setAttribute("aria-live", "polite");
   let returnTo = null;
   let watchT = 0;
   let followT = 0;
@@ -648,17 +674,19 @@ export function createExplain(host) {
     pop.style.setProperty("--cy", `${clamp(r.top + r.height / 2 - y, 18, ph - 18)}px`);
   }
 
-  // The replies, by what they were asked about (the control, the patch, both
-  // sets of knobs and the model's revision, which the standardizer `along`
-  // is measured in follows), and the requests still out.
+  // The replies, by what they were asked about (the control, the patch and
+  // both sets of knobs), and the requests out: one at a time. A key asked for
+  // while one is out is not queued; when the reply lands the answer is built
+  // again, and asks for whatever its control is then (as the lesson does), so
+  // a drag never stacks renders in the engine's `soon` lane.
   const cache = new Map();
   const out = new Map(); // token -> key
   let token = 0;
   // The wiring's words are part of it too: a measurement that lands with
   // the control nothing turns changes no knob, but changes what is said.
-  const keyOf = (st) => JSON.stringify([host.tasteRev(), st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
+  const keyOf = (st) => JSON.stringify([st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
   function request(st, key) {
-    if ([...out.values()].includes(key)) return;
+    if (out.size) return;
     token += 1;
     out.set(token, key);
     host.send({ type: "explain", token, tree: st.tree, made: st.made, turned: st.turned, k: st.index });
@@ -726,7 +754,7 @@ export function createExplain(host) {
     // answer does not blink out on every turn.
     if (!data && !st.pending && sameControl) {
       pop.querySelector(".xp-fig").classList.add("old");
-      pop.querySelector(".xp-say").textContent = UI.listening;
+      sayEl.textContent = UI.measuring;
       return true;
     }
     shown.stale = false;
@@ -741,10 +769,10 @@ export function createExplain(host) {
     const ctx = sizeCanvas(cv, W, H);
     cv.style.aspectRatio = `${W} / ${H}`;
     cv.setAttribute("role", "img");
-    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, say, !!(made && turnedP && !st.search)));
+    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, !!(made && turnedP && !st.search)));
     let fig;
     if (made) fig = FIGURES[kind](ctx, c, made, st.search ? null : turnedP);
-    else fig = waitingFigure(ctx, failed ? "" : UI.listening);
+    else fig = waitingFigure(ctx, failed ? "" : UI.measuring);
     if (made) {
       cv.title = UI.again;
       cv.addEventListener("click", () => run(fig));
@@ -768,12 +796,17 @@ export function createExplain(host) {
       b.type = "button";
       b.dataset.i = String(j);
       b.setAttribute("aria-pressed", String(j === shown.i));
-      b.onclick = () => switchTo(j);
+      // A pointer's click leaves no focus on the button (ADR-016: Space then
+      // plays), as the app's buttons do; the answer keeps it, for its keys.
+      b.onclick = (e) => {
+        if (e.detail > 0) pop.focus({ preventScroll: true });
+        switchTo(j);
+      };
       sw.append(b);
       if (keep === String(j)) queueMicrotask(() => b.focus({ preventScroll: true }));
     });
-    const p = el("p", "xp-say", say);
-    const parts = [head, cv, sw, p];
+    sayEl.textContent = say;
+    const parts = [head, cv, sw, sayEl];
     const acts = el("div", "xp-acts");
     if (!st.pending && !st.search) {
       const hear = el("button", "xp-hear util-btn", UI.hear);
@@ -823,11 +856,15 @@ export function createExplain(host) {
       if (again && again.getBoundingClientRect().width) shown.el = again;
       else return close();
     }
+    // A turn in progress is the follow timer's to answer, once it rests.
+    if (performance.now() - lastTurn < FOLLOW_MS) return;
     const st = perf()?.explainOf(shown.i);
     if (st && keyOf(st) !== shown.key) render();
   }
+  let lastTurn = 0;
   function controlTurned(i) {
     if (!shown || shown.i !== i || !pop.classList.contains("on")) return;
+    lastTurn = performance.now();
     clearTimeout(followT);
     followT = setTimeout(() => shown && render(), FOLLOW_MS);
   }
@@ -855,6 +892,9 @@ export function createExplain(host) {
     srcStart: 0,
     playing: false,
     raf: 0,
+    timer: 0,
+    // Nothing more to render: the sound itself didn't, or couldn't be read.
+    dead: false,
   };
   const knobOfHz = (hz) => Math.log(hz / 20) / Math.log(1000);
   const hzOfKnob = (x) => 20 * Math.pow(1000, x);
@@ -875,6 +915,7 @@ export function createExplain(host) {
       cutoff: knobOfHz(CUT_START_HZ),
       asked: null,
       want: null,
+      dead: false,
       returnTo: document.activeElement,
     });
     lesson.classList.add("on");
@@ -887,13 +928,16 @@ export function createExplain(host) {
     if (!lesson.classList.contains("on")) return;
     stopLesson();
     cancelAnimationFrame(L.raf);
+    clearTimeout(L.timer);
     L.raf = 0;
+    L.timer = 0;
     lesson.classList.remove("on");
     document.documentElement.classList.remove("xl-on");
     L.returnTo?.focus?.({ preventScroll: true });
   }
   // One request out at a time; the latest cutoff waits for it.
   function askLesson(cutoff) {
+    if (L.dead) return;
     const what = cutoff == null ? "plain" : cutoff;
     if (L.asked != null) {
       L.want = what;
@@ -908,9 +952,15 @@ export function createExplain(host) {
     L.asked = null;
     const buffer = m.buffer && m.buffer.length ? host.audio.ctx.createBuffer(1, m.buffer.length, m.sampleRate) : null;
     if (buffer) buffer.copyToChannel(m.buffer, 0);
-    const reply = { data: m.data || { error: m.error }, buffer };
+    const data = m.data || { error: m.error || "vet" };
+    const reply = { data, buffer: data.error ? null : buffer, error: data.error || null };
     if (m.cutoff == null) L.plain = reply;
     else L.filtered = reply;
+    // The sound in hand didn't render, or a tree couldn't be read: no cutoff
+    // will change that, so nothing more is asked. A filtered render that
+    // failed at one cutoff (silent, or refused by the check) may pass at
+    // another, so a drag still asks.
+    if ((m.cutoff == null && reply.error) || reply.error === "no_tree") L.dead = true;
     if (L.playing) startLesson();
     if (L.want != null) {
       const w = L.want;
@@ -918,17 +968,18 @@ export function createExplain(host) {
       askLesson(w === "plain" ? null : w);
     } else if (L.step === 1 && !L.filtered) askLesson(L.cutoff);
     paintLesson();
-    if (L.step === 1) {
-      const pl = lesson.querySelector(".xl-play");
-      if (pl) pl.textContent = lessonPlay(L.name, true, L.playing);
-    }
   }
   // The lesson's sound: the step's render, looped, from where the last one
   // was, so a new cutoff is heard in place. Through the app's master, and
   // the app's own phrase stops first.
+  // The filter's step plays only the filtered render: never the sound
+  // without it under "through it".
   function startLesson() {
-    const r = L.step === 1 && L.filtered && L.filtered.buffer ? L.filtered : L.plain;
-    if (!r || !r.buffer) return;
+    const r = L.step === 1 ? L.filtered : L.plain;
+    if (!r || !r.buffer) {
+      stopLesson();
+      return;
+    }
     const ctx = host.audio.ctx;
     const at = L.src ? (ctx.currentTime - L.srcStart) % r.buffer.duration : 0;
     if (L.src) {
@@ -943,7 +994,7 @@ export function createExplain(host) {
     L.src = src;
     L.srcStart = ctx.currentTime - at;
     L.playing = true;
-    if (!L.raf) liveLoop();
+    if (!L.raf && !L.timer) liveLoop();
   }
   function stopLesson() {
     if (L.src) {
@@ -955,8 +1006,6 @@ export function createExplain(host) {
   function togglePlay() {
     if (L.playing) stopLesson();
     else startLesson();
-    const pl = lesson.querySelector(".xl-play");
-    if (pl) pl.textContent = lessonPlay(L.name, L.step === 1, L.playing);
     paintLesson();
   }
   // What is heard now, in the portrait's bands: the output's analyser, each
@@ -982,14 +1031,20 @@ export function createExplain(host) {
     if (!Number.isFinite(peak) || peak < -100) return null;
     return out.map((d) => Math.max(FLOOR_DB, d - peak));
   }
+  // Under reduced motion the line still shows what is heard, in steps
+  // twice a second rather than every frame.
   function liveLoop() {
+    L.raf = 0;
+    L.timer = 0;
     paintShape();
-    if (lesson.classList.contains("on") && L.playing && !reduced()) L.raf = requestAnimationFrame(liveLoop);
-    else L.raf = 0;
+    if (!lesson.classList.contains("on") || !L.playing) return;
+    if (reduced()) L.timer = setTimeout(liveLoop, 500);
+    else L.raf = requestAnimationFrame(liveLoop);
   }
 
   let shapeCv = null;
   let filterCv = null;
+  let panelEl = null;
   function paintShape() {
     if (!shapeCv) return;
     const ctx = sizeCanvas(shapeCv, VW, VH);
@@ -997,10 +1052,11 @@ export function createExplain(host) {
     const h = VH - 30;
     const w = h * 0.6;
     const b = { x: (VW - w) / 2, y: 12, w, h };
-    const plain = L.plain && L.plain.data && L.plain.data.portrait;
-    const filt = L.step === 1 && L.filtered && L.filtered.data && L.filtered.data.portrait;
+    const plain = L.plain && !L.plain.error && L.plain.data.portrait;
+    const filt = L.step === 1 && L.filtered && !L.filtered.error && L.filtered.data.portrait;
     if (!plain) {
-      text(ctx, UI.listening, VW / 2, VH / 2, "center", INK.amber);
+      // Still measuring, or it failed: the body says why.
+      if (!L.plain) text(ctx, UI.measuring, VW / 2, VH / 2, "center", INK.amber);
       return;
     }
     if (filt) {
@@ -1011,9 +1067,9 @@ export function createExplain(host) {
     ctx.fillStyle = inkAlpha(INK.green, 0.14);
     ctx.fill();
     litLine(ctx, 1.8);
-    if (L.step === 1) {
+    if (filt) {
       // The cutoff on the shape: above it is what the filter takes away.
-      const hz = L.filtered?.data?.cutoff_hz ?? hzOfKnob(L.cutoff);
+      const hz = L.filtered.data.cutoff_hz;
       const y = bandY(b, bandOfHz(hz));
       ctx.fillStyle = inkAlpha(tok("--bezel"), 0.55);
       ctx.fillRect(0, 0, VW, y);
@@ -1043,7 +1099,7 @@ export function createExplain(host) {
     const gy = 14;
     const gh = FH - 44;
     box(ctx, { x: 16, y: gy, w: FW - 32, h: gh });
-    const d = L.filtered && L.filtered.data;
+    const d = L.filtered && !L.filtered.error ? L.filtered.data : null;
     // The filter's response, measured from its impulse (`lesson_filter`'s
     // `response`, quiver's filter as the compiler wires it): the cutoff the
     // reply was for, which the handle leads while a new one renders.
@@ -1070,7 +1126,10 @@ export function createExplain(host) {
     }
     const hz = hzOfKnob(L.cutoff);
     const cx = fxOf(clamp(hz, CUT_LO_HZ, CUT_HI_HZ));
-    ctx.fillStyle = INK.silk;
+    // Where the player has the knob; dim, and with no readout, while what
+    // it would do did not render.
+    const failed = !!(L.filtered && L.filtered.error) || L.dead;
+    ctx.fillStyle = failed ? INK.silkDim : INK.silk;
     ctx.fillRect(cx - 1, gy - 4, 2, gh + 8);
     ctx.beginPath();
     ctx.arc(cx, gy - 4, 6, 0, Math.PI * 2);
@@ -1079,13 +1138,29 @@ export function createExplain(host) {
     text(ctx, hzWord(1000), fxOf(1000), FH - 8, "center");
     text(ctx, hzWord(10000), fxOf(10000), FH - 8, "center");
     const left = cx - 16 > 120;
-    text(ctx, cutoffWord(hz), left ? cx - 10 : cx + 10, gy + gh - 10, left ? "right" : "left", INK.silk);
+    if (!failed) text(ctx, cutoffWord(hz), left ? cx - 10 : cx + 10, gy + gh - 10, left ? "right" : "left", INK.silk);
     filterCv.setAttribute("aria-valuenow", String(Math.round(hz)));
     filterCv.setAttribute("aria-valuetext", cutoffWord(hz));
   }
+  // What the lesson says when a render failed, or the filter went after the
+  // sound; and its ▶, which plays only what rendered.
   function paintLesson() {
     paintShape();
     paintFilter();
+    const why = lesson.querySelector(".xl-trouble");
+    if (why) {
+      let t = "";
+      if (L.plain && L.plain.error) t = lessonTrouble(L.name, L.plain.error, false);
+      else if (L.step === 1 && L.filtered && L.filtered.error) t = lessonTrouble(L.name, L.filtered.error, true);
+      else if (L.step === 1 && L.filtered && L.filtered.data.placement === "after") t = lessonTrouble(L.name, "after", true);
+      if (why.textContent !== t) why.textContent = t;
+    }
+    const pl = lesson.querySelector(".xl-play");
+    if (pl) {
+      const r = L.step === 1 ? L.filtered : L.plain;
+      pl.disabled = !(r && r.buffer) && !L.playing;
+      pl.textContent = lessonPlay(L.name, L.step === 1, L.playing);
+    }
   }
   function setCut(hz) {
     L.cutoff = knobOfHz(clamp(hz, CUT_LO_HZ, CUT_HI_HZ));
@@ -1125,10 +1200,11 @@ export function createExplain(host) {
         const hz = hzOfKnob(L.cutoff);
         const down = e.key === "ArrowLeft" || e.key === "ArrowDown";
         const up = e.key === "ArrowRight" || e.key === "ArrowUp";
-        if (!down && !up) return;
+        const ends = e.key === "Home" || e.key === "End";
+        if (!down && !up && !ends) return;
         e.preventDefault();
         e.stopPropagation();
-        setCut(down ? hz / 1.12 : hz * 1.12);
+        setCut(e.key === "Home" ? CUT_LO_HZ : e.key === "End" ? CUT_HI_HZ : down ? hz / 1.12 : hz * 1.12);
       });
       body.append(filterCv);
       if (!L.filtered) askLesson(L.cutoff);
@@ -1138,11 +1214,18 @@ export function createExplain(host) {
       for (const t of s.list) ul.append(el("li", null, t));
       body.append(ul);
     }
+    // Why a render failed, or where the filter went: said, never drawn.
+    const trouble = el("p", "xl-trouble");
+    trouble.setAttribute("role", "status");
+    body.append(trouble);
     body.append(el("p", "xl-try", s.try));
     if (L.step < 2) {
       const play = el("button", "xl-play util-btn", lessonPlay(L.name, L.step === 1, L.playing));
       play.type = "button";
-      play.onclick = togglePlay;
+      play.onclick = (e) => {
+        togglePlay();
+        if (e.detail > 0) panelEl?.focus({ preventScroll: true });
+      };
       body.append(play);
     }
     const pips = el("div", "xl-pips");
@@ -1168,10 +1251,14 @@ export function createExplain(host) {
     main.append(shapeCv, body);
     const panel = el("div", "xl-panel");
     panel.dataset.step = String(L.step);
+    // The panel holds focus, not NEXT or DONE: Space plays the step's sound
+    // (ADR-016), Enter steps on, Tab reaches the rest.
+    panel.tabIndex = -1;
     panel.append(top, main, nav);
     lesson.replaceChildren(panel);
+    panelEl = panel;
     paintLesson();
-    (filterCv || next).focus({ preventScroll: true });
+    panel.focus({ preventScroll: true });
   }
   function go(step) {
     L.step = clamp(step, 0, 2);
@@ -1179,13 +1266,14 @@ export function createExplain(host) {
     if (L.playing) startLesson();
     renderLesson();
   }
-  // Space plays the lesson's sound (ADR-016); Enter steps on; Tab stays in
-  // the lesson. Every other key goes on to the app (the note keys play).
+  // Space plays the lesson's sound wherever focus is in it (ADR-016), a
+  // button included: NEXT and DONE take Enter only. Enter steps on; Tab stays
+  // in the lesson. Every other key goes on to the app (the note keys play).
   lesson.addEventListener("keydown", (e) => {
-    if (e.key === " " && !e.target.closest("button")) {
+    if (e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
-      togglePlay();
+      if (!e.repeat) togglePlay();
       return;
     }
     if (e.key === "Enter" && !e.target.closest("button") && L.step < 2) {
@@ -1207,6 +1295,10 @@ export function createExplain(host) {
       }
     }
   });
+  // A button's Space is its keyup: the lesson's, not the button's.
+  lesson.addEventListener("keyup", (e) => {
+    if (e.key === " ") e.preventDefault();
+  });
   lesson.addEventListener("click", (e) => {
     if (e.target === lesson) closeLesson();
   });
@@ -1219,10 +1311,9 @@ export function createExplain(host) {
     out.delete(m.token);
     cache.set(key, m.error ? { error: m.error } : { made: m.made, turned: m.turned || null });
     while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
-    if (shown && shown.key === key) {
-      shown.stale = true;
-      render();
-    }
+    if (!shown || !pop.classList.contains("on")) return;
+    if (shown.key === key) shown.stale = true;
+    render();
   }
 
   return {

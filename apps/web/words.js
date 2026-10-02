@@ -638,6 +638,10 @@ export function msWord(ms) {
 
 const pctWord = (x) => `${Math.round(Number(x) || 0)}%`;
 const twoPlaces = (x) => (Number(x) || 0).toFixed(2);
+// A motion band (`Facts::motion_oct`): brightness in octaves and level in
+// doublings together, floored at 0.01, which is no movement at all.
+const moveWord = (x) => ((Number(x) || 0) <= 0.0105 ? "none" : twoPlaces(x));
+const band = (lo, hi) => `a held note’s movement between ${lo} and ${hi} Hz (brightness in octaves and level in doublings)`;
 // Spectral flatness (0 a pure tone, 1 white noise) in dB, as it is usually
 // read: a note sits tens of dB down, noise at 0.
 const flatDb = (x) => dbWord(10 * Math.log10(Math.max(1e-9, Number(x) || 0)));
@@ -657,8 +661,11 @@ export const FIGURE_OF = {
   Grit: "harmonics", Bite: "harmonics", "Lo-fi": "harmonics",
 };
 
-// Each control's first fact: how to say it at rest, and how to say it
-// moving, from `Facts` (the engine's names).
+// Each control's fact: how to say it at rest, and how to say it moving, from
+// `Facts` (the engine's names). It is a coordinate of the control's own axis
+// that a listener can read in a unit: for most, the first; for AIR, where
+// the top rolls off (`rolloff_mean`), not the zero-crossing rate its axis
+// leads with, which is no frequency a player reads.
 const SAY_FACT = {
   Bright: [(f) => `its center sits at ${hzWord(f.centroid_hz)}`, (m, t) => `its center moves from ${hzWord(m.centroid_hz)} to ${hzWord(t.centroid_hz)}`],
   Air: [(f) => `its top rolls off at ${hzWord(f.rolloff_hz)}`, (m, t) => `its top rolls off at ${hzWord(m.rolloff_hz)}, then ${hzWord(t.rolloff_hz)}`],
@@ -669,9 +676,9 @@ const SAY_FACT = {
   Space: [(f) => `its last 300 ms sits ${against(f.tail_db)} the phrase`, (m, t) => `its last 300 ms sits ${against(m.tail_db)} the phrase, then ${against(t.tail_db)}`],
   Punch: [(f) => `its peaks stand ${dbWord(f.crest_db)} over its average`, (m, t) => `its peaks stand ${dbWord(m.crest_db)} over its average, then ${dbWord(t.crest_db)}`],
   Heft: [(f) => `its level averages ${dbWord(f.level_db)}`, (m, t) => `its level averages ${dbWord(m.level_db)}, then ${dbWord(t.level_db)}`],
-  Throb: [(f) => `a held note moves ${twoPlaces(f.motion_oct[1])} octave between 2 and 8 Hz`, (m, t) => `a held note moves ${twoPlaces(m.motion_oct[1])} octave between 2 and 8 Hz, then ${twoPlaces(t.motion_oct[1])}`],
-  Sway: [(f) => `a held note moves ${twoPlaces(f.motion_oct[0])} octave between 0.5 and 2 Hz`, (m, t) => `a held note moves ${twoPlaces(m.motion_oct[0])} octave between 0.5 and 2 Hz, then ${twoPlaces(t.motion_oct[0])}`],
-  Bite: [(f) => `its spectrum changes ${pctWord(f.flux * 100)} from frame to frame`, (m, t) => `its spectrum changes ${pctWord(m.flux * 100)} from frame to frame, then ${pctWord(t.flux * 100)}`],
+  Throb: [(f) => `${band(2, 8)} is ${moveWord(f.motion_oct[1])}`, (m, t) => `${band(2, 8)} goes from ${moveWord(m.motion_oct[1])} to ${moveWord(t.motion_oct[1])}`],
+  Sway: [(f) => `${band(0.5, 2)} is ${moveWord(f.motion_oct[0])}`, (m, t) => `${band(0.5, 2)} goes from ${moveWord(m.motion_oct[0])} to ${moveWord(t.motion_oct[0])}`],
+  Bite: [(f) => `its spectrum’s change from frame to frame is ${twoPlaces(f.flux)}, where 1 is a complete change`, (m, t) => `its spectrum’s change from frame to frame goes from ${twoPlaces(m.flux)} to ${twoPlaces(t.flux)}, where 1 is a complete change`],
 };
 SAY_FACT.Warmth = SAY_FACT.Body;
 SAY_FACT.Thump = SAY_FACT.Body;
@@ -690,7 +697,7 @@ export const EXPLAIN_UI = {
   failed: "That didn’t render, so there is nothing to draw.",
   hear: "hear it",
   hearTitle: "Its sweep, by ear",
-  listening: "listening…",
+  measuring: "measuring…",
   back: "Back",
   next: "Next",
   done: "Done",
@@ -728,17 +735,18 @@ function saysOf(c, st, made, turned) {
     const now = made && fact ? ` Here ${fact[0](made)}.` : "";
     return `Nothing here turns ${NAME}: turn it past the notch, and it asks for an offer instead.${now}`;
   }
-  if (!made) return "listening…";
+  if (!made) return EXPLAIN_UI.measuring;
   if (!turned) return capital(`${fact[0](made)}.`);
   const only = st.only ? `, toward ${st.only} only` : "";
   const knobs = st.knobs && st.knobs.length ? ` Here it turns ${series(st.knobs)}${only}.` : "";
   return `${capital(turnedWord(c, st.at))}, ${fact[1](made, turned)}.${knobs}`;
 }
 
-/** The figure's text for a screen reader: what is drawn, then what it says.
- *  `turned` is whether a turned render is drawn beside the made one; without
- *  it, the sound as it is is the whole figure. */
-export function explainAlt(c, sound, kind, say, turned = true) {
+/** The figure's text for a screen reader: what is drawn (the sentence beside
+ *  it says what was measured, and is read on its own). `turned` is whether a
+ *  turned render is drawn beside the made one; without it, the sound as it
+ *  is is the whole figure. */
+export function explainAlt(c, sound, kind, turned = true) {
   const what = {
     bands: "its spectrum, low at the base",
     onset: "the first note’s first 400 ms",
@@ -746,7 +754,7 @@ export function explainAlt(c, sound, kind, say, turned = true) {
     motion: "a held note over time",
     harmonics: "a held note’s harmonics",
   }[kind];
-  return `${c.name.toUpperCase()} on ${sound}: ${what}, ${turned ? "as made dashed and turned lit" : "as it is"}. ${say}`;
+  return `${c.name.toUpperCase()} on ${sound}: ${what}, ${turned ? "as made dashed and turned lit" : "as it is"}.`;
 }
 
 /** The lesson on filters: its title, its button, and its three steps.
@@ -771,7 +779,7 @@ export function lessonSteps(name, bright) {
     },
     {
       h: "A filter lets some through",
-      p: [`This lowpass filter, on ${name}, keeps what is below its cutoff and cuts what is above.`],
+      p: [`This lowpass filter, on ${name}, keeps what is below its cutoff and cuts what is above.`, "Each cutoff is played as loud as the sound itself, so you hear it darken, not fade."],
       try: "Drag the cutoff down while it plays: the top of the shape narrows, and the sound darkens.",
     },
     {
@@ -785,6 +793,22 @@ export function lessonSteps(name, bright) {
       try: `Done leaves ${name} as it was: the filter was only for the lesson.`,
     },
   ];
+}
+
+/** What the lesson says when a render of it fails, or when the filter has
+ *  to go after the sound: `reason` is the engine's (`lesson_filter`'s
+ *  `error`, or `after` for its `placement`); `filtered`, whether it was the
+ *  filtered render. */
+export function lessonTrouble(name, reason, filtered) {
+  if (reason === "after") return `${name} has no room for another module, so this filter goes after it, at one cutoff for every note.`;
+  if (!filtered) {
+    if (reason === "silent") return `${name} is silent on the phrase, so the lesson has nothing to show.`;
+    if (reason === "no_tree") return `${name} couldn’t be read, so the lesson has nothing to show.`;
+    return `${name} fails the instrument’s safety check, so the lesson can’t play it.`;
+  }
+  if (reason === "silent") return `Through the filter at this cutoff, ${name} is silent: drag the cutoff up.`;
+  if (reason === "no_tree") return `${name} couldn’t be read, so the filter can’t go on it.`;
+  return `Through the filter at this cutoff, ${name} fails the instrument’s safety check, so it isn’t played: try another cutoff.`;
 }
 
 /** The lesson's cutoff, in the knob's own unit, on the held note. */

@@ -4146,6 +4146,8 @@ async function bootPerform() {
     controlTurned: (i) => explain && explain.controlTurned(i),
     // A long press on a touch screen asks what the control does.
     askHold: (el) => !!explain && explain.askHold(el),
+    // Booth attract took over: no answer or lesson stays open under it.
+    attractStarted: () => explain && explain.close(),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
     knobInfo: (addr, v) => {

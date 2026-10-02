@@ -24,21 +24,65 @@ const INIT = `(() => {
         if (m && /^explain/.test(m.type)) sent.push(JSON.parse(JSON.stringify(m)));
         return post(m, t);
       };
+      // The page's handler, called with each reply after it is kept, and
+      // with a lesson reply rewritten when a test asks (window.__xinject: a
+      // function from a reply to the one the page should see), so a render
+      // that fails can be met on any sound.
+      let handler = null;
+      Object.defineProperty(w, "onmessage", { configurable: true, get: () => handler, set: (h) => { handler = h; } });
       w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (!d || !/^explain/.test(d.type)) return;
-        got.push(JSON.parse(JSON.stringify({ ...d, buffer: d.buffer ? d.buffer.length : null })));
+        let d = e.data;
+        if (d && d.type === "explain_lesson" && window.__xinject) d = window.__xinject(d);
+        if (d && /^explain/.test(d.type)) got.push(JSON.parse(JSON.stringify({ ...d, buffer: d.buffer ? d.buffer.length : null })));
+        if (handler) handler({ data: d });
       });
     }
     return w;
   }
   Wrapped.prototype = Orig.prototype;
   window.Worker = Wrapped;
+  // The output level, read through an analyser on everything the app
+  // connects to the destination (space_after_a_click.spec.js's tap).
+  const connect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (dest, ...rest) {
+    const r = connect.call(this, dest, ...rest);
+    if (typeof AudioDestinationNode !== "undefined" && dest instanceof AudioDestinationNode) {
+      let a = this.context.__pwTap;
+      if (!a) {
+        a = this.context.createAnalyser();
+        a.fftSize = 2048;
+        this.context.__pwTap = a;
+        window.__pwTap = a;
+      }
+      connect.call(this, a);
+    }
+    return r;
+  };
+  window.__pwPeakDb = () => {
+    const a = window.__pwTap;
+    if (!a) return -Infinity;
+    const b = new Float32Array(a.fftSize);
+    a.getFloatTimeDomainData(b);
+    let peak = 0;
+    for (const x of b) peak = Math.max(peak, Math.abs(x));
+    return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+  };
 })();`;
+const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
+const sounds = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeGreaterThan(-50);
+const quiet = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeLessThan(-80);
+
+// EXPLAIN_CPU_THROTTLE=4 runs the page at a quarter of the machine's speed
+// (Chrome's CPU throttling), the slow laptop the figures must still answer on.
+const THROTTLE = Number(process.env.EXPLAIN_CPU_THROTTLE || 0);
 
 async function boot(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  if (THROTTLE > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
+  }
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -60,11 +104,11 @@ const knob = (page, j) => page.locator(`.pf-knob[data-i="${j}"]`);
 const say = (page) => page.locator(".xp.on .xp-say");
 
 // The figure has its measurement: it is drawn (a drawn figure plays again
-// when clicked), not listening, and not waiting for the control's own.
+// when clicked), not measuring, and not waiting for the control's own.
 async function settled(page, timeout = 120_000) {
   await page.waitForFunction(() => {
     const s = document.querySelector(".xp.on .xp-say")?.textContent || "";
-    return s && !/listening…|hasn’t been measured/.test(s) && !!document.querySelector(".xp.on .xp-fig[title]");
+    return s && !/measuring…|hasn’t been measured/.test(s) && !!document.querySelector(".xp.on .xp-fig[title]");
   }, null, { timeout });
 }
 
@@ -196,7 +240,10 @@ test("a figure says what the worker posted, and follows its control", async ({ p
       return w.explainSays(c, { at, knobs: [] }, p(reply.made), p(reply.turned)).replace(/\u00a0/g, " ");
     }, { reply, req });
     expect(text.startsWith(sentence)).toBe(true);
-    expect((await page.locator(".xp.on .xp-fig").getAttribute("aria-label")).replace(/\u00a0/g, " ")).toContain(text);
+    // The sentence is read where it stands, a live region; the figure's own
+    // text says what is drawn, and does not repeat it.
+    await expect(say(page)).toHaveAttribute("role", "status");
+    expect(((await page.locator(".xp.on .xp-fig").getAttribute("aria-label")) || "").replace(/\u00a0/g, " ")).not.toContain(text);
     // The numbers are the engine's: BRIGHT's center, made and turned.
     const hz = await page.evaluate(async (f) => {
       const w = await import("/words.js");
@@ -246,7 +293,10 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
     await page.locator(".xl.on .xl-next").click();
     await expect(page.locator(".xl.on .xl-h")).toHaveText("A filter lets some through");
     const filt = page.locator(".xl.on .xl-filter");
-    await expect(filt).toBeFocused();
+    // The lesson holds focus itself, so Space is its; the slider is a Tab
+    // or a click away.
+    await expect(page.locator(".xl.on .xl-panel")).toBeFocused();
+    await filt.focus();
     // Down from 12 kHz to about 400 Hz, a key at a time.
     for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowLeft");
     await page.waitForFunction(() => {
@@ -334,5 +384,161 @@ test("asking about a control moves no label", async ({ page }) => {
   expect(await labels()).toEqual(at);
   await page.keyboard.press("Escape");
   expect(await labels()).toEqual(at);
+  expect(errs).toEqual([]);
+});
+
+test("a turn with an answer open asks the engine once it rests, not on every move", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  await askAbout(page, 0);
+  const before = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain").length);
+  // Three seconds of drag on BRIGHT, up and down, a move every 50 ms.
+  const b = await knob(page, 0).boundingBox();
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 3;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 0; i < 60; i++) {
+    await page.mouse.move(x, y - 40 * Math.sin((i / 60) * Math.PI * 2) - i * 0.3);
+    await page.waitForTimeout(50);
+  }
+  await page.mouse.up();
+  await settled(page);
+  await page.waitForTimeout(1_500);
+  const asked = await page.evaluate((n) => window.__xsent.filter((m) => m.type === "explain").length - n, before);
+  expect(asked).toBeGreaterThanOrEqual(1);
+  expect(asked).toBeLessThanOrEqual(2);
+  expect(errs).toEqual([]);
+});
+
+test("Space plays with an answer open and in the lesson, after a click on its buttons too", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  await askAbout(page, 0);
+  // A click on another control's name leaves no focus on it: Space plays.
+  await page.locator(".xp.on .xp-sw button", { hasText: "Snap" }).click();
+  await expect(page.locator(".xp.on .xp-title")).toHaveText("Snap · what it does");
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BUTTON");
+  await quiet(page, "quiet before Space");
+  await page.keyboard.press(" ");
+  await sounds(page, "Space plays with the answer open");
+  await page.keyboard.press(" ");
+  await quiet(page, "Space again stops it");
+  // The lesson: NEXT clicked, Space plays the step's sound and does not step.
+  await page.locator(".xp.on .xp-sw button", { hasText: "Bright" }).click();
+  await settled(page);
+  await page.locator(".xp.on .xp-learn").click();
+  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await page.locator(".xl.on .xl-next").click();
+  await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
+  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await page.keyboard.press(" ");
+  await sounds(page, "Space plays the filtered sound");
+  await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
+  await expect(page.locator(".xl.on .xl-play")).toHaveText("Stop");
+  // Focus on NEXT itself: Space is still the lesson's, Enter steps on.
+  await page.locator(".xl.on .xl-next").focus();
+  await page.keyboard.press(" ");
+  await expect(page.locator(".xl.on .xl-play")).toHaveText("Play Reese through it");
+  await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".xl.on .xl-count")).toHaveText("3 of 3");
+  expect(errs).toEqual([]);
+});
+
+test("the lesson says why a render failed, draws nothing for it, and never plays the sound without the filter as through it", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  // Every filtered render refused by the check: said, not drawn, not played.
+  await page.evaluate(() => {
+    window.__xinject = (d) => (d.cutoff == null ? d : { ...d, data: { ...d.data, portrait: undefined, error: "vet" }, buffer: new Float32Array(0) });
+  });
+  await askAbout(page, 0);
+  await page.locator(".xp.on .xp-learn").click();
+  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await page.locator(".xl.on .xl-next").click();
+  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Through the filter at this cutoff, Reese fails the instrument’s safety check, so it isn’t played: try another cutoff.", { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(800);
+  expect(await peakDb(page)).toBeLessThan(-80);
+  // A drag still asks: another cutoff may render.
+  const before = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length);
+  await page.locator(".xl.on .xl-filter").focus();
+  await page.keyboard.press("End");
+  await expect.poll(() => page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length)).toBeGreaterThan(before);
+  // And when it renders after the sound, there is no room in it: said, and played.
+  await page.evaluate(() => {
+    window.__xinject = (d) => (d.cutoff == null ? d : { ...d, data: { ...d.data, placement: "after" } });
+  });
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese has no room for another module, so this filter goes after it, at one cutoff for every note.", { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-play")).toBeEnabled();
+  await page.keyboard.press("Escape");
+  // The sound itself failing: said, nothing to play, and nothing more asked.
+  await page.evaluate(() => {
+    window.__xinject = (d) => (d.cutoff != null ? d : { ...d, data: { ...d.data, portrait: undefined, error: "silent" }, buffer: new Float32Array(0) });
+  });
+  await askAbout(page, 0);
+  await page.locator(".xp.on .xp-learn").click();
+  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese is silent on the phrase, so the lesson has nothing to show.", { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
+  const asked = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length);
+  await page.locator(".xl.on .xl-next").click();
+  await page.waitForTimeout(1_000);
+  expect(await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length)).toBe(asked);
+  await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
+  expect(errs).toEqual([]);
+});
+
+test("? is the key map's once the pointer has left a control a mouse turned, and never over an open answer", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  // Turn SNAP with the mouse: it keeps focus, but not keyboard focus.
+  const b = await knob(page, 1).boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 3);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 3 - 20, { steps: 5 });
+  await page.mouse.up();
+  await page.mouse.move(5, 5);
+  await page.keyboard.press("?");
+  await expect(page.locator("#help")).not.toHaveClass(/\bhidden\b/);
+  await expect(page.locator(".xp.on")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
+  // An answer open, the pointer elsewhere: ? leaves the key map closed.
+  await askAbout(page, 0);
+  await page.mouse.move(5, 5);
+  await page.keyboard.press("?");
+  await expect(page.locator(".xp.on")).toBeVisible();
+  await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
+  expect(errs).toEqual([]);
+});
+
+test("a long press on a touch screen opens the answer, and a turn does not", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  const b = await knob(page, 2).boundingBox();
+  const x = Math.round(b.x + b.width / 2);
+  const y = Math.round(b.y + b.height / 3);
+  // A finger that moves is a turn: no answer.
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - 12 }] });
+  await page.waitForTimeout(900);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(300);
+  await expect(page.locator(".xp.on")).toHaveCount(0);
+  // Held still: the answer opens.
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  await page.waitForTimeout(900);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(page.locator(".xp.on .xp-title")).toHaveText("Motion · what it does");
   expect(errs).toEqual([]);
 });

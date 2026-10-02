@@ -6250,6 +6250,9 @@ html.xl-on .alarm { z-index: 62; }
 .xl-body { display: grid; gap: var(--s3); align-content: center; min-width: 0; }
 .xl-body p { margin: 0; font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.45; color: var(--silk-dim); max-width: 46ch; }
 .xl-body .xl-try { color: var(--silk); }
+.xl-body .xl-trouble { color: var(--phos-b); }
+.xl-body .xl-trouble:empty { display: none; }
+.xl-panel:focus { outline: none; }
 .xl-h { margin: 0; font-family: var(--font-silk); font-size: var(--t-title); font-weight: 500; line-height: 1.15; color: var(--silk); text-wrap: balance; }
 .xl-filter {
   width: 320px;

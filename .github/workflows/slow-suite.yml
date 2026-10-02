@@ -129,7 +129,7 @@ jobs:
             if [ -f "$f" ] && grep -q '@slow' "$f"; then slow_spec=true; fi
           done
 
-          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|live-audio)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
+          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|live-audio|explain)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
             browser=true
           else
             browser=false

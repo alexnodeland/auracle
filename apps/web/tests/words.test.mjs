@@ -65,6 +65,7 @@ import {
   cutoffWord,
   lessonPlay,
   stepOf,
+  lessonTrouble,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -479,8 +480,9 @@ test("every palette control has a figure, and each figure says what was measured
     assert.ok(s.split(/(?<=\.)\s/).length <= 2, `at most two sentences: ${s}`);
     assert.ok(!/NaN|undefined/.test(s), s);
     assert.ok(s.split(/\s+/).length <= 40, s);
-    voiced(explainAlt(c, "Reese", FIGURE_OF[c.name], s));
-    assert.ok(explainAlt(c, "Reese", FIGURE_OF[c.name], s, false).includes(", as it is. "));
+    voiced(explainAlt(c, "Reese", FIGURE_OF[c.name]));
+    assert.ok(!explainAlt(c, "Reese", FIGURE_OF[c.name]).includes(s), "the figure's text does not repeat the sentence");
+    assert.ok(explainAlt(c, "Reese", FIGURE_OF[c.name], false).endsWith(", as it is."));
     assert.equal(explainTitle(c.name), `${c.name} · what it does`);
   }
   const bright = PALETTE[0];
@@ -501,7 +503,19 @@ test("every palette control has a figure, and each figure says what was measured
   const grit = PALETTE.find((c) => c.name === "Grit");
   assert.ok(explainSays(grit, { at: 1, knobs: [] }, FACTS_MADE, FACTS_TURNED).replace(/\u00a0/g, " ").includes("goes from −40 dB to −24 dB, where noise is 0 dB"));
   assert.equal(explainSays(bright, { pending: true }, null, null), "BRIGHT hasn’t been measured on this sound yet. It turns once it has.");
-  assert.equal(explainSays(bright, { at: 1 }, null, null), EXPLAIN_UI.listening);
+  assert.equal(explainSays(bright, { at: 1 }, null, null), "measuring…");
+  assert.equal(EXPLAIN_UI.measuring, "measuring…");
+  // MOTION's wander is in octaves (φ's log axis already undone by `Facts`).
+  const motion = PALETTE.find((c) => c.name === "Motion");
+  assert.ok(explainSays(motion, { at: 1 }, FACTS_MADE, FACTS_TURNED).replace(/\u00a0/g, " ").includes("wanders 0.04 octave, then 0.31"));
+  // THROB and SWAY: a band's movement, its floor said as none, no false unit.
+  const throb = PALETTE.find((c) => c.name === "Throb");
+  const t = explainSays(throb, { at: 1 }, { ...FACTS_MADE, motion_oct: [0.2, 0.01, 0.01] }, FACTS_TURNED).replace(/\u00a0/g, " ");
+  assert.ok(t.includes("between 2 and 8 Hz (brightness in octaves and level in doublings) goes from none to 0.36"), t);
+  // BITE's change is an index from 0 to 1, said as one.
+  const bite = PALETTE.find((c) => c.name === "Bite");
+  const b = explainSays(bite, { at: 1 }, FACTS_MADE, FACTS_TURNED);
+  assert.ok(b.includes("goes from 0.09 to 0.12, where 1 is a complete change") && !b.includes("%"), b);
   assert.equal(turnedWord(bright, 0.995), "turned to bright");
   assert.equal(turnedWord(bright, -0.25), "turned 25% toward dark");
 });
@@ -527,4 +541,10 @@ test("the lesson on filters is about the sound in hand, and says what BRIGHT doe
   assert.equal(lessonPlay("Reese", true, false), "Play Reese through it");
   assert.equal(lessonPlay("Reese", true, true), "Stop");
   assert.equal(stepOf(1, 3), "2 of 3");
+  for (const [r, f] of [["after", true], ["silent", true], ["vet", true], ["no_tree", true], ["silent", false], ["vet", false], ["no_tree", false]]) {
+    const said = lessonTrouble("Reese", r, f);
+    voiced(said);
+    assert.ok(said.includes("Reese"), said);
+  }
+  assert.ok(lessonTrouble("Reese", "after", true).includes("no room for another module"));
 });
