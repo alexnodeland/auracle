@@ -4934,4 +4934,45 @@ mod tests {
         // The one the sockets are priced through most often.
         assert!(map.contains_key("n_filter"));
     }
+
+    /// **A take reaches a sound through the edit the app already sends.** A
+    /// CAPTURE placed on the bench plays nothing yet and fails the vet as
+    /// silent, as an unplugged socket does; a recording arriving as a
+    /// `set_take` structural edit (the saved form quiver's `Capture` writes)
+    /// makes it a sound that vets, saved in the bench's term; an unreadable
+    /// one is refused in words and changes nothing. No new binding: the web
+    /// task's capture flow rides `edit_structure`.
+    #[test]
+    fn a_take_arrives_on_the_bench_through_a_structural_edit() {
+        let mut engine = WasmEngine::new(0xCA9, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"replace","key":"node","kind":"capture"}"#),
+            ""
+        );
+        assert!(
+            engine.edit_vet_silent(),
+            "an empty capture played something"
+        );
+        let sr = auracle_features::PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..(1.5 * sr) as usize)
+            .map(|i| (0.5 * (i as f64 * 220.0 * std::f64::consts::TAU / sr).sin()) as f32)
+            .collect();
+        let take =
+            serde_json::to_string(&auracle_grammar::Take::from_samples(&x, sr).unwrap()).unwrap();
+        let set = format!(r#"{{"op":"set_take","key":"node","take":{take}}}"#);
+        assert_eq!(engine.edit_structure(&set), "");
+        assert!(engine.edit_vet_ok(), "a capture with a take failed the vet");
+        let bench: auracle_grammar::PatchTree =
+            serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        assert!(bench.has_takes(), "the take is not in the bench's term");
+        let refused =
+            engine.edit_structure(r#"{"op":"set_take","key":"node","take":{"format":"x"}}"#);
+        assert!(!refused.is_empty(), "an unreadable take was taken");
+        assert!(engine.edit_vet_ok(), "a refused take changed the bench");
+    }
 }
