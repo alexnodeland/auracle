@@ -305,6 +305,8 @@ export function createPerform(host) {
   // news.
   const statusSaid = el("div", "sr-only", "");
   statusSaid.setAttribute("role", "status");
+  // The visible line is for the eye; its twin is what is read, once.
+  statusEl.setAttribute("aria-hidden", "true");
   title.append(nameEl, statusEl, statusSaid);
   const scope = el("canvas", "pf-scope");
   scope.width = 360;
@@ -1760,7 +1762,9 @@ export function createPerform(host) {
   // it never fills.
   function takeMotion(gh) {
     moment("taken");
-    if (!gh) return;
+    // Out of sight (the bench took it after the player left PERFORM), there
+    // is nothing to move.
+    if (!gh || !state.visible) return;
     showGhost(gh);
     const fill = el("span", "pf-ghost-fill");
     gh.g.append(fill);
@@ -3077,6 +3081,8 @@ export function createPerform(host) {
     };
     const said = el("div", "sr-only", platformKeys(`Stage mode, ${host.label()}. ⇧F or Escape leaves.`));
     said.setAttribute("role", "status");
+    // The stage's own live region: a screen reader may not announce one
+    // outside a modal dialog, so a refusal is said here too (below).
     const ticks = ["100 Hz", "1 kHz", "10 kHz"].map((t) => el("div", "st-tick mono", t));
     ticks.forEach((t) => t.setAttribute("aria-hidden", "true"));
     rootEl.append(cv, ...ticks, hud, hint, leave, said);
@@ -3095,7 +3101,7 @@ export function createPerform(host) {
     behind.forEach((e) => (e.inert = true));
     document.body.append(rootEl);
     document.documentElement.classList.add("st-on");
-    stageOn = { root: rootEl, cv, name, ticks, hint, leave, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
+    stageOn = { root: rootEl, cv, name, ticks, hint, leave, said, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
     rootEl.focus({ preventScroll: true });
     // A refusal is said in a toast, which stage mode would hide: urgent ones
     // are lifted above it (style.css), and said in the stage's own line too,
@@ -3110,6 +3116,7 @@ export function createPerform(host) {
           if (!text) continue;
           st.hint.textContent = text;
           st.hint.classList.add("said");
+          st.said.textContent = text;
           clearTimeout(st.hintTimer);
           st.hintTimer = setTimeout(() => {
             st.hint.textContent = st.hintText;
@@ -3573,10 +3580,13 @@ export function createPerform(host) {
     renderHood();
     renderStatus();
     renderSteps();
-    renderHow();
-    renderPalette();
     // A new order of the same set is the same measurement: nothing to ask.
     if (!sameSet) measurePanel();
+    // After the measurement, so a control placed again on a set measured
+    // before reads as the wiring it got at once, never "not measured".
+    renderStatus();
+    renderHow();
+    renderPalette();
     return true;
   }
   function panelLater() {

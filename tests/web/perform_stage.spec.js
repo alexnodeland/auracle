@@ -158,6 +158,11 @@ test("Tab stays inside stage mode, and focus comes back where it was", async ({ 
   expect(await page.evaluate(() => document.querySelector(".app").inert)).toBe(true);
   // Space on the stage plays, rather than pressing anything behind it.
   await page.locator(".st-stage").focus();
+  await quiet(page);
+  await page.keyboard.press(" ");
+  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
+  await page.keyboard.press(" ");
+  await quiet(page);
   await page.keyboard.press("Escape");
   await expect(page.locator(".st-stage")).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement === document.querySelector('.pf-knob[data-i="0"]'))).toBe(true);

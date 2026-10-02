@@ -26,6 +26,9 @@ const INIT = `(() => {
         return post(m, t);
       };
       w.addEventListener("message", (e) => {
+        // A knob write in PATCH landed on the bench (the reply that carries
+        // PERFORM's tree text along, \`followTree\`).
+        if (e.data && e.data.type === "bench" && e.data.edited !== undefined) window.__benched = (window.__benched || 0) + 1;
         if (e.data && e.data.type === "perform_wired" && e.data.data) got.push({ req: e.data.req, wiring: e.data.data.wiring.map((w) => ({ name: w.name, index: w.index, search: w.search })) });
       });
     }
@@ -133,7 +136,32 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   await expect(row(page, "Snap", false).locator(".pp-place")).toBeEnabled();
 
   // Order: Bite to the front, one step at a time. The same set in another
-  // order is the same measurement, so nothing is asked of the engine.
+  // order is the same measurement, so nothing is asked of the engine. A knob
+  // turned in PATCH first makes the sound's tree new (`followTree`), so no
+  // kept wiring answers for it: only the set being unchanged keeps a
+  // reorder from asking. The panel's set is measured first, so nothing of
+  // its own is still out when the order changes.
+  await expect(page.locator(".pf-knob.waiting")).toHaveCount(0, { timeout: 150_000 });
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 150_000 });
+  await page.locator('.viewtab[data-view="play"]').click();
+  await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible({ timeout: 30_000 });
+  const hit = await page.evaluate(() => {
+    const g = [...document.querySelectorAll("#rack-svg g[data-addr]")].find((g) => {
+      const k = g.querySelector(":scope > .knob-hit");
+      if (!k) return false;
+      const r = k.getBoundingClientRect();
+      return r.width > 0 && r.y > 80 && r.bottom < window.innerHeight - 160 && r.x > 0 && r.right < window.innerWidth;
+    });
+    const r = g.querySelector(":scope > .knob-hit").getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(hit.x, hit.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(hit.x, hit.y - i * 5);
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.__benched || 0), { timeout: 30_000 }).toBeGreaterThan(0);
+  await page.locator('.viewtab[data-view="perform"]').click();
+  await page.locator(".pf-arrange").click();
   const asked = () => page.evaluate(() => window.__sent.filter((m) => m.type === "perform_wire").length);
   await expect.poll(async () => { const a = await asked(); await page.waitForTimeout(500); return (await asked()) === a; }, { timeout: 30_000 }).toBe(true);
   const before = await asked();
@@ -165,6 +193,8 @@ test("a placed control is measured with the panel's set, keyed by that set, and 
   test.setTimeout(300_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  // From a settled sound: the six's background re-check is done first.
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 120_000 });
   const base = await page.evaluate(() => window.__sent.length);
   await page.locator(".pf-arrange").click();
   const seen = await watch(page, () => {
@@ -198,6 +228,19 @@ test("a placed control is measured with the panel's set, keyed by that set, and 
   await expect(bite).not.toHaveClass(/\bwaiting\b/, { timeout: 150_000 });
   await expect(bite).not.toHaveClass(/\bpending\b/);
   await expect(bite.locator(".pf-k-wait")).toHaveText("");
+
+  // Hidden and placed again: the set was measured, so its row and its knob
+  // say what it does at once, never "not measured".
+  await row(page, "Bite", true).locator(".pp-hide").click();
+  await row(page, "Bite", false).locator(".pp-place").click();
+  const again = await page.evaluate(() => ({
+    mark: document.querySelector('.pp-row.on[data-index="16"] .pp-mark').dataset.mark,
+    sign: document.querySelector('.pp-row.on[data-index="16"] .pp-wait').textContent,
+    pending: document.querySelector('.pf-knob[data-index="16"]').classList.contains("pending"),
+  }));
+  expect(["turns", "search"]).toContain(again.mark);
+  expect(again.sign).toBe("");
+  expect(again.pending).toBe(false);
 
   // The kept wirings hold this sound once per set: the six's key, and the
   // same key with the set.
@@ -305,6 +348,8 @@ test("a row's mark never moves its name: every name starts at the same x", { tag
   test.setTimeout(240_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  // From a settled sound: the six's background re-check is done first.
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 120_000 });
   await page.locator(".pf-arrange").click();
   // While Haze is listened to, the palette holds every kind of row: a
   // control that turns, one that can't (a search control), one listening,

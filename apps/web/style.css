@@ -5326,8 +5326,9 @@ html.st-on { overflow: hidden; }
 .st-hint { position: absolute; left: 50%; bottom: var(--s6); transform: translateX(-50%); font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; pointer-events: none; }
 .st-leave { position: absolute; right: var(--s5); top: var(--s5); }
 /* A refusal said while the stage is on stays in sight: urgent toasts and the
-   alarm are lifted over it, and receipts wait behind it. Its words are also
-   said in the stage's own line for a moment (perform.js), in amber. */
+   alarm are lifted over it. A receipt is not news on stage: it is hidden,
+   and expires unseen behind it. A refusal's words are also said in the
+   stage's own line for a moment (perform.js), in amber. */
 html.st-on .toasts { z-index: 96; }
 html.st-on .toast:not(.urgent) { display: none; }
 html.st-on .alarm { z-index: 97; }
