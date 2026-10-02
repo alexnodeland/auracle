@@ -192,8 +192,8 @@ measures and the per-control tables are in the reference
 patch is one of theirs it is a search control. A measurement of all eighteen
 is a median 49 renders against 25 for the six (mean 49.8 against 26.2); the
 Jacobian's 12 are shared, and each control that reaches adds about five. In
-wasm (`palette_cost.mjs`, every fourth preset) that is a mean 7.5 s against
-14.2 s.
+wasm (`palette_cost.mjs`, every fourth preset) the eighteen take a mean
+14.2 s against 7.5 s for the six.
 
 Decisions:
 - The prototype's blends of the six are not used: five pairs were one

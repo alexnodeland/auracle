@@ -40,7 +40,7 @@ use std::time::Instant;
 use auracle_features::{featurize_memo, AudioFeatures};
 use auracle_grammar::{preset_bank, PatchTree};
 use auracle_session::perform::{
-    direction, standardized_audio, wire_named, Jacobian, NamedControl, Wiring, COLLINEAR, CONTROLS,
+    direction, standardized_audio, wire_set, Jacobian, NamedControl, Wiring, COLLINEAR, CONTROLS,
     PALETTE, SEMANTIC_RIDGE,
 };
 use auracle_wasm::shipped;
@@ -354,7 +354,7 @@ fn main() {
     println!("| Control | Family | Predicted | Alone | Beside the six | Palette order | Both halves | Median purity | Median reach (σ) |");
     println!("|---|---|---|---|---|---|---|---|---|");
     for (k, c) in PALETTE.iter().enumerate() {
-        let predicted = frac(&|r: &Row| !wire_named(&r.jac, &[*c], SEMANTIC_RIDGE)[0].search);
+        let predicted = frac(&|r: &Row| !wire_set(&r.jac, &[*c], SEMANTIC_RIDGE)[0].search);
         let reached: Vec<&Wiring> = rows
             .iter()
             .map(|r| &r.alone[k])
@@ -497,7 +497,7 @@ fn main() {
         for c in &proto {
             let w: Vec<Wiring> = rows
                 .iter()
-                .map(|r| wire_named(&r.jac, &[*c], SEMANTIC_RIDGE).remove(0))
+                .map(|r| wire_set(&r.jac, &[*c], SEMANTIC_RIDGE).remove(0))
                 .collect();
             let reach = w.iter().filter(|w| !w.search).count() as f64 / m;
             println!(

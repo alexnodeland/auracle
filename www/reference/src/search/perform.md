@@ -229,12 +229,13 @@ were wired (for the panel, Bright, Snap, Motion, Body, Grit, Space) becomes a
 search control (`separate`, `COLLINEAR`).
 
 A palette control is not one of the six axes, so the same idea is written for
-any direction (`purity_basis`). Take an orthonormal basis $b_0, \dots, b_m$ of
+any direction (`purity_basis`). Take an orthonormal basis $b_0, \dots, b_q$ of
 the span of $\hat e$ and the six axes, with $b_0 = \hat e$ and the rest from
-Gram–Schmidt over the six in order, and
+Gram–Schmidt over the six in order, and, for the predicted movement $m$ as
+above,
 
 $$
-\rho \;=\; \frac{\hat e^\top m}{\sqrt{\sum_{i=0}^{m} (b_i^\top m)^2}} .
+\rho \;=\; \frac{\hat e^\top m}{\sqrt{\sum_{i=0}^{q} (b_i^\top m)^2}} .
 $$
 
 For one of the six this is the formula above, bit for bit: the other five axes
@@ -436,10 +437,11 @@ turns PERFORM’s controls into a palette of eighteen in six families, of which
 the player places up to eight. The engine defines all eighteen (`PALETTE` in
 `perform.rs`) and measures any of them exactly as it measures the six: one
 Jacobian, the ridge solve onto at most four knobs, the purity and reach gate,
-separation, and verification on real renders (`Engine::wire_named`). The
-first six entries are `CONTROLS`, at the same indices, so an index names the
-same control in either list (`perform_offer`’s `control`, `perform_graft`’s
-`k`). The app still asks for the six (`perform_wire` without `controls`); the
+separation, and verification on real renders (`Engine::wire_named`; the
+arithmetic alone, unverified and without a render, is `wire_set`). The first
+six entries are `CONTROLS`, at the same indices, so an index names the same
+control in either list (`perform_offer`’s `control`, `perform_graft`’s `k`).
+The app still asks for the six (`perform_wire` without `controls`); the
 palette’s panel is Plan-005 task 5.
 
 ### The directions
@@ -587,7 +589,8 @@ needs all eighteen. To keep within today’s budget:
    mean 46% of presets beside the six, 73% alone), so five to seven renders,
    a fifth to a quarter more than today’s measurement.
 3. **Verify a control placed later from the memo:** the Jacobian is already
-   there, so it costs only its own four to eight renders.
+   there, so it costs only its own four renders, and two more if it is
+   retried at half travel.
 
 The shipped preset wirings stay the six’s. With the twelve’s wirings beside
 them, `apps/web/perform-wirings.json` would weigh 380,084 bytes instead of

@@ -10,7 +10,8 @@
 //
 // Every `stride`-th preset (default 4). Each is measured cold, the six first
 // (`perform_wire` as the worker asks today: renders for the Jacobian, then
-// four per reachable control and four more for a retry), then all eighteen
+// four per reachable control and two more for a retry, whose ±½ points are
+// memo hits), then all eighteen
 // (`perform_wire` with every palette index), which reuses the six's renders
 // from the memo and pays only for the twelve's verification. The renders are
 // counted from `memo_stats`, so ms per render is what one costs here.

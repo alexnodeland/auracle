@@ -1503,8 +1503,9 @@ impl WasmEngine {
     /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
     /// — or `{reason}` / `null` as there. Inserts nothing into the pool.
     ///
-    /// With `control` (a named control's index, [`auracle_session::perform::CONTROLS`]
-    /// order) the offer is a search control's, aimed along that control's
+    /// With `control` (a palette index, [`auracle_session::perform::PALETTE`]
+    /// order: 0–5 are the panel's six, 6–17 the palette's twelve; a wiring's
+    /// `index`) the offer is a search control's, aimed along that control's
     /// direction, up for a positive `sign` and down otherwise
     /// ([`auracle_session::Engine::offer_toward`]), and the reply adds `moved`:
     /// how far the offer went that way, in σ, positive toward the control's

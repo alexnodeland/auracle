@@ -18,7 +18,8 @@
 //!    the patch to `p₀ + c·α·x`, with `α` set so no knob travels more than
 //!    [`MAX_TRAVEL`] of its range.
 //! 3. The gate asks whether the move is *this* control: [`Wiring::purity`] is
-//!    the cosine with `d` inside the subspace of the six named axes, so a
+//!    the cosine with `d` inside the subspace of the six named axes (widened
+//!    by `d` itself for a palette control, [`purity_basis`]), so a
 //!    brightening that also raises the zero-crossing rate is still Bright,
 //!    and one that also slows the attack is not. [`separate`] makes sure no
 //!    two controls are one gesture, and [`verify`] checks each half on real
@@ -532,9 +533,10 @@ pub struct Wiring {
     /// `(address, knob travel at a full turn)`; add `c ×` this to each knob.
     pub knobs: Vec<(String, f64)>,
     /// How much of the predicted movement is this control rather than the
-    /// **other named controls**: the cosine with the control's axis within
-    /// the subspace the six named axes span. 1 moves none of the others;
-    /// the search gate reads it ([`PURITY_FLOOR`]).
+    /// **other named controls**: the cosine with the control's direction
+    /// within the span of the six named axes and that direction
+    /// ([`purity_basis`]); for one of the six, the span of the six. 1 moves
+    /// none of the others; the search gate reads it ([`PURITY_FLOOR`]).
     pub purity: f64,
     /// Predicted movement along the named axis at a full turn, in σ.
     pub reach: f64,
@@ -954,15 +956,17 @@ pub fn wire(jac: &Jacobian) -> Vec<Wiring> {
 /// [`wire`] with the semantic prior's penalty share given explicitly: 1.0 is
 /// no prior at all. For measuring what the prior costs and buys.
 pub fn wire_with(jac: &Jacobian, semantic: f64) -> Vec<Wiring> {
-    wire_named(jac, &CONTROLS, semantic)
+    wire_set(jac, &CONTROLS, semantic)
 }
 
 /// Wire `controls` (any of the [`PALETTE`], or a direction being tried out)
 /// onto the patch `jac` was measured on, in their order, then [`separate`]
-/// them in that order. Arithmetic only: the Jacobian's renders are shared by
-/// every control, so wiring eighteen costs no more renders than wiring six.
-/// What does cost renders is [`verify`], four or eight per reachable control.
-pub fn wire_named(jac: &Jacobian, controls: &[NamedControl], semantic: f64) -> Vec<Wiring> {
+/// them in that order. **Arithmetic only, and unverified**: the Jacobian's
+/// renders are shared by every control, so wiring eighteen costs no more
+/// renders than wiring six. What does cost renders is [`verify`], four per
+/// reachable control and two more for one retried at half travel; the whole
+/// measurement, Jacobian and verification, is [`Engine::wire_named`].
+pub fn wire_set(jac: &Jacobian, controls: &[NamedControl], semantic: f64) -> Vec<Wiring> {
     let mut w: Vec<Wiring> = controls
         .iter()
         .map(|c| wire_one(c, jac, semantic))
@@ -1183,10 +1187,10 @@ pub fn apply(jac: &Jacobian, wiring: &[Wiring], c: &[f64]) -> Vec<(String, f64)>
 /// made it very slightly more restless — the linear prediction said otherwise.
 /// So each half is confirmed or closed ([`Wiring::range`]), and a control with
 /// neither half confirmed becomes a search control. Four renders per
-/// reachable control (±½ and ±1), through the memo, and four more for one
-/// retried at half travel. Each wiring is checked on the axis it was solved
-/// for ([`Wiring::axis`]), so any set [`wire_named`] wired verifies the same
-/// way.
+/// reachable control (±½ and ±1), through the memo, and two more (±¼; the
+/// ±½ points are memo hits) for one retried at half travel. Each wiring is
+/// checked on the axis it was solved for ([`Wiring::axis`]), so any set
+/// [`wire_set`] wired verifies the same way.
 pub fn verify(
     tree: &PatchTree,
     jac: &Jacobian,
@@ -1341,9 +1345,10 @@ impl Engine {
 
     /// [`Self::wire_controls_known`] for any `controls` ([`palette_controls`]
     /// picks them from the [`PALETTE`]), wired and separated in their order.
-    /// The Jacobian's renders are the same whatever is wired; each reachable
-    /// control adds its own verification renders. The six of [`CONTROLS`]
-    /// give exactly what `wire_controls_known` gives.
+    /// The whole measurement, renders included: the Jacobian's `n + 1` are the
+    /// same whatever is wired, and each reachable control adds its own
+    /// verification renders (the arithmetic alone is [`wire_set`]). The six of
+    /// [`CONTROLS`] give exactly what `wire_controls_known` gives.
     pub fn wire_named(
         &self,
         tree: &PatchTree,
@@ -1360,7 +1365,7 @@ impl Engine {
             }
         };
         let jac = jacobian_by(tree, spec.sample_rate, &mut look).ok()??;
-        let mut wiring = wire_named(&jac, controls, SEMANTIC_RIDGE);
+        let mut wiring = wire_set(&jac, controls, SEMANTIC_RIDGE);
         verify_by(tree, &jac, &mut wiring, &mut look);
         Some((jac, wiring))
     }
@@ -1417,7 +1422,7 @@ impl Engine {
             }
         };
         if let Ok(Some(jac)) = jacobian_by(tree, spec.sample_rate, &mut look) {
-            let mut wiring = wire_named(&jac, controls, SEMANTIC_RIDGE);
+            let mut wiring = wire_set(&jac, controls, SEMANTIC_RIDGE);
             verify_by(tree, &jac, &mut wiring, &mut look);
         }
         need
@@ -2009,7 +2014,7 @@ mod tests {
             let p = bank.iter().find(|p| p.name == name).expect("preset exists");
             let jac = jacobian(&p.tree, &spec, &memo, &std).expect("preset vets");
             for set in &sets {
-                let mut wiring = wire_named(&jac, set, SEMANTIC_RIDGE);
+                let mut wiring = wire_set(&jac, set, SEMANTIC_RIDGE);
                 verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
                 for (i, w) in wiring.iter().enumerate() {
                     let (lo, hi) = w.range();
