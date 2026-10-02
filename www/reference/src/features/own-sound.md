@@ -267,6 +267,22 @@ generations as the app would, 86 were admitted and 4 were not.
   `toward: true`; nothing sends them yet.
 - **Holding it.** The prototype's Hold it plays the recording through the
   named controls. That is audio in (RFC-008), not a sound of your own.
+- **Where the children grow from.** The prototype's children bud out of the
+  dropped face. The engine's grow from their parents, the pool members nearest
+  the sound, and lean toward the recording; a figure of it has to show that
+  ([ADR-012](https://github.com/alexnodeland/auracle/blob/main/docs/decisions/012-motion-shows-what-the-engine-does.md)).
+- **It is not a patch in the bank.** The prototype lists the recording among
+  the presets and plays it from there. A sound of your own has no tree: it is
+  never dealt in a pair, held as a patch or saved as one.
+- **Nearest, and the map, are of other sounds.** The prototype ranks presets
+  by its 40-band face and places the recording on a map of the 62 presets.
+  The engine ranks pool members and presets, separately, over the five
+  coordinates, and places it on TASTE's map of the pool and what you have
+  heard. The face itself is the page's to draw from the decoded file, as
+  for any render.
+- **Playing it after a reload.** The prototype keeps the decoded buffer. The
+  engine keeps only the measurement, so after a reload the card can name and
+  place the sound, and play it only if the page kept the file itself.
 - **Breeding before the first fit.** The prototype adds the nearest presets to
   the pool at any time. The engine breeds only with a taste, as EVOLVE POOL
   does; adding the nearest presets is `load_preset`, which the app can do

@@ -1777,6 +1777,10 @@ function laneOf(m) {
     case "refine":
     case "refine_from":
       return SOON;
+    // A file's analysis is one uninterruptible call of up to 0.7 s (30 s at
+    // 48 kHz, `own_cost.mjs`): the player's gestures queued meanwhile first.
+    case "own_sound_set":
+      return SOON;
     case "perform_wire":
     case "perform_offer":
       return m.bg ? LATER : SOON;

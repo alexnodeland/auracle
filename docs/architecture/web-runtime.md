@@ -242,7 +242,9 @@ absorbs and stops as EVOLVE POOL does. Without a taste or a sound it opens
 nothing and `refined` says which (`untaught`, `no_sound`). The sound itself
 arrives as `own_sound_set` (the page's decoded file, mono `Float32Array`,
 `sampleRate`, `name`); `own_sound_set`, `own_sound` and `own_sound_clear`
-reply `own_sound`. The first of them fetches `perform-wirings.json` once and
+reply `own_sound`. `own_sound_set` is a `soon` request: its analysis is one
+uninterruptible call of up to 0.7 s (half a minute at 48 kHz,
+`examples/own_cost.mjs`), so gestures queued before it go first. The first of them fetches `perform-wirings.json` once and
 hands it to `own_presets_set`, so the nearest presets need no renders. The
 UI does not send these yet.
 

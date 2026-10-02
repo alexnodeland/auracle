@@ -134,6 +134,10 @@ struct Place {
     err: [Vec<f64>; 5],
 }
 
+/// What one session measured: the two blocks of arms, the placements, and
+/// what admission did with the shipped arm's children.
+type SessionOut = ([Vec<Arm>; 2], Place, BTreeMap<String, usize>);
+
 fn mean_se(v: &[f64]) -> (f64, f64) {
     let n = v.len().max(1) as f64;
     let m = v.iter().sum::<f64>() / n;
@@ -141,12 +145,7 @@ fn mean_se(v: &[f64]) -> (f64, f64) {
     (m, (var / n).sqrt())
 }
 
-fn run_session(
-    seed: u64,
-    targets: &[&Preset],
-    gammas: &[f64],
-    seeds: usize,
-) -> ([Vec<Arm>; 2], Place, BTreeMap<String, usize>) {
+fn run_session(seed: u64, targets: &[&Preset], gammas: &[f64], seeds: usize) -> SessionOut {
     let mut engine = session(seed, seeds);
     let mut outcomes: BTreeMap<String, usize> = BTreeMap::new();
     let mut arms = [
@@ -343,7 +342,7 @@ fn main() {
             .join(", ")
     );
     let t0 = Instant::now();
-    let parts: Vec<([Vec<Arm>; 2], Place, BTreeMap<String, usize>)> = std::thread::scope(|s| {
+    let parts: Vec<SessionOut> = std::thread::scope(|s| {
         let hs: Vec<_> = (0..sessions)
             .map(|k| {
                 let (targets, gammas) = (&targets, &gammas);

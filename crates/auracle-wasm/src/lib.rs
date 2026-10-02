@@ -513,7 +513,7 @@ struct OwnReply<'a> {
     /// the file does not measure it. `null` as a whole before the pool has
     /// a standardizer.
     #[serde(skip_serializing_if = "Option::is_none")]
-    z: Option<Vec<Option<f64>>>,
+    z: Option<Option<Vec<Option<f64>>>>,
     /// The names of the coordinates a file does not measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     masked: Option<Vec<&'static str>>,
@@ -1565,7 +1565,7 @@ impl WasmEngine {
             name: Some(&own.name),
             seconds: Some(own.seconds),
             truncated: Some(own.truncated),
-            z: self.engine.own_z(),
+            z: Some(self.engine.own_z()),
             masked: Some(auracle_features::file_masked_names()),
             map: Some(self.engine.own_on_map(auracle_session::OWN_PLACEMENT)),
             nearest: Some(
@@ -3797,6 +3797,16 @@ mod tests {
     /// brings it back.
     #[test]
     fn a_sound_of_your_own_through_the_binding() {
+        // Before the pool has a standardizer the sound is kept, and its
+        // standardized reading is null, not missing.
+        let mut fresh = WasmEngine::new(1, 4);
+        let early: serde_json::Value =
+            serde_json::from_str(&fresh.own_sound_set(&decoded_file(1.0), 48_000.0, None)).unwrap();
+        assert_eq!(early["ok"], true);
+        assert!(early.get("z").is_some_and(|z| z.is_null()), "{early}");
+        assert!(early["map"].is_null());
+        assert_eq!(early["nearest"], serde_json::json!([]));
+
         let mut engine = taught_wasm(0x0A1D);
         assert_eq!(engine.own_sound(), "null");
         let reply: serde_json::Value = serde_json::from_str(&engine.own_sound_set(
