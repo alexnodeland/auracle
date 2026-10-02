@@ -15,6 +15,8 @@
 // - The sound's card downloads with its face, its name and its patch.
 // - A face is a pure function of the render: the same session reloaded (its
 //   faces now from the worker's store) draws every row the same.
+// - A face's render never goes ahead of a refit: with sixty of them queued
+//   (a list of presets scrolled through), a refit is answered at once.
 //
 // Sessions are seeded (the films' own Math.random), so the pool is the same
 // run to run.
@@ -29,6 +31,17 @@ const init = (warmed) => `(() => {
     const w = new Orig(url, opts);
     if (/worker\\.js/.test(String(url))) {
       window.__pwEngine = w;
+      // When each request went out and each answer came back, by type.
+      const log = (window.__pwLog = []);
+      const post = w.postMessage.bind(w);
+      w.postMessage = (m, t) => {
+        if (m && m.type) log.push({ dir: "sent", type: m.type, at: performance.now() });
+        return post(m, t);
+      };
+      w.addEventListener("message", (e) => {
+        const d = e.data;
+        if (d && d.type) log.push({ dir: "got", type: d.type, at: performance.now(), refs: d.type === "faces" ? (d.items || []).map((x) => x.ref).filter(Boolean) : undefined });
+      });
       // main.js sets onmessage; with __pwNoFaces the faces never reach it.
       let fn = null;
       Object.defineProperty(w, "onmessage", {
@@ -261,5 +274,38 @@ test("a face is the same drawing for the same render after a reload", async ({ p
   const ids = Object.keys(first).filter((id) => again[id]);
   expect(ids.length).toBeGreaterThan(30);
   for (const id of ids) expect(again[id], `row ${id}`).toBe(first[id]);
+  expect(errors).toEqual([]);
+});
+
+test("a refit is answered promptly while sixty face renders wait", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors = await boot(page);
+  await booted(page);
+  await bankDrawn(page);
+  await page.locator('.viewtab[data-view="evolve"]').click();
+  for (let i = 1; i <= 6; i++) {
+    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    await page.locator("#choose-a").click();
+  }
+  // The sixth pick's own refit, once its undo window has closed.
+  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "fitted")), { timeout: 60_000 }).toBe(true);
+  // Sixty presets' faces, none rendered yet: sixty renders queued (a list of
+  // presets scrolled through asks for that many).
+  await page.evaluate(() => {
+    window.__pwLog.length = 0;
+    window.__pwEngine.postMessage({ type: "faces", ids: [], trees: Array.from({ length: 60 }, (_, i) => ({ ref: `p${i}`, preset: i })), render: true });
+  });
+  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "faces" && m.refs && m.refs.length)), { timeout: 30_000 }).toBe(true);
+  // A refit asked for now is answered without waiting for them.
+  await page.evaluate(() => window.__pwEngine.postMessage({ type: "fit" }));
+  await expect.poll(() => page.evaluate(() => window.__pwLog.some((m) => m.dir === "got" && m.type === "fitted")), { timeout: 60_000 }).toBe(true);
+  const t = await page.evaluate(() => {
+    const sent = window.__pwLog.find((m) => m.dir === "sent" && m.type === "fit");
+    const got = window.__pwLog.find((m) => m.dir === "got" && m.type === "fitted");
+    const facesBefore = window.__pwLog.filter((m) => m.dir === "got" && m.type === "faces" && m.at < got.at).reduce((n, m) => n + (m.refs || []).length, 0);
+    return { ms: got.at - sent.at, facesBefore };
+  });
+  expect(t.facesBefore, `${t.facesBefore} faces landed before the fit's answer`).toBeLessThan(40);
+  expect(t.ms, `the fit took ${Math.round(t.ms)} ms`).toBeLessThan(6000);
   expect(errors).toEqual([]);
 });

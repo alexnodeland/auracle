@@ -1160,7 +1160,8 @@ impl WasmEngine {
     /// render since faces exist does), else from the audition if it is
     /// resident. Only with `render` does it render the member (about half a
     /// second): a row restored from a store written before faces existed.
-    /// A face is a picture of the render and never enters φ.
+    /// That render is not kept, so it evicts no resident audition. A face is
+    /// a picture of the render and never enters φ.
     pub fn face_of(&mut self, id: u32, render: bool) -> Vec<u8> {
         let Some(i) = self.engine.find(id as u64) else {
             return Vec::new();
@@ -1169,14 +1170,28 @@ impl WasmEngine {
         if let Some(face) = self.engine.memo().get(&key).and_then(|c| c.face) {
             return face.bytes().to_vec();
         }
-        let audio = match self.engine.pool[i].render.clone() {
-            Some(a) => Some(a),
-            None if render => self.engine.render_of(id as u64),
-            None => None,
-        };
-        audio
-            .map(|a| self.remember_face(&key, &a).bytes().to_vec())
-            .unwrap_or_default()
+        if let Some(a) = self.engine.pool[i]
+            .render
+            .clone()
+            .or_else(|| self.engine.memo().get_audio(&key))
+        {
+            return self.remember_face(&key, &a).bytes().to_vec();
+        }
+        if !render {
+            return Vec::new();
+        }
+        // Rendered for its face alone, and not kept: making it resident
+        // (`Engine::render_of`) would push a sound the player is about to
+        // hear out of the small audition cache, for a picture.
+        let c = &self.engine.pool[i];
+        match auracle_features::render_playback(
+            &c.tree,
+            &self.engine.cfg.phrase,
+            c.features.gain_db,
+        ) {
+            Ok(a) => self.remember_face(&key, &a).bytes().to_vec(),
+            Err(_) => Vec::new(),
+        }
     }
 
     /// `"<cache_namespace>/<render_key>"` of pool member `id` (as
@@ -4318,6 +4333,10 @@ mod tests {
             );
         }
         assert_eq!(engine.face_of(id as u32, true), want);
+        assert!(
+            engine.engine.pool[i].render.is_none(),
+            "a face's render is not kept: it evicts no audition"
+        );
         assert_eq!(
             engine.face_of_tree(&tree, false),
             want,
