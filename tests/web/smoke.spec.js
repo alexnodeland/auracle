@@ -63,7 +63,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The three `audition_clip` methods are the
 // session's clip (Plan-007 task 3), and the live voice's input surface is what
-// the worklet will write a capture through (task 4).
+// the worklet will write a capture through (task 4). The `guess_*` four are
+// the model's guess (Plan-005 task 9d), and `edit_cable_levels` the cable
+// probe (9e).
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -75,6 +77,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "refine_from_job", "refine_from_absorb", "refine_from_walk", "refine_from_cancel",
       "refine_seed", "last_refine_reason", "belief", "edit_known_makeup",
       "audition_clip", "set_audition_clip", "clear_audition_clip",
+      "guess_plan", "guess_rank", "guess_skip", "guess_take", "edit_cable_levels",
     ];
     const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
     return {

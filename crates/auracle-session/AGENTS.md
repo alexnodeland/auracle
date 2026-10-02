@@ -14,6 +14,7 @@ loop (observe, refit). Rules shared by all crates are in
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
 | `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`); the palette's eighteen directions (`PALETTE`, whose first six are the panel's `CONTROLS`), wired on request (`Engine::wire_named`) |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
+| `guess.rs` | The model's guess (Plan-005 task 9d): the module it guesses you'd add next. `guess_candidates` (the output's placements), `Engine::guess_plan` (the renders owed, in render order) and `Engine::guess_rank` (by the lower bound of the gain), pure; `GuessMemory`, the skips and the undo of a taken guess, per patch |
 | `belief.rs` | The belief after each pick (`Engine::belief`): the ranked numbers and lenses under the reweighted posterior, the next generation's seeds (`next_seeds`) and what it may replace (`may_replace`), as the worker posts them |
 | `calib.rs` | Prequential calibration: forecasts scored on random (check) duels |
 | `naming.rs` | Musical names for patches and styles, read off φ |
@@ -56,4 +57,6 @@ loop (observe, refit). Rules shared by all crates are in
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
 `AIM_WALKS`) and the loops. `suggest_census` measures ways the model could
 suggest the next module in PATCH, their cost and their quality against
-synthetic listeners (`docs/notes/suggest-2026-10/`).
+synthetic listeners (`docs/notes/suggest-2026-10/`); `guess_cost` measures
+what was built from it (renders and CPU per guess, and what it guesses, on
+the census's patches after both warm starts).

@@ -29,6 +29,7 @@ pub mod belief;
 pub mod calib;
 pub mod engine;
 pub mod farm;
+pub mod guess;
 pub mod map;
 pub mod migrate;
 pub mod naming;
@@ -45,6 +46,11 @@ pub use engine::{
     EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
+pub use guess::{
+    guess_candidates, guess_is_current, guessable_insert, guessable_source, Guess, GuessCandidate,
+    GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
+    GUESS_FLOOR, GUESS_TAKEN_KEEP,
+};
 pub use map::{MapPoint, TasteMap};
 pub use naming::{claim_name, NameScale};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};

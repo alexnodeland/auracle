@@ -86,6 +86,34 @@ const PARK_RUN: usize = 1024;
 /// fixed (main voice, then chord voices in pitch order), which keeps the
 /// thread-local RNG draw sequence — and therefore the render — deterministic.
 pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhrase, PatchError> {
+    render_phrase_observed(tree, spec, &mut ())
+}
+
+/// What may watch a render: the main voice once it is compiled, then after
+/// every tick. It reads the voice and never writes it, so a render it watches
+/// is the render it would have been (`crate::probe`'s tests hold that bit for
+/// bit). Chord voices are not shown to it.
+pub(crate) trait VoiceObserver {
+    /// The main voice, compiled, before its first tick.
+    fn start(&mut self, voice: &auracle_grammar::CompiledVoice);
+    /// The main voice, just ticked.
+    fn tick(&mut self, voice: &auracle_grammar::CompiledVoice);
+}
+
+/// No observer: [`render_phrase`] itself.
+impl VoiceObserver for () {
+    #[inline(always)]
+    fn start(&mut self, _: &auracle_grammar::CompiledVoice) {}
+    #[inline(always)]
+    fn tick(&mut self, _: &auracle_grammar::CompiledVoice) {}
+}
+
+/// [`render_phrase`], with `obs` watching the main voice.
+pub(crate) fn render_phrase_observed<O: VoiceObserver>(
+    tree: &PatchTree,
+    spec: &PhraseSpec,
+    obs: &mut O,
+) -> Result<RenderedPhrase, PatchError> {
     // Determinism: fix the stochastic-module RNG for this render — **before**
     // anything is compiled. quiver's RNG is one thread-local stream, and some
     // of its module constructors draw from it (`AnalogVco` takes four). No
@@ -106,6 +134,7 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
     let mut samples = Vec::with_capacity(spec.total_samples());
     let mut note_onsets = Vec::with_capacity(spec.notes.len());
     let mut spans = Vec::with_capacity(spec.notes.len());
+    obs.start(&voice);
 
     let tick_all =
         |voice: &mut auracle_grammar::CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
@@ -160,6 +189,7 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
         for _ in 0..(note.on_s * spec.sample_rate) as usize {
             let s = tick_all(&mut voice, &mut chord_voices);
             samples.push(s);
+            obs.tick(&voice);
         }
         let on_end = samples.len();
         voice.gate.set(0.0);
@@ -170,6 +200,7 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
         for _ in 0..(note.off_s * spec.sample_rate) as usize {
             let s = tick_all(&mut voice, &mut chord_voices);
             samples.push(s);
+            obs.tick(&voice);
         }
         spans.push(NoteSpan {
             voct: note.voct,
