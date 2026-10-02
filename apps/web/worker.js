@@ -919,6 +919,12 @@ function tasteViews() {
     // so the seeds and the may-be-replaced marks are current after a refit, a
     // generation or an import, as well as after a pick.
     ratings: engineRatings(),
+    // The numbers LEARNING's math states (`modelFacts`): a fit changes
+    // how many styles it was allowed.
+    facts: modelFacts(),
+    // Every pool member's standardized φ (`poolFeatures`): LEARNING shades the
+    // map by one coordinate while its weight is pointed at.
+    features: poolFeatures(),
     // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
     // shipped in `styles`; this is what θ is *worth* — adding one filter is a
     // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
@@ -981,6 +987,47 @@ function postLiveTree(edited, why, makeup) {
 function engineRatings() {
   try {
     return JSON.parse(engine.belief());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every forecast the calibration scores, oldest first
+// (`WasmEngine::forecasts`): the model's P(A wins), taken before the answer.
+// `null` from a binary without the call.
+// The observation count the last `styles` answer was taken at, so requests
+// queued behind a burst of picks coalesce. A fit or an import forgets it.
+let lastStylesObs = -1;
+// The observation count at the last fit: a `styles` request for a pick a fit
+// has run after would credit the refit's θ to the pick, so it is answered
+// with none (the refit's own θ comes with its views).
+let obsAtFit = -1;
+
+function engineForecasts() {
+  try {
+    return JSON.parse(engine.forecasts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// The numbers LEARNING's math states (`WasmEngine::model_facts`): φ's two
+// halves, the draws the model holds, its styles and their cap. Posted with
+// the calibration and with every views post (a fit changes the styles).
+function modelFacts() {
+  try {
+    return JSON.parse(engine.model_facts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every pool member's z, in φ's order (`WasmEngine::pool_features`): the
+// coordinates θ weighs. Rides every views post; `null` from a binary
+// without the call.
+function poolFeatures() {
+  try {
+    return JSON.parse(engine.pool_features());
   } catch (_) {
     return null;
   }
@@ -1500,7 +1547,10 @@ function genProgress(g) {
 
 // Open a generation. Called from `dispatch`, and returns as soon as the jobs
 // are out: the generation runs from farm messages and `soon` pieces.
-function breedOpen() {
+// `toward`: bred toward the sound of your own (`refine_toward_jobs`): its
+// context carries the target, so every walk, farmed or here, is tilted to
+// it, and it is absorbed and finished as any generation is.
+function breedOpen(toward = false) {
   let parents;
   let ctx = null;
   let jobs = null;
@@ -1509,7 +1559,18 @@ function breedOpen() {
   // retires leave main's bank now and are named, rather than going silently
   // inside `refine_jobs` and staying live in main until the first child.
   poolTrim();
-  if (typeof engine.refine_jobs === "function") {
+  let towardReason = null;
+  if (toward) {
+    const reply = typeof engine.refine_toward_jobs === "function"
+      ? JSON.parse(engine.refine_toward_jobs())
+      : { context: null, jobs: [] };
+    towardReason = reply.reason || null;
+    if (reply.context) {
+      ctx = JSON.stringify(reply.context);
+      jobs = reply.jobs.map((j) => JSON.stringify(j));
+    }
+    parents = reply.jobs.map((j) => j.parent_id);
+  } else if (typeof engine.refine_jobs === "function") {
     const reply = JSON.parse(engine.refine_jobs());
     if (reply.context) {
       // Stringified once: every worker gets this very string.
@@ -1522,8 +1583,16 @@ function breedOpen() {
   }
   if (parents.length === 0) {
     // No posterior yet — nothing to refine *toward*. Report it rather than
-    // burning a minute to produce nothing.
-    post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
+    // burning a minute to produce nothing. A breed toward a sound of your own
+    // says which of its reasons it is (`Engine::own_breed_blocked`): no
+    // taste yet (`untaught`), no sound (`no_sound`), or a sound saved under
+    // coordinates φ no longer has (`stale_sound`: bring the file again).
+    const reason = toward ? towardReason || "untaught" : "untaught";
+    post({
+      type: "refined", views: tasteViews(), status: status(), born: [],
+      untaught: reason === "untaught",
+      ...(toward ? { toward: true, reason, no_sound: reason === "no_sound", stale_sound: reason === "stale_sound" } : {}),
+    });
     return;
   }
   const g = {
@@ -1561,6 +1630,36 @@ function poolTrim() {
     gone = [];
   }
   if (gone.length) post({ type: "pool_trimmed", retired: gone, views: tasteViews(), status: status() });
+}
+
+// Every preset's measurement, for the presets nearest a sound of your own:
+// the wirings the app ships (`perform-wirings.json`, `make perform-wirings`)
+// carry each preset's audio φ, so the engine names the nearest presets
+// without rendering sixty of them. Fetched once, from the first own-sound
+// request, and **never awaited by one**: a request answered while the fetch
+// is out names only pool members, and when the file lands the sound in hand
+// (if any) is posted again, re-ranked. Awaiting it inside `dispatch` let
+// requests behind it (a clear, a breed) overtake the set that started it.
+// With no file (an old bundle, a blocked fetch) only pool members are named.
+let ownPresets = false;
+function ownPresetsFetch() {
+  if (ownPresets || typeof engine.own_presets_set !== "function") return;
+  ownPresets = true;
+  fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href))
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (!text || poisoned) return;
+      try {
+        engine.own_presets_set(text);
+        const sound = JSON.parse(engine.own_sound());
+        if (sound) post({ type: "own_sound", sound, presets: true });
+      } catch (err) {
+        engineError("own_sound", null, err);
+      }
+    })
+    .catch(() => {
+      /* the nearest presets are a convenience, never load-bearing */
+    });
 }
 
 async function breedFarm(g) {
@@ -1963,11 +2062,23 @@ function laneOf(m) {
     case "refine":
     case "refine_from":
       return SOON;
+    // A sound of your own: all three in one lane, so they are answered in
+    // the order they were asked (a clear never overtakes the set before it).
+    // `soon`, because a file's analysis is one uninterruptible call: for 30
+    // s of sound, 0.16 s at 44.1 kHz, 0.31 s at 48, 0.52 s at 96 and 0.94 s
+    // at 192 (`own_cost.mjs`), so the player's gestures queued first go first.
+    // The page sends at most 48 kHz, which bounds it near a third of a second.
+    case "own_sound_set":
+    case "own_sound":
+    case "own_sound_clear":
+      return SOON;
     case "perform_wire":
     case "perform_offer":
       return m.bg ? LATER : SOON;
     case "perform_drift":
     case "fit":
+    // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
+    case "styles":
     case "cable_levels":
     case "guess":
     case "face_lookup":
@@ -2454,6 +2565,8 @@ async function dispatch(m) {
           beginLongOp();
           try {
             engine.fit();
+            lastStylesObs = -1;
+            obsAtFit = status().observations;
             post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
@@ -2544,9 +2657,34 @@ async function dispatch(m) {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
     }
+    // The styles (θ with its spread, shares, exemplars) under the posterior as
+    // it stands, asked for after every pick: a pick reweights the draws, so
+    // θ's mean moves with it, and LEARNING's bars and its replay follow.
+    // `observations` says which pick it is after. 0.6 to 12 ms in wasm by the
+    // lenses (Plan-005, Measured (task 6)), so it waits in `later`. Always
+    // answered: `null` before the first fit.
+    case "styles": {
+      // Requests queued behind a burst of picks coalesce: one that finds the
+      // engine where the last answer left it (no observation since) is
+      // answered with no styles, at no cost. Every request is still answered.
+      const observations = status().observations;
+      if (observations === lastStylesObs || observations <= obsAtFit) {
+        post({ type: "styles", styles: null, observations, same: observations === lastStylesObs });
+        break;
+      }
+      let styles = null;
+      try {
+        styles = JSON.parse(engine.styles());
+      } catch (_) { /* older engine */ }
+      lastStylesObs = observations;
+      post({ type: "styles", styles, observations });
+      break;
+    }
     case "calibration": {
       try {
-        post({ type: "calibration", calib: JSON.parse(engine.calibration()) });
+        // With the summary, every forecast it scores (LEARNING's strip) and
+        // the numbers LEARNING's math states (`modelFacts`).
+        post({ type: "calibration", calib: JSON.parse(engine.calibration()), forecasts: engineForecasts(), facts: modelFacts() });
       } catch (_) { /* older engine: the UI falls back to its own tally */ }
       break;
     }
@@ -2644,6 +2782,8 @@ async function dispatch(m) {
       beginLongOp();
       try {
         engine.fit();
+        lastStylesObs = -1;
+        obsAtFit = status().observations;
         post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
       } finally {
         endLongOp();
@@ -2653,8 +2793,34 @@ async function dispatch(m) {
     case "refine": {
       // The breed job (see `breedOpen`): open the generation, hand its walks
       // to the farm, and return. It is absorbed from farm messages, a child
-      // per turn, and nothing else waits for it but a refit.
-      breedOpen();
+      // per turn, and nothing else waits for it but a refit. `toward`: bred
+      // toward the sound of your own (Breed toward it); same lane, same
+      // waits, so it queues behind a generation or ⚡ like any other.
+      breedOpen(m.toward === true);
+      break;
+    }
+    // ---- a sound of your own (Plan-005 task 11) ----
+    // The page decodes a dropped file and sends it mixed to mono: `pcm`, a
+    // Float32Array (transfer it), at `sampleRate`, with the file's `name`.
+    // Replies `own_sound` with the engine's measurement (`sound`: ok or an
+    // error flag, its z with the masked coordinates null, its place on the
+    // map, its nearest pool members and presets, the seeds a breed toward it
+    // starts from). The session saves it as features, never the audio, and
+    // `own_sound` asks for it again after a reload or when the pool moved.
+    case "own_sound_set": {
+      ownPresetsFetch();
+      const sound = JSON.parse(engine.own_sound_set(m.pcm, m.sampleRate, m.name || undefined));
+      post({ type: "own_sound", sound });
+      break;
+    }
+    case "own_sound": {
+      ownPresetsFetch();
+      post({ type: "own_sound", sound: JSON.parse(engine.own_sound()) });
+      break;
+    }
+    case "own_sound_clear": {
+      engine.own_sound_clear();
+      post({ type: "own_sound", sound: null });
       break;
     }
     case "breed_step": {
@@ -2832,11 +2998,17 @@ async function dispatch(m) {
     // An offer answered in PERFORM: a heard comparison, recorded as a duel
     // tagged `perform_offer`. The status follows so the picks counter and the
     // refit pacing see it like any other vote.
-    case "perform_record":
+    case "perform_record": {
+      let took = false;
       performReply(m, "perform_recorded", "recorded", true, () =>
-        engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
-      post({ type: "status", status: status(), ratings: engineRatings() });
+        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took)));
+      // `recorded` false when the engine took nothing (the two the same, no
+      // standardizer yet, a vet that failed): nothing moved, so no ratings,
+      // and TASTE keeps no moment for it.
+      const recorded = took !== false;
+      post({ type: "status", status: status(), recorded, ratings: recorded ? engineRatings() : null });
       break;
+    }
     // A search control's offer carries the control and the way it was turned
     // (aimed, and its reply says how far it `moved`); the Offer button's and
     // Wander's carry neither, and are not aimed.
@@ -3118,6 +3290,8 @@ async function dispatch(m) {
     }
     case "import": {
       const ok = engine.import_profile(m.json);
+      lastStylesObs = -1;
+      obsAtFit = -1;
       post({ type: "imported", ok, status: status() });
       break;
     }

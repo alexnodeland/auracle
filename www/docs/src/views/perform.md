@@ -496,7 +496,7 @@ moment*, and a turn is a gesture, not a verdict.
 ```admonish info collapsible=true title="How it works: why both answers count"
 A log that recorded only takes would be the model hearing its own proposals
 agreed with. Answers enter the model exactly as EVOLVE’s picks do, tagged as
-offers, so TRUST grades them as their own stream (*offers you took or
+offers, so LEARNING grades them as their own stream (*offers you took or
 passed*) beside the pairs it deals. If answers given mid-performance turn out
 less reliable than dealt ones, that is where it will show.
 ```

@@ -866,6 +866,11 @@ pub struct SessionState {
     /// reference, and [`Engine::audition_clip_status`] says why.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audition_clip: Option<serde_json::Value>,
+    /// A sound of your own, as the coordinates of φ its file measures, by
+    /// name ([`crate::own::OwnSound`]): never the audio. Absent from sessions
+    /// saved before it existed, and from any without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_sound: Option<crate::own::OwnSound>,
 }
 
 /// Which clip the patches that listen are measured with, as
@@ -1085,6 +1090,11 @@ pub const EVENT_PHI_KEEP: usize = 256;
 /// The fewest observations a τ session must hold before the next reload opens
 /// another. See [`Engine::begin_session`].
 pub const MIN_SESSION_OBS: usize = 5;
+/// Observations per style lens a fit may use: a fit over `n` observations is
+/// allowed `1 + n / OBS_PER_STYLE` lenses, up to [`SessionConfig::k_styles`].
+/// See [`Engine::fit_posterior`]. Named because the app says it (LEARNING's
+/// math reads it through `WasmEngine::model_facts`).
+pub const OBS_PER_STYLE: usize = 20;
 
 /// What the last refinement did — a child, or the reason there was none.
 ///
@@ -1295,6 +1305,9 @@ pub struct Engine {
     /// [`Engine::finish_restore`] is held. Keyed by id, but a list per id: a
     /// file can repeat an id, and one entry must never drop another.
     pending_held: HashMap<u64, Vec<PendingHeld>>,
+    /// A sound of your own, if the player has brought one
+    /// ([`crate::own`]). Persisted with the session as features only.
+    pub(crate) own: Option<crate::own::OwnSound>,
 }
 
 impl Engine {
@@ -1337,6 +1350,7 @@ impl Engine {
             clip_unreadable: None,
             held: Vec::new(),
             pending_held: HashMap::new(),
+            own: None,
         }
     }
 
@@ -1906,7 +1920,9 @@ impl Engine {
         // Style capacity grows with evidence: one lens per ~20 observations,
         // capped by config. Idle lenses collapse to ~0 share on their own,
         // so K is an upper bound the data may or may not use.
-        let k = (1 + self.log.len() / 20).min(self.cfg.k_styles).max(1);
+        let k = (1 + self.log.len() / OBS_PER_STYLE)
+            .min(self.cfg.k_styles)
+            .max(1);
         let mut taste_cfg = TasteConfig::mixture(d, k);
         taste_cfg.recency_half_life = self.cfg.recency_half_life;
         // The brightness cluster shares a latent mean per style. Resolved by
@@ -2780,6 +2796,7 @@ impl Engine {
             phrase: self.cfg.phrase.clone(),
             beta: self.cfg.beta,
             refine_keep: self.cfg.refine_keep,
+            toward: None,
         })
     }
 
@@ -2801,10 +2818,25 @@ impl Engine {
     pub fn refine_jobs<R: Rng>(&mut self, rng: &mut R) -> Option<(WalkContext, Vec<WalkJob>)> {
         self.refine_finish();
         let ctx = self.walk_context()?;
+        let rows = self.seed_rows(&self.ranked(), &HashSet::new());
+        Some(self.open_jobs(rng, ctx, rows))
+    }
+
+    /// Open a generation over the parents at pool indices `rows`, in that
+    /// order, sharing `ctx`: bumps [`Engine::generation`], draws one `u64`
+    /// from `rng` and gives job `i` the seed [`walk_seed`]`(base, i)`.
+    /// [`Engine::refine_jobs`] opens the taste's generation through it, and
+    /// [`Engine::refine_toward_jobs`] a sound of your own's. The caller has
+    /// finished any generation still open.
+    pub(crate) fn open_jobs<R: Rng>(
+        &mut self,
+        rng: &mut R,
+        ctx: WalkContext,
+        rows: Vec<usize>,
+    ) -> (WalkContext, Vec<WalkJob>) {
         self.generation += 1;
         let base: u64 = rng.gen();
-        let jobs: Vec<WalkJob> = self
-            .seed_rows(&self.ranked(), &HashSet::new())
+        let jobs: Vec<WalkJob> = rows
             .into_iter()
             .enumerate()
             .map(|(index, i)| WalkJob {
@@ -2826,7 +2858,7 @@ impl Engine {
                 protect: HashSet::new(),
             });
         }
-        Some((ctx, jobs))
+        (ctx, jobs)
     }
 
     /// Fold one walk's result into the open generation: the novelty check,
@@ -4133,6 +4165,7 @@ impl Engine {
                 .clip
                 .as_ref()
                 .and_then(|c| serde_json::to_value(c).ok()),
+            own_sound: self.own.clone(),
         }
     }
 
@@ -4184,6 +4217,7 @@ impl Engine {
         self.forecasts = state.forecasts;
         self.style_shares = state.style_shares;
         *self.map_axes.get_mut().unwrap_or_else(|e| e.into_inner()) = state.map_axes;
+        self.own = state.own_sound;
         // The implicit stream stores raw φ on both sides of a hand edit, so it
         // is the fourth carrier of the corruption after the pool, the log and
         // the HELD tray — and the only one nothing reads yet, which is exactly

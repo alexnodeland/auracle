@@ -111,11 +111,12 @@ is the same compiled artifact. See [The web runtime](../runtime.md).
 
 ## apps/web
 
-Vanilla JavaScript, no build step, no framework, no dependencies. Eight scripts
+Vanilla JavaScript, no build step, no framework, no dependencies. Ten scripts
 carry it: `main.js` (UI and Web Audio), `worker.js` (the engine), `farm.js` (a
 stateless render and walk worker), `live-audio.js` (worklet assembly),
-`perform.js` (PERFORM), `midi.js` (MIDI controllers), `booth.js` (booth mode),
-and `taste-geom.js` (the TASTE view’s geometry).
+`perform.js` (PERFORM), `taste.js` (TASTE and LEARNING), `midi.js` (MIDI
+controllers), `booth.js` (booth mode), `taste-geom.js` (TASTE’s and
+LEARNING’s geometry) and `words.js` (sentences built from engine facts).
 
 Its own architecture notes are in
 [`apps/web/README.md`](https://github.com/alexnodeland/auracle/blob/main/apps/web/README.md);

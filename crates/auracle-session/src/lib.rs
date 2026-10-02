@@ -33,6 +33,7 @@ pub mod guess;
 pub mod map;
 pub mod migrate;
 pub mod naming;
+pub mod own;
 pub mod perform;
 pub mod surrogate;
 pub mod walk;
@@ -43,7 +44,7 @@ pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
     Contribution, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent,
     Origin, Profile, ReadmitError, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig,
-    SessionState, EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
+    SessionState, EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS, OBS_PER_STYLE,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use guess::{
@@ -51,8 +52,11 @@ pub use guess::{
     GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
     GUESS_FLOOR, GUESS_TAKEN_KEEP,
 };
-pub use map::{MapPoint, TasteMap};
+pub use map::{
+    liking_direction, LikingDirection, MapPoint, OwnPoint, Placement, TasteMap, OWN_PLACEMENT,
+};
 pub use naming::{claim_name, NameScale};
+pub use own::{OwnSound, PresetPhi, Toward, TowardFitness, OWN_GAMMA};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
 pub use walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult, LOCK_SCALE_CAP};
 
@@ -1634,6 +1638,9 @@ mod tests {
         let mut engine = taught(0xBE1F);
         let fitted = engine.belief();
         contrary_picks(&mut engine, 4);
+        // The direction is fitted on the last map drawn, which is engine
+        // state too: draw it first, as every views post does.
+        let _ = engine.taste_map();
         let after = engine.belief();
         let p = engine.posterior.clone().expect("taught");
         assert!(
@@ -1682,6 +1689,67 @@ mod tests {
             engine.belief(),
             "a belief is a function of the engine"
         );
+    }
+
+    /// **The direction liking rises is the map's.** A plane is recovered
+    /// exactly, no spread in liking is no direction, and `belief`'s direction
+    /// is the fit of the ratings on the map just drawn (`taste_map`'s pool
+    /// points, which are centred: a direction does not see the centring),
+    /// moving with a pick as the ratings do.
+    #[test]
+    fn the_direction_liking_rises_is_the_fit_on_the_map() {
+        let plane: Vec<[f64; 3]> = (0..5)
+            .flat_map(|x| {
+                (0..5).map(move |y| {
+                    [
+                        x as f64,
+                        y as f64 * 2.0,
+                        0.2 + 0.1 * x as f64 - 0.05 * y as f64,
+                    ]
+                })
+            })
+            .collect();
+        let d = liking_direction(&plane).unwrap();
+        assert!(
+            (d.gx - 0.1).abs() < 1e-12
+                && (d.gy + 0.025).abs() < 1e-12
+                && (d.r2 - 1.0).abs() < 1e-12
+        );
+        let flat: Vec<[f64; 3]> = plane.iter().map(|p| [p[0], p[1], 0.5]).collect();
+        assert_eq!(
+            liking_direction(&flat),
+            None,
+            "no spread in liking, no direction"
+        );
+        assert_eq!(liking_direction(&plane[..2]), None);
+
+        let mut engine = taught(0xD1E);
+        let check = |e: &Engine| {
+            let map = e.taste_map();
+            let b = e.belief();
+            let pts: Vec<[f64; 3]> = map
+                .points
+                .iter()
+                .filter(|pt| pt.id.is_some())
+                .map(|pt| [pt.x, pt.y, 1.0 / (1.0 + (-pt.utility).exp())])
+                .collect();
+            let want = liking_direction(&pts).expect("a fitted pool has a direction");
+            let got = b.direction.clone().expect("belief carries it");
+            assert!(
+                (got.gx - want.gx).abs() <= 1e-9 * (1.0 + want.gx.abs()),
+                "{got:?} {want:?}"
+            );
+            assert!(
+                (got.gy - want.gy).abs() <= 1e-9 * (1.0 + want.gy.abs()),
+                "{got:?} {want:?}"
+            );
+            assert!((got.r2 - want.r2).abs() <= 1e-9, "{got:?} {want:?}");
+            got
+        };
+        let before = check(&engine);
+        contrary_picks(&mut engine, 4);
+        let after = check(&engine);
+        assert_ne!(before, after, "a pick moves the direction with the ratings");
     }
 
     /// **The seeds and may-be-replaced marks are what a generation does.**

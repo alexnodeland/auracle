@@ -26,7 +26,7 @@ live while you edit it.</figcaption>
    original stays as it was.
 
 You can also open a sound with **OPEN IN PATCH** on either side of a pair in
-[EVOLVE](./evolve.md), or by clicking a dot on the [TASTE map](./taste.md#map).
+[EVOLVE](./evolve.md), or by clicking a sound on the [TASTE map](./taste.md#a-sounds-card).
 
 ## What you see
 

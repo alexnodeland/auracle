@@ -14,8 +14,8 @@ well, and what the app does to keep a guess looking like a guess.</p>
 </figure>
 <!-- /film:math -->
 
-[TASTE](./views/taste.md) says what each tab shows. This page is about reading
-it well.
+[TASTE](./views/taste.md) and [LEARNING](./views/learning.md) say what they
+show. This page is about reading them well.
 
 ## Five states, and what each means
 
@@ -36,18 +36,19 @@ both.
 
 On the module rail, *still a guess* is a hollow bar whose whisker crosses
 zero, and a lean it’s sure of is a solid bar. The three silences before them
-are a dash. TASTE’s STYLES and DIRECTIONS draw the same two marks.
+are a dash. LEARNING’s weights draw the same two marks.
 
 ## Read the whisker, not the bar
 
 This is the one habit worth keeping.
 
-In [DIRECTIONS](./views/taste.md#directions), every bar has a whisker for how
-far it could be off. **If the whisker crosses the center line, the model hasn’t
-settled that lean.** The bar is a guess that happens to point somewhere, and it
-will likely point elsewhere after ten more picks. The app draws such a bar
-hollow, with its whisker at full strength, and ends the row’s label with **?**.
-Only a whisker clear of the center line gets a solid bar.
+In [LEARNING’s weights](./views/learning.md#what-it-weighs), every bar has a
+whisker for how far it could be off. **If the whisker crosses the center line,
+the model hasn’t settled that lean.** The bar is a guess that happens to point
+somewhere, and it will likely point elsewhere after ten more picks. The app
+draws such a bar hollow, with its whisker at full strength, and marks the row
+with a **?** in the margin. Only a whisker clear of the center line gets a
+solid bar.
 
 A short bar with a tight whisker is worth more than a long bar with a wide
 one. The first is a small lean the model is sure of; the second is noise drawn
@@ -68,9 +69,9 @@ would otherwise look the same as one learned from three hundred.
 
 ## On the map, size is doubt
 
-On the [MAP](./views/taste.md#map), **glow** is how much it guesses you’d like
-a sound, and **size** is how unsure it is. People read the glow and miss the
-size.
+On the [TASTE map](./views/taste.md#reading-the-map), **glow** is how much it
+guesses you’d like a sound, and **size** is how unsure it is. People read the
+glow and miss the size.
 
 - **Small and bright:** it’s sure you’d like it. Play it.
 - **Big and bright:** you might love it. This is where to look.
@@ -97,9 +98,9 @@ Two things follow:
   up to five and lets your answers decide how many it uses. Two live styles and
   three idle ones isn’t a fault: your taste, as these measurements hear it, has
   two sides.
-- **You can rename them, and it helps.** Click a chip’s name and type. Once a
-  style is called what you’d call it, every place it appears reads at a
-  glance, and the name is kept.
+- **You can rename them, and it helps.** Click a chip’s name in LEARNING and
+  type. Once a style is called what you’d call it, every place it appears
+  reads at a glance, and the name is kept.
 
 ## The guess on a bank row
 
@@ -111,23 +112,23 @@ the dimmer block around it shows the doubt: a narrow block is a sure guess, a
 wide one an unsure guess. The map’s dot sizes say the same at more length. The
 row is a way to rank sounds, not a measurement.
 
-## TRUST, over time
+## Its forecasts, over time
 
-[TRUST](./views/taste.md#trust-is-its-confidence-honest) is the tab that says
-whether the others deserve belief. A realistic course:
+[LEARNING’s forecasts](./views/learning.md#its-forecasts) say whether the
+rest deserves belief. A realistic course:
 
-| Stage | What TRUST says |
+| Stage | What the forecasts say |
 |---|---|
-| A first session, under 20 picks | It counts toward 20 guesses, then *not beating a coin flip yet*. That is expected |
-| 20 to 60 picks | Skill crosses zero and wobbles. The buckets are too small to read |
-| Beyond that | Skill climbs, and the dots settle near the diagonal |
+| A first session, under 20 picks | The skill counts toward 20 guesses, then *not beating a coin flip yet*. That is expected |
+| 20 to 60 picks | Skill crosses zero and wobbles. A handful of misses moves it a lot |
+| Beyond that | Skill climbs, and *expected* and *was* come close together |
 
 Two shapes are worth recognizing:
 
-- **Dots below the diagonal on the right.** It is overconfident: when it says
-  80%, it’s right less often than that. It has usually latched onto a quality
-  that was a coincidence. More picks fix it, especially ones you expect to
-  surprise it.
+- **Expected well above was.** It is overconfident: when it says 80%, it’s
+  right less often than that. It has usually latched onto a quality that was
+  a coincidence. More picks fix it, especially ones you expect to surprise
+  it.
 - **Skill stuck near zero after many picks.** Either your taste doesn’t show in
   what the model measures (see [what it can’t
   learn](./teaching.md#what-it-cannot-learn)), or your answers vary, which
@@ -159,7 +160,7 @@ That last one is the real milestone.
 
 ## What to try next
 
-- Open DIRECTIONS, and count the solid bars. Those are the leans the model is
+- Open LEARNING, and count the solid bars. Those are the leans the model is
   sure of.
 - Open a big, bright dot from the map.
 - [Calibration](../reference/taste/calibration.html) in the reference has the

@@ -39,6 +39,7 @@ pub mod audio;
 pub mod cache;
 pub mod clip;
 pub mod face;
+pub mod file;
 pub mod loudness;
 pub mod phrase;
 pub mod pipeline;
@@ -56,6 +57,10 @@ pub use clip::{
     reference, AuditionClip, ClipError, ClipSource, SavedClip, CLIP_FORMAT, MAX_CLIP_SECONDS,
 };
 pub use face::{Face, FACE_BANDS, FACE_LEN, FACE_SLICES};
+pub use file::{
+    featurize_file, file_masked_names, file_observed, FileError, FileFeatures, FILE_MASKED,
+    FILE_MAX_SECONDS,
+};
 pub use loudness::{integrated_lufs, normalize_to, MAX_GAIN_DB, PEAK_CEILING};
 pub use phrase::PhraseSpec;
 pub use pipeline::{featurize, Features, FeaturizeError, VettedCandidate, TARGET_LUFS};

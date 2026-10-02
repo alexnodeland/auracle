@@ -208,6 +208,22 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - LEARNING shows the weights, the direction, the scored forecasts, the
      export as JSON, and the maths (18 audio and 26 structural features, 500
      draws, the lenses).
+   - *Done (2026-10-02):* `apps/web/taste.js`, to prototype v2's `taste.js`
+     and `model.js`. TASTE is the map alone: the status that answers
+     `record_duel` draws the arrow (its `vote` and `choseA`) and moves every
+     halo to the `ratings` it carries, in one tween; picks made elsewhere are
+     drawn in turn when TASTE opens; a views post settles every halo and
+     place together. LEARNING is a fifth view (a tab beside TASTE until the
+     shell's levels, task 2): the chosen style's 44 weights, the direction
+     liking rises, the forecasts scored, copy as JSON, and the math, whose
+     numbers come from `WasmEngine::model_facts`; the forecasts from
+     `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
+     is one function (`drawMark`, `host.drawFace`), the faces' slot (task 3).
+     Then, to match Vision II exactly: the taste-over-time track and its
+     replay, SOUND / TASTE, a weight's shading of the small map
+     (`WasmEngine::pool_features`), the weights moving per pick (a `styles`
+     request after each) and REPLAY, the history kept by the page where the
+     engine keeps none ([Measured (task 6)](#measured-task-6)).
 7. **PATCH.**
    - On touch, a tapped module opens a sheet with every setting.
    - Cables carry light by signal. Measured levels at rest come from task
@@ -249,6 +265,40 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
     - φ is computed from a decoded file (`auracle-features`, a wasm binding).
     - The sound takes its place on the map, and its nearest sounds are shown.
     - Breeding toward it uses walks tilted toward its φ, as aimed offers are.
+    - *Progress (2026-10-02): the engine and the worker are built; the card is
+      not.* `featurize_file` measures a decoded file as a render is measured
+      (trim, resample, the same normalization and `audio_features`). By
+      measurement (`file_phi`), a recording measures 5 of φ's 44 coordinates,
+      its spectral balance; the rest are masked (`FILE_MASKED` and every
+      structural one). Its nearest pool members and presets are ranked over
+      those five, it is placed on TASTE's map by the map's own projection
+      (`TasteMap::own`), and `refine_toward_jobs` breeds a generation toward
+      it on the taste's target times a floored Gaussian likelihood of the
+      recording (`OWN_GAMMA` 4, `OWN_FLOOR` 25). The session saves it as its
+      five coordinates, by name, never the audio. Bindings: `own_sound_set`,
+      `own_sound`, `own_sound_clear`, `own_presets_set`,
+      `refine_toward_jobs`; the worker answers `own_sound_set`, `own_sound`,
+      `own_sound_clear` and `refine` with `toward: true`, and main sends none
+      yet. The measurements, and where the engine and the prototype differ,
+      are in the reference
+      ([A sound of your own](../../www/reference/src/features/own-sound.md)).
+      Breeding needs a fitted taste, as EVOLVE POOL does; Hold it is audio
+      in (RFC-008).
+    - *Decided for the card (maintainer, 2026-10-02):*
+      - **Before the first fit**, Breed toward it adds the nearest presets
+        (`own_nearest_presets`, then `load_preset`), as the prototype does.
+        That is true, since it is adding presets, and needs no taste. After
+        the first fit it is the tilted generation (`refine` with
+        `toward: true`).
+      - **Playback:** the page keeps the decoded audio in IndexedDB, so the
+        recording plays after a reload and sits in the bank as the
+        prototype shows. It stays out of duels; the engine keeps only its
+        measurement.
+      - **Hold it** plays the recording through the named controls once
+        audio in is live: the UI stream's work, with Plan-007.
+      - **Buds** show the children growing from their parents, the pool
+        members nearest the sound, and leaning toward the recording, never
+        out of the dropped face (ADR-012).
 12. **Found along the way** (RFC-006), each a small change with its check:
     - the guide's "crossover";
     - the `not_admitted` text;
@@ -324,6 +374,93 @@ Decisions:
   prediction, without renders.
 - `apps/web/perform-wirings.json` keeps the six. With the twelve it would be
   2.3 times the size (392 KB), for controls the panel does not show yet.
+
+## Measured (task 6)
+
+`crates/auracle-wasm/examples/pick_belief.mjs` now also times what the
+calibration reply carries after every pick. The built package under node, 100
+picks, a refit every sixth, on an Apple M3 Max; medians in ms by the lenses
+the fit was allowed:
+
+| Lenses | `belief` | `calibration` | `forecasts` | `model_facts` | `styles` (θ), posted per pick in `later` |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.55 | 0.01 | 0.01 | 0.01 | 0.57 |
+| 3 | 1.30 | 0.01 | 0.01 | 0.01 | 4.83 |
+| 5 | 2.23 | 0.01 | 0.02 | 0.01 | 12.00 |
+
+The forecasts are 7.8 KB of JSON at 95 forecasts. On the main thread, the
+redraw a pick starts (the arrow and every halo's tween) and a refit's settle
+held 16.7 ms frames, at most 16.8, at 1440 and 1080 px wide (headless
+Chromium, 40 sounds). Posting the belief after every pick costs what task 9a
+measured; the forecasts and the math's numbers add nothing measurable.
+
+The maintainer asked for Vision II exactly: where the mock shows a fact the
+engine doesn't keep, the page keeps it, as long as it stays true (ADR-012).
+
+- **The weights move per pick, and REPLAY steps through them.** After every
+  `status` with ratings, main asks for `styles` in the worker's `later` lane
+  and every surface takes the reweighted θ. They are asked for after every
+  pick whichever view shows, not only while LEARNING does, because REPLAY
+  needs each pick's θ; at most 12 ms at five lenses on the M3 Max, in a lane
+  that yields to every gesture. REPLAY (R) steps the bars through the kept
+  picks with a dashed ghost and the most-moved weight lit; the prototype's
+  faces flying into the evidence strip are not drawn.
+- **Taste over time is kept by the page.** The engine keeps no history of its
+  belief, so the page keeps each reply as it came (`taste-geom.js`), bounded
+  to 200 moments and saved with the session as `ui.taste`, versioned. The
+  track and its replay show exactly what was posted; it begins when the
+  session began keeping it.
+- **SOUND / TASTE** follows the prototype's `taste.js`: SOUND draws the glows
+  once there is a fit (or on the track); TASTE always, dashed before a fit,
+  and dims each mark by its liking (0.22 + 0.78 × liking). So SOUND is not
+  glow-free after a fit; that is the mock's own rule.
+- **Pointing at a weight shades the small map** by each sound's z on it, from
+  `WasmEngine::pool_features`, posted with every views post, the same post
+  that brings the map those sounds sit on.
+- **The direction is the engine's.** The prototype fits its arrow in the
+  page; here `auracle_session::liking_direction` fits liking on the last map's
+  axes inside `Engine::belief` (`direction`, with r²), so it rides every
+  `ratings` post and the page only draws it.
+- **REPLAY credits each step to what it was** (review of #101). A refit's, a
+  generation's and an opened file's moments keep the styles of the views post
+  that brought them; a step is a pick's (dashed ghost, the weight lit, "that
+  pick moved …") only from one pick to the next observation; a refit, a
+  generation, a file, a star or a cut is named; a gap is "since the moment
+  before". The worker answers a `styles` request a fit has overtaken, or a
+  queued one with no new observation, with none, so θ is never kept with
+  the wrong moment. The track draws a pick's arrow only for a one-moment step,
+  marks an opened taste file, and keeps a looked-at moment in place at the
+  200 bound; a PERFORM answer the engine didn't take keeps no moment.
+- **A weight whose interval crosses zero is drawn as a guess.** The mock draws
+  every fitted bar solid; at 18 picks most of the engine's are guesses
+  (`pullMark`: hollow, its "?" in a slot left of the word).
+- **Five styles over 44 features, not one w over 18.** LEARNING shows the
+  chosen style's 44 weights, and the style chips (naming, ▶) moved here.
+- **No forecasts before the first fit.** The mock draws hollow forecasts from
+  the first pick; the engine forecasts only with a posterior, so the warm
+  start's picks have none.
+- **The export has no picks by name.** A forecast carries no ids, so the JSON
+  has the forecasts as the engine keeps them, and each sound's rating by id
+  and name.
+- **No arrow for a PERFORM offer.** An offer never joins the pool, so it has
+  no place on the map; its reply still moves every halo.
+- **The arrow lands when the engine takes the pick,** at the end of an EVOLVE
+  pick's seven-second undo window, or on TASTE's next opening.
+- **Size stays the doubt.** The mock's faces are one size; RFC-006 §7 keeps
+  size for the posterior's std, so the map's mark (the faces' slot) keeps it.
+- **TRUST's reliability diagram is not drawn,** as the mock has none (the
+  maintainer confirmed). The
+  engine's buckets stay in `calibration()` and in the copied JSON; LEARNING's
+  *expected · was* shows overconfidence in two numbers.
+- **The words follow voice.md:** styles, not lenses; "every 20 things it
+  learns from", because a fit's lenses count observations (picks, stars and
+  cuts), not picks; "the math".
+
+Owed elsewhere: the landing page's TASTE pane and DIRECTIONS figure, the
+guide's figures (`www/landing/assets/screens`, `capture-screens.mjs`) and the
+films that show TASTE (view-taste, the tour, How Auracle learns) show the four
+tabs; and the bank's percentages follow `views.ranked`, the last refit's, while
+the map's cards follow every pick.
 
 ## Measured (task 9d)
 

@@ -263,13 +263,10 @@ test("the sixth pick can be taken back, and it just learned only once fitted has
   await page.waitForTimeout(5_000);
   await expect(copy).toContainText("it just learned");
 
-  // "see what changed" is the map, whichever TASTE tab was last open.
-  await page.locator('.viewtab[data-view="taste"]').click();
-  await page.locator('.tab[data-tab="trust"]').click();
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  // "see what changed" is the map.
   await page.locator("#teach-copy .teach-link").click();
   await expect(page.locator("#view-taste")).toBeVisible();
-  await expect(page.locator('.tab[data-tab="map"]')).toHaveClass(/\bactive\b/);
+  await expect(page.locator("#taste-crt")).toBeVisible();
 
   // The next pick ends it.
   await page.locator('.viewtab[data-view="evolve"]').click();

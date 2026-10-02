@@ -33,6 +33,7 @@ It is kept as you play:
 | Your taste | What the model learned, with its standardizer |
 | Layout and settings | Rack positions, the keybed’s size and width, the scope, and the module rail |
 | **SET ASIDE** | What you unplugged, across reloads |
+| Taste over time | What the model posted at each of your last 200 moments (picks, stars, cuts, redraws): TASTE’s track and LEARNING’s **REPLAY**. A reset clears it, and a taste file doesn’t carry it |
 
 A large session comes back without a long stall: restoring it runs across the
 background workers.

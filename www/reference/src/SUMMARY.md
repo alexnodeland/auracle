@@ -29,6 +29,7 @@
 - [Structural descriptors (φ_struct)](./features/structural.md)
 - [Standardization](./features/standardization.md)
 - [Faces: a picture of the render](./features/faces.md)
+- [A sound of your own](./features/own-sound.md)
 
 # The taste model
 

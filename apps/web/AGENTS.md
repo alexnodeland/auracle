@@ -11,17 +11,18 @@ the long-form notes are this directory's `README.md`.
 | File | Runs on | Holds |
 | --- | --- | --- |
 | `index.html` | page | Markup for every view, the menu bar, the dialogs |
-| `main.js` | main thread | Views (PERFORM, PATCH, EVOLVE, TASTE), the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip |
+| `main.js` | main thread | Views (PERFORM, PATCH, EVOLVE, TASTE, LEARNING), the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip |
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator |
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
-| `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
+| `taste.js` | main thread | TASTE's map (a pick's arrow, the halos moving with the ratings, a refit settling them) and LEARNING's room (weights, direction, forecasts, copy as JSON, the math), drawn from what `main.js` holds |
+| `taste-geom.js` | main thread | Pure geometry for TASTE and LEARNING (the map's layout and halos, dot sizes, a weight's bar and the settled/guess mark PATCH's θ cell shares, the direction liking rises, the forecasts' score); unit-tested in `tests/` |
 | `faces.js` | main thread | A sound's face: the engine's bytes as dB, the bank's mean and spread, whitening, the vessel's geometry; unit-tested in `tests/` |
 | `vessel.js` | main thread | The one renderer for a face at every size (`drawVessel`: slices, glow, the floor's reflection), on a canvas; unit-tested in `tests/` |
-| `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome; unit-tested in `tests/` |
+| `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome, TASTE's and LEARNING's copy; unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 
 ## Rules
