@@ -13,8 +13,9 @@ loop (observe, refit). Rules shared by all crates are in
 | `walk.rs` | A generation's walks as data: `WalkContext`, `WalkJob`, `WalkResult`, and `run_walk`, the walk as a pure function the farm runs ([ADR-007](../../docs/decisions/007-generations-breed-in-parallel.md)) |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
 | `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`); the palette's eighteen directions (`PALETTE`, whose first six are the panel's `CONTROLS`), wired on request (`Engine::wire_named`) |
-| `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
 | `guess.rs` | The model's guess (Plan-005 task 9d): the module it guesses you'd add next. `guess_candidates` (the output's placements), `Engine::guess_plan` (the renders owed, in render order) and `Engine::guess_rank` (by the lower bound of the gain), pure; `GuessMemory`, the skips and the undo of a taken guess, per patch |
+| `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits, and where a sound of your own sits on it (`TasteMap::own`, `Engine::own_on_map`) |
+| `own.rs` | A sound of your own (Plan-005 task 11): a recording's measured coordinates in the session's space (`OwnSound`, saved by name, never audio), its nearest pool members and presets over those coordinates, and the generation bred toward it (`refine_toward_jobs`, `TowardFitness`, `OWN_GAMMA`) |
 | `belief.rs` | The belief after each pick (`Engine::belief`): the ranked numbers and lenses under the reweighted posterior, the next generation's seeds (`next_seeds`) and what it may replace (`may_replace`), as the worker posts them |
 | `calib.rs` | Prequential calibration: forecasts scored on random (check) duels |
 | `naming.rs` | Musical names for patches and styles, read off φ |

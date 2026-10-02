@@ -34,7 +34,7 @@ this table.
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` specs run in the *Slow suite* ([CI tiers](#ci-tiers)) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
-| φ | `make revalidate` (both sides, diff), then `make perform-wirings` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ | Any φ, phrase, vetting or normalization change |
+| φ | `make revalidate` (both sides, diff), then `make perform-wirings`, then `cargo run -p auracle-features --example file_phi --release` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ; `FILE_MASKED` still names what a recording cannot measure (the mask gate test fails until it does) | Any φ, phrase, vetting or normalization change |
 | Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
 
 ## CI tiers

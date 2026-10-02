@@ -94,6 +94,12 @@ pub struct WalkContext {
     pub beta: f64,
     /// Which state of the walk becomes the child.
     pub refine_keep: RefineKeep,
+    /// A sound of your own to breed toward, if this generation does
+    /// ([`crate::Engine::refine_toward_jobs`]): every walk's target is then
+    /// tilted toward it ([`crate::own::TowardFitness`]). `None` for every
+    /// other generation, which walks exactly as before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toward: Option<crate::own::Toward>,
 }
 
 /// One walk: everything that differs between the walks of a generation.
@@ -164,16 +170,34 @@ pub fn run_walk(ctx: &WalkContext, job: &WalkJob, memo: &RenderMemo) -> WalkResu
     };
     let locked: HashSet<String> = job.locked.iter().cloned().collect();
     let mut rng = StdRng::seed_from_u64(job.rng_seed);
-    let walk = walk_on(
-        ctx.prior.clone(),
-        ctx.beta,
-        ctx.refine_keep,
-        fitness,
-        &mut rng,
-        &job.seed,
-        &locked,
-        job.steps,
-    );
+    let walk = match &ctx.toward {
+        None => walk_on(
+            ctx.prior.clone(),
+            ctx.beta,
+            ctx.refine_keep,
+            fitness,
+            &mut rng,
+            &job.seed,
+            &locked,
+            job.steps,
+        ),
+        Some(toward) => walk_on(
+            ctx.prior.clone(),
+            ctx.beta,
+            ctx.refine_keep,
+            crate::own::TowardFitness {
+                inner: fitness,
+                toward: toward.clone(),
+                standardizer: Arc::clone(&ctx.standardizer),
+                phrase: ctx.phrase.clone(),
+                memo: memo.clone(),
+            },
+            &mut rng,
+            &job.seed,
+            &locked,
+            job.steps,
+        ),
+    };
     let (child, reason, cached) = match walk {
         Ok(tree) => {
             // A memo hit: the walk scored the state it ended on.
@@ -659,6 +683,73 @@ mod tests {
             deaf.load(std::sync::atomic::Ordering::Relaxed),
             0,
             "the fitness heard a capture without its take"
+        );
+    }
+
+    /// **A walk bred toward a sound hears the takes too.** `walk_on` wraps
+    /// whatever fitness it is given in `WithTakes`, so a tilted walk is
+    /// `WithTakes(TowardFitness(taste))`: the tilt measures the same term the
+    /// taste scores, with the seed's take carried back, never the deaf one
+    /// the decoder hands out. Every child keeps its take, and the fitness
+    /// under the tilt is never asked about a capture without one.
+    #[test]
+    fn a_tilted_walk_carries_and_hears_the_takes() {
+        let seed = player_seed();
+        let take = take_at(&seed).unwrap();
+        let deaf = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let phrase = auracle_features::PhraseSpec::default();
+        let memo = RenderMemo::default();
+        let d = auracle_features::Features::phi_names().len();
+        let tilted = crate::own::TowardFitness {
+            inner: CountsDeaf(Arc::clone(&deaf)),
+            toward: crate::own::Toward {
+                observed: vec![0, 3],
+                target: vec![0.3, -0.2],
+                gamma: crate::own::OWN_GAMMA,
+            },
+            standardizer: Arc::new(auracle_taste::Standardizer {
+                mean: vec![0.0; d],
+                std: vec![1.0; d],
+            }),
+            phrase,
+            memo,
+        };
+        let ends: Vec<_> = std::thread::scope(|s| {
+            let hs: Vec<_> = (0..3u64)
+                .map(|w| {
+                    let (seed, tilted) = (&seed, tilted.clone());
+                    s.spawn(move || {
+                        let mut rng = StdRng::seed_from_u64(0x70A2_0000 + w);
+                        walk_on(
+                            PatchGrammarPrior::default().with_audio_in(),
+                            1.0,
+                            RefineKeep::Last,
+                            tilted,
+                            &mut rng,
+                            seed,
+                            &HashSet::new(),
+                            20,
+                        )
+                    })
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut moved = 0;
+        for end in ends {
+            let Ok(child) = end else { continue };
+            moved += 1;
+            assert_eq!(
+                take_at(&child).as_ref(),
+                Some(&take),
+                "a tilted walk lost the take"
+            );
+        }
+        assert!(moved >= 1, "no tilted walk moved, so this proved little");
+        assert_eq!(
+            deaf.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "the tilted fitness heard a capture without its take"
         );
     }
 
