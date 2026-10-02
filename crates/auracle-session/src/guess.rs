@@ -354,6 +354,9 @@ pub fn guess_candidates(tree: &PatchTree, at: Option<&str>) -> Vec<GuessCandidat
             continue;
         }
         if matches!(n, AudioNode::Silence { .. }) {
+            // Every source but the empty socket itself. When AUDIO IN joins
+            // the grammar it must be left out here: it asks for a device and
+            // a permission, and a guess must not (the note's section 7).
             for k in NodeKind::ALL
                 .iter()
                 .filter(|k| k.is_source() && **k != NodeKind::Silence)

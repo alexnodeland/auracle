@@ -839,6 +839,8 @@ impl WasmEngine {
     fn begin_deferred_import(&mut self, state: SessionState) -> Vec<serde_json::Value> {
         self.pending_bank = self.engine.import_state_deferred(state);
         self.engine.begin_session();
+        // Another session's ids: its patches are not the ones skipped here.
+        self.guesses = GuessMemory::default();
         self.pending_bank
             .iter()
             .enumerate()
@@ -2729,6 +2731,7 @@ impl WasmEngine {
             Ok(state) => {
                 let n = self.engine.import_state(state);
                 self.engine.begin_session();
+                self.guesses = GuessMemory::default();
                 n
             }
             Err(_) => 0,
@@ -2747,6 +2750,7 @@ impl WasmEngine {
             Ok(state) => {
                 let n = self.engine.import_state(state);
                 self.engine.begin_session();
+                self.guesses = GuessMemory::default();
                 (if n == 0 { "empty" } else { "ok" }, n)
             }
         };
@@ -3069,6 +3073,25 @@ mod tests {
             serde_json::from_str(&engine.guess_plan(None, "[]", 0)).unwrap();
         assert_eq!(other["skipped"], 0, "{other}");
         assert_eq!(skip(&engine), 1);
+    }
+
+    /// Skips are remembered per patch by pool id, and an import brings
+    /// another session's ids: after one, no skip from before applies.
+    #[test]
+    fn an_import_forgets_the_skips() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let skip = r#"{"socket":"out","family":"drive"}"#;
+        assert!(engine.guess_skip(skip));
+        assert!(!engine.guess_skip(skip), "remembered");
+        let saved = engine.export_session();
+        assert!(engine.import_session(&saved) > 0);
+        assert!(engine.edit_begin(id));
+        assert!(engine.guess_skip(skip), "a skip outlived the import");
     }
 
     /// **A guess's renders respect the render namespace.** Each job's
