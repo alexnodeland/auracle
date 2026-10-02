@@ -30,6 +30,7 @@ pub mod calib;
 pub mod engine;
 pub mod farm;
 pub mod guess;
+pub mod job;
 pub mod map;
 pub mod migrate;
 pub mod naming;
@@ -52,6 +53,7 @@ pub use guess::{
     GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
     GUESS_FLOOR, GUESS_TAKEN_KEEP,
 };
+pub use job::PerformJob;
 pub use map::{
     liking_direction, LikingDirection, MapPoint, OwnPoint, Placement, TasteMap, OWN_PLACEMENT,
 };

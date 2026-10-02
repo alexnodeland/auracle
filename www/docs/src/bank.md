@@ -10,8 +10,8 @@ bred sound came from, and knowing which sounds a generation may replace.</p>
 <img src="./img/bank.webp" alt="The bank rail: three tabs with counts above a list of rows, each with a name, a percentage, a play button, five stars, and a save icon." loading="eager" width="252" height="720">
 <figcaption><strong>The bank.</strong> Three tabs, and a row for each sound
 carrying the model’s guess about it. The screenshot predates the current tab
-names (POOL, SAVED, and PRESETS) and the column left of each name where NEW
-and the dot sit.</figcaption>
+names (POOL, SAVED, and PRESETS), each row’s face, and the column left of each
+name where NEW and the dot sit.</figcaption>
 </figure>
 
 | Tab | What it holds |
@@ -43,10 +43,15 @@ view; [the keys](#the-bank-from-the-keyboard) are below.
 <img src="./img/bank-row.webp" alt="One bank row, outlined in green: a glyph, a name, a percentage and an id on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar." loading="lazy" width="252" height="70">
 <figcaption><strong>One row.</strong> The green outline is the row you’re on.
 The id at the right shows only with Show measurements now, and the name now
-starts a little further right, after a column every row keeps for its
-marks.</figcaption>
+starts a little further right, after the row’s face and a column every row
+keeps for its marks.</figcaption>
 </figure>
 
+- **The face**, left of the row’s two lines, is the sound’s
+  [face](./faces.md): its spectrum against the rest of the bank, from the
+  sound’s own render. Every row keeps the face’s column, so the name is in the
+  same place before the face arrives, and the bank is wider by the column
+  rather than any name narrower.
 - **The glyph** says where the sound came from: **◇** grown fresh, with no
   taste in it yet; **⚡** bred toward your taste; **✎** your edit, kept as new;
   **▤** a hand-made preset.

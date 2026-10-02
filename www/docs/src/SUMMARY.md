@@ -15,9 +15,11 @@
 - [TASTE](./views/taste.md)
 - [LEARNING](./views/learning.md)
 - [The bank](./bank.md)
+- [A sound’s face](./faces.md)
 - [Reading and editing the rack](./rack.md)
 - [Wiring and the module rail](./wiring.md)
 - [Playing it](./playing.md)
+- [Playing through Auracle](./playing-through.md)
 
 # Teaching it
 

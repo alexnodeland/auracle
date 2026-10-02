@@ -41,11 +41,13 @@ const logNote = (text, detail) =>
 
 // ---------- long-op signalling ----------
 //
-// `engine.fit()`, PERFORM's offers and drifts, and a walk run here (a
-// generation's or ⚡'s, when there is no farm to walk it) are *synchronous*
-// wasm calls that run for seconds. For their whole duration this worker
-// services no messages at all: a `render` asked for the instant the user
-// pressed ▶ sits in the queue behind them.
+// `engine.fit()`, a walk run here (a generation's or ⚡'s, when there is no
+// farm to walk it), and PERFORM's offers and drifts on a binary without jobs
+// (see `walkRun`) are *synchronous* wasm calls that run for seconds. For their
+// whole duration this worker services no messages at all: a `render` asked
+// for the instant the user pressed ▶ sits in the queue behind them. (PERFORM's
+// offers and drifts are otherwise cut into steps and still announce
+// themselves, so "busy" there means "long work is in hand", not "deaf".)
 //
 // That is a latency problem, not a correctness one — but main can only tell a
 // slow render from a lost one by the clock, and on that clock a live render
@@ -158,9 +160,10 @@ const farm = [];   // {port, ready, alive, job}
 // ports whose workers are already gone.
 const farmPreDead = new Set();
 
-function farmSetup(ports) {
-  // What each worker checks its own binary against (farm.js, `phrase`): the
-  // render namespace this worker's binary computes for the phrase.
+// The farm's handshake: the phrase every render and walk is measured on, and
+// the render namespace this worker's binary computes for it (what each farm
+// worker checks its own binary against; farm.js, `phrase`).
+function farmPhrase() {
   const phrase = engine.phrase_json();
   let ns = null;
   try {
@@ -168,6 +171,24 @@ function farmSetup(ports) {
   } catch (_) {
     ns = null;
   }
+  return { phrase, ns };
+}
+
+// The phrase carries the session's audition clip, so a capture or a restore
+// that installs a saved clip changes it after the crew standing was handed the
+// old one. Until a worker has the new one, its render of a sound that listens
+// carries the old clip's key, the engine refuses it, and the sound is measured
+// serially here instead (Plan-007 task 4). Port messages arrive in order, so a
+// job sent after this is rendered with the new clip.
+function farmResendPhrase() {
+  if (!farm.some((f) => f.alive)) return 0;
+  const { phrase, ns } = farmPhrase();
+  farmSay({ type: "phrase", json: phrase, ns });
+  return farm.filter((f) => f.alive).length;
+}
+
+function farmSetup(ports) {
+  const { phrase, ns } = farmPhrase();
   for (let k = 0; k < ports.length; k++) {
     const f = { port: ports[k], ready: false, alive: !farmPreDead.has(k), job: null, index: k };
     if (!f.alive) {
@@ -196,6 +217,7 @@ function farmDrop(f, reason) {
   f.alive = false;
   console.warn(`[auracle] farm worker ${f.index} out: ${reason || "unknown"}`);
   if (farmSink) farmSink.lost(f);
+  guessLost(f);
   walkLost(f);
 }
 
@@ -219,6 +241,8 @@ function onFarmMessage(f, m) {
       farmDrop(f, m.reason || "declined a job");
       return;
     case "done":
+      // A guess's render on a walk crew (`crewRenders`), or a fill's draw.
+      if (guessDone(f, m)) return;
       if (farmSink) farmSink.done(f, m);
       return;
     case "walked":
@@ -771,12 +795,19 @@ async function restoreSession(saved, farmed, stages) {
     const verdict = JSON.parse(engine.import_session_deferred_v2(saved));
     if (verdict.status === "unparseable") return restoreFailed(verdict.status);
     jobs = verdict.jobs;
+    // The import installed the session's saved clip; the crew was handed the
+    // phrase before it. Re-sent before any bank job goes out, so the farm
+    // renders the bank's listeners with the clip they were saved with.
+    if (auditionClip()?.source === "captured") farmResendPhrase();
   } catch (err) {
     // A binary without the v2 surface (stale cache): the un-verdicted form, and
     // failing that the serial path.
     console.warn("[auracle] verdicted restore unavailable:", err);
     try {
       jobs = JSON.parse(engine.import_session_deferred(saved));
+      // As on the v2 path: the import installed the saved clip after the
+      // crew's handshake.
+      if (auditionClip()?.source === "captured") farmResendPhrase();
     } catch (err2) {
       console.warn("[auracle] deferred restore unavailable:", err2);
       return restoreSerial(saved);
@@ -1128,6 +1159,230 @@ self.addEventListener("unhandledrejection", (ev) => {
   });
 });
 
+// ---------- faces (Plan-005 task 3) ----------
+//
+// A face is the render's spectrum in 40 bands and 12 slices
+// (`auracle_features::face`), taken inside every featurization, so a pool
+// member's or an offer's face is in the engine's memo without a render of its
+// own (`WasmEngine::face_of`, `face_of_tree`). That memo is an LRU a
+// generation's walks churn, so a face is copied out the first time it is asked
+// for and kept here under its render namespace and render key
+// (`"<ns>/<key>"`, as `farm_key` names a farm row), and in IndexedDB beside
+// the render cache, stamped with the namespace as that cache is: a build
+// whose renders differ cannot read another's faces. Whitening against the
+// bank is main's (`faces.js`): it knows which rows the bank shows.
+//
+// `faces` (now lane) answers at once from memory alone, and says what is
+// pending. The rest is looked up in `later` (`face_lookup`: the memo, a
+// resident audition, the store), and what none of them has (a row stored
+// before faces existed, a preset not yet heard) is rendered one per turn in
+// the faces lane, below `later` (`face_render`), each answered as it lands,
+// or as failed. `face_cancel` drops what is still waiting for a slot that
+// left the view, and says so. Every request is answered.
+const FACE_DB = "auracle-faces";
+const FACE_STORE = "faces";
+const FACE_META = "meta";
+const FACE_MAX_ROWS = 20000; // ~0.6 KB each; past it the store is dropped, as the render cache is
+let faceNs = null;
+let faceDb = null;
+let faceDbOpening = null;
+const faceMem = new Map(); // "<ns>/<key>" -> Uint8Array
+const faceRendering = new Set(); // keys with a `face_render` queued
+
+const idb = (req) =>
+  new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+// Never rejects: without IndexedDB a face costs a lookup or a render again
+// after a reload, nothing else.
+function faceStoreOpen() {
+  if (faceDbOpening) return faceDbOpening;
+  faceDbOpening = (async () => {
+    try {
+      if (!self.indexedDB || !faceNs) return null;
+      const open = indexedDB.open(FACE_DB, 1);
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        if (!db.objectStoreNames.contains(FACE_STORE)) db.createObjectStore(FACE_STORE);
+        if (!db.objectStoreNames.contains(FACE_META)) db.createObjectStore(FACE_META);
+      };
+      const db = await idb(open);
+      const prev = await idb(db.transaction(FACE_META, "readonly").objectStore(FACE_META).get("ns"));
+      const count = await idb(db.transaction(FACE_STORE, "readonly").objectStore(FACE_STORE).count());
+      if (prev !== faceNs || count > FACE_MAX_ROWS) {
+        await idb(db.transaction(FACE_STORE, "readwrite").objectStore(FACE_STORE).clear());
+        await idb(db.transaction(FACE_META, "readwrite").objectStore(FACE_META).put(faceNs, "ns"));
+      }
+      faceDb = db;
+      return db;
+    } catch (_) {
+      return null;
+    }
+  })();
+  return faceDbOpening;
+}
+
+async function faceStoreGet(keys) {
+  const db = await faceStoreOpen();
+  if (!db || !keys.length) return new Map();
+  try {
+    const store = db.transaction(FACE_STORE, "readonly").objectStore(FACE_STORE);
+    const got = await Promise.all(keys.map((k) => idb(store.get(k)).catch(() => null)));
+    return new Map(keys.map((k, i) => [k, got[i]]).filter(([, v]) => v instanceof Uint8Array));
+  } catch (_) {
+    return new Map();
+  }
+}
+
+function faceKeep(key, bytes) {
+  faceMem.set(key, bytes);
+  if (!faceDb) return;
+  try {
+    faceDb.transaction(FACE_STORE, "readwrite").objectStore(FACE_STORE).put(bytes, key);
+  } catch (_) { /* a failed write costs a lookup next boot */ }
+}
+
+// The key a face is filed under: a pool member's, or a tree's.
+function faceKeyOf(q) {
+  try {
+    if (q.id != null) return engine.face_key(q.id) || null;
+    if (q.memo) return faceNs ? `${faceNs}/${q.memo}` : null;
+    return glue.farm_key(q.tree, engine.phrase_json()) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// A face the engine can give without a render, or null. A call that throws
+// is a face not had, unless it poisoned the engine.
+function faceNow(q, render = false) {
+  try {
+    const b = q.id != null ? engine.face_of(q.id, render) : q.memo ? engine.face_of_key(q.memo) : engine.face_of_tree(q.tree, render);
+    return b && b.length ? new Uint8Array(b) : null;
+  } catch (err) {
+    if (isFatal(err, String((err && err.message) || err))) throw err;
+    return null;
+  }
+}
+
+// `m.ids`: pool members; `m.trees`: [{ref, tree}] (a preset, an offer, the
+// bench). `m.render`: render what has no face yet, in `later`.
+async function faces(m) {
+  const asks = [
+    ...(m.ids || []).map((id) => ({ id })),
+    ...(m.trees || []).map((t) => ({
+      ref: t.ref,
+      // A memo row by its render key (a guess's candidate, rendered for it).
+      memo: t.memo || null,
+      // A preset by its index: its tree, without inserting it.
+      tree: t.memo ? null : t.preset != null ? engine.preset_tree_json(t.preset) : t.tree,
+    })),
+  ];
+  const items = [];
+  const failed = [];
+  const waiting = [];
+  for (const q of asks) {
+    q.key = faceKeyOf(q);
+    if (!q.key) failed.push(faceTag(q));
+    else if (faceMem.has(q.key)) items.push({ ...faceTag(q), key: q.key, face: faceMem.get(q.key) });
+    else waiting.push(q);
+  }
+  // The rest from the memo, a resident audition or the store, in `later`:
+  // a lookup there can wait on IndexedDB or take a face's analysis.
+  if (waiting.length) {
+    lanes[LATER].push({ type: "face_lookup", asks: waiting, render: !!m.render });
+    schedulePump();
+  }
+  post({ type: "faces", items, pending: waiting.map(faceTag), failed });
+}
+
+const faceTag = (q) => (q.id != null ? { id: q.id } : { ref: q.ref });
+
+// What `faces` could not answer from memory (`later`): the memo, a resident
+// audition, the store; what none of them has is rendered in the faces lane,
+// below everything else, or said to be missing.
+async function faceLookup(m) {
+  const items = [];
+  const failed = [];
+  const stored = [];
+  for (const q of m.asks) {
+    const known = faceMem.get(q.key) || faceNow(q);
+    if (known) {
+      if (!faceMem.has(q.key)) faceKeep(q.key, known);
+      items.push({ ...faceTag(q), key: q.key, face: known });
+    } else stored.push(q);
+  }
+  const fromStore = await faceStoreGet(stored.map((q) => q.key));
+  for (const q of stored) {
+    const b = fromStore.get(q.key);
+    if (b) {
+      faceMem.set(q.key, b);
+      items.push({ ...faceTag(q), key: q.key, face: b });
+    } else if (m.render) {
+      if (!faceRendering.has(q.key)) {
+        faceRendering.add(q.key);
+        lanes[FACES].push({ type: "face_render", ...q });
+        schedulePump();
+      }
+    } else if (!m.quiet) {
+      failed.push({ ...faceTag(q), missing: true });
+    }
+  }
+  if (items.length || failed.length) post({ type: "faces", items, pending: [], failed });
+}
+
+// A face asked for and no longer in view (a preset row scrolled past): its
+// render, or its lookup, if still waiting, is dropped, and said to be.
+function faceCancel(m) {
+  const gone = new Set([...(m.ids || []).map((id) => `i${id}`), ...(m.refs || [])]);
+  const named = (q) => gone.has(q.id != null ? `i${q.id}` : q.ref);
+  const cancelled = [];
+  for (let i = lanes[FACES].length - 1; i >= 0; i--) {
+    const q = lanes[FACES][i];
+    if (q.type !== "face_render" || !named(q)) continue;
+    lanes[FACES].splice(i, 1);
+    faceRendering.delete(q.key);
+    cancelled.push(faceTag(q));
+  }
+  for (const job of lanes[LATER].filter((q) => q.type === "face_lookup")) {
+    const keep = job.asks.filter((q) => !named(q));
+    for (const q of job.asks) if (named(q)) cancelled.push(faceTag(q));
+    job.asks = keep;
+  }
+  post({ type: "faces", items: [], pending: [], failed: [], cancelled });
+}
+
+// One render for a face nothing else had (the faces lane).
+function faceRender(q) {
+  faceRendering.delete(q.key);
+  let b = faceMem.get(q.key) || null;
+  if (!b) {
+    try {
+      b = faceNow(q, true);
+    } catch (err) {
+      post({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
+      throw err; // fatal: the engine is down, and says so once
+    }
+    if (b) faceKeep(q.key, b);
+  }
+  const tag = q.id != null ? { id: q.id } : { ref: q.ref };
+  post(b ? { type: "faces", items: [{ ...tag, key: q.key, face: b }], pending: [], failed: [] } : { type: "faces", items: [], pending: [], failed: [tag] });
+}
+
+// After a render reaches main: its face, if main has not been sent it, looked
+// up in `later` (the analysis of an audition takes milliseconds). The buffer
+// is posted first, and no face work is done in the render's turn.
+function faceAfterRender(id) {
+  try {
+    const key = engine.face_key(id);
+    if (!key || faceMem.has(key) || faceRendering.has(key)) return;
+    lanes[LATER].push({ type: "face_lookup", asks: [{ id, key }], render: false, quiet: true });
+    schedulePump();
+  } catch (_) { /* a face is a picture: its failure is not the render's */ }
+}
+
 // ---------- PERFORM's measurement, in pieces ----------
 //
 // Wiring the named controls is thirty-odd phrase renders (a Jacobian, then
@@ -1186,6 +1441,99 @@ async function measure(m) {
     JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed), ctl)));
 }
 
+// ---------- PERFORM's walks, in pieces ----------
+//
+// An offer is a walk of twenty steps (forty in Roam, up to four times that
+// with locks, and an aimed one may walk up to three times), each step a phrase
+// render, and it was one synchronous call: about 18 renders for the Offer
+// button's, 25 for a search control's. A pick (`perform_record`, in `now`)
+// asked for while a *spare* was growing in the background waited for all of
+// them. On a CI runner that was 62 s for the first spare, and a keep, a pick
+// and a re-centre all stood behind it. Wander's drift (12 renders) did the
+// same.
+//
+// The engine now begins an offer or a drift as a job (`perform_offer_begin`,
+// `perform_drift_begin`) that this thread advances one step (one proposal: at
+// most one render) at a time
+// (`perform_job_step`), answering the player between steps (`breathe`) as
+// `measure` does between renders. It holds the floor, so two do not take twice
+// as long each. A spare nobody is waiting for (`later`) gives the floor up the
+// moment long work the player asked for is waiting, and goes back to the front
+// of its lane with its job intact. A walk whose patch was left behind
+// (`retire`) is dropped at its next step instead of finishing for nothing.
+//
+// The result is the offer the one call gives. The job draws from its own
+// stream, seeded when it begins, and reads the target as it stood then, so the
+// player's answer in between, or another walk, cannot change what it finds
+// (natively `a_stepped_walk_is_the_walk`; in the bindings
+// `a_stepped_offer_gives_the_reply_the_one_call_gives`).
+async function walkRun(m) {
+  const drift = m.type === "perform_drift";
+  const [type, field] = drift ? ["perform_drifted", "drift"] : ["perform_offered", "offer"];
+  const ov = JSON.stringify(m.overrides || []);
+  const locks = JSON.stringify(m.locks || []);
+  const control = Number.isInteger(m.control) ? m.control : undefined;
+  const sign = Number.isFinite(m.sign) ? m.sign : undefined;
+  if (typeof engine.perform_job_step !== "function") {
+    // A binary without the jobs (see this file's header): the one call.
+    performReply(m, type, field, true, () =>
+      JSON.parse(
+        drift
+          ? engine.perform_drift(m.tree, ov, locks, m.steps || 12, m.sigma || 0.05)
+          : engine.perform_offer(m.tree, ov, locks, m.steps || 40, control, sign),
+      ));
+    return;
+  }
+  const retired = () => {
+    if (m.job != null) engine.perform_job_drop(m.job);
+    m.job = null;
+    post({ type, req: m.req, [field]: null, error: "retired" });
+  };
+  beginLongOp();
+  try {
+    if (m.retired) return retired();
+    if (m.job == null) {
+      const begun = JSON.parse(
+        drift
+          ? engine.perform_drift_begin(m.tree, ov, locks, m.steps || 12, m.sigma || 0.05)
+          : engine.perform_offer_begin(m.tree, ov, locks, m.steps || 40, control, sign),
+      );
+      // A walk that cannot start answers as the one call would: `{reason}`,
+      // or null for a tree that does not parse.
+      if (!begun || begun.job == null) {
+        post({ type, req: m.req, [field]: begun });
+        return;
+      }
+      m.job = begun.job;
+    }
+    while (engine.perform_job_step(m.job, 1)) {
+      const yields = await breathe(laneOf(m));
+      if (m.retired) return retired();
+      if (yields) {
+        // Paused where it stands: the job keeps its place in the engine, and
+        // this request goes back to the front of its lane.
+        lanes[LATER].unshift(m);
+        return;
+      }
+    }
+    const job = m.job;
+    m.job = null;
+    post({ type, req: m.req, [field]: JSON.parse(engine.perform_job_finish(job)) });
+  } catch (err) {
+    const message = String((err && err.message) || err);
+    try {
+      if (m.job != null) engine.perform_job_drop(m.job);
+    } catch (_) {
+      /* a poisoned engine: reported below */
+    }
+    m.job = null;
+    post({ type, req: m.req, [field]: null, error: message });
+    if (isFatal(err, message)) throw err;
+  } finally {
+    endLongOp();
+  }
+}
+
 // ---------- the model's guess (Plan-005 task 9d) ----------
 //
 // The module the model guesses the player would add next to the patch in
@@ -1194,19 +1542,172 @@ async function measure(m) {
 // candidates in the order a crew that stops early should render them) and
 // ranks what the memo holds (`guess_rank`); it renders nothing itself.
 //
-// Here, with no crew, it renders the first `GUESS_FLOOR` candidates, one per
-// turn with the player answered between them, as PERFORM's measurement does,
-// and stops rendering once `GUESS_BUDGET_MS` of rendering is spent, ranking
-// what it has (`rendered` of `planned` says how much). The budget counts
-// render time only, checked after each render, so it can run over by one
-// render. A crew renders them
-// all with `farm_render` and `memo_absorb` (task 7 raises one for it; the
-// plan's `cache` keys the farm's store). A `later` job: it gives way to work
-// the player asks for and resumes where it stopped, since every render it
-// made is in the memo. The reply echoes `token` and carries the tree it
-// ranked, so a page that has moved on drops it.
+// On a crew (`guessOnCrew`), it asks for every candidate (`limit` 0) and
+// hands them out, one `farm_render` per idle worker (the farm's `job`), and
+// absorbs each result as it lands (`memo_absorb`, checked against this
+// engine's stimulus), for at most `GUESS_BUDGET_MS` of wall-clock time once
+// the crew is up; it renders nothing here, so the player is answered
+// throughout. A refusal from the plan raises no crew. With no crew (width
+// 0, boot's crew still filling the pool, a spawn that failed), or for what a
+// crew left unrendered, it renders the first `GUESS_FLOOR` candidates here,
+// one per turn with the player answered between them, as PERFORM's
+// measurement does, and stops rendering once `GUESS_BUDGET_MS` of rendering
+// is spent, ranking what it has (`rendered` of `planned` says how much). The
+// budget counts render time only, checked after each render, so it can run
+// over by one render. A `later` job: it gives way to work the player asks for
+// and resumes where it stopped, since every render it made is in the memo. The
+// crew phase does not hold the floor (it renders nothing on this thread, and
+// waiting for a crew is not work); only the floor's renders do.
+// The reply echoes `token` and carries the tree it ranked, so a page that has
+// moved on drops it.
 const GUESS_FLOOR = 8;
 const GUESS_BUDGET_MS = 3000;
+
+// The guess's renders out on the crew, by job id: {job, f, resolve}. Ids are
+// their own sequence; the farm echoes `i` in `done`, which no fill is
+// listening for while a walk crew stands.
+const guessInflight = new Map();
+// The crew phases of the guesses asked for, one at a time and in order.
+let guessCrewTail = Promise.resolve();
+let guessSeq = 0;
+const guessBusy = () => guessInflight.size > 0;
+
+/** A crew worker answered a guess render (`done`), or gave its job back. */
+function guessDone(f, m) {
+  const s = guessInflight.get(m.i);
+  if (!s) return false;
+  guessInflight.delete(m.i);
+  if (f && f.job === `g${m.i}`) f.job = null;
+  s.resolve(m.ok ? { ok: true, cached: m.cached } : { ok: false });
+  return true;
+}
+
+/** A worker holding a guess render was lost: its job comes back unrendered
+ *  (not failed: the render did not fail, the worker did). */
+function guessLost(f) {
+  for (const [i, s] of guessInflight) {
+    if (s.f !== f) continue;
+    guessInflight.delete(i);
+    s.resolve(null);
+  }
+}
+
+/** Render `jobs` on the crew, as many at once as there are idle workers, for
+ *  at most `ms`. Resolves to the results that landed, by job (`{ok, cached}`;
+ *  null for one a lost worker gave back). Jobs still out when the time is up
+ *  are abandoned: their answers find nobody. */
+function crewRenders(jobs, ms) {
+  return new Promise((resolve) => {
+    const out = new Map();
+    const queue = [...jobs];
+    const ids = new Set();
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      for (const i of ids) {
+        const s = guessInflight.get(i);
+        if (!s) continue;
+        guessInflight.delete(i);
+        if (s.f && s.f.job === `g${i}`) s.f.job = null;
+      }
+      walkPump();
+      resolve(out);
+    };
+    const timer = setTimeout(finish, Math.max(0, ms));
+    const hand = () => {
+      if (finished) return;
+      for (const f of farm) {
+        if (!queue.length) break;
+        if (!f.alive || !f.ready || f.job !== null) continue;
+        const job = queue.shift();
+        const i = ++guessSeq;
+        ids.add(i);
+        f.job = `g${i}`;
+        guessInflight.set(i, {
+          f,
+          resolve: (r) => {
+            ids.delete(i);
+            out.set(job, r);
+            hand();
+            if (out.size === jobs.length || (!queue.length && ids.size === 0) || !crewReady()) finish();
+          },
+        });
+        f.port.postMessage({ type: "job", i, tree: job.tree, wantAudio: false });
+      }
+      if (!crewReady() || (queue.length && ids.size === 0 && !farm.some((f) => f.alive && f.ready))) finish();
+    };
+    hand();
+  });
+}
+
+/** The guess's renders on a crew (raised for it, as a generation raises
+ *  one): every candidate, absorbed as it lands, within the budget. Returns
+ *  the plan's refusal if it has one, else null once rendering is over (all
+ *  absorbed, or the budget spent); what is left unrendered the serial floor
+ *  below picks up. False when no crew can be had: the floor does it all. */
+async function guessOnCrew(at, failed) {
+  // The plan first: a refusal (no fit yet, the grammar's ceiling) or a guess
+  // the memo already holds needs no crew, and raising one would spawn
+  // workers on every settle before the warm start.
+  const first = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), 0));
+  if (first.reason) return first;
+  if (!first.jobs.length) return null;
+  if (!booted || bootCrewLive() || walking()) return false;
+  if (!(await crewUp())) return false;
+  // The budget starts once the crew is up: a cold crew's spawn is not
+  // rendering.
+  const t0 = performance.now();
+  try {
+    for (let round = 0; round < 6; round++) {
+      const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), 0));
+      if (plan.reason) return plan;
+      if (!plan.jobs.length) return null;
+      const left = GUESS_BUDGET_MS - (performance.now() - t0);
+      if (left <= 0 || !crewReady()) return null;
+      const results = await crewRenders(plan.jobs, left);
+      let absorbed = 0;
+      for (const [job, r] of results) {
+        if (!r) continue;
+        if (!r.ok) failed.push(job.key);
+        // A row this engine refuses (another stimulus) costs a render below,
+        // never a wrong φ; it is not a vet failure.
+        else if (engine.memo_absorb(job.tree, r.cached)) absorbed += 1;
+      }
+      if (results.size < plan.jobs.length || absorbed === 0) return null;
+    }
+    return null;
+  } finally {
+    crewIdle();
+  }
+}
+
+/** A guess's crew phase: every candidate on a crew, once per request (a
+ *  resumed run goes on from the memo). It holds the guess's floor (no other
+ *  long job starts meanwhile) but renders nothing here, so the player is
+ *  answered while the crew renders. True when it answered (a refusal from
+ *  the plan, or an error). */
+async function guessCrewPhase(m) {
+  if (m.crewed) return false;
+  m.crewed = true;
+  const at = m.at || undefined;
+  const failed = m.failed || (m.failed = []);
+  try {
+    const crew = await guessOnCrew(at, failed);
+    if (crew && crew.reason) {
+      post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data: crew });
+      return true;
+    }
+    if (crew === null) m.crew = true;
+    return false;
+  } catch (err) {
+    const message = String((err && err.message) || err);
+    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    if (isFatal(err, message)) throw err;
+    return true;
+  }
+}
 
 async function guessRun(m) {
   const at = m.at || undefined;
@@ -1214,6 +1715,13 @@ async function guessRun(m) {
   const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
   m.spent = m.spent || 0;
   try {
+    // After a crew (`guessCrewPhase`) the ranking covers every candidate it
+    // rendered; with none, the floor's.
+    const limit = m.crew ? 0 : GUESS_FLOOR;
+    // The floor: the first `GUESS_FLOOR` in order, here. After a crew these
+    // are usually in the memo already (they went out first), so this renders
+    // only what the crew could not (a row from another stimulus, a lost
+    // worker), and it is the whole of the work with no crew.
     for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
       const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
       if (plan.reason) {
@@ -1232,7 +1740,7 @@ async function guessRun(m) {
         if (m.spent >= GUESS_BUDGET_MS) break;
       }
     }
-    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
+    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), limit)));
   } catch (err) {
     // Answered, as `measure` answers: the page holds a guess open until its
     // reply lands. A trap still poisons the engine, through `dispatch`.
@@ -1830,7 +2338,11 @@ function evolveStop() {
 const NOW = 0;
 const SOON = 1;
 const LATER = 2;
-const lanes = [[], [], []];
+// Below `later`: a face's render (half a second each, and a list of presets
+// scrolled through can ask for thirty) never goes ahead of a refit, a guess
+// or a cable probe.
+const FACES = 3;
+const lanes = [[], [], [], []];
 
 function laneOf(m) {
   switch (m.type) {
@@ -1860,7 +2372,10 @@ function laneOf(m) {
     case "styles":
     case "cable_levels":
     case "guess":
+    case "face_lookup":
       return LATER;
+    case "face_render":
+      return FACES;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
     default:
@@ -1898,6 +2413,11 @@ function blocked(m) {
   switch (m.type) {
     case "fit":
       return walking();
+    // A face's render waits for the bank to finish arriving: half a second
+    // each, they would slow the fill (a preset's face on the warm start, a
+    // row stored before faces).
+    case "face_render":
+      return !booted;
     case "refine":
     case "refine_from":
       return walking() || bootCrewLive();
@@ -1911,10 +2431,11 @@ function bootCrewDone() {
   if (farmCrew_ === 0) farmShutdown();
 }
 
-// The first request in `soon`, then `later`, that may start now.
+// The first request in `soon`, then `later`, then the faces lane, that may
+// start now.
 function nextLong() {
   if (floor) return null;
-  for (const lane of [SOON, LATER]) {
+  for (const lane of [SOON, LATER, FACES]) {
     const i = lanes[lane].findIndex((q) => !blocked(q));
     if (i >= 0) return lanes[lane].splice(i, 1)[0];
   }
@@ -1926,7 +2447,7 @@ function nextLong() {
 // schedule the pump, and re-arming it meanwhile would spin a timer every few
 // milliseconds for as long as they run.
 const runnable = () =>
-  lanes[NOW].length > 0 || (!floor && [SOON, LATER].some((l) => lanes[l].some((q) => !blocked(q))));
+  lanes[NOW].length > 0 || (!floor && [SOON, LATER, FACES].some((l) => lanes[l].some((q) => !blocked(q))));
 
 // Serve the `now` lane: gestures first come, first served, and a background
 // render (`bg`) only when no gesture is waiting. Each such render is one
@@ -2045,7 +2566,10 @@ self.onmessage = (e) => {
     if (i >= 0) {
       const [q] = lanes[LATER].splice(i, 1);
       q.bg = false;
-      lanes[SOON].push(q);
+      // A walk that had given way (it holds its job) was asked for before
+      // anything now waiting in `soon`: it goes first, not behind it.
+      if (q.job != null) lanes[SOON].unshift(q);
+      else lanes[SOON].push(q);
     }
     if (runnable()) schedulePump();
     return;
@@ -2060,6 +2584,8 @@ self.onmessage = (e) => {
   if (m.type === "retire") {
     const reqs = new Set(m.reqs || []);
     if (floor && floor.m && floor.m.type === "perform_wire" && reqs.has(floor.m.req)) floor.m.bg = true;
+    // A walk running now stops at its next step (see `walkRun`).
+    if (floor && floor.m && /^perform_(offer|drift)$/.test(floor.m.type) && reqs.has(floor.m.req)) floor.m.retired = true;
     const mine = (q) => reqs.has(q.req) && q.type.startsWith("perform_");
     for (const q of lanes[SOON].filter((q) => mine(q) && q.type === "perform_wire")) {
       lanes[SOON].splice(lanes[SOON].indexOf(q), 1);
@@ -2068,6 +2594,16 @@ self.onmessage = (e) => {
     }
     for (const lane of [SOON, LATER]) {
       for (const q of lanes[lane].filter((q) => mine(q) && q.type !== "perform_wire")) {
+        // A walk paused part-way (see `walkRun`) still holds its job. A
+        // poisoned engine throws here, and the requests behind this one
+        // must still be answered.
+        if (q.job != null) {
+          try {
+            engine.perform_job_drop(q.job);
+          } catch (_) {
+            /* reported by the next request that reaches the engine */
+          }
+        }
         if (q.type === "perform_offer") {
           post({ type: "perform_offered", req: q.req, offer: null, error: "retired" });
         } else if (q.type === "perform_drift") {
@@ -2151,6 +2687,8 @@ async function dispatch(m) {
         try {
           ns = mod.cache_namespace(engine.phrase_json()) || null;
         } catch (_) { /* older engine */ }
+        faceNs = ns;
+        faceStoreOpen(); // ready for the first faces copied out of the memo
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.
@@ -2409,6 +2947,18 @@ async function dispatch(m) {
     // pairs shown, not dealt: the check cadence and the repeat and exposure
     // penalties move here. A pair not dealt, or already counted, counts
     // nothing.
+    case "faces":
+      await faces(m);
+      break;
+    case "face_lookup":
+      await faceLookup(m);
+      break;
+    case "face_render":
+      faceRender(m);
+      break;
+    case "face_cancel":
+      faceCancel(m);
+      break;
     case "duel_shown": {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
@@ -2474,6 +3024,7 @@ async function dispatch(m) {
         },
         [arr.buffer]
       );
+      faceAfterRender(m.id);
       break;
     }
     // The three vote routes answer with `recorded`: `false` when the engine
@@ -2731,7 +3282,31 @@ async function dispatch(m) {
     // The model's guess for the patch in hand (see `guessRun`), and a skip of
     // one. Taking a guess is `edit_structure` with `guess`.
     case "guess": {
+      // The crew phase does not hold the floor. It renders nothing here: it
+      // waits for a crew to spawn and for its workers' replies, up to several
+      // seconds, and a floor held across that made a pressed Offer, EVOLVE's
+      // `refine` and the measurement of the sound in hand wait for it though
+      // nothing was running on this thread. So it runs detached, as a
+      // generation's walks do (one guess at a time: `guessCrewTail`), and
+      // when it is over the guess goes back to the front of `later` with
+      // `crewed` set, and takes the floor then for the floor's own renders.
+      if (!m.crewed) {
+        guessCrewTail = guessCrewTail
+          .then(async () => {
+            if (await guessCrewPhase(m)) return;
+            lanes[LATER].unshift(m);
+          })
+          .catch((err) => engineError("guess", null, err))
+          .finally(schedulePump);
+        break;
+      }
       await holdFloor(m, () => guessRun(m));
+      break;
+    }
+    // A patch of its own (PATCH's NEW PATCH): the guesses' key from here on
+    // (`guess_patch_as`; 0 asks for a fresh one). Answered with the key.
+    case "guess_patch_as": {
+      post({ type: "guess_patch", token: m.token ?? null, key: engine.guess_patch_as(m.key | 0) });
       break;
     }
     case "guess_skip": {
@@ -2743,8 +3318,7 @@ async function dispatch(m) {
         engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
       break;
     case "perform_drift":
-      performReply(m, "perform_drifted", "drift", true, () =>
-        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12, m.sigma || 0.05)));
+      await holdFloor(m, () => walkRun(m));
       break;
     case "perform_graft":
       performReply(m, "perform_grafted", "graft", false, () =>
@@ -2768,17 +3342,7 @@ async function dispatch(m) {
     // (aimed, and its reply says how far it `moved`); the Offer button's and
     // Wander's carry neither, and are not aimed.
     case "perform_offer":
-      performReply(m, "perform_offered", "offer", true, () =>
-        JSON.parse(
-          engine.perform_offer(
-            m.tree,
-            JSON.stringify(m.overrides || []),
-            JSON.stringify(m.locks || []),
-            m.steps || 40,
-            Number.isInteger(m.control) ? m.control : undefined,
-            Number.isFinite(m.sign) ? m.sign : undefined,
-          ),
-        ));
+      await holdFloor(m, () => walkRun(m));
       break;
     case "tree_json": {
       post({
@@ -3046,24 +3610,31 @@ async function dispatch(m) {
       break;
     }
     // ---- persistence ----
-    // The session's audition clip (Plan-007 task 3, ADR-015): what a sound
-    // with an AUDIO IN is measured with. Capturing one is task 4's (the
-    // permission flow and the worklet's input); these are the engine's side,
-    // so a capture has somewhere to land. `samples` is a Float32Array of
-    // `channels` interleaved, at `sampleRate`; without it the clip goes back
-    // to the built-in reference. A new clip changes the phrase the farm was
-    // handed at boot, and until task 4 sends it again the farm measures sounds
-    // that listen with the old one; their keys differ, so the engine measures
-    // those itself rather than trust the farm's rows.
+    // The session's audition clip (Plan-007, ADR-015): what a sound with an
+    // AUDIO IN is measured with. A capture arrives from audio-in.js on first
+    // listen or NEW CLIP: `samples` is a Float32Array of `channels`
+    // interleaved, at `sampleRate`; without it the clip goes back to the
+    // built-in reference. A clip the engine takes changes the phrase, so the
+    // crew standing (if any) is handed it again (`farmResendPhrase`), and the
+    // listeners it measured again move their ratings, so the views go with
+    // the reply.
     case "audition_clip": {
       postClip();
       break;
     }
     case "set_audition_clip": {
-      const reply = m.samples
+      const reply = JSON.parse(m.samples
         ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
-        : engine.clear_audition_clip();
-      post({ type: "audition_clip", ...JSON.parse(reply) });
+        : engine.clear_audition_clip());
+      let resent = 0;
+      if (reply.ok) resent = farmResendPhrase();
+      const moved = reply.ok && (reply.remeasured?.length || reply.unmeasured?.length);
+      post({
+        type: "audition_clip",
+        ...reply,
+        farmResent: resent,
+        ...(moved ? { views: tasteViews(), status: status() } : {}),
+      });
       break;
     }
     // Sounds the last restore held back: a capture's recording couldn't be

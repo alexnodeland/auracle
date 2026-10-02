@@ -66,6 +66,22 @@ import {
   lessonPlay,
   stepOf,
   lessonTrouble,
+  INPUT_SAID,
+  INPUT_SILK,
+  inputGone,
+  inputBack,
+  clipCapturing,
+  clipArmed,
+  inputLine,
+  inputRow,
+  inputName,
+  inputLineName,
+  INPUT_TIPS,
+  INPUT_MENU,
+  guessWhy,
+  guessLine,
+  guessRefusal,
+  levelWord,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -547,4 +563,76 @@ test("the lesson on filters is about the sound in hand, and says what BRIGHT doe
     assert.ok(said.includes("Reese"), said);
   }
   assert.ok(lessonTrouble("Reese", "after", true).includes("no room for another module"));
+});
+
+test("AUDIO IN says which input it reads, or why it has none, in the voice", () => {
+  // The slot is the engine's (from 0); the line counts from 1, as a desk does.
+  assert.equal(inputLine("live", 0, "Fake Mic A"), "1 · Fake Mic A");
+  assert.equal(inputLine("meter", 1, "Interface"), "2 · Interface · meter only");
+  assert.equal(inputLine("unplugged", 2, "USB mic"), "3 · USB mic · unplugged");
+  assert.equal(inputLine("empty", 4), "5 · nothing plugged in");
+  assert.equal(inputName(2), "input 3");
+  assert.equal(inputLineName("1 · Fake Mic A"), "Input 1 · Fake Mic A");
+  // A tooltip is a name and what it does, at most eight words.
+  for (const s of Object.values(INPUT_TIPS)) {
+    voiced(s);
+    assert.ok(s.split(/\s+/).length <= 8, s);
+  }
+  for (const s of Object.values(INPUT_MENU)) voiced(s);
+  // The approved word is "input", not "device" (voice.md's word table).
+  for (const s of [...Object.values(INPUT_SAID), ...Object.values(INPUT_TIPS), inputLine("empty", 0)]) {
+    assert.doesNotMatch(s, /device/, s);
+  }
+  assert.equal(inputLine("refused", 0), "input refused");
+  assert.equal(inputLine("unasked", 0), "no input yet");
+  assert.equal(inputRow(1, "Interface"), "2 · Interface");
+  for (const s of Object.values(INPUT_SAID)) voiced(s);
+  for (const s of Object.values(INPUT_SILK)) {
+    voiced(s);
+    // Silk: one to three words, a lowercase source, no punctuation.
+    assert.ok(s.split(" ").length <= 3 && s === s.toLowerCase() && !/[.,:!?]/.test(s), s);
+  }
+  for (const s of [inputGone("Fake Mic A"), inputBack("Fake Mic A"), clipCapturing("Fake Mic A", 6), clipArmed("Fake Mic A", 6), inputLine("opening", 0, "Fake Mic A")]) voiced(s);
+  // A toast is at most two sentences.
+  for (const s of Object.values(INPUT_SAID)) assert.ok(s.split(/[.…] /).length <= 2, s);
+  // The refusal says why and what to do; monitoring on says to use headphones.
+  assert.match(INPUT_SAID.refused, /refused/);
+  assert.match(INPUT_SAID.refused, /ASK AGAIN/);
+  assert.match(INPUT_SAID.monitorOn, /headphones/);
+});
+
+test("the model's guess says why in its own words, its forecast with a word, and when it may not help", () => {
+  const nice = (s) => ({ n_reverb: "reverbs", n_drive: "drive & fold" })[s] || s;
+  const dark = { control: "Bright", word: "dark", coordinate: null, moved: -1.06, part: 0.2, style: 0 };
+  const drive = { control: null, word: null, coordinate: "n_drive", moved: 1, part: 0.1, style: 0 };
+  assert.equal(guessWhy(dark, nice), "it moves toward dark, as your picks lean");
+  assert.equal(guessWhy(drive, nice), "your picks lean toward more drive & fold");
+  assert.equal(guessWhy({ ...drive, moved: -1 }, nice), "your picks lean toward less drive & fold");
+  assert.equal(guessWhy(null), null);
+  assert.equal(guessLine({ why: dark, p: 0.59, lcb: 0.02 }, "patch", nice), "it moves toward dark, as your picks lean · 59% · leaning");
+  // Ranked by a lower bound that can be under zero: said, not hidden.
+  assert.equal(guessLine({ why: dark, p: 0.53, lcb: -0.1 }, "patch", nice), "it moves toward dark, as your picks lean · 53% · a hunch · it may not help");
+  // An empty patch is guessed against the pool's average sound.
+  assert.equal(guessLine({ why: null, p: 0.73, lcb: 0.3 }, "pool", nice), "no part of it leans your way · 73% over your pool’s average · fairly sure");
+  for (const g of [{ why: dark, p: 0.59, lcb: 0.02 }, { why: drive, p: 0.4, lcb: -1 }]) voiced(guessLine(g, "patch", nice));
+});
+
+test("the guess's refusals: nothing before the warm start, words for the rest", () => {
+  assert.equal(guessRefusal({ reason: "no_taste" }), null);
+  assert.equal(guessRefusal({ reason: "no_patch" }), null);
+  assert.equal(guessRefusal({ reason: "full" }), "no guess: nothing more fits, so a module has to come out first");
+  assert.equal(guessRefusal({ reason: "unmeasured" }), "no guess yet: it hasn’t heard this patch");
+  assert.equal(guessRefusal({ guesses: [], skipped: 3, rendered: 4, planned: 4 }), "no guess left here: every module that fits was skipped");
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 6, planned: 6 }), "no guess: none of the modules that fit here passed the safety check");
+  // Time ran out before anything was heard: not a verdict on the modules.
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 0, planned: 6 }), "no guess yet: it has not heard the modules that fit here");
+  assert.equal(guessRefusal({ guesses: [{}], skipped: 0 }), null);
+  for (const r of ["full", "unmeasured"]) voiced(guessRefusal({ reason: r }));
+});
+
+test("a cable's measured level reads in decibels, or nothing at the probe's floor", () => {
+  assert.equal(levelWord(-14.2), "−14 dB");
+  assert.equal(levelWord(3.6), "4 dB");
+  assert.equal(levelWord(-120), "nothing");
+  assert.equal(levelWord(null), "nothing");
 });

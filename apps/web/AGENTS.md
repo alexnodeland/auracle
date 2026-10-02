@@ -15,12 +15,15 @@ the long-form notes are this directory's `README.md`.
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
-| `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator |
+| `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
+| `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste.js` | main thread | TASTE's map (a pick's arrow, the halos moving with the ratings, a refit settling them) and LEARNING's room (weights, direction, forecasts, copy as JSON, the math), drawn from what `main.js` holds |
 | `explain.js` | main thread | Explain anything: the ? chip, a control's figure (two renders of the sound in hand the worker measures, `explain`) and the lesson on filters (`explain_lesson`), drawn from what perform.js's `explainOf` hands it |
 | `taste-geom.js` | main thread | Pure geometry for TASTE and LEARNING (the map's layout and halos, dot sizes, a weight's bar and the settled/guess mark PATCH's θ cell shares, the direction liking rises, the forecasts' score); unit-tested in `tests/` |
+| `faces.js` | main thread | A sound's face: the engine's bytes as dB, the bank's mean and spread, whitening, the vessel's geometry; unit-tested in `tests/` |
+| `vessel.js` | main thread | The one renderer for a face at every size (`drawVessel`: slices, glow, the floor's reflection), on a canvas; unit-tested in `tests/` |
 | `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome, TASTE's and LEARNING's copy; unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 

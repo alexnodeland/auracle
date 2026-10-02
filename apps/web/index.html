@@ -222,6 +222,7 @@
               <select id="ix-scope">
                 <option value="all">whole patch</option>
                 <option value="sel">selection</option>
+                <option value="card">the sound's card</option>
               </select></label>
             <label class="sp-row"><span>size</span>
               <select id="ix-scale">
@@ -316,6 +317,7 @@
                equal pills become six, and the six that remain can be ranked. -->
           <div class="subject-block">
             <span class="tt" title="Pick a sound from the bank first"><button class="xport" id="rack-play" aria-label="Play this sound" disabled>▶</button></span>
+            <span id="subject-face"></span>
             <div class="subject-id">
               <div class="subject-name" id="rack-subject">no sound open</div>
               <div class="subject-meta" id="rack-meta"></div>
@@ -327,6 +329,12 @@
                for every patch, and the cell keeps its place when empty. -->
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
+            <!-- A patch from nothing, at the right of the name's row as the
+                 specimen has it: NEW PATCH, then CLEAR and BACK TO ‹name›
+                 while one is open. Filled by patch.js (`renderTools`). The
+                 callout gives way to it (it ellipsizes), so neither row of
+                 the header grows. -->
+            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
           </div>
           <!-- The act the whole app is for, on the name's row: beside the
                thing it breeds from, and above the locks that prepare it. -->
@@ -471,6 +479,10 @@
                 <span class="fh-copy">This layout has spread past the frame.</span>
                 <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
               </div>
+              <!-- The model's guess for the next module: GUESS · FILTER and its
+                   reason in the model's italic, over the rack's top left. Its
+                   module is drawn at its socket in the rack (patch.js). -->
+              <div class="guess-read" id="guess-read" role="status" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
             <!-- The final say on the split below, and the in-house pattern for
@@ -602,6 +614,7 @@
         <div class="duel-row">
           <section class="duel-card" id="duel-a">
             <div class="panel-head">
+              <span id="face-a"></span>
               <div class="duel-name" id="name-a">sound a</div>
               <span class="style-badge mono" id="style-a"></span>
               <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
@@ -619,6 +632,7 @@
           </section>
           <section class="duel-card" id="duel-b">
             <div class="panel-head">
+              <span id="face-b"></span>
               <div class="duel-name" id="name-b">sound b</div>
               <span class="style-badge mono" id="style-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>

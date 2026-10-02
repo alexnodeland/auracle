@@ -88,6 +88,24 @@ anywhere in this one to play MIDI here.
 and it appears without a reload. On Windows, a device another program has open
 can’t be opened by the browser too; close that program and plug it in again.
 
+## AUDIO IN is silent
+
+Its input line says why:
+
+- ***no input yet***: the browser hasn’t been asked. Press **ALLOW INPUT**.
+- ***input refused***: you refused it earlier. Allow the microphone for the
+  site in the browser’s site settings (the icon left of the address), then
+  press **ASK AGAIN**.
+- ***no input found*** or ***input didn’t open***: plug in a microphone or an
+  interface, close any other app holding it, then press **ASK AGAIN**.
+- ***unplugged***: the input went away. Plug it back in; it opens by itself.
+- ***nothing plugged in***: no microphone or interface has that number yet.
+  Click the input line and pick one.
+- The square shows a level but you hear nothing: **MONITOR** is off. It starts
+  off every time. Put on headphones, then press it.
+- *meter only*: the keys hear the first AUDIO IN’s input. See [your
+  inputs](./playing-through.md#your-inputs).
+
 ## Evolution does nothing
 
 While a generation breeds, **EVOLVE POOL** is its own progress bar, saying

@@ -38,6 +38,7 @@ use auracle_features::{featurize_memo, CachedFeatures, PhraseSpec, RenderMemo};
 use auracle_grammar::{PatchGrammarPrior, PatchTree};
 use auracle_taste::{Standardizer, TastePosterior};
 use fugue::Trace;
+use fugue_evo::inference::likelihood::FactorFitness;
 use fugue_evo::inference::mh::EvolutionChain;
 use fugue_evo::inference::model::EvolutionModel;
 use rand::rngs::StdRng;
@@ -248,6 +249,12 @@ pub(crate) fn violates_locks(prev: &Trace, next: &Trace, locked: &HashSet<String
 /// [`crate::perform::VetOnlyFitness`] when no taste has been fitted yet, which
 /// makes the target `π ∝ p_grammar` restricted to vetted patches — exactly
 /// what the posterior is before it has seen any evidence.
+///
+/// It is [`WalkRun`] run to the end: begun, stepped until nothing is left,
+/// finished. A caller that must be able to stop between two steps (PERFORM's
+/// offers, which the web worker cuts into pieces so a pick is answered
+/// between them) holds the [`WalkRun`] and gets the same walk, step for step,
+/// because this *is* that walk.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_on<R, F>(
     prior: PatchGrammarPrior,
@@ -267,145 +274,233 @@ where
         + Sync
         + 'static,
 {
-    // The input a node reads belongs to the player (ADR-015), so every AUDIO
-    // IN the seed holds keeps its input and its place: its `#input` is locked
-    // exactly as a player's lock is. The kernel proposes on it like any other
-    // site (and, the prior's `PlayerInput` being what it is, would propose
-    // slot 0 and accept it), and the lock rejects that, and a removal of the
-    // node, outside the kernel. A node the walk grows reads slot 0. The lock
-    // compensation below counts these sites, since proposals on them are
-    // wasted like proposals on any lock.
-    //
-    // TRACK and CAPTURE are the player's too, so their `#op` is held the same
-    // way (`PatchTree::player_sites`): the prior never draws either, so a step
-    // that regrew one away could never grow it back, and a capture's take
-    // would go with it. Their knobs, and everything around them, stay free.
-    let held = seed.player_sites();
-    let with_held: HashSet<String>;
-    let locked = if held.is_empty() {
-        locked
-    } else {
-        with_held = locked.iter().cloned().chain(held).collect();
-        &with_held
-    };
-    // A take is not a trace site, so every term the kernel decodes comes back
-    // with empty captures. The fitness hears each one with the seed's takes
-    // carried back (a walk holds every capture where it was, so the match is
-    // exact), and so does the term the walk returns, below.
-    let carries = seed.has_takes();
-    let fitness = WithTakes {
-        inner: fitness,
-        seed: carries.then(|| Arc::new(seed.clone())),
-    };
-    let model = EvolutionModel::new(prior, fitness).with_beta(beta);
-    let mut chain = EvolutionChain::new(model);
-    // `init_from` is `None` exactly when the seed's total log-weight is not
-    // finite. The surrogate fitness is finite by construction (a
-    // quarantined render scores `QUARANTINE_FITNESS`, not `−∞`), so the
-    // only way to get here is a seed the grammar prior gives zero mass —
-    // which is a fact about the patch, and the caller needs to hear it as
-    // one rather than as a walk that happened not to move.
-    let Some(mut trace) = chain.init_from(seed) else {
-        return Err(RefineOutcome::OutsideSupport);
-    };
+    let mut run = WalkRun::begin(prior, beta, keep, fitness, seed, locked, steps)?;
+    while run.left() > 0 {
+        run.step(rng);
+    }
+    run.finish()
+}
 
-    // Scale steps for proposals wasted on locked sites. The kernel picks a
-    // target site uniformly over all of them, so with a fraction `f` free
-    // only `f` of the proposals can be accepted and the walk needs `1/f`
-    // times as many steps to travel as far.
-    //
-    // **The cap is a cost bound, not a correction**, and it is stated
-    // rather than left silent. Past 75% of sites locked, `LOCK_SCALE_CAP`
-    // stops the compensation short — a patch with 90% of its sites pinned
-    // would otherwise ask for ten times the budget, and a `⚡ evolve from
-    // this` on a heavily-pinned patch is a button press with a person
-    // waiting behind it. So a very heavily locked walk *does* explore less
-    // than the config nominally buys. That is the intended trade; the thing
-    // to avoid is believing otherwise.
-    let total_sites = trace.choices.len().max(1);
-    let locked_present = trace
-        .choices
-        .keys()
-        .filter(|a| locked.contains(&***a))
-        .count();
-    let free = total_sites.saturating_sub(locked_present).max(1);
-    let factor = (total_sites as f64 / free as f64).min(LOCK_SCALE_CAP);
-    let steps = ((steps as f64) * factor).ceil() as usize;
+/// A locked walk ([`walk_on`]) in the middle: everything it carries from one
+/// step to the next, so it can be paused after any step and go on, however
+/// much else happens meanwhile. It holds no borrow of the engine and draws
+/// from whatever generator each [`Self::step`] is handed, so the walk it makes
+/// is a function of its construction and of the draws it is given, and of
+/// nothing about when the steps were taken.
+pub(crate) struct WalkRun<F>
+where
+    F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    chain: EvolutionChain<PatchGrammarPrior, FactorFitness<WithTakes<F>>>,
+    trace: Trace,
+    current: PatchTree,
+    best: Option<(f64, PatchTree)>,
+    locked: HashSet<String>,
+    seed: PatchTree,
+    carries: bool,
+    left: usize,
+}
 
-    let mut current = seed.clone();
-    // The elite archive, and it is **free**.
-    //
-    // Every trace the kernel hands back is already scored under the target
-    // program, so `total_log_weight()` *is* `log π_β = log p_grammar +
-    // β·E[u]` for the state it accompanies — no extra model execution, no
-    // extra featurization, one f64 compare per step.
-    //
-    // Scored on the target rather than on fitness alone, which is the
-    // choice worth stating. Taking the argmax of `E[u]` would discard the
-    // parsimony half of the very distribution the walk is sampling, and it
-    // would do so with a bias: a bigger term has more modules to score
-    // well with, so fitness-argmax systematically returns the largest tree
-    // the walk touched. `log π_β` is what the walk is climbing, so it is
-    // what "the best point this walk found" has to mean.
-    //
-    // The seed is in the archive. A walk that never improves on where it
-    // started therefore returns the seed and is filtered to `None` below,
-    // instead of injecting whatever it happened to be standing on at step
-    // 40 — which is what `Last` does, and is the thing being A/B'd.
-    let mut best: Option<(f64, PatchTree)> = match keep {
-        RefineKeep::Last => None,
-        RefineKeep::Best => Some((trace.total_log_weight(), seed.clone())),
-    };
-    for _ in 0..steps {
-        let (g, t) = chain.step(rng, &trace);
-        if violates_locks(&trace, &t, locked) {
-            continue; // reject outside the kernel; stay at `trace`
+impl<F> WalkRun<F>
+where
+    F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    /// Set a walk up at `seed`, with its step budget scaled for the locked
+    /// sites. [`RefineOutcome::OutsideSupport`] when the prior gives `seed`
+    /// no mass: the walk never starts.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn begin(
+        prior: PatchGrammarPrior,
+        beta: f64,
+        keep: RefineKeep,
+        fitness: F,
+        seed: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+    ) -> Result<Self, RefineOutcome> {
+        // The input a node reads belongs to the player (ADR-015), so every AUDIO
+        // IN the seed holds keeps its input and its place: its `#input` is locked
+        // exactly as a player's lock is. The kernel proposes on it like any other
+        // site (and, the prior's `PlayerInput` being what it is, would propose
+        // slot 0 and accept it), and the lock rejects that, and a removal of the
+        // node, outside the kernel. A node the walk grows reads slot 0. The lock
+        // compensation below counts these sites, since proposals on them are
+        // wasted like proposals on any lock.
+        //
+        // TRACK and CAPTURE are the player's too, so their `#op` is held the same
+        // way (`PatchTree::player_sites`): the prior never draws either, so a step
+        // that regrew one away could never grow it back, and a capture's take
+        // would go with it. Their knobs, and everything around them, stay free.
+        let held = seed.player_sites();
+        let with_held: HashSet<String>;
+        let locked = if held.is_empty() {
+            locked
+        } else {
+            with_held = locked.iter().cloned().chain(held).collect();
+            &with_held
+        };
+        // A take is not a trace site, so every term the kernel decodes comes back
+        // with empty captures. The fitness hears each one with the seed's takes
+        // carried back (a walk holds every capture where it was, so the match is
+        // exact), and so does the term the walk returns, below.
+        let carries = seed.has_takes();
+        let fitness = WithTakes {
+            inner: fitness,
+            seed: carries.then(|| Arc::new(seed.clone())),
+        };
+        let model = EvolutionModel::new(prior, fitness).with_beta(beta);
+        let chain = EvolutionChain::new(model);
+        // `init_from` is `None` exactly when the seed's total log-weight is not
+        // finite. The surrogate fitness is finite by construction (a
+        // quarantined render scores `QUARANTINE_FITNESS`, not `−∞`), so the
+        // only way to get here is a seed the grammar prior gives zero mass —
+        // which is a fact about the patch, and the caller needs to hear it as
+        // one rather than as a walk that happened not to move.
+        let Some(trace) = chain.init_from(seed) else {
+            return Err(RefineOutcome::OutsideSupport);
+        };
+
+        // Scale steps for proposals wasted on locked sites. The kernel picks a
+        // target site uniformly over all of them, so with a fraction `f` free
+        // only `f` of the proposals can be accepted and the walk needs `1/f`
+        // times as many steps to travel as far.
+        //
+        // **The cap is a cost bound, not a correction**, and it is stated
+        // rather than left silent. Past 75% of sites locked, `LOCK_SCALE_CAP`
+        // stops the compensation short — a patch with 90% of its sites pinned
+        // would otherwise ask for ten times the budget, and a `⚡ evolve from
+        // this` on a heavily-pinned patch is a button press with a person
+        // waiting behind it. So a very heavily locked walk *does* explore less
+        // than the config nominally buys. That is the intended trade; the thing
+        // to avoid is believing otherwise.
+        let total_sites = trace.choices.len().max(1);
+        let locked_present = trace
+            .choices
+            .keys()
+            .filter(|a| locked.contains(&***a))
+            .count();
+        let free = total_sites.saturating_sub(locked_present).max(1);
+        let factor = (total_sites as f64 / free as f64).min(LOCK_SCALE_CAP);
+        let steps = ((steps as f64) * factor).ceil() as usize;
+
+        let current = seed.clone();
+        // The elite archive, and it is **free**.
+        //
+        // Every trace the kernel hands back is already scored under the target
+        // program, so `total_log_weight()` *is* `log π_β = log p_grammar +
+        // β·E[u]` for the state it accompanies — no extra model execution, no
+        // extra featurization, one f64 compare per step.
+        //
+        // Scored on the target rather than on fitness alone, which is the
+        // choice worth stating. Taking the argmax of `E[u]` would discard the
+        // parsimony half of the very distribution the walk is sampling, and it
+        // would do so with a bias: a bigger term has more modules to score
+        // well with, so fitness-argmax systematically returns the largest tree
+        // the walk touched. `log π_β` is what the walk is climbing, so it is
+        // what "the best point this walk found" has to mean.
+        //
+        // The seed is in the archive. A walk that never improves on where it
+        // started therefore returns the seed and is filtered to `None` below,
+        // instead of injecting whatever it happened to be standing on at step
+        // 40 — which is what `Last` does, and is the thing being A/B'd.
+        let best: Option<(f64, PatchTree)> = match keep {
+            RefineKeep::Last => None,
+            RefineKeep::Best => Some((trace.total_log_weight(), seed.clone())),
+        };
+        Ok(Self {
+            chain,
+            trace,
+            current,
+            best,
+            locked: locked.clone(),
+            seed: seed.clone(),
+            carries,
+            left: steps,
+        })
+    }
+
+    /// Steps not yet taken.
+    pub(crate) fn left(&self) -> usize {
+        self.left
+    }
+
+    /// One transition of the chain, if any step is left.
+    pub(crate) fn step<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+        if self.left == 0 {
+            return;
         }
-        if let Some((best_w, best_tree)) = &mut best {
+        self.left -= 1;
+        let mut by_ref = rng;
+        let (g, t) = self.chain.step(&mut by_ref, &self.trace);
+        if violates_locks(&self.trace, &t, &self.locked) {
+            return; // reject outside the kernel; stay at `trace`
+        }
+        if let Some((best_w, best_tree)) = &mut self.best {
             let w = t.total_log_weight();
             if w > *best_w {
                 *best_w = w;
                 *best_tree = g.clone();
             }
         }
-        current = g;
-        trace = t;
+        self.current = g;
+        self.trace = t;
     }
-    if let Some((_, best_tree)) = best {
-        current = best_tree;
-    }
-    // Before the fixed-point test: a decoded term without its takes would
-    // never equal a seed that has them, and a walk that moved nothing would
-    // come back as a change.
-    if carries {
-        current.inherit_takes(seed);
-    }
-    // The mutation boundary, and the reason the clamp is *here* rather than
-    // at the knob that draws the number: everything downstream of this line
-    // — φ, the observation log, the faceplate, the exported PNG — takes the
-    // term as given, so a value that leaves this function wrong is wrong in
-    // six places by the time anyone can see it.
-    //
-    // The kernel should never produce one. Every continuous site is
-    // `Uniform(0,1)`, whose `log_prob` is −∞ outside the unit interval, so
-    // a proposal that escapes scores `log α = −∞` and is rejected — and
-    // that is measured, not assumed: `auracle-grammar --example
-    // mh_escape` runs 8 chains × 20 000 single-site transitions through
-    // this exact kernel and observes zero escapes. So this is a belt on a
-    // proven brace, costing one trace walk per accepted child, and its real
-    // job is to be the line that has to be deleted before the invariant can
-    // be broken again.
-    debug_assert_eq!(
-        current.domain_violations().len(),
-        0,
-        "MH seated an out-of-domain site: {:?}",
-        current.domain_violations()
-    );
-    current.clamp_domains();
-    if current == *seed {
-        Err(RefineOutcome::NoMove)
-    } else {
-        Ok(current)
+
+    /// The walk's verdict: its end state if that differs from the seed,
+    /// otherwise the reason it does not. Meant for a walk with no steps left;
+    /// finishing sooner returns the best of the steps taken so far.
+    pub(crate) fn finish(self) -> Result<PatchTree, RefineOutcome> {
+        let Self {
+            mut current,
+            best,
+            seed,
+            carries,
+            ..
+        } = self;
+        if let Some((_, best_tree)) = best {
+            current = best_tree;
+        }
+        // Before the fixed-point test: a decoded term without its takes would
+        // never equal a seed that has them, and a walk that moved nothing would
+        // come back as a change.
+        if carries {
+            current.inherit_takes(&seed);
+        }
+        // The mutation boundary, and the reason the clamp is *here* rather than
+        // at the knob that draws the number: everything downstream of this line
+        // — φ, the observation log, the faceplate, the exported PNG — takes the
+        // term as given, so a value that leaves this function wrong is wrong in
+        // six places by the time anyone can see it.
+        //
+        // The kernel should never produce one. Every continuous site is
+        // `Uniform(0,1)`, whose `log_prob` is −∞ outside the unit interval, so
+        // a proposal that escapes scores `log α = −∞` and is rejected — and
+        // that is measured, not assumed: `auracle-grammar --example
+        // mh_escape` runs 8 chains × 20 000 single-site transitions through
+        // this exact kernel and observes zero escapes. So this is a belt on a
+        // proven brace, costing one trace walk per accepted child, and its real
+        // job is to be the line that has to be deleted before the invariant can
+        // be broken again.
+        debug_assert_eq!(
+            current.domain_violations().len(),
+            0,
+            "MH seated an out-of-domain site: {:?}",
+            current.domain_violations()
+        );
+        current.clamp_domains();
+        if current == seed {
+            Err(RefineOutcome::NoMove)
+        } else {
+            Ok(current)
+        }
     }
 }
 
@@ -460,9 +555,12 @@ mod tests {
         tree.to_trace().get_usize(&fugue::addr!(key, "input"))
     }
 
-    /// **Walks never change an input.** A seed whose AUDIO IN reads slot 4,
-    /// walked on the bare prior (where nothing about the sound holds a site
-    /// in place), comes back from every walk with the node where it was and
+    /// **A listening seed walks under the shipped prior, and walks never
+    /// change an input.** AUDIO IN is a player kind: the shipped prior never
+    /// draws one and scores a player's finite, so a seed whose AUDIO IN reads
+    /// slot 4 starts a walk (it used to be refused as outside the support),
+    /// and walked on the bare prior (where nothing about the sound holds a
+    /// site in place) every walk comes back with the node where it was and
     /// still reading slot 4, while the rest of the patch moves.
     ///
     /// Without the lock this fails at once: the kernel resamples `#input`
@@ -505,10 +603,8 @@ mod tests {
             },
         };
         assert_eq!(seed.input_sites(), ["node/1/0#input"]);
-        // With the term on: the shipped prior gives an AUDIO IN no mass until
-        // live capture works (`AUDIO_IN_WEIGHT`), and a seed with `log p = −∞`
-        // does not walk at all.
-        let prior = PatchGrammarPrior::default().with_audio_in();
+        // The shipped prior, which never draws AUDIO IN and scores it finite.
+        let prior = PatchGrammarPrior::default();
         let mut moved = 0;
         for w in 0..24u64 {
             let mut rng = StdRng::seed_from_u64(0xA0D1_0000 + w);
@@ -653,8 +749,8 @@ mod tests {
         for w in 0..24u64 {
             let mut rng = StdRng::seed_from_u64(0x7AC0_0000 + w);
             let end = walk_on(
-                // The seed listens through AUDIO IN, off in the shipped prior.
-                PatchGrammarPrior::default().with_audio_in(),
+                // The shipped prior: the seed's AUDIO INs are player kinds.
+                PatchGrammarPrior::default(),
                 1.0,
                 RefineKeep::Last,
                 CountsDeaf(Arc::clone(&deaf)),
@@ -720,7 +816,7 @@ mod tests {
                     s.spawn(move || {
                         let mut rng = StdRng::seed_from_u64(0x70A2_0000 + w);
                         walk_on(
-                            PatchGrammarPrior::default().with_audio_in(),
+                            PatchGrammarPrior::default(),
                             1.0,
                             RefineKeep::Last,
                             tilted,
@@ -767,8 +863,8 @@ mod tests {
         for w in 0..4u64 {
             let mut rng = StdRng::seed_from_u64(0x0F1E + w);
             let end = walk_on(
-                // The seed listens through AUDIO IN, off in the shipped prior.
-                PatchGrammarPrior::default().with_audio_in(),
+                // The shipped prior: the seed's AUDIO INs are player kinds.
+                PatchGrammarPrior::default(),
                 1.0,
                 RefineKeep::Last,
                 Flat,

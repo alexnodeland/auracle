@@ -7,7 +7,7 @@
 //! | Site | Address | Distribution |
 //! |---|---|---|
 //! | source-vs-processor | `<p>#leaf` | `Bernoulli(source_prob)` (forced at max depth) |
-//! | source kind | `<p>#src` | `Categorical(source_weights)` |
+//! | source kind | `<p>#src` | `Categorical(source_weights)`, AUDIO IN scored as a player kind ([`SourceKind`]) |
 //! | processor kind | `<p>#op` | `Categorical(op_weights)`, plus the two player kinds ([`OpKind`]) |
 //! | modulation kind | `<p>/m#mod` | `Categorical(mod_weights)` (leaves only at max mod depth; never empty below a processor) |
 //! | CV-processor kind | `<p>/m#modop` | uniform over [`ModOp::ALL`] |
@@ -74,9 +74,14 @@ pub const N_PLAYER_OPS: usize = 2;
 /// kinds. Append-only, like every categorical whose index a trace stores.
 pub const N_OP_KINDS: usize = N_OPS + N_PLAYER_OPS;
 /// The probability the scorer gives a player kind at `#op` (see [`OpKind`]):
-/// Silence's and AUDIO IN's source weight, the grammar's other two kinds a
-/// player puts in place.
+/// Silence's source weight, the grammar's other kind a player puts in place,
+/// and what AUDIO IN scores at `#src` ([`PLAYER_SOURCE_MASS`]).
 pub const PLAYER_OP_MASS: f64 = 0.005;
+/// `#src` index of [`AudioNode::AudioIn`], the player's source kind.
+pub const SRC_AUDIO_IN: usize = N_SOURCES - 1;
+/// The probability the scorer gives AUDIO IN at `#src` (see [`SourceKind`]):
+/// the mass the player kinds at `#op` get, and Silence's weight.
+pub const PLAYER_SOURCE_MASS: f64 = PLAYER_OP_MASS;
 /// Modulation-kind categorical order: None, Lfo, Env, Rand, Follow, Euclid,
 /// Op, Pair, Steps.
 ///
@@ -257,14 +262,11 @@ impl Default for PatchGrammarPrior {
             // and is the reason a rate this small is not a reason to leave it
             // out of φ.
             //
-            // `AudioIn` is last, and **off**: [`AUDIO_IN_WEIGHT`] is 0 until
-            // the app can capture a live input (Plan-007 task 4). Until then a
-            // drawn listener would be heard through the reference clip in a
-            // duel or the bank and as silence from the keys and PERFORM, on a
-            // plate the player cannot use. At 0 the source table is exactly
-            // the one it was before the term existed, so every pool a seed
-            // deals is unchanged. [`PatchGrammarPrior::with_audio_in`] is the
-            // prior it is turned on to.
+            // `AudioIn` is last, and a **player kind**: [`AUDIO_IN_WEIGHT`]
+            // is 0, so the prior never draws one and the source table is
+            // exactly the one it was before the term existed: every pool a
+            // seed deals is unchanged. [`SourceKind`] scores a player's AUDIO
+            // IN finite, so a patch built with one can still be bred.
             source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005, AUDIO_IN_WEIGHT],
             // Filter carries subtractive identity and stays dominant — half
             // again the next-largest weight, and three to sixteen times any
@@ -351,44 +353,19 @@ impl Default for PatchGrammarPrior {
     }
 }
 
-/// AUDIO IN's source weight in the shipped prior: **0 until live capture
-/// works** (Plan-007 task 4).
+/// AUDIO IN's source weight: **0, and it stays 0.** AUDIO IN is a player
+/// kind, like TRACK and CAPTURE at `#op` (Plan-007, the maintainer's
+/// decision of 2026-10-02): no fill, walk or offer ever draws one, so every
+/// pool a seed deals is the one it dealt before the term existed, and a node
+/// that reads an input arrives only because a player patched one in.
 ///
-/// Before the app can capture an input, a listener in the pool is a sound the
-/// player hears two ways: through the reference clip in a duel or a bank
-/// render, and as silence from the keys and PERFORM, which have no input to
-/// read. So the prior draws none. The term is otherwise whole (it compiles,
-/// renders with the audition clip, scores, and walks keep its input), and
-/// [`PatchGrammarPrior::with_audio_in`] is the prior with it on.
-///
-/// Turning it on is setting this to [`AUDIO_IN_ENABLED_WEIGHT`] when task 4
-/// lands. That setting is the one the paired `make revalidate` in Plan-007
-/// measured, so if nothing else has changed, it does not owe a new run. It
-/// does move what a seed deals, so it owes `make perform-wirings` and a
-/// re-pinned boot probe (`crates/auracle-wasm/tests/boot_agrees.rs`).
-///
-/// At 0 the grammar gives a tree containing an AUDIO IN `log p = −∞`, which
-/// is Silence's argument for never using 0: such a patch cannot be walked.
-/// That is safe only while nothing can put one in a session, and nothing in
-/// the app can yet (the node has no palette entry).
+/// What keeps such a patch breedable is the scorer, not this weight:
+/// [`SourceKind`] gives AUDIO IN `ln(`[`PLAYER_SOURCE_MASS`]`)` at `#src`, so a
+/// listening patch is inside the prior's support, ⚡ and a generation can
+/// start a walk from it, and the walk holds the node by its `#input`
+/// (`PatchTree::player_sites`). A test that wants the prior to *draw* AUDIO IN
+/// sets this entry of [`PatchGrammarPrior::source_weights`] itself.
 pub const AUDIO_IN_WEIGHT: f64 = 0.0;
-
-/// AUDIO IN's weight once it is on: Silence's 0.5%, so a drawn tree reads an
-/// input about one time in a hundred. The input is the player's: a node that
-/// reads it arrives because a player patched one in, and the prior's job is
-/// to keep such a patch scoreable and breedable, not to fill the pool with
-/// inputs. Like Silence it is not tilted by taste (`Engine::biased_prior`).
-pub const AUDIO_IN_ENABLED_WEIGHT: f64 = 0.005;
-
-impl PatchGrammarPrior {
-    /// This prior with AUDIO IN drawn at [`AUDIO_IN_ENABLED_WEIGHT`]: what the
-    /// default becomes once live capture works, and what tests use to reach
-    /// the term through the prior today.
-    pub fn with_audio_in(mut self) -> Self {
-        self.source_weights[N_SOURCES - 1] = AUDIO_IN_ENABLED_WEIGHT;
-        self
-    }
-}
 
 /// The distribution of an AUDIO IN's `#input` site: which of the player's
 /// inputs the node reads.
@@ -483,6 +460,58 @@ impl fugue::Distribution<usize> for OpKind {
     }
 }
 
+/// The distribution of a `#src` site: the drawn kinds by
+/// [`PatchGrammarPrior::source_weights`], with AUDIO IN as a **player kind**.
+///
+/// [`OpKind`]'s two jobs, for the source categorical:
+///
+/// - **`sample` is today's draw, bit for bit.** It is the categorical over
+///   `source_weights` the prior always built, so it reads the stream the same
+///   way and returns the same index. With [`AUDIO_IN_WEIGHT`] at 0 it never
+///   returns [`SRC_AUDIO_IN`].
+/// - **`log_prob` keeps a player's AUDIO IN in support.** Every index scores
+///   what the categorical scores, except AUDIO IN where the weights give it no
+///   mass: there it scores `ln(`[`PLAYER_SOURCE_MASS`]`)`, finite, where the
+///   categorical says `−∞` and a walk would refuse to start
+///   (`EvolutionChain::init_from` is `None`). Weights that draw AUDIO IN (a
+///   test's) score it as drawn.
+///
+/// The extra mass is unnormalized, which is harmless for the reason it is at
+/// `#op`: a walk holds every AUDIO IN by its `#input`, so the term is the
+/// same constant in every ratio it takes, and it cancels.
+#[derive(Clone)]
+pub struct SourceKind {
+    drawn: Categorical,
+}
+
+impl SourceKind {
+    /// The `#src` distribution for these source weights.
+    pub fn new(source_weights: &[f64; N_SOURCES]) -> Self {
+        Self {
+            drawn: weighted_cat(source_weights),
+        }
+    }
+}
+
+impl fugue::Distribution<usize> for SourceKind {
+    fn sample(&self, rng: &mut dyn rand::RngCore) -> usize {
+        fugue::Distribution::sample(&self.drawn, rng)
+    }
+
+    fn log_prob(&self, x: &usize) -> f64 {
+        let lp = fugue::Distribution::log_prob(&self.drawn, x);
+        if *x == SRC_AUDIO_IN && lp == f64::NEG_INFINITY {
+            PLAYER_SOURCE_MASS.ln()
+        } else {
+            lp
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
+        Box::new(self.clone())
+    }
+}
+
 fn child_key(key: &str, i: usize) -> String {
     format!("{key}/{i}")
 }
@@ -529,7 +558,7 @@ impl PatchGrammarPrior {
         // Five of the eight sources own a modulation slot, so the source model
         // needs the grammar config the processor model already carried.
         let cfg = self.clone();
-        sample(addr!(key.clone(), "src"), weighted_cat(&weights)).bind(move |src| match src {
+        sample(addr!(key.clone(), "src"), SourceKind::new(&weights)).bind(move |src| match src {
             0 => {
                 let k = key.clone();
                 let cfg = cfg.clone();
@@ -649,9 +678,11 @@ impl PatchGrammarPrior {
             // the cheapest leaf in the grammar.
             6 => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
             // Index 7. A catch-all rather than `7 =>` because the match is on
-            // a `usize` and needs one; `weighted_cat` cannot return anything
+            // a `usize` and needs one; `SourceKind` cannot return anything
             // above `N_SOURCES - 1`, so this arm is reached for 7 and nothing
-            // else. `#input` is drawn from `PlayerInput`, which never picks a
+            // else: a player's AUDIO IN scored or replayed from its trace (the
+            // shipped weights never draw one), or a test's prior that draws
+            // one. `#input` is drawn from `PlayerInput`, which never picks a
             // device: a node the grammar draws reads the first input.
             _ => {
                 let k = key.clone();
@@ -1650,7 +1681,7 @@ fn weighted_choice<R: Rng>(rng: &mut R, weights: &[f64]) -> usize {
     let mut x = rng.gen::<f64>() * total;
     for (i, w) in weights.iter().enumerate() {
         x -= w;
-        // A kind at weight 0 (AUDIO IN while it is off) is never drawn, even
+        // A kind at weight 0 (AUDIO IN, a player kind) is never drawn, even
         // on the draw that lands exactly on a boundary.
         if x <= 0.0 && *w > 0.0 {
             return i;
@@ -1822,6 +1853,61 @@ mod tests {
         assert_eq!(w[N_SOURCES - 1], AUDIO_IN_WEIGHT);
         assert_ne!(weighted_choice(&mut Fixed(u64::MAX), &w), N_SOURCES - 1);
         assert_eq!(weighted_choice(&mut Fixed(0), &w), 0);
+    }
+
+    /// **`#src` draws what it drew before AUDIO IN was a player kind, bit for
+    /// bit.** For the shipped weights and for tilted ones (AUDIO IN untilted
+    /// at 0, as `Engine::biased_prior` leaves it), `SourceKind` and the
+    /// categorical the prior used to build return the same index from the
+    /// same stream and leave the stream in the same state, so no fill, walk or
+    /// offer deals anything different, and none deals an AUDIO IN. Every
+    /// drawn kind scores exactly what it scored, AUDIO IN scores the player
+    /// mass, and weights that draw AUDIO IN score it as drawn.
+    #[test]
+    fn source_kind_samples_what_the_old_table_sampled() {
+        use fugue::Distribution;
+        use rand::Rng;
+        let mut tilt = StdRng::seed_from_u64(0x5C0);
+        let mut tables = vec![PatchGrammarPrior::default().source_weights];
+        for _ in 0..8 {
+            let mut w = PatchGrammarPrior::default().source_weights;
+            for x in &mut w {
+                *x *= (tilt.gen::<f64>() * 2.0 - 1.0).exp();
+            }
+            tables.push(w);
+        }
+        for w in &tables {
+            assert_eq!(w[SRC_AUDIO_IN], 0.0);
+            let (new, old) = (SourceKind::new(w), weighted_cat(w));
+            for seed in 0..50u64 {
+                let mut a = StdRng::seed_from_u64(seed);
+                let mut b = StdRng::seed_from_u64(seed);
+                for _ in 0..400 {
+                    let (x, y) = (new.sample(&mut a), old.sample(&mut b));
+                    assert_eq!(x, y, "#src drew {x}, the old table {y}");
+                    assert_ne!(x, SRC_AUDIO_IN, "an AUDIO IN was drawn");
+                }
+                assert_eq!(
+                    a.gen::<u64>(),
+                    b.gen::<u64>(),
+                    "the stream moved differently"
+                );
+            }
+            for i in 0..SRC_AUDIO_IN {
+                assert_eq!(new.log_prob(&i).to_bits(), old.log_prob(&i).to_bits());
+            }
+            assert_eq!(old.log_prob(&SRC_AUDIO_IN), f64::NEG_INFINITY);
+            assert_eq!(new.log_prob(&SRC_AUDIO_IN), PLAYER_SOURCE_MASS.ln());
+            assert_eq!(new.log_prob(&N_SOURCES), f64::NEG_INFINITY);
+        }
+        // A test's prior that draws AUDIO IN scores it as it draws it.
+        let mut w = PatchGrammarPrior::default().source_weights;
+        w[SRC_AUDIO_IN] = 0.2;
+        let (new, old) = (SourceKind::new(&w), weighted_cat(&w));
+        assert_eq!(
+            new.log_prob(&SRC_AUDIO_IN).to_bits(),
+            old.log_prob(&SRC_AUDIO_IN).to_bits()
+        );
     }
 
     /// **`#op` draws what it drew before the player kinds existed, bit for

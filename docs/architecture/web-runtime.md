@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-10-02
-related_adrs: [1, 2, 7, 12]
+related_adrs: [1, 2, 7, 12, 15]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -61,9 +61,65 @@ served within a lane (`laneOf` in `worker.js`):
   probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
-so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
-answering every `now` request that arrived meanwhile. One long job holds the
-floor at a time. A hidden PERFORM's measurement drops to `later`.
+so long jobs are cut into pieces and `breathe` between pieces, answering every
+`now` request that arrived meanwhile. One long job holds the floor at a time.
+A hidden PERFORM's measurement drops to `later`. The jobs cut this way are
+PERFORM's measurement (`measure`, a render at a time), the model's guess and
+PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
+most one render, at a time; below).
+
+### Offers and drifts are jobs
+
+An offer is 20 steps (40 in *roam*), times up to four under locks, and an aimed
+one may walk up to three times: 12 renders for a drift, 20 to 60 for an offer,
+and past 120 for a roam offer that is aimed and locked. As one wasm call they kept the worker deaf for all of them, and it
+did not matter which lane they were in, because the lane decides when a call
+*starts*. A spare offer grown in the background (`later`) therefore stood in
+front of a pick (`perform_record`, `now`), a Keep, a ▶ and a bench open: the
+first spare took 62 s on a CI runner, and everything the player did in that
+minute waited (`perform_teaches`, `perform_recentre` and `perform_next` timed
+out on it).
+
+Now `perform_offer` and `perform_drift` begin a **job** in the engine
+(`perform_offer_begin`, `perform_drift_begin`: a handle) and `walkRun` advances
+it one step at a time (`perform_job_step`), `breathe`ing between steps, and
+asks for the reply when it is done (`perform_job_finish`). It holds the floor
+like `measure` does, with these rules:
+
+- A player's request waits for the step in progress, at most one render. A
+  gesture that is several round trips to the worker (a Keep) waits for one
+  step per trip.
+- A spare or Wander's drift (`later`) gives the floor up when long work the
+  player asked for is waiting (a pressed Offer, a measurement), goes back to
+  the front of `later` with its job intact (ahead of anything waiting in `later`
+  and of the faces lane below it, which only starts when nothing above it is
+  ready and the floor is free), and resumes after it. A claim on a
+  spare (`promote`) stops it giving way, and a claimed spare that had already
+  given way goes to the front of `soon`.
+- `retire` (the page left the patch, or a turn replaced an aimed offer) stops a
+  walk that is running at its next step, drops one that is paused, and answers
+  `retired`, instead of walking to the end for nothing.
+- A binary without the jobs (a stale cache) takes the one call, as it always
+  did.
+
+What this does not do is shorten an offer: a pressed Offer still takes its
+renders, and on a slow machine that is a wait the player sees (B counts the
+seconds). It stops the wait being everyone's.
+
+**Determinism** ([ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+A job takes one draw of the session's PERFORM stream when it begins and walks
+on a generator of its own seeded from it, and it reads the target (the tilted
+prior, the posterior, the standardizer, β) as it stood when it began, and
+says in its reply what was true then (`taste`, how far it `moved`). The render
+memo is not part of that target: it is a shared, bounded cache that keeps
+changing under the job, and it only saves renders (a hit is bit-identical to a
+miss).
+Which step ran when, what the player recorded meanwhile, and what other walk
+was begun or paused beside it change nothing it finds. The engine's own
+`offer`, `offer_toward` and `drift` are the job run to the end on a caller's
+generator, so stepping and not stepping are one walk
+(`a_stepped_walk_is_the_walk`; in the bindings
+`a_stepped_offer_gives_the_reply_the_one_call_gives`).
 
 A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
 the farm and never hold the floor, so every lane is served while they run.
@@ -187,26 +243,45 @@ the same way.
 
 ## The model's guess and the cable probe
 
-Two Plan-005 task 9 surfaces the page does not call yet (PATCH's task 7 draws
-them). Both are about the patch in hand, and each reply carries the tree it
+Two Plan-005 task 9 surfaces, drawn by PATCH (task 7, `apps/web/patch.js`).
+Both are about the patch in hand, and each reply carries the tree it
 was computed for (`edit_tree_json`), so a page that has moved on drops it, as
 it drops a stale pre-placement audition.
 
-- **`guess`** (`later`, holds the floor; `{token, at?}`): the module the model
+- **`guess`** (`later`; `{token, at?}`): the module the model
   guesses the player would add next
-  ([reference](../../www/reference/src/search/guess.md)). `guessRun` asks the
-  engine what it owes (`guess_plan`: the patch first if unmeasured, then the
-  output's candidates in render order), renders the first `GUESS_FLOOR` (8)
-  with `memo_render`, one per turn, breathing between them as PERFORM's
-  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of render
-  time is spent (render time only, checked after each render, so it can run
-  over by one), and posts `guess` with `{token, tree, data}`: the ranking
-  (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
-  the grammar's ceiling, `no_patch` with nothing open). It gives way to work
-  the player asks for and resumes from the memo. `at`, a module's key, ranks
-  that deeper socket instead of the output's. Rendering the candidates on a
-  crew (`farm_render`, then `memo_absorb`; each job's `cache` is its key in
-  the farm's store) is not wired yet.
+  ([reference](../../www/reference/src/search/guess.md)). It runs in two
+  phases, and only the second holds the floor:
+  - `guessCrewPhase`, detached from the pump (one guess's at a time): it plans first, and a refusal (`no_taste`, `full`) or
+    a guess the memo already holds raises no crew. Otherwise, where a walk
+    crew can be had
+    (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
+    walks), it plans every candidate (`guess_plan` with limit 0) and hands
+    them out one `farm_render` per idle worker (the farm's `job`, its `done`
+    routed by `guessDone`; a lost worker gives its job back, `guessLost`),
+    absorbing each with `memo_absorb` as it lands, for at most
+    `GUESS_BUDGET_MS` (3 s) of wall-clock time from when the crew is up
+    (`crewRenders`). The crew's idle timer starts when it ends. It renders
+    nothing on the worker's thread, so it must not stop `soon` work starting:
+    held on the floor, it made a pressed Offer, `refine` and the measurement
+    of the sound in hand wait for a crew's spawn and its renders (about 4 s,
+    up to 18 s). When it ends the guess goes back to the front of `later`.
+  - `guessRun`, holding the floor: renders with `memo_render` whatever of the
+    first `GUESS_FLOOR` (8) is still owed (nothing after a crew that rendered
+    them; all of them with none), one per turn, breathing between them as
+    PERFORM's measurement does, and stops rendering once `GUESS_BUDGET_MS` of
+    render time is spent (render time only, checked after each render, so it
+    can run over by one).
+  
+  It posts `guess` with `{token, tree, data}`: the ranking (`guess_rank`,
+  over every candidate after a crew, the first eight without), or `{reason}`
+  (`no_taste` before the first fit, `full` at the grammar's ceiling,
+  `no_patch` with nothing open). It gives way to work the player asks for and
+  resumes from the memo. `at`, a module's key, ranks that deeper socket
+  instead of the output's. PATCH keeps one `guess` out at a time, asks once
+  the bench settles after an open or a structural edit, a refit or a skip
+  (never after a knob turn alone), and drops a ranking made on a structure
+  it has since left.
 - **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
   edit with the same replies, remembered so that a later edit back to the
   tree before it (⌘Z) counts as a skip. A guess no longer current for the
@@ -220,7 +295,93 @@ it drops a stale pre-placement audition.
   the rack draws them (`from`, `to`, and both uids), in the live meter's dB
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
-  sound, the worklet's meter reads the cables live.
+  sound, the worklet's meter reads the cables live. PATCH asks once the bench
+  has settled (`benchSettled`, no knob held, about 450 ms after an edit's
+  reply, and 1.2 s after an open or PATCH coming into view, `ARRIVE_MS`, so
+  a click on another sound is not left waiting behind a render) and only
+  while PATCH is shown, with at most one probe at the
+  engine (one asked meanwhile waits for its answer, then measures the tree
+  on screen), keys each level by the cable's `from>to`, and drops a reply whose `tree` is not the bench's
+  (`benchTreeJson`), asking again. At rest a cable's light is its measured
+  level (patch.js `restLevel`, read by `buildRack` and `repaintMeasuredFlow`);
+  a structure not measured yet is unlit, with hollow marks.
+
+PATCH's own module (`patch.js`, created as `patchView` in main.js) also holds
+a patch from nothing (NEW PATCH: one `edit_set_tree` that sets the root to an
+empty `Silence` socket and keeps the amp; CLEAR, BACK TO ‹name›) and the module
+sheet on touch, whose sliders write through `sendEdit` and the one ordered
+lane, holding `knobDragging` while a finger is down so no knob is rebuilt
+under it. It reaches main.js only through the host it is handed, and main
+calls it back at a handful of points: `onWorker` (its three replies),
+`benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
+`committed`, and `shown`/`hidden`.
+
+## Faces
+
+Every row, chip and card draws its sound's face (Plan-005 task 3; the guide's
+`faces.md`, the reference's `features/faces.md`): the render's spectrum in 40
+bands × 12 slices (`auracle_features::face`), drawn against the bank.
+
+- **Taken in the featurization.** The face is computed inside
+  `featurize_memo` from the render φ is measured on and rides on the memo row
+  (`CachedFeatures::face`), so farm rows (`farm_render`), walk results
+  (`farm_walk`) and offers carry it without a render of their own. It is not
+  part of φ. In wasm it costs 2.5 ms against a 201 ms featurization
+  (`crates/auracle-wasm/examples/face_cost.mjs`).
+- **Filed by the worker under `"<ns>/<render key>"`**, as a farm row is
+  (`face_key` for a pool member, `farm_key` for a tree). The memo is an LRU a
+  generation's walks churn, so the worker copies a face out the first time it
+  is asked for and keeps it in memory (`faceMem`) and in its own IndexedDB
+  store (`auracle-faces`), stamped with the namespace as the render cache is
+  (`faceStoreOpen`): a build whose renders differ never reads another's.
+- **`faces`** (now lane; main → worker): `{ids, trees: [{ref, tree} | {ref,
+  preset} | {ref, memo}], render}`. A `memo` is a render key already in the
+  engine's memo: PATCH's guess names the render of each candidate
+  (`Guess::key`), and its face is read with `face_of_key`, which never
+  renders (a row evicted since is `failed`). Answered at once from memory alone, with `{type:
+  "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
+  are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
+  `face_of_tree`, a resident audition, the store), each posted as a `faces`
+  as it is found. With `render`, what none of them has is queued as
+  **`face_render`** in the **faces lane**, below `later` (`FACES`), so a
+  refit, a guess or a cable probe always goes first, and blocked until boot
+  has finished (`blocked`: half a second each, they would slow the fill);
+  each is answered as it lands, or in `failed` (a tree that does not vet).
+  Rendering a pool member for its face does not make it resident, so it
+  evicts no audition. A preset is asked by index (`preset_tree_json`), so its
+  face does not insert it into the bank. Every request is answered; a
+  `not_ready` or an `engine_error` for one makes main ask again when a slot
+  next wants it.
+- **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
+  that left the view (a preset row scrolled past, the PRESETS tab left) is
+  dropped from the faces lane and from waiting lookups, and answered as `faces`
+  with `cancelled`; main asks again when the slot comes back into view.
+- **After a `render`**, the worker posts the buffer first; the face, if main
+  hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
+  stored audition (not the PCM main is sent: `audition_pcm` limits). No face
+  work runs in the render's turn; a face's render already running (about half
+  a second) can still hold up a render that arrives during it.
+- **Main whitens and draws** (`faces.js`, `faceRestat`, `paintFaces` in
+  `main.js`): the bank's mean per band and pooled spread over the faces of the
+  rows the bank shows, recomputed when that set changes (once a frame) and
+  drawn against only when it has moved more than 0.25 dB in a band or 1% of
+  the spread. One renderer draws a face at every size (`vessel.js`
+  `drawVessel`); a slot shows it drawn once per bank as an image (a PNG data
+  URL); after the bank changes, the bank's rows in view are redrawn the next
+  frame and the rest when the page is idle. A slot is fixed-size and present
+  whether or not its face has arrived, so no name moves for it.
+- **Stage mode** (`stageDraw` in `perform.js`) draws the sound in hand's
+  face (`host.faceOf(tree)`: the face and the bank) with `drawVessel` at full
+  height, with its glow and reflection, on a still layer drawn again only
+  when the face, the bank or the size changes; what sounds is drawn over it
+  on a second canvas (`st-trail`), measured as a face is (`createLiveMeter`:
+  the analyser's time-domain samples through the face's Hann frame and band
+  weights, in buffers made once) against the same bank, fading like phosphor
+  and cleared in silence.
+- **TASTE's map** draws each sound as its face (`host.drawFace`, main's
+  `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
+  per bank and size; a dot until the face lands, and the map is redrawn as
+  faces do.
 
 ## A control's figure and the lesson on filters
 
@@ -566,6 +727,73 @@ inlined behind a TextDecoder polyfill, and transfers raw wasm bytes for a
 synchronous compile inside the worklet. A patch swap compiles one voice per
 quantum while that node is muted. Levels follow one policy
 (`auracle-wasm/src/level.rs`) for auditions and live play.
+
+## AUDIO IN
+
+The player's input in a patch (Plan-007 task 4,
+[ADR-015](../decisions/015-audio-in.md)) is `audio-in.js` on the main thread,
+the voices' input in the worklet, and the clip in the engine.
+
+- **Permission.** `queueStruct` (every structural gesture's funnel) calls
+  `audioIn.added()` when the op carries an `AudioIn`, inside the gesture; that
+  is the only place the app asks `getUserMedia` for a grant. Opening a sound
+  that listens asks nothing: the input opens if `navigator.permissions` says
+  the microphone is granted, and otherwise the module shows ALLOW INPUT. A
+  refusal keeps the node, silent.
+- **Inputs.** The engine's `input` knob is a slot (1 to 8); the slot → device
+  list is JS-owned (`auracle-inputs` in localStorage). `renderRack` calls
+  `audioIn.follow(rack)` on every redraw, which opens one `getUserMedia`
+  stream per device the bench reads and closes the rest. Chrome and Edge
+  answer an unconstrained ask with the pseudo-device `default`, which
+  `realId` resolves to the real input (its group, else its label) before it
+  is numbered. Each stream's one
+  source node fans out to an analyser per device (every module's meter), the
+  worklet's input, and the clip's capture. `devicechange` and a track's
+  `ended` silence what read a device that went, and reopen it when it is back.
+- **The square.** The meter loop (rAF, only while a stream is open) reads
+  each analyser's time buffer, one `FACE_FRAME` long, for the level and,
+  above −60 dBFS, for the live face: `createLiveMeter().measure` (faces.js)
+  into the face's bands, eased (0.6 old, 0.4 new), drawn by `drawVessel` on
+  a canvas in the plate's square against the bank's `faceStats` in
+  `--phos-a`, through `host.faceStats`/`host.faceColor`. The lane's
+  `data-face` says whether it drew (`live`) or not (`none`: silence, or no
+  stats under four faces); the level bar runs up the square's left edge.
+- **The voices.** The worklet node has one two-channel input. `audio-in.js`
+  connects the source of the bench's first AUDIO IN to it (`LivePoly` binds one
+  input stream that every AUDIO IN reads). Main posts `monitor {on}` to the
+  worklet, on only while monitoring is on and an input is connected. On, the
+  processor writes each quantum of the input into `LivePoly` (`input_ptr`,
+  `write_input`) before `process_ptr`, for A and B, and calls
+  `set_open(true)`; off, it writes nothing, calls `clear_input` and
+  `set_open(false)`. The input view into wasm memory is re-made whenever
+  `view.buffer !== wasm.memory.buffer` or the pointer moved, checked every
+  quantum, and nothing is allocated per quantum. Monitoring is never saved,
+  and it ends when the bench has no AUDIO IN left.
+- **The open voice.** Every patch ends in its amp envelope, gated by the keys,
+  so a patch that listens would be silent with no key down. `LivePoly` builds
+  such a patch one voice longer and `set_open(true)` holds that voice at C4,
+  outside the keys' allocation (no key, unison, arp or `all_off` takes it), in
+  the parameter table, carried across swaps like a held note. A patch that
+  does not listen has none.
+- **The clip.** On first listen (the voices' input over −50 dBFS and the
+  session's clip still the reference, and no capture refused since) or NEW CLIP, `audio-in.js` records 6 s
+  of the source through a one-shot `auracle-tap` worklet node (it ends its
+  processor once its take is handed back, or dropped when the capture is cut
+  short) and posts
+  `set_audition_clip {samples, channels, sampleRate}` (transferred) to the
+  engine worker, in the `now` lane. The reply is `audition_clip` with `ok`,
+  the engine's `note`, `clip`, `remeasured` and `unmeasured`, `farmResent`
+  (how many farm workers were handed the new phrase) and, when listeners were
+  measured again, `views` and `status`; main applies them and saves the
+  session, which carries the clip. Restores and `ready` post `audition_clip`
+  with the status only.
+- **The farm's phrase.** The phrase carries the clip, so the worker sends the
+  `phrase` handshake again to the crew standing after a clip is taken
+  (`farmResendPhrase`), and in a staged restore right after
+  `import_session_deferred_v2` installs a captured clip, before any bank job
+  goes out (port messages are ordered). A crew raised later gets the current
+  phrase in `farmSetup`. `farm.js` keeps its open render store when the
+  namespace is unchanged (the namespace never sees the clip).
 
 ## The job slot
 

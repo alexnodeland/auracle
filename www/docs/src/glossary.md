@@ -4,6 +4,14 @@
 [reference](../reference/) defines the same things in full; this page is for
 reading the app.</p>
 
+### AUDIO IN, input, MONITOR, clip
+
+**AUDIO IN** is the module that brings your own signal into a patch. An
+**input** is a microphone or an interface the browser offers, numbered from 1.
+**MONITOR** plays your input through the sound at the speakers; it starts off
+every time. A **clip** is the seconds of your input the model hears a sound
+with AUDIO IN through. See [playing through Auracle](./playing-through.md).
+
 ### Bank
 
 The rail on the left, with three tabs: **POOL** (the sounds the model weighs
@@ -25,6 +33,12 @@ of it or at it (*23/24 modules*). **⋯** › **Show measurements** shows all
 three (*8/24 modules · 4/6 depth · 1/3 mod depth*). A patch at a ceiling has
 no room to grow.
 
+### Card
+
+The picture of a sound you download to share it: its face, its name and
+where it came from, with the patch inside. See
+[sharing a sound as a card](./faces.md#share-a-sound-as-a-card).
+
 ### Child, NEW
 
 A sound a generation bred. The children of the latest generation lead the
@@ -43,6 +57,12 @@ The strip under EVOLVE’s cards: what each generation did, step by step. Each
 step names the seed and the child, what changed, and how much more the model
 guessed you’d like the child than its seed (*liked +0.06*). See [the EVOLUTION
 strip](./views/evolve.md#the-evolution-strip).
+
+### Face
+
+A sound’s drawn shape, beside its name everywhere: its spectrum from its own
+render, low at the base, wide where it has more than the bank’s sounds and
+narrow where it has less. See [a sound’s face](./faces.md).
 
 ### Fair-test picks
 

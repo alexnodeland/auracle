@@ -110,7 +110,10 @@ derived from the session seed, and a fit is seeded from the evidence count
 session therefore deals, fits and breeds the same way however long anything
 took. Within a generation each walk has its own seed, derived from one draw of
 the `refine` stream, so which farm worker finishes first cannot change what
-is bred. The one remaining nondeterminism in the app is *when* the first duel is
+is bred. PERFORM's offers and drifts are seeded the same way: each takes one
+draw of the `perform` stream when it begins and walks on a generator of its
+own, so pausing one, or beginning another beside it, cannot change what either
+finds. The one remaining nondeterminism in the app is *when* the first duel is
 dealt: it is dealt at `playable`, while the pool is still filling.
 
 ## Adding a module

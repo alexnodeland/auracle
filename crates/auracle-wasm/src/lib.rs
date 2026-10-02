@@ -53,7 +53,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, Audition, AuditionClip, CachedFeatures, ClipError, ClipSource, Features,
+    featurize_memo, Audition, AuditionClip, CachedFeatures, ClipError, ClipSource, Face, Features,
     FeaturizeError, PhraseSpec, RenderMemo, VetFailure,
 };
 use auracle_grammar::{
@@ -67,7 +67,7 @@ use auracle_session::{
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -698,7 +698,9 @@ struct Streams {
     /// Evolution: EVOLVE POOL's walks and ⚡ evolve from this.
     refine: StdRng,
     /// PERFORM: offers (including the spare grown in the background) and
-    /// Wander's drift.
+    /// Wander's drift. Each takes one draw when it begins and walks on a
+    /// generator of its own seeded from it ([`Held`]), so a walk paused and
+    /// resumed, or another begun beside it, cannot move what it finds.
     perform: StdRng,
 }
 
@@ -765,13 +767,139 @@ pub struct WasmEngine {
     /// by index — the same statelessness the pool fill gets from its draw
     /// stream.
     pending_bank: Vec<BankEntry>,
-    /// The model's guesses' skips and last taken guess, per patch (the pool
-    /// id the bench was opened from): what the ranking cannot remember.
+    /// The model's guesses' skips and last taken guess, per patch: what the
+    /// ranking cannot remember.
     guesses: GuessMemory,
+    /// The patch the bench's guesses are filed under: the pool id it was
+    /// opened from, until keep as new moves it to the new sound's id.
+    ///
+    /// Not `bench_original`, which stays the id the bench was opened from
+    /// after a commit (a later commit duel plays against it, and the page
+    /// does not reopen the kept sound): skips made after keep as new were
+    /// filed under the old id, so the kept sound, opened again, offered
+    /// them back.
+    guess_key: Option<u64>,
+    /// The last key [`Self::guess_patch_as`] made for a patch of its own,
+    /// counting down from `u32::MAX`, clear of every pool id.
+    guess_fresh: u64,
     /// Every preset's audio φ, for the presets nearest a sound of your own
     /// ([`WasmEngine::own_presets_set`]). Empty until the worker hands over
     /// the shipped wirings; then only pool members are named as nearest.
     own_presets: Vec<auracle_session::PresetPhi>,
+    /// PERFORM's walks in the middle ([`WasmEngine::perform_offer_begin`],
+    /// [`WasmEngine::perform_drift_begin`]), by handle.
+    jobs: std::collections::HashMap<u32, Held>,
+    next_job: u32,
+}
+
+/// A PERFORM walk begun and not yet answered: the job, the generator it
+/// draws from, and what its reply says about it.
+struct Held {
+    job: auracle_session::PerformJob,
+    /// The walk's own stream, seeded from one draw of the session's `perform`
+    /// stream when it began. So what a walk draws never depends on what
+    /// else was drawn between its steps, however many walks are paused at
+    /// once (ADR-001).
+    rng: StdRng,
+    /// The performed state it grows from.
+    home: PatchTree,
+    drift: bool,
+    /// Whether the walk's target was taste-directed when it began: what the
+    /// reply says, whatever was imported or fitted since.
+    taste: bool,
+}
+
+impl WasmEngine {
+    /// Hold a begun walk and answer with its handle, or with why it cannot
+    /// start.
+    fn hold(
+        &mut self,
+        made: Result<auracle_session::PerformJob, auracle_session::RefineOutcome>,
+        home: PatchTree,
+        drift: bool,
+    ) -> String {
+        match made {
+            Ok(job) => {
+                // The next handle not in hand (a handle counts up and skips 0,
+                // so only a walk held across four billion others could be
+                // met on the way round).
+                while self.next_job == 0 || self.jobs.contains_key(&self.next_job) {
+                    self.next_job = self.next_job.wrapping_add(1);
+                }
+                let id = self.next_job;
+                self.next_job = self.next_job.wrapping_add(1);
+                let rng = StdRng::seed_from_u64(self.rng.perform.next_u64());
+                self.jobs.insert(
+                    id,
+                    Held {
+                        job,
+                        rng,
+                        home,
+                        drift,
+                        taste: self.engine.has_taste(),
+                    },
+                );
+                serde_json::json!({ "job": id }).to_string()
+            }
+            Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
+        }
+    }
+
+    /// Run a begun walk (`begun`, the reply of a `_begin`) to the end and
+    /// answer it: the one-call forms of the offer and the drift.
+    fn run_job(&mut self, begun: &str) -> String {
+        let Some(id) = serde_json::from_str::<serde_json::Value>(begun)
+            .ok()
+            .and_then(|v| v.get("job").and_then(|j| j.as_u64()))
+        else {
+            return begun.to_string();
+        };
+        let id = id as u32;
+        while self.perform_job_step(id, u32::MAX) {}
+        self.perform_job_finish(id)
+    }
+
+    /// The reply for a walk's verdict: the offer's (`makeup`, `diff`, and
+    /// `moved` for an aimed one) or the drift's (`knobs`).
+    fn job_reply(
+        &self,
+        grown: Result<PatchTree, auracle_session::RefineOutcome>,
+        home: &PatchTree,
+        moved: Option<f64>,
+        drift: bool,
+        taste: bool,
+    ) -> String {
+        let t = match grown {
+            Ok(t) => t,
+            Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
+        };
+        if drift {
+            let knobs =
+                auracle_session::perform::live_knobs(&t, self.engine.cfg.phrase.sample_rate);
+            return tree_reply(&TreeReply {
+                tree: &t,
+                knobs: Some(&knobs),
+                makeup: None,
+                taste: Some(taste),
+                diff: None,
+                moved: None,
+            });
+        }
+        let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
+            .map(|(cf, _)| live_makeup(&cf.features))
+            .unwrap_or(1.0);
+        // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
+        // kHz") instead of only "an offer is waiting".
+        let diff = auracle_grammar::tree_diff(home, &t);
+        tree_reply(&TreeReply {
+            tree: &t,
+            knobs: None,
+            makeup: Some(makeup),
+            taste: Some(taste),
+            diff: Some(&diff),
+            moved,
+        })
+    }
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -905,7 +1033,11 @@ impl WasmEngine {
             bench_phi_prev: None,
             pending_bank: Vec::new(),
             guesses: GuessMemory::default(),
+            guess_key: None,
+            guess_fresh: u32::MAX as u64 + 1,
             own_presets: Vec::new(),
+            jobs: std::collections::HashMap::new(),
+            next_job: 1,
         }
     }
 
@@ -1267,6 +1399,106 @@ impl WasmEngine {
     /// rather than after they press ▶. Cheap and idempotent once resident.
     pub fn prefetch_render(&mut self, id: u32) -> bool {
         self.engine.render_of(id as u64).is_some()
+    }
+
+    // ------------------------------------------------------------------
+    // Faces (Plan-005 task 3; `auracle_features::face`)
+    // ------------------------------------------------------------------
+
+    /// The face of pool member `id` ([`auracle_features::Face`], its
+    /// [`auracle_features::FACE_LEN`] encoded bytes), or empty.
+    ///
+    /// From the featurization memo when the row there carries one (every
+    /// render since faces exist does), else from the audition if it is
+    /// resident. Only with `render` does it render the member (about half a
+    /// second): a row restored from a store written before faces existed.
+    /// That render is not kept, so it evicts no resident audition. A face is
+    /// a picture of the render and never enters φ.
+    pub fn face_of(&mut self, id: u32, render: bool) -> Vec<u8> {
+        let Some(i) = self.engine.find(id as u64) else {
+            return Vec::new();
+        };
+        let key = self.engine.pool[i].key.clone();
+        if let Some(face) = self.engine.memo().get(&key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        if let Some(a) = self.engine.pool[i]
+            .render
+            .clone()
+            .or_else(|| self.engine.memo().get_audio(&key))
+        {
+            return self.remember_face(&key, &a).bytes().to_vec();
+        }
+        if !render {
+            return Vec::new();
+        }
+        // Rendered for its face alone, and not kept: making it resident
+        // (`Engine::render_of`) would push a sound the player is about to
+        // hear out of the small audition cache, for a picture.
+        let c = &self.engine.pool[i];
+        match auracle_features::render_playback(
+            &c.tree,
+            &self.engine.cfg.phrase,
+            c.features.gain_db,
+        ) {
+            Ok(a) => self.remember_face(&key, &a).bytes().to_vec(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// The face of the memo row `key` (a render key), or empty: what the
+    /// model's guess rendered for each of its candidates (`Guess::key`), the
+    /// patch with that module, as rendered. Never renders.
+    pub fn face_of_key(&self, key: &str) -> Vec<u8> {
+        if let Some(face) = self.engine.memo().get(key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        self.engine
+            .memo()
+            .get_audio(key)
+            .map(|a| self.remember_face(key, &a).bytes().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// `"<cache_namespace>/<render_key>"` of pool member `id` (as
+    /// [`farm_key`] names a tree's), the key a face is stored under; empty
+    /// for an id not in the pool.
+    pub fn face_key(&self, id: u32) -> String {
+        self.engine
+            .find(id as u64)
+            .map(|i| {
+                format!(
+                    "{}/{}",
+                    auracle_features::cache_namespace(&self.engine.cfg.phrase),
+                    self.engine.pool[i].key
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    /// The face of a tree (a preset, an offer, the patch on the bench), or
+    /// empty: from the memo (an offer, a PERFORM measurement or an edit has
+    /// featurized it), else, with `render`, by featurizing it. A tree that
+    /// does not vet has no face.
+    pub fn face_of_tree(&self, tree_json: &str, render: bool) -> Vec<u8> {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return Vec::new();
+        };
+        let spec = self.phrase();
+        let key = auracle_features::render_key(&tree, &spec);
+        if let Some(face) = self.engine.memo().get(&key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        if let Some(a) = self.engine.memo().get_audio(&key) {
+            return self.remember_face(&key, &a).bytes().to_vec();
+        }
+        if !render {
+            return Vec::new();
+        }
+        match featurize_memo(&tree, &spec, self.engine.memo(), false) {
+            Ok((cached, _)) => cached.face.map(|f| f.bytes().to_vec()).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
     }
 
     /// Featurization-memo counters as JSON
@@ -1922,6 +2154,10 @@ impl WasmEngine {
     /// posterior yet the walk still runs, on the prior alone (`taste: false`):
     /// the grammar's own idea of a nearby sound. Inserts nothing into the
     /// pool.
+    ///
+    /// One call, uninterruptible: the worker uses
+    /// [`Self::perform_drift_begin`] and steps it, and this is those three
+    /// calls in a row, so the two give the same drift.
     pub fn perform_drift(
         &mut self,
         tree_json: &str,
@@ -1930,31 +2166,8 @@ impl WasmEngine {
         steps: u32,
         sigma: f64,
     ) -> String {
-        let Some(tree) = performed_tree(tree_json, overrides_json) else {
-            return "null".into();
-        };
-        let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
-        match self.engine.drift(
-            &mut self.rng.perform,
-            &tree,
-            &locks,
-            steps.max(1) as usize,
-            sigma,
-        ) {
-            Ok(t) => {
-                let knobs =
-                    auracle_session::perform::live_knobs(&t, self.engine.cfg.phrase.sample_rate);
-                tree_reply(&TreeReply {
-                    tree: &t,
-                    knobs: Some(&knobs),
-                    makeup: None,
-                    taste: Some(self.engine.has_taste()),
-                    diff: None,
-                    moved: None,
-                })
-            }
-            Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
-        }
+        let begun = self.perform_drift_begin(tree_json, overrides_json, locks_json, steps, sigma);
+        self.run_job(&begun)
     }
 
     /// A structural offer from the performed state: the locked walk with only
@@ -1971,7 +2184,32 @@ impl WasmEngine {
     /// high word — so the page can say "grittier by 0.8σ", or that it did not
     /// move that way. Without `control` it is the Offer button's undirected
     /// walk, and there is no `moved`.
+    ///
+    /// One call, uninterruptible: the worker uses [`Self::perform_offer_begin`]
+    /// and steps it, and this is those three calls in a row, so the two give
+    /// the same offer.
     pub fn perform_offer(
+        &mut self,
+        tree_json: &str,
+        overrides_json: &str,
+        locks_json: &str,
+        steps: u32,
+        control: Option<u32>,
+        sign: Option<f64>,
+    ) -> String {
+        let begun =
+            self.perform_offer_begin(tree_json, overrides_json, locks_json, steps, control, sign);
+        self.run_job(&begun)
+    }
+
+    /// Begin [`Self::perform_offer`] as a job the worker can step: returns
+    /// `{"job": n}` (a handle for [`Self::perform_job_step`],
+    /// [`Self::perform_job_finish`] and [`Self::perform_job_drop`]), or
+    /// `{reason}` / `null` exactly as `perform_offer` would answer a walk that
+    /// cannot start. The walk draws from its own stream, seeded here from one
+    /// draw of the session's PERFORM stream, and reads the target (the prior,
+    /// the posterior, the memo) as it stands now.
+    pub fn perform_offer_begin(
         &mut self,
         tree_json: &str,
         overrides_json: &str,
@@ -1985,34 +2223,77 @@ impl WasmEngine {
         };
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
         let steps = steps.max(1) as usize;
-        let rng = &mut self.rng.perform;
-        let grown = match control {
-            Some(k) => {
-                let s = sign.unwrap_or(1.0);
-                self.engine
-                    .offer_toward(rng, &tree, &locks, steps, k as usize, s)
-            }
-            None => self.engine.offer(rng, &tree, &locks, steps),
+        let made = match control {
+            Some(k) => self.engine.offer_aimed_job(
+                &tree,
+                &locks,
+                steps,
+                k as usize,
+                sign.unwrap_or(1.0),
+                auracle_session::perform::AIM_GAMMA,
+                auracle_session::perform::AIM_WALKS,
+            ),
+            None => self.engine.offer_job(&tree, &locks, steps),
         };
-        let t = match grown {
-            Ok(t) => t,
-            Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
+        self.hold(made, tree, false)
+    }
+
+    /// Begin [`Self::perform_drift`] as a job, as
+    /// [`Self::perform_offer_begin`] does for an offer.
+    pub fn perform_drift_begin(
+        &mut self,
+        tree_json: &str,
+        overrides_json: &str,
+        locks_json: &str,
+        steps: u32,
+        sigma: f64,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
         };
-        let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
-            .map(|(cf, _)| live_makeup(&cf.features))
-            .unwrap_or(1.0);
-        // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
-        // kHz") instead of only "an offer is waiting".
-        let diff = auracle_grammar::tree_diff(&tree, &t);
-        let moved = control.and_then(|k| self.engine.moved_along(&tree, &t, k as usize));
-        tree_reply(&TreeReply {
-            tree: &t,
-            knobs: None,
-            makeup: Some(makeup),
-            taste: Some(self.engine.has_taste()),
-            diff: Some(&diff),
-            moved,
-        })
+        let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
+        let made = self
+            .engine
+            .drift_job(&tree, &locks, steps.max(1) as usize, sigma);
+        self.hold(made, tree, true)
+    }
+
+    /// Advance walk `job` by up to `n` steps, each one proposal (at most one
+    /// phrase render):
+    /// the unit the worker can be interrupted at. True while there is more to
+    /// do; false once the walk has its verdict (or `job` is not a walk in
+    /// hand), and then [`Self::perform_job_finish`] answers.
+    pub fn perform_job_step(&mut self, job: u32, n: u32) -> bool {
+        match self.jobs.get_mut(&job) {
+            Some(h) => h.job.step(&mut h.rng, n.max(1) as usize),
+            None => false,
+        }
+    }
+
+    /// The reply of walk `job`, as [`Self::perform_offer`] or
+    /// [`Self::perform_drift`] gives it; the handle is spent. A walk stopped
+    /// before its end answers as a walk that did not move, so call this once
+    /// [`Self::perform_job_step`] has said false. `null` for a walk not in
+    /// hand.
+    pub fn perform_job_finish(&mut self, job: u32) -> String {
+        let Some(h) = self.jobs.remove(&job) else {
+            return "null".into();
+        };
+        let Held {
+            job,
+            home,
+            drift,
+            taste,
+            ..
+        } = h;
+        let (grown, moved) = job.finish_moved();
+        self.job_reply(grown, &home, moved, drift, taste)
+    }
+
+    /// Give up walk `job` (its patch was left behind): nothing is answered
+    /// and the handle is spent. False for a walk not in hand.
+    pub fn perform_job_drop(&mut self, job: u32) -> bool {
+        self.jobs.remove(&job).is_some()
     }
 
     /// Why the most recent `refine_seed`/`refine_from` returned what it did,
@@ -2395,6 +2676,17 @@ impl WasmEngine {
         serde_json::to_string(&rows).unwrap()
     }
 
+    /// Preset `index`'s tree as JSON, or empty: what the worker asks a
+    /// preset's face by (a preset row, a warm-start card) without inserting
+    /// it into the bank.
+    pub fn preset_tree_json(&self, index: usize) -> String {
+        presets()
+            .into_iter()
+            .nth(index)
+            .and_then(|(_, tree)| serde_json::to_string(&tree).ok())
+            .unwrap_or_default()
+    }
+
     /// Load preset `index` into the bank; returns its id (existing id if the
     /// identical patch is already there), or 0 on failure.
     pub fn load_preset(&mut self, index: usize) -> u32 {
@@ -2475,6 +2767,7 @@ impl WasmEngine {
                 // never start empty for a candidate that renders fine.
                 self.bench_render = self.engine.render_of(id);
                 self.bench_original = Some(id);
+                self.guess_key = Some(id);
                 // A different patch entirely: nothing about the last one's φ
                 // is a "before" for anything this one does.
                 self.bench_phi = Some(self.engine.pool[i].features.phi());
@@ -2766,9 +3059,10 @@ impl WasmEngine {
     }
 
     /// The patch the bench's guesses are remembered under: the pool id it
-    /// was opened from.
+    /// was opened from, or the sound keep as new last made from it
+    /// (`guess_key`).
     fn guess_patch(&self) -> u64 {
-        self.bench_original.unwrap_or(0)
+        self.guess_key.unwrap_or(0)
     }
 
     /// Whatever the bench just became, ask the guesses' memory whether it is
@@ -2895,6 +3189,28 @@ impl WasmEngine {
         }
     }
 
+    /// File the bench's guesses under `key` from here on, and return it; 0
+    /// gives the bench a key of its own that no pool id has. A patch started
+    /// from nothing (PATCH's NEW PATCH) is not the sound it was started from:
+    /// its skips must not be that sound's when the player goes back to it,
+    /// nor that sound's skips its. The page keeps the key it is given, to
+    /// file a new patch it comes back to under the same key, and gives the
+    /// sound's own id back when an undo leaves the new patch. Taken guesses
+    /// are forgotten (an edit back to a tree from before is no longer an
+    /// undo of one). Keep as new carries whatever the key holds, as it does
+    /// a sound's.
+    pub fn guess_patch_as(&mut self, key: u32) -> u32 {
+        self.guesses.clear_taken();
+        let key = if key > 0 {
+            key as u64
+        } else {
+            self.guess_fresh = self.guess_fresh.saturating_sub(1);
+            self.guess_fresh
+        };
+        self.guess_key = Some(key);
+        key as u32
+    }
+
     /// Skip a guess: its family stays away from its socket for the patch in
     /// hand. `guess_json` is a guess as [`Self::guess_rank`] gives it (its
     /// `socket` and `family` are read). Logged, not evidence. False when it
@@ -3014,9 +3330,11 @@ impl WasmEngine {
             .commit_edit(self.bench_original, tree, outcome)
             .unwrap_or(0);
         // The new sound is the patch the player is working on: it keeps the
-        // guesses' skips and takes.
-        if let (true, Some(from)) = (id > 0, self.bench_original) {
+        // guesses' skips and takes, and the skips and takes made from here
+        // on are filed under it.
+        if let (true, Some(from)) = (id > 0, self.guess_key) {
             self.guesses.carry(from, id);
+            self.guess_key = Some(id);
         }
         id as u32
     }
@@ -3129,6 +3447,7 @@ impl WasmEngine {
         self.bench_tree = None;
         self.bench_render = None;
         self.bench_original = None;
+        self.guess_key = None;
         self.bench_vet_ok = false;
         self.bench_vet_silent = false;
         self.bench_phi = None;
@@ -3137,6 +3456,17 @@ impl WasmEngine {
 
     fn phrase(&self) -> PhraseSpec {
         self.engine.cfg.phrase.clone()
+    }
+
+    /// The face of a stored audition, written back onto its memo row (when
+    /// the row is resident) so the next ask is a lookup.
+    fn remember_face(&self, key: &str, audio: &Audition) -> Face {
+        let face = Face::of_f32(&audio.samples, audio.sample_rate);
+        if let Some(mut row) = self.engine.memo().get(key) {
+            row.face = Some(face.clone());
+            self.engine.memo().put(row, None);
+        }
+        face
     }
 
     /// Reconstitute a farm result. `None` is the "did not survive" answer that
@@ -3980,6 +4310,78 @@ mod tests {
         );
     }
 
+    /// **A new patch keeps its own skips.** NEW PATCH empties the sound in
+    /// hand into a patch of its own (`guess_patch_as(0)`): a skip made there
+    /// is not the sound's when the player goes back to it, the sound's are
+    /// not the new patch's, and coming back to the new patch under its key
+    /// finds its skip again.
+    #[test]
+    fn a_new_patch_files_its_skips_under_its_own_key() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let sound = pool_ids(&engine)[0];
+        assert!(engine.edit_begin(sound));
+        let delay = a_guess(&engine, "delay");
+        assert!(engine.guess_skip(&delay), "the sound's own skip");
+        let key = engine.guess_patch_as(0);
+        assert!(key > 0 && key != sound);
+        assert!(
+            engine.guess_skip(&delay),
+            "the new patch took the sound's skip"
+        );
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        // BACK TO the sound: its skips are its own.
+        assert!(engine.edit_begin(sound));
+        assert!(
+            engine.guess_skip(&reverb),
+            "the sound took a skip made on the new patch"
+        );
+        // NEW PATCH again, under the key it was given: its skip is there.
+        assert_eq!(engine.guess_patch_as(key), key);
+        assert!(!engine.guess_skip(&reverb), "the new patch lost its skip");
+        assert_ne!(
+            engine.guess_patch_as(0),
+            key,
+            "a second new patch reused a key"
+        );
+    }
+
+    /// **Keep as new carries the skips made after it.** The page does not
+    /// reopen the kept sound, so the bench is still "opened from" the old
+    /// id (`bench_original`, what a later commit duel plays against). A skip
+    /// made after the commit is a skip on the kept sound: opened again, it
+    /// is still skipped there, and the sound it was made from never had it.
+    #[test]
+    fn keep_as_new_carries_the_skips_made_after_it() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let original = pool_ids(&engine)[0];
+        assert!(engine.edit_begin(original));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert_eq!(
+            engine.edit_original_id(),
+            original,
+            "a commit duel still plays against the sound it was opened from"
+        );
+        // After keep as new, on the same bench: skip a reverb.
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        assert!(engine.edit_begin(kept));
+        assert!(
+            !engine.guess_skip(&reverb),
+            "a skip made after keep as new was filed under the old id"
+        );
+        assert!(engine.edit_begin(original));
+        assert!(
+            engine.guess_skip(&reverb),
+            "the sound it was kept from took a skip made on the kept one"
+        );
+    }
+
     /// **A guess's renders respect the render namespace.** Each job's
     /// `cache` key is the persistent store's (`farm_key`: this binary's
     /// namespace, then the content address), and a farm row rendered under
@@ -4377,6 +4779,143 @@ mod tests {
         );
     }
 
+    /// **A listening seed evolves on the farm as it does in the engine, with
+    /// the session's clip and its take.** AUDIO IN is a player kind, so a
+    /// player's patch with one is inside the prior's support and ⚡ walks it.
+    /// The seed (a filter over input 3, mixed with a CAPTURE of input 1
+    /// holding a take) is imported into twins that hold the same captured
+    /// clip. Every ⚡ starts (never `outside_support`); the farm's job carries
+    /// the session's phrase with its clip and the seed with its take, and the
+    /// child it lands is the engine's own. A child keeps its inputs and its
+    /// take.
+    #[test]
+    fn a_listening_seed_evolves_on_the_farm_with_its_clip_and_take() {
+        use auracle_grammar::term::{
+            AmpEnv, AudioNode, CaptureMode, FilterKind, InputChannel, ModNode,
+        };
+        use auracle_grammar::{Take, Uid, INPUT_GAIN_UNITY};
+        let (mut serial, mut farmed) = twins(0xA0D1);
+        // A plucked 220 Hz figure, three seconds at 48 kHz, as a browser
+        // would capture it.
+        let rate = 48_000.0f32;
+        let clip: Vec<f32> = (0..(3.0 * rate) as usize)
+            .map(|i| {
+                let t = i as f32 / rate;
+                let env = (-(t % 0.5) * 6.0).exp();
+                (t * 220.0 * std::f32::consts::TAU).sin() * 0.3 * env
+            })
+            .collect();
+        let take: Vec<f32> = (0..4_000).map(|i| (i as f32 * 0.05).sin() * 0.4).collect();
+        let seed = PatchTree {
+            amp: AmpEnv {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff: 0.55,
+                    resonance: 0.2,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 3,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Both,
+                    }),
+                    modulation: ModNode::None,
+                }),
+                b: Box::new(AudioNode::Capture {
+                    uid: Uid::NEW,
+                    play: CaptureMode::Hold,
+                    input: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 1,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Left,
+                    }),
+                    take: Take::from_samples(&take, 44_100.0).unwrap(),
+                }),
+            },
+        };
+        let json = serde_json::to_string(&seed).unwrap();
+        let mut ids = Vec::new();
+        for e in [&mut serial, &mut farmed] {
+            let r: serde_json::Value =
+                serde_json::from_str(&e.set_audition_clip(clip.clone(), 1, rate as f64)).unwrap();
+            assert_eq!(r["ok"], true, "{r}");
+            ids.push(e.import_patch(&json, "Mic Pad"));
+        }
+        let (a, b) = (ids[0], ids[1]);
+        assert!(a > 0 && b > 0, "the listening patch was not admitted");
+        let phrase: serde_json::Value = serde_json::from_str(&farmed.phrase_json()).unwrap();
+        assert!(
+            !phrase["clip"].is_null(),
+            "the session's phrase carries no clip"
+        );
+        let mut landed = 0;
+        for attempt in 0..4 {
+            let here = serial.refine_from(a, "[]");
+            assert_ne!(
+                serial.last_refine_reason(),
+                "outside_support",
+                "attempt {attempt}"
+            );
+            let reply: serde_json::Value =
+                serde_json::from_str(&farmed.refine_from_job(b, "[]")).unwrap();
+            assert_eq!(
+                reply["context"]["phrase"], phrase,
+                "the walk's context is not the session's phrase with its clip"
+            );
+            let job: auracle_session::WalkJob =
+                serde_json::from_value(reply["job"].clone()).expect("a job");
+            assert!(
+                job.seed.listens() && job.seed.has_takes(),
+                "the job lost the seed's input or take"
+            );
+            let result = farm_walk(
+                &serde_json::to_string(&reply["context"]).unwrap(),
+                &serde_json::to_string(&reply["job"]).unwrap(),
+            );
+            let there = farmed.refine_from_absorb(b, &result);
+            assert_eq!(
+                here, there,
+                "attempt {attempt}: the farm's ⚡ landed elsewhere"
+            );
+            assert_eq!(serial.last_refine_reason(), farmed.last_refine_reason());
+            if here > 0 {
+                landed += 1;
+                let child: PatchTree = serde_json::from_str(&serial.tree_json_of(here)).unwrap();
+                assert!(
+                    child.listens(),
+                    "the child lost its input: {}",
+                    child.to_sexpr()
+                );
+                assert_eq!(
+                    child.input_sites().len(),
+                    seed.input_sites().len(),
+                    "{}",
+                    child.to_sexpr()
+                );
+                assert!(
+                    child.has_takes(),
+                    "the child lost the take: {}",
+                    child.to_sexpr()
+                );
+            }
+        }
+        println!("{landed} of 4 ⚡ walks from the listening seed landed a child");
+        // Every comparison above is about a child: with none landed, the
+        // test would pass having compared nothing.
+        assert!(landed > 0, "no ⚡ from the listening seed landed a child");
+        assert_eq!(farmed.ranked(), serial.ranked());
+    }
+
     /// PERFORM's measurement wires the six it always has unless the worker
     /// names palette controls, and then exactly those, in the order named,
     /// each with its name and its palette `index`, which is how the page
@@ -4547,6 +5086,139 @@ mod tests {
             let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, control, sign);
             let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
             assert!(v.get("moved").is_none(), "{control:?}: {reply}");
+        }
+    }
+
+    /// **The worker's way of asking is the same offer.** `perform_offer` is
+    /// `perform_offer_begin`, stepped, `perform_job_finish`; the worker steps
+    /// one render at a time and answers the player between steps. Two twins
+    /// taught alike and asked alike give the same reply, the Offer button's
+    /// and a search control's and a drift, even when a pick is recorded on
+    /// one of them between two steps: the walk keeps the target it began on.
+    /// No handle outlives its reply, and a handle that is not in hand answers
+    /// as nothing.
+    #[test]
+    fn a_stepped_offer_gives_the_reply_the_one_call_gives() {
+        let tree_of = |e: &mut WasmEngine| -> String {
+            let id = serde_json::from_str::<Vec<serde_json::Value>>(&e.ranked()).unwrap()[0]["id"]
+                .as_u64()
+                .unwrap() as u32;
+            assert!(e.edit_begin(id));
+            e.edit_tree_json()
+        };
+        let mut one = taught_wasm(5);
+        let mut stepped = taught_wasm(5);
+        // The same tree for both (module uids come off a process-wide
+        // counter, so the twins' own copies are numbered apart).
+        let tree = tree_of(&mut one);
+        let grit = auracle_session::perform::CONTROLS
+            .iter()
+            .position(|c| c.name == "Grit")
+            .unwrap() as u32;
+        let mut picked = false;
+        let mut compared = 0;
+        for (control, sign, drift) in [
+            (None, None, false),
+            (Some(grit), Some(1.0), false),
+            (None, None, true),
+        ] {
+            let (want, begun) = if drift {
+                (
+                    one.perform_drift(&tree, "[]", "[]", 5, 0.1),
+                    stepped.perform_drift_begin(&tree, "[]", "[]", 5, 0.1),
+                )
+            } else {
+                (
+                    one.perform_offer(&tree, "[]", "[]", 4, control, sign),
+                    stepped.perform_offer_begin(&tree, "[]", "[]", 4, control, sign),
+                )
+            };
+            let Some(job) = serde_json::from_str::<serde_json::Value>(&begun)
+                .unwrap()
+                .get("job")
+                .and_then(|j| j.as_u64())
+            else {
+                // Cannot start: the one call said the same.
+                assert_eq!(begun, want);
+                continue;
+            };
+            let job = job as u32;
+            assert_eq!(stepped.jobs.len(), 1);
+            let mut steps = 0;
+            while stepped.perform_job_step(job, 1) {
+                steps += 1;
+                // A pick, between two steps (once, and only with a tree to
+                // pick against).
+                let v: serde_json::Value = serde_json::from_str(&want).unwrap();
+                if steps == 1 && !picked && v.get("tree").is_some() {
+                    picked = stepped.perform_record(&tree, "[]", &v["tree"].to_string(), true);
+                    assert!(picked, "the pick was not recorded");
+                }
+            }
+            assert!(steps > 1, "a walk of several renders is several steps");
+            assert_eq!(stepped.perform_job_finish(job), want);
+            assert_eq!(stepped.jobs.len(), 0, "the handle was spent");
+            compared += 1;
+        }
+        assert!(compared > 0, "no walk began, so nothing was compared");
+        assert!(picked, "no pick was made between steps");
+        // Not in hand: nothing to step, nothing to answer.
+        assert!(!stepped.perform_job_step(9_999, 1));
+        assert_eq!(stepped.perform_job_finish(9_999), "null");
+        // Dropped: spent, and not answered.
+        let begun = stepped.perform_offer_begin(&tree, "[]", "[]", 4, None, None);
+        if let Some(job) = serde_json::from_str::<serde_json::Value>(&begun)
+            .unwrap()
+            .get("job")
+            .and_then(|j| j.as_u64())
+        {
+            assert!(stepped.perform_job_drop(job as u32));
+            assert!(!stepped.perform_job_drop(job as u32));
+            assert_eq!(stepped.jobs.len(), 0);
+        }
+    }
+
+    /// A walk's reply says what was true when it began. A drift begun before
+    /// any taste existed says `taste: false` even if a posterior was fitted
+    /// before it finished (an import, a refit): it was walked on the grammar.
+    #[test]
+    fn a_walk_replies_with_the_state_it_began_in() {
+        let mut engine = WasmEngine::new(7, 12);
+        engine.engine.cfg.mcmc_samples = 3_000;
+        engine.engine.cfg.mcmc_warmup = 1_000;
+        while engine.fill_step(4) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree = engine.edit_tree_json();
+        assert!(!engine.engine.has_taste(), "an untaught engine");
+        let begun: serde_json::Value =
+            serde_json::from_str(&engine.perform_drift_begin(&tree, "[]", "[]", 6, 0.15)).unwrap();
+        let job = begun["job"].as_u64().expect("a drift begins") as u32;
+        assert!(engine.perform_job_step(job, 1));
+        for _ in 0..16 {
+            let [a, b]: [u64; 2] = serde_json::from_str::<Option<[u64; 2]>>(&engine.next_duel())
+                .unwrap()
+                .expect("a duel");
+            engine.record_duel(a as u32, b as u32, (a * 7 + b) % 3 != 0);
+        }
+        engine.fit();
+        assert!(engine.engine.has_taste(), "taught while the drift was out");
+        while engine.perform_job_step(job, 1) {}
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.perform_job_finish(job)).unwrap();
+        if reply.get("reason").is_none() {
+            assert_eq!(reply["taste"], false, "{reply}");
+        }
+        // A walk begun now is taste-directed.
+        let begun: serde_json::Value =
+            serde_json::from_str(&engine.perform_drift_begin(&tree, "[]", "[]", 6, 0.15)).unwrap();
+        assert!(begun.get("job").is_some(), "a drift begins");
+        let reply: serde_json::Value =
+            serde_json::from_str(&engine.run_job(&begun.to_string())).unwrap();
+        if reply.get("reason").is_none() {
+            assert_eq!(reply["taste"], true, "{reply}");
         }
     }
 
@@ -4772,6 +5444,60 @@ mod tests {
             session_content(&farmed),
             "the farm boundary built a different session than the serial fill"
         );
+    }
+
+    /// A face is the picture of the audition the member plays from, taken
+    /// from the memo when its row has one and from a render when it has not
+    /// (a row stored before faces existed).
+    #[test]
+    fn a_members_face_is_its_stored_auditions_from_the_memo_or_a_render() {
+        let mut engine = WasmEngine::new(3, 8);
+        farm_fill(&mut engine, false);
+        let ids: Vec<u64> = engine.engine.pool.iter().map(|c| c.id).collect();
+        for &id in &ids {
+            // From the memo: the fill featurized it, and the face came with it.
+            let from_memo = engine.face_of(id as u32, false);
+            assert_eq!(from_memo.len(), auracle_features::FACE_LEN);
+            let stored = engine.engine.render_of(id).expect("renders");
+            let of_audition = Face::of_f32(&stored.samples, stored.sample_rate);
+            assert_eq!(
+                from_memo,
+                of_audition.bytes(),
+                "id {id}: the picture of the audition it plays"
+            );
+            assert!(engine
+                .face_key(id as u32)
+                .ends_with(&engine.engine.pool[engine.engine.find(id).unwrap()].key));
+        }
+        // A row without a face (stored before faces): none without a render,
+        // the same face with one.
+        let id = ids[0];
+        let i = engine.engine.find(id).unwrap();
+        let key = engine.engine.pool[i].key.clone();
+        let want = engine.face_of(id as u32, false);
+        let mut row = engine.engine.memo().get(&key).unwrap();
+        row.face = None;
+        engine.engine.memo().put(row, None);
+        engine.engine.pool[i].render = None;
+        let tree = serde_json::to_string(&engine.engine.pool[i].tree).unwrap();
+        if engine.engine.memo().get_audio(&key).is_none() {
+            assert!(
+                engine.face_of(id as u32, false).is_empty(),
+                "no face without a render"
+            );
+        }
+        assert_eq!(engine.face_of(id as u32, true), want);
+        assert!(
+            engine.engine.pool[i].render.is_none(),
+            "a face's render is not kept: it evicts no audition"
+        );
+        assert_eq!(
+            engine.face_of_tree(&tree, false),
+            want,
+            "and the tree's face is the member's"
+        );
+        assert!(engine.face_of(9_999, true).is_empty());
+        assert!(engine.face_key(9_999).is_empty());
     }
 
     /// `render_of` hands WebAudio the audition at the level it is played at,

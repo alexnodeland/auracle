@@ -77,6 +77,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::{Engine, RefineOutcome};
+use crate::job::{drifter, starter, PerformJob};
 use crate::surrogate::QUARANTINE_FITNESS;
 
 /// The fitness of a taste model that has seen nothing: zero for every patch
@@ -1489,14 +1490,26 @@ impl Engine {
         jacobian(tree, &self.cfg.phrase, self.memo(), std)
     }
 
-    /// One knob-only drift: a local Metropolis walk ([`Engine::local_walk`],
-    /// step `sigma` on the knob's 0–1 range) over the patch's live knobs
-    /// minus the player's locks, on the taste target.
-    /// Nothing enters the pool. Before any taste has been fitted the target is
-    /// the vetted grammar prior ([`VetOnlyFitness`]). The error says why
-    /// nothing came back: [`RefineOutcome::NoMove`] for a walk that stayed,
+    /// One knob-only drift: a local Metropolis walk (step `sigma` on the
+    /// knob's 0–1 range) over the patch's live knobs minus the player's locks,
+    /// on the taste target, `steps` proposals of one free knob each. Each
+    /// proposal is `v + σ·N(0, 1)` reflected into the knob domain, which is
+    /// symmetric, so the ratio is the target ratio alone and the walk is exact
+    /// MH on the same target the refinement walks use,
+    /// `π_β ∝ p_grammar · exp(β·E[u])` (the vetted prior, [`VetOnlyFitness`],
+    /// before any taste has been fitted).
+    ///
+    /// Why not the structural walk: fugue's adaptive single-site kernel starts
+    /// each fresh chain with a wide proposal on a unit-interval knob, and
+    /// measured over 12 presets an 8-step "drift" moved some knob by 0.3–0.85
+    /// of its range, a jump, glided. A drift should wander, and how far is the
+    /// Wander dial's to say: `sigma`.
+    ///
+    /// Nothing enters the pool. The error says why nothing came back:
+    /// [`RefineOutcome::NoMove`] for a walk that stayed,
     /// [`RefineOutcome::OutsideSupport`] for a patch the prior gives no mass
-    /// (a walk cannot start there at all).
+    /// (a walk cannot start there at all). This is [`Self::drift_job`] run to
+    /// the end.
     pub fn drift<R: Rng>(
         &self,
         rng: &mut R,
@@ -1505,18 +1518,61 @@ impl Engine {
         steps: usize,
         sigma: f64,
     ) -> Result<PatchTree, RefineOutcome> {
+        self.drift_job(tree, player_locks, steps, sigma)?.run(rng)
+    }
+
+    /// [`Self::drift`] as a [`PerformJob`]: the same walk, advanced a few
+    /// steps at a time. The target is the one the engine has now.
+    pub fn drift_job(
+        &self,
+        tree: &PatchTree,
+        player_locks: &[String],
+        steps: usize,
+        sigma: f64,
+    ) -> Result<PerformJob, RefineOutcome> {
         let locked: HashSet<&str> = player_locks.iter().map(String::as_str).collect();
         let free: Vec<String> = live_knobs(tree, self.cfg.phrase.sample_rate)
             .into_iter()
             .map(|(a, _)| a)
             .filter(|a| !locked.contains(a.as_str()))
             .collect();
-        self.local_walk(rng, tree, &free, steps, sigma)
+        if free.is_empty() {
+            return Err(RefineOutcome::NoMove);
+        }
+        let (prior, beta, sigma) = (self.biased_prior(), self.cfg.beta, sigma.clamp(1e-3, 0.5));
+        let start = match (&self.posterior, &self.standardizer) {
+            (Some(p), Some(std)) => drifter(
+                prior,
+                beta,
+                crate::SurrogateFitness {
+                    posterior: Arc::clone(p),
+                    standardizer: Arc::clone(std),
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                },
+                free,
+                steps,
+                sigma,
+            ),
+            _ => drifter(
+                prior,
+                beta,
+                VetOnlyFitness {
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                },
+                free,
+                steps,
+                sigma,
+            ),
+        };
+        PerformJob::single(tree.clone(), start)
     }
 
-    /// A structural offer: the same walk with only the player's locks. Like
+    /// A structural offer: the locked walk with only the player's locks. Like
     /// [`Self::drift`], it inserts nothing, and it too falls back to the
-    /// vetted grammar prior before the first fit.
+    /// vetted grammar prior before the first fit. [`Self::offer_job`] run to
+    /// the end.
     pub fn offer<R: Rng>(
         &self,
         rng: &mut R,
@@ -1524,8 +1580,48 @@ impl Engine {
         player_locks: &[String],
         steps: usize,
     ) -> Result<PatchTree, RefineOutcome> {
+        self.offer_job(tree, player_locks, steps)?.run(rng)
+    }
+
+    /// [`Self::offer`] as a [`PerformJob`]: the same walk, advanced a few
+    /// steps at a time (a step is one proposal: at most one render), so a caller can answer
+    /// the player between them. The target (the tilted prior, the posterior,
+    /// β) is the one the engine has now, and stays the walk's.
+    pub fn offer_job(
+        &self,
+        tree: &PatchTree,
+        player_locks: &[String],
+        steps: usize,
+    ) -> Result<PerformJob, RefineOutcome> {
         let locked: HashSet<String> = player_locks.iter().cloned().collect();
-        self.refine_walk(rng, tree, &locked, steps)
+        let (prior, beta, keep) = (self.biased_prior(), self.cfg.beta, self.cfg.refine_keep);
+        let start = match (&self.posterior, &self.standardizer) {
+            (Some(p), Some(std)) => starter(
+                prior,
+                beta,
+                keep,
+                crate::SurrogateFitness {
+                    posterior: Arc::clone(p),
+                    standardizer: Arc::clone(std),
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                },
+                locked,
+                steps,
+            ),
+            _ => starter(
+                prior,
+                beta,
+                keep,
+                VetOnlyFitness {
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                },
+                locked,
+                steps,
+            ),
+        };
+        PerformJob::single(tree.clone(), start)
     }
 
     /// A search control's offer: [`Self::offer`]'s walk on the target tilted
@@ -1562,13 +1658,8 @@ impl Engine {
 
     /// [`Self::offer_toward`] at a stated `gamma` and number of `walks`: the
     /// census (`examples/offer_census.rs`) sweeps both; everything else uses
-    /// [`AIM_GAMMA`] and [`AIM_WALKS`].
-    ///
-    /// Each further walk continues the chain from the state the last one
-    /// ended in (or from `tree` again, with the stream advanced, if it did
-    /// not move), so nothing grown is thrown away: it is one longer walk that
-    /// stops as soon as it has gone the asked way, not several offers
-    /// filtered afterwards.
+    /// [`AIM_GAMMA`] and [`AIM_WALKS`]. [`Self::offer_aimed_job`] run to the
+    /// end.
     #[allow(clippy::too_many_arguments)]
     pub fn offer_aimed<R: Rng>(
         &self,
@@ -1581,8 +1672,31 @@ impl Engine {
         gamma: f64,
         walks: usize,
     ) -> Result<PatchTree, RefineOutcome> {
+        self.offer_aimed_job(tree, player_locks, steps, control, sign, gamma, walks)?
+            .run(rng)
+    }
+
+    /// [`Self::offer_aimed`] as a [`PerformJob`], advanced a few steps at a
+    /// time.
+    ///
+    /// Each further walk continues the chain from the state the last one
+    /// ended in (or from `tree` again, with the stream advanced, if it did
+    /// not move), so nothing grown is thrown away: it is one longer walk that
+    /// stops as soon as it has gone the asked way, not several offers
+    /// filtered afterwards.
+    #[allow(clippy::too_many_arguments)]
+    pub fn offer_aimed_job(
+        &self,
+        tree: &PatchTree,
+        player_locks: &[String],
+        steps: usize,
+        control: usize,
+        sign: f64,
+        gamma: f64,
+        walks: usize,
+    ) -> Result<PerformJob, RefineOutcome> {
         let (Some(c), Some(std)) = (PALETTE.get(control), self.standardizer.as_ref()) else {
-            return self.offer(rng, tree, player_locks, steps);
+            return self.offer_job(tree, player_locks, steps);
         };
         let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
         let locked: HashSet<String> = player_locks.iter().cloned().collect();
@@ -1595,41 +1709,10 @@ impl Engine {
             phrase: self.cfg.phrase.clone(),
             memo: self.memo().clone(),
         };
-        let home = tilt.along(tree);
-        let mut grown: Result<PatchTree, RefineOutcome> = Err(RefineOutcome::NoMove);
-        for _ in 0..walks.max(1) {
-            let from = grown.as_ref().unwrap_or(tree);
-            match self.tilted_walk(rng, from, &locked, steps, &tilt) {
-                Ok(t) => grown = Ok(t),
-                // A patch the prior gives no mass cannot be walked from at
-                // all; nothing further will change that.
-                Err(RefineOutcome::OutsideSupport) if grown.is_err() => {
-                    return Err(RefineOutcome::OutsideSupport)
-                }
-                Err(_) => {}
-            }
-            let went = match (&grown, home) {
-                (Ok(t), Some(h)) => tilt.along(t).map(|a| tilt.sign * (a - h)),
-                _ => None,
-            };
-            if went.is_some_and(|m| m >= REACH_FLOOR) {
-                break;
-            }
-        }
-        grown
-    }
-
-    /// One walk on `tilt` around the target [`Self::refine_walk`] would
-    /// choose: the taste surrogate, or the vetted prior before a fit.
-    fn tilted_walk<R: Rng>(
-        &self,
-        rng: &mut R,
-        from: &PatchTree,
-        locked: &HashSet<String>,
-        steps: usize,
-        tilt: &TiltedFitness<()>,
-    ) -> Result<PatchTree, RefineOutcome> {
-        match (&self.posterior, &self.standardizer) {
+        // The target [`Self::offer`] would walk, tilted: the taste surrogate,
+        // or the vetted prior before a fit.
+        let (prior, beta, keep) = (self.biased_prior(), self.cfg.beta, self.cfg.refine_keep);
+        let start = match (&self.posterior, &self.standardizer) {
             (Some(p), Some(std)) => {
                 let inner = crate::SurrogateFitness {
                     posterior: Arc::clone(p),
@@ -1637,16 +1720,17 @@ impl Engine {
                     phrase: self.cfg.phrase.clone(),
                     memo: self.memo().clone(),
                 };
-                self.walk_fitness(rng, from, locked, steps, tilt.clone().around(inner))
+                starter(prior, beta, keep, tilt.clone().around(inner), locked, steps)
             }
             _ => {
                 let inner = VetOnlyFitness {
                     phrase: self.cfg.phrase.clone(),
                     memo: self.memo().clone(),
                 };
-                self.walk_fitness(rng, from, locked, steps, tilt.clone().around(inner))
+                starter(prior, beta, keep, tilt.clone().around(inner), locked, steps)
             }
-        }
+        };
+        PerformJob::aimed(tree.clone(), start, tilt, walks)
     }
 
     /// How far `to` moved from `from` along named control `control`'s
@@ -2308,5 +2392,118 @@ mod tests {
             );
             assert_eq!(planned.0.cols, whole.0.cols, "{name}: the Jacobian differs");
         }
+    }
+
+    /// **Cutting a walk up cannot change it.** PERFORM's offer, its aimed
+    /// offer (which may walk more than once) and its drift are
+    /// [`PerformJob`]s the web worker advances a step at a time, answering
+    /// the player between steps. For a seed, each stepped in chunks of 1 and 3,
+    /// with another walk begun and run to its end after the first
+    /// chunk (a pressed Offer over a paused spare), ends on exactly the tree
+    /// (or exactly the reason there is none) that the one-call form ends on:
+    /// `Engine::offer`, `offer_aimed` and `drift`. Those are the job run to the
+    /// end, so this pins that pausing changes nothing; that the jobs match the
+    /// calls the app made before walks could be paused was checked by running
+    /// the previous source and this over the same seeds (identical trees, in
+    /// the commit that introduced them), not pinned here, because a walk's
+    /// exact tree is not the same across platforms. That the aimed case
+    /// really walks again is checked too, or the multi-walk path would be
+    /// going untested.
+    #[test]
+    fn a_stepped_walk_is_the_walk() {
+        use crate::engine::{Engine, SessionConfig};
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        let mut engine = Engine::new(
+            auracle_grammar::PatchGrammarPrior::default(),
+            SessionConfig::default(),
+        );
+        engine.standardizer = Some(Arc::new(preset_standardizer(&engine.cfg.phrase)));
+        let grit = CONTROLS.iter().position(|c| c.name == "Grit").unwrap();
+        let bank = preset_bank();
+        let (mut again, mut moved) = (0, 0);
+        for name in ["Glass Pad"] {
+            let p = bank.iter().find(|p| p.name == name).expect("preset exists");
+            for seed in 0..2u64 {
+                // gamma 0 aims nowhere, so a walk that did not happen to go
+                // the asked way by REACH_FLOOR walks again: the multi-walk
+                // path.
+                let rng = |k: u64| StdRng::seed_from_u64(seed ^ (k << 8));
+                let whole = [
+                    engine.offer(&mut rng(0), &p.tree, &[], 4),
+                    engine.offer_aimed(&mut rng(1), &p.tree, &[], 4, grit, 1.0, 0.0, 3),
+                    engine.drift(&mut rng(2), &p.tree, &[], 5, 0.1),
+                ];
+                for chunk in [1usize, 3] {
+                    let jobs = [
+                        engine.offer_job(&p.tree, &[], 4),
+                        engine.offer_aimed_job(&p.tree, &[], 4, grit, 1.0, 0.0, 3),
+                        engine.drift_job(&p.tree, &[], 5, 0.1),
+                    ];
+                    for (k, job) in jobs.into_iter().enumerate() {
+                        let mut job = job.expect("a vetted preset begins");
+                        let mut mine = rng(k as u64);
+                        let mut other = StdRng::seed_from_u64(0xDEC0DE ^ seed);
+                        let mut chunks = 0;
+                        while job.step(&mut mine, chunk) {
+                            chunks += 1;
+                            if chunks == 1 {
+                                let b = engine.offer_job(&p.tree, &[], 3).unwrap();
+                                let _ = b.run(&mut other);
+                            }
+                        }
+                        if k == 1 && job.walks() > 1 {
+                            again += 1;
+                        }
+                        let got = job.finish();
+                        assert_eq!(
+                            got, whole[k],
+                            "{name} seed {seed} chunk {chunk} walk {k}: chunking changed it"
+                        );
+                        moved += usize::from(got.is_ok());
+                    }
+                }
+            }
+        }
+        assert!(moved > 0, "no walk moved, so nothing was compared");
+        assert!(again > 0, "no aimed offer walked twice");
+    }
+
+    /// The target a job walks is the one it began on: the engine's
+    /// standardizer taken away between two of its steps (a refit, or a new
+    /// session, while a spare grows) leaves it where it was.
+    #[test]
+    fn a_job_keeps_the_target_it_began_on() {
+        use crate::engine::{Engine, SessionConfig};
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+        let mut engine = Engine::new(
+            auracle_grammar::PatchGrammarPrior::default(),
+            SessionConfig::default(),
+        );
+        engine.standardizer = Some(Arc::new(preset_standardizer(&engine.cfg.phrase)));
+        let grit = CONTROLS.iter().position(|c| c.name == "Grit").unwrap();
+        let p = preset_bank()
+            .into_iter()
+            .find(|p| p.name == "Glass Pad")
+            .expect("preset exists");
+        let want = engine.offer_aimed(
+            &mut StdRng::seed_from_u64(9),
+            &p.tree,
+            &[],
+            4,
+            grit,
+            1.0,
+            1.0,
+            2,
+        );
+        let mut job = engine
+            .offer_aimed_job(&p.tree, &[], 4, grit, 1.0, 1.0, 2)
+            .unwrap();
+        let mut r = StdRng::seed_from_u64(9);
+        assert!(job.step(&mut r, 1));
+        engine.standardizer = None;
+        while job.step(&mut r, 2) {}
+        assert_eq!(job.finish(), want);
     }
 }

@@ -18,6 +18,7 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 | `pipeline.rs` | compile → render → vet → normalize → φ, and `phi_names()` |
 | `audio.rs` | φ_audio: perceptual descriptors of the normalized render |
 | `structural.rs` | φ_struct: render-free descriptors of the term |
+| `face.rs` | A sound's face: its render in 40 bands × 12 slices, taken inside every featurization and carried on `CachedFeatures`. A picture for the app, never part of φ (`examples/face_cost.rs` measures it) |
 | `cache.rs` | Content-addressed memo of `featurize`, keyed with `QUIVER_DSP_VERSION` |
 | `file.rs` | φ from a decoded recording (a sound of your own): bounds, trim, resample, the same normalization and `audio_features`, and `FILE_MASKED`, the coordinates a file does not measure (`examples/file_phi.rs` measures them) |
 

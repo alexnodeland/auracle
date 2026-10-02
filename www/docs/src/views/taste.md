@@ -25,7 +25,8 @@ taste.*).
 |---|---|
 | **Place** | Where the sound sits among the others: close sounds usually sound alike |
 | **Amber glow** | How much it guesses you’d like the sound: brighter and wider is more |
-| **Dot size** | How unsure it is: bigger is less sure |
+| **The sound's mark** | Its [face](../faces.md), or a dot until the face arrives |
+| **Mark size** | How unsure it is: bigger is less sure |
 | **Dashed ring** | No guess yet: before the first fit, with **TASTE** on, every glow is a dashed ring |
 | **Green ring** | The sound you’re playing |
 | **Dotted ring** | A sound on its way to you, after a click |
@@ -44,10 +45,10 @@ The switch at the map’s top left chooses how the sounds are shown.
   stand out. Before the first fit it shows every glow as a dashed ring, a
   guess.
 
-Size is the one people miss, and it’s the useful one. A big, dim dot is a
+Size is the one people miss, and it’s the useful one. A big, dim face is a
 sound the model has no guess about. A small, bright one is a sound it’s sure
 you’d reach for. The sizes are spread over this map’s own range of doubt, and
-before the first fit every dot is the same middling size.
+before the first fit every face is the same middling size.
 
 The footer says how much a flat picture can hold:
 

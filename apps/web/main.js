@@ -128,11 +128,22 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
 } = words;
+// PATCH's guess, cable levels, new patch and module sheet (patch.js), built
+// on the rack below through the host it is handed (`patchView`).
+const PATCH_WORDS = words;
+const { createPatch } = await import(`./patch.js?v=${BUILD}`);
 // TASTE's map and LEARNING's room (taste.js): it draws from what this side
 // holds, and is created with the TASTE and LEARNING bridge below.
 const { createTaste } = await import(`./taste.js?v=${BUILD}`);
+// A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
+// one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
+const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
+const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
+// AUDIO IN: the permission, the inputs, monitoring and the clip
+// (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
+const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -264,6 +275,21 @@ let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let perform = null;          // from perform.js, once the voices exist
 let explain = null;          // from explain.js, once PERFORM exists (Plan-005 task 10)
+// AUDIO IN's inputs (audio-in.js). Asks for nothing until a player adds the
+// module; every host call is wrapped, since most of these are declared below.
+const audioIn = createAudioIn({
+  ctx: audioCtx,
+  live: () => live,
+  note: (text, opts) => note(text, opts),
+  send: (msg, transfer) => send(msg, transfer),
+  ensureAudio: () => ensureAudio(),
+  showMenu: (x, y, head, rows) => showMenu(x, y, head, rows),
+  setKnob: (addr, value) => setRackKnob(addr, value),
+  // The input's live face is drawn against the bank's faces, in the faces'
+  // own color.
+  faceStats: () => faceStats,
+  faceColor: () => tok("--phos-a"),
+});
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
 // a preset already in the bank opens directly, and its reply can come after
@@ -277,6 +303,472 @@ let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
+
+// ---------- faces (Plan-005 task 3) ----------
+// Every row, chip and card carries its sound's face: the engine's measurement
+// of the render in 40 bands × 12 slices (`auracle_features::face`, taken in
+// the featurization and filed by the worker under `"<ns>/<render key>"`),
+// drawn against the bank's mean and spread (faces.js). A face is drawn in a
+// slot its place always has, empty until the face arrives, so a name sits
+// at the same x with or without one, and never loses width to it. Nothing
+// moves on its own (ADR-012): a face is redrawn when the render it shows is
+// replaced (an edit, an offer) or when the bank's mean or spread changes (a
+// sound added, replaced or cut), and then in place, with no tween.
+//
+// Sizes in CSS px, the slot's and the drawing's (a vessel is taller than
+// wide, as the specimen draws it).
+const FACE_SIZE = {
+  row: [24, 40],   // a bank row, beside its two lines
+  pair: [28, 44],  // an EVOLVE card, beside its name
+  subject: [20, 32], // PATCH's header, beside the patch's name
+  chip: [14, 22],  // PATCH's teach strip, A and B
+  hand: [32, 48],  // PERFORM, the sound in hand
+  offer: [16, 26], // PERFORM's B
+  warm: [24, 40],  // the warm start's cards
+  share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
+};
+// Bounded: a bench edit is a new tree, so a new ref, key and drawing each
+// time. The least recently used go past FACE_KEEP (the bank's faces are used
+// on every bank render, so they stay); a face needed again is asked again,
+// and the worker answers it from memory.
+const FACE_KEEP = 400;
+function lruGet(map, k) {
+  if (!map.has(k)) return undefined;
+  const v = map.get(k);
+  map.delete(k);
+  map.set(k, v);
+  return v;
+}
+function lruSet(map, k, v) {
+  map.delete(k);
+  map.set(k, v);
+  while (map.size > FACE_KEEP) map.delete(map.keys().next().value);
+}
+const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
+const faceKeyById = new Map();  // pool id -> key
+const faceKeyByRef = new Map(); // tree ref -> key
+const faceTreeByRef = new Map(); // tree ref -> tree text, to ask with
+const faceAsked = new Set();    // targets asked and not yet answered ("i12", "r…")
+const faceNone = new Set();     // targets the engine has no face for (a tree that does not vet)
+const faceWanted = new Set();   // targets to ask for at the next send
+let faceStats = null;           // the bank's mean and spread (faces.js `bankStats`)
+let faceBankKeys = "";          // the keys those were taken over
+let faceEpoch = 0;              // bumped when they change: every face redraws
+const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
+// Each face is drawn once per bank (vessel.js `drawVessel`, the renderer every
+// size shares) into an image: rows are rebuilt as HTML on every bank render,
+// and an <img> of a drawing already made costs nothing to put back.
+let faceSendQueued = false;
+let facePaintQueued = false;
+let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, landed, result}
+let faceLanded = 0; // bumped when any face lands, so a missing one is looked for again
+
+/** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
+function treeRef(json) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+  return `r${(h >>> 0).toString(36)}${json.length.toString(36)}`;
+}
+/** `{id}` or `{tree}` (or null) → the slot's target string, or "". */
+function faceTarget(t) {
+  if (!t) return "";
+  if (t.id != null) return `i${t.id}`;
+  if (t.preset != null) return `p${t.preset}`;
+  if (t.memo) return `g${t.memo}`;
+  if (t.tree) {
+    const ref = treeRef(t.tree);
+    if (lruGet(faceTreeByRef, ref) === undefined) lruSet(faceTreeByRef, ref, t.tree);
+    return ref;
+  }
+  return "";
+}
+function faceKeyOfTarget(target) {
+  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : lruGet(faceKeyByRef, target);
+}
+/** The face drawn for a target, as markup, or "" (asked for if not known). */
+function faceMarkup(target, kind, ask = true, build = true) {
+  if (!target) return "";
+  const key = faceKeyOfTarget(target);
+  const face = key && lruGet(faceByKey, key);
+  if (!face) {
+    if (ask) wantFace(target);
+    return "";
+  }
+  if (!faceStats) return "";
+  const [w, h] = FACE_SIZE[kind];
+  const ck = `${key}|${faceEpoch}|${w}|${h}`;
+  let s = lruGet(faceMarkupCache, ck);
+  if (s == null && !build) return "";
+  if (s == null) {
+    s = `<img class="face" src="${faceImage(face, w, h)}" width="${w}" height="${h}" alt="" draggable="false">`;
+    lruSet(faceMarkupCache, ck, s);
+  }
+  return s;
+}
+/** One face drawn at `w × h` CSS px, at the screen's density, as a PNG. */
+let faceCanvas = null;
+function faceImage(face, w, h, opts = {}) {
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const c = faceCanvas || (faceCanvas = document.createElement("canvas"));
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  drawVessel(ctx, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: h >= 20, ...opts });
+  return c.toDataURL("image/png");
+}
+/** PATCH's guess plate (patch.js `drawGuess`, its `host.guessFace`): beside
+ *  the plate, the patch as it is and the patch with the guessed module, each
+ *  its face, as the mock's estimated vessel stands at OUT. Neither is an
+ *  estimate (ADR-012): the guess rendered every candidate it ranks
+ *  (`Guess::key`, `GuessCandidate::key`: a memo row, its face with it), and
+ *  the patch's is the face of `tree`, the tree the guess was ranked on (the
+ *  reply's). Drawn into the plate's layer (`g.gp-faces`) in the rack's own
+ *  units; until a face lands its place is empty, and the plate is drawn
+ *  again when it does. */
+let guessFaceWaiting = false;
+function guessFace(g, at, layer, tree) {
+  if (!g || !g.key || !layer) return;
+  // Both faces are of the tree the guess was ranked on: once the bench has
+  // left it (a knob turned; a knob is not ranked again), "as it is" would be
+  // another patch's and "with it" an edit of the old one. None until the
+  // next ranking.
+  if (!tree || tree !== benchTreeJson) return;
+  const [w, h] = FACE_SIZE.pair;
+  const x0 = at.x + at.w + 12;
+  const y0 = at.y;
+  const both = [[faceTarget({ tree }), words.GUESS_FACES[0]], [faceTarget({ memo: g.key }), words.GUESS_FACES[1]]];
+  const pair = document.createElementNS(SVG_NS, "g");
+  pair.setAttribute("class", "gp-faces");
+  layer.append(pair);
+  // Each face stands over its word, in a column as wide as the wider word
+  // (measured: the mono value tier is wider than the face), so the two
+  // words never run into each other.
+  const labels = both.map(([, label]) => {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("class", "gp-face-word");
+    t.textContent = label;
+    return t;
+  });
+  pair.append(...labels);
+  let col = w;
+  for (const t of labels) {
+    try { col = Math.max(col, t.getComputedTextLength()); } catch (_) { /* not laid out */ }
+  }
+  col = Math.ceil(col);
+  both.forEach(([target], i) => {
+    const t = labels[i];
+    const key = target && faceKeyOfTarget(target);
+    const face = key && lruGet(faceByKey, key);
+    if (!face || !faceStats) {
+      t.remove();
+      // Waiting only for a face that can still land: one the worker has
+      // said it has none for (a patch with no sound) would redraw the plate
+      // at every face batch for nothing.
+      if (!target || faceNone.has(target)) return;
+      if (!face) wantFace(target);
+      guessFaceWaiting = true;
+      return;
+    }
+    const cx = x0 + i * (col + 10) + col / 2;
+    const img = document.createElementNS(SVG_NS, "image");
+    img.setAttribute("class", "gp-face");
+    img.setAttribute("x", String(cx - w / 2));
+    img.setAttribute("y", String(y0));
+    img.setAttribute("width", String(w));
+    img.setAttribute("height", String(h));
+    img.setAttribute("href", faceImage(face, w, h));
+    img.dataset.face = target;
+    t.setAttribute("x", String(cx));
+    t.setAttribute("y", String(y0 + h + 12));
+    pair.insertBefore(img, t);
+  });
+}
+
+/** TASTE's map: a sound's mark is its face (taste.js `drawMark`, through
+ *  `host.drawFace`), as the mock draws it. Its height keeps the map's size
+ *  for the model's doubt (`size`, twice taste-geom's `mapDotRadius`) over a
+ *  floor that keeps it a face, so a less sure sound is a bigger face; it
+ *  stays inside the ring around the sound you're playing (`r + 6`). Drawn
+ *  once per bank and size into a small canvas, then copied each frame. False
+ *  until the face has landed (asked for here), and the map draws its dot. */
+const faceMapCache = new Map(); // "key|epoch|h" -> canvas
+function drawMapFace(ctx, id, x, y, size) {
+  const key = faceKeyById.get(id);
+  const face = key && lruGet(faceByKey, key);
+  if (!face) wantFace(`i${id}`);
+  if (!face || !faceStats) return false;
+  const h = Math.round(10 + size);
+  const w = Math.max(6, Math.round(h * 0.6));
+  const ck = `${key}|${faceEpoch}|${h}`;
+  let c = lruGet(faceMapCache, ck);
+  if (!c) {
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    c = document.createElement("canvas");
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVessel(g, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: true });
+    lruSet(faceMapCache, ck, c);
+  }
+  ctx.drawImage(c, x - w / 2, y - h / 2, w, h);
+  return true;
+}
+function wantFace(target) {
+  if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
+  faceWanted.add(target);
+  if (faceSendQueued) return;
+  faceSendQueued = true;
+  queueMicrotask(sendFaceAsks);
+}
+function sendFaceAsks() {
+  faceSendQueued = false;
+  if (!faceWanted.size) return;
+  const ids = [];
+  const trees = [];
+  for (const t of faceWanted) {
+    faceAsked.add(t);
+    if (t.startsWith("i")) ids.push(Number(t.slice(1)));
+    else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
+    else if (t.startsWith("g")) trees.push({ ref: t, memo: t.slice(1) });
+    else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
+  }
+  faceWanted.clear();
+  // A row the store has no face for (one stored before faces existed), or a
+  // preset not heard yet, is rendered for it: in the engine's background lane.
+  send({ type: "faces", ids, trees, render: true });
+}
+/** The worker's answer: faces it had, renders still to come, and targets it
+ *  has none for. */
+function facesLanded(m) {
+  if ((m.items || []).length) faceLanded++;
+  for (const it of m.items || []) {
+    const face = decodeFace(it.face);
+    if (!face) continue;
+    lruSet(faceByKey, it.key, face);
+    const target = it.id != null ? `i${it.id}` : it.ref;
+    if (it.id != null) faceKeyById.set(it.id, it.key);
+    else lruSet(faceKeyByRef, it.ref, it.key);
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+  }
+  for (const f of m.failed || []) {
+    const target = f.id != null ? `i${f.id}` : f.ref;
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+    faceNone.add(target);
+  }
+  // Dropped by the worker as their slots left the view: asked again when
+  // they come back into it, or now, if one came back while the drop was on
+  // its way.
+  for (const c of m.cancelled || []) {
+    const target = c.id != null ? `i${c.id}` : c.ref;
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+    if (faceSlotInView(target)) {
+      faceLazy.add(target);
+      wantFace(target);
+    }
+  }
+  facesChanged();
+}
+/** A face request that could not be served (the engine was not up yet, or a
+ *  request threw): ask again when a slot next wants it. */
+function facesUnanswered() {
+  faceAsked.clear();
+}
+/** Re-whiten when the bank's faces changed, then redraw what changed, once a
+ *  frame however many faces landed. */
+function facesChanged() {
+  if (facePaintQueued) return;
+  facePaintQueued = true;
+  requestAnimationFrame(() => {
+    facePaintQueued = false;
+    faceRestat();
+    paintFaces();
+    // TASTE's map draws faces too: a frame with the ones that landed.
+    if (currentView === "taste" && taste) taste.draw();
+    // PATCH's guess plate was waiting on one of its two faces.
+    if (guessFaceWaiting && patchView) {
+      guessFaceWaiting = false;
+      patchView.cameraMoved();
+    }
+    // A card waiting on its face. Only the card: the rack's readout builds the
+    // rack to measure it, and this runs on every bank render.
+    if (imageState.scope === "card") imageSync();
+  });
+}
+/** The bank's mean and spread, over the faces of the rows the bank shows
+ *  (the pool, less what was cut). Taken again when that set changes, and
+ *  drawn against when they have moved since the faces were last drawn
+ *  (faces.js `statsMoved`: 0.25 dB in a band, or 1% of the spread). */
+function faceRestat() {
+  const ranked = (views && views.ranked) || [];
+  const keys = [];
+  for (const r of ranked) {
+    if (cutIds.has(r.id)) continue;
+    const k = faceKeyById.get(r.id);
+    if (k && faceByKey.has(k)) keys.push(k);
+  }
+  keys.sort();
+  const sig = keys.join(",");
+  if (sig === faceBankKeys) return false;
+  faceBankKeys = sig;
+  const now = bankStats(keys.map((k) => faceByKey.get(k)));
+  if (!statsMoved(faceStats, now)) return false;
+  faceStats = now;
+  faceEpoch++;
+  faceMarkupCache.clear();
+  return true;
+}
+/** Draw every slot whose face or bank changed since it was drawn. The bank's
+ *  rows are drawn the rows in view first (`faceRedraw`, the next frame) and
+ *  the rest a few at a time when the page is idle (`faceIdle`): forty faces
+ *  drawn at once took 17 ms, a dropped frame, and the bank shows about ten.
+ *  Until a row is drawn again it shows the drawing it had. */
+let faceRedraw = null;
+const faceIdleQueue = new Set();
+let faceIdleArmed = false;
+const idleSoon = window.requestIdleCallback
+  ? (f) => window.requestIdleCallback(f, { timeout: 1000 })
+  : (f) => setTimeout(() => f({ timeRemaining: () => 8 }), 50);
+function faceIdle(deadline) {
+  faceIdleArmed = false;
+  for (const el of faceIdleQueue) {
+    if (deadline.timeRemaining() < 2) break;
+    faceIdleQueue.delete(el);
+    if (el.isConnected) paintFaceSlot(el);
+  }
+  if (faceIdleQueue.size) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
+}
+function paintFaces(root = document) {
+  if (!faceRedraw) {
+    faceRedraw = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        faceRedraw.unobserve(e.target);
+        if (e.isIntersecting) paintFaceSlot(e.target);
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-face]")) {
+    if (!el.closest("#bank-list")) {
+      paintFaceSlot(el);
+      continue;
+    }
+    faceRedraw.observe(el);
+    faceIdleQueue.add(el);
+  }
+  if (faceIdleQueue.size && !faceIdleArmed) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
+}
+function paintFaceSlot(el) {
+  const target = el.dataset.face;
+  if (!target) return;
+  const key = faceKeyOfTarget(target) || "";
+  const drawn = `${key}|${faceEpoch}|${!!faceStats}`;
+  if (el.dataset.drawn === drawn) return;
+  el.innerHTML = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
+  el.dataset.drawn = el.innerHTML ? drawn : "";
+}
+/** A slot's markup, for a row or card built as HTML. Always there, at its
+ *  size, with or without a face in it. `lazy`: asked for only once the slot
+ *  scrolls into view (`faceWhenSeen`), for a list of presets each of which
+ *  may cost a render. */
+function faceSlot(kind, t, { lazy = false } = {}) {
+  const target = faceTarget(t);
+  const [w, h] = FACE_SIZE[kind];
+  // A row draws what is already drawn for it; a face not drawn yet for this
+  // bank is drawn after the row is in the page (`paintFaces`), so a bank
+  // rebuilt on every rating does not draw forty faces each time.
+  const inner = faceMarkup(target, kind, !lazy, kind !== "row");
+  const key = target ? faceKeyOfTarget(target) || "" : "";
+  const drawn = inner ? ` data-drawn="${key}|${faceEpoch}|true"` : "";
+  const wait = lazy && !inner && target ? " data-lazy" : "";
+  return `<span class="face-slot face-${kind}" data-kind="${kind}"${target ? ` data-face="${target}"` : ""}${drawn}${wait} style="width:${w}px;height:${h}px" aria-hidden="true">${inner}</span>`;
+}
+let faceSeer = null;
+const faceLazy = new Set(); // lazy targets asked for and not answered yet
+let faceDropQueued = null;
+/** Ask for the lazy slots under `root` while they are in view, and let go of
+ *  what is still waiting when one leaves it: a face's render costs half a
+ *  second, and a list scrolled through is not a list looked at. */
+function faceWhenSeen(root) {
+  // A list rebuilt (a ▶, a rating, a load: any bank render) drops its old
+  // slots: stop watching them. What they were waiting on is not dropped
+  // here: the new slots are watched at once, and the first sighting of each
+  // lets go of what is out of view and keeps what is still in it. (Dropping
+  // everything here cancelled the faces of rows still on screen.)
+  if (faceSeer) faceSeer.disconnect();
+  if (!faceSeer) {
+    faceSeer = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        const target = e.target.dataset.face;
+        if (!target || faceKeyOfTarget(target)) continue;
+        if (e.isIntersecting) {
+          faceLazy.add(target);
+          wantFace(target);
+        } else if (faceLazy.has(target)) {
+          faceDrop(target);
+        }
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-lazy]")) faceSeer.observe(el);
+}
+/** Let go of a lazy target's waiting render (the worker says which it
+ *  dropped, `cancelled`). */
+function faceDrop(target) {
+  faceWanted.delete(target);
+  if (!faceAsked.has(target)) return void faceLazy.delete(target);
+  if (!faceDropQueued) {
+    faceDropQueued = new Set();
+    queueMicrotask(() => {
+      const refs = [...faceDropQueued];
+      faceDropQueued = null;
+      if (refs.length) send({ type: "face_cancel", refs });
+    });
+  }
+  faceDropQueued.add(target);
+}
+/** Is a slot for `target` in the bank's visible rows? */
+function faceSlotInView(target) {
+  const list = $("bank-list");
+  if (!list || !target) return false;
+  const box = list.getBoundingClientRect();
+  for (const el of list.querySelectorAll(`.face-slot[data-face="${target}"]`)) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > box.top && r.top < box.bottom && r.width) return true;
+  }
+  return false;
+}
+/** Let go of every lazy face still waiting (the presets are out of sight). */
+function faceLazyDrop() {
+  for (const t of faceLazy) faceDrop(t);
+}
+/** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none. */
+function setFaceSlot(el, kind, t) {
+  if (!el) return;
+  const [w, h] = FACE_SIZE[kind];
+  el.classList.add("face-slot", `face-${kind}`);
+  el.dataset.kind = kind;
+  el.setAttribute("aria-hidden", "true");
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
+  const target = faceTarget(t);
+  if (target && target === el.dataset.face) return void paintFaceSlot(el);
+  if (target) el.dataset.face = target;
+  else delete el.dataset.face;
+  el.dataset.drawn = "";
+  el.innerHTML = "";
+  if (target) paintFaceSlot(el);
+}
 
 // Workbench state.
 const wb = {
@@ -1189,6 +1681,66 @@ let renderNs = null;
 // wiring by it. Null until then, or from a binary too old to say.
 let auditionClip = null;
 
+// PATCH's own module (patch.js): the model's guess at its socket, each cable's
+// measured level, a patch from nothing, and the module sheet on touch. It
+// reaches the rack, the bench lane and the worker through this host only.
+const patchView = createPatch({
+  // The guess plate's two faces: the patch as it is, and with the guess.
+  guessFace,
+  words: PATCH_WORDS,
+  send: (msg) => send(msg),
+  visible: () => currentView === "play",
+  hasRack: () => !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0),
+  rack: () => wb.rack,
+  benchTree: () => wb.tree,
+  benchTreeJson: () => benchTreeJson,
+  subjectId: () => wb.subjectId,
+  vetSilent: () => !!wb.vetSilent,
+  benchSettled: () => benchSettled(),
+  knobDragging: () => knobDragging,
+  setKnobDragging: (on) => { knobDragging = on; },
+  rackSvg: () => $("rack-svg"),
+  rackFrame: () => rackFrame,
+  rackBoxes: () => rackBoxes,
+  flowing: () => !!$("rack-svg")?.classList.contains("flowing"),
+  paintWireLevel: (elx, lv) => paintWireLevel(elx, lv),
+  renderRack: () => renderRack(),
+  renderSubject: () => renderSubject(),
+  queueStruct: (msg, landed, tag) => queueStruct(msg, landed, tag),
+  applyTreeRewrite: (fn, tag) => applyTreeRewrite(fn, tag),
+  noteOnLanding: (text, opts) => noteOnLanding(text, opts),
+  doUndo: () => doUndo(),
+  undoDepth: () => undoStack.length,
+  openOnBench: (id) => openOnBench(id),
+  benchName: (id) => benchName(id),
+  kindName: (kind) => kindName(kind),
+  kindAt: (key) => rackKindAt(key),
+  kindModTarget: (kind) => kindModTarget(kind),
+  blurbOf: (kind) => MOD_BY_KIND[kind]?.blurb || "",
+  niceName: (name) => niceName(name),
+  capital: (s) => capital(s),
+  heardUnit: (addr, v, kind, variant, long) => heardUnit(addr, v, kind, variant, long),
+  enumDisplay: (k) => enumDisplay(k),
+  knobByAddr: (addr) => knobByAddr(addr),
+  paintRackKnob: (addr) => {
+    const kg = $("rack-svg")?.querySelector(`g[data-addr="${CSS.escape(addr)}"]`);
+    const k = knobByAddr(addr);
+    if (kg && k) paintKnob(kg, k);
+  },
+  sendEdit: (addr, v, isIndex) => sendEdit(addr, v, isIndex),
+  pushUndo: () => pushUndo(),
+  releaseHeldEdits: () => releaseHeldEdits(),
+  removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
+  touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
+  // Esc has another job first: something floating, a module in hand, a cable
+  // half made, or a rack knob it backs out of.
+  escBusy: () =>
+    !!(armed || connectPick || wire || compareId != null) ||
+    !$("ctx-menu").classList.contains("hidden") ||
+    !$("ovf-menu").classList.contains("hidden") ||
+    !!document.activeElement?.closest?.("#rack-svg [data-addr]"),
+});
+
 worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
@@ -1200,6 +1752,7 @@ worker.onmessage = (e) => {
     if (explain) explain.onWorker(m);
     return;
   }
+  if (patchView.onWorker(m)) return;
   switch (m.type) {
     case "fill_progress": {
       // Monotonic: the restore stage posts {pool:0,target:1}, which used to
@@ -1363,12 +1916,6 @@ worker.onmessage = (e) => {
     // Order matters here: the copy lands *before* anything else can write,
     // and autosave stays off until the player says "start fresh" or reloads
     // (with a newer build, the next boot reads the record where it is).
-    // Which clip sounds with an AUDIO IN are measured with: after a restore,
-    // and in reply to setting one. Capturing a clip is Plan-007 task 4's.
-    case "audition_clip": {
-      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
-      break;
-    }
     case "restore_failed": {
       saveBlocked = "unparseable";
       clearTimeout(saveTimer);
@@ -1381,6 +1928,19 @@ worker.onmessage = (e) => {
         { label: "start fresh", run: startFresh },
       );
       $("alarm").dataset.tag = "quarantine";
+      break;
+    }
+    // Which clip sounds with an AUDIO IN are measured with: after a restore,
+    // and in reply to a capture (audio-in.js sends it as `set_audition_clip`;
+    // `ok` is there only then). A clip the engine took measured the pool's
+    // listeners again, so their ratings moved, and it is saved with the
+    // session from now on.
+    case "audition_clip": {
+      if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
+      if (m.views) applyViews(m.views);
+      if (m.status) applyStatus(m.status);
+      audioIn.clip(m);
+      if (m.ok) scheduleSave();
       break;
     }
     // `edit_begin` said no: that id is not in the pool any more. It is
@@ -1600,6 +2160,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       // The bench's guess under the model just fitted ("was" is the old one).
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
+      patchView.refit(); // and the next module's, ranked again under it
       refreshInstruments();
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -2085,14 +2646,21 @@ worker.onmessage = (e) => {
       // Whatever is next in the lane goes now — and if nothing is, a COMMIT
       // that was waiting on this edit goes instead (see `pumpLane`).
       pumpLane();
+      // The guess and the cable levels are owed for this patch once it settles.
+      patchView.benchLanded(m);
       break;
     }
     // A request that arrived before the engine finished booting. The worker
     // now says so instead of throwing into the void; the only one that needs
     // re-asking is the preset list, because the bank shows an empty shelf
     // until it lands and nothing else would ever ask again.
+    // Faces, as the worker files them (Plan-005 task 3).
+    case "faces":
+      facesLanded(m);
+      break;
     case "not_ready": {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      if (m.request === "faces") facesUnanswered();
       break;
     }
     // The engine is up. It says what the structural ceilings are so the
@@ -2100,6 +2668,7 @@ worker.onmessage = (e) => {
     case "ready": {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
+      if (m.clip) audioIn.clip({ clip: m.clip });
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -2115,6 +2684,7 @@ worker.onmessage = (e) => {
     case "engine_error": {
       console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
       releaseRequest(m.request, m.id);
+      if (m.request === "faces" || m.request === "face_render") facesUnanswered();
       if (m.fatal) {
         engineCrashed(m.message);
       } else if (m.request) {
@@ -2193,6 +2763,8 @@ worker.onmessage = (e) => {
       // times over. The stacks are untouched, so nothing is lost by stopping.
       if (refusedRestore && benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
       pumpLane();
+      // A guess taken after the patch moved on was refused, and said why above.
+      patchView.rejected();
       break;
     }
     // The answer to "is there a duel to deal here, and what does the other
@@ -2241,6 +2813,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
+      patchView.committed(m); // a new patch kept is a sound of its own
       takeRetiring(m); // a kept edit joining the pool moves what will be replaced
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -2461,6 +3034,7 @@ worker.onmessage = (e) => {
     case "warm_done": {
       applyViews(m.views);
       applyStatus(m.status);
+      patchView.refit(); // the first fit: a guess is possible from here
       refreshInstruments();
       warmStartDone(m);
       scheduleSave();
@@ -3747,6 +4321,8 @@ function showView(name) {
     t.setAttribute("aria-selected", String(on));
   });
   if (name === "play") refitRack();
+  if (name === "play") patchView.shown();
+  else patchView.hidden();
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
@@ -4106,6 +4682,24 @@ async function bootPerform() {
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
     label: () => liveLabelText,
+    // A face into one of PERFORM's slots: the sound in hand's, or B's.
+    face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
+    // A tree's face and the bank it is drawn against, for a drawing of
+    // PERFORM's own at any size (vessel.js `drawVessel`), or null until the
+    // face has landed (asked for here).
+    // Stage mode asks every frame: the answer is kept for the tree and the
+    // bank it was given for, the same object until either changes.
+    faceOf: (json) => {
+      const k = faceOfLast;
+      if (k && k.json === json && k.epoch === faceEpoch && k.landed === faceLanded) return k.result;
+      const target = json ? faceTarget({ tree: json }) : "";
+      const key = target && faceKeyOfTarget(target);
+      const face = key && faceByKey.get(key);
+      if (!face && target) wantFace(target);
+      const result = face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
+      faceOfLast = { json, epoch: faceEpoch, landed: faceLanded, result };
+      return result;
+    },
     locks: () => [...lockedAddrs()],
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
@@ -4467,6 +5061,8 @@ async function bootBooth() {
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  // An input opened before the voices existed is connected to them now.
+  if (wb.rack) audioIn.follow(wb.rack);
   bootPerform();
   bootBooth();
   // The analysers exist for the first time here, so this is the first moment
@@ -5395,7 +5991,9 @@ function renderPlayDuel() {
   // side to the pool is re-dealt (`applyViews`), so no name here is gone for
   // good.
   const side = (el, letter, id) => {
-    el.replaceChildren(`▶ ${letter} · `);
+    const face = document.createElement("span");
+    el.replaceChildren(`▶ ${letter} · `, face);
+    setFaceSlot(face, "chip", { id });
     if (rowOf(id)) {
       el.append(nameOf(id));
       return;
@@ -5458,6 +6056,7 @@ function loadSide(side, id) {
 // bank. The s-expression is engine truth, not a label — it lives under the
 // ⇄ circuit flip, where an expert can still find it.
 function paintDuelName(side, id) {
+  setFaceSlot($(`face-${side}`), "pair", { id });
   $(`name-${side}`).innerHTML =
     `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
 }
@@ -5748,7 +6347,7 @@ function renderBelief() {
     // A silent bench has no φ to score, whatever the model knows: say that,
     // not "not yet", which would promise a number the next pick cannot give.
     const why = !wb.vetOk && wb.vetSilent
-      ? "no guess while nothing reaches the output"
+      ? "nothing to rate: no source reaches the output"
       : fitting
       ? "fitting to what you taught it…"
       : n === 0 || !fitted
@@ -7009,6 +7608,7 @@ function renderBank() {
     syncBankCursor();
     return;
   }
+  faceLazyDrop(); // the presets are out of sight: their faces' renders can wait
 
   // The pool leads with the latest generation's children, in the order they
   // were bred, under their own heading; the rest keep their ranked order. So
@@ -7053,6 +7653,7 @@ function renderBank() {
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
+  facesChanged(); // the bank's set may have changed: its mean and spread with it
   syncBankCursor();
   if (compareId != null) renderCompare(); // its seed may have been replaced
   // Scrolled to the row asked for, by id, and not to whichever row is live
@@ -7192,7 +7793,7 @@ function bankRow(r, fitted) {
   // name is in the same place, at the same width, with or without them: the
   // origin glyph, or NEW in its place for the latest generation's children
   // (always ⚡, bred); and the unheard dot in the gap after it.
-  el.innerHTML = `
+  el.innerHTML = `${faceSlot("row", { id: r.id })}
     <div class="bi-top">
       <span class="bi-mark">${
         // "Gen 3: 5 new patches in the bank" sent the player to a column of
@@ -7396,7 +7997,7 @@ function renderPresetBank(list) {
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
     el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
-    el.innerHTML = `
+    el.innerHTML = `${faceSlot("row", { preset: p.index }, { lazy: true })}
       <div class="bi-top">
         <span class="bi-mark"><span class="bi-origin preset" title="▤ hand-made preset">▤</span></span>
         <span class="bi-name">${esc(p.name)}</span>
@@ -7437,6 +8038,7 @@ function renderPresetBank(list) {
     frag.appendChild(el);
   }
   list.appendChild(frag);
+  faceWhenSeen(list);
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
@@ -8119,6 +8721,18 @@ function syncCommitBtn() {
  *  reads it once, at the press, off the rack under the hand); without one it
  *  is read off the bench now, which is the rack on screen whenever no drag is
  *  holding the redraw back. */
+/** Set one of the bench's settings from outside the rack's own controls
+ *  (AUDIO IN's input menu picks an input slot): the same edit a click on its
+ *  chip makes, one undo step, through the bench lane. */
+function setRackKnob(addr, value) {
+  const k = wb.rack?.modules.flatMap((m) => m.knobs).find((x) => x.addr === addr);
+  if (!k) return;
+  pushUndo();
+  k.value = value;
+  sendEdit(addr, value, k.kind.t !== "continuous");
+  renderRack();
+}
+
 function sendEdit(addr, value, isIndex, id) {
   if (!wb.dirty && !editPending) {
     editPending = true;
@@ -8348,7 +8962,9 @@ function moduleBox(mod, isEmpty) {
   const step = plateStep(mod);
   const perRow = PLATE_COLS[step];
   const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
-  const lane = hasStepLane(mod) ? STEP_LANE_H : 0;
+  // AUDIO IN's lane (audio-in.js `drawLane`): its input, meter, MONITOR and
+  // NEW CLIP, under its three settings.
+  const lane = hasStepLane(mod) ? STEP_LANE_H : mod.kind === "audio_in" ? INPUT_LANE_H : 0;
   return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
 }
 
@@ -9436,7 +10052,9 @@ function repaintMeasuredFlow() {
     if (it.w.kind === "mod") continue;
     const g = meterGain(it.w.from);
     const reach = rackFrame.flow.get(it.w.from) ?? 1;
-    paintWireLevel(it.inkEl, g == null ? reach : g * reach);
+    // With no note sounding (or no tap on this cable), the level measured at
+    // rest (`edit_cable_levels`), or unlit until it is measured.
+    paintWireLevel(it.inkEl, g == null ? (patchView.restLevel(it.w) ?? 0) : g * reach);
   }
 }
 
@@ -9698,6 +10316,9 @@ function renderRack(rebuild = false) {
   // `overlayPending`). Here rather than in the reply handler, because a drag
   // keeps writing after the last reply and it is the redraw that must agree.
   overlayPending();
+  // Which inputs the bench's AUDIO INs read: opened, closed and fed to the
+  // voices from here, on every redraw, value-only ones included.
+  audioIn.follow(hasRack ? wb.rack : null);
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -9749,6 +10370,7 @@ function renderRack(rebuild = false) {
     syncFitHint(); // nothing drawn is not a stranded layout
     syncMapBtn();
     nbSync();
+    patchView.rackBuilt();
     return;
   }
 
@@ -9829,6 +10451,8 @@ function renderRack(rebuild = false) {
   // lowercase and a `startsWith("ENV")` test silently never matches.
   ampPlateEl = $("rack-svg").querySelector('g[data-kind="amp"] .mod-plate');
 
+  // The guess and the level marks, over the rack just built.
+  patchView.rackBuilt();
 }
 
 // The patch is the headline; its provenance is the caption. While a TEACH
@@ -9839,6 +10463,7 @@ function renderSubject() {
   if (!nameEl || !metaEl) return;
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
+    setFaceSlot($("subject-face"), "subject", { id });
     nameEl.classList.add("hearing");
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
@@ -9848,10 +10473,21 @@ function renderSubject() {
   }
   nameEl.classList.remove("hearing");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  // The face of the bench's latest render: an edit's, once its render lands.
+  setFaceSlot($("subject-face"), "subject",
+    !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId });
   if (!hasRack || wb.subjectId == null) {
     nameEl.textContent = "no sound open";
     nameEl.title = "";
     metaEl.textContent = "";
+    return;
+  }
+  // A patch started from nothing is named for that (patch.js `subject`).
+  const fresh = patchView.subject();
+  if (fresh) {
+    nameEl.textContent = fresh.name;
+    nameEl.title = fresh.name;
+    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
     return;
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
@@ -10055,7 +10691,11 @@ function buildRack(svg, rack, opts) {
       // about this patch — a class per stop would be five rules that say the
       // same thing, and a level is a number, not a state.
       wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
-      paintWireLevel(wireEl, flow.get(w.from) ?? 1);
+      // The workbench's cables at rest carry the level the engine measured
+      // on them (`edit_cable_levels`, patch.js `restLevel`), and sit unlit
+      // until it has; a reach estimate is not a measurement (ADR-012). The
+      // duel minis are pictures of other patches, with no probe.
+      paintWireLevel(wireEl, interactive ? (patchView.restLevel(w) ?? 0) : (flow.get(w.from) ?? 1));
     }
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
@@ -10355,8 +10995,7 @@ function buildRack(svg, rack, opts) {
       return true;
     };
     // A `silence` leaf is a source with nothing in it: no input socket. An
-    // `audio_in` is a source too (its signal comes from outside the patch),
-    // though it has no palette entry until the app can capture an input.
+    // `audio_in` is a source too (its signal comes from outside the patch).
     const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence" || m.kind === "audio_in";
     if (m.is_mod) {
       // A modulator's output is a cable source too, but only the one sitting
@@ -10658,6 +11297,11 @@ function buildRack(svg, rack, opts) {
     // After the dials, so the roving tab order reads rate → length → glide →
     // step 1 … step 8, the order the plate is read in.
     if (!compact && !isEmpty && m.lane) drawStepLane(g, m, box, interactive, locks);
+    // AUDIO IN's lane belongs to the player's inputs, so only the bench draws
+    // it; a picture of another patch leaves the space plain.
+    if (!compact && !isEmpty && m.kind === "audio_in" && interactive) {
+      audioIn.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2, true);
+    }
   }
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
@@ -10947,6 +11591,7 @@ function startRackMotion(before) {
       it.plateG.style.willChange = "";
       it.g.style.willChange = "";
     }
+    patchView.platesMoved(); // the level marks and the guess, on the cables' final routes
   };
   step(t0);
   return true;
@@ -10998,6 +11643,7 @@ function movePlateTo(it, x, y) {
     w.caseEl.setAttribute("d", d);
     w.inkEl.setAttribute("d", d);
   }
+  patchView.platesMoved();
 }
 
 /** True if this press was taken. */
@@ -11257,6 +11903,8 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  // The model's guess is kept in sight of the camera (patch.js `inView`).
+  patchView.cameraMoved();
   // The scope is *not* in the world — that is the point of parenting it to the
   // frame — but what is underneath it moved, so whether it is in the way is a
   // question this answers. Debounced: the answer only matters where the pan
@@ -12125,7 +12773,8 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // fitting the patch, and `.` typed a full stop. Hand the focus back to the
   // thing the gesture is actually about.
   releaseTextEntry();
-  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  // The model's guess (patch.js) is pressed to add it, and its × to skip it.
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl");
   // In freeform, a plain press on a faceplate moves the module. Tested after
   // the modifier gestures below would be too late — they are tested here, in
   // order, and space still wins so the pan modifier keeps working over a plate
@@ -12192,7 +12841,7 @@ $("rack-svg").addEventListener("contextmenu", (ev) => {
 // press that turns into a drag cancels the timer before it can fire.
 $("rack-scroll").addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "mouse" || ev.button !== 0) return;
-  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock")) return;
+  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .ain-ctl")) return;
   const sx = ev.clientX, sy = ev.clientY;
   let timer = setTimeout(() => {
     timer = null;
@@ -12340,6 +12989,10 @@ const LANE_FULL =
   `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one wasn’t queued. ` +
   "It’s busy (breeding, or a heavy render): try again when they land.";
 function queueStruct(msg, landed, tag, waiting) {
+  // Placing an AUDIO IN is the one moment the app asks the browser for an
+  // input (Plan-007 task 4): inside the player's gesture, never at boot, and
+  // whether the edit goes out now or waits its turn.
+  if (msg.op && JSON.stringify(msg.op).includes('"AudioIn"')) audioIn.added();
   if (!laneFree()) {
     if (laneStructCount() >= LANE_STRUCT_MAX) return note(LANE_FULL, { urgent: true });
     // The confirmation travels with the op rather than being said now, for the
@@ -13167,7 +13820,13 @@ function deleteBlurb(key, node, fields, inNames) {
   if (par && par.binary) {
     return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
   }
-  return fields.length === 0 ? "a lone source can’t be deleted" : "one module, and what it feeds moves up";
+  if (fields.length === 0) {
+    // A source leaves its socket empty (`deleteSource`); an empty socket has
+    // nothing to take out.
+    const k = rackKindAt(key);
+    return SOURCE_KINDS.includes(k) || k === "audio_in" ? "the socket it leaves is empty" : "a lone source can’t be deleted";
+  }
+  return "one module, and what it feeds moves up";
 }
 
 /** The parent of a trace key, and whether that parent is one of the six
@@ -13340,6 +13999,16 @@ function deleteModule(key, x, y) {
     }]);
   }
 
+  // A source in a socket of its own (a chain's first module, or the whole
+  // patch): the socket is left empty and the source set aside, as an unplug
+  // leaves one. The engine's `delete` has nothing to put there, and refused
+  // it; a patch that can be built from nothing can be taken back to nothing
+  // (Plan-005 task 7).
+  const kindHere = rackKindAt(key);
+  if (f.length === 0 && (SOURCE_KINDS.includes(kindHere) || kindHere === "audio_in")) {
+    return deleteSource(key);
+  }
+
   if (f.length === 0) {
     // Deliberately still sent: the engine's refusal is the right sentence, and
     // it is the one the player should hear from the thing that refuses.
@@ -13347,6 +14016,28 @@ function deleteModule(key, x, y) {
   }
 
   return deletePlain(key);
+}
+
+/** A source out of its socket: a `Silence` leaf takes its place (the hole an
+ *  unplug leaves, which renders nothing) and the source goes to the shelf.
+ *  Its own function so a delete that has to wait its turn is re-run as this. */
+function deleteSource(key) {
+  const node = nodeAtKey(key);
+  if (!node) return note("That module has moved.");
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+  if (holdRewrite([key], deleteSource, `delete of the ${name}`)) return;
+  let gone = null;
+  const ok = applyTreeRewrite((tree) => {
+    const n = nodeAtIn(tree, key);
+    if (!n) return "That module has moved. Try again.";
+    gone = n;
+    if (!setNodeAtIn(tree, key, placeholderNode())) return "That module has moved. Try again.";
+    return null;
+  }, { op: "delete_source", key, kind: rackKindAt(key) });
+  if (!ok) return;
+  const uid = gone ? stageFragment(gone, false) : null;
+  noteOnLanding(`${capital(name)} deleted and set aside below. Its socket is empty.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
 }
 
 /** The plain case — one module out of a chain, what it feeds moves up. No
@@ -14666,6 +15357,22 @@ const MODULES = [
     heard: "flatness, loudly. It is the one source φ can pick out on its own.",
     glyph: `<path class="gl" d="M1 7 L2.3 2.6 L3.6 10.8 L4.9 4 L6.2 12 L7.5 3.4 L8.8 9.6 L10.1 2.4 L11.4 11.4 L12.7 4.6 L14 12.2 L15.3 3 L16.6 10 L17.9 4.4 L19 7.4"/>`,
     frag: () => ({ Noise: { color: "White" } }),
+  },
+  {
+    // Plan-007 task 4. No `phi`: φ counts it for display (`n_audio_in`) and
+    // has no column for it, so the model has no lean on the module itself;
+    // it hears what the patch does to the clip. Adding it asks the browser
+    // for an input (`queueStruct` → audio-in.js).
+    kind: "audio_in", tag: "AudioIn", name: "audio in", sort: "source", group: "sources",
+    ins: 0, modTarget: null, phi: null,
+    tags: ["input", "mic", "microphone", "line", "interface", "guitar", "voice", "external", "effect"],
+    blurb: "Your own signal, from a microphone or an interface. Patch it into a filter or a delay to play through it, or into a follower to modulate with it.",
+    heard: "what the patch does to it, through the clip: your capture, or a built-in plucked phrase until there is one.",
+    glyph:
+      `<path class="gl-mark" d="M1 7 H4.5 M3 5.4 L4.6 7 L3 8.6"/>` +
+      `<path class="gl" d="M6.5 7 L7.6 4.2 L8.7 9.4 L9.8 2.8 L10.9 11 L12 5 L13.1 9 L14.2 3.8 L15.3 10.2 L16.4 5.8 L17.5 8.2 L19 7"/>`,
+    // Unity gain (`INPUT_GAIN_UNITY`, 24/36), the first input, both channels.
+    frag: () => ({ AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } }),
   },
 
   // ---- shape: the nonlinearities ----
@@ -19117,6 +19824,8 @@ function activeStyles() {
 }
 
 taste = createTaste({
+  // Each sound on the map is drawn as its face (Plan-005 task 3).
+  drawFace: drawMapFace,
   geom,
   words,
   INK,
@@ -20235,9 +20944,190 @@ function imageDims() {
   };
 }
 
+// ---------- the sound's card (Plan-005 task 3) ----------
+// A picture to share a sound by: its face, its name and where it came from,
+// built on the export above, so it carries its fonts, rasterizes the same way
+// and holds the patch (drop the card on Auracle and the sound opens). Laid
+// out in a 600 × 315 frame, the size a link preview asks for at 2× (1200 ×
+// 630). The face is the one the header shows: the bench's latest render,
+// against the bank.
+const CARD_W = 600;
+const CARD_H = 315;
+
+/** What the card shows, or null with no sound open. `face` is null until
+ *  it has landed (asked for here). */
+function cardSubject() {
+  const id = wb.subjectId;
+  if (id == null || !wb.rack || !wb.rack.modules || !wb.rack.modules.length) return null;
+  const target = faceTarget(benchTreeJson ? { tree: benchTreeJson } : { id });
+  const key = faceKeyOfTarget(target);
+  const face = (key && faceByKey.get(key)) || null;
+  if (!face) wantFace(target);
+  const lin = lineageOf(id);
+  return {
+    name: `${benchName(id)}${wb.dirty ? dirtySuffix() : ""}`,
+    line: cardLine(rowOf(id)?.origin, lin ? lineageName(lin.parent_id) : "", lin ? lineageChanges(lin.diff) : ""),
+    face,
+    // Why there is no face to draw, if there is none: the sound doesn't play
+    // (the engine has no face for a tree its vet refuses), the bank is too
+    // small to compare with, or it is still on its way.
+    noFace: face && faceStats ? "" : faceNone.has(target) ? "noplay" : !faceStats ? "few" : "coming",
+  };
+}
+
+/** `str` as lines of `text` no wider than `maxW`, at most `maxLines` (the
+ *  last ellipsized only if the words run out of lines). Measured on the
+ *  live stage, in the card's own units. */
+function svgLines(text, str, maxW, maxLines, lead) {
+  const words = str.split(/\s+/).filter(Boolean);
+  const x = text.getAttribute("x");
+  const lines = [];
+  let line = "";
+  text.textContent = "";
+  const probe = document.createElementNS(SVG_NS, "tspan");
+  text.appendChild(probe);
+  const fits = (s) => {
+    probe.textContent = s;
+    return probe.getComputedTextLength() <= maxW;
+  };
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (!line || fits(next)) line = next;
+    else {
+      lines.push(line);
+      line = w;
+    }
+  }
+  if (line) lines.push(line);
+  probe.remove();
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && !fits(`${last}…`)) last = last.replace(/\s*\S+$/, "");
+    lines[maxLines - 1] = `${last}…`;
+  }
+  lines.forEach((l, i) => {
+    const t = document.createElementNS(SVG_NS, "tspan");
+    t.setAttribute("x", x);
+    if (i) t.setAttribute("dy", String(lead));
+    t.textContent = l;
+    text.appendChild(t);
+  });
+  return lines.length;
+}
+
+/** The card as a standalone SVG, `{svg, w, h}` in card units. */
+async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
+  const stage = document.createElement("div");
+  stage.className = "export-stage";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  stage.appendChild(svg);
+  document.body.appendChild(stage);
+  const px = (name) => parseFloat(tok(name)) || 0;
+  try {
+    svg.setAttribute("viewBox", `0 0 ${CARD_W} ${CARD_H}`);
+    const add = (tag, attrs, parent = svg) => {
+      const e = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      parent.appendChild(e);
+      return e;
+    };
+    if (!transparent) {
+      const defs = add("defs", {});
+      const grad = add("linearGradient", { id: "cardBg", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      add("stop", { offset: 0, "stop-color": tok("--rack-bed-hi") }, grad);
+      add("stop", { offset: 1, "stop-color": tok("--rack-bed-lo") }, grad);
+      add("rect", { x: 0, y: 0, width: CARD_W, height: CARD_H, fill: "url(#cardBg)" });
+    }
+    const m = px("--s4");
+    add("rect", { x: m + 0.5, y: m + 0.5, width: CARD_W - 2 * m - 1, height: CARD_H - 2 * m - 1, rx: px("--r3"), fill: "none", stroke: tok("--hairline") });
+    // The face, by the renderer every size shares, large, with its glow and
+    // the floor's reflection, as the specimen's card draws it; drawn at 3×
+    // so a 3× download is sharp. Its space runs to the frame's foot, for the
+    // reflection.
+    const [fw, fh] = FACE_SIZE.share;
+    const fx = px("--s7");
+    const fy = px("--s6");
+    const ih = CARD_H - fy - m;
+    if (sub.face && faceStats) {
+      const c = document.createElement("canvas");
+      const z = 3;
+      c.width = fw * z;
+      c.height = ih * z;
+      const ctx = c.getContext("2d");
+      ctx.setTransform(z, 0, 0, z, 0, 0);
+      drawVessel(ctx, sub.face, faceStats, {
+        box: { x: fw * 0.06, y: 8, w: fw * 0.88, h: fh },
+        color: tok("--phos-a"), glow: 14, line: 2, reflection: true,
+      });
+      add("image", { x: fx, y: fy, width: fw, height: ih, href: c.toDataURL("image/png") });
+    }
+    // The words: the name at the display size (the title's if it will not
+    // fit on one line, then over two lines), the line under it, the mark.
+    const tx = fx + fw + px("--s7");
+    const tw = CARD_W - tx - px("--s7");
+    const name = add("text", { x: tx, y: 0, "font-family": tok("--font-silk"), "font-weight": 500, fill: tok("--silk") });
+    let size = px("--t-display");
+    name.setAttribute("font-size", tok("--t-display"));
+    name.textContent = sub.name;
+    let nameLines = 1;
+    if (name.getComputedTextLength() > tw) {
+      size = px("--t-title");
+      name.setAttribute("font-size", tok("--t-title"));
+      nameLines = svgLines(name, sub.name, tw, 2, size * 1.2);
+    }
+    const top = CARD_H / 2 - ((nameLines - 1) * size * 1.2) / 2 - px("--s4");
+    name.setAttribute("y", String(top));
+    const lineSize = px("--t-body");
+    const line = add("text", {
+      x: tx,
+      y: top + (nameLines - 1) * size * 1.2 + px("--s6"),
+      "font-family": tok("--font-mono"),
+      "font-size": tok("--t-body"),
+      fill: tok("--silk-dim"),
+    });
+    if (sub.line) svgLines(line, sub.line, tw, 3, lineSize * 1.4);
+    add("text", {
+      x: tx,
+      y: CARD_H - px("--s7"),
+      "font-family": tok("--font-silk"),
+      "font-size": tok("--t-label"),
+      "font-weight": 600,
+      "letter-spacing": "0.3em",
+      fill: tok("--silk-dim"),
+    }).textContent = "AURACLE";
+    svg.remove();
+  } finally {
+    stage.remove();
+  }
+  svg.setAttribute("xmlns", SVG_NS);
+  const style = document.createElementNS(SVG_NS, "style");
+  style.textContent = await exportFontCss();
+  svg.insertBefore(style, svg.firstChild);
+  if (sidecar) {
+    const md = document.createElementNS(SVG_NS, "metadata");
+    md.setAttribute("id", "auracle-patch");
+    md.textContent = JSON.stringify(sidecar);
+    svg.insertBefore(md, svg.firstChild);
+  }
+  return { svg, w: CARD_W, h: CARD_H };
+}
+
 function imageSync() {
   const panel = $("image-panel");
   if (!panel || panel.classList.contains("hidden")) return;
+  if (imageState.scope === "card") {
+    $("ix-scope").value = "card";
+    const sub = cardSubject();
+    const dims = $("ix-dims");
+    dims.classList.remove("busy");
+    const size = cardDims(CARD_W * imageState.scale, CARD_H * imageState.scale, imageState.fmt.toUpperCase());
+    // Without a face the card is its name and its line: said, and still
+    // downloadable, unless the face is on its way.
+    dims.textContent = !sub ? "no sound open" : sub.noFace ? `${size} · ${cardNoFace(sub.noFace)}` : size;
+    $("ix-go").disabled = !sub || sub.noFace === "coming";
+    return;
+  }
   const sel = selModule();
   const opt = panel.querySelector('#ix-scope option[value="sel"]');
   if (opt) {
@@ -20258,6 +21148,7 @@ function imageSync() {
 }
 
 async function runImageExport() {
+  if (imageState.scope === "card") return runCardExport();
   const body = patchSidecar();
   const rack = exportRack(imageState.scope === "sel");
   if (!body || !rack || !rack.modules.length) return note("Open a sound first: there’s no patch to draw.");
@@ -20286,6 +21177,33 @@ async function runImageExport() {
       const text = serializeSvg(svg, w, h, 1);
       const px = { w: Math.round(w * imageState.scale), h: Math.round(h * imageState.scale) };
       const blob = await rasterize(text, px.w, px.h);
+      const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
+      saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
+    }
+    note(`Downloaded ${stem}. The patch is inside the picture.`);
+  } catch (err) {
+    note(`That picture couldn’t be made: ${err.message || err}`, { urgent: true });
+  } finally {
+    imageSync();
+  }
+}
+
+async function runCardExport() {
+  const body = patchSidecar();
+  const sub = cardSubject();
+  if (!body || !sub) return note("Open a sound first: there’s no patch to draw.");
+  const go = $("ix-go");
+  const dims = $("ix-dims");
+  go.disabled = true;
+  dims.classList.add("busy");
+  dims.textContent = "rendering…";
+  try {
+    const { svg, w, h } = await buildCardSvg(sub, { transparent: imageState.bg === "transparent", sidecar: body });
+    const stem = `${patchFileStem(body)}-card`;
+    if (imageState.fmt === "svg") {
+      saveBlob(new Blob([serializeSvg(svg, w, h, imageState.scale)], { type: "image/svg+xml" }), `${stem}.svg`);
+    } else {
+      const blob = await rasterize(serializeSvg(svg, w, h, 1), w * imageState.scale, h * imageState.scale);
       const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
       saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
     }
@@ -20569,7 +21487,7 @@ function renderWarmStart(all) {
     b.className = "warm-item";
     // The blurb, not the topology signature. `tri·cho·ladr` describes the
     // graph, which is the one thing this screen is not asking about.
-    b.innerHTML = `<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
+    b.innerHTML = `${faceSlot("warm", { preset: r.index })}<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
     b.setAttribute("aria-pressed", "false");
     const pb = document.createElement("button");
     pb.className = "wi-play";
@@ -21253,6 +22171,11 @@ bootMidi();
 // toast at a moment the app would not normally produce one.
 window.__aur = {
   audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // Where AUDIO IN's inputs stand: permission, the slot list, what is open,
+  // monitoring and the clip (audio-in.js).
+  audioIn: () => audioIn.state(),
+  // PATCH's guess, cable levels and new patch, as patch.js holds them.
+  patch: () => patchView.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")

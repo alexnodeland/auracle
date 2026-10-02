@@ -32,8 +32,10 @@ You can also open a sound with **OPEN IN PATCH** on either side of a pair in
 
 From the top:
 
-**The name.** The sound’s name, *(edited)* once you have changed it, and a
-caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
+**The name.** The sound’s [face](../faces.md), its name, *(edited)* once
+you have changed it, and a caption for what you did to it (*2 locked*). The
+face is the sound as it stands: an edit shows in it once the edit’s render
+lands. **▶**, or <kbd>Space</kbd>, plays
 the standard phrase on the sound as it stands. Pressed while an edit is still on
 its way to the engine, ▶ wears a dotted amber ring and plays once the edit
 lands; press it again to take that back. Space plays the same phrase from
@@ -55,10 +57,60 @@ clicking it does the step it names:
 **⚡ EVOLVE FROM THIS**, on the name’s row: breeding from this sound alone. See
 [locks, and evolving from here](../rack.md#locks-and-evolving-from-here).
 
+**NEW PATCH**, at the right of the name's row, before ⚡: [a patch from
+nothing](#a-patch-from-nothing). In a window under 1280 px wide it shows its
+glyph only, and says its name on hover.
+
 **The toolbar.** **PICK THE EDIT** and **KEEP AS NEW**; the layout and view
 controls (**CHAIN**, **SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and
 the locks (**LOCK KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and
 editing the rack](../rack.md) covers them all.
+
+**The model's guess for the next module,** over the rack's top left once the
+model has fitted your taste: *GUESS · REVERB*, then its reason in the model's
+italic, then how likely it guesses you'd pick the patch with it over the patch
+as it is:
+
+```text
+GUESS · REVERB   it moves toward still, as your picks lean · 67% · leaning
+```
+
+The module itself is drawn dashed amber at its place in the patch: above the
+cable it would be patched into, over the empty socket it would fill, or under
+the module whose modulation input it would take, with a dashed lead to that
+place. It stays in view: with no room above the cable it hangs below the
+patch, or at the top of the view. Click it (or focus it and
+press <kbd>Enter</kbd>) to add it, the same edit the module rail makes, and
+<kbd>⌘Z</kbd> takes it out. Its **×** (or <kbd>Delete</kbd>) skips it: that
+kind of module stays away from that place for this patch, and the next guess
+shows. Undoing a guess you added counts as skipping it. The module rail marks
+the guessed module with an amber dot beside its name.
+
+Beside the guessed module stand two [faces](../faces.md): *as it is*, the
+patch's own, and *with it*, the patch with the guessed module added. The
+second isn't an estimate: to rank its guesses the engine rendered the patch
+with each candidate module, and this is that render's face. Until a face
+arrives its place stays empty; an empty patch has no sound, so it has no
+*as it is*. Both describe the patch as it was when the guess was made, so
+turning a knob takes them away: a knob doesn't change the guess, and the
+faces come back when the next one is made (after you add, remove or skip a
+module, or open another sound).
+
+- It ranks by how sure it is the module helps, not by the percentage, so its
+  first guess can be one it isn't sure of. Then the line ends *it may not help*.
+- Before the warm start it has nothing to guess from, and shows nothing.
+- With no room left (the patch is at a ceiling), it says *no guess: nothing
+  more fits, so a module has to come out first*.
+- On an empty patch, the percentage is over your pool's average sound, and the
+  line says so.
+
+It is worked out again after each change to the patch's structure and after
+each refit, never per knob turn: it renders the modules that could go at the
+output, all of them on a render crew where the machine has the cores, or the
+likeliest eight with none. A guess takes a few seconds, longer the first
+time: the crew has to start (and right after the warm start, the refit runs
+first), and the three seconds of rendering it allows itself count from
+there. [How it guesses](../../reference/search/guess.html).
 
 **The guess.** What the model guesses about the sound you’re playing, and why:
 
@@ -75,8 +127,8 @@ line dims and ends in *· rating…*: the model rating the edited sound again.
 
 When the model has no basis for a guess, the line says so instead of printing a
 number. When nothing reaches the output (the patch’s only source socket is
-[empty](../rack.md#empty-sockets)), it says *no guess while nothing reaches the
-output*. [Reading what it learned](../reading-the-model.md) says how to read
+[empty](../rack.md#empty-sockets)), it says *nothing to rate: no source
+reaches the output*. [Reading what it learned](../reading-the-model.md) says how to read
 it.
 
 **The budget,** beside the guess: the ceilings breeding searches within (24
@@ -85,6 +137,20 @@ when the patch is close to it (*5/6 depth*, in amber) or at it (red): a patch
 at a ceiling has no room to grow, and a hand-built patch past one is refused.
 
 **The rack.** The patch itself. See [reading and editing the rack](../rack.md).
+An **AUDIO IN** module carries a row of its own under its settings: the input
+it reads, your input’s level and its [face](../faces.md), **MONITOR** and **NEW CLIP**. See [playing
+through Auracle](../playing-through.md).
+
+Each green cable carries light by the level the engine measured on it, and a
+mark on its middle lights a bar for each third of the meter's range; point at
+the mark for the number. The amber modulation cables are not measured, so they
+carry no mark. [Cables and their levels](../rack.md#reading-it).
+
+**On a touch screen,** tap a module to open its settings in a sheet: every knob
+as a wide slider with **−** and **+** steps, and every named setting as its
+choices. Hold **−** or **+** to keep stepping. Close it with **×**, a swipe
+down, a tap outside, or <kbd>Esc</kbd>. **REMOVE MODULE** at its foot deletes
+the module, as **delete** in its ⋯ menu does.
 
 **The scope,** at the bottom right of the frame, tracing the output while you
 play. Set it up from **⋯** › *Scope & analyzer…*: waveform or spectrum, where
@@ -117,6 +183,24 @@ is still catching up. **⋯** › **Show measurements** adds the sound’s id an
 short structural summary to the caption, and all three budget ceilings to the
 budget (*8/24 modules · 4/6 depth · 1/3 mod depth*).
 ```
+
+## A patch from nothing
+
+**NEW PATCH** empties the sound you're playing down to its amp envelope: the
+name reads *New patch*, its caption *from nothing · 0 modules · nothing to hear
+yet*, and the rack holds one [empty socket](../rack.md#empty-sockets) before
+`ENV / OUT`. Then:
+
+1. Add modules from the [module rail](../wiring.md), or take the model's guess.
+2. Delete any module from its ⋯ menu. A source leaves its socket empty; the
+   toast's undo, or <kbd>⌘Z</kbd>, puts it back.
+3. **CLEAR** empties it again, with an undo.
+4. **KEEP AS NEW** adds it to the pool as a sound of its own, once it makes a
+   sound.
+
+**BACK TO** *the sound's name* (or <kbd>Esc</kbd>) reopens the sound you started
+from. A new patch with modules in it waits: **NEW PATCH** from that sound brings
+it back. <kbd>⌘Z</kbd> past the start, or opening another sound, also ends it.
 
 ## The three things PATCH is for
 

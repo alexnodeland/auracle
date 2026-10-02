@@ -199,6 +199,7 @@ SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) 
 	| test(=tests::closed_loop_learns_synthetic_taste) \
 	| test(=tests::closed_loop_learns_motion_rate) \
 	| test(=perform::tests::drift_is_local_and_follows_sigma) \
+	| test(=perform::tests::a_stepped_walk_is_the_walk) \
 	| test(=tests::farm_walks_breed_the_serial_generation) \
 	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
 NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast --no-tests=fail

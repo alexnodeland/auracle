@@ -469,7 +469,12 @@ banned-words check in `make dev-check` reads the list after it.
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
+| **card** | The picture of a sound you download to share: its face, its name and where it came from | poster, thumbnail, share image |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |
+| **AUDIO IN** | The module that brings your own signal into a patch | mic node, input node |
+| **input** | A microphone or an interface the browser offers, numbered from 1 on AUDIO IN | device (except the browser’s own names) |
+| **monitor**, MONITOR | Hearing your input through the sound, at the speakers | listen (that is PERFORM’s *listening…*) |
+| **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample, recording, take |
 | **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
@@ -478,7 +483,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **lesson** | A short walk through one idea on the sound in hand, opened from an answer: **LEARN: WHAT A FILTER DOES** | tutorial, course, guide (that is the site) |
 | **cutoff** | Where a filter starts cutting, in the knob's own unit: *cutoff 3.7 kHz* | corner frequency, fc, passband edge |
 | **lowpass** | A filter that keeps the lows and cuts the highs; one word | low-pass, LPF |
-| **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 42 modules") |
+| **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 43 modules") |
 | **place**, **hide** | Put a control from the palette on PERFORM's panel; take it off (it stays in the palette) | add, remove, delete |
 | **ROUND** | The palette's control from hard to round: a soft attack and few harmonics | Softness, soft (the low end is *hard*) |
 | **THROB** | The palette's control from steady to throbbing: pulsing and tremolo | Wobble (a preset's name), Pulse (a wave shape) |

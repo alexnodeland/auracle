@@ -33,7 +33,12 @@ It is kept as you play:
 | Your taste | What the model learned, with its standardizer |
 | Layout and settings | Rack positions, the keybed’s size and width, the scope, and the module rail |
 | **SET ASIDE** | What you unplugged, across reloads |
+| The clip | The seconds of your input AUDIO IN captured for the model, with the session |
+| Your inputs | Which microphone or interface each AUDIO IN input number means: the browser’s id for it and its name |
 | Taste over time | What the model posted at each of your last 200 moments (picks, stars, cuts, redraws): TASTE’s track and LEARNING’s **REPLAY**. A reset clears it, and a taste file doesn’t carry it |
+
+AUDIO IN’s input is played and measured in the tab, and only the clip is kept.
+Monitoring is never kept: it starts off every time.
 
 A large session comes back without a long stall: restoring it runs across the
 background workers.
@@ -76,9 +81,10 @@ You can also drop a file on the window.
 ### A patch as a picture
 
 **Download as a picture…** draws the rack as a PNG or SVG, at a size and
-background you choose. **The picture carries the patch:** open an Auracle PNG
-and you get the same patch back, so a picture of a rack posted in a chat is a
-patch someone else can play.
+background you choose, or the sound’s card: its [face](./faces.md#share-a-sound-as-a-card),
+name and where it came from. **The picture carries the patch:** open an
+Auracle PNG and you get the same patch back, so a picture of a rack, or a
+card, posted in a chat is a patch someone else can play.
 
 ```admonish warning title="Opened files are content, not code"
 A patch file names things: its own name, and its modules’ labels. Those names
