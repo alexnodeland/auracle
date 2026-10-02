@@ -765,8 +765,8 @@ the voices' input in the worklet, and the clip in the engine.
   `--phos-a`, through `host.faceStats`/`host.faceColor`. The lane's
   `data-face` says whether it drew (`live`) or not (`none`: silence, or no
   stats under four faces); the level bar runs up the square's left edge.
-- **The voices.** The worklet node has one two-channel input. `audio-in.js`
-  connects the source of the bench's first AUDIO IN to it (`LivePoly` binds one
+- **The voices.** The worklet node has two two-channel inputs: the first is the voices', the second the recorder's (below). `audio-in.js`
+  connects the source of the bench's first AUDIO IN to the first (`LivePoly` binds one
   input stream that every AUDIO IN reads). Main posts `monitor {on}` to the
   worklet, on only while monitoring is on and an input is connected. On, the
   processor writes each quantum of the input into `LivePoly` (`input_ptr`,
@@ -801,6 +801,49 @@ the voices' input in the worklet, and the clip in the engine.
   goes out (port messages are ordered). A crew raised later gets the current
   phrase in `farmSetup`. `farm.js` keeps its open render store when the
   namespace is unchanged (the namespace never sees the clip).
+
+### TRACK and CAPTURE
+
+- **One tracked voice.** A patch with a TRACK builds its open voice as the
+  lead (it tracks the input; its tracker's gate opens it) and every key's
+  voice as a follower (`compile_follower`). The lead renders its quantum
+  first and copies its tracked signals per frame (`read_tracks`); each
+  follower sets its feeds from that copy before each of its frames.
+- **Recording** (`takes.js`). RECORD first lends the input the AUDIO IN
+  under its CAPTURE reads (`audioIn.lend(slot)`, the slot found from the
+  CAPTURE's key, which may ask for permission). `audio-in.js` opens it and
+  connects it to the worklet's second input, the recorder's: the lent input
+  when there is one, else the bench's, so the voices go on reading the
+  bench's own. `lend` answers `{ready, release}`; RECORD waits on `ready`
+  (the line says *opening input…*) and starts only on `{ok: true}`, or says
+  why it can't (`TAKE_INPUT`: refused, missing, failed, unsupported,
+  unplugged). Then it posts `take_start {key, buf}` to the worklet, `buf` a
+  `Float32Array` main allocated for the whole take (transferred), and while
+  RECORD is lit the worklet copies the second input into it each quantum,
+  whether or not MONITOR is on: a copy is all a recording costs the render
+  thread. `take_stop {key}` (STOP, or the engine's `take_seconds` and a
+  quarter of a second) hands it back, `take_done {key, buf, frames}`, and
+  main sends it to the engine worker as `render_take {id, tree, key,
+  samples, channels, sampleRate}` (transferred, `now` lane). The worker plays
+  it through one voice of the sound, its key held at C4 and the CAPTURE's
+  record gate raised, and encodes the take (`render_take` in `live.rs`: the
+  take the live recorder would have made, bit for bit), replying
+  `take_rendered {id, take}`, or no take with a `code`. That used to run in
+  the worklet's port handler: a 4 s take's encode is 6.3 ms and the
+  recorder's render up to 0.7 ms a quantum (`examples/take_cost.mjs`), a
+  glitch for everything on the render thread; in the worker it is about
+  70 ms nobody hears. No frames copied (a STOP before the first quantum) is
+  no take. `take_error {code}` says why the worklet has none (`failed`). On
+  the bench the take goes out
+  as `edit_structure` with `set_take`, through the bench lane, and only to the
+  sound it was recorded for: RECORD remembers `wb.subjectId`, and a move to
+  another sound stops it and drops the take (`benchMoved`).
+- **Kept safe.** After a restore that held sounds back, main asks
+  `held_sounds` (each with its term and the key of the capture to record
+  again) and lists them at the foot of the pool. RECORD AGAIN records from
+  the saved term the same way, lending the input that term's CAPTURE reads,
+  and sends `readmit_held {id, take}`; the reply `readmitted` carries the
+  views when the sound is back.
 
 ## The job slot
 

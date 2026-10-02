@@ -912,8 +912,9 @@ export function createPatch(host) {
   }
 
   // A tap on a module, on a touch screen: a press that lifts where it went
-  // down. A knob dragged is a knob turned, and a jack, ⋯ or lock keeps its
-  // own meaning.
+  // down. A knob dragged is a knob turned, and a jack, ⋯, lock or plate button
+  // (`data-stop`: AUDIO IN's MONITOR, NEW CLIP and input line, CAPTURE's
+  // RECORD) keeps its own meaning.
   // On the document, in capture: the rack's frame takes the pointer for a pan
   // (`#rack-scroll`), so the lift is not seen by the rack itself.
   let tapsWired = false;
@@ -935,7 +936,7 @@ export function createPatch(host) {
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || e.timeStamp - d.t > 600) return;
       const t = d.target;
       if (!t || !t.closest) return;
-      if (t.closest(".jack, .mod-menu-btn, .mod-lock, .lock-dot, .rack-guess")) return;
+      if (t.closest(".jack, .mod-menu-btn, .mod-lock, .lock-dot, .rack-guess, [data-stop]")) return;
       const g = t.closest("[data-key]");
       if (!g) return;
       const knob = t.closest("[data-addr]");

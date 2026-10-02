@@ -232,6 +232,14 @@ Three consequences worth knowing:
   phrase the dyad’s second voice is a *follower*: it plays the note the main
   voice’s tracker hears from its first frame, and its amp keeps its own key’s
   gate, so it stops with the dyad.
+- **Live, one voice tracks.** The instrument (`LivePoly`) builds a patch with a
+  TRACK with one tracked voice, its open voice, and every key’s voice is a
+  follower of it, as the phrase’s chord voices are: so a key let go stops with
+  its key instead of staying open while the input sounds. The tracked voice is
+  not held like a key; its tracker’s gate opens it, so while the input is
+  monitored it sounds when the input does. It renders its quantum first and
+  copies its tracked signals frame by frame (`CompiledVoice::read_tracks`) for
+  the followers to read before each of their frames.
 - **Before the first tracked note**, `/0` plays C4 (the tracker’s 0 V), and
   between notes it holds the last note it tracked.
 - **The tracker hears what is there.** Where one note still rings under the
@@ -244,7 +252,7 @@ pair.
 
 ### CAPTURE: a recorded take as a source
 
-`Capture` records what is patched into it and plays the recording back
+`Capture` records what is patched into it and plays the take back
 (RFC-008’s *resample*). It compiles to quiver’s `Capture` and is `#op` 21.
 
 | Knob | Site | Range |
@@ -273,7 +281,7 @@ costs the sound: the term loads with the take empty, and a restore counts the
 sound as repaired, so the app says so. When that take was the sound’s only
 source it no longer renders, and the restore **keeps it aside** (the engine’s
 held list) instead of dropping it: out of the pool, so nothing deals, fits or
-breeds it, reported apart from the repairs (“One sound’s recording couldn’t
+breeds it, reported apart from the repairs (“One sound’s take couldn’t
 be read. It’s kept safe until you record it again.”, once for each set of
 such sounds), and written back by every save with its take JSON-equal to what
 was loaded, until a readable take brings it back (`readmit_held`), measured
@@ -289,7 +297,15 @@ take has enlarged, so what a capture records always reads back as a take.
 Recording is the host’s. A compiled voice has a record gate per capture and
 reads the take back from quiver’s state, and `StructOp::SetTake` puts it in the
 term. Nothing in the engine raises the gate, so a measurement render never
-records and a capture measures the same every time.
+records and a capture measures the same every time. In the app, RECORD on the
+CAPTURE’s plate has the worklet copy the input the CAPTURE listens to while it
+is lit, and on STOP (or at `TAKE_SECONDS`) the engine worker plays that copy
+through one voice of the patch, its key held at C4 and the gate raised
+(`render_take`, with `LivePoly::set_record` and `LivePoly::take_json`): the
+take a voice recording live would have made, without compiling, rendering or
+encoding on the audio thread. The take goes out as `set_take`, an edit like any
+other. A sound kept safe is recorded the same way from its saved term, and the
+take goes to `readmit_held`.
 
 ### Player kinds: scored and never drawn
 

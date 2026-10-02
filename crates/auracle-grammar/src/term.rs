@@ -2795,6 +2795,24 @@ impl PatchTree {
         walk(&mut self.root);
     }
 
+    /// The node key of the first CAPTURE whose take could not be read, in
+    /// walk order: the one [`Self::replace_lost_take`] fills, and so the one a
+    /// player records again to bring a held sound back.
+    pub fn lost_take_key(&self) -> Option<String> {
+        fn walk(n: &AudioNode, key: &str) -> Option<String> {
+            if let AudioNode::Capture { take, .. } = n {
+                if take.unreadable().is_some() {
+                    return Some(key.to_string());
+                }
+            }
+            n.children()
+                .into_iter()
+                .enumerate()
+                .find_map(|(i, c)| walk(c, &format!("{key}/{i}")))
+        }
+        walk(&self.root, "node")
+    }
+
     /// Install `fresh` on the first CAPTURE whose take could not be read, in
     /// walk order, and clear any other unreadable take to plain empty. `false`
     /// when there is no unreadable take to replace.

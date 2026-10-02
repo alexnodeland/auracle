@@ -16,6 +16,7 @@ the long-form notes are this directory's `README.md`.
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
+| `takes.js` | main thread | CAPTURE's RECORD (the worklet copies the input while it is lit, the engine worker renders the take with `render_take`, sent as `set_take`) and the sounds kept safe for a recording, listed in the pool with RECORD AGAIN |
 | `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |

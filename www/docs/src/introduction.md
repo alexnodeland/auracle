@@ -22,7 +22,7 @@ to do and what you’ll see. The [reference](../reference/) is for how it works,
 with the math.
 
 It’s a synthesizer first. Four voices, a keybed, MIDI, an arpeggiator, and a
-rack of 43 modules with typed cables. You can play it without teaching it
+rack of 45 modules with typed cables. You can play it without teaching it
 anything.
 
 <figure>

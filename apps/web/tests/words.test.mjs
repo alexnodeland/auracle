@@ -82,6 +82,16 @@ import {
   guessLine,
   guessRefusal,
   levelWord,
+  TAKE_SILK,
+  TAKE_TIPS,
+  TAKE_SAID,
+  TAKE_ERRORS,
+  TAKE_INPUT,
+  takeLine,
+  takeRolling,
+  takeAgain,
+  takeLanded,
+  takeReadmitted,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -637,4 +647,35 @@ test("a cable's measured level reads in decibels, or nothing at the probe's floo
   assert.equal(levelWord(3.6), "4 dB");
   assert.equal(levelWord(-120), "nothing");
   assert.equal(levelWord(null), "nothing");
+});
+
+test("CAPTURE says how long its take is, and what recording did, in the voice", () => {
+  assert.equal(takeLine(0), "no take yet");
+  assert.equal(takeLine(2.36), "take · 2.4 s");
+  assert.equal(takeLanded(3.2), "Recorded 3.2 s into CAPTURE.");
+  for (const s of Object.values(TAKE_SILK)) {
+    voiced(s);
+    assert.ok(s.split(" ").length <= 3 && s === s.toLowerCase(), s);
+  }
+  for (const s of Object.values(TAKE_TIPS)) {
+    voiced(s);
+    assert.ok(s.split(/\s+/).length <= 8, s);
+  }
+  for (const s of [...Object.values(TAKE_SAID), ...Object.values(TAKE_ERRORS), takeRolling(4), takeAgain("Mic Loop", 4), takeReadmitted("Mic Loop")]) {
+    voiced(s);
+    assert.ok(s.split(/[.…] /).length <= 2, s);
+  }
+  // While RECORD rolls its button reads STOP, so that is what is lit.
+  assert.match(TAKE_SAID.empty, /while STOP is lit/);
+  // Every code the worklet sends has its own sentence, and each says that
+  // nothing was recorded or changed.
+  assert.deepEqual(Object.keys(TAKE_ERRORS).sort(), ["failed", "no_capture"]);
+  for (const s of Object.values(TAKE_ERRORS)) assert.match(s, /nothing (was recorded|changed)/);
+  // An input that didn't open says so, and that nothing was recorded.
+  for (const s of Object.values(TAKE_INPUT)) {
+    voiced(s);
+    assert.ok(s.split(/[.…] /).length <= 2, s);
+    assert.match(s, /nothing was recorded/);
+  }
+  assert.match(TAKE_INPUT.refused, /refused/);
 });

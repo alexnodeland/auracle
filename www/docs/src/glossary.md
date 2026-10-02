@@ -12,6 +12,15 @@ reading the app.</p>
 every time. A **clip** is the seconds of your input the model hears a sound
 with AUDIO IN through. See [playing through Auracle](./playing-through.md).
 
+### TRACK, CAPTURE, take, kept safe
+
+**TRACK** plays a chain from the pitch and the notes of an input. **CAPTURE**
+records what is patched into it: each time you press RECORD it makes a new
+**take**, played from the keys, an edit you keep with KEEP AS NEW. A sound
+whose take couldn’t be read is **kept safe**, out of the pool, until you
+record it again. See [playing through
+Auracle](./playing-through.md#record-into-it-capture).
+
 ### Bank
 
 The rail on the left, with three tabs: **POOL** (the sounds the model weighs

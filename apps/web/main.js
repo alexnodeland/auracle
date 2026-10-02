@@ -144,6 +144,9 @@ const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
 // AUDIO IN: the permission, the inputs, monitoring and the clip
 // (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
 const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
+// CAPTURE's RECORD and the sounds kept safe for a recording (takes.js,
+// Plan-007 task 6).
+const { createTakes, TAKE_LANE_H } = await import(`./takes.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -289,6 +292,21 @@ const audioIn = createAudioIn({
   // own color.
   faceStats: () => faceStats,
   faceColor: () => tok("--phos-a"),
+});
+const takes = createTakes({
+  live: () => live,
+  note: (text, opts) => note(text, opts),
+  send: (msg, transfer) => send(msg, transfer),
+  sampleRate: () => (audioCtx ? audioCtx.sampleRate : 48_000),
+  ensureAudio: () => ensureAudio(),
+  lend: (slot) => audioIn.lend(slot),
+  renderBank: () => renderBank(),
+  benchTree: () => wb.tree,
+  nodeAt: (key) => nodeAtKey(key),
+  nodeIn: (tree, key) => (tree && tree.root ? nodeAtIn(tree, key) : null),
+  setTake: (key, take, text) => setRackTake(key, take, text),
+  benchId: () => wb.subjectId,
+  keptCursor: () => (kbdRowId == null ? kbdKeptId : null),
 });
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
@@ -1128,8 +1146,8 @@ function announceRepair() {
       try { localStorage.setItem("auracle-held-noted", set); } catch (_) {}
       note(
         r.held > 1
-          ? `${r.held} sounds’ recordings couldn’t be read. They’re kept safe until you record them again.`
-          : "One sound’s recording couldn’t be read. It’s kept safe until you record it again.",
+          ? `${r.held} sounds’ takes couldn’t be read. They’re kept safe until you record them again.`
+          : "One sound’s take couldn’t be read. It’s kept safe until you record it again.",
         { urgent: true },
       );
     }
@@ -1733,12 +1751,12 @@ const patchView = createPatch({
   removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
   // Esc has another job first: something floating, a module in hand, a cable
-  // half made, or a rack knob it backs out of.
+  // half made, or a rack knob or plate button (`data-stop`) it backs out of.
   escBusy: () =>
     !!(armed || connectPick || wire || compareId != null) ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
-    !!document.activeElement?.closest?.("#rack-svg [data-addr]"),
+    !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"),
 });
 
 worker.onmessage = (e) => {
@@ -1799,6 +1817,8 @@ worker.onmessage = (e) => {
       // message queue, so everything below is serviced while it runs.
       dropBootVeil();
       applyStatus(m.status);
+      // Sounds kept safe for a recording are listed in the pool's tab.
+      if (pendingRepair && pendingRepair.held) send({ type: "held_sounds" });
       announceRepair();
       // The preset library is static and tiny, and its size shows on the chip
       // before you press it. Fetching only on first press would leave that
@@ -1935,6 +1955,25 @@ worker.onmessage = (e) => {
     // `ok` is there only then). A clip the engine took measured the pool's
     // listeners again, so their ratings moved, and it is saved with the
     // session from now on.
+    // The sounds a restore kept safe for a recording, and the answer to one
+    // recorded again (takes.js).
+    case "held_sounds": {
+      takes.setHeld(m.held);
+      break;
+    }
+    // RECORD's take, rendered by the engine from what the worklet copied.
+    case "take_rendered": {
+      takes.rendered(m);
+      break;
+    }
+    case "readmitted": {
+      if (m.views) applyViews(m.views);
+      if (m.status) applyStatus(m.status);
+      takes.readmitted(m);
+      if (m.ok) scheduleSave();
+      renderBank();
+      break;
+    }
     case "audition_clip": {
       if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
       if (m.views) applyViews(m.views);
@@ -2342,6 +2381,9 @@ worker.onmessage = (e) => {
           benchBeforeAudition = null;
           setDuelSelection(null);
         }
+        // Any other way a different sound reached the bench (a file, an
+        // undo of an open): a recording for the one it replaced stops.
+        if (m.subject !== wb.subjectId) takes.benchMoved(m.subject);
         wb.subjectId = m.subject;
         benchPending = null;
         // Whatever was done to the last patch while this one was on its way
@@ -2669,6 +2711,7 @@ worker.onmessage = (e) => {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
       if (m.clip) audioIn.clip({ clip: m.clip });
+      takes.setLimit(m.takeSeconds);
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
@@ -2818,6 +2861,8 @@ worker.onmessage = (e) => {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       if (m.id > 0) {
+        // The same sound under its new id: a recording rolling for it follows.
+        takes.benchKept(wb.subjectId, m.id);
         wb.subjectId = m.id;
         wb.dirty = false;
         benchDirtyWhy = null;
@@ -3167,6 +3212,10 @@ worker.onmessage = (e) => {
 function releaseRequest(request, id) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
   switch (request) {
+    case "render_take":
+      // The recording it carried is lost: say so, rather than wait forever.
+      takes.rendered({ id, take: null, code: "failed" });
+      break;
     case "edit_param":
       // That write did not land. The ones queued behind it are gestures of
       // their own and still go; the next reply draws what the engine holds.
@@ -5076,6 +5125,7 @@ async function bootLiveAudio() {
     if (m.type === "patch_error") note(`The live patch didn’t compile: ${m.error}`);
     if (m.type === "b_error") note(`The offer in B couldn’t be played: ${m.error}`);
     if (m.type === "param_miss") healParamMiss(m.addr);
+    if (m.type === "take_done" || m.type === "take_error") takes.onWorklet(m);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
     }
@@ -5430,7 +5480,8 @@ document.addEventListener("keydown", (e) => {
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   // A focused control keeps only the keys it uses. A button uses Space and
   // Enter; tabs, menu items, options, knobs and sliders also steer with the
-  // arrows and Home/End. Swallowing every non-note key made one click on HOLD
+  // arrows and Home/End (a rack plate's buttons, `data-stop`, move on with
+  // them). Swallowing every non-note key made one click on HOLD
   // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
   // elsewhere.
   //
@@ -5440,7 +5491,7 @@ document.addEventListener("keydown", (e) => {
   // from the keyboard cycling). A knob, a PERFORM control or the XY pad keeps
   // its focus after a drag, and Space there did nothing at all; a chip a
   // click focused cycled again (a click now leaves no focus on a chip).
-  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
+  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], [data-stop], input[type=range]";
   const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
   if (ctl) {
     const activates = e.key === "Enter" || (e.key === " " && (ctl.matches("button") || e.defaultPrevented));
@@ -5777,9 +5828,9 @@ $("rec-btn").onclick = () => {
   $("rec-btn").classList.toggle("lit", recording);
   $("rec-btn").textContent = recording ? "◼ stop" : "● rec";
   live.rec(recording);
-  // One slot for the take's toasts, so "saved" replaces "recording" the moment
+  // One slot for the recording's toasts, so "saved" replaces "recording" the moment
   // you stop, rather than waiting out its window (2–3 s late on camera).
-  if (recording) note("Recording. Play something, then stop to download the take.", { replace: "rec" });
+  if (recording) note("Recording. Play something, then stop to download the recording.", { replace: "rec" });
 };
 
 // The film pipeline (www/video/tools/footage.mjs) records a walkthrough's
@@ -5859,7 +5910,7 @@ function downloadWav(samples, sampleRate, { quiet = false, name = null } = {}) {
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
-  if (!quiet) note(`Downloaded a ${(nFrames / sampleRate).toFixed(1)} s take.`, { replace: "rec" });
+  if (!quiet) note(`Downloaded a ${(nFrames / sampleRate).toFixed(1)} s recording.`, { replace: "rec" });
 }
 
 // ---------- Web MIDI ----------
@@ -7653,6 +7704,7 @@ function renderBank() {
     frag.appendChild(bankRow(r, fitted));
   });
   if (bankFilter === "pool") appendReplaced(frag);
+  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }));
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
@@ -8029,6 +8081,7 @@ function renderPresetBank(list) {
         // It used to open when it landed, and this one was then refused.
         benchSeq += 1;
         presetClicks.set(p.index, benchSeq);
+        takes.benchMoved(null); // a preset on its way: the bench is moving on
         openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
@@ -8092,6 +8145,9 @@ document.querySelectorAll(".bank-filters .bf").forEach((b) => {
 // A rating re-renders the bank, and an index into a list that was just
 // rebuilt is a different patch.
 let kbdRowId = null;
+// …or on a sound kept safe, at the pool's foot (takes.js): its id. The cursor
+// runs on past the pool's last row onto them, so RECORD AGAIN has a key.
+let kbdKeptId = null;
 
 // Tell assistive tech where the cursor is.
 //
@@ -8105,8 +8161,9 @@ function syncBankCursor() {
   // A cursor pointing at a row this bank does not contain is worse than no
   // cursor: `aria-activedescendant` naming a deleted element is a dangling
   // reference, and switching to the preset bank used to leave one behind.
-  const row = kbdRowId != null ? document.getElementById(`bank-row-${kbdRowId}`) : null;
-  for (const el of list.querySelectorAll(".bank-item[aria-selected='true']")) {
+  const row = kbdRowId != null ? document.getElementById(`bank-row-${kbdRowId}`)
+    : kbdKeptId != null ? document.getElementById(`kept-row-${kbdKeptId}`) : null;
+  for (const el of list.querySelectorAll(".bank-item[aria-selected='true'], .kept-row[aria-selected='true']")) {
     el.setAttribute("aria-selected", "false");
   }
   if (row) {
@@ -8118,12 +8175,16 @@ function syncBankCursor() {
 }
 
 function moveKbdRow(d) {
-  if (bankRows.length === 0) return;
-  const cur = bankRows.findIndex((r) => r.id === kbdRowId);
-  const next = Math.max(0, Math.min(bankRows.length - 1, (cur < 0 ? 0 : cur) + d));
-  kbdRowId = bankRows[next].id;
+  // The pool's rows, then (in the pool) the sounds kept safe at its foot.
+  const kept = bankFilter === "pool" ? takes.keptIds() : [];
+  const stops = [...bankRows.map((r) => ({ id: r.id })), ...kept.map((id) => ({ kept: id }))];
+  if (stops.length === 0) return;
+  let cur = kbdKeptId != null ? stops.findIndex((s) => s.kept === kbdKeptId) : stops.findIndex((s) => s.id === kbdRowId);
+  const next = Math.max(0, Math.min(stops.length - 1, (cur < 0 ? 0 : cur) + d));
+  kbdRowId = stops[next].id ?? null;
+  kbdKeptId = stops[next].kept ?? null;
   renderBank();
-  $("bank-list").querySelector(".bank-item.kbd")?.scrollIntoView({ block: "nearest" });
+  $("bank-list").querySelector(".bank-item.kbd, .kept-row.kbd")?.scrollIntoView({ block: "nearest" });
 }
 
 // The preset bank's keyboard. Presets carry a library `index`, not a bank id,
@@ -8246,10 +8307,16 @@ function voteDropped(v) {
 
 $("bank-list").addEventListener("keydown", (e) => {
   if (bankFilter === "preset") return presetKeydown(e);
-  if (bankRows.length === 0) return;
-  if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null ? 0 : 1); }
+  if (bankRows.length === 0 && !(bankFilter === "pool" && takes.keptIds().length)) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null && kbdKeptId == null ? 0 : 1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveKbdRow(-1); }
-  else if (e.key === "Enter" || e.key === " ") {
+  else if ((e.key === "Enter" || e.key === " ") && kbdKeptId != null && kbdRowId == null) {
+    // A sound kept safe: RECORD AGAIN (and STOP while it records).
+    e.preventDefault();
+    if (!e.repeat) takes.recordAgain(kbdKeptId);
+  } else if (bankRows.length === 0) {
+    return;
+  } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
@@ -8647,6 +8714,7 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  takes.benchMoved(id); // a recording for the sound being left stops here
   benchPendingTick = ++openTick;
   openAskedAt = performance.now();
   openAsk = { id, at: openAskedAt, auto };
@@ -8734,6 +8802,15 @@ function setRackKnob(addr, value) {
   k.value = value;
   sendEdit(addr, value, k.kind.t !== "continuous");
   renderRack();
+}
+
+/** Put a recording into the CAPTURE at `key` on the bench (takes.js): a
+ *  structural edit like any other, one undo step, said when it lands. */
+function setRackTake(key, take, text) {
+  sendStruct({ op: "set_take", key, take }, {
+    text,
+    opts: { undo: () => doUndo(), undoLabel: "take it out" },
+  });
 }
 
 function sendEdit(addr, value, isIndex, id) {
@@ -8966,8 +9043,11 @@ function moduleBox(mod, isEmpty) {
   const perRow = PLATE_COLS[step];
   const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
   // AUDIO IN's lane (audio-in.js `drawLane`): its input, meter, MONITOR and
-  // NEW CLIP, under its three settings.
-  const lane = hasStepLane(mod) ? STEP_LANE_H : mod.kind === "audio_in" ? INPUT_LANE_H : 0;
+  // NEW CLIP, under its three settings; CAPTURE's (takes.js): RECORD and the
+  // length of its recording.
+  const lane = hasStepLane(mod) ? STEP_LANE_H
+    : mod.kind === "audio_in" ? INPUT_LANE_H
+    : mod.kind === "capture" ? TAKE_LANE_H : 0;
   return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
 }
 
@@ -10322,6 +10402,7 @@ function renderRack(rebuild = false) {
   // Which inputs the bench's AUDIO INs read: opened, closed and fed to the
   // voices from here, on every redraw, value-only ones included.
   audioIn.follow(hasRack ? wb.rack : null);
+  takes.paint();
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -11305,6 +11386,9 @@ function buildRack(svg, rack, opts) {
     if (!compact && !isEmpty && m.kind === "audio_in" && interactive) {
       audioIn.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2, true);
     }
+    if (!compact && !isEmpty && m.kind === "capture" && interactive) {
+      takes.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2);
+    }
   }
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
@@ -11730,6 +11814,9 @@ function markRackFocus() {
   // module does — the same slice `lockIdOf` takes.
   const hash = addr ? addr.indexOf("#") : -1;
   if (hash >= 0) return { mid, param: addr.slice(hash) };
+  // A plate's button (`data-stop`) is named by which button it is.
+  const stop = a.getAttribute?.("data-stop");
+  if (stop) return { mid, stop };
   for (const attr of ["data-childkey", "data-modkey", "data-outkey"]) {
     const v = a.getAttribute?.(attr);
     // A socket is named by which socket it is: `/0`, `/1`, or the module's
@@ -11748,7 +11835,10 @@ function restoreRackFocus(mark) {
   if (!g) return;
   let el = g;
   if (mark.param) el = g.querySelector(`[data-addr$="${mark.param}"]`) || g;
-  else if (mark.attr) {
+  else if (mark.stop) {
+    const b = g.querySelector(`[data-stop="${mark.stop}"]`);
+    el = b && shownControl(b) ? b : g;
+  } else if (mark.attr) {
     el = [...g.querySelectorAll(`.jack[${mark.attr}]`)]
       .find((j) => j.getAttribute(mark.attr).endsWith(mark.tail)) || g;
   }
@@ -14722,9 +14812,19 @@ function attachEnumSweep(el, txt, knob) {
 // ---------- rack keyboard navigation ----------
 // One roving tab stop for the whole rack: Tab enters, arrows move between
 // controls, Up/Down turn the focused knob (Shift = fine), Enter cycles an
-// enum, L toggles its lock.
+// enum, L toggles its lock. A plate's buttons that are not knobs (AUDIO IN's
+// input line, MONITOR, NEW CLIP and ALLOW INPUT; CAPTURE's RECORD) carry
+// `data-stop` (named for which button it is, so a rebuild puts the focus
+// back on it): the arrows reach them after the knobs, and Enter or Space is
+// their own. One hidden in its current state is passed over, as is anything
+// on the leaving rack's copy (`.rack-exit`) while it fades.
+// (Declarations, not consts: a rebuild's focus restore can run before the
+// module's evaluation reaches here.)
+function shownControl(el) {
+  return !el.closest(".hidden, .rack-exit");
+}
 function rackControls() {
-  return [...$("rack-svg").querySelectorAll("[data-addr]")];
+  return [...$("rack-svg").querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);
 }
 /** Every module plate, in layout order. */
 function rackPlates() {
@@ -14733,7 +14833,7 @@ function rackPlates() {
 /** Everything the one roving stop can sit on. Plates and knobs share it, so
  *  Tab always returns to wherever the keyboard last was inside the rack. */
 function rackStops() {
-  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr]")];
+  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr], [data-stop]")];
 }
 function setRackStop(el) {
   for (const e of rackStops()) e.setAttribute("tabindex", e === el ? "0" : "-1");
@@ -14778,7 +14878,7 @@ function focusPlate(el, say) {
     nbAnnounce(
       `${isPlaceholderKey(key) ? "empty socket" : m?.title || key}, ` +
       `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
-      `Enter for the structure menu, right and left for its knobs.`,
+      `Enter for the structure menu, right and left for its controls.`,
     );
   }
 }
@@ -14790,12 +14890,12 @@ let nudge = null; // {id, at} — the last knob nudged, and when
 
 $("rack-svg").addEventListener("keydown", (e) => {
   const plate = e.target.closest?.("g.mod-group");
-  if (plate && !e.target.closest?.("[data-addr]")) {
+  if (plate && !e.target.closest?.("[data-addr], [data-stop]")) {
     const plates = rackPlates();
     const i = plates.indexOf(plate);
     const key = plate.getAttribute("data-key");
     const mod = wb.rack?.modules.find((x) => x.key === key);
-    const knobs = [...plate.querySelectorAll("[data-addr]")];
+    const knobs = [...plate.querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);
     const box = plate.getBoundingClientRect();
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -14833,7 +14933,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     }
     return;
   }
-  const kg = e.target.closest?.("[data-addr]");
+  const kg = e.target.closest?.("[data-addr], [data-stop]");
   if (!kg) return;
   // Escape backs out to the plate the knob is on, which is the only way to
   // reach the structural verbs without reaching for the mouse again.
@@ -14844,6 +14944,16 @@ $("rack-svg").addEventListener("keydown", (e) => {
   }
   const els = rackControls();
   const i = els.indexOf(kg);
+  // A plate's button: the arrows move on, and Enter or Space was its own.
+  if (!kg.dataset.addr) {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      focusRackControl(i + (e.key === "ArrowRight" ? 1 : -1));
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+    }
+    return;
+  }
   const knob = knobByAddr(kg.dataset.addr);
   if (!knob) return;
   const step = e.shiftKey ? 0.002 : 0.02;
@@ -15376,6 +15486,42 @@ const MODULES = [
       `<path class="gl" d="M6.5 7 L7.6 4.2 L8.7 9.4 L9.8 2.8 L10.9 11 L12 5 L13.1 9 L14.2 3.8 L15.3 10.2 L16.4 5.8 L17.5 8.2 L19 7"/>`,
     // Unity gain (`INPUT_GAIN_UNITY`, 24/36), the first input, both channels.
     frag: () => ({ AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } }),
+  },
+  {
+    // Plan-007 task 5, a player kind: the prior never draws it. Its played
+    // branch (`input`) follows the pitch and gate of what it listens to
+    // (`listen`, an AUDIO IN by default, so placing one asks for an input).
+    // Live, one voice tracks and the keys' voices follow it (LivePoly's
+    // lead). No `phi` column: φ counts it for display only.
+    kind: "track", tag: "Track", name: "track", sort: "combine", group: "dynamics",
+    ins: 2, inNames: ["play", "listen"], modTarget: null, phi: null, fields: ["input", "listen"],
+    tags: ["pitch", "tracker", "follow", "sing", "hum", "voice", "guitar", "input", "yin"],
+    blurb: "Plays its first chain from the pitch and the notes of what it listens to: sing or play into an AUDIO IN and the patch follows you.",
+    heard: "what the chain it plays does, at the pitches of the clip’s notes.",
+    glyph:
+      `<path class="gl-ghost" d="M1 10 q1.2 -5 2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0"/>` +
+      `<path class="gl" d="M1 11.5 H5 V7.5 H10 V4 H15 V7.5 H19"/>`,
+    frag: () => ({
+      Track: {
+        band: "mid", sensitivity: 0.5, dynamics: 0.5, input: SEED_VCO(),
+        listen: { AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } },
+      },
+    }),
+  },
+  {
+    // Plan-007 task 6, a player kind. Its output is its recording, never its
+    // input: placed, it is silent until RECORD on its plate records what is
+    // patched into it (takes.js).
+    kind: "capture", tag: "Capture", name: "capture", sort: "proc", group: "space",
+    ins: 1, modTarget: null, phi: null,
+    tags: ["record", "sample", "loop", "resample", "take", "looper", "phrase", "input"],
+    blurb: "Records what is patched into it, up to four seconds, and plays the take from the keys: once, while held, or round and round.",
+    heard: "its take, played at the keys’ pitch. Until you record, it is silent.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1 7 q1.4 -4 2.8 0 t2.8 0 t2.8 0"/>` +
+      `<path class="gl-mark" d="M12 3 V11 M14 4.5 L18 7 L14 9.5 Z"/>`,
+    frag: () => ({ Capture: { play: "once", input: SEED_VCO(), take: null } }),
   },
 
   // ---- shape: the nonlinearities ----
@@ -22179,6 +22325,8 @@ window.__aur = {
   audioIn: () => audioIn.state(),
   // PATCH's guess, cable levels and new patch, as patch.js holds them.
   patch: () => patchView.state(),
+  // CAPTURE's recording under way, and the sounds kept safe (takes.js).
+  takes: () => takes.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")

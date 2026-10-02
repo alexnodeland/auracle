@@ -27,12 +27,12 @@ async function tapPlate(page, kind) {
   }, { timeout: 30_000 }).toBe(true);
   // The point of bare panel farthest from every control on the plate: a
   // touch screen moves a tap onto anything that answers one nearby (a knob's
-  // lock dot), and a tap there is that control's.
+  // lock dot, a plate button), and a tap there is that control's.
   const at = await page.evaluate((k) => {
     const plate = document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`);
     const b = plate.getBoundingClientRect();
     const group = document.querySelector(`#rack-svg g.mod-group[data-kind="${k}"]`);
-    const ctrls = [...group.querySelectorAll("[data-addr], .jack, .mod-menu-btn, .mod-lock, .lock-dot")].map((e) => e.getBoundingClientRect());
+    const ctrls = [...group.querySelectorAll("[data-addr], [data-stop], .jack, .mod-menu-btn, .mod-lock, .lock-dot")].map((e) => e.getBoundingClientRect());
     let best = null;
     for (let fx = 0.08; fx < 0.95; fx += 0.04) {
       for (let fy = 0.08; fy < 0.95; fy += 0.04) {
@@ -136,5 +136,33 @@ test("an AUDIO IN module is drawn as the engine describes it, and its sheet has 
   const sheet = page.locator("#module-sheet");
   await expect(sheet).toHaveClass(/\bon\b/);
   await expect(sheet.locator(".ms-row")).toHaveCount(3);
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("on touch, a tap on a plate button presses it and opens no sheet", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  // A CAPTURE around the first socket's branch, as an edit the engine takes:
+  // RECORD records that branch, with no input to ask for.
+  await page.evaluate(() => {
+    const t = JSON.parse(JSON.stringify(window.__aur.wb.tree));
+    const body = Object.values(t.root)[0];
+    const field = ["input", "a", "carrier"].find((f) => body[f] && typeof body[f] === "object");
+    const take = { format: "f32le-base64", sample_rate: 44100, length: 0, data: "" };
+    body[field] = { Capture: { play: "hold", input: body[field], take } };
+    window.__pwEngine().postMessage({ type: "edit_set_tree", json: JSON.stringify(t) });
+  });
+  const rec = page.locator('#rack-svg [data-stop="take-rec"]');
+  await expect(rec).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(1500); // the camera settles after the edit
+  await rec.evaluate((b) => b.addEventListener("click", () => { window.__pwRecTapped = true; }));
+  const box = await rec.boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  // RECORD took the tap (it records), and no sheet came up over it.
+  await expect.poll(() => page.evaluate(() => !!window.__pwRecTapped), { timeout: 5_000 }).toBe(true);
+  await page.waitForTimeout(800);
+  await expect(page.locator("#module-sheet.on")).toHaveCount(0);
   expect(errors, errors.join("\n")).toEqual([]);
 });

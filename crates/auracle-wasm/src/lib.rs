@@ -158,6 +158,14 @@ pub fn budget_ceilings() -> String {
     format!(r#"{{"size":{MAX_SIZE},"depth":{MAX_DEPTH},"mod":{MAX_MOD_DEPTH}}}"#)
 }
 
+/// The longest take a CAPTURE holds, in seconds (`TAKE_SECONDS` in the
+/// grammar, quiver's `Capture::DEFAULT_SECONDS`). RECORD stops itself a
+/// little after it; the app reads it here rather than restate it.
+#[wasm_bindgen]
+pub fn take_seconds() -> f64 {
+    auracle_grammar::TAKE_SECONDS
+}
+
 // ----------------------------------------------------------------------
 // The render farm's stateless surface
 // ----------------------------------------------------------------------
@@ -461,8 +469,19 @@ fn clip_note(status: &ClipStatus) -> &'static str {
 /// One sound the last restore held back, as [`WasmEngine::held_sounds`]
 /// lists it. Ids are `u32` at the boundary.
 #[derive(Serialize)]
-struct HeldView {
+struct HeldView<'a> {
     id: u32,
+    /// The node key of the CAPTURE to record again
+    /// (`PatchTree::lost_take_key`): what the page records into and
+    /// [`WasmEngine::readmit_held`] fills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capture: Option<String>,
+    /// Its term, as it was saved, so the page can record it again without
+    /// opening it (a held sound is not in the pool, and the bench opens pool
+    /// sounds). Serialized from its type, in declaration order (ADR-002),
+    /// as every tree the page is sent is: not through a `Value`, whose map
+    /// sorts the keys.
+    tree: &'a auracle_grammar::PatchTree,
     /// The player's name for it, if it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
@@ -473,7 +492,7 @@ struct HeldView {
 }
 
 /// The sentence for a held sound.
-const HELD_NOTE: &str = "Its recording couldn’t be read. It’s kept safe until you record it again.";
+const HELD_NOTE: &str = "Its take couldn’t be read. It’s kept safe until you record it again.";
 
 /// [`WasmEngine::readmit_held`]'s reply.
 #[derive(Serialize)]
@@ -488,13 +507,13 @@ struct ReadmitReply {
 /// The sentence for a held sound that did not come back.
 fn readmit_note(e: &ReadmitError) -> &'static str {
     match e {
-        ReadmitError::NotHeld => "That sound isn’t waiting for a recording, so nothing changed.",
-        ReadmitError::NoTake => "That recording couldn’t be read, so the sound is still kept safe.",
+        ReadmitError::NotHeld => "That sound isn’t waiting for a new take, so nothing changed.",
+        ReadmitError::NoTake => "That take couldn’t be read, so the sound is still kept safe.",
         ReadmitError::NothingToReplace => {
-            "That sound has no lost recording to replace, so nothing changed."
+            "That sound has no lost take to replace, so nothing changed."
         }
         ReadmitError::DoesNotVet(_) => {
-            "With that recording it still makes no usable sound, so it’s still kept safe."
+            "With that take it still makes no usable sound, so it’s still kept safe."
         }
     }
 }
@@ -3582,7 +3601,7 @@ impl WasmEngine {
     }
 
     /// The sounds the last restore held back, as JSON
-    /// `[{"id":3,"name":"…","note":"Its recording couldn’t be read. …"}]`:
+    /// `[{"id":3,"capture":"node/1","tree":{…},"name":"…","note":"Its take couldn’t be read. …"}]`:
     /// each one's only source was a CAPTURE whose take couldn't be read. They
     /// are not in the bank's pool (never dealt, ranked or bred) and are saved
     /// with the session unchanged. The capture plate (Plan-007 task 4) lists
@@ -3595,6 +3614,8 @@ impl WasmEngine {
             .iter()
             .map(|e| HeldView {
                 id: e.id as u32,
+                capture: e.tree.lost_take_key(),
+                tree: &e.tree,
                 name: e.name.clone(),
                 auto_name: e.auto_name.clone(),
                 note: HELD_NOTE,
@@ -6432,6 +6453,20 @@ mod tests {
         assert_eq!(listed.as_array().unwrap().len(), 1);
         assert_eq!(listed[0]["id"], 9_999);
         assert_eq!(listed[0]["name"], "Held One");
+        // What the page records it again with: the capture's key, and the
+        // term (so a recorder can be built from it with no bench).
+        assert_eq!(listed[0]["capture"], "node");
+        let listed_tree: PatchTree =
+            serde_json::from_value(listed[0]["tree"].clone()).expect("the held term");
+        assert_eq!(listed_tree.lost_take_key().as_deref(), Some("node"));
+        // …serialized from its type, in declaration order (ADR-002), not
+        // through a `Value`'s sorted map (which put a Capture's `input`
+        // before its `play`).
+        let own = serde_json::to_string(&engine.engine.held()[0].tree).unwrap();
+        assert!(
+            engine.held_sounds().contains(&own),
+            "the held term is not listed as it serializes"
+        );
         assert!(listed[0]["note"]
             .as_str()
             .unwrap()

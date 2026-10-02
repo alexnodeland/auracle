@@ -159,8 +159,8 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
        `www/video/films/view-perform/film.js` ~229) and both storyboards'
        *held* for Wander's state (`playing/storyboard.md` ~45 and ~143, and
        `view-perform/storyboard.md` ~87): Wander now reads *frozen* (#80);
-     - three films count *forty-two modules*; AUDIO IN (Plan-007 task 4) made
-       it forty-three: the circuit film's line (`www/video/films/circuit/script.json`
+     - three films count *forty-two modules*; AUDIO IN, TRACK and CAPTURE
+       (Plan-007 tasks 4 to 6) made it forty-five: the circuit film's line (`www/video/films/circuit/script.json`
        ~72), the DSP film's line (`dsp/script.json` ~62, published in
        `www/docs/src/films.md` ~158, `dsp.vtt` ~23 and `films.json` ~345) and
        its pill *the palette · 42 modules · 10 groups* (`dsp/film.js` ~630,

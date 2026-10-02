@@ -250,6 +250,70 @@ export const INPUT_MENU = Object.freeze({
   unplugged: "unplugged",
 });
 
+// ---- CAPTURE: recording into a sound (Plan-007 task 6) ----
+
+/** CAPTURE's silk labels, and the bank's group of sounds kept safe. */
+export const TAKE_SILK = Object.freeze({
+  record: "record",
+  stop: "stop",
+  rolling: "recording…",
+  opening: "opening input…",
+  again: "record again",
+  kept: "kept safe",
+});
+
+/** Their tooltips: a name and what it does. */
+export const TAKE_TIPS = Object.freeze({
+  record: "Record: what is patched into it",
+  again: "Record it again: back into the pool",
+  kept: "Sounds whose take couldn’t be read",
+});
+
+/** What recording says. */
+export const TAKE_SAID = Object.freeze({
+  empty: "Nothing was recorded. Play into the capture’s input while STOP is lit, then try again.",
+  unnamed: "That sound",
+  moved: "Recording stopped: you moved to another sound.",
+});
+
+/** Why RECORD recorded nothing, by the worklet's `take_error` code. */
+export const TAKE_ERRORS = Object.freeze({
+  no_capture: "There’s no CAPTURE there to record into, so nothing was recorded.",
+  failed: "The recording failed, so nothing changed. Press RECORD to try again.",
+});
+
+/** Why RECORD recorded nothing because its input did not open, by what
+ *  audio-in.js's `lend` answered. */
+export const TAKE_INPUT = Object.freeze({
+  refused: "The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.",
+  missing: "No input was found for that, so nothing was recorded. Plug in a microphone or an interface, then press RECORD again.",
+  failed: "The input didn’t open, so nothing was recorded. Close any app holding it, then press RECORD again.",
+  unsupported: "This browser doesn’t offer its inputs to web pages, so nothing was recorded.",
+  unplugged: "That input is unplugged, so nothing was recorded. Plug it back in, then press RECORD again.",
+});
+
+/** A CAPTURE's line: how long its take is. */
+export function takeLine(seconds) {
+  return seconds > 0 ? `take · ${seconds.toFixed(1)} s` : "no take yet";
+}
+
+/** RECORD pressed on the module, and RECORD AGAIN on a sound kept safe. */
+export function takeRolling(seconds) {
+  return `Recording into CAPTURE, up to ${seconds} s. Press STOP to end it.`;
+}
+export function takeAgain(name, seconds) {
+  return `Recording ${name} again, up to ${seconds} s. Press STOP to end it.`;
+}
+
+/** A new take in the sound you're playing, and one that brought a sound
+ *  kept safe back. */
+export function takeLanded(seconds) {
+  return `Recorded ${seconds.toFixed(1)} s into CAPTURE.`;
+}
+export function takeReadmitted(name) {
+  return `${name} has a new take, and it’s back in the pool.`;
+}
+
 // ---- a generation as it runs, and the lineage it leaves in the bank ----
 
 /** What one walk came back as, for EVOLVE POOL's narration ("walk 3 of 10 ·

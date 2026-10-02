@@ -97,6 +97,14 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.inPtr = 0;
     this.inViewB = null;
     this.inPtrB = 0;
+    // CAPTURE's recordings (takes.js): while RECORD is lit, process() copies
+    // the second input (the one the CAPTURE listens to) into a buffer main
+    // allocated and handed over, and STOP hands it back. That copy is all a
+    // recording costs this thread: the engine worker plays it through the
+    // CAPTURE's branch and encodes the take (render_take), where compiling a
+    // voice and encoding a 4 s take (6 ms, two quanta) would have been a
+    // glitch for everything here.
+    this.takeRec = null; // {key, buf: interleaved stereo, at: frames copied, cap} (this.rec is ● REC's)
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -219,6 +227,27 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         }
         break;
       }
+      case "take_start": {
+        if (!(m.buf instanceof Float32Array) || m.buf.length < 2) {
+          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: "no buffer" });
+          break;
+        }
+        this.takeRec = { key: m.key, buf: m.buf, at: 0, cap: m.buf.length >> 1 };
+        this.port.postMessage({ type: "take_started", key: m.key });
+        break;
+      }
+      case "take_stop": {
+        const rec = this.takeRec;
+        if (!rec) {
+          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: "not recording" });
+          break;
+        }
+        this.takeRec = null;
+        // The frames copied, and the buffer back (none copied: a STOP before
+        // the first quantum, and no take).
+        this.port.postMessage({ type: "take_done", key: rec.key, buf: rec.buf, frames: rec.at }, [rec.buf.buffer]);
+        break;
+      }
       case "touch":
         if (this.poly) this.poly.set_touch(m.sites, m.depth);
         break;
@@ -295,7 +324,8 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
   writeInput(p, inp, n, b) {
     const ptr = p.input_ptr();
     let view = b ? this.inViewB : this.inView;
-    if (!view || (b ? this.inPtrB : this.inPtr) !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
+    const was = b ? this.inPtrB : this.inPtr;
+    if (!view || was !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
       view = new Float32Array(wasm.memory.buffer, ptr, p.input_capacity() * 2);
       if (b) { this.inViewB = view; this.inPtrB = ptr; }
       else { this.inView = view; this.inPtr = ptr; }
@@ -343,11 +373,30 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const L = out[0];
     const R = out[1] || out[0];
+    // A recording: the second input, copied. No input connected is silence,
+    // which still counts as recorded time (the buffer is zeros).
+    const rec = this.takeRec;
+    if (rec && rec.at < rec.cap) {
+      const tin = inputs[1];
+      const q = L ? L.length : 128;
+      const n = Math.min(q, rec.cap - rec.at);
+      if (tin && tin.length > 0 && tin[0].length >= n) {
+        const l = tin[0];
+        const r = tin[1] || tin[0];
+        const b = rec.buf;
+        for (let i = 0, j = 2 * rec.at; i < n; i++, j += 2) {
+          b[j] = l[i];
+          b[j + 1] = r[i];
+        }
+      }
+      rec.at += n;
+    }
     if (this.poly && L) {
       const n = L.length;
       // The input first: the voices read it as they render this quantum.
       const inp = inputs[0];
-      if (this.monitor && inp && inp.length > 0 && inp[0].length === n) {
+      const hasInput = inp && inp.length > 0 && inp[0].length === n;
+      if (this.monitor && hasInput) {
         this.writeInput(this.poly, inp, n, false);
         if (this.polyB) this.writeInput(this.polyB, inp, n, true);
       }
@@ -519,11 +568,13 @@ export async function initLiveAudio(audioCtx, build, dest) {
 
   const bytes = await (await fetch(`./pkg/auracle_wasm_bg.wasm?v=${build}`)).arrayBuffer();
 
-  // One input: the live input AUDIO IN reads (audio-in.js connects it), two
-  // channels, a mono device up-mixed to both. Nothing connected is a quantum
-  // with no channels, and the worklet writes nothing then.
+  // Two inputs, two channels each, a mono device up-mixed to both: the live
+  // input the voices read (AUDIO IN's), and the one a recording reads (the
+  // input its CAPTURE listens to, which need not be the voices'). audio-in.js
+  // connects both. Nothing connected is a quantum with no channels, and the
+  // worklet writes nothing then.
   const node = new AudioWorkletNode(audioCtx, "auracle-voice", {
-    numberOfInputs: 1,
+    numberOfInputs: 2,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
@@ -633,6 +684,16 @@ export async function initLiveAudio(audioCtx, build, dest) {
     // that listens is held open so it sounds with no key down.
     monitor(on) {
       node.port.postMessage({ type: "monitor", on: !!on });
+    },
+    // CAPTURE: record into the capture at `key` of `tree` (JSON), on an
+    // instrument of its own; stop replies `take_done` with the recording.
+    /** Copy the recorder's input into `buf` (interleaved stereo, transferred:
+     *  it comes back with `take_done`) until `takeStop`. */
+    takeStart(key, buf) {
+      node.port.postMessage({ type: "take_start", key, buf }, [buf.buffer]);
+    },
+    takeStop(key) {
+      node.port.postMessage({ type: "take_stop", key });
     },
     setVolume(v) {
       // A step assignment zippers audibly while notes sound; a 10ms time
