@@ -41,8 +41,9 @@ are stepping through them with the arrow keys.
 | <kbd>m</kbd> | Save the sound you’re on |
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
+| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. <kbd>F</kbd> on its own is still a note |
 | <kbd>?</kbd> | The key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, or put down a module you picked up |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
 
 ## In EVOLVE
 
@@ -157,9 +158,9 @@ with knobs, and they work too.
 | Note on and off | Plays, with velocity |
 | Pitch bend | Bends every voice. Two semitones each way by default; 7, 12, 24, or 48 in the MIDI panel |
 | Sustain pedal (CC 64) | Sustains. Notes you release while it’s down ring until it lifts |
-| Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control |
-| Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter |
-| Any other CC | The first eight you move take PERFORM’s controls, in order. Reserved CCs are never taken (below) |
+| Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control. With MOTION off PERFORM’s panel, it adds nothing |
+| Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter. With BRIGHT off the panel, it adds nothing |
+| Any other CC | The first eight you move take the first eight controls on PERFORM’s deck, in order. Reserved CCs are never taken (below) |
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off, all notes off: the same as **◼** |
 | CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
@@ -180,7 +181,9 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
    control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
-The panel lists PERFORM’s eight controls and what drives each. A row with no
+The panel lists the first eight controls on PERFORM’s deck and what drives
+each. A row is a place on the deck: after you [arrange PERFORM’s
+panel](./views/perform.md#the-palette), a row names whatever sits there now. A row with no
 knob bound says what does drive it: *mod wheel* on MOTION, *pressure* on
 BRIGHT, and *·* elsewhere. Below the rows: a switch for *first knobs you turn
 claim free controls*, the bend range, and the incoming clock’s tempo.
@@ -188,8 +191,10 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 ### Knobs you turn
 
 With that switch on, the first eight different knobs you move take PERFORM’s
-controls in the order you move them: BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE,
-BLEND, and WANDER. Each is announced (*CC 74 now moves Bright, the first free
+controls in the order you move them, in the deck’s order: with the six,
+BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE, BLEND, and WANDER. With seven on the
+panel, WANDER falls past the eighth, and with eight BLEND does too: MIDI
+doesn’t reach what falls past. Each is announced (*CC 74 now moves Bright, the first free
 control.*). The mod wheel is left out, because it already means something.
 
 Some controllers are never taken, by the switch or by **LEARN**, because MIDI

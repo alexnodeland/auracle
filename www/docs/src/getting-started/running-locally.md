@@ -98,7 +98,8 @@ What happens:
   after the machine’s first boot no visitor waits for one.
 
 A MIDI controller with eight knobs is picked up with nothing to set: the first
-eight knobs you turn take the six named controls, BLEND, and WANDER.
+eight knobs you turn take the first eight controls on PERFORM’s deck: with
+the six named controls on the panel, those six, BLEND, and WANDER.
 
 ## Browser support
 
