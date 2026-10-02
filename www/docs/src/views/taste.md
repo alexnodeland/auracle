@@ -80,14 +80,17 @@ every view.
 Once there are two moments to move between, a track runs along the map’s
 foot. Each tick is one moment: amber for a pick (thin and dim before the
 first fit), a short silk tick below the line for a star or a cut, a faint line
-where the map was redrawn, and a green diamond for a generation, with how many
-sounds joined (*+3*). The label says which moment the map shows: *now · after
-26 picks* at the right-hand end.
+where the map was redrawn, a green diamond for a generation, with how many
+sounds joined (*+3*), and a bright full-height line where you opened a taste
+file. The label says which moment the map shows: *now · after 26 picks* at
+the right-hand end, counting your picks as the title does; an earlier moment
+counts the picks the model had taken then.
 
 1. Drag along the track, or click it, to look back. The line under the title
    reads *Looking back.*, and the map shows the glows and places as the
-   model had them then, with that moment’s pick drawn as its arrow (reversed
-   when you step back past it).
+   model had them then. Stepping one moment at a time draws that moment’s
+   pick as its arrow (reversed when you step back past it); a jump draws
+   none.
 2. With the track focused, <kbd>←</kbd> and <kbd>→</kbd> step one moment,
    and <kbd>Home</kbd> and <kbd>End</kbd> go to the first and to now.
 3. **▶** at the track’s left replays every moment in turn, from the first.

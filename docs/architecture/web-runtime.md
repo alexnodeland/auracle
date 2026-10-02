@@ -131,7 +131,16 @@ names; every surface's `views.styles` takes it too, so LEARNING's bars move
 per pick. The history is bounded to the last 200 entries and saved with the
 session as `ui.taste` (`{v: 1, maps, entries, names}`), JS-owned like the rest
 of `ui`; a reset drops it, and `readHistory` drops one this build cannot read.
-TASTE's track draws from it and LEARNING's REPLAY steps through its `styles`.
+A refit's, a generation's or an opened file's moment keeps the styles of the
+views post that brought it (`setStyles`); the worker answers a `styles`
+request a fit has overtaken, or one queued behind a burst that finds no new
+observation, with none, so θ is never credited to the wrong moment. TASTE's
+track draws from the history, and LEARNING's REPLAY steps through its
+`styles`, crediting each step to what it was. `ratings.direction`
+(`Belief::direction`, `auracle_session::liking_direction`) is which way liking
+rises on the last map drawn, fitted by the engine; LEARNING only draws it. A
+`status` for a PERFORM answer the engine didn't take carries `recorded: false`
+and no ratings, and keeps no moment.
 Every views post also carries `features` (`WasmEngine::pool_features`: each
 pool member's z), which LEARNING shades its small map by while a weight is
 pointed at.

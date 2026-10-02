@@ -327,6 +327,20 @@ engine doesn't keep, the page keeps it, as long as it stays true (ADR-012).
 - **Pointing at a weight shades the small map** by each sound's z on it, from
   `WasmEngine::pool_features`, posted with every views post, the same post
   that brings the map those sounds sit on.
+- **The direction is the engine's.** The prototype fits its arrow in the
+  page; here `auracle_session::liking_direction` fits liking on the last map's
+  axes inside `Engine::belief` (`direction`, with r²), so it rides every
+  `ratings` post and the page only draws it.
+- **REPLAY credits each step to what it was** (review of #101). A refit's, a
+  generation's and an opened file's moments keep the styles of the views post
+  that brought them; a step is a pick's (dashed ghost, the weight lit, "that
+  pick moved …") only from one pick to the next observation; a refit, a
+  generation, a file, a star or a cut is named; a gap is "since the moment
+  before". The worker answers a `styles` request a fit has overtaken, or a
+  queued one with no new observation, with none, so θ is never kept with
+  the wrong moment. The track draws a pick's arrow only for a one-moment step,
+  marks an opened taste file, and keeps a looked-at moment in place at the
+  200 bound; a PERFORM answer the engine didn't take keeps no moment.
 - **A weight whose interval crosses zero is drawn as a guess.** The mock draws
   every fitted bar solid; at 18 picks most of the engine's are guesses
   (`pullMark`: hollow, its "?" in a slot left of the word).

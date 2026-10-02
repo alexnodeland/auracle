@@ -48,11 +48,17 @@ every bar to them; a refit, a generation or a file you open moves them too.
 sound by how much of that quality it has: brighter and larger for more,
 dimmer for less. The legend names it (*dots: grit*).
 
-**REPLAY** (or <kbd>R</kbd>) steps the bars through the picks this session
-kept, one after another: each bar moves to where that pick left it, where it
-was stays a moment as a dashed outline, and the weight the pick moved most
-lights up. The label beside it says which pick (*after 21 picks*). It ends on
-now. It starts from the first pick the session kept, as TASTE’s track does.
+**REPLAY** (or <kbd>R</kbd>) steps the bars through the moments this session
+kept, one after another, and each bar moves to where that moment left it. The
+label beside it says which moment: *after 21 picks* for a pick, *refit ·
+after 24 picks* for a refit, and likewise a generation, an opened taste file,
+a star or a cut. A step is credited to what it was. Only a step from one pick
+to the very next draws where each bar was as a dashed outline and lights the
+weight the pick moved most; a step across a refit, a generation or a file
+says that it moved, and a step across moments that weren’t kept (a quick run
+of picks keeps only the last one’s weights) says what moved since the moment
+before. It ends on now, and starts from the first moment the session kept, as
+TASTE’s track does.
 
 On a narrow window the six that weigh most show, and **ALL 44 WEIGHTS** opens
 the rest. Before the first fit there are none: *none yet: it weighs nothing
@@ -62,8 +68,10 @@ until it first fits*.
 
 The pool on the map, each sound glowing by how much the model guesses you’d
 like it, with the sound you’re playing ringed and named. The arrow is the way
-liking rises across the map, and the legend says how much of the glow that
-one direction explains (*the arrow: liking rises · explains 16%*). A low
+liking rises across the map: a summary fit, made by the model, of each
+sound’s liking on the map’s two axes, and the legend gives that fit’s r², how
+much of the glow one direction explains (*the arrow: liking rises · explains
+16%*). A low
 share means your taste doesn’t lie along one line across this picture, which
 is common: the map is flat, and your styles can pull different ways.
 
