@@ -18,6 +18,12 @@ function rgbOf(color) {
   return m ? `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}` : null;
 }
 
+/** `color` (`#rrggbb`) at `alpha`, as an rgba() for a canvas. */
+export function tint(color, alpha) {
+  const rgb = rgbOf(color);
+  return rgb ? `rgba(${rgb}, ${alpha})` : color;
+}
+
 /** The vessel's path on `ctx`: the points joined with quadratic curves
  *  through their midpoints, closed, as `A.vesselPath` joins them. */
 export function traceVessel(ctx, pts) {

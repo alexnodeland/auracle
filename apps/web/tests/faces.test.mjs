@@ -15,7 +15,30 @@ import {
   smooth,
   vesselPoints,
   layerWeight,
+  liveBands,
+  bandEdgesHz,
+  FACE_FLOOR_DB,
 } from "../faces.js";
+
+test("what sounds now, in the face's bands: a tone lights its band, silence none", () => {
+  const nyq = 22050;
+  const bins = new Float32Array(1024).fill(-120);
+  const at = (hz) => Math.floor((hz / nyq) * bins.length);
+  bins[at(1000)] = -20;
+  const { db, peak } = liveBands(bins, nyq);
+  const e = bandEdgesHz();
+  const band = e.findIndex((x, i) => 1000 >= x && 1000 < e[i + 1]);
+  assert.equal(peak, -20);
+  assert.equal(db[band], 0, "the tone's band is the loudest");
+  assert.ok(db.every((v, i) => i === band || v === FACE_FLOOR_DB), "every other band is at the floor");
+  // A band narrower than one bin reads the bin it sits in.
+  bins.fill(-120);
+  bins[at(40)] = -30;
+  assert.equal(liveBands(bins, nyq).db[1], 0);
+  const silent = liveBands(new Float32Array(1024).fill(-Infinity), nyq);
+  assert.ok(silent.db.every((v) => v === FACE_FLOOR_DB));
+  assert.equal(silent.peak, -Infinity);
+});
 
 /** Bytes for a face whose long-term spectrum is `ltas` (dB), every slice the
  *  same, every slice as loud as the loudest. */

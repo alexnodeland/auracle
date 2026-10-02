@@ -23,6 +23,10 @@
 // The palette's words (names, end words, what each does), with this module's
 // own build stamp so a new build fetches both together.
 const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys } = await import(`./words.js${new URL(import.meta.url).search}`);
+// A sound's face and the one renderer that draws it (Plan-005 task 3): stage
+// mode draws the sound in hand's.
+const { whiten, smooth, vesselPoints, liveBands, FACE_BANDS } = await import(`./faces.js${new URL(import.meta.url).search}`);
+const { drawVessel, traceVessel, tint } = await import(`./vessel.js${new URL(import.meta.url).search}`);
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
@@ -1706,12 +1710,13 @@ export function createPerform(host) {
   // - grown: an offer is a short walk from the sound under your hands
   //   (`Engine::offer`, or `Engine::offer_toward` for a search control's,
   //   asked by `perform_offer` with this sound's tree and knobs), so B grows
-  //   out of the sound's name into its place;
-  // - taken: B fills with the sound's green and goes into the name: the
+  //   out of the sound's face (its vessel, `heldFace`) into its place, as the
+  //   mock grows it;
+  // - taken: B fills with the sound's green and goes into the face: the
   //   bench takes its tree (`commitTree`, `edit_set_tree`), heard or not;
   //   only a heard one is also recorded as a pick for it (`perform_record`,
   //   `record_tree_duel`);
-  // - folded: passed, B folds back into the name it grew from: it is emptied
+  // - folded: passed, B folds back into the face it grew from: it is emptied
   //   (`bClear`), nothing joins the pool, and a heard one is recorded as a
   //   pick for the sound you kept (`perform_record`).
   // Each moment is also B's `data-moment`, so reduced motion (every
@@ -1733,7 +1738,7 @@ export function createPerform(host) {
     offerCard.getAnimations().forEach((a) => a.cancel());
     const ms = motionMs("--d-move");
     if (!ms || !state.visible) return;
-    const from = nameEl.getBoundingClientRect();
+    const from = heldFace.getBoundingClientRect();
     const to = offerCard.getBoundingClientRect();
     if (!from.width || !to.width) return;
     // While it grows it passes through the pads below it, and a press on
@@ -1787,13 +1792,13 @@ export function createPerform(host) {
     showGhost(gh);
     const fill = el("span", "pf-ghost-fill");
     gh.g.append(fill);
-    // The green rises from the base, then the whole of B goes into the name.
+    // The green rises from the base, then the whole of B goes into the face.
     fill.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], { duration: gh.ms, easing: easeOf("--e-settle"), fill: "forwards" });
     const into = gh.g.animate(
       [
         { transform: "none", opacity: 1, offset: 0 },
         { transform: "none", opacity: 1, offset: 0.5 },
-        { transform: onto(nameEl.getBoundingClientRect(), gh.r), opacity: 0 },
+        { transform: onto(heldFace.getBoundingClientRect(), gh.r), opacity: 0 },
       ],
       { duration: gh.ms * 2, easing: easeOf("--e-swap"), fill: "forwards" },
     );
@@ -1804,7 +1809,7 @@ export function createPerform(host) {
     const gh = ghost("folded");
     if (!gh) return;
     const back = gh.g.animate(
-      [{ transform: "none", opacity: 1 }, { transform: onto(nameEl.getBoundingClientRect(), gh.r), opacity: 0 }],
+      [{ transform: "none", opacity: 1 }, { transform: onto(heldFace.getBoundingClientRect(), gh.r), opacity: 0 }],
       { duration: gh.ms, easing: easeOf("--e-swap"), fill: "forwards" },
     );
     back.onfinish = gh.gone;
@@ -3055,13 +3060,13 @@ export function createPerform(host) {
 
   // ---------- stage mode ----------
   // ⇧F: the sound under your hands, the whole screen, for a gig or a stream.
-  // What it draws is what you hear and nothing else: the output after the
-  // master gain (`host.outAnalyser`: LivePoly's voices in the AudioWorklet,
-  // and any phrase Space plays), as its spectrum mirrored about the centre
-  // with the lows at the base, left to fade like phosphor. Nothing
-  // moves without sound. The face (Plan-005 task 3) is not drawn: the app
-  // does not compute it yet. Space plays and the keys play, as everywhere;
-  // ⇧F or Esc leaves. Not a modal: it asks nothing.
+  // It draws the sound's face, still (Plan-005 task 3: its render against the
+  // bank), and over it what you hear: the output after the master gain
+  // (`host.outAnalyser`: LivePoly's voices in the AudioWorklet, and any
+  // phrase Space plays), in the face's bands and against the same bank, so
+  // in the vessel's own coordinates, left to fade like phosphor (`stageDraw`).
+  // Nothing moves without sound. Space plays and the keys play, as
+  // everywhere; ⇧F or Esc leaves. Not a modal: it asks nothing.
   const stageBtn = el("button", "pf-stage-btn util-btn", "stage ⇧F");
   stageBtn.type = "button";
   stageBtn.title = platformKeys("Stage mode · ⇧F");
@@ -3070,12 +3075,7 @@ export function createPerform(host) {
   const actions = el("div", "pf-actions");
   actions.append(arrangeBtn, stageBtn);
   head.insertBefore(actions, scope);
-  let stageOn = null; // {root, cv, name, raf, entered, back, bins, trail}
-  // The bands drawn: 40 from 40 Hz to 16 kHz, spaced evenly in pitch.
-  const ST_BANDS = 40;
-  const ST_LO = 40;
-  const ST_HI = 16000;
-  const stHz = (b) => ST_LO * Math.pow(ST_HI / ST_LO, b / (ST_BANDS - 1));
+  let stageOn = null; // {root, cv, trail, name, raf, entered, back, …}
   function openStage() {
     if (stageOn) return;
     const rootEl = el("div", "st-stage");
@@ -3083,8 +3083,13 @@ export function createPerform(host) {
     rootEl.setAttribute("role", "dialog");
     rootEl.setAttribute("aria-modal", "true");
     rootEl.setAttribute("aria-label", `Stage mode: ${host.label()}`);
+    // Two layers, as the mock has them: the face of the sound in hand, still
+    // (`st-canvas`), and what sounds now over it, fading like phosphor
+    // (`st-trail`).
     const cv = el("canvas", "st-canvas");
     cv.setAttribute("aria-hidden", "true");
+    const trail = el("canvas", "st-canvas st-trail");
+    trail.setAttribute("aria-hidden", "true");
     const hud = el("div", "st-hud");
     const name = el("div", "st-name", host.label());
     const where = el("div", "st-cat mono", "PERFORM · in hand");
@@ -3106,7 +3111,7 @@ export function createPerform(host) {
     // outside a modal dialog, so a refusal is said here too (below).
     const ticks = ["100 Hz", "1 kHz", "10 kHz"].map((t) => el("div", "st-tick mono", t));
     ticks.forEach((t) => t.setAttribute("aria-hidden", "true"));
-    rootEl.append(cv, ...ticks, hud, hint, leave, said);
+    rootEl.append(cv, trail, ...ticks, hud, hint, leave, said);
     // A tap plays the sound, as Space does: on a touch screen there is no
     // Space.
     rootEl.addEventListener("click", (e) => {
@@ -3122,7 +3127,7 @@ export function createPerform(host) {
     behind.forEach((e) => (e.inert = true));
     document.body.append(rootEl);
     document.documentElement.classList.add("st-on");
-    stageOn = { root: rootEl, cv, name, ticks, hint, leave, said, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
+    stageOn = { root: rootEl, cv, trail, name, ticks, hint, leave, said, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
     rootEl.focus({ preventScroll: true });
     // A refusal is said in a toast, which stage mode would hide: urgent ones
     // are lifted above it (style.css), and said in the stage's own line too,
@@ -3212,11 +3217,14 @@ export function createPerform(host) {
     const dpr = window.devicePixelRatio || 1;
     const W = s.root.clientWidth;
     const H = s.root.clientHeight;
-    if (s.cv.width !== Math.round(W * dpr) || s.cv.height !== Math.round(H * dpr)) {
-      s.cv.width = Math.round(W * dpr);
-      s.cv.height = Math.round(H * dpr);
+    for (const c of [s.cv, s.trail]) {
+      if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
+        c.width = Math.round(W * dpr);
+        c.height = Math.round(H * dpr);
+      }
     }
     if (s.name.textContent !== host.label()) s.name.textContent = host.label();
+    const tree = state.cur ? state.cur.json : null;
     stageDraw(s.cv.getContext("2d"), {
       W,
       H,
@@ -3225,87 +3233,118 @@ export function createPerform(host) {
       ink: host.ink,
       ticks: s.ticks,
       analyser: host.outAnalyser ? host.outAnalyser() : host.live()?.analyser,
-      tree: state.cur ? state.cur.json : null,
+      tree,
+      trail: s.trail.getContext("2d"),
+      face: tree && host.faceOf ? host.faceOf(tree) : null,
     });
   }
 
   // One frame of the stage, from `st`: the canvas's size in CSS pixels
   // (`W`, `H`) and its pixel ratio, reduced motion (`still`), the inks, the
-  // frequency marks (`ticks`, page elements), the output's analyser and the
-  // tree of the sound in hand.
-  // faces: the mock draws the held sound's face here, its vessel at the full
-  // height of the stage (Plan-005 task 3, `claude/faces`). Until faces land
-  // this draws the output's spectrum, mirrored in the face's coordinates
-  // (lows at the base); the faces integration replaces this function's body
-  // with the vessel, drawn from the sound's face and lit by what sounds.
+  // frequency marks (`ticks`, page elements), the output's analyser, the
+  // tree of the sound in hand, the trail's layer (`trail`) and the sound in
+  // hand's face against the bank (`face`: `{face, stats, color}` from
+  // `host.faceOf`, or null until it lands).
+  //
+  // As the mock's stage draws it (docs/notes/vision-2026-09/prototype/
+  // stage.js, `drawBase` and `frame`), two layers in one box (`stageBox`):
+  // - still: the sound in hand's face (`auracle_features::face`, by vessel.js
+  //   `drawVessel`), large, with its glow and the floor's reflection. It is a
+  //   picture of the sound's render, so it stands whether or not anything
+  //   sounds, and is drawn again only when the face, the bank or the size
+  //   changes;
+  // - moving: what sounds now (the output's analyser), in the face's own
+  //   bands and against the same bank, so it is drawn in the vessel's
+  //   coordinates, over it: the vessel's outline lit by how loud it is, and
+  //   the live outline, both left to fade like phosphor. In silence the trail
+  //   fades and is then cleared, and only the face is left.
+  let stageBaseKey = "";
   let stageBuf = null;
+  let stageLast = null; // the last frame's live spectrum, against the bank
+  let stageLoud = 0; // how loud, eased (the mock's `s.loud`)
   let stageLoudAt = 0; // when the stage last drew a sound
+  const stageBox = (W, H) => {
+    const narrow = W <= 700;
+    const h = Math.min(H * (narrow ? 0.62 : 0.76), W * (narrow ? 1.25 : 1.05));
+    const w = h * 0.6;
+    return { x: (W - w) / 2, y: (H - h) / 2 - H * (narrow ? 0.06 : 0.035), w, h };
+  };
   function stageDraw(g, st) {
     const { W, H, dpr } = st;
-    // The fade halves what is left each few frames but, in 8-bit alpha,
-    // never reaches nothing: a second and a half after the last sound the
-    // canvas is cleared outright, so silence is truly empty.
-    if (performance.now() - stageLoudAt > 1500) g.clearRect(0, 0, W * dpr, H * dpr);
-    // Phosphor: what was drawn fades rather than vanishing. Under reduced
-    // motion, each frame is only what sounds now.
-    if (st.still) g.clearRect(0, 0, W * dpr, H * dpr);
-    else {
-      g.save();
-      g.globalCompositeOperation = "destination-out";
-      g.globalAlpha = 0.16;
-      g.fillRect(0, 0, W * dpr, H * dpr);
-      g.restore();
+    const box = stageBox(W, H);
+    const green = st.ink.green;
+    const f = st.face;
+    // The still layer: the face, drawn when what it shows changed.
+    const key = `${W}x${H}@${dpr}|${st.tree || ""}|${f ? `${f.stats.mean[0]}:${f.stats.spread}:${f.face.ltas.join(",")}` : ""}`;
+    if (key !== stageBaseKey) {
+      stageBaseKey = key;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      // A pool of the sound's light under it, as the mock lays the glass.
+      const pool = g.createRadialGradient(W / 2, box.y + box.h * 0.6, 0, W / 2, box.y + box.h * 0.6, Math.max(W, H) * 0.7);
+      pool.addColorStop(0, tint(green, 0.09));
+      pool.addColorStop(1, tint(green, 0));
+      g.fillStyle = pool;
+      g.fillRect(0, 0, W, H);
+      if (f) drawVessel(g, f.face, f.stats, { box, color: f.color, glow: 30, line: 2.2, reflection: true, dim: 0.92 });
     }
-    const h = Math.min(H * 0.74, W * 1.1) * dpr;
-    const w = h * 0.6;
-    const cx = (W * dpr) / 2;
-    const base = (H * dpr) / 2 + h / 2;
-    // The frequency axis, beside the shape: where 100 Hz, 1 kHz and 10 kHz
-    // sit, so a lit band can be read. Words on the page, not on the canvas,
-    // which holds only what sounds.
+    // The frequency axis, beside the vessel: where 100 Hz, 1 kHz and 10 kHz
+    // sit in the face's bands, so a lit band can be read. Words on the page,
+    // not on the canvas, which holds only the sound.
     st.ticks.forEach((t, j) => {
       const hz = [100, 1000, 10000][j];
-      t.style.top = `${((base - (Math.log(hz / ST_LO) / Math.log(ST_HI / ST_LO)) * h) / dpr).toFixed(1)}px`;
-      t.style.right = `${((W * dpr - (cx - w / 2)) / dpr + 16).toFixed(1)}px`;
+      const band = (FACE_BANDS * Math.log(hz / 35)) / Math.log(14000 / 35) - 0.5;
+      t.style.top = `${(box.y + box.h - (band / (FACE_BANDS - 1)) * box.h).toFixed(1)}px`;
+      t.style.right = `${(W - box.x + 16).toFixed(1)}px`;
     });
+    // The moving layer.
+    const x = st.trail;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (st.still) x.clearRect(0, 0, W, H);
+    else if (performance.now() - stageLoudAt > 1600) {
+      // The fade never quite reaches nothing in 8-bit alpha: a moment after
+      // the last sound the trail is cleared outright.
+      x.clearRect(0, 0, W, H);
+    } else {
+      x.save();
+      x.globalCompositeOperation = "destination-out";
+      x.fillStyle = tint(green, 0.14);
+      x.fillRect(0, 0, W, H);
+      x.restore();
+    }
     const an = st.analyser;
-    if (!an) return;
+    if (!an || !f) return;
     if (!stageBuf || stageBuf.length !== an.frequencyBinCount) stageBuf = new Float32Array(an.frequencyBinCount);
     an.getFloatFrequencyData(stageBuf);
-    const nyq = an.context.sampleRate / 2;
-    const half = [];
-    let loud = 0;
-    for (let b = 0; b < ST_BANDS; b++) {
-      const f0 = b ? (stHz(b - 1) + stHz(b)) / 2 : stHz(0);
-      const f1 = b < ST_BANDS - 1 ? (stHz(b) + stHz(b + 1)) / 2 : stHz(b);
-      const i0 = Math.max(0, Math.floor((f0 / nyq) * stageBuf.length));
-      const i1 = Math.min(stageBuf.length - 1, Math.max(i0, Math.ceil((f1 / nyq) * stageBuf.length)));
-      let db = -Infinity;
-      for (let i = i0; i <= i1; i++) db = Math.max(db, stageBuf[i]);
-      // −100 dBFS is nothing; −30 and above is the full width.
-      const v = clamp((db + 100) / 70, 0, 1);
-      loud = Math.max(loud, v);
-      half.push(v);
+    const { db, peak } = liveBands(stageBuf, an.context.sampleRate / 2);
+    // How loud: −80 dBFS in the loudest band is nothing, −20 is all.
+    const target = clamp((peak + 80) / 60, 0, 1);
+    stageLoud += (target - stageLoud) * (target > stageLoud ? 0.5 : 0.08);
+    if (target < 0.05) {
+      stageLast = null;
+      return;
     }
-    if (loud < 0.02) return;
     stageLoudAt = performance.now();
-    g.save();
-    g.beginPath();
-    for (let b = 0; b < ST_BANDS; b++) {
-      const y = base - (b / (ST_BANDS - 1)) * h;
-      const x = cx + (half[b] * w) / 2;
-      if (b) g.lineTo(x, y);
-      else g.moveTo(cx, base), g.lineTo(x, y);
-    }
-    for (let b = ST_BANDS - 1; b >= 0; b--) g.lineTo(cx - (half[b] * w) / 2, base - (b / (ST_BANDS - 1)) * h);
-    g.closePath();
-    g.strokeStyle = st.ink.green;
-    g.lineWidth = 2 * dpr;
-    g.shadowColor = st.ink.green;
-    g.shadowBlur = 18 * dpr * loud;
-    g.globalAlpha = 0.9;
-    g.stroke();
-    g.restore();
+    let live = whiten(db, f.stats);
+    if (stageLast) live = live.map((v, i) => stageLast[i] * 0.5 + v * 0.5);
+    stageLast = live;
+    if (st.still) return; // reduced motion: the face alone, nothing that moves
+    x.save();
+    // The vessel's own outline, lit by how loud it is.
+    traceVessel(x, vesselPoints(smooth(whiten(f.face.ltas, f.stats), 1), box));
+    x.strokeStyle = tint(green, 0.12 + 0.55 * stageLoud);
+    x.lineWidth = 2;
+    x.shadowColor = tint(green, 0.9);
+    x.shadowBlur = 18 + stageLoud * 56;
+    x.stroke();
+    // What sounds now, in the vessel's coordinates.
+    traceVessel(x, vesselPoints(smooth(live, 1), box));
+    x.strokeStyle = tint(st.ink.silk, 0.95);
+    x.lineWidth = 1.6 + stageLoud * 1.6;
+    x.shadowColor = tint(green, 0.95);
+    x.shadowBlur = 10 + stageLoud * 30;
+    x.stroke();
+    x.restore();
   }
 
   // ---------- first steps ----------

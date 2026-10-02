@@ -50,7 +50,9 @@ the face.
 - **[PATCH](./views/play.md)**, beside the sound’s name in the header, and on
   **A** and **B** in the teach strip under the rack.
 - **[PERFORM](./views/perform.md)**, beside the sound in your hands, and
-  beside **B** once an offer has grown.
+  beside **B** once an offer has grown. B grows out of the face, and goes
+  back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen,
+  and what you play is drawn over it.
 - **[The warm start](./getting-started/first-session.md#2-pick-the-three-youd-reach-for)**,
   on each of the nine cards.
 

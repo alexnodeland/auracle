@@ -56,6 +56,38 @@ export function decodeFace(bytes) {
   return { ltas, slices, loud };
 }
 
+/** The face's band edges in Hz (`auracle_features::face::band_edges_hz`):
+ *  FACE_BANDS + 1 of them, evenly spaced in log frequency, 35 Hz to 14 kHz. */
+export const FACE_LO_HZ = 35;
+export const FACE_HI_HZ = 14000;
+export function bandEdgesHz() {
+  const out = [];
+  for (let k = 0; k <= FACE_BANDS; k++) out.push(FACE_LO_HZ * Math.pow(FACE_HI_HZ / FACE_LO_HZ, k / FACE_BANDS));
+  return out;
+}
+
+/** What sounds now, in the face's bands: an analyser's dB per bin (`bins`,
+ *  0 Hz to `nyquist`) as each band's loudest bin (the bin a band narrower
+ *  than one sits in), in dB re the loudest band, floored as a face is, and
+ *  how loud the loudest band is (dBFS). So it can be drawn against the bank
+ *  in the face's own coordinates. */
+export function liveBands(bins, nyquist) {
+  const edges = bandEdgesHz();
+  const n = bins.length;
+  const db = new Float64Array(FACE_BANDS);
+  let peak = -Infinity;
+  for (let b = 0; b < FACE_BANDS; b++) {
+    const i0 = Math.min(n - 1, Math.max(0, Math.floor((edges[b] / nyquist) * n)));
+    const i1 = Math.min(n - 1, Math.max(i0, Math.floor((edges[b + 1] / nyquist) * n)));
+    let v = -Infinity;
+    for (let i = i0; i <= i1; i++) v = Math.max(v, bins[i]);
+    db[b] = v;
+    peak = Math.max(peak, v);
+  }
+  for (let b = 0; b < FACE_BANDS; b++) db[b] = Number.isFinite(peak) ? Math.max(FACE_FLOOR_DB, db[b] - peak) : FACE_FLOOR_DB;
+  return { db, peak };
+}
+
 /** The bank's mean per band and its spread, over the long-term spectra of the
  *  faces given (the bank's rows); null below FACE_MIN_BANK. */
 export function bankStats(faces) {

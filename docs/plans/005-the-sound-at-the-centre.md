@@ -93,9 +93,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        renderer draws the specimen's vessel at every size (`vessel.js`
        `drawVessel(ctx, face, stats, {box, slices, glow, reflection})`): a
        row's icon, the cards, PERFORM's slots, the share card with its glow
-       and reflection, and stage mode's full screen (drawn once at 1440 ×
-       900 for PERFORM's branch to wire; `host.faceOf(tree)` hands it the
-       face and the bank). Slots show it once per bank as an image; the bank
+       and reflection, and stage mode's full screen (`stageDraw` in
+       `perform.js`, with `host.faceOf(tree)` handing it the face and the
+       bank). Slots show it once per bank as an image; the bank
        is drawn against again when its mean moves by 0.25 dB in a band or
        its spread by 1%;
      - faces are on the bank's rows (pool and presets), EVOLVE's cards,
@@ -123,10 +123,15 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        render can read differently a generation later: the specimen's never
        did, since its bank never changed;
      - the specimen's stage fades its live trail like phosphor; that trail
-       is what you hear, not the face, so it is stage mode's to draw over
-       the face (PERFORM's branch), and the renderer draws the face's slices
-       as the specimen's `A.face` does: stacked layers, each as bright as
-       its slice is loud.
+       is what you hear, not the face, so stage mode draws it on a layer of
+       its own over the still face (`st-trail`), in the face's bands and
+       against the same bank, with the vessel's outline lit by how loud it
+       is, as the specimen's `frame` does; the face's slices are drawn as
+       the specimen's `A.face` draws them: stacked layers, each as bright as
+       its slice is loud;
+     - the specimen's stage lights each note's band (the vessel as a
+       keyboard on its side); no note timings reach `perform.js`, so stage
+       mode lights none (task 5 says so too).
 4. **EVOLVE and the bank** (this is Plan-004 task 7's explanation figure).
    - Pointing at EVOLVE POOL marks the seeds as well as the sounds that may be
      replaced. The seed count is exposed from the engine (task 9).
@@ -177,14 +182,12 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      set in palette order, the page names each control back by its `index`,
      and `wireKey` holds the set. A placed control is measured lazily and
      says *listening…* while it is. How it works covers every placed control.
-     B grows from the sound's name, fills when taken and folds back when
+     B grows from the sound's face, fills when taken and folds back when
      passed (each motion names its engine source); the heard rule is
      unchanged (an unheard take is allowed and records no pick). Stage mode
-     draws the output's spectrum for now: stage draws the face once task 3
-     lands (`stageDraw` in `perform.js` is the one function to swap, marked
-     `faces:`). Not done: the faces the prototype draws (the well, a face in
-     stage mode) wait for task 3, so the offer's motion anchors on the
-     sound's name; the palette's preview of
+     draws the sound's face, still, with what sounds fading over it (task
+     3). Not done: the prototype's large well beside the controls (the face
+     is in the header for now); the palette's preview of
      an unplaced control needs the unverified wiring exposed (the reference's
      PERFORM page, "What is not done"); the prototype's well-and-panel layout
      waits for the shell (task 2). Where the prototype and the engine

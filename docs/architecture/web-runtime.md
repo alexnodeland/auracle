@@ -174,6 +174,7 @@ it drops a stale pre-placement audition.
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live.
+
 ## Faces
 
 Every row, chip and card draws its sound's face (Plan-005 task 3; the guide's
@@ -215,6 +216,12 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   URL); after the bank changes, the bank's rows in view are redrawn the next
   frame and the rest when the page is idle. A slot is fixed-size and present
   whether or not its face has arrived, so no name moves for it.
+- **Stage mode** (`stageDraw` in `perform.js`) draws the sound in hand's
+  face (`host.faceOf(tree)`: the face and the bank) with `drawVessel` at full
+  height, with its glow and reflection, on a still layer drawn again only
+  when the face, the bank or the size changes; what sounds is drawn over it
+  on a second canvas (`st-trail`), in the face's bands (`liveBands`) against
+  the same bank, fading like phosphor and cleared in silence.
 
 ## The breed job
 

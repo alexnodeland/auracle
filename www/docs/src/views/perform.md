@@ -340,9 +340,9 @@ never by a jump.
 The named controls turn the sound you’re on, not the offer.
 
 **What you see is what happened.** An offer is grown from the sound you’re
-playing, so B grows out of the sound’s name into its place. TAKE fills B with
-green from the bottom, and B goes into the name: it is the sound you play
-now, heard or not. NEXT folds B back into the name it grew from: it is dropped, nothing
+playing, so B grows out of the sound’s face into its place. TAKE fills B with
+green from the bottom, and B goes into the face: it is the sound you play
+now, heard or not. NEXT folds B back into the face it grew from: it is dropped, nothing
 joins the pool, and you keep playing what you had. With reduced motion on,
 nothing moves: B fills for a moment when taken, and empties when passed.
 
@@ -427,11 +427,13 @@ app asks the engine again.
 ## Stage mode
 
 In PERFORM, <kbd>⇧F</kbd>, or **STAGE ⇧F** in the header, puts the sound
-you’re playing on the whole screen, for a gig or a stream: its name, and what you hear,
-drawn as its spectrum, mirrored about the middle with the lows at the base
-and 100 Hz, 1 kHz and 10 kHz marked beside it. What is drawn is the output,
-so nothing moves while nothing sounds, and what you play fades like
-phosphor.
+you’re playing on the whole screen, for a gig or a stream: its name, its
+[face](../faces.md), large, standing on a floor that reflects it, and over the
+face what you hear, drawn in the face’s own bands against the same bank, with
+100 Hz, 1 kHz and 10 kHz marked beside it. The face stands whether or not
+anything sounds; what you play lights the face’s outline and draws its own
+outline over it, and fades like phosphor, so nothing moves while nothing
+sounds.
 
 Everything still plays: the keys, a MIDI keyboard, and <kbd>Space</kbd> for
 the phrase (a tap does the same on a touch screen). <kbd>⇧F</kbd> again, or

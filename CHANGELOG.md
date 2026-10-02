@@ -26,16 +26,18 @@ changelog that edits its own past is not a record.
   last touched, with the rest a tap away: what you hear it do, what it
   listens to, and what it turns on this sound. It used to describe three of
   the six in one paragraph.
-- **An offer shows where it came from.** B grows out of the sound's name,
+- **An offer shows where it came from.** B grows out of the sound's face,
   because it is grown from the sound you're playing. Taken, it fills with
-  green and goes into the name; passed, it folds back into it. With reduced
+  green and goes into the face; passed, it folds back into it. With reduced
   motion on, nothing moves.
 - **Stage mode.** In PERFORM, <kbd>⇧F</kbd> puts the sound you're playing on the whole
-  screen, drawn from what you hear, for a gig or a stream. The keys and
+  screen, for a gig or a stream: its face, large, and what you hear drawn
+  over it, fading like phosphor. The keys and
   Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.
 - **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put
   them on the panel, and a MIDI controller's first eight knobs take the
   deck's first eight controls.
+
 ### Added: every sound has a face
 
 - **A face beside every sound's name**: on the bank's rows, EVOLVE's cards,
