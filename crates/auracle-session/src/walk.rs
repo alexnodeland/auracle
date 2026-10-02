@@ -433,7 +433,10 @@ mod tests {
             },
         };
         assert_eq!(seed.input_sites(), ["node/1/0#input"]);
-        let prior = PatchGrammarPrior::default();
+        // With the term on: the shipped prior gives an AUDIO IN no mass until
+        // live capture works (`AUDIO_IN_WEIGHT`), and a seed with `log p = −∞`
+        // does not walk at all.
+        let prior = PatchGrammarPrior::default().with_audio_in();
         let mut moved = 0;
         for w in 0..24u64 {
             let mut rng = StdRng::seed_from_u64(0xA0D1_0000 + w);
