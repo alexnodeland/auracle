@@ -39,16 +39,20 @@ use rustfft::{Fft, FftPlanner};
 use serde::Serialize;
 
 use crate::audio::AudioFeatures;
+use crate::face::Face;
 use crate::render::RenderedPhrase;
 
 /// Bands of the long-term spectrum.
-pub const BANDS: usize = 40;
-/// The lowest band's lower edge, Hz.
-pub const LO_HZ: f64 = 35.0;
-/// The highest band's upper edge, Hz.
-pub const HI_HZ: f64 = 14_000.0;
-/// The floor every spectrum level is clamped to, dB re its reference.
-pub const FLOOR_DB: f64 = -60.0;
+/// A face's bands ([`crate::face`]): one definition, so a figure's spectrum
+/// and the sound's face line up band for band.
+pub const BANDS: usize = crate::face::FACE_BANDS;
+/// The lowest band's lower edge, Hz (a face's).
+pub const LO_HZ: f64 = crate::face::FACE_LO_HZ;
+/// The highest band's upper edge, Hz (a face's).
+pub const HI_HZ: f64 = crate::face::FACE_HI_HZ;
+/// The floor every spectrum level is clamped to, dB re its reference (a
+/// face's).
+pub const FLOOR_DB: f64 = crate::face::FACE_FLOOR_DB;
 /// The held note's spectrum is kept up to here: C4's first fifteen
 /// harmonics, where a 2048-sample frame resolves each from the next.
 pub const HELD_HI_HZ: f64 = 4_000.0;
@@ -175,14 +179,14 @@ pub struct Portrait {
     pub seconds: f64,
     /// φ's coordinates in their units.
     pub facts: Facts,
+    /// The render's face ([`crate::face::Face`], one base64 string): what
+    /// the app draws the figure's and the lesson's shape with, whitened
+    /// against the bank as every face is.
+    pub face: Face,
 }
 
-/// The band edges, Hz: [`BANDS`] + 1 of them.
-pub fn band_edges_hz() -> Vec<f64> {
-    (0..=BANDS)
-        .map(|k| LO_HZ * (HI_HZ / LO_HZ).powf(k as f64 / BANDS as f64))
-        .collect()
-}
+/// The band edges, Hz: [`BANDS`] + 1 of them, a face's.
+pub use crate::face::band_edges_hz;
 
 /// Mean power density of `power` (bins `bin_hz` apart, bin `i` centred on
 /// `i·bin_hz`) over each band, counting a bin by the fraction of its width
@@ -377,6 +381,7 @@ pub fn portrait(r: &RenderedPhrase, phi: &AudioFeatures) -> Portrait {
         notes,
         seconds: n as f64 / sr,
         facts: Facts::of(phi, sr),
+        face: Face::of_f64(x, sr),
     }
 }
 
@@ -435,6 +440,11 @@ mod tests {
             .find(|&b| edges[b] <= f && f < edges[b + 1])
             .unwrap();
         assert_eq!(p.bands[band], 0.0);
+        // The face of the same render is the same spectrum, in its 0.5 dB
+        // steps: one band layout for both.
+        for (a, b) in p.face.ltas_db().iter().zip(&p.bands) {
+            assert!((a - b).abs() <= 0.55, "{a} vs {b}");
+        }
         assert!(p
             .bands
             .iter()

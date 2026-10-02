@@ -12,8 +12,8 @@
 //! Nothing here touches the pool, the bench or the log.
 
 use auracle_features::{
-    audio_features, explain, featurize, normalize_to, vet, AudioFeatures, RenderedPhrase,
-    VetConfig, VetFailure, TARGET_LUFS,
+    audio_features, explain, featurize, normalize_to, render_phrase, vet, AudioFeatures,
+    RenderedPhrase, VetConfig, VetFailure, TARGET_LUFS,
 };
 use auracle_grammar::term::FilterKind;
 use auracle_grammar::{cutoff_hz, lowpass_apply, lowpass_response, AudioNode, ModNode, Uid};
@@ -109,10 +109,10 @@ impl WasmEngine {
     /// A patch with no room for one more module (the grammar's size
     /// ceilings: one in nine pool draws, none of the presets) still gets its
     /// lesson: the filter then follows the whole voice
-    /// ([`auracle_grammar::lowpass_apply`] on the rendered phrase), at the
-    /// corner the knob sets on the held note for every note, since nothing
-    /// keytracks it there, and the result is normalized again as every
-    /// render is. `placement` says which: `inside` the patch, or `after` it.
+    /// ([`auracle_grammar::lowpass_apply`] on the phrase's raw render), at
+    /// the corner the knob sets on the held note for every note, since
+    /// nothing keytracks it there; the result is vetted and normalized as
+    /// `featurize` does every render. `placement` says which: `inside` the patch, or `after` it.
     ///
     /// Its JSON is `{cutoff, cutoff_hz, response, placement, portrait}`: the
     /// knob, its corner on the held note in Hz, the filter's gain in each of
@@ -187,26 +187,28 @@ impl WasmEngine {
                 Ok(v) => done(&v.render, &v.features.audio, Some("inside")),
             };
         }
-        // No room for one more module: the filter follows the whole voice.
-        match featurize(&tree, phrase) {
-            Err(e) => fail(reason(&e)),
-            Ok(v) => {
-                let mut r = v.render;
-                lowpass_apply(&mut r.samples, cutoff, LESSON_RESONANCE, sr);
-                if let Err(e) = vet(&r.samples, &VetConfig::for_spec(phrase)) {
-                    return fail(if matches!(e, VetFailure::Silent { .. }) {
-                        "silent"
-                    } else {
-                        "vet"
-                    });
-                }
-                if normalize_to(&mut r.samples, sr, TARGET_LUFS).is_none() {
-                    return fail("silent");
-                }
-                let phi = audio_features(&r);
-                done(&r, &phi, Some("after"))
-            }
+        // No room for one more module: the filter follows the whole voice,
+        // on the raw render (as a filter inside it would be), which is then
+        // vetted and normalized as `featurize` does a render.
+        if !tree.domain_violations().is_empty() {
+            return fail("vet");
         }
+        let Ok(mut r) = render_phrase(&tree, phrase) else {
+            return fail("vet");
+        };
+        lowpass_apply(&mut r.samples, cutoff, LESSON_RESONANCE, sr);
+        if let Err(e) = vet(&r.samples, &VetConfig::for_spec(phrase)) {
+            return fail(if matches!(e, VetFailure::Silent { .. }) {
+                "silent"
+            } else {
+                "vet"
+            });
+        }
+        if normalize_to(&mut r.samples, sr, TARGET_LUFS).is_none() {
+            return fail("silent");
+        }
+        let phi = audio_features(&r);
+        done(&r, &phi, Some("after"))
     }
 }
 
