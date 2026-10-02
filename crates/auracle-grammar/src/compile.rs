@@ -460,7 +460,7 @@ pub struct CompiledVoice {
     pub track_feeds: HashMap<String, TrackFeed>,
     /// Each TRACK's `PitchTracker`, by node key: what [`CompiledVoice::lead`]
     /// reads to feed a follower. Empty in a follower.
-    trackers: Vec<(String, NodeId)>,
+    trackers: Vec<Tracker>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
     /// Where each term node's audio leaves it: trace key → the **name** of the
@@ -561,6 +561,47 @@ pub struct TrackFeed {
     pub level: Arc<AtomicF64>,
 }
 
+/// A TRACK's tracker in a compiled voice, with the routing slots of its
+/// pitch, gate and level outputs resolved once, at the compile: reading them
+/// every frame is then three indexed loads, where `get_output_value` hashes a
+/// `(node, port)` key per read.
+#[derive(Clone, Debug)]
+struct Tracker {
+    key: String,
+    id: NodeId,
+    /// The slots of ports 10, 11, 12 (pitch, gate, level), valid for
+    /// routing generation `generation`.
+    slots: [Option<usize>; 3],
+    generation: u64,
+}
+
+impl Tracker {
+    fn new(patch: &Patch, key: String, id: NodeId) -> Tracker {
+        Tracker {
+            key,
+            id,
+            slots: [10, 11, 12].map(|port| patch.output_slot(id, port)),
+            generation: patch.routing_generation(),
+        }
+    }
+
+    /// Its three signals after the last tick: by slot while the routing is
+    /// the one they were resolved against, by name otherwise (nothing rebuilds
+    /// a compiled voice's routing, so that is a guard, not a path).
+    fn read(&self, patch: &Patch) -> [f64; 3] {
+        let fresh = patch.routing_generation() == self.generation;
+        let mut out = [0.0; 3];
+        for (i, port) in [10, 11, 12].into_iter().enumerate() {
+            out[i] = match (fresh, self.slots[i]) {
+                (true, Some(slot)) => patch.output_value_at(slot),
+                _ => patch.get_output_value(self.id, port),
+            }
+            .unwrap_or(0.0);
+        }
+        out
+    }
+}
+
 impl CompiledVoice {
     /// Hand this voice's tracked signals, as they stand after its last tick,
     /// to `follower`'s TRACKs (matched by node key). Call it every frame,
@@ -568,14 +609,14 @@ impl CompiledVoice {
     /// plays each frame's tracked note exactly as this voice does, from its
     /// first frame. Allocates nothing.
     pub fn lead(&self, follower: &CompiledVoice) {
-        for (key, id) in &self.trackers {
-            let Some(feed) = follower.track_feeds.get(key) else {
+        for t in &self.trackers {
+            let Some(feed) = follower.track_feeds.get(&t.key) else {
                 continue;
             };
-            let read = |port| self.patch.get_output_value(*id, port).unwrap_or(0.0);
-            feed.voct.set(read(10));
-            feed.gate.set(read(11));
-            feed.level.set(read(12));
+            let [voct, gate, level] = t.read(&self.patch);
+            feed.voct.set(voct);
+            feed.gate.set(gate);
+            feed.level.set(level);
         }
     }
 
@@ -583,7 +624,7 @@ impl CompiledVoice {
     /// [`Self::read_tracks`] writes them. Empty in a follower. Allocates; read
     /// it once per compiled voice, not per tick.
     pub fn tracker_keys(&self) -> Vec<String> {
-        self.trackers.iter().map(|(k, _)| k.clone()).collect()
+        self.trackers.iter().map(|t| t.key.clone()).collect()
     }
 
     /// Each TRACK's pitch (V/Oct), gate and level as they stand after this
@@ -594,14 +635,11 @@ impl CompiledVoice {
     /// voice's quantum after another). Writes nothing past `out`'s end.
     /// Allocates nothing.
     pub fn read_tracks(&self, out: &mut [f64]) {
-        for (i, (_, id)) in self.trackers.iter().enumerate() {
+        for (i, t) in self.trackers.iter().enumerate() {
             let Some(slot) = out.get_mut(3 * i..3 * i + 3) else {
                 return;
             };
-            let read = |port| self.patch.get_output_value(*id, port).unwrap_or(0.0);
-            slot[0] = read(10);
-            slot[1] = read(11);
-            slot[2] = read(12);
+            slot.copy_from_slice(&t.read(&self.patch));
         }
     }
 
@@ -3604,13 +3642,15 @@ fn compile_voice(
         })
         .collect();
 
-    let trackers = names
+    // In key order, so every voice of a patch lists its TRACKs alike.
+    let mut trackers: Vec<Tracker> = names
         .iter()
         .filter_map(|(id, name)| {
             name.strip_suffix(":track")
-                .map(|key| (key.to_string(), *id))
+                .map(|key| Tracker::new(&patch, key.to_string(), *id))
         })
         .collect();
+    trackers.sort_by(|a, b| a.key.cmp(&b.key));
     Ok(CompiledVoice {
         patch,
         pitch,

@@ -43,7 +43,8 @@ export function createTakes(host) {
   // host: live(), note(text, opts), send(msg, transfer), setTake(key, take, text),
   // lend(slot) → {ready, release}, ensureAudio(), renderBank(), benchTree(),
   // nodeAt(key), nodeIn(tree, key), benchId() → the sound on the bench,
-  // sampleRate() → the audio's
+  // sampleRate() → the audio's, keptCursor() → the kept-safe row the bank's
+  // cursor is on
   let rolling = null;   // {key, tree, held: entry|null, bench, moved, waiting, timer, release}
   const rendering = new Map(); // render_take id → its recording, until the worker answers
   let renderSeq = 0;
@@ -296,6 +297,14 @@ export function createTakes(host) {
     }
   }
 
+  /** RECORD AGAIN on the sound kept safe `id` (STOP while anything records). */
+  function recordAgain(id) {
+    if (rolling) return stop();
+    const h = held.find((x) => x.id === id);
+    if (!h || !h.tree || !h.capture) return;
+    start(JSON.stringify(h.tree), h.capture, h);
+  }
+
   /** Append the sounds kept safe to the pool's list, under their own group:
    *  each with the engine's sentence and RECORD AGAIN. */
   function appendKept(frag, group) {
@@ -303,8 +312,12 @@ export function createTakes(host) {
     frag.appendChild(group(W.TAKE_SILK.kept, W.TAKE_TIPS.kept, held.length));
     for (const h of held) {
       const row = document.createElement("div");
-      row.className = "kept-row";
-      row.setAttribute("role", "presentation");
+      // An option of the bank's listbox: the cursor reaches it past the
+      // pool's last row, and Enter or Space presses RECORD AGAIN (main.js).
+      row.className = host.keptCursor && host.keptCursor() === h.id ? "kept-row kbd" : "kept-row";
+      row.id = `kept-row-${h.id}`;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", "false");
       const name = document.createElement("span");
       name.className = "kept-name";
       name.textContent = nameOf(h);
@@ -320,9 +333,7 @@ export function createTakes(host) {
       b.title = W.TAKE_TIPS.again;
       b.onclick = (ev) => {
         ev.stopPropagation();
-        if (rolling) return stop();
-        if (!h.tree || !h.capture) return;
-        start(JSON.stringify(h.tree), h.capture, h);
+        recordAgain(h.id);
       };
       row.append(name, note, b);
       frag.appendChild(row);
@@ -336,6 +347,9 @@ export function createTakes(host) {
     onWorklet,
     benchMoved,
     rendered,
+    recordAgain,
+    /** The sounds kept safe, in the order they are listed. */
+    keptIds: () => held.map((h) => h.id),
     /** The engine's longest take, in seconds (its `ready`). */
     setLimit: (s) => { if (Number.isFinite(s) && s > 0) limit = s; },
     setHeld,

@@ -19,6 +19,8 @@
 // - A sound whose take couldn't be read is kept safe, out of the pool,
 //   listed under *kept safe*; RECORD AGAIN records it and brings it back into
 //   the pool.
+// - The bank's cursor reaches a sound kept safe past the pool's last row, and
+//   Enter presses RECORD AGAIN.
 // - AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk: the
 //   arrows reach them after a module's knobs, Enter or Space presses them,
 //   and the focus stays on a button the press redrew.
@@ -396,7 +398,18 @@ test("RECORD AGAIN says plainly when the browser refuses the input, and records 
     granted: false,
     extra: "window.__pwMic.refuse = true;",
   });
-  await row.locator(".kept-rec").click();
+  // From the keyboard: the bank's cursor runs on past the pool's last row
+  // onto the sound kept safe, and Enter presses RECORD AGAIN.
+  await next.locator("#bank-list").focus();
+  let presses = 0;
+  while (presses < 120 && (await row.getAttribute("class")).split(" ").indexOf("kbd") < 0) {
+    await next.keyboard.press("ArrowDown");
+    presses++;
+  }
+  await expect(row).toHaveClass(/\bkbd\b/);
+  await expect(next.locator("#bank-list")).toHaveAttribute("aria-activedescendant", await row.getAttribute("id"));
+  console.log(`the kept-safe row is ${presses} arrows down`);
+  await next.keyboard.press("Enter");
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 15_000 })
     .toContain("The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.");
   await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toBe(null);

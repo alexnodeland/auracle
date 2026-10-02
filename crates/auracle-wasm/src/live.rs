@@ -34,10 +34,13 @@
 //!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
-//! - **The open voice**: a patch that listens is built one voice longer, and
-//!   [`LivePoly::set_open`] holds that voice open at C4, outside the keys'
-//!   allocation, so the input sounds through the patch with no key down. A
-//!   patch that does not listen has none, so holding it open is silent.
+//! - **The open voice**: a patch that listens (or tracks) is built one voice
+//!   longer, and [`LivePoly::set_open`] holds that voice open at C4
+//!   ([`OPEN_NOTE`]), outside the keys' allocation, so the input sounds
+//!   through the patch with no key down. In a patch with a TRACK it is the
+//!   lead: held at C4 like any open voice, it plays the note it tracks, and
+//!   every key's voice follows it ([`Lead`]). A patch that neither listens nor
+//!   tracks has none, so holding it open is silent.
 //!
 //! ## What a patch swap costs, and whom
 //!
@@ -55,6 +58,8 @@
 //! — compile in the engine worker and transfer a ready voice, or at least
 //! parse off-thread — is out of scope for now and recorded here so that the
 //! next person to see a click on a structural edit knows where it comes from.
+//! The parse is the take's too: a sound whose CAPTURE holds a 4 s take spends
+//! 6-7 ms decoding it here on every swap (`examples/take_cost.mjs`).
 //!
 //! **RECORD costs the render thread a copy.** Measured with
 //! `examples/take_cost.mjs` (V8, one thread, 48 kHz): compiling one voice of a

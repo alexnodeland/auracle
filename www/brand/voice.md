@@ -443,7 +443,7 @@ banned-words check in `make dev-check` reads the list after it.
 
 | Say | Means | Not |
 | --- | --- | --- |
-| **pick** | Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass, the warm start, and keep as new | vote, choose, preference, "keep the one" |
+| **pick** | Any choice between two sounds: an EVOLVE pair, PERFORM's TAKE or a pass, the warm start, and keep as new | vote, choose, preference, "keep the one" |
 | **pair** | The two sounds you pick between | duel (outside the reference) |
 | **fair-test picks** | Pairs dealt at random, the ones LEARNING's forecasts are graded on | check duels, check picks |
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
@@ -475,7 +475,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **input** | A microphone or an interface the browser offers, numbered from 1 on AUDIO IN | device (except the browser’s own names) |
 | **monitor**, MONITOR | Hearing your input through the sound, at the speakers | listen (that is PERFORM’s *listening…*) |
 | **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample; *recording* or *take* for the clip (a take is CAPTURE’s) |
-| **take**, RECORD | A CAPTURE’s recorded audio: RECORD makes a new take, and the module shows its length | recording (for the take itself), sample, loop |
+| **take**, RECORD | A CAPTURE’s recorded audio: RECORD makes a new take, and the module shows its length. PERFORM’s **TAKE** pad is the verb (take the offer), always its name in capitals | recording (for the take itself), sample, loop |
 | **kept safe** | A sound whose take couldn’t be read, out of the pool until RECORD AGAIN makes a new take | held, HELD, quarantined |
 | **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |

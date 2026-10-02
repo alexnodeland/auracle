@@ -872,7 +872,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-from:hover { color: var(--silk); }
 /* The bank's groups: the latest generation's children lead the pool under
    their own heading, and the rest keep their ranked order under theirs. */
-/* The pool's sounds kept safe for a recording (takes.js): each name, the
+/* The pool's sounds kept safe (takes.js): each name, the
    engine's sentence for it, and RECORD AGAIN, lit while it records. */
 .kept-row {
   display: grid;
@@ -4954,6 +4954,7 @@ html:not(.engineer) .dn-sig { display: none; }
 
 /* Roving keyboard cursor in the bank (the list itself is the tab stop). */
 .bank-item.kbd { border-color: var(--phos-a); box-shadow: 0 0 0 1px var(--phos-a-deep) inset; }
+.kept-row.kbd { box-shadow: 0 0 0 1px var(--phos-a-deep) inset; }
 
 /* ---------- local explanation ----------
    Utility is linear within a style lens, so these contributions are exact.

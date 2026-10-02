@@ -306,6 +306,7 @@ const takes = createTakes({
   nodeIn: (tree, key) => (tree && tree.root ? nodeAtIn(tree, key) : null),
   setTake: (key, take, text) => setRackTake(key, take, text),
   benchId: () => wb.subjectId,
+  keptCursor: () => (kbdRowId == null ? kbdKeptId : null),
 });
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
@@ -8142,6 +8143,9 @@ document.querySelectorAll(".bank-filters .bf").forEach((b) => {
 // A rating re-renders the bank, and an index into a list that was just
 // rebuilt is a different patch.
 let kbdRowId = null;
+// …or on a sound kept safe, at the pool's foot (takes.js): its id. The cursor
+// runs on past the pool's last row onto them, so RECORD AGAIN has a key.
+let kbdKeptId = null;
 
 // Tell assistive tech where the cursor is.
 //
@@ -8155,8 +8159,9 @@ function syncBankCursor() {
   // A cursor pointing at a row this bank does not contain is worse than no
   // cursor: `aria-activedescendant` naming a deleted element is a dangling
   // reference, and switching to the preset bank used to leave one behind.
-  const row = kbdRowId != null ? document.getElementById(`bank-row-${kbdRowId}`) : null;
-  for (const el of list.querySelectorAll(".bank-item[aria-selected='true']")) {
+  const row = kbdRowId != null ? document.getElementById(`bank-row-${kbdRowId}`)
+    : kbdKeptId != null ? document.getElementById(`kept-row-${kbdKeptId}`) : null;
+  for (const el of list.querySelectorAll(".bank-item[aria-selected='true'], .kept-row[aria-selected='true']")) {
     el.setAttribute("aria-selected", "false");
   }
   if (row) {
@@ -8168,12 +8173,16 @@ function syncBankCursor() {
 }
 
 function moveKbdRow(d) {
-  if (bankRows.length === 0) return;
-  const cur = bankRows.findIndex((r) => r.id === kbdRowId);
-  const next = Math.max(0, Math.min(bankRows.length - 1, (cur < 0 ? 0 : cur) + d));
-  kbdRowId = bankRows[next].id;
+  // The pool's rows, then (in the pool) the sounds kept safe at its foot.
+  const kept = bankFilter === "pool" ? takes.keptIds() : [];
+  const stops = [...bankRows.map((r) => ({ id: r.id })), ...kept.map((id) => ({ kept: id }))];
+  if (stops.length === 0) return;
+  let cur = kbdKeptId != null ? stops.findIndex((s) => s.kept === kbdKeptId) : stops.findIndex((s) => s.id === kbdRowId);
+  const next = Math.max(0, Math.min(stops.length - 1, (cur < 0 ? 0 : cur) + d));
+  kbdRowId = stops[next].id ?? null;
+  kbdKeptId = stops[next].kept ?? null;
   renderBank();
-  $("bank-list").querySelector(".bank-item.kbd")?.scrollIntoView({ block: "nearest" });
+  $("bank-list").querySelector(".bank-item.kbd, .kept-row.kbd")?.scrollIntoView({ block: "nearest" });
 }
 
 // The preset bank's keyboard. Presets carry a library `index`, not a bank id,
@@ -8296,10 +8305,16 @@ function voteDropped(v) {
 
 $("bank-list").addEventListener("keydown", (e) => {
   if (bankFilter === "preset") return presetKeydown(e);
-  if (bankRows.length === 0) return;
-  if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null ? 0 : 1); }
+  if (bankRows.length === 0 && !(bankFilter === "pool" && takes.keptIds().length)) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null && kbdKeptId == null ? 0 : 1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveKbdRow(-1); }
-  else if (e.key === "Enter" || e.key === " ") {
+  else if ((e.key === "Enter" || e.key === " ") && kbdKeptId != null && kbdRowId == null) {
+    // A sound kept safe: RECORD AGAIN (and STOP while it records).
+    e.preventDefault();
+    if (!e.repeat) takes.recordAgain(kbdKeptId);
+  } else if (bankRows.length === 0) {
+    return;
+  } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
