@@ -51,7 +51,8 @@ THE THREE YOU’D REACH FOR.</figcaption>
 3. Press **TEACH IT**.
 
 The card is headed **PICK THE THREE YOU’D REACH FOR**, over nine presets drawn
-one per family from the library. The button under them counts down as you
+one per family from the library, each with its [face](../faces.md), which
+arrives once the bank has filled and the preset has been rendered. The button under them counts down as you
 pick (**PICK ANY THREE**, **2 MORE**, **1 MORE**) and then reads **TEACH IT**.
 
 When you press it, PERFORM opens on your first pick, and **TAUGHT** in the
@@ -113,26 +114,20 @@ What you see:
 
 ## 4. See what it learned
 
-1. Open **TASTE**.
-2. Open **STYLES**, and read each style’s name.
-3. Open **TRUST**, and see how close it is to grading the model.
+1. Open **TASTE**: every sound in the pool, glowing by how much the model
+   guesses you’d like it. Point at one to see its card.
+2. Open **LEARNING**, and read each style’s name on its chip.
+3. Read **ITS FORECASTS**, and see how close it is to grading the model.
 
-<figure>
-<img src="../img/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and glow, named style chips above it, and a legend below." loading="lazy" width="1440" height="900">
-<figcaption><strong>MAP.</strong> Every sound you have heard, placed by sound
-and structure. Brighter means it thinks you’d like it more; bigger means it’s
-less sure.</figcaption>
-</figure>
-
-Early on the map is sparse, and the styles are a first guess. A style is
-named for what it leans toward until you rename it, so a style called *analog
+Early on the glows are a first guess, and the styles too. A style is named
+for what it leans toward until you rename it, so a style called *analog
 sustain* means the model has heard you leaning that way.
 
-TRUST grades the model once it has made 20 guesses, one before each pick,
-and until then it counts toward them (4 OF 20 GUESSES, **16 TO GO →**). Once
-it has 20, it will likely say *not beating a coin flip yet*. That is the
-honest answer this early, and [the TASTE guide](../views/taste.md#trust-is-its-confidence-honest)
-says why a plain hit rate would have flattered it.
+LEARNING grades the model once it has made 20 guesses, one before each pick,
+and until then it counts toward them (*calibrating · 4/20*). Once it has 20,
+it will likely say *not beating a coin flip yet*. That is the honest answer
+this early, and [the LEARNING guide](../views/learning.md#its-forecasts) says
+why a plain hit rate would have flattered it.
 
 ## 5. Breed a generation
 

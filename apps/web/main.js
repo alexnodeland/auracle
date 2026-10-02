@@ -119,16 +119,28 @@ const BUILD = await (async () => {
 // The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
 // unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
 // worker exists, so no reply can arrive while it loads.
-const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
-  await import(`./taste-geom.js?v=${BUILD}`);
+const geom = await import(`./taste-geom.js?v=${BUILD}`);
+const { directionsScale, pullMark } = geom;
 // Sentences built from engine facts (a generation's outcome, a prediction's
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
+const words = await import(`./words.js?v=${BUILD}`);
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES,
-} = await import(`./words.js?v=${BUILD}`);
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
+} = words;
+// PATCH's guess, cable levels, new patch and module sheet (patch.js), built
+// on the rack below through the host it is handed (`patchView`).
+const PATCH_WORDS = words;
+const { createPatch } = await import(`./patch.js?v=${BUILD}`);
+// TASTE's map and LEARNING's room (taste.js): it draws from what this side
+// holds, and is created with the TASTE and LEARNING bridge below.
+const { createTaste } = await import(`./taste.js?v=${BUILD}`);
+// A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
+// one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
+const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
+const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
 // AUDIO IN: the permission, the inputs, monitoring and the clip
 // (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
 const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
@@ -170,6 +182,11 @@ const farmWorkers = [];
 let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
+// Every forecast that calibration scores (`WasmEngine::forecasts`), and the
+// numbers LEARNING's math states (`WasmEngine::model_facts`), from the same
+// reply. LEARNING draws both; they persist in the engine, not here.
+let engineForecasts = null;
+let engineFacts = null;
 let duelsSinceFit = 0;
 const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
 let fitDue = false;    // armed by the sixth pick, sent once that pick is in the log
@@ -236,7 +253,9 @@ let views = null;          // {map, styles, lineage, ranked, ratings, …} from 
 // only when views are posted. While a generation runs, what it will replace is
 // `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
 // so read it at rest. Pointing at EVOLVE POOL marks both (`evolveMarks`).
-let tasteTab = "map";
+// TASTE's halos and LEARNING's arrow are drawn from it (taste.js).
+// TASTE and LEARNING, once the bridge creates them (taste.js `createTaste`).
+let taste = null;
 let currentView = "play";
 
 const starsById = new Map();
@@ -245,8 +264,8 @@ const cutIds = new Set();
 const pendingCuts = new Map();
 // Model calibration on duels: forecasts made before each vote, scored after.
 // A local Brier tally, used only for the menubar readout in the moments
-// before the engine's own (authoritative) calibration reply lands. Bins are
-// deliberately NOT kept here — see drawTrustTab.
+// before the engine's own (authoritative) calibration reply lands. Nothing
+// else is kept here: the engine holds every forecast (`WasmEngine::forecasts`).
 const calib = { n: 0, brier: 0 };
 // Implicit play signal: notes played per live patch, flushed on patch switch.
 const playCounts = new Map();
@@ -279,6 +298,472 @@ let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
+
+// ---------- faces (Plan-005 task 3) ----------
+// Every row, chip and card carries its sound's face: the engine's measurement
+// of the render in 40 bands × 12 slices (`auracle_features::face`, taken in
+// the featurization and filed by the worker under `"<ns>/<render key>"`),
+// drawn against the bank's mean and spread (faces.js). A face is drawn in a
+// slot its place always has, empty until the face arrives, so a name sits
+// at the same x with or without one, and never loses width to it. Nothing
+// moves on its own (ADR-012): a face is redrawn when the render it shows is
+// replaced (an edit, an offer) or when the bank's mean or spread changes (a
+// sound added, replaced or cut), and then in place, with no tween.
+//
+// Sizes in CSS px, the slot's and the drawing's (a vessel is taller than
+// wide, as the specimen draws it).
+const FACE_SIZE = {
+  row: [24, 40],   // a bank row, beside its two lines
+  pair: [28, 44],  // an EVOLVE card, beside its name
+  subject: [20, 32], // PATCH's header, beside the patch's name
+  chip: [14, 22],  // PATCH's teach strip, A and B
+  hand: [32, 48],  // PERFORM, the sound in hand
+  offer: [16, 26], // PERFORM's B
+  warm: [24, 40],  // the warm start's cards
+  share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
+};
+// Bounded: a bench edit is a new tree, so a new ref, key and drawing each
+// time. The least recently used go past FACE_KEEP (the bank's faces are used
+// on every bank render, so they stay); a face needed again is asked again,
+// and the worker answers it from memory.
+const FACE_KEEP = 400;
+function lruGet(map, k) {
+  if (!map.has(k)) return undefined;
+  const v = map.get(k);
+  map.delete(k);
+  map.set(k, v);
+  return v;
+}
+function lruSet(map, k, v) {
+  map.delete(k);
+  map.set(k, v);
+  while (map.size > FACE_KEEP) map.delete(map.keys().next().value);
+}
+const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
+const faceKeyById = new Map();  // pool id -> key
+const faceKeyByRef = new Map(); // tree ref -> key
+const faceTreeByRef = new Map(); // tree ref -> tree text, to ask with
+const faceAsked = new Set();    // targets asked and not yet answered ("i12", "r…")
+const faceNone = new Set();     // targets the engine has no face for (a tree that does not vet)
+const faceWanted = new Set();   // targets to ask for at the next send
+let faceStats = null;           // the bank's mean and spread (faces.js `bankStats`)
+let faceBankKeys = "";          // the keys those were taken over
+let faceEpoch = 0;              // bumped when they change: every face redraws
+const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
+// Each face is drawn once per bank (vessel.js `drawVessel`, the renderer every
+// size shares) into an image: rows are rebuilt as HTML on every bank render,
+// and an <img> of a drawing already made costs nothing to put back.
+let faceSendQueued = false;
+let facePaintQueued = false;
+let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, landed, result}
+let faceLanded = 0; // bumped when any face lands, so a missing one is looked for again
+
+/** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
+function treeRef(json) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+  return `r${(h >>> 0).toString(36)}${json.length.toString(36)}`;
+}
+/** `{id}` or `{tree}` (or null) → the slot's target string, or "". */
+function faceTarget(t) {
+  if (!t) return "";
+  if (t.id != null) return `i${t.id}`;
+  if (t.preset != null) return `p${t.preset}`;
+  if (t.memo) return `g${t.memo}`;
+  if (t.tree) {
+    const ref = treeRef(t.tree);
+    if (lruGet(faceTreeByRef, ref) === undefined) lruSet(faceTreeByRef, ref, t.tree);
+    return ref;
+  }
+  return "";
+}
+function faceKeyOfTarget(target) {
+  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : lruGet(faceKeyByRef, target);
+}
+/** The face drawn for a target, as markup, or "" (asked for if not known). */
+function faceMarkup(target, kind, ask = true, build = true) {
+  if (!target) return "";
+  const key = faceKeyOfTarget(target);
+  const face = key && lruGet(faceByKey, key);
+  if (!face) {
+    if (ask) wantFace(target);
+    return "";
+  }
+  if (!faceStats) return "";
+  const [w, h] = FACE_SIZE[kind];
+  const ck = `${key}|${faceEpoch}|${w}|${h}`;
+  let s = lruGet(faceMarkupCache, ck);
+  if (s == null && !build) return "";
+  if (s == null) {
+    s = `<img class="face" src="${faceImage(face, w, h)}" width="${w}" height="${h}" alt="" draggable="false">`;
+    lruSet(faceMarkupCache, ck, s);
+  }
+  return s;
+}
+/** One face drawn at `w × h` CSS px, at the screen's density, as a PNG. */
+let faceCanvas = null;
+function faceImage(face, w, h, opts = {}) {
+  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+  const c = faceCanvas || (faceCanvas = document.createElement("canvas"));
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  drawVessel(ctx, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: h >= 20, ...opts });
+  return c.toDataURL("image/png");
+}
+/** PATCH's guess plate (patch.js `drawGuess`, its `host.guessFace`): beside
+ *  the plate, the patch as it is and the patch with the guessed module, each
+ *  its face, as the mock's estimated vessel stands at OUT. Neither is an
+ *  estimate (ADR-012): the guess rendered every candidate it ranks
+ *  (`Guess::key`, `GuessCandidate::key`: a memo row, its face with it), and
+ *  the patch's is the face of `tree`, the tree the guess was ranked on (the
+ *  reply's). Drawn into the plate's layer (`g.gp-faces`) in the rack's own
+ *  units; until a face lands its place is empty, and the plate is drawn
+ *  again when it does. */
+let guessFaceWaiting = false;
+function guessFace(g, at, layer, tree) {
+  if (!g || !g.key || !layer) return;
+  // Both faces are of the tree the guess was ranked on: once the bench has
+  // left it (a knob turned; a knob is not ranked again), "as it is" would be
+  // another patch's and "with it" an edit of the old one. None until the
+  // next ranking.
+  if (!tree || tree !== benchTreeJson) return;
+  const [w, h] = FACE_SIZE.pair;
+  const x0 = at.x + at.w + 12;
+  const y0 = at.y;
+  const both = [[faceTarget({ tree }), words.GUESS_FACES[0]], [faceTarget({ memo: g.key }), words.GUESS_FACES[1]]];
+  const pair = document.createElementNS(SVG_NS, "g");
+  pair.setAttribute("class", "gp-faces");
+  layer.append(pair);
+  // Each face stands over its word, in a column as wide as the wider word
+  // (measured: the mono value tier is wider than the face), so the two
+  // words never run into each other.
+  const labels = both.map(([, label]) => {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("class", "gp-face-word");
+    t.textContent = label;
+    return t;
+  });
+  pair.append(...labels);
+  let col = w;
+  for (const t of labels) {
+    try { col = Math.max(col, t.getComputedTextLength()); } catch (_) { /* not laid out */ }
+  }
+  col = Math.ceil(col);
+  both.forEach(([target], i) => {
+    const t = labels[i];
+    const key = target && faceKeyOfTarget(target);
+    const face = key && lruGet(faceByKey, key);
+    if (!face || !faceStats) {
+      t.remove();
+      // Waiting only for a face that can still land: one the worker has
+      // said it has none for (a patch with no sound) would redraw the plate
+      // at every face batch for nothing.
+      if (!target || faceNone.has(target)) return;
+      if (!face) wantFace(target);
+      guessFaceWaiting = true;
+      return;
+    }
+    const cx = x0 + i * (col + 10) + col / 2;
+    const img = document.createElementNS(SVG_NS, "image");
+    img.setAttribute("class", "gp-face");
+    img.setAttribute("x", String(cx - w / 2));
+    img.setAttribute("y", String(y0));
+    img.setAttribute("width", String(w));
+    img.setAttribute("height", String(h));
+    img.setAttribute("href", faceImage(face, w, h));
+    img.dataset.face = target;
+    t.setAttribute("x", String(cx));
+    t.setAttribute("y", String(y0 + h + 12));
+    pair.insertBefore(img, t);
+  });
+}
+
+/** TASTE's map: a sound's mark is its face (taste.js `drawMark`, through
+ *  `host.drawFace`), as the mock draws it. Its height keeps the map's size
+ *  for the model's doubt (`size`, twice taste-geom's `mapDotRadius`) over a
+ *  floor that keeps it a face, so a less sure sound is a bigger face; it
+ *  stays inside the ring around the sound you're playing (`r + 6`). Drawn
+ *  once per bank and size into a small canvas, then copied each frame. False
+ *  until the face has landed (asked for here), and the map draws its dot. */
+const faceMapCache = new Map(); // "key|epoch|h" -> canvas
+function drawMapFace(ctx, id, x, y, size) {
+  const key = faceKeyById.get(id);
+  const face = key && lruGet(faceByKey, key);
+  if (!face) wantFace(`i${id}`);
+  if (!face || !faceStats) return false;
+  const h = Math.round(10 + size);
+  const w = Math.max(6, Math.round(h * 0.6));
+  const ck = `${key}|${faceEpoch}|${h}`;
+  let c = lruGet(faceMapCache, ck);
+  if (!c) {
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    c = document.createElement("canvas");
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVessel(g, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: true });
+    lruSet(faceMapCache, ck, c);
+  }
+  ctx.drawImage(c, x - w / 2, y - h / 2, w, h);
+  return true;
+}
+function wantFace(target) {
+  if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
+  faceWanted.add(target);
+  if (faceSendQueued) return;
+  faceSendQueued = true;
+  queueMicrotask(sendFaceAsks);
+}
+function sendFaceAsks() {
+  faceSendQueued = false;
+  if (!faceWanted.size) return;
+  const ids = [];
+  const trees = [];
+  for (const t of faceWanted) {
+    faceAsked.add(t);
+    if (t.startsWith("i")) ids.push(Number(t.slice(1)));
+    else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
+    else if (t.startsWith("g")) trees.push({ ref: t, memo: t.slice(1) });
+    else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
+  }
+  faceWanted.clear();
+  // A row the store has no face for (one stored before faces existed), or a
+  // preset not heard yet, is rendered for it: in the engine's background lane.
+  send({ type: "faces", ids, trees, render: true });
+}
+/** The worker's answer: faces it had, renders still to come, and targets it
+ *  has none for. */
+function facesLanded(m) {
+  if ((m.items || []).length) faceLanded++;
+  for (const it of m.items || []) {
+    const face = decodeFace(it.face);
+    if (!face) continue;
+    lruSet(faceByKey, it.key, face);
+    const target = it.id != null ? `i${it.id}` : it.ref;
+    if (it.id != null) faceKeyById.set(it.id, it.key);
+    else lruSet(faceKeyByRef, it.ref, it.key);
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+  }
+  for (const f of m.failed || []) {
+    const target = f.id != null ? `i${f.id}` : f.ref;
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+    faceNone.add(target);
+  }
+  // Dropped by the worker as their slots left the view: asked again when
+  // they come back into it, or now, if one came back while the drop was on
+  // its way.
+  for (const c of m.cancelled || []) {
+    const target = c.id != null ? `i${c.id}` : c.ref;
+    faceAsked.delete(target);
+    faceLazy.delete(target);
+    if (faceSlotInView(target)) {
+      faceLazy.add(target);
+      wantFace(target);
+    }
+  }
+  facesChanged();
+}
+/** A face request that could not be served (the engine was not up yet, or a
+ *  request threw): ask again when a slot next wants it. */
+function facesUnanswered() {
+  faceAsked.clear();
+}
+/** Re-whiten when the bank's faces changed, then redraw what changed, once a
+ *  frame however many faces landed. */
+function facesChanged() {
+  if (facePaintQueued) return;
+  facePaintQueued = true;
+  requestAnimationFrame(() => {
+    facePaintQueued = false;
+    faceRestat();
+    paintFaces();
+    // TASTE's map draws faces too: a frame with the ones that landed.
+    if (currentView === "taste" && taste) taste.draw();
+    // PATCH's guess plate was waiting on one of its two faces.
+    if (guessFaceWaiting && patchView) {
+      guessFaceWaiting = false;
+      patchView.cameraMoved();
+    }
+    // A card waiting on its face. Only the card: the rack's readout builds the
+    // rack to measure it, and this runs on every bank render.
+    if (imageState.scope === "card") imageSync();
+  });
+}
+/** The bank's mean and spread, over the faces of the rows the bank shows
+ *  (the pool, less what was cut). Taken again when that set changes, and
+ *  drawn against when they have moved since the faces were last drawn
+ *  (faces.js `statsMoved`: 0.25 dB in a band, or 1% of the spread). */
+function faceRestat() {
+  const ranked = (views && views.ranked) || [];
+  const keys = [];
+  for (const r of ranked) {
+    if (cutIds.has(r.id)) continue;
+    const k = faceKeyById.get(r.id);
+    if (k && faceByKey.has(k)) keys.push(k);
+  }
+  keys.sort();
+  const sig = keys.join(",");
+  if (sig === faceBankKeys) return false;
+  faceBankKeys = sig;
+  const now = bankStats(keys.map((k) => faceByKey.get(k)));
+  if (!statsMoved(faceStats, now)) return false;
+  faceStats = now;
+  faceEpoch++;
+  faceMarkupCache.clear();
+  return true;
+}
+/** Draw every slot whose face or bank changed since it was drawn. The bank's
+ *  rows are drawn the rows in view first (`faceRedraw`, the next frame) and
+ *  the rest a few at a time when the page is idle (`faceIdle`): forty faces
+ *  drawn at once took 17 ms, a dropped frame, and the bank shows about ten.
+ *  Until a row is drawn again it shows the drawing it had. */
+let faceRedraw = null;
+const faceIdleQueue = new Set();
+let faceIdleArmed = false;
+const idleSoon = window.requestIdleCallback
+  ? (f) => window.requestIdleCallback(f, { timeout: 1000 })
+  : (f) => setTimeout(() => f({ timeRemaining: () => 8 }), 50);
+function faceIdle(deadline) {
+  faceIdleArmed = false;
+  for (const el of faceIdleQueue) {
+    if (deadline.timeRemaining() < 2) break;
+    faceIdleQueue.delete(el);
+    if (el.isConnected) paintFaceSlot(el);
+  }
+  if (faceIdleQueue.size) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
+}
+function paintFaces(root = document) {
+  if (!faceRedraw) {
+    faceRedraw = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        faceRedraw.unobserve(e.target);
+        if (e.isIntersecting) paintFaceSlot(e.target);
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-face]")) {
+    if (!el.closest("#bank-list")) {
+      paintFaceSlot(el);
+      continue;
+    }
+    faceRedraw.observe(el);
+    faceIdleQueue.add(el);
+  }
+  if (faceIdleQueue.size && !faceIdleArmed) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
+}
+function paintFaceSlot(el) {
+  const target = el.dataset.face;
+  if (!target) return;
+  const key = faceKeyOfTarget(target) || "";
+  const drawn = `${key}|${faceEpoch}|${!!faceStats}`;
+  if (el.dataset.drawn === drawn) return;
+  el.innerHTML = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
+  el.dataset.drawn = el.innerHTML ? drawn : "";
+}
+/** A slot's markup, for a row or card built as HTML. Always there, at its
+ *  size, with or without a face in it. `lazy`: asked for only once the slot
+ *  scrolls into view (`faceWhenSeen`), for a list of presets each of which
+ *  may cost a render. */
+function faceSlot(kind, t, { lazy = false } = {}) {
+  const target = faceTarget(t);
+  const [w, h] = FACE_SIZE[kind];
+  // A row draws what is already drawn for it; a face not drawn yet for this
+  // bank is drawn after the row is in the page (`paintFaces`), so a bank
+  // rebuilt on every rating does not draw forty faces each time.
+  const inner = faceMarkup(target, kind, !lazy, kind !== "row");
+  const key = target ? faceKeyOfTarget(target) || "" : "";
+  const drawn = inner ? ` data-drawn="${key}|${faceEpoch}|true"` : "";
+  const wait = lazy && !inner && target ? " data-lazy" : "";
+  return `<span class="face-slot face-${kind}" data-kind="${kind}"${target ? ` data-face="${target}"` : ""}${drawn}${wait} style="width:${w}px;height:${h}px" aria-hidden="true">${inner}</span>`;
+}
+let faceSeer = null;
+const faceLazy = new Set(); // lazy targets asked for and not answered yet
+let faceDropQueued = null;
+/** Ask for the lazy slots under `root` while they are in view, and let go of
+ *  what is still waiting when one leaves it: a face's render costs half a
+ *  second, and a list scrolled through is not a list looked at. */
+function faceWhenSeen(root) {
+  // A list rebuilt (a ▶, a rating, a load: any bank render) drops its old
+  // slots: stop watching them. What they were waiting on is not dropped
+  // here: the new slots are watched at once, and the first sighting of each
+  // lets go of what is out of view and keeps what is still in it. (Dropping
+  // everything here cancelled the faces of rows still on screen.)
+  if (faceSeer) faceSeer.disconnect();
+  if (!faceSeer) {
+    faceSeer = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        const target = e.target.dataset.face;
+        if (!target || faceKeyOfTarget(target)) continue;
+        if (e.isIntersecting) {
+          faceLazy.add(target);
+          wantFace(target);
+        } else if (faceLazy.has(target)) {
+          faceDrop(target);
+        }
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-lazy]")) faceSeer.observe(el);
+}
+/** Let go of a lazy target's waiting render (the worker says which it
+ *  dropped, `cancelled`). */
+function faceDrop(target) {
+  faceWanted.delete(target);
+  if (!faceAsked.has(target)) return void faceLazy.delete(target);
+  if (!faceDropQueued) {
+    faceDropQueued = new Set();
+    queueMicrotask(() => {
+      const refs = [...faceDropQueued];
+      faceDropQueued = null;
+      if (refs.length) send({ type: "face_cancel", refs });
+    });
+  }
+  faceDropQueued.add(target);
+}
+/** Is a slot for `target` in the bank's visible rows? */
+function faceSlotInView(target) {
+  const list = $("bank-list");
+  if (!list || !target) return false;
+  const box = list.getBoundingClientRect();
+  for (const el of list.querySelectorAll(`.face-slot[data-face="${target}"]`)) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > box.top && r.top < box.bottom && r.width) return true;
+  }
+  return false;
+}
+/** Let go of every lazy face still waiting (the presets are out of sight). */
+function faceLazyDrop() {
+  for (const t of faceLazy) faceDrop(t);
+}
+/** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none. */
+function setFaceSlot(el, kind, t) {
+  if (!el) return;
+  const [w, h] = FACE_SIZE[kind];
+  el.classList.add("face-slot", `face-${kind}`);
+  el.dataset.kind = kind;
+  el.setAttribute("aria-hidden", "true");
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
+  const target = faceTarget(t);
+  if (target && target === el.dataset.face) return void paintFaceSlot(el);
+  if (target) el.dataset.face = target;
+  else delete el.dataset.face;
+  el.dataset.drawn = "";
+  el.innerHTML = "";
+  if (target) paintFaceSlot(el);
+}
 
 // Workbench state.
 const wb = {
@@ -686,6 +1171,9 @@ function uiState() {
     // places is what let the old bank apologise for eviction without being
     // able to prevent it.
     bank: bankFilter,
+    // What TASTE's track and LEARNING's replay show: the engine's replies as
+    // they came, kept by the page (taste-geom's history, versioned, bounded).
+    taste: taste ? taste.history() : null,
     born: [...lastBorn],
     bornGen,
     // The bank's lineage marks that the engine does not keep: which children
@@ -1188,12 +1676,73 @@ let renderNs = null;
 // wiring by it. Null until then, or from a binary too old to say.
 let auditionClip = null;
 
+// PATCH's own module (patch.js): the model's guess at its socket, each cable's
+// measured level, a patch from nothing, and the module sheet on touch. It
+// reaches the rack, the bench lane and the worker through this host only.
+const patchView = createPatch({
+  // The guess plate's two faces: the patch as it is, and with the guess.
+  guessFace,
+  words: PATCH_WORDS,
+  send: (msg) => send(msg),
+  visible: () => currentView === "play",
+  hasRack: () => !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0),
+  rack: () => wb.rack,
+  benchTree: () => wb.tree,
+  benchTreeJson: () => benchTreeJson,
+  subjectId: () => wb.subjectId,
+  vetSilent: () => !!wb.vetSilent,
+  benchSettled: () => benchSettled(),
+  knobDragging: () => knobDragging,
+  setKnobDragging: (on) => { knobDragging = on; },
+  rackSvg: () => $("rack-svg"),
+  rackFrame: () => rackFrame,
+  rackBoxes: () => rackBoxes,
+  flowing: () => !!$("rack-svg")?.classList.contains("flowing"),
+  paintWireLevel: (elx, lv) => paintWireLevel(elx, lv),
+  renderRack: () => renderRack(),
+  renderSubject: () => renderSubject(),
+  queueStruct: (msg, landed, tag) => queueStruct(msg, landed, tag),
+  applyTreeRewrite: (fn, tag) => applyTreeRewrite(fn, tag),
+  noteOnLanding: (text, opts) => noteOnLanding(text, opts),
+  doUndo: () => doUndo(),
+  undoDepth: () => undoStack.length,
+  openOnBench: (id) => openOnBench(id),
+  benchName: (id) => benchName(id),
+  kindName: (kind) => kindName(kind),
+  kindAt: (key) => rackKindAt(key),
+  kindModTarget: (kind) => kindModTarget(kind),
+  blurbOf: (kind) => MOD_BY_KIND[kind]?.blurb || "",
+  niceName: (name) => niceName(name),
+  capital: (s) => capital(s),
+  heardUnit: (addr, v, kind, variant, long) => heardUnit(addr, v, kind, variant, long),
+  enumDisplay: (k) => enumDisplay(k),
+  knobByAddr: (addr) => knobByAddr(addr),
+  paintRackKnob: (addr) => {
+    const kg = $("rack-svg")?.querySelector(`g[data-addr="${CSS.escape(addr)}"]`);
+    const k = knobByAddr(addr);
+    if (kg && k) paintKnob(kg, k);
+  },
+  sendEdit: (addr, v, isIndex) => sendEdit(addr, v, isIndex),
+  pushUndo: () => pushUndo(),
+  releaseHeldEdits: () => releaseHeldEdits(),
+  removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
+  touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
+  // Esc has another job first: something floating, a module in hand, a cable
+  // half made, or a rack knob it backs out of.
+  escBusy: () =>
+    !!(armed || connectPick || wire || compareId != null) ||
+    !$("ctx-menu").classList.contains("hidden") ||
+    !$("ovf-menu").classList.contains("hidden") ||
+    !!document.activeElement?.closest?.("#rack-svg [data-addr]"),
+});
+
 worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
     if (perform) perform.onWorker(m);
     return;
   }
+  if (patchView.onWorker(m)) return;
   switch (m.type) {
     case "fill_progress": {
       // Monotonic: the restore stage posts {pool:0,target:1}, which used to
@@ -1531,12 +2080,22 @@ worker.onmessage = (e) => {
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
+    // The styles after a pick (`WasmEngine::styles`): θ under the draws the
+    // pick reweighted. Every surface reads the fresher θ; LEARNING keeps it
+    // with that pick's moment and moves its bars.
+    case "styles": {
+      if (m.styles && views) views.styles = m.styles;
+      if (taste) taste.onStyles(m);
+      break;
+    }
     case "calibration": {
       engineCalib = m.calib;
+      if (m.forecasts) engineForecasts = m.forecasts;
+      if (m.facts) engineFacts = m.facts;
       // The menubar's count was drawn on the vote's status, before this reply
-      // — one forecast behind TRUST ("7 of 20" beside "8 OF 20").
+      // — one forecast behind LEARNING's.
       renderSkill();
-      if (currentView === "taste") drawTaste();
+      if (taste) taste.onCalibration();
       break;
     }
     case "status": {
@@ -1544,11 +2103,17 @@ worker.onmessage = (e) => {
       // engine's count is the whole truth about it (see `taughtAhead`).
       if (m.vote) aheadDrop(aheadKey(m.vote));
       // The ratings a taken pick left (`WasmEngine::belief`), and the seeds
-      // and may-be-replaced they mark at rest.
+      // and may-be-replaced they mark at rest. TASTE moves every halo to
+      // them, and draws a pair's pick as its arrow.
       if (m.ratings && views) views.ratings = m.ratings;
       if (m.ratings && mayGoShown) markMayGo(true);
       applyStatus(m.status);
+      // After the status, so the moment TASTE keeps counts this pick.
+      if (taste && views) taste.onStatus(m);
       send({ type: "calibration" });
+      // The styles under the reweighted draws, for LEARNING's bars and its
+      // replay: answered in the worker's `later` lane.
+      if (m.ratings) send({ type: "styles" });
       // The engine took nothing: the patch left the pool between the gesture
       // and the end of its undo window. The UI has already acted as if the
       // vote were taken — put that back, and say so.
@@ -1585,6 +2150,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       // The bench's guess under the model just fitted ("was" is the old one).
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
+      patchView.refit(); // and the next module's, ranked again under it
       refreshInstruments();
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -2070,14 +2636,21 @@ worker.onmessage = (e) => {
       // Whatever is next in the lane goes now — and if nothing is, a COMMIT
       // that was waiting on this edit goes instead (see `pumpLane`).
       pumpLane();
+      // The guess and the cable levels are owed for this patch once it settles.
+      patchView.benchLanded(m);
       break;
     }
     // A request that arrived before the engine finished booting. The worker
     // now says so instead of throwing into the void; the only one that needs
     // re-asking is the preset list, because the bank shows an empty shelf
     // until it lands and nothing else would ever ask again.
+    // Faces, as the worker files them (Plan-005 task 3).
+    case "faces":
+      facesLanded(m);
+      break;
     case "not_ready": {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      if (m.request === "faces") facesUnanswered();
       break;
     }
     // The engine is up. It says what the structural ceilings are so the
@@ -2101,6 +2674,7 @@ worker.onmessage = (e) => {
     case "engine_error": {
       console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
       releaseRequest(m.request, m.id);
+      if (m.request === "faces" || m.request === "face_render") facesUnanswered();
       if (m.fatal) {
         engineCrashed(m.message);
       } else if (m.request) {
@@ -2179,6 +2753,8 @@ worker.onmessage = (e) => {
       // times over. The stacks are untouched, so nothing is lost by stopping.
       if (refusedRestore && benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
       pumpLane();
+      // A guess taken after the patch moved on was refused, and said why above.
+      patchView.rejected();
       break;
     }
     // The answer to "is there a duel to deal here, and what does the other
@@ -2227,6 +2803,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
+      patchView.committed(m); // a new patch kept is a sound of its own
       takeRetiring(m); // a kept edit joining the pool moves what will be replaced
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -2447,6 +3024,7 @@ worker.onmessage = (e) => {
     case "warm_done": {
       applyViews(m.views);
       applyStatus(m.status);
+      patchView.refit(); // the first fit: a guess is possible from here
       refreshInstruments();
       warmStartDone(m);
       scheduleSave();
@@ -2540,6 +3118,8 @@ worker.onmessage = (e) => {
     case "imported": {
       if (m.ok) {
         applyStatus(m.status);
+        // The next map TASTE keeps is this file's: a boundary on its track.
+        if (taste) taste.markFile();
         send({ type: "taste_views" });
         // An import clears the fitted model (the engine refits from the log),
         // and nothing asked for a fit: TASTE sat on "nothing predicted yet"
@@ -2902,11 +3482,8 @@ function renderTeach() {
   }
 }
 
-/** "see what changed" is the map: TASTE opens on its MAP tab, whichever tab
- *  it was last left on. */
+/** "see what changed" is the map. */
 function showTasteMap() {
-  const tab = document.querySelector('.tab[data-tab="map"]');
-  if (tab && tasteTab !== "map") tab.click();
   showView("taste");
 }
 
@@ -3351,14 +3928,14 @@ function dismissToast(t, immediate) {
 // What the lane may never cover, in two kinds. STRIPS are stepped over — the
 // lane moves above them: the teaching strips (rule 2), and the bands it used
 // to park on while someone was reading or reaching for them — the taste map's
-// legend, EVOLVE's record of what each generation did, the module strip under
+// footer, EVOLVE's record of what each generation did, the module strip under
 // the rack, and HELD. COLUMNS are stepped beside — the lane moves left of
 // them: panels far taller than a toast that stand on the same bottom edge —
 // the node bank's rail, the tours on the rails, the MIDI and arp panels —
 // where stepping *over* a 460px rail would carry a toast to the top of the
 // rack. Every `.duel-controls`, not the first: B's buttons are the ones at
 // the lane's edge.
-const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#map-legend", ".lineage-strip", "#spec-dock", "#tray"];
+const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#arp-ctl"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
@@ -3464,27 +4041,27 @@ function skillLine(skill, n, tag) {
     : `${pct}% sharper than chance${tag ? ` · ${tag}` : ""}`;
 }
 
+/** The skill as the menu bar says it, and LEARNING's forecasts beside it:
+ *  one formatter, so the two never disagree. */
+function skillText() {
+  const E = engineCalib;
+  if (E && E.check_n >= SKILL_MIN_N) return skillLine(E.check_skill, E.check_n, `${E.check_n} fair-test picks`);
+  if (E && E.n >= SKILL_MIN_N) return skillLine(E.skill, E.n);
+  const n = E ? E.n : calib.n;
+  return n >= 1 ? `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}` : "";
+}
+
 function renderSkill() {
   const el = $("skill");
   if (!el) return;
   const E = engineCalib;
-  const line = skillLine;
+  el.textContent = skillText();
   if (E && E.check_n >= SKILL_MIN_N) {
-    el.textContent = line(E.check_skill, E.check_n, `${E.check_n} fair-test picks`);
-    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. TRUST in TASTE shows them.`;
-    return;
-  }
-  if (E && E.n >= SKILL_MIN_N) {
-    el.textContent = line(E.skill, E.n);
-    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). TRUST in TASTE shows them.`;
-    return;
-  }
-  const n = E ? E.n : calib.n;
-  if (n >= 1) {
-    el.textContent = `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}`;
+    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. LEARNING shows them.`;
+  } else if (E && E.n >= SKILL_MIN_N) {
+    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). LEARNING shows them.`;
+  } else if ((E ? E.n : calib.n) >= 1) {
     el.title = `It guesses each pick before you make it. After ${SKILL_MIN_N} it says how much sharper than a coin flip it has been.`;
-  } else {
-    el.textContent = "";
   }
 }
 
@@ -3720,7 +4297,7 @@ function showView(name) {
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
   try { localStorage.setItem("auracle-view", name); } catch { /* ignore */ }
-  for (const v of ["perform", "play", "evolve", "taste"]) {
+  for (const v of ["perform", "play", "evolve", "taste", "learning"]) {
     $(`view-${v}`).classList.toggle("hidden", v !== name);
   }
   if (perform) {
@@ -3733,11 +4310,14 @@ function showView(name) {
     t.setAttribute("aria-selected", String(on));
   });
   if (name === "play") refitRack();
+  if (name === "play") patchView.shown();
+  else patchView.hidden();
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
   pointFilmChip();
-  if (name === "taste") drawTaste();
+  // TASTE and LEARNING draw while they show, and stop when they don't.
+  if (taste) taste.setView(name);
   if (name === "evolve") {
     drawLineage();
     if (currentDuel) {
@@ -3806,7 +4386,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
   });
 }
 wireArrowNav(document.querySelector(".viewtabs"), ".viewtab", { activate: true });
-wireArrowNav(document.querySelector(".tabs"), ".tab", { activate: true });
 wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
 
 // ---------- audio helpers ----------
@@ -4090,6 +4669,24 @@ async function bootPerform() {
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
     label: () => liveLabelText,
+    // A face into one of PERFORM's slots: the sound in hand's, or B's.
+    face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
+    // A tree's face and the bank it is drawn against, for a drawing of
+    // PERFORM's own at any size (vessel.js `drawVessel`), or null until the
+    // face has landed (asked for here).
+    // Stage mode asks every frame: the answer is kept for the tree and the
+    // bank it was given for, the same object until either changes.
+    faceOf: (json) => {
+      const k = faceOfLast;
+      if (k && k.json === json && k.epoch === faceEpoch && k.landed === faceLanded) return k.result;
+      const target = json ? faceTarget({ tree: json }) : "";
+      const key = target && faceKeyOfTarget(target);
+      const face = key && faceByKey.get(key);
+      if (!face && target) wantFace(target);
+      const result = face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
+      faceOfLast = { json, epoch: faceEpoch, landed: faceLanded, result };
+      return result;
+    },
     locks: () => [...lockedAddrs()],
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
@@ -5354,7 +5951,9 @@ function renderPlayDuel() {
   // side to the pool is re-dealt (`applyViews`), so no name here is gone for
   // good.
   const side = (el, letter, id) => {
-    el.replaceChildren(`▶ ${letter} · `);
+    const face = document.createElement("span");
+    el.replaceChildren(`▶ ${letter} · `, face);
+    setFaceSlot(face, "chip", { id });
     if (rowOf(id)) {
       el.append(nameOf(id));
       return;
@@ -5417,6 +6016,7 @@ function loadSide(side, id) {
 // bank. The s-expression is engine truth, not a label — it lives under the
 // ⇄ circuit flip, where an expert can still find it.
 function paintDuelName(side, id) {
+  setFaceSlot($(`face-${side}`), "pair", { id });
   $(`name-${side}`).innerHTML =
     `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
 }
@@ -5587,7 +6187,7 @@ let dealRule = null;
 const DEAL_RULE = {
   random: {
     text: "◇ random pair · a fair test",
-    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and TRUST in TASTE grades them all.",
+    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and its forecasts in LEARNING are graded on them all.",
   },
   bald: {
     text: "chosen where it’s least sure",
@@ -5599,7 +6199,7 @@ const DEAL_RULE = {
   },
   check: {
     text: "◇ fair test · dealt at random",
-    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in TRUST in TASTE.",
+    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in LEARNING.",
   },
 };
 
@@ -5707,7 +6307,7 @@ function renderBelief() {
     // A silent bench has no φ to score, whatever the model knows: say that,
     // not "not yet", which would promise a number the next pick cannot give.
     const why = !wb.vetOk && wb.vetSilent
-      ? "no guess while nothing reaches the output"
+      ? "nothing to rate: no source reaches the output"
       : fitting
       ? "fitting to what you taught it…"
       : n === 0 || !fitted
@@ -6968,6 +7568,7 @@ function renderBank() {
     syncBankCursor();
     return;
   }
+  faceLazyDrop(); // the presets are out of sight: their faces' renders can wait
 
   // The pool leads with the latest generation's children, in the order they
   // were bred, under their own heading; the rest keep their ranked order. So
@@ -7012,6 +7613,7 @@ function renderBank() {
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
+  facesChanged(); // the bank's set may have changed: its mean and spread with it
   syncBankCursor();
   if (compareId != null) renderCompare(); // its seed may have been replaced
   // Scrolled to the row asked for, by id, and not to whichever row is live
@@ -7151,7 +7753,7 @@ function bankRow(r, fitted) {
   // name is in the same place, at the same width, with or without them: the
   // origin glyph, or NEW in its place for the latest generation's children
   // (always ⚡, bred); and the unheard dot in the gap after it.
-  el.innerHTML = `
+  el.innerHTML = `${faceSlot("row", { id: r.id })}
     <div class="bi-top">
       <span class="bi-mark">${
         // "Gen 3: 5 new patches in the bank" sent the player to a column of
@@ -7355,7 +7957,7 @@ function renderPresetBank(list) {
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
     el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
-    el.innerHTML = `
+    el.innerHTML = `${faceSlot("row", { preset: p.index }, { lazy: true })}
       <div class="bi-top">
         <span class="bi-mark"><span class="bi-origin preset" title="▤ hand-made preset">▤</span></span>
         <span class="bi-name">${esc(p.name)}</span>
@@ -7396,6 +7998,7 @@ function renderPresetBank(list) {
     frag.appendChild(el);
   }
   list.appendChild(frag);
+  faceWhenSeen(list);
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
@@ -9409,7 +10012,9 @@ function repaintMeasuredFlow() {
     if (it.w.kind === "mod") continue;
     const g = meterGain(it.w.from);
     const reach = rackFrame.flow.get(it.w.from) ?? 1;
-    paintWireLevel(it.inkEl, g == null ? reach : g * reach);
+    // With no note sounding (or no tap on this cable), the level measured at
+    // rest (`edit_cable_levels`), or unlit until it is measured.
+    paintWireLevel(it.inkEl, g == null ? (patchView.restLevel(it.w) ?? 0) : g * reach);
   }
 }
 
@@ -9725,6 +10330,7 @@ function renderRack(rebuild = false) {
     syncFitHint(); // nothing drawn is not a stranded layout
     syncMapBtn();
     nbSync();
+    patchView.rackBuilt();
     return;
   }
 
@@ -9805,6 +10411,8 @@ function renderRack(rebuild = false) {
   // lowercase and a `startsWith("ENV")` test silently never matches.
   ampPlateEl = $("rack-svg").querySelector('g[data-kind="amp"] .mod-plate');
 
+  // The guess and the level marks, over the rack just built.
+  patchView.rackBuilt();
 }
 
 // The patch is the headline; its provenance is the caption. While a TEACH
@@ -9815,6 +10423,7 @@ function renderSubject() {
   if (!nameEl || !metaEl) return;
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
+    setFaceSlot($("subject-face"), "subject", { id });
     nameEl.classList.add("hearing");
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
@@ -9824,10 +10433,21 @@ function renderSubject() {
   }
   nameEl.classList.remove("hearing");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  // The face of the bench's latest render: an edit's, once its render lands.
+  setFaceSlot($("subject-face"), "subject",
+    !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId });
   if (!hasRack || wb.subjectId == null) {
     nameEl.textContent = "no sound open";
     nameEl.title = "";
     metaEl.textContent = "";
+    return;
+  }
+  // A patch started from nothing is named for that (patch.js `subject`).
+  const fresh = patchView.subject();
+  if (fresh) {
+    nameEl.textContent = fresh.name;
+    nameEl.title = fresh.name;
+    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
     return;
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
@@ -10031,7 +10651,11 @@ function buildRack(svg, rack, opts) {
       // about this patch — a class per stop would be five rules that say the
       // same thing, and a level is a number, not a state.
       wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
-      paintWireLevel(wireEl, flow.get(w.from) ?? 1);
+      // The workbench's cables at rest carry the level the engine measured
+      // on them (`edit_cable_levels`, patch.js `restLevel`), and sit unlit
+      // until it has; a reach estimate is not a measurement (ADR-012). The
+      // duel minis are pictures of other patches, with no probe.
+      paintWireLevel(wireEl, interactive ? (patchView.restLevel(w) ?? 0) : (flow.get(w.from) ?? 1));
     }
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
@@ -10927,6 +11551,7 @@ function startRackMotion(before) {
       it.plateG.style.willChange = "";
       it.g.style.willChange = "";
     }
+    patchView.platesMoved(); // the level marks and the guess, on the cables' final routes
   };
   step(t0);
   return true;
@@ -10978,6 +11603,7 @@ function movePlateTo(it, x, y) {
     w.caseEl.setAttribute("d", d);
     w.inkEl.setAttribute("d", d);
   }
+  patchView.platesMoved();
 }
 
 /** True if this press was taken. */
@@ -11237,6 +11863,8 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  // The model's guess is kept in sight of the camera (patch.js `inView`).
+  patchView.cameraMoved();
   // The scope is *not* in the world — that is the point of parenting it to the
   // frame — but what is underneath it moved, so whether it is in the way is a
   // question this answers. Debounced: the answer only matters where the pan
@@ -12105,7 +12733,8 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // fitting the patch, and `.` typed a full stop. Hand the focus back to the
   // thing the gesture is actually about.
   releaseTextEntry();
-  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .ain-ctl");
+  // The model's guess (patch.js) is pressed to add it, and its × to skip it.
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl");
   // In freeform, a plain press on a faceplate moves the module. Tested after
   // the modifier gestures below would be too late — they are tested here, in
   // order, and space still wins so the pan modifier keeps working over a plate
@@ -13151,7 +13780,13 @@ function deleteBlurb(key, node, fields, inNames) {
   if (par && par.binary) {
     return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
   }
-  return fields.length === 0 ? "a lone source can’t be deleted" : "one module, and what it feeds moves up";
+  if (fields.length === 0) {
+    // A source leaves its socket empty (`deleteSource`); an empty socket has
+    // nothing to take out.
+    const k = rackKindAt(key);
+    return SOURCE_KINDS.includes(k) || k === "audio_in" ? "the socket it leaves is empty" : "a lone source can’t be deleted";
+  }
+  return "one module, and what it feeds moves up";
 }
 
 /** The parent of a trace key, and whether that parent is one of the six
@@ -13324,6 +13959,16 @@ function deleteModule(key, x, y) {
     }]);
   }
 
+  // A source in a socket of its own (a chain's first module, or the whole
+  // patch): the socket is left empty and the source set aside, as an unplug
+  // leaves one. The engine's `delete` has nothing to put there, and refused
+  // it; a patch that can be built from nothing can be taken back to nothing
+  // (Plan-005 task 7).
+  const kindHere = rackKindAt(key);
+  if (f.length === 0 && (SOURCE_KINDS.includes(kindHere) || kindHere === "audio_in")) {
+    return deleteSource(key);
+  }
+
   if (f.length === 0) {
     // Deliberately still sent: the engine's refusal is the right sentence, and
     // it is the one the player should hear from the thing that refuses.
@@ -13331,6 +13976,28 @@ function deleteModule(key, x, y) {
   }
 
   return deletePlain(key);
+}
+
+/** A source out of its socket: a `Silence` leaf takes its place (the hole an
+ *  unplug leaves, which renders nothing) and the source goes to the shelf.
+ *  Its own function so a delete that has to wait its turn is re-run as this. */
+function deleteSource(key) {
+  const node = nodeAtKey(key);
+  if (!node) return note("That module has moved.");
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+  if (holdRewrite([key], deleteSource, `delete of the ${name}`)) return;
+  let gone = null;
+  const ok = applyTreeRewrite((tree) => {
+    const n = nodeAtIn(tree, key);
+    if (!n) return "That module has moved. Try again.";
+    gone = n;
+    if (!setNodeAtIn(tree, key, placeholderNode())) return "That module has moved. Try again.";
+    return null;
+  }, { op: "delete_source", key, kind: rackKindAt(key) });
+  if (!ok) return;
+  const uid = gone ? stageFragment(gone, false) : null;
+  noteOnLanding(`${capital(name)} deleted and set aside below. Its socket is empty.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
 }
 
 /** The plain case — one module out of a chain, what it feeds moves up. No
@@ -19074,304 +19741,26 @@ function styleBadge(el, k) {
   el.innerHTML = `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>${esc(styleName(views.styles[k], k))}`;
 }
 
-function renderStyleChips() {
-  const holder = $("style-chips");
-  const show = currentView === "taste" && views && views.styles;
-  holder.classList.toggle("hidden", !show);
-  if (!show) return;
-  holder.innerHTML = "";
-  views.styles.forEach((s, k) => {
-    if (s.share < 0.02) return;
-    const color = STYLE_COLORS[k % STYLE_COLORS.length];
-    const chip = document.createElement("div");
-    chip.className = "style-chip";
-    chip.innerHTML =
-      `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
-      `<input class="sc-name" maxlength="24" value="${esc(s.name || "")}" placeholder="${esc(styleName(s, k))}" title="Name this style">` +
-      `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
-      `<button class="sc-play" title="Hear the sound this style rates highest" aria-label="Hear this style">▶</button>`;
-    const input = chip.querySelector(".sc-name");
-    // Sized to its text (or placeholder): a fixed 168 px clipped an
-    // auto-name like "env mods + sidechained" mid-word.
-    const fit = () => { input.size = Math.max(6, (input.value || input.placeholder).length + 1); };
-    fit();
-    input.addEventListener("input", fit);
-    input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
-    input.addEventListener("keyup", (e) => e.stopPropagation());
-    input.onblur = () => {
-      const name = input.value.trim();
-      if ((s.name || "") === name) return;
-      s.name = name;
-      send({ type: "set_style_name", k, name });
-      scheduleSave();
-      // Everywhere the style is mentioned says the new name at once: the
-      // chips, the map's titles, DIRECTIONS and the rack's family belief.
-      renderStyleChips();
-      if (currentView === "taste") drawTaste();
-    };
-    // A lens the model has learned but has no exemplar for yet cannot be
-    // auditioned. Saying so on the control beats a ▶ that silently returns.
-    const ex = s.exemplars && s.exemplars[0];
-    const scPlay = chip.querySelector(".sc-play");
-    if (ex == null) {
-      scPlay.disabled = true;
-      scPlay.title = "Nothing to play for this style yet: it needs more sounds in it";
-    } else {
-      scPlay.onclick = () => awaitRender(ex, () => play(ex, scPlay));
-    }
-    holder.appendChild(chip);
-  });
-}
-// Each caption says what the tab draws, in the player's words. MAP's said
-// "islands are styles", which nothing on it shows, and "Click a dot to open
-// it" is what a click does (it opens the patch on the bench; it does not play
-// the phrase). DIRECTIONS said "Longer bar = stronger pull" over bars that
-// were almost all guesses; it now says how a guess is drawn.
-const CAPTIONS = {
-  map: "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
-  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid: it’s sure. Hollow, with a ?: still a guess. Dim styles are idle.",
-  dir: "Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how far it could be off.",
-  trust: "Should you believe it? Each dot is a bucket of guesses: how sure it was, against how often it was right. On the line: honest.",
-};
-// While a chart is empty, the caption must describe the state on screen —
-// a caption about bars over a void promises a chart that isn't there.
-const EMPTY_CAPTIONS = {
-  map: "Every sound you hear, placed by sound and structure. The dots light up when it first redraws your taste map.",
-  styles: "Your taste as separate styles. None on record yet.",
-  dir: "The sound qualities that pull you: brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you’ll pick, and after 20 guesses it grades itself here.",
-};
+// ---------- TASTE and LEARNING (taste.js) ----------
+// The map and the model room are drawn by taste.js (Plan-005 task 6). This
+// side owns their data (`views`, the calibration, the forecasts and the
+// math's numbers) and the things they ask for: opening a sound, playing one,
+// naming a style.
 
-const TRUST_MIN_N = 20;
-
-// Empty states are HTML, not canvas paint: selectable, with a real CTA, and
-// no two tabs identical.
-//
-// Every count and every CTA here is computed from what is left, in the words
-// EVOLVE's meter uses ("redraws your taste map"). They were fixed: "Start 6
-// quick picks →" at five picks of six, TRUST's twenty guesses behind the same
-// six-pick button, and STYLES promising "after a dozen picks" under "n of 6".
-/** Picks until the next refit redraws the taste map, as the EVOLVE meter
- *  counts them (`renderTeach`), or 0 when one is armed or running. */
+/** Picks until the next refit fits the model, as the EVOLVE meter counts
+ *  them (`renderTeach`), or 0 when one is armed or running. */
 function picksToRefit() {
   if (fitDue || fitting) return 0;
   return FIT_EVERY - (duelsSinceFit % FIT_EVERY);
 }
-function renderEmptyState(tab) {
-  const holder = $("crt-empty");
-  if (!holder) return;
-  const n = picksMade();
-  const cn = engineCalib ? engineCalib.n : 0;
-  const left = picksToRefit();
-  const skel = (rows, cls = "") =>
-    `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
-  const more = (k) => `${k} more pick${k === 1 ? "" : "s"}`;
-  const pickCta = left > 0
-    ? `<button class="hw-btn small" id="ce-cta">${more(left)} →</button>`
-    : `<button class="hw-btn small" id="ce-cta" disabled>redrawing your taste map…</button>`;
-  const count = left > 0
-    ? `<div class="ce-count">${more(left)} and it redraws your taste map</div>`
-    : `<div class="ce-count">redrawing your taste map…</div>`;
-  const toGo = Math.max(0, TRUST_MIN_N - cn);
-  const content = {
-    map: `
-      <div class="ce-title">nothing predicted yet</div>
-      <div class="ce-copy">Every sound you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
-      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it guesses
-      you’d like them.</div>
-      ${count}${pickCta}`,
-    styles: `${skel(3)}
-      <div class="ce-title">no style yet</div>
-      <div class="ce-copy">${left > 0
-        ? `Your first style appears at pick ${n + left}; more split off as you teach it.`
-        : "Your first style is on its way; more split off as you teach it."}
-      You can name each one.</div>
-      ${count}${pickCta}`,
-    dir: `${skel(4, "dir")}
-      <div class="ce-title">nothing learned yet</div>
-      <div class="ce-copy">This shows which <i>qualities</i> pull you (brightness,
-      roughness, attack), not which knobs, and how sure it is of each: solid
-      when it’s sure, hollow while it’s still a guess.</div>
-      ${count}${pickCta}`,
-    trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
-      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
-      <div class="ce-copy">${views && views.styles
-        ? "Before each pick it guesses which you’ll pick."
-        : `From pick ${n + left} on, it guesses before each pick which you’ll pick.`} After
-      ${TRUST_MIN_N} guesses it grades itself here.</div>
-      <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
-  }[tab];
-  holder.innerHTML = content || "";
-  const btn = holder.querySelector("#ce-cta");
-  if (btn && !btn.disabled) btn.onclick = () => showView("evolve");
-}
 
-let mapHits = [];
-
-function drawTaste() {
-  if (currentView !== "taste") return;
-  const canvas = $("taste-crt");
-  const ctx = scopeCtx(canvas);
-  const { width: w, height: h } = canvas;
-  if (w === 0) return;
-  const dpr = window.devicePixelRatio || 1;
-  ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.06));
-  renderStyleChips();
-  mapHits = [];
-
-  ctx.font = canvasFont(dpr);
-  const noTaste = !views || !views.styles;
-  const empty = {
-    map: !(views && views.map && views.map.points && views.map.points.length),
-    styles: noTaste,
-    dir: noTaste,
-    trust: !(engineCalib && engineCalib.n >= TRUST_MIN_N),
-  }[tasteTab];
-  // MAP before the first fit: the dots are real (patches by sound) but the
-  // glow is not — draw the map AND overlay the pre-state invitation, so the
-  // caption never describes a prediction that doesn't exist yet.
-  const mapPrefit = tasteTab === "map" && !empty && noTaste;
-  $("taste-caption").textContent = (empty || mapPrefit ? EMPTY_CAPTIONS : CAPTIONS)[tasteTab];
-  $("crt-empty").classList.toggle("hidden", !empty && !mapPrefit);
-  $("crt-empty").classList.toggle("translucent", mapPrefit);
-  $("map-legend").classList.toggle("hidden", tasteTab !== "map" || empty || noTaste);
-  // The map's label says how to walk it; STYLES and DIRECTIONS write their
-  // own as they draw (`describeTasteCanvas`).
-  if (tasteTab === "map" || tasteTab === "trust" || empty) describeTasteCanvas(null);
-  if (empty) return renderEmptyState(tasteTab);
-  if (mapPrefit) renderEmptyState("map");
-
-  if (tasteTab === "map") drawMapTab(ctx, w, h, dpr);
-  else if (tasteTab === "trust") drawTrustTab(ctx, w, h, dpr);
-  else if (tasteTab === "styles") drawStylesTab(ctx, w, h, dpr);
-  else drawDirectionsTab(ctx, w, h, dpr);
-}
-
-function drawTrustFromEngine(ctx, w, h, dpr, E) {
-  const pad = 56 * dpr;
-  const x0 = pad, y0 = pad * 0.5;
-  // The lines under the plot, measured first, because the plot gives up
-  // height to them. Where the answers came from goes on the headline's
-  // baseline, right-aligned, while the headline leaves room for it, and on a
-  // line of its own under the headline when it doesn't (a narrow window, at
-  // the canvas floor's 12 px).
-  const head = `${E.n} guesses · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`;
-  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
-  const prov = streams.length > 1
-    ? streams.map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`).join("  ·  ")
-    : "";
-  const provOwnLine = !!prov &&
-    x0 + ctx.measureText(head).width + 24 * dpr > w - 24 * dpr - ctx.measureText(prov).width;
-  const extra = provOwnLine ? 18 * dpr : 0;
-  // The last line sits 84 px under the plot (102 with the provenance on its
-  // own line), and 16 px clear of the canvas's edge (TA20: it sat on the
-  // edge, and at the canvas floor's 12 px its descenders were cut off).
-  const side = Math.min(w - pad * 2.4, h - y0 - (84 + 16) * dpr - extra);
-  const sx = (p) => x0 + p * side;
-  const sy = (p) => y0 + (1 - p) * side;
-
-  ctx.strokeStyle = inkAlpha(INK.amber, 0.22);
-  ctx.lineWidth = 1 * dpr;
-  ctx.strokeRect(x0, y0, side, side);
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(sx(0), sy(0));
-  ctx.lineTo(sx(1), sy(1));
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "center";
-  // The axes are P(A wins) predicted vs observed — NOT "confidence" vs
-  // "accuracy". A bin at p_a = 0.1 where A wins 10% of the time is perfectly
-  // calibrated, and the old labels made that read as a failure.
-  ctx.fillText("it said A would win this often", x0 + side / 2, y0 + side + 26 * dpr);
-  ctx.fillText("perfectly honest", sx(0.82), sy(0.86));
-  ctx.save();
-  ctx.translate(x0 - 36 * dpr, y0 + side / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText("A actually won this often", 0, 0);
-  ctx.restore();
-
-  for (const b of E.bins || []) {
-    if (!b.n) continue;
-    const r = (3 + 5 * Math.min(1, b.n / 12)) * dpr;
-    const bx = sx(b.predicted);
-    // A bin of two forecasts plots far off the diagonal under a caption that
-    // says "on the line = honest" — without an interval, the user's correct
-    // inference is that the model is lying. Wilson 95% on the observed rate.
-    const z = 1.96;
-    const denom = 1 + (z * z) / b.n;
-    const centre = (b.observed + (z * z) / (2 * b.n)) / denom;
-    const half =
-      (z * Math.sqrt((b.observed * (1 - b.observed)) / b.n + (z * z) / (4 * b.n * b.n))) / denom;
-    ctx.strokeStyle = inkAlpha(INK.amber, 0.4);
-    ctx.lineWidth = 1 * dpr;
-    ctx.beginPath();
-    ctx.moveTo(bx, sy(Math.min(1, centre + half)));
-    ctx.lineTo(bx, sy(Math.max(0, centre - half)));
-    ctx.stroke();
-    ctx.shadowColor = INK.amber;
-    ctx.shadowBlur = 8 * dpr;
-    ctx.beginPath();
-    ctx.arc(bx, sy(b.observed), r, 0, Math.PI * 2);
-    if (b.n >= 5) {
-      ctx.fillStyle = INK.amber;
-      ctx.fill();
-    } else {
-      // Too few forecasts to mean anything: hollow, recessed.
-      ctx.globalAlpha = 0.4;
-      ctx.strokeStyle = INK.amber;
-      ctx.lineWidth = 1.2 * dpr;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = INK.amberDim;
-    ctx.textAlign = "left";
-    ctx.fillText(`n=${b.n}`, bx + r + 4 * dpr, sy(b.observed) + 3 * dpr);
-  }
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "left";
-  ctx.fillText("dots inside their whisker are indistinguishable from honest", x0, y0 + side + 84 * dpr + extra);
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = INK.silk;
-  ctx.fillText(head, x0, y0 + side + 48 * dpr);
-  ctx.fillStyle = INK.amberDim;
-  ctx.fillText(
-    E.check_n >= SKILL_MIN_N
-      ? `on ${E.check_n} fair-test picks: ${skillLine(E.check_skill, E.check_n)}, the number to trust`
-      : `fair-test picks (pairs dealt at random) are the unbiased measure: ${E.check_n} of ${SKILL_MIN_N} so far`,
-    x0, y0 + side + 66 * dpr + extra
-  );
-  // Where the answers came from. Committing a hand edit after hearing it
-  // against the original is a different act from ticking "my edit is better",
-  // and the model has no way to know which it was told — so the two are
-  // scored apart, and the split is drawn rather than left in the log. Silent
-  // until there is something to compare: one stream is not a comparison.
-  if (prov) {
-    // Right-aligned against the panel's own edge, on the headline's baseline:
-    // the plot is a square in a wide panel, and the whole right half of that
-    // line is empty. Under the headline when the panel is too narrow for both.
-    ctx.fillStyle = INK.amberDim;
-    if (provOwnLine) ctx.fillText(prov, x0, y0 + side + 66 * dpr);
-    else {
-      ctx.textAlign = "right";
-      ctx.fillText(prov, w - 24 * dpr, y0 + side + 48 * dpr);
-      ctx.textAlign = "left";
-    }
-  }
-}
-
-/** Brier skill as a signed percentage — a negative skill is worse than a coin
+/** Brier skill as a signed percentage: a negative skill is worse than a coin
  *  flip and has to look like it, not like a small positive number. */
 function skillPct(s) {
   return `${s >= 0 ? "+" : "−"}${Math.abs(Math.round(s * 100))}%`;
 }
 
-// How a preference reached the log, in the words the app uses for it.
+// How a pick reached the log, in the words the app uses for it.
 const PROVENANCE_NAME = {
   duel: "dealt pairs",
   heard_edit: "edits you heard",
@@ -19379,123 +19768,12 @@ const PROVENANCE_NAME = {
   perform_offer: "offers you took or passed",
 };
 
-// Reliability is computed by the engine, which is the only place that has
-// both the forecast and the *outcome*. There is deliberately no client-side
-// approximation: the obvious one — bin by forecast, plot the share above 0.5 —
-// scores the forecast against itself and draws a staircase no matter how
-// calibrated the model is. Emptiness is decided in drawTaste (n >= 20).
-function drawTrustTab(ctx, w, h, dpr) {
-  drawTrustFromEngine(ctx, w, h, dpr, engineCalib);
-}
-
-function drawMapTab(ctx, w, h, dpr) {
-  const map = views && views.map;
-  const pts = map.points;
-  // Size carries the model's *uncertainty*, spread over this map's own range
-  // of it — see taste-geom.js for why, and for the numbers the legend shows.
-  const unsureOf = mapUnsureScale(pts.filter((p) => p.id != null).map((p) => p.utility_std));
-  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-  const pad = 34 * dpr;
-  const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
-  const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
-  const sx = (v) => pad + ((v - x0) / Math.max(1e-9, x1 - x0)) * (w - 2 * pad);
-  const sy = (v) => pad + ((v - y0) / Math.max(1e-9, y1 - y0)) * (h - 2 * pad);
-  // Absolute glow, same logistic map as the bank bar — min–max across the
-  // visible map made the least-liked dot always dark and the most-liked
-  // always bright, which the legend's absolute ramp contradicted. Pre-fit,
-  // every dot glows uniformly dim: no prediction, no gradient.
-  const fitted = !!(views && views.styles);
-  const un = fitted ? (u) => 1 / (1 + Math.exp(-u)) : () => 0.35;
-
-  const draw = (p) => {
-    const cx = sx(p.x), cy = sy(p.y);
-    const isPool = p.id != null;
-    const glow = un(p.utility);
-    const color = STYLE_COLORS[p.style % STYLE_COLORS.length];
-    if (isPool) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 3 + glow * 16;
-      ctx.globalAlpha = 0.35 + 0.65 * glow;
-      ctx.fillStyle = color;
-      // Size is uncertainty and nothing else; origin no longer nudges it.
-      const r = mapDotRadius(unsureOf(p.utility_std)) * dpr;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (p.id === wb.subjectId) {
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        // Silk, the panel's own white: pure #fff was the one cold hue on
-        // the model's amber map.
-        ctx.strokeStyle = INK.silk;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (p.id === benchPending && p.id !== wb.subjectId) {
-        // Asked for and on its way: a dotted silk ring until the patch is
-        // the one being played, when the solid ring above takes over.
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = INK.silk;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.setLineDash([1.5 * dpr, 2.5 * dpr]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      mapHits.push({ x: cx, y: cy, id: p.id, u01: fitted ? glow : null });
-      if (p.id === mapCursorId) {
-        // Keyboard cursor: dashed ring, distinct from the solid subject ring.
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = INK.amber;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.setLineDash([3 * dpr, 3 * dpr]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 5 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    } else {
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 0.16 + 0.2 * glow;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2 * dpr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  };
-  pts.filter((p) => p.id == null).forEach(draw);
-  pts.filter((p) => p.id != null).forEach(draw);
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "left";
-  // In words, not "axes = sound-space PCA · 29% of variance": the two axes
-  // are the directions the patches differ most, and the share is how much of
-  // their difference a flat picture can hold — 29–32% in the sessions the
-  // films measured, so "close" is a hint, not a promise.
-  // Left of the legend, which sits over the canvas's bottom right: on a
-  // narrow window the sentence breaks before it, and the lines stack upward.
-  const footer = `A flat view of ${pts.filter((p) => p.id != null).length} sounds: close dots usually sound alike ` +
-    `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`;
-  const legend = $("map-legend");
-  const cr = ctx.canvas.getBoundingClientRect();
-  const room = legend && !legend.classList.contains("hidden") && cr.width
-    ? (legend.getBoundingClientRect().left - cr.left) * (w / cr.width) - 10 * dpr - 16 * dpr
-    : w - 20 * dpr;
-  const lines = [];
-  for (const word of footer.split(" ")) {
-    const last = lines.length ? lines[lines.length - 1] : null;
-    if (last != null && ctx.measureText(`${last} ${word}`).width <= room) lines[lines.length - 1] = `${last} ${word}`;
-    else lines.push(word);
-  }
-  const lead = CANVAS_PX * 1.4 * dpr;
-  lines.forEach((ln, i) => ctx.fillText(ln, 10 * dpr, h - 8 * dpr - (lines.length - 1 - i) * lead));
+/** The skill by where the answers came from, once there is more than one
+ *  kind ("dealt pairs 24: +12%  ·  edits you heard 10: +20%"), or "". */
+function kindsText() {
+  const streams = ((engineCalib && engineCalib.by_provenance) || []).filter((p) => p.n > 0);
+  if (streams.length < 2) return "";
+  return streams.map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`).join("  ·  ");
 }
 
 function activeStyles() {
@@ -19505,327 +19783,60 @@ function activeStyles() {
     .sort((a, b) => b.share - a.share);
 }
 
-function drawStylesTab(ctx, w, h, dpr) {
-  const styles = activeStyles();
-  const blockH = h / styles.length;
-  // Each style's five strongest coordinates, drawn with DIRECTIONS' mark and
-  // on one scale across the tab: it drew them with no interval at all, each
-  // style stretched to its own longest bar, so a guess (chorus & sweeps,
-  // 0.159 ± 0.227) came out the longest, surest-looking bar of its style.
-  const top = (s) => [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
-  const cx = w * 0.6, usable = w * 0.3;
-  const scale = directionsScale(styles.flatMap(top), usable);
-  const said = [];
-  styles.forEach((s, row) => {
-    const y0 = row * blockH;
-    const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
-    const active = s.share >= 0.08;
-    ctx.globalAlpha = active ? 1 : 0.35;
-
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = active ? 8 : 0;
-    ctx.beginPath();
-    ctx.arc(18 * dpr, y0 + 20 * dpr, 5 * dpr, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = INK.silk;
-    ctx.textAlign = "left";
-    ctx.fillText(`${styleName(s, s.k)} · claims ${Math.round(s.share * 100)}% of the pool`, 30 * dpr, y0 + 24 * dpr);
-
-    // The centre line a guess's whisker crosses, as in DIRECTIONS.
-    const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
-    if (rowsFit > 0) {
-      ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx, y0 + 34 * dpr);
-      ctx.lineTo(cx, y0 + (42 + (rowsFit - 1) * 18 + 8) * dpr);
-      ctx.stroke();
-    }
-    top(s).forEach((r, i) => {
-      const y = y0 + (42 + i * 18) * dpr;
-      if (y > y0 + blockH - 8 * dpr) return;
-      const mark = pullMark(r, scale, usable);
-      const label = pullLabel(niceName(r.name), mark.guess);
-      said.push({ label: `${styleName(s, s.k)}: ${label}`, guess: mark.guess });
-      ctx.fillStyle = INK.amberDim;
-      ctx.textAlign = "right";
-      ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
-      ctx.textAlign = "left";
-      drawPull(ctx, cx, y, mark, color, dpr, 5 * dpr);
-    });
-    ctx.globalAlpha = 1;
-    if (row > 0) {
-      ctx.strokeStyle = inkAlpha(INK.amber, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(10 * dpr, y0);
-      ctx.lineTo(w - 10 * dpr, y0);
-      ctx.stroke();
-    }
-  });
-  describeTasteCanvas("Styles", said);
-}
-
-function drawDirectionsTab(ctx, w, h, dpr) {
-  const styles = activeStyles().filter((s) => s.share >= 0.08);
-  if (styles.length === 0) {
-    // Fitted, but every lens is idle — show the pre-state, not a void.
-    $("taste-caption").textContent = EMPTY_CAPTIONS.dir;
-    $("crt-empty").classList.remove("hidden");
-    describeTasteCanvas(null);
-    return renderEmptyState("dir");
-  }
-  const chosen = new Map();
-  for (const s of styles) {
-    [...s.theta]
-      .sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))
-      .slice(0, 7)
-      .forEach((r) => {
-        const score = Math.abs(r.mean);
-        if (!chosen.has(r.name) || chosen.get(r.name) < score) chosen.set(r.name, score);
-      });
-  }
-  const names = [...chosen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([n]) => n);
-  const cx = w * 0.60, usable = w * 0.30;
-  const rowH = h / (names.length + 1);
-  // Bars and whiskers on one scale, fitted so the widest interval reaches the
-  // half-width (taste-geom.js). The whisker used to be capped at 0.3 of it
-  // while a bar could take 0.7, so an interval crossing zero was drawn
-  // stopping short of the centre line — a guess drawn as settled.
-  const scale = directionsScale(
-    styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name))),
-    usable,
-  );
-
-  ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
-  ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
-
-  // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
-  // at the edge — so neither reaches the label column: a long negative bar
-  // plus its whisker used to strike through "filtering" and "shimmer". The
-  // clip is the belt to that pair of braces.
-  const said = [];
-  names.forEach((name, i) => {
-    const y = rowH * (i + 1);
-    const lane = 7 * dpr;
-    const pulls = [];
-    styles.forEach((s, si) => {
-      const r = s.theta.find((t) => t.name === name);
-      if (r) pulls.push({ s, si, mark: pullMark(r, scale, usable) });
-    });
-    // A row is a guess when no style is sure of it; its label says so.
-    const rowGuess = pulls.length > 0 && pulls.every((p) => p.mark.guess);
-    const label = pullLabel(niceName(name), rowGuess);
-    said.push({ label, guess: rowGuess });
-    ctx.fillStyle = INK.amberDim;
-    ctx.textAlign = "right";
-    ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
-    ctx.textAlign = "left";
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cx - usable - 2 * dpr, 0, 2 * usable + 4 * dpr, h);
-    ctx.clip();
-    for (const { s, si, mark } of pulls) {
-      const yy = y + (si - (styles.length - 1) / 2) * lane;
-      drawPull(ctx, cx, yy, mark, STYLE_COLORS[s.k % STYLE_COLORS.length], dpr, 4 * dpr);
-    }
-    ctx.restore();
-  });
-  describeTasteCanvas("Directions", said);
-}
-
-/** One pull, the same mark in STYLES and DIRECTIONS (taste-geom `pullMark`):
- *  settled is a solid bar with its whisker; a guess is a hollow 1 px outline
- *  at GUESS_ALPHA with its whisker at full strength, because for a guess the
- *  whisker is the reading and the bar is only where it happens to point. */
-function drawPull(ctx, cx, yy, mark, color, dpr, thick) {
-  const x = Math.min(cx, cx + mark.len);
-  const w = Math.abs(mark.len);
-  ctx.save();
-  if (mark.hollow) {
-    ctx.globalAlpha *= mark.barAlpha;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = dpr;
-    ctx.strokeRect(x + dpr / 2, yy - thick / 2 + dpr / 2, Math.max(0, w - dpr), thick - dpr);
-  } else {
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6;
-    ctx.fillRect(x, yy - thick / 2, w, thick);
-  }
-  ctx.restore();
-  // Silk, not a fourth amber: the whisker is a reading about the bar, and has
-  // to show over it.
-  ctx.save();
-  ctx.globalAlpha *= mark.whiskerAlpha;
-  ctx.strokeStyle = INK.silk;
-  ctx.fillStyle = INK.silk;
-  ctx.lineWidth = Math.max(1, dpr * 0.75);
-  ctx.beginPath();
-  ctx.moveTo(cx + mark.lo, yy);
-  ctx.lineTo(cx + mark.hi, yy);
-  ctx.stroke();
-  // Cut at the edge, and said to be: an arrowhead, not a shorter line.
-  const head = (hx, dir) => {
-    ctx.beginPath();
-    ctx.moveTo(hx, yy);
-    ctx.lineTo(hx - dir * 4 * dpr, yy - 2.5 * dpr);
-    ctx.lineTo(hx - dir * 4 * dpr, yy + 2.5 * dpr);
-    ctx.closePath();
-    ctx.fill();
-  };
-  if (mark.clipLo) head(cx + mark.lo, -1);
-  if (mark.clipHi) head(cx + mark.hi, 1);
-  ctx.restore();
-}
-
-/** The canvas's words for what it draws, for anyone who cannot see it: which
- *  pulls are settled and which are guesses, in the labels on screen. The map
- *  keeps its own label, which says how to walk it with the keys. */
-const TASTE_CANVAS_MAP_LABEL = "Taste map: arrow keys step between sounds, and Enter opens one";
-function describeTasteCanvas(what, rows) {
-  const canvas = $("taste-crt");
-  if (!canvas) return;
-  if (!what) {
-    canvas.setAttribute("role", "application");
-    canvas.setAttribute("aria-label", TASTE_CANVAS_MAP_LABEL);
-    return;
-  }
-  const { settled, guesses } = countPulls(rows);
-  canvas.setAttribute("role", "img");
-  canvas.setAttribute(
-    "aria-label",
-    `${what}: ${settled} settled, ${guesses} still a guess (marked ?). ` + rows.map((r) => r.label).join(", "),
-  );
-}
-
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.onclick = () => {
-    document.querySelectorAll(".tab").forEach((t) => {
-      t.classList.remove("active");
-      t.setAttribute("aria-selected", "false");
-    });
-    tab.classList.add("active");
-    tab.setAttribute("aria-selected", "true");
-    tasteTab = tab.dataset.tab;
-    drawTaste();
-  };
-});
-
-$("taste-crt").addEventListener("click", (ev) => {
-  if (tasteTab !== "map" || mapHits.length === 0) return;
-  const rect = ev.target.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (ev.clientX - rect.left) * dpr;
-  const y = (ev.clientY - rect.top) * dpr;
-  let best = null, bestD = 12 * dpr;
-  for (const hit of mapHits) {
-    const d = Math.hypot(hit.x - x, hit.y - y);
-    if (d < bestD) { bestD = d; best = hit; }
-  }
-  if (best) {
-    // No toast at the click: it claimed the patch was "on the workbench and
-    // under your fingers" before the engine had opened it, and a second toast
-    // followed when it had. The dot shows the open pending (a dotted ring),
-    // and a slow one is announced when it lands (the bench reply).
-    openOnBench(best.id);
-    drawTaste();
-    bankScrollTo = best.id;
+taste = createTaste({
+  // Each sound on the map is drawn as its face (Plan-005 task 3).
+  drawFace: drawMapFace,
+  geom,
+  words,
+  INK,
+  inkAlpha,
+  canvasFont,
+  motionMs,
+  tok,
+  views: () => views,
+  engine: () => ({ calib: engineCalib, forecasts: engineForecasts, facts: engineFacts || (views && views.facts) || null }),
+  isCut: (id) => cutIds.has(id),
+  subjectId: () => wb.subjectId,
+  pendingId: () => benchPending,
+  nameOf: (id) => nameOrKnown(id),
+  // No toast at the click: the map marks the open pending (a dotted ring),
+  // and a slow one is announced when it lands (the bench reply).
+  open: (id) => {
+    openOnBench(id);
+    bankScrollTo = id;
     bankScrollAt = performance.now();
-  }
+    drawTaste();
+  },
+  play: (id, btn) => awaitRender(id, () => play(id, btn)),
+  niceName,
+  styleName,
+  styleColor: (k) => STYLE_COLORS[k % STYLE_COLORS.length],
+  // The name, in the views every surface reads; the next fit's views carry
+  // it from the engine. LEARNING updates its own chip in place.
+  setStyleName: (k, name) => {
+    const s = views && views.styles && views.styles[k];
+    if (s) s.name = name;
+    send({ type: "set_style_name", k, name });
+    scheduleSave();
+  },
+  fittedFrom: () => words.fittedFrom({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
+  taught: () => taughtKinds(),
+  // What the track keeps with each moment: the engine's picks, observation
+  // count and generation as the last status said them (not TAUGHT, which
+  // also counts picks still inside their undo window).
+  picks: () => status.picks | 0,
+  observations: () => status.observations | 0,
+  generation: () => status.generation | 0,
+  scheduleSave: () => scheduleSave(),
+  skillText: () => skillText(),
+  kindsText,
+  fitEvery: FIT_EVERY,
 });
 
-// The dots are clickable and the surface should say so: pointer cursor over a
-// hit, plus a tooltip naming the patch.
-let mapTipEl = null;
-
-function hideMapTip() {
-  if (mapTipEl) {
-    mapTipEl.remove();
-    mapTipEl = null;
-  }
+/** Redraw TASTE or LEARNING, whichever is showing, from the views main holds. */
+function drawTaste() {
+  if (taste) taste.draw();
 }
-
-function mapHitAt(ev) {
-  const canvas = $("taste-crt");
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (ev.clientX - rect.left) * dpr;
-  const y = (ev.clientY - rect.top) * dpr;
-  let best = null;
-  let bestD = 12 * dpr;
-  for (const hit of mapHits) {
-    const d = Math.hypot(hit.x - x, hit.y - y);
-    if (d < bestD) { bestD = d; best = hit; }
-  }
-  return best;
-}
-
-$("taste-crt").addEventListener("pointermove", (ev) => {
-  const canvas = $("taste-crt");
-  // A finger has no hover: a tap fires one pointermove at the touch point and
-  // then never a pointerleave, so the hover tooltip would paint itself over
-  // the map and stay there for the rest of the session. The tap's own job —
-  // open that patch on the bench — is the same thing the tooltip was
-  // advertising, so touch skips straight to it.
-  if (ev.pointerType !== "mouse") return hideMapTip();
-  if (tasteTab !== "map" || mapHits.length === 0) {
-    canvas.classList.remove("hit");
-    return hideMapTip();
-  }
-  const best = mapHitAt(ev);
-  canvas.classList.toggle("hit", !!best);
-  if (!best) return hideMapTip();
-  if (!mapTipEl) {
-    mapTipEl = document.createElement("div");
-    mapTipEl.className = "map-tip";
-    document.body.appendChild(mapTipEl);
-  }
-  const r = rowOf(best.id);
-  mapTipEl.innerHTML =
-    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to play it</div>`;
-  mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
-  // The signature is engine bookkeeping: on request (⋯ › Show measurements).
-  mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
-  mapTipEl.children[2].textContent =
-    best.u01 != null ? `would like: ${guessLabel(best.u01)}` : "no guess yet";
-  // Clamp to the viewport — unclamped, the tooltip clips at the right edge.
-  mapTipEl.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - 250)}px`;
-  mapTipEl.style.top = `${Math.min(ev.clientY + 12, window.innerHeight - 90)}px`;
-});
-$("taste-crt").addEventListener("pointerleave", () => {
-  $("taste-crt").classList.remove("hit");
-  hideMapTip();
-});
-
-// Keyboard traversal of the map: arrows step the dashed cursor in x-order,
-// Enter opens the patch on the bench.
-let mapCursorId = null;
-$("taste-crt").addEventListener("keydown", (e) => {
-  if (tasteTab !== "map" || mapHits.length === 0) return;
-  const sorted = [...mapHits].sort((p, q) => p.x - q.x);
-  const i = sorted.findIndex((hh) => hh.id === mapCursorId);
-  if (e.key === "Enter") {
-    if (mapCursorId != null) {
-      e.preventDefault();
-      bankScrollTo = mapCursorId;
-      bankScrollAt = performance.now();
-      openOnBench(mapCursorId);
-      drawTaste(); // the dot's pending ring, as for a click
-    }
-    return;
-  }
-  let j = null;
-  if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(sorted.length - 1, i + 1);
-  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = i < 0 ? 0 : Math.max(0, i - 1);
-  else if (e.key === "Home") j = 0;
-  else if (e.key === "End") j = sorted.length - 1;
-  if (j == null) return;
-  e.preventDefault();
-  mapCursorId = sorted[j].id;
-  drawTaste();
-});
 
 // ---------- lineage ----------
 // The strip speaks names, not ids: "Soft Pad → Warm Drone 2", where it used
@@ -20893,9 +20904,190 @@ function imageDims() {
   };
 }
 
+// ---------- the sound's card (Plan-005 task 3) ----------
+// A picture to share a sound by: its face, its name and where it came from,
+// built on the export above, so it carries its fonts, rasterizes the same way
+// and holds the patch (drop the card on Auracle and the sound opens). Laid
+// out in a 600 × 315 frame, the size a link preview asks for at 2× (1200 ×
+// 630). The face is the one the header shows: the bench's latest render,
+// against the bank.
+const CARD_W = 600;
+const CARD_H = 315;
+
+/** What the card shows, or null with no sound open. `face` is null until
+ *  it has landed (asked for here). */
+function cardSubject() {
+  const id = wb.subjectId;
+  if (id == null || !wb.rack || !wb.rack.modules || !wb.rack.modules.length) return null;
+  const target = faceTarget(benchTreeJson ? { tree: benchTreeJson } : { id });
+  const key = faceKeyOfTarget(target);
+  const face = (key && faceByKey.get(key)) || null;
+  if (!face) wantFace(target);
+  const lin = lineageOf(id);
+  return {
+    name: `${benchName(id)}${wb.dirty ? dirtySuffix() : ""}`,
+    line: cardLine(rowOf(id)?.origin, lin ? lineageName(lin.parent_id) : "", lin ? lineageChanges(lin.diff) : ""),
+    face,
+    // Why there is no face to draw, if there is none: the sound doesn't play
+    // (the engine has no face for a tree its vet refuses), the bank is too
+    // small to compare with, or it is still on its way.
+    noFace: face && faceStats ? "" : faceNone.has(target) ? "noplay" : !faceStats ? "few" : "coming",
+  };
+}
+
+/** `str` as lines of `text` no wider than `maxW`, at most `maxLines` (the
+ *  last ellipsized only if the words run out of lines). Measured on the
+ *  live stage, in the card's own units. */
+function svgLines(text, str, maxW, maxLines, lead) {
+  const words = str.split(/\s+/).filter(Boolean);
+  const x = text.getAttribute("x");
+  const lines = [];
+  let line = "";
+  text.textContent = "";
+  const probe = document.createElementNS(SVG_NS, "tspan");
+  text.appendChild(probe);
+  const fits = (s) => {
+    probe.textContent = s;
+    return probe.getComputedTextLength() <= maxW;
+  };
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (!line || fits(next)) line = next;
+    else {
+      lines.push(line);
+      line = w;
+    }
+  }
+  if (line) lines.push(line);
+  probe.remove();
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && !fits(`${last}…`)) last = last.replace(/\s*\S+$/, "");
+    lines[maxLines - 1] = `${last}…`;
+  }
+  lines.forEach((l, i) => {
+    const t = document.createElementNS(SVG_NS, "tspan");
+    t.setAttribute("x", x);
+    if (i) t.setAttribute("dy", String(lead));
+    t.textContent = l;
+    text.appendChild(t);
+  });
+  return lines.length;
+}
+
+/** The card as a standalone SVG, `{svg, w, h}` in card units. */
+async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
+  const stage = document.createElement("div");
+  stage.className = "export-stage";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  stage.appendChild(svg);
+  document.body.appendChild(stage);
+  const px = (name) => parseFloat(tok(name)) || 0;
+  try {
+    svg.setAttribute("viewBox", `0 0 ${CARD_W} ${CARD_H}`);
+    const add = (tag, attrs, parent = svg) => {
+      const e = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      parent.appendChild(e);
+      return e;
+    };
+    if (!transparent) {
+      const defs = add("defs", {});
+      const grad = add("linearGradient", { id: "cardBg", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      add("stop", { offset: 0, "stop-color": tok("--rack-bed-hi") }, grad);
+      add("stop", { offset: 1, "stop-color": tok("--rack-bed-lo") }, grad);
+      add("rect", { x: 0, y: 0, width: CARD_W, height: CARD_H, fill: "url(#cardBg)" });
+    }
+    const m = px("--s4");
+    add("rect", { x: m + 0.5, y: m + 0.5, width: CARD_W - 2 * m - 1, height: CARD_H - 2 * m - 1, rx: px("--r3"), fill: "none", stroke: tok("--hairline") });
+    // The face, by the renderer every size shares, large, with its glow and
+    // the floor's reflection, as the specimen's card draws it; drawn at 3×
+    // so a 3× download is sharp. Its space runs to the frame's foot, for the
+    // reflection.
+    const [fw, fh] = FACE_SIZE.share;
+    const fx = px("--s7");
+    const fy = px("--s6");
+    const ih = CARD_H - fy - m;
+    if (sub.face && faceStats) {
+      const c = document.createElement("canvas");
+      const z = 3;
+      c.width = fw * z;
+      c.height = ih * z;
+      const ctx = c.getContext("2d");
+      ctx.setTransform(z, 0, 0, z, 0, 0);
+      drawVessel(ctx, sub.face, faceStats, {
+        box: { x: fw * 0.06, y: 8, w: fw * 0.88, h: fh },
+        color: tok("--phos-a"), glow: 14, line: 2, reflection: true,
+      });
+      add("image", { x: fx, y: fy, width: fw, height: ih, href: c.toDataURL("image/png") });
+    }
+    // The words: the name at the display size (the title's if it will not
+    // fit on one line, then over two lines), the line under it, the mark.
+    const tx = fx + fw + px("--s7");
+    const tw = CARD_W - tx - px("--s7");
+    const name = add("text", { x: tx, y: 0, "font-family": tok("--font-silk"), "font-weight": 500, fill: tok("--silk") });
+    let size = px("--t-display");
+    name.setAttribute("font-size", tok("--t-display"));
+    name.textContent = sub.name;
+    let nameLines = 1;
+    if (name.getComputedTextLength() > tw) {
+      size = px("--t-title");
+      name.setAttribute("font-size", tok("--t-title"));
+      nameLines = svgLines(name, sub.name, tw, 2, size * 1.2);
+    }
+    const top = CARD_H / 2 - ((nameLines - 1) * size * 1.2) / 2 - px("--s4");
+    name.setAttribute("y", String(top));
+    const lineSize = px("--t-body");
+    const line = add("text", {
+      x: tx,
+      y: top + (nameLines - 1) * size * 1.2 + px("--s6"),
+      "font-family": tok("--font-mono"),
+      "font-size": tok("--t-body"),
+      fill: tok("--silk-dim"),
+    });
+    if (sub.line) svgLines(line, sub.line, tw, 3, lineSize * 1.4);
+    add("text", {
+      x: tx,
+      y: CARD_H - px("--s7"),
+      "font-family": tok("--font-silk"),
+      "font-size": tok("--t-label"),
+      "font-weight": 600,
+      "letter-spacing": "0.3em",
+      fill: tok("--silk-dim"),
+    }).textContent = "AURACLE";
+    svg.remove();
+  } finally {
+    stage.remove();
+  }
+  svg.setAttribute("xmlns", SVG_NS);
+  const style = document.createElementNS(SVG_NS, "style");
+  style.textContent = await exportFontCss();
+  svg.insertBefore(style, svg.firstChild);
+  if (sidecar) {
+    const md = document.createElementNS(SVG_NS, "metadata");
+    md.setAttribute("id", "auracle-patch");
+    md.textContent = JSON.stringify(sidecar);
+    svg.insertBefore(md, svg.firstChild);
+  }
+  return { svg, w: CARD_W, h: CARD_H };
+}
+
 function imageSync() {
   const panel = $("image-panel");
   if (!panel || panel.classList.contains("hidden")) return;
+  if (imageState.scope === "card") {
+    $("ix-scope").value = "card";
+    const sub = cardSubject();
+    const dims = $("ix-dims");
+    dims.classList.remove("busy");
+    const size = cardDims(CARD_W * imageState.scale, CARD_H * imageState.scale, imageState.fmt.toUpperCase());
+    // Without a face the card is its name and its line: said, and still
+    // downloadable, unless the face is on its way.
+    dims.textContent = !sub ? "no sound open" : sub.noFace ? `${size} · ${cardNoFace(sub.noFace)}` : size;
+    $("ix-go").disabled = !sub || sub.noFace === "coming";
+    return;
+  }
   const sel = selModule();
   const opt = panel.querySelector('#ix-scope option[value="sel"]');
   if (opt) {
@@ -20916,6 +21108,7 @@ function imageSync() {
 }
 
 async function runImageExport() {
+  if (imageState.scope === "card") return runCardExport();
   const body = patchSidecar();
   const rack = exportRack(imageState.scope === "sel");
   if (!body || !rack || !rack.modules.length) return note("Open a sound first: there’s no patch to draw.");
@@ -20944,6 +21137,33 @@ async function runImageExport() {
       const text = serializeSvg(svg, w, h, 1);
       const px = { w: Math.round(w * imageState.scale), h: Math.round(h * imageState.scale) };
       const blob = await rasterize(text, px.w, px.h);
+      const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
+      saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
+    }
+    note(`Downloaded ${stem}. The patch is inside the picture.`);
+  } catch (err) {
+    note(`That picture couldn’t be made: ${err.message || err}`, { urgent: true });
+  } finally {
+    imageSync();
+  }
+}
+
+async function runCardExport() {
+  const body = patchSidecar();
+  const sub = cardSubject();
+  if (!body || !sub) return note("Open a sound first: there’s no patch to draw.");
+  const go = $("ix-go");
+  const dims = $("ix-dims");
+  go.disabled = true;
+  dims.classList.add("busy");
+  dims.textContent = "rendering…";
+  try {
+    const { svg, w, h } = await buildCardSvg(sub, { transparent: imageState.bg === "transparent", sidecar: body });
+    const stem = `${patchFileStem(body)}-card`;
+    if (imageState.fmt === "svg") {
+      saveBlob(new Blob([serializeSvg(svg, w, h, imageState.scale)], { type: "image/svg+xml" }), `${stem}.svg`);
+    } else {
+      const blob = await rasterize(serializeSvg(svg, w, h, 1), w * imageState.scale, h * imageState.scale);
       const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
       saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
     }
@@ -21227,7 +21447,7 @@ function renderWarmStart(all) {
     b.className = "warm-item";
     // The blurb, not the topology signature. `tri·cho·ladr` describes the
     // graph, which is the one thing this screen is not asking about.
-    b.innerHTML = `<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
+    b.innerHTML = `${faceSlot("warm", { preset: r.index })}<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
     b.setAttribute("aria-pressed", "false");
     const pb = document.createElement("button");
     pb.className = "wi-play";
@@ -21877,6 +22097,7 @@ bootMidi();
     restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
     restoreHoles(saved.ui.holes);
+    if (taste) taste.restore(saved.ui.taste);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.
@@ -21913,6 +22134,8 @@ window.__aur = {
   // Where AUDIO IN's inputs stand: permission, the slot list, what is open,
   // monitoring and the clip (audio-in.js).
   audioIn: () => audioIn.state(),
+  // PATCH's guess, cable levels and new patch, as patch.js holds them.
+  patch: () => patchView.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")

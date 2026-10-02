@@ -32,6 +32,88 @@ changelog that edits its own past is not a record.
   generation walk it through the clip and keep its input where you set it. No
   generation adds an input to a sound by itself.
 
+### Fixed: an offer growing in the background no longer holds up your pick
+
+- **A pick, a Keep or a ▶ no longer waits for an offer that was growing
+  behind it.** PERFORM grows a spare offer while you play, ahead of the
+  Offer pad, and growing one is twenty-odd renders of the sound that the
+  engine could not stop partway. Whatever you did next (answering an offer
+  with a pick, Keep, play) waited for all of it: about a minute on a slow
+  machine. The engine now grows an offer, or Wander's drift, one render at a
+  time and answers you between renders, so you wait for at most the render
+  in progress. An offer you press for still takes the time its renders take,
+  and B counts the seconds as before.
+- **Leaving a sound stops the offer growing for it.** Switching to another
+  sound, or turning a different control while an aimed offer grows, used to
+  let the old walk finish for nothing. It stops at its next step.
+- **For a given seed, the offers themselves differ from before.** Each
+  offer and each drift now walks on a stream of its own, seeded when it begins, so how far
+  one offer had got when another began no longer changes what either finds.
+  They are the same kind of walk on the same target as before.
+
+### Added: PATCH builds from nothing, guesses the next module, and lights each cable by its level
+
+- **NEW PATCH** empties the sound you're playing down to its amp envelope, so
+  you can build one module at a time. It is named *New patch*, its caption
+  counts its modules and says *nothing to hear yet* until it makes a sound,
+  **CLEAR** empties it again, and **BACK TO** *the sound's name* (or Esc)
+  returns to where you started. A new patch with modules in it waits for you
+  under NEW PATCH. Deleting a source now leaves its socket empty, set aside
+  with an undo, where it used to be refused, so a patch can be taken back to
+  nothing one module at a time.
+- **The model guesses the next module.** Once it has fitted your taste,
+  PATCH shows *GUESS · REVERB* over the rack with its reason in the model's
+  italic (*it moves toward still, as your picks lean · 67% · leaning*), and
+  draws the module dashed amber where it would go. Click it to add it; its ×
+  skips it, and that kind stays away from that place for this patch. Undoing
+  a guess you added counts as a skip. When it isn't sure the module helps,
+  the line ends *it may not help*. Before the warm start it shows nothing. It
+  renders the candidates on a render crew where the machine has cores to
+  spare, and the likeliest eight on the engine's own thread where it hasn't.
+- **Each green cable carries light by its level.** Once an edit settles, the
+  engine renders the phrase once more and measures every audio cable; a
+  cable's brightness is that level, and a mark on its middle lights one bar
+  per third of the meter's range, with the number on hover. Before, a cable's
+  brightness at rest was an estimate from the mixers above it. Modulation
+  cables are not measured, and carry no mark.
+- **On a touch screen, a tapped module opens a sheet with every setting**:
+  each knob as a wide slider with − and + steps, each named setting as its
+  choices, and REMOVE MODULE at its foot.
+
+### Changed: TASTE draws each pick, and LEARNING is the model room
+
+- **A pick draws as an arrow on TASTE's map, and every glow moves with
+  it.** The map changed only when the model fitted again, every sixth pick,
+  so a pick left no mark there. Now each pick draws an arrow from the sound
+  you passed to the sound you picked, and every sound's glow moves to the
+  model's new rating at once, because a pick moves its view of every sound.
+  Picks made in EVOLVE are drawn in turn when you open TASTE. A refit
+  settles every glow and every place together.
+- **TASTE is the map, with a card for each sound.** Each sound glows amber
+  by how much the model guesses you’d like it, dashed while it has no
+  guess, and is larger where it is less sure. Point at one for its name,
+  the guess (*would like: 59% · leaning*), **▶ PLAY** and **OPEN**; the
+  arrow keys walk the map. The MAP, STYLES, DIRECTIONS and TRUST tabs are
+  gone: their contents are in LEARNING.
+- **LEARNING, a new view, shows what the model weighs and how it has
+  guessed.** Each style's 44 weights, a guess drawn hollow with a **?** in
+  the margin; which way liking rises across the map; every forecast it made
+  before a pick, scored (*14 / 22*, *expected 64% · was 58%*) with the skill
+  the menu bar shows; **COPY AS JSON**; and **THE MATH**, whose numbers (18
+  audio and 26 structural features, 500 draws, a style for every 20 things
+  it learns from, up to five) come from the model itself. Name a style on
+  its chip here. TRUST's reliability chart is not drawn any more; its
+  numbers are in the copied JSON.
+- **TASTE's map has a track of your taste over time.** Drag it, or press ▶,
+  to see the glows and places as the model had them after any pick this
+  session has kept, with that pick's arrow. It is saved with your session
+  and starts when this version first ran.
+- **SOUND / TASTE** at the map's top left: SOUND shows the sounds as they
+  are, TASTE dims each by how little the model likes it.
+- **LEARNING's weights move with every pick, and REPLAY (R) steps them
+  through your picks.** Pointing at a weight shades the small map by how
+  much of that quality each sound has.
+
 ### Added: PERFORM's palette, its offers in motion, and stage mode
 
 - **You choose PERFORM's controls.** **ARRANGE** opens the palette: the
@@ -50,16 +132,41 @@ changelog that edits its own past is not a record.
   last touched, with the rest a tap away: what you hear it do, what it
   listens to, and what it turns on this sound. It used to describe three of
   the six in one paragraph.
-- **An offer shows where it came from.** B grows out of the sound's name,
+- **An offer shows where it came from.** B grows out of the sound's face,
   because it is grown from the sound you're playing. Taken, it fills with
-  green and goes into the name; passed, it folds back into it. With reduced
+  green and goes into the face; passed, it folds back into it. With reduced
   motion on, nothing moves.
 - **Stage mode.** In PERFORM, <kbd>⇧F</kbd> puts the sound you're playing on the whole
-  screen, drawn from what you hear, for a gig or a stream. The keys and
+  screen, for a gig or a stream: its face, large, and what you hear drawn
+  over it, fading like phosphor. The keys and
   Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.
 - **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put
   them on the panel, and a MIDI controller's first eight knobs take the
   deck's first eight controls.
+
+### Added: every sound has a face
+
+- **A face beside every sound's name**: on the bank's rows, EVOLVE's cards,
+  PATCH's header and its teach strip (and, beside the model's guess, the
+  patch as it is and with the guessed module, from the guess's own render), PERFORM's sound in hand and its offer,
+  and the warm start's cards. A face is the sound's spectrum from its own
+  render, stood upright (the lows at the base) and compared with the rest of
+  your bank: wide where this sound has more than your bank's sounds, narrow
+  where it has less, with faint layers for the phrase over time. It changes
+  when the sound's render does (an edit lands, an offer grows) or when the
+  bank changes enough to move it, and is redrawn in place. Measuring it
+  costs about 1% of each render, and the engine works on faces after
+  everything else, the sound you asked to hear included; a face's own
+  render, when one is needed, takes about half a second.
+- **A face never moves or shortens a name.** Every row and card keeps the
+  face's space whether or not it has arrived. Where a name could be cut
+  short, its column is wider by the face: the bank (280 px, 228 px under
+  1080 px wide), PATCH's header and the A and B under the rack. EVOLVE's and
+  PERFORM's names wrap rather than cut.
+- **Share a sound as a card.** *Download as a picture…* has a new choice,
+  *the sound's card*: its face, its name and where it came from, 1200 × 630
+  at 2×, with the patch inside like every picture Auracle downloads, so
+  dropping it on Auracle opens the sound.
 
 ### Changed: the bank shows what a generation does
 
@@ -149,8 +256,7 @@ changelog that edits its own past is not a record.
   canvas is smaller than 12 px.** Labels, chips, and captions that were
   10 px are 11 px, and values and readouts are 12. The minimap's bookmark
   numbers, which were 7 px, are 11 on a larger pip. The scopes' and TASTE's
-  canvas text, which was 9 to 11 px, is 12, and TRUST's last line no longer
-  sits on the canvas's bottom edge. The rack keeps its own sizes, which grow
+  canvas text, which was 9 to 11 px, is 12. The rack keeps its own sizes, which grow
   and shrink with its zoom, and a glyph on a button is sized to its button.
 - **Some text grew and some shrank.** Prose is 14 px where it was 13, a
   sound's name and a card's title are 21 where they were 17, and the model's

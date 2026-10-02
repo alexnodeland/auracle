@@ -168,6 +168,10 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
        (`view-patch/script.json` ~178), its callout *42 modules*
        (`view-patch/film.js` ~150) and storyboard (`view-patch/storyboard.md`
        ~168).
+     - the PERFORM view film's storyboard quotes *grittier by 3.9σ* "in this
+       session" (`view-perform/storyboard.md` ~184). Offers for a given seed
+       changed when each offer began walking on a stream of its own, so that
+       figure is not reproducible any more: re-check it at the rehearsal.
    - **Casting left to the re-script** (task 7): the `uncast` shots above.
      Each needs its line rewritten around a preset on the shortlist (or a
      Steps module added on camera), then the shot recast. view-patch's

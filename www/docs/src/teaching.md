@@ -157,7 +157,7 @@ Roughly in order:
 5. **Edits, kept as new.** These carry a lot: a change to the patch, and your
    verdict on it. Answered on the **WHICH WOULD YOU REACH FOR?** card, the
    verdict is heard, and picking the original teaches the most. Ticked as
-   **PICK THE EDIT**, it is a claim. TRUST grades the two apart.
+   **PICK THE EDIT**, it is a claim. LEARNING grades the two apart.
 
 ## What it cannot learn
 

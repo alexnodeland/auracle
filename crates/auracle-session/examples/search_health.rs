@@ -352,7 +352,7 @@ struct Accept {
 
 /// Measurement 2: MH acceptance, split structural / parameter.
 ///
-/// Rebuilds exactly the chain `Engine::refine_one` runs — same prior, same
+/// Rebuilds exactly the chain `walk::walk_on` runs for `Engine::refine_jobs` — same prior, same
 /// `SurrogateFitness`, same β — because the engine's own walk reports nothing.
 fn acceptance(seed: u64, steps: usize) -> Accept {
     let mut rng = StdRng::seed_from_u64(seed);

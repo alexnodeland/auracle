@@ -1,11 +1,13 @@
 // Stage mode (Plan-005 task 5): ⇧F puts the sound under your hands on the
-// whole screen, drawn from what you hear, for a gig or a stream.
+// whole screen, its face and what you hear over it, for a gig or a stream.
 //
 // What this claims:
 // - ⇧F enters it from PERFORM, and ⇧F or Esc leaves it, putting focus back.
-// - Space still plays the sound in it (ADR-016), and what it draws is the
-//   output: the canvas is empty while nothing sounds, and lit while the
-//   phrase plays.
+// - Space still plays the sound in it (ADR-016). As the mock draws it, the
+//   sound's face stands on the stage whether or not anything sounds (the
+//   still layer, `.st-canvas`), and what sounds is drawn over it (the
+//   trail, `.st-trail`): empty while nothing sounds, lit while the phrase
+//   plays.
 // - F alone still plays its note: only Shift and F is stage mode, and only in
 //   PERFORM; in PATCH ⇧F plays the accented F it always did.
 // - Tab stays inside stage mode (what is behind it is inert), and focus comes
@@ -42,9 +44,10 @@ const INIT = `(() => {
     for (const x of b) peak = Math.max(peak, Math.abs(x));
     return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
   };
-  // How much of the stage's canvas is lit (any pixel with alpha).
-  window.__stageLit = () => {
-    const c = document.querySelector(".st-canvas");
+  // How much of one of the stage's layers is lit (any pixel with alpha):
+  // the face (still) or the trail (what sounds).
+  window.__stageLit = (sel = ".st-trail") => {
+    const c = document.querySelector(sel);
     if (!c || !c.width) return 0;
     const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
     let n = 0;
@@ -87,10 +90,11 @@ test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still play
   await expect(stage.locator(".st-name")).toHaveText("Glass Pad");
   expect(await page.evaluate(() => document.activeElement === document.querySelector(".st-stage"))).toBe(true);
 
-  // Quiet: nothing drawn.
+  // Quiet: the sound's face stands, and nothing is drawn over it.
   await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeLessThan(-60);
+  await expect.poll(() => page.evaluate(() => window.__stageLit(".st-canvas:not(.st-trail)")), { timeout: 60_000 }).toBeGreaterThan(50);
   await expect.poll(() => page.evaluate(() => window.__stageLit()), { timeout: 10_000 }).toBe(0);
-  // Space plays the sound, and the stage draws it.
+  // Space plays the sound, and the stage draws it over the face.
   await page.keyboard.press(" ");
   await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
   await expect.poll(() => page.evaluate(() => window.__stageLit()), { timeout: 10_000 }).toBeGreaterThan(50);

@@ -79,6 +79,71 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      slices, whitened against the bank's mean and spread.
    - It appears on every row, chip and card.
    - The share card is built on today's image export.
+   - *Progress (2026-10-02):* built in today's views, before the shell
+     (task 2):
+     - the analysis is Rust (`auracle_features::face`), taken inside every
+       featurization and carried on the memo row beside φ, not in it, so
+       the fill, the farm, a generation's walks and an offer give a face
+       without a render of its own: 2.5 ms in wasm against a 201 ms
+       featurization, 1.66 ms against 146 ms natively (1.1%);
+     - the worker files each face under its render namespace and key, in
+       memory and in IndexedDB, answers `faces` from memory in `now`, looks
+       the rest up in `later`, and renders only what it has no face for, in
+       a lane of its own below `later`, after boot, dropping what is waiting
+       for a slot that left the view;
+     - main whitens against the pool's faces (`faces.js`), and one
+       renderer draws the specimen's vessel at every size (`vessel.js`
+       `drawVessel(ctx, face, stats, {box, slices, glow, reflection})`): a
+       row's icon, the cards, PERFORM's slots, the share card with its glow
+       and reflection, and stage mode's full screen (`stageDraw` in
+       `perform.js`, with `host.faceOf(tree)` handing it the face and the
+       bank). Slots show it once per bank as an image; the bank
+       is drawn against again when its mean moves by 0.25 dB in a band or
+       its spread by 1%;
+     - faces are on the bank's rows (pool and presets), EVOLVE's cards,
+       PATCH's header and teach strip, PERFORM's sound in hand and B, and
+       the warm start's cards, each in a slot its place always has; where a
+       name could be cut short, its column is wider by the face (the bank
+       252 to 280 px, PATCH's subject column by 28 px, the teach strip's A
+       and B by 18), and EVOLVE's and PERFORM's names wrap rather than cut;
+     - beside PATCH's guess plate, the patch's face (*as it is*) and the
+       face of the render the guess made with its module (*with it*,
+       `Guess::key`, `face_of_key`): the specimen's estimated vessel, measured;
+       a patch from nothing has only the second. Both are of the tree the
+       guess was ranked on (the reply's `tree`): a knob turn is not ranked
+       again, so they go until the next ranking. They sit right of the
+       plate wherever it is placed, and are not kept in view as the plate is;
+     - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
+       × 630 at 2×), with the patch inside; without a face (an edit the vet
+       refuses, a bank of fewer than four) it says why, and downloads
+       without one.
+
+     Where the specimen and the engine differ, the engine was followed:
+     - the specimen's data summed whole FFT bins, so its two narrowest bands
+       read empty (−60 dB); a band here is the mean power density over its
+       edges, so a band narrower than a bin reads that bin and white noise
+       reads level;
+     - the specimen whitened against a fixed snapshot of 63 presets; here it
+       is the live pool, and moves with it;
+     - its slice layers were not documented; here each slice's spectrum is
+       relative to its own loudest band and sized and lit by the slice's
+       loudness, as the specimen draws them;
+     - the specimen draws small faces (rows, chips) without a glow and
+       large ones with one; here the same: the share card and stage size
+       have the glow and the floor's reflection, the slots none;
+     - a face's whitening moves when the pool does, so a face of the same
+       render can read differently a generation later: the specimen's never
+       did, since its bank never changed;
+     - the specimen's stage fades its live trail like phosphor; that trail
+       is what you hear, not the face, so stage mode draws it on a layer of
+       its own over the still face (`st-trail`), in the face's bands and
+       against the same bank, with the vessel's outline lit by how loud it
+       is, as the specimen's `frame` does; the face's slices are drawn as
+       the specimen's `A.face` draws them: stacked layers, each as bright as
+       its slice is loud;
+     - the specimen's stage lights each note's band (the vessel as a
+       keyboard on its side); no note timings reach `perform.js`, so stage
+       mode lights none (task 5 says so too).
 4. **EVOLVE and the bank** (this is Plan-004 task 7's explanation figure).
    - Pointing at EVOLVE POOL marks the seeds as well as the sounds that may be
      replaced. The seed count is exposed from the engine (task 9).
@@ -129,14 +194,12 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      set in palette order, the page names each control back by its `index`,
      and `wireKey` holds the set. A placed control is measured lazily and
      says *listening…* while it is. How it works covers every placed control.
-     B grows from the sound's name, fills when taken and folds back when
+     B grows from the sound's face, fills when taken and folds back when
      passed (each motion names its engine source); the heard rule is
      unchanged (an unheard take is allowed and records no pick). Stage mode
-     draws the output's spectrum for now: stage draws the face once task 3
-     lands (`stageDraw` in `perform.js` is the one function to swap, marked
-     `faces:`). Not done: the faces the prototype draws (the well, a face in
-     stage mode) wait for task 3, so the offer's motion anchors on the
-     sound's name; the palette's preview of
+     draws the sound's face, still, with what sounds fading over it (task
+     3). Not done: the prototype's large well beside the controls (the face
+     is in the header for now); the palette's preview of
      an unplaced control needs the unverified wiring exposed (the reference's
      PERFORM page, "What is not done"); the prototype's well-and-panel layout
      waits for the shell (task 2). Where the prototype and the engine
@@ -152,6 +215,23 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - LEARNING shows the weights, the direction, the scored forecasts, the
      export as JSON, and the maths (18 audio and 26 structural features, 500
      draws, the lenses).
+   - *Done (2026-10-02):* `apps/web/taste.js`, to prototype v2's `taste.js`
+     and `model.js`. TASTE is the map alone: the status that answers
+     `record_duel` draws the arrow (its `vote` and `choseA`) and moves every
+     halo to the `ratings` it carries, in one tween; picks made elsewhere are
+     drawn in turn when TASTE opens; a views post settles every halo and
+     place together. LEARNING is a fifth view (a tab beside TASTE until the
+     shell's levels, task 2): the chosen style's 44 weights, the direction
+     liking rises, the forecasts scored, copy as JSON, and the math, whose
+     numbers come from `WasmEngine::model_facts`; the forecasts from
+     `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
+     is one function (`drawMark`, `host.drawFace`), and draws each sound's
+     face (task 3), sized by the model's doubt.
+     Then, to match Vision II exactly: the taste-over-time track and its
+     replay, SOUND / TASTE, a weight's shading of the small map
+     (`WasmEngine::pool_features`), the weights moving per pick (a `styles`
+     request after each) and REPLAY, the history kept by the page where the
+     engine keeps none ([Measured (task 6)](#measured-task-6)).
 7. **PATCH.**
    - On touch, a tapped module opens a sheet with every setting.
    - Cables carry light by signal. Measured levels at rest come from task
@@ -159,6 +239,76 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - A new patch starts empty: remove a module with undo, clear it, skip a
      guess. The guess itself is task 9(d), built; this task draws it and
      raises a render crew for it.
+   - *Progress (2026-10-02):* built in today's rack, in its own module
+     (`apps/web/patch.js`, reached from main.js through a host), before the
+     shell (task 2) rebuilds the view to the specimen's layout:
+     - **the module sheet:** on a coarse pointer, a tap on a module (or one of
+       its knobs) opens the specimen's sheet with every knob the engine
+       describes: a wide slider with − and + (held, they repeat) for each
+       continuous one, the choices of each named one, REMOVE MODULE at its
+       foot. It writes through `sendEdit` and the ordered lane, holding
+       `knobDragging` while a finger is down;
+     - **cables by measured level:** the workbench's audio cables at rest
+       carry the level `cable_levels` measured (−54 to 0 dB re 1 V, the
+       meter's mapping), with the specimen's level mark on each, asked once
+       an edit settles while PATCH is shown; a structure not yet measured is
+       unlit with hollow marks. Modulation cables are not measured: unlit, no
+       mark, still pulsing at their modulator's rate as set (`modBreath`);
+     - **from nothing:** NEW PATCH (one `edit_set_tree`: the root becomes an
+       empty `Silence` socket, the amp is kept), CLEAR and BACK TO ‹name›
+       (Esc), each with an undo; deleting a source now leaves its socket
+       empty (it was refused), so a patch goes back to nothing a module at a
+       time;
+     - **the guess:** GUESS · REVERB over the rack with its reason in the
+       model's italic and its forecast, the module dashed amber at its socket,
+       added (`edit_structure` with `guess`) or skipped (`guess_skip`); the
+       rail marks the guessed kind in the row's own padding. The worker
+       renders the candidates on a walk crew (`farm_render`, `memo_absorb`)
+       without holding the floor, and the floor of eight on its own thread
+       with none;
+     - **the guess's memory** is keyed by its own id (`guess_key`), moved by
+       keep as new, so skips made after the commit stay with the kept sound.
+
+     Where the specimen and the engine (or the specimen and today's rack)
+     differ, the engine was followed:
+     - the specimen's PATCH is a canvas signal flow with the face at OUT, the
+       catalogue at the well's left and a "How to read this" legend. That
+       layout is task 2's rebuild; here the catalogue is the module rail, and
+       the guess hangs at its socket (above the cable, over the empty socket,
+       under the slot) rather than being laid into the chain;
+     - the specimen estimates a new patch's face from its modules' kinds and
+       knobs ("estimated"), and dashes the face without a module under the
+       pointer; the sheet carries the same estimate. These are estimates the
+       engine does not make, so none is drawn (ADR-012); faces are task 3's.
+       The guess's own "estimated vessel" can be measured instead: each
+       candidate is rendered for the ranking (keyed in the engine's memo by
+       `GuessCandidate::key`), so once faces land (#102) and can be taken
+       from that render or kept beside its row, the guess
+       plate gets the candidate's face, labelled as the patch with this
+       module, beside the patch's own. patch.js calls `host.guessFace(g,
+       at, layer)` for it, and main.js draws both faces there (task 3:
+       `Guess::key` names the candidate's memo row, `face_of_key` reads its
+       face, labelled *as it is* and *with it*);
+     - the specimen's "in 39% of similar presets" counted presets; the
+       engine's guess is ranked by the posterior, so the line is the
+       model's reason and forecast, and says *it may not help* when the lower
+       bound is under zero;
+     - the specimen's "Build a synth / Process a sound" first step needs
+       AUDIO IN in the module rail (another branch's): a new patch opens
+       straight onto its empty socket;
+     - the specimen's AUDIO IN plate chooses a device and one of four uses
+       (process, modulate, play, resample) and draws a shared input fanning
+       out. The engine's `AudioIn` has an input slot, a gain and a channel,
+       and only processing exists, so PATCH draws and edits those three;
+     - the specimen's light points travelling along each cable while it
+       plays: the rack's flow while notes sound (the live meter) stands for
+       it;
+     - the specimen's toasts ("Removed reverb.") keep the rack's own receipts
+       (*Reverb deleted and set aside below.*), whose undo puts it back;
+     - the specimen's turned-knob bar (Compare, Keep, Revert) is the rack's
+       KEEP AS NEW and ⌘Z;
+     - a phone still meets the handheld gate: the sheet is the specimen's
+       phone sheet below 701 px, but laying PATCH out for a phone is task 8.
 8. **Touch.**
    - A phone gets its own layout: a bottom bar, the bank and the palette as
      sheets, the keys as a drawer, swipe to keep.
@@ -180,8 +330,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      maintainer decided it (`guess.rs` in `auracle-session`; the bindings
      `guess_plan`, `guess_rank`, `guess_skip`, `guess_take`; the worker's
      `guess` and `guess_skip`, with no crew yet)
-     ([Measured (task 9d)](#measured-task-9d)). The page draws nothing yet
-     (task 7).
+     ([Measured (task 9d)](#measured-task-9d)). PATCH draws it, and the
+     worker renders it on a crew, since task 7 (2026-10-02).
    - (e) A cable-level probe. *Done (2026-10-01):* `probe_cables` in
      `auracle-features`, `edit_cable_levels` in wasm, the worker's
      `cable_levels` ([Measured (task 9e)](#measured-task-9e)).
@@ -302,6 +452,93 @@ Decisions:
   prediction, without renders.
 - `apps/web/perform-wirings.json` keeps the six. With the twelve it would be
   2.3 times the size (392 KB), for controls the panel does not show yet.
+
+## Measured (task 6)
+
+`crates/auracle-wasm/examples/pick_belief.mjs` now also times what the
+calibration reply carries after every pick. The built package under node, 100
+picks, a refit every sixth, on an Apple M3 Max; medians in ms by the lenses
+the fit was allowed:
+
+| Lenses | `belief` | `calibration` | `forecasts` | `model_facts` | `styles` (θ), posted per pick in `later` |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.55 | 0.01 | 0.01 | 0.01 | 0.57 |
+| 3 | 1.30 | 0.01 | 0.01 | 0.01 | 4.83 |
+| 5 | 2.23 | 0.01 | 0.02 | 0.01 | 12.00 |
+
+The forecasts are 7.8 KB of JSON at 95 forecasts. On the main thread, the
+redraw a pick starts (the arrow and every halo's tween) and a refit's settle
+held 16.7 ms frames, at most 16.8, at 1440 and 1080 px wide (headless
+Chromium, 40 sounds). Posting the belief after every pick costs what task 9a
+measured; the forecasts and the math's numbers add nothing measurable.
+
+The maintainer asked for Vision II exactly: where the mock shows a fact the
+engine doesn't keep, the page keeps it, as long as it stays true (ADR-012).
+
+- **The weights move per pick, and REPLAY steps through them.** After every
+  `status` with ratings, main asks for `styles` in the worker's `later` lane
+  and every surface takes the reweighted θ. They are asked for after every
+  pick whichever view shows, not only while LEARNING does, because REPLAY
+  needs each pick's θ; at most 12 ms at five lenses on the M3 Max, in a lane
+  that yields to every gesture. REPLAY (R) steps the bars through the kept
+  picks with a dashed ghost and the most-moved weight lit; the prototype's
+  faces flying into the evidence strip are not drawn.
+- **Taste over time is kept by the page.** The engine keeps no history of its
+  belief, so the page keeps each reply as it came (`taste-geom.js`), bounded
+  to 200 moments and saved with the session as `ui.taste`, versioned. The
+  track and its replay show exactly what was posted; it begins when the
+  session began keeping it.
+- **SOUND / TASTE** follows the prototype's `taste.js`: SOUND draws the glows
+  once there is a fit (or on the track); TASTE always, dashed before a fit,
+  and dims each mark by its liking (0.22 + 0.78 × liking). So SOUND is not
+  glow-free after a fit; that is the mock's own rule.
+- **Pointing at a weight shades the small map** by each sound's z on it, from
+  `WasmEngine::pool_features`, posted with every views post, the same post
+  that brings the map those sounds sit on.
+- **The direction is the engine's.** The prototype fits its arrow in the
+  page; here `auracle_session::liking_direction` fits liking on the last map's
+  axes inside `Engine::belief` (`direction`, with r²), so it rides every
+  `ratings` post and the page only draws it.
+- **REPLAY credits each step to what it was** (review of #101). A refit's, a
+  generation's and an opened file's moments keep the styles of the views post
+  that brought them; a step is a pick's (dashed ghost, the weight lit, "that
+  pick moved …") only from one pick to the next observation; a refit, a
+  generation, a file, a star or a cut is named; a gap is "since the moment
+  before". The worker answers a `styles` request a fit has overtaken, or a
+  queued one with no new observation, with none, so θ is never kept with
+  the wrong moment. The track draws a pick's arrow only for a one-moment step,
+  marks an opened taste file, and keeps a looked-at moment in place at the
+  200 bound; a PERFORM answer the engine didn't take keeps no moment.
+- **A weight whose interval crosses zero is drawn as a guess.** The mock draws
+  every fitted bar solid; at 18 picks most of the engine's are guesses
+  (`pullMark`: hollow, its "?" in a slot left of the word).
+- **Five styles over 44 features, not one w over 18.** LEARNING shows the
+  chosen style's 44 weights, and the style chips (naming, ▶) moved here.
+- **No forecasts before the first fit.** The mock draws hollow forecasts from
+  the first pick; the engine forecasts only with a posterior, so the warm
+  start's picks have none.
+- **The export has no picks by name.** A forecast carries no ids, so the JSON
+  has the forecasts as the engine keeps them, and each sound's rating by id
+  and name.
+- **No arrow for a PERFORM offer.** An offer never joins the pool, so it has
+  no place on the map; its reply still moves every halo.
+- **The arrow lands when the engine takes the pick,** at the end of an EVOLVE
+  pick's seven-second undo window, or on TASTE's next opening.
+- **Size stays the doubt.** The mock's faces are one size; RFC-006 §7 keeps
+  size for the posterior's std, so the map's mark (the faces' slot) keeps it.
+- **TRUST's reliability diagram is not drawn,** as the mock has none (the
+  maintainer confirmed). The
+  engine's buckets stay in `calibration()` and in the copied JSON; LEARNING's
+  *expected · was* shows overconfidence in two numbers.
+- **The words follow voice.md:** styles, not lenses; "every 20 things it
+  learns from", because a fit's lenses count observations (picks, stars and
+  cuts), not picks; "the math".
+
+Owed elsewhere: the landing page's TASTE pane and DIRECTIONS figure, the
+guide's figures (`www/landing/assets/screens`, `capture-screens.mjs`) and the
+films that show TASTE (view-taste, the tour, How Auracle learns) show the four
+tabs; and the bank's percentages follow `views.ranked`, the last refit's, while
+the map's cards follow every pick.
 
 ## Measured (task 9d)
 

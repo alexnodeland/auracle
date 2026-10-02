@@ -64,8 +64,8 @@ Each module shows four things at rest:
 
 The bar appears only once the model has been fitted and at least five sounds
 in the pool use the module; until then it’s a dash. It is solid when the
-whisker clears zero, and hollow while it crosses it (still a guess), as TASTE’s
-DIRECTIONS draws it. “The model barely leans on this” and “the model has never
+whisker clears zero, and hollow while it crosses it (still a guess), as
+LEARNING’s weights draw it. “The model barely leans on this” and “the model has never
 seen this” are different statements, and they don’t look alike.
 
 ### Searching it

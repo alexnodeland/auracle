@@ -69,7 +69,7 @@ The consequence is not a missing coordinate; it is a category error about what
 a candidate *is*. A patch is a function from performance to sound. $\varphi$
 evaluates that function at a single point and hands the result to a model that
 then speaks about patches. Everything downstream ($\theta$, the styles, the
-[map](../../docs/views/taste.html#map), and the calibration diagram) is a
+[map](../../docs/views/taste.html#reading-the-map), and the calibration) is a
 faithful model of *preference over point samples of instruments*, presented as
 a model of preference over instruments.
 

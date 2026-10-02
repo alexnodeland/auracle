@@ -39,8 +39,8 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
-**The cards.** Each card is one sound: its name, the style that rates it
-highest, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
+**The cards.** Each card is one sound: its [face](../faces.md) and its
+name, the style that rates it highest, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
 **PICK B**). The names come from what the sound is, so *Round Wash* and
 *Gritty Swell* mean something. **⇄ CIRCUIT** flips the waveform to the patch’s
 modules. **OPEN IN PATCH** opens the sound in [PATCH](./play.md) without
@@ -66,7 +66,7 @@ from one scale: *a hunch*, *leaning*, and *fairly sure*.
 **How the pair was dealt.** Beside **ANOTHER PAIR**, *◇ random pair · a fair
 test* says that every pair is dealt at random from the pool. The model
 doesn’t choose what you hear, so every pick is a fair test of its guess.
-[TRUST](./taste.md#trust-is-its-confidence-honest) grades them all.
+[its forecasts in LEARNING](./learning.md#its-forecasts) are graded on them all.
 
 **EVOLVE POOL**, at the right. It’s the next section.
 

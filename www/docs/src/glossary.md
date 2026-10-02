@@ -23,7 +23,7 @@ library). See [the bank](./bank.md).
 How much better than a coin flip the model’s guesses have been. 0 is a coin
 flip, 1 is perfect, and below 0 is worse than guessing. The menu bar shows it
 (*13% sharper than chance*), and so does
-[TRUST](./views/taste.md#trust-is-its-confidence-honest).
+[its forecasts in LEARNING](./views/learning.md#its-forecasts).
 
 ### Budget
 
@@ -32,6 +32,12 @@ modulation depth of 3. PATCH shows a ceiling only when the patch is one short
 of it or at it (*23/24 modules*). **⋯** › **Show measurements** shows all
 three (*8/24 modules · 4/6 depth · 1/3 mod depth*). A patch at a ceiling has
 no room to grow.
+
+### Card
+
+The picture of a sound you download to share it: its face, its name and
+where it came from, with the patch inside. See
+[sharing a sound as a card](./faces.md#share-a-sound-as-a-card).
 
 ### Child, NEW
 
@@ -52,12 +58,18 @@ step names the seed and the child, what changed, and how much more the model
 guessed you’d like the child than its seed (*liked +0.06*). See [the EVOLUTION
 strip](./views/evolve.md#the-evolution-strip).
 
+### Face
+
+A sound’s drawn shape, beside its name everywhere: its spectrum from its own
+render, low at the base, wide where it has more than the bank’s sounds and
+narrow where it has less. See [a sound’s face](./faces.md).
+
 ### Fair-test picks
 
 The pairs dealt at random, which is every pair EVOLVE and PATCH deal you; the
-line beside **ANOTHER PAIR** says so (*◇ random pair · a fair test*). TRUST
-grades the model on them apart, as *the number to trust*, because you didn’t
-choose them.
+line beside **ANOTHER PAIR** says so (*◇ random pair · a fair test*).
+LEARNING grades the model on them apart, as *the number to trust*, because
+you didn’t choose them.
 
 ### Generation
 

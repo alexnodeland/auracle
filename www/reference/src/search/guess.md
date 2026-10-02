@@ -167,7 +167,7 @@ it (`GuessMemory`):
 - **Per patch:** skips are kept by the pool id the patch was opened from, for
   the session; an import starts with none. Keep as new carries them, and the
   guesses taken, to the new sound: it is the same patch the player is working
-  on.
+  on, and what is skipped after the commit is filed under the new sound.
 
 Neither a take nor a skip is evidence. Both are logged in the implicit stream,
 as a revert is, and stay out of the likelihood: a skip is confounded with
@@ -193,8 +193,59 @@ edit.
 
 ## The engine worker
 
-The worker answers `guess` in its `later` lane: it plans, renders the first
-`GUESS_FLOOR` candidates with `memo_render`, and ranks, posting the ranking
-with the tree it ranked, or the error if the engine failed. A taken guess is `edit_structure` with the guess
-attached (`guess_take`), and a skip is `guess_skip`. Raising a render crew for
-a guess, as a generation raises one, comes with PATCH's view of it.
+The worker answers `guess` in its `later` lane, holding the floor (no other
+long job starts while it runs; the player is answered between its steps), in
+two phases:
+
+- **On a crew.** It plans first: a refusal (`no_taste`, `full`) or a guess
+  the memo already holds raises no crew. Otherwise, where a walk crew can be
+  had (raised on demand as a generation raises one: not while boot's own crew
+  is filling the pool, nor while a generation or ⚡ walks), it plans every
+  candidate (`limit` 0) and hands them out, one `farm_render` per idle
+  worker, absorbing each result as it lands (`memo_absorb`, which refuses a
+  row measured under another stimulus). It stops after `GUESS_BUDGET_MS` of
+  wall-clock time, counted from when the crew is up. It renders nothing on
+  the engine worker.
+- **The floor.** Then it renders with `memo_render` what
+  is still owed of the first `GUESS_FLOOR` in order, one per turn: nothing
+  after a crew that rendered them, everything with no crew (at width 0,
+  `?farm=0` or a machine with one core, the page answers the request for a
+  crew with none).
+
+It ranks over every candidate when a crew ran, over the first eight when none
+did, and posts the ranking with the tree it ranked, or the error if the engine
+failed. A taken guess is `edit_structure` with the guess attached
+(`guess_take`), and a skip is `guess_skip`.
+
+## In PATCH
+
+PATCH (`apps/web/patch.js`) asks for a guess once the bench has settled after
+an open or a structural edit, after each refit, and after a skip, only while
+PATCH is in sight, and never after a knob turn alone. A ranking made on a
+structure the bench has since left is dropped and asked again. It shows the
+first guess of the ranking:
+
+- **GUESS · REVERB** over the rack, with the reason in the model's italic
+  (`why`: *it moves toward still, as your picks lean*, or *your picks lean
+  toward more reverbs* for a structural coordinate, or *no part of it leans
+  your way* when `why` is null), then the forecast `p` with its sure word, *over
+  your pool's average* when `against` is `pool`. When the lower bound is under
+  zero the line ends *it may not help*.
+- **The module at its socket,** dashed amber: above the cable an `insert`
+  would cut, over the empty socket a `replace` would fill, under the module a
+  `set_mod` would plug, with a dashed lead to that place. It is kept in the
+  camera's view: with no room above, below the chain; with no room there, at
+  the view's top. The module rail marks the guessed kind.
+- **Add** (a click, or <kbd>Enter</kbd>) sends the guess through the edit lane
+  as `edit_structure` with `guess`; a refusal (`the patch changed after that
+  guess, so it was not placed`) is said as any refused edit is, at once.
+  **Skip** (its ×, or <kbd>Delete</kbd>) sends `guess_skip` and shows the next.
+- **Refusals in words:** `no_taste` and `no_patch` draw nothing; `full` says
+  *no guess: nothing more fits, so a module has to come out first*;
+  `unmeasured` says *no guess yet: it hasn't heard this patch*; a ranking with
+  nothing in it says every module that fits was skipped, or that none passed
+  the safety check.
+
+Keep as new files later skips and takes under the kept sound's id
+(`WasmEngine`'s `guess_key`, moved by the commit), not the id the bench was
+opened from, which a later commit's comparison still plays against.

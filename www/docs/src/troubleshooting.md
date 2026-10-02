@@ -153,7 +153,7 @@ More picks won’t fix that one; moving those knobs will.
 
 ## The model isn’t learning
 
-First check [TRUST](./views/taste.md#trust-is-its-confidence-honest), rather
+First check [its forecasts](./views/learning.md#its-forecasts), rather
 than your impression. Then:
 
 - **Fewer than about 20 picks.** It is too early.

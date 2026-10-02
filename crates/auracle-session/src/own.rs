@@ -752,4 +752,28 @@ mod tests {
             .unwrap()
             .contains("own_sound"));
     }
+
+    /// The direction liking rises on the map is fitted over pool sounds
+    /// only: the sound of your own is placed on the map but has no liking,
+    /// so bringing one leaves `belief().direction` exactly as it was.
+    #[test]
+    fn the_direction_ignores_the_sound_of_your_own() {
+        let mut engine = taught(0xD1E0);
+        let _ = engine.taste_map();
+        let without = engine.belief().direction.expect("a fitted pool");
+        engine.own_set("Mine", &file_of(engine.pool[3].features.audio));
+        let map = engine.taste_map();
+        assert!(map.own.is_some(), "the sound is placed");
+        let pool: Vec<[f64; 3]> = map
+            .points
+            .iter()
+            .filter(|pt| pt.id.is_some())
+            .map(|pt| [pt.x, pt.y, 1.0 / (1.0 + (-pt.utility).exp())])
+            .collect();
+        let with = engine.belief().direction.expect("still fitted");
+        assert_eq!(with, without, "bringing a sound moved the direction");
+        let fit = crate::map::liking_direction(&pool).unwrap();
+        assert!((with.gx - fit.gx).abs() <= 1e-9 * (1.0 + fit.gx.abs()));
+        assert!((with.gy - fit.gy).abs() <= 1e-9 * (1.0 + fit.gy.abs()));
+    }
 }

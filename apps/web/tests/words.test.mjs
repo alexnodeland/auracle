@@ -16,6 +16,30 @@ import {
   leanSentence,
   onApple,
   platformKeys,
+  fittedFrom,
+  mapFoot,
+  haloLegend,
+  pickSaid,
+  refitSaid,
+  weightSaid,
+  weightsMore,
+  directionLegend,
+  forecastNote,
+  noForecasts,
+  stripSaid,
+  mathLines,
+  copyLabel,
+  plateGuess,
+  NO_WEIGHTS,
+  TASTE_LABELS,
+  pickWords,
+  trackLabel,
+  LOOKING_BACK,
+  joinedLabel,
+  movedMost,
+  dotsLegend,
+  replayAt,
+  stepMoved,
   PALETTE,
   FAMILIES,
   onThisSound,
@@ -40,6 +64,10 @@ import {
   inputLineName,
   INPUT_TIPS,
   INPUT_MENU,
+  guessWhy,
+  guessLine,
+  guessRefusal,
+  levelWord,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -259,6 +287,73 @@ test("a key chord is written in the platform's own words", () => {
   assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
 });
 
+test("TASTE and LEARNING say what the model was fitted from, or how far it is", () => {
+  assert.equal(fittedFrom({ fitted: true, picks: 18 }), "From 18 picks.");
+  assert.equal(fittedFrom({ fitted: true, picks: 1, stars: 2, cuts: 1 }), "From 1 pick, 2 stars, and 1 cut.");
+  assert.equal(fittedFrom({ fitted: false, left: 3 }), "3 more picks and it fits your taste.");
+  assert.equal(fittedFrom({ fitted: false, left: 1 }), "1 more pick and it fits your taste.");
+  assert.equal(fittedFrom({ fitted: false, left: 0 }), "Fitting your taste…");
+});
+
+test("TASTE's and LEARNING's sentences are in the voice", () => {
+  const facts = { audio: 18, structural: 26, draws: 500, styles: 2, styles_max: 5, obs_per_style: 20 };
+  const all = [
+    fittedFrom({ fitted: true, picks: 18 }), mapFoot(40, 0.312), haloLegend(true), haloLegend(false),
+    pickSaid("Glass Pad", "Soft Wash"), pickSaid(null, null), refitSaid(), weightSaid("grit", -0.12, 0.3, true),
+    weightsMore(true, 44, 6), weightsMore(false, 44, 6), directionLegend({ r2: 0.16 }), directionLegend(null),
+    forecastNote({ expected: 0.64, was: 0.58 }), noForecasts(true), noForecasts(false), stripSaid(1),
+    ...mathLines(facts, 6), copyLabel("idle"), copyLabel("copied"), copyLabel("select"), plateGuess(0.59), NO_WEIGHTS,
+    ...Object.values(TASTE_LABELS),
+  ];
+  for (const s of all) {
+    voiced(s);
+    assert.ok(!/\b(lens|posterior|preference|vote|duel|export)\b/i.test(s), `the word table: ${s}`);
+    assert.ok(s.split(/\s+/).length <= 25, `no block past 25 words: ${s}`);
+  }
+  assert.equal(mapFoot(40, 0.312), "A flat view of 40 sounds: close dots usually sound alike (it shows 31% of how they differ).");
+  assert.equal(pickSaid("Glass Pad", "Soft Wash"), "You picked Glass Pad over Soft Wash. Every rating moved.");
+  assert.equal(weightSaid("grit", -0.12, 0.3, true), "grit: likes less, −0.12 ± 0.30, still a guess");
+  assert.equal(directionLegend({ r2: 0.16 }), "the arrow: liking rises · explains 16%");
+  assert.equal(plateGuess(0.59), "would like: 59% · leaning", "a percentage, never alone: with its word");
+});
+
+test("the math states the engine's numbers, and nothing else", () => {
+  const lines = mathLines({ audio: 18, structural: 26, draws: 500, styles: 2, styles_max: 5, obs_per_style: 20 }, 6);
+  assert.equal(lines.length, 5);
+  assert.match(lines[0], /18 audio and 26 structural features/);
+  assert.match(lines[2], /It holds 500 draws of w\. Each pick reweights them, and every 6 picks it fits them again\./);
+  assert.match(lines[3], /one more style for every 20 things it learns from, up to 5\./);
+  // Other numbers, other words: nothing in it is written down twice.
+  const other = mathLines({ audio: 20, structural: 30, draws: 250, styles: 1, styles_max: 3, obs_per_style: 10 }, 8);
+  assert.match(other.join(" "), /20 audio and 30 structural.*250 draws.*every 8 picks.*every 10 things.*up to 3/);
+});
+
+test("the track and the replay say which moment they show", () => {
+  assert.equal(trackLabel(7, true), "now · after 7 picks");
+  assert.equal(trackLabel(1, false), "after 1 pick");
+  assert.equal(pickWords(0), "before any picks");
+  assert.equal(joinedLabel(3), "+3");
+  assert.equal(movedMost("grit", -0.123), "That pick moved grit most (−0.12).");
+  assert.equal(dotsLegend("grit"), "dots: grit");
+  for (const t of [trackLabel(7, true), LOOKING_BACK, movedMost("grit", 0.1), dotsLegend("body")]) voiced(t);
+});
+
+test("REPLAY credits each step to what it was", () => {
+  assert.equal(replayAt("pick", 21), "after 21 picks");
+  assert.equal(replayAt("map", 24), "refit · after 24 picks");
+  assert.equal(replayAt("file", 60), "opened file · after 60 picks");
+  assert.equal(stepMoved("pick", true, "grit", 0.034), "That pick moved grit most (+0.03).");
+  assert.equal(stepMoved("map", true, "grit", 0.23), "The refit moved grit most (+0.23).");
+  assert.equal(stepMoved("map", false, "grit", 0.23), "The refit moved grit most (+0.23).");
+  assert.equal(stepMoved("pick", false, "body", -0.2), "Since the moment before, body moved most (−0.20).");
+  assert.equal(stepMoved("star", true, "body", 0.1), "That star moved body most (+0.10).");
+  for (const k of ["pick", "map", "gen", "file", "star", "cut"]) {
+    voiced(replayAt(k, 3));
+    voiced(stepMoved(k, true, "grit", 0.1));
+    voiced(stepMoved(k, false, "grit", 0.1));
+  }
+});
+
 test("the palette is the engine's eighteen, in its order, each in the house voice", () => {
   // `auracle_session::perform::PALETTE`: the six first, at the same indices,
   // then the twelve in family order.
@@ -380,4 +475,40 @@ test("AUDIO IN says which input it reads, or why it has none, in the voice", () 
   assert.match(INPUT_SAID.refused, /refused/);
   assert.match(INPUT_SAID.refused, /ASK AGAIN/);
   assert.match(INPUT_SAID.monitorOn, /headphones/);
+});
+
+test("the model's guess says why in its own words, its forecast with a word, and when it may not help", () => {
+  const nice = (s) => ({ n_reverb: "reverbs", n_drive: "drive & fold" })[s] || s;
+  const dark = { control: "Bright", word: "dark", coordinate: null, moved: -1.06, part: 0.2, style: 0 };
+  const drive = { control: null, word: null, coordinate: "n_drive", moved: 1, part: 0.1, style: 0 };
+  assert.equal(guessWhy(dark, nice), "it moves toward dark, as your picks lean");
+  assert.equal(guessWhy(drive, nice), "your picks lean toward more drive & fold");
+  assert.equal(guessWhy({ ...drive, moved: -1 }, nice), "your picks lean toward less drive & fold");
+  assert.equal(guessWhy(null), null);
+  assert.equal(guessLine({ why: dark, p: 0.59, lcb: 0.02 }, "patch", nice), "it moves toward dark, as your picks lean · 59% · leaning");
+  // Ranked by a lower bound that can be under zero: said, not hidden.
+  assert.equal(guessLine({ why: dark, p: 0.53, lcb: -0.1 }, "patch", nice), "it moves toward dark, as your picks lean · 53% · a hunch · it may not help");
+  // An empty patch is guessed against the pool's average sound.
+  assert.equal(guessLine({ why: null, p: 0.73, lcb: 0.3 }, "pool", nice), "no part of it leans your way · 73% over your pool’s average · fairly sure");
+  for (const g of [{ why: dark, p: 0.59, lcb: 0.02 }, { why: drive, p: 0.4, lcb: -1 }]) voiced(guessLine(g, "patch", nice));
+});
+
+test("the guess's refusals: nothing before the warm start, words for the rest", () => {
+  assert.equal(guessRefusal({ reason: "no_taste" }), null);
+  assert.equal(guessRefusal({ reason: "no_patch" }), null);
+  assert.equal(guessRefusal({ reason: "full" }), "no guess: nothing more fits, so a module has to come out first");
+  assert.equal(guessRefusal({ reason: "unmeasured" }), "no guess yet: it hasn’t heard this patch");
+  assert.equal(guessRefusal({ guesses: [], skipped: 3, rendered: 4, planned: 4 }), "no guess left here: every module that fits was skipped");
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 6, planned: 6 }), "no guess: none of the modules that fit here passed the safety check");
+  // Time ran out before anything was heard: not a verdict on the modules.
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 0, planned: 6 }), "no guess yet: it has not heard the modules that fit here");
+  assert.equal(guessRefusal({ guesses: [{}], skipped: 0 }), null);
+  for (const r of ["full", "unmeasured"]) voiced(guessRefusal({ reason: r }));
+});
+
+test("a cable's measured level reads in decibels, or nothing at the probe's floor", () => {
+  assert.equal(levelWord(-14.2), "−14 dB");
+  assert.equal(levelWord(3.6), "4 dB");
+  assert.equal(levelWord(-120), "nothing");
+  assert.equal(levelWord(null), "nothing");
 });

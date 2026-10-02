@@ -110,6 +110,87 @@ struct MapFrame {
 /// Most recent history φs to include as ghost points.
 const MAX_HISTORY: usize = 400;
 
+/// Which way liking rises across the map: a summary fit, by least squares, of
+/// each pool member's liking (the logistic of its posterior-mean utility, the
+/// bank's percentage) on its two map coordinates. `gx` and `gy` are liking per
+/// unit of each axis; `r2` is how much of liking's spread across the pool
+/// that plane explains (0 to 1). LEARNING draws it as an arrow. It is a
+/// description of the ratings on the map, not part of the model.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LikingDirection {
+    /// Liking per unit of the map's first axis.
+    pub gx: f64,
+    /// Liking per unit of the map's second axis.
+    pub gy: f64,
+    /// The share of liking's spread the plane explains.
+    pub r2: f64,
+}
+
+/// Least squares of `like` on `(x, y)` over `points` (`[x, y, like]`).
+/// `None` with fewer than three points, no spread in liking (no fit yet:
+/// every rating 0), or points that do not span both axes. Translating the
+/// coordinates changes nothing, so map coordinates with or without the map's
+/// centring give the same direction.
+pub fn liking_direction(points: &[[f64; 3]]) -> Option<LikingDirection> {
+    let ps: Vec<&[f64; 3]> = points
+        .iter()
+        .filter(|p| p.iter().all(|v| v.is_finite()))
+        .collect();
+    let n = ps.len();
+    if n < 3 {
+        return None;
+    }
+    let nf = n as f64;
+    let (mx, my, ml) = ps.iter().fold((0.0, 0.0, 0.0), |(a, b, c), p| {
+        (a + p[0] / nf, b + p[1] / nf, c + p[2] / nf)
+    });
+    let (mut cxx, mut cyy, mut cxy, mut cxl, mut cyl, mut sst) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    for p in &ps {
+        let (dx, dy, dl) = (p[0] - mx, p[1] - my, p[2] - ml);
+        cxx += dx * dx;
+        cyy += dy * dy;
+        cxy += dx * dy;
+        cxl += dx * dl;
+        cyl += dy * dl;
+        sst += dl * dl;
+    }
+    let det = cxx * cyy - cxy * cxy;
+    // Every input is finite (filtered above), so these sums are too.
+    if sst <= 1e-12 || det <= 1e-9 * (cxx * cyy).max(1e-12) {
+        return None;
+    }
+    let gx = (cyy * cxl - cxy * cyl) / det;
+    let gy = (cxx * cyl - cxy * cxl) / det;
+    let sse: f64 = ps
+        .iter()
+        .map(|p| {
+            let fit = ml + gx * (p[0] - mx) + gy * (p[1] - my);
+            (p[2] - fit).powi(2)
+        })
+        .sum();
+    Some(LikingDirection {
+        gx,
+        gy,
+        r2: (1.0 - sse / sst).max(0.0),
+    })
+}
+
+impl Engine {
+    /// A standardized φ on the last map's two axes, uncentred (so up to the
+    /// map's translation, which a direction does not see). `None` before a
+    /// map has been drawn.
+    pub(crate) fn map_coordinates(&self, phi: &[f64]) -> Option<(f64, f64)> {
+        let drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+        let [a1, a2] = drawn.as_ref()?;
+        if a1.len() != phi.len() {
+            return None;
+        }
+        let x: f64 = phi.iter().zip(a1).map(|(a, b)| a * b).sum();
+        let y: f64 = phi.iter().zip(a2).map(|(a, b)| a * b).sum();
+        Some((x, y))
+    }
+}
+
 fn mean_center(rows: &mut [Vec<f64>]) -> Vec<f64> {
     if rows.is_empty() {
         return Vec::new();

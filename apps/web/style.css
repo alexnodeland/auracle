@@ -681,8 +681,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank {
   position: relative; /* containing block for .bank-tour, which anchors to
                          the rail it describes rather than to the page */
-  width: 252px;
-  flex: 0 0 252px;
+  /* 252px of rows, and the faces' column (24px and its 4px gap): the column
+     is added, not taken from the names (Plan-005, a mark never narrows a
+     name). */
+  width: 280px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--hairline);
@@ -967,6 +970,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
    what uncertainty should look like. Absolutely positioned so it costs the row
    no height at all. */
 .bank-item { position: relative; }
+/* The face's column, left of the row's lines, on every row whether its face
+   has arrived or not: the lines start at the same x either way. */
+.bank-item { padding-left: calc(var(--s2) + var(--s5) + var(--s1)); }
+.bank-item > .face-slot {
+  position: absolute;
+  left: var(--s2);
+  top: 50%;
+  transform: translateY(-50%);
+}
 .bank-item .bi-u {
   position: absolute;
   left: 8px; right: 8px; bottom: 3px;
@@ -1170,11 +1182,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
    the callout into the name's row is also 40px given back to the rack. */
 .patch-head {
   display: grid;
-  grid-template-columns: clamp(180px, 26%, 320px) minmax(0, 1fr) auto;
+  /* The subject's column is wider by its face (20 px and the 8 px gap), so
+     the name keeps the width it had before faces; 26% of a stage 28 px
+     narrower (the bank is wider by the faces' column) is 7 px less again. */
+  grid-template-columns: clamp(208px, calc(26% + 35px), 348px) minmax(0, 1fr) auto;
   grid-template-areas: "subject callout evolve" "tools tools tools";
   align-items: center;
   column-gap: var(--s4);
   row-gap: var(--s2);
+}
+/* At 1080 px and under, faces cost the callout its last words: the bank is
+   28 px wider and the subject column 35, so at 1000 px "Breed a generation ▸"
+   showed as "Breed a gener…", and the first-step callouts and "see what it
+   learned" lost their ▸ (measured: a 309 px cell, 344 before faces). The
+   gaps and the chip's own padding give 28 px of it back, so the name keeps
+   its width (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .patch-head { column-gap: var(--s2); }
+  .patch-head .nextstep { padding-inline: var(--s2); }
+  .patch-head .callout-row .seg-new { padding-left: var(--s2); }
 }
 .patch-head .subject-block { grid-area: subject; }
 .patch-head .callout-row { grid-area: callout; }
@@ -1841,43 +1867,388 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lineage-log b { color: var(--phos-b); font-weight: 400; }
 .lineage-log .gen-tag { color: var(--silk-dim); margin-right: var(--s1); }
 
-/* ---- TASTE view ---- */
-.tabs { display: flex; gap: var(--s1); }
-.tab {
-  font-family: var(--font-silk);
-  font-size: var(--t-label);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--silk-dim);
-  background: var(--bezel);
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: var(--s1) var(--s3);
-  cursor: pointer;
-}
-.tab.active {
-  color: var(--phos-b);
-  border-color: var(--phos-b-dim);
-  box-shadow: 0 0 8px var(--phos-b-18), inset 0 0 6px var(--phos-b-08);
-}
 @media (hover: hover) {
   .viewtab:not(.active):hover,
   .tab:not(.active):hover { color: var(--silk); border-color: var(--silk-mute); }
   .duel-card:not(.live-sel):hover { border-color: var(--silk-mute); }
 }
-.caption {
-  flex: 1 1 300px;
+
+/* ---- TASTE and LEARNING: a level's head (taste.js) ----
+   The eyebrow, the headline and the one line under it, to prototype v2's
+   specimen (docs/notes/vision-2026-09/prototype). The shell (Plan-005
+   task 2) may take it for every level. */
+.lv-eyebrow {
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.lv-title {
+  margin: var(--s1) 0 0;
+  font-family: var(--font-silk);
+  font-size: var(--t-display);
+  font-weight: 400;
+  line-height: 1.05;
+  color: var(--silk);
+}
+.lv-sub {
+  margin: var(--s1) 0 0;
+  min-height: 1.45em;
   font-family: var(--font-silk);
   font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk-dim);
 }
-.crt-wrap { flex: 1; min-height: 0; }
-.crt {
-  width: 100%;
-  height: 100%;
+
+/* ---- TASTE: the map ---- */
+.ts {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3) 0;
+}
+.ts-well {
+  position: relative;
+  min-height: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
   background: radial-gradient(ellipse at 50% 35%, var(--crt-amber) 0%, var(--bezel) 85%);
+  overflow: hidden;
+}
+.ts-well:focus-within { border-color: var(--silk-mute); }
+/* No double-tap zoom: a tap opens the sound under it. */
+.ts-map { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: manipulation; }
+.ts-map:focus-visible { outline: none; }
+.ts-map.hit { cursor: pointer; }
+.ts-legend {
+  position: absolute;
+  top: var(--s3);
+  right: var(--s3);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--r1);
+  background: var(--bezel-72);
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  color: var(--phos-b-dim);
+  opacity: 0;
+  transition: opacity var(--d-state);
+  pointer-events: none;
+}
+.ts-legend.on { opacity: 1; }
+.tl-halo { display: inline-flex; align-items: center; gap: var(--s1); }
+.tl-halo i { display: inline-block; border-radius: 50%; border: 1px solid var(--phos-b-45); background: var(--phos-b-18); }
+.tl-halo .sm { width: 8px; height: 8px; }
+.tl-halo .lg { width: 16px; height: 16px; background: var(--phos-b-30); border-color: var(--phos-b-80); }
+/* Before the first fit every halo is a guess: one dashed ring. */
+.ts-legend.guess .tl-halo .sm { display: none; }
+.ts-legend.guess .tl-halo .lg { background: transparent; border-style: dashed; border-color: var(--phos-b-60); }
+.ts-plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  width: 240px;
+  padding: var(--s3);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+  border: 1px solid var(--plate-edge);
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--d-state) var(--e-settle);
+}
+.ts-plate.on { opacity: 1; pointer-events: auto; }
+.ts-pl-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-title);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--silk);
+  overflow-wrap: anywhere;
+}
+.ts-pl-like { margin-top: var(--s1); font-family: var(--font-mono); font-size: var(--t-value); color: var(--phos-b); }
+.ts-pl-like.guess { color: var(--phos-b-dim); }
+.ts-pl-acts { display: flex; gap: var(--s1); margin-top: var(--s3); }
+.ts-foot { margin: 0; min-height: 1.45em; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+/* SOUND / TASTE, at the map's top left (prototype v2's .tog). */
+.ts-tog {
+  position: absolute;
+  top: var(--s3);
+  left: var(--s3);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 30px;
+  padding-inline: var(--s3);
+  border-radius: var(--r1);
+  border: 1px solid var(--hairline);
+  background: var(--bezel-72);
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ts-tog .led { width: 6px; height: 6px; border-radius: 50%; background: var(--plate-edge); transition: background var(--d-state), box-shadow var(--d-state); }
+.ts-tog .ts-seg { transition: color var(--d-state); }
+.ts-tog[aria-pressed="false"] [data-seg="taste"], .ts-tog[aria-pressed="true"] [data-seg="sound"], .ts-tog .ts-sep { color: var(--silk-dim); }
+.ts-tog[aria-pressed="false"] [data-seg="sound"], .ts-tog[aria-pressed="true"] [data-seg="taste"] { color: var(--silk); }
+.ts-tog[aria-pressed="true"] { border-color: var(--plate-edge); }
+.ts-tog[aria-pressed="true"] .led { background: var(--silk); box-shadow: 0 0 8px var(--white-35); }
+/* Taste over time: a slim track along the map's foot, once there are two
+   moments to move between. */
+.ts-time {
+  position: absolute;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: var(--s3);
+  height: 46px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s3) 0 var(--s1);
+  border-radius: var(--r2);
+  background: var(--bezel-72);
+  border: 1px solid var(--hairline);
+}
+.ts-time.on { display: flex; }
+.ts-tplay {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--silk-dim);
+  font-size: var(--t-value);
+  cursor: pointer;
+}
+.ts-tplay:hover, .ts-tplay.on { color: var(--silk); background: var(--panel-hi); }
+.ts-track { flex: 1; min-width: 0; height: 36px; cursor: pointer; touch-action: none; border-radius: var(--r1); }
+.ts-track canvas { display: block; width: 100%; height: 100%; }
+.ts-tlabel { flex: none; min-width: 13ch; text-align: right; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+
+/* ---- LEARNING: the model room ---- */
+.md {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s4);
+  padding: var(--s2) var(--s3);
+  overflow-y: auto;
+}
+.md-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--s4); min-height: 0; }
+.md-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-height: 0;
+  padding: var(--s3) var(--s4);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+}
+.md-ph { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--s3); min-height: 24px; }
+.md-cap {
+  margin: 0;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.md-none { margin: 0; font-family: var(--font-silk); font-size: var(--t-body); color: var(--silk-dim); }
+/* The styles: pick one to see its weights, name it, hear what it rates
+   highest. */
+.md-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.md-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding-right: var(--s2);
+  background: var(--chip);
+  border: 1px solid var(--plate-edge);
+  border-radius: var(--r3);
+}
+.md-chip:has(.md-chip-pick[aria-checked="true"]) { border-color: var(--phos-b-dim); }
+.md-chip-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) 0 var(--s1) var(--s2);
+  background: none;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  color: var(--silk-dim);
+  cursor: pointer;
+}
+.md-chip-pick i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.md-chip-name {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--silk);
+  font: var(--t-body)/1.4 var(--font-mono);
+  width: auto;
+  max-width: 30ch;
+}
+.md-chip-play { background: none; border: none; color: var(--phos-a); cursor: pointer; font-size: var(--t-label); padding: 0 2px; }
+.md-chip-play:disabled { color: var(--silk-mute); cursor: default; }
+/* A mark sits in a slot every row and chip keeps, left of its label, so the
+   label never moves whether the mark shows or not (Plan-005 task 1). */
+.md-mark {
+  flex: none;
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  color: var(--phos-b-dim);
+}
+.md-chip-pick[aria-checked="true"] .md-mark::before { content: "●"; color: var(--phos-b); }
+.md-bars {
+  display: grid;
+  grid-auto-rows: minmax(18px, 24px);
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--plate-edge) transparent;
+}
+.md-row, .md-scale {
+  display: grid;
+  grid-template-columns: 1.1em minmax(0, 190px) minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s1);
+}
+.md-row { border-radius: var(--r1); }
+.md-name { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; white-space: nowrap; }
+.md-word { flex: none; font-family: var(--font-silk); font-size: var(--t-body); color: var(--silk); }
+.md-row.guess .md-word { color: var(--silk-dim); }
+.md-tech { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+.md-track { position: relative; height: 10px; }
+.md-zero { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--plate-edge); }
+.md-bar { position: absolute; top: 1px; height: 8px; border-radius: 2px; background: var(--phos-b); box-shadow: 0 0 8px -2px var(--phos-b-60); }
+.md-bar.neg { background: var(--phos-b-dim); }
+/* A guess (its whisker crosses zero, taste-geom `pullMark`): a hollow
+   outline at GUESS_ALPHA, its whisker at full strength. */
+.md-bar.hollow { background: transparent; box-shadow: none; border: 1px solid var(--phos-b); opacity: 0.45; }
+.md-whisker { position: absolute; top: 4.5px; height: 1px; background: var(--silk); pointer-events: none; }
+/* A weight moves to its new value, after a pick or a REPLAY step. */
+.md-bar, .md-whisker { transition: left var(--d-move) var(--e-settle), width var(--d-move) var(--e-settle); }
+/* Where it was before the replayed pick: dashed, while the bar moves. */
+.md-ghost {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  border: 1px dashed var(--phos-b-dim);
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--d-state);
+}
+.md-ghost.on { opacity: 1; }
+.md-row.lit { background: var(--panel-hi); }
+.md-row:focus-visible { outline: 1px solid var(--silk-mute); outline-offset: -1px; }
+.md-row.moved .md-word { color: var(--phos-b); }
+.md-replay-at { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-value); color: var(--phos-b-dim); }
+.md-replay { display: inline-flex; align-items: center; gap: var(--s1); }
+.md-replay.on { color: var(--phos-b); border-color: var(--phos-b-dim); }
+.md-replay:disabled { opacity: 0.45; cursor: default; }
+.md-replay kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 var(--s1);
+}
+.md-val { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); text-align: right; font-variant-numeric: tabular-nums; }
+.md-more { display: none; align-self: flex-start; }
+.md-scale { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+.md-scale span { grid-column: 3; grid-row: 1; }
+.md-scale span:nth-child(1) { justify-self: start; }
+.md-scale span:nth-child(2) { justify-self: center; }
+.md-scale span:nth-child(3) { justify-self: end; }
+/* The map keeps room to be read, and the forecasts their own height: with
+   the math open, the room scrolls rather than one panel drawing over the
+   next (a panel's `min-height: 0` let its row shrink under its content). */
+.md-right { display: grid; grid-template-rows: minmax(200px, 1fr) auto auto; gap: var(--s4); min-height: 0; }
+.md-right .md-fcp { min-height: auto; }
+.md-mapp { min-height: 0; }
+.md-map { position: relative; flex: 1; min-height: 140px; border-radius: var(--r2); background: var(--bezel); }
+.md-map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.md-maplegend { font-family: var(--font-mono); font-size: var(--t-value); color: var(--phos-b-dim); text-align: right; }
+.md-fc { display: flex; align-items: baseline; gap: var(--s3); }
+.md-big { flex: none; font-family: var(--font-mono); font-size: var(--t-title); font-weight: 500; color: var(--phos-b); }
+.md-big span { font-size: var(--t-body); color: var(--silk-dim); }
+.md-fcnote { margin: 0; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+.md-strip { position: relative; min-width: 0; height: 48px; }
+.md-strip canvas { display: block; width: 100%; height: 100%; }
+.md-skill { margin: 0; font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); }
+.md-skill:empty { display: none; }
+.md-foot { display: grid; gap: var(--s2); }
+.md-footrow { display: flex; align-items: center; gap: var(--s3); }
+.md-disclose, .md-more {
+  background: none;
+  border: 0;
+  padding: var(--s1) 0;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  cursor: pointer;
+}
+.md-disclose::before, .md-more::before { content: "›"; display: inline-block; margin-right: var(--s1); transition: transform var(--d-state); }
+.md-disclose[aria-expanded="true"]::before, .md-more[aria-expanded="true"]::before { transform: rotate(90deg); }
+.md-math { padding: var(--s3); background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r2); }
+.md-math code { display: block; margin-bottom: var(--s2); font-family: var(--font-mono); font-size: var(--t-value); color: var(--phos-b); }
+.md-math p { margin: 0 0 var(--s1); font-family: var(--font-silk); font-size: var(--t-body); line-height: 1.45; color: var(--silk-dim); max-width: 62ch; }
+.md-json {
+  width: 100%;
+  height: 120px;
+  padding: var(--s2);
+  background: var(--bezel);
+  color: var(--silk-dim);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  resize: vertical;
+}
+@media (max-width: 1180px) {
+  .md-row, .md-scale { grid-template-columns: 1.1em minmax(0, 150px) minmax(0, 1fr) 48px; }
+  .md-tech, .md-scale span:nth-child(2) { display: none; }
+}
+@media (max-width: 860px) {
+  .md-body { display: flex; flex-direction: column; }
+  .md-right { display: contents; }
+  .md-mapp { order: 1; }
+  .md-weighs { order: 2; }
+  .md-fcp { order: 3; }
+  .md-foot { order: 4; }
+  .md-map { height: 200px; flex: none; }
+  .md-bars { overflow: visible; }
+  .md-bars.collapsed .md-row.extra { display: none; }
+  .md-more { display: inline-flex; }
 }
 
 /* ===================== keyboard dock ===================== */
@@ -3434,7 +3805,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   .util-btn { padding: var(--s1) var(--s2); }
 }
 @media (max-width: 1080px) {
-  .bank { width: 200px; flex-basis: 200px; }
+  .bank { width: 228px; flex-basis: 228px; } /* 200px of rows and the faces' column */
   /* A 200px rail has room for "+15", not for "+15 arriving"; the tooltip
      keeps the sentence. */
   .bank-head .bc-word { display: none; }
@@ -3502,23 +3873,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .midi-ind.on { color: var(--phos-a); text-shadow: 0 0 6px var(--phos-a-60); }
 #rec-btn.lit { color: var(--led-red); border-color: var(--led-red); text-shadow: 0 0 8px var(--led-red-80); }
 
-/* ---------- taste style chips & duel prediction ---------- */
-.style-chips { display: flex; gap: var(--s2); flex-wrap: wrap; padding: var(--s1) var(--s3); }
-.style-chip {
-  display: flex; align-items: center; gap: var(--s1);
-  background: var(--chip); border: 1px solid var(--plate-edge); border-radius: var(--r3);
-  padding: 3px var(--s2);
-}
-.style-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.style-chip .sc-name {
-  background: transparent; border: none; outline: none;
-  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: auto; max-width: 30ch;
-}
-.style-chip .sc-share { font-size: var(--t-label); color: var(--silk-dim); }
-.style-chip .sc-play {
-  background: none; border: none; color: var(--phos-a);
-  cursor: pointer; font-size: var(--t-label); padding: 0 2px;
-}
+/* ---------- a style's badge, and the duel's prediction ---------- */
 .style-badge { display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t-value); color: var(--silk-dim); }
 .style-badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .duel-pred { font-size: var(--t-value); color: var(--silk-dim); text-align: center; min-height: 12px; }
@@ -3548,7 +3903,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .pd-side {
   background: var(--pd-side); border: 1px solid var(--plate-edge); border-radius: 3px;
   color: var(--phos-a); font: var(--t-value)/1.4 var(--font-mono);
-  padding: 2px var(--s2); cursor: pointer; max-width: 180px;
+  padding: 2px var(--s2); cursor: pointer; max-width: 198px; /* 180 px of name, and the face's 14 and its 4 px */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pd-side:hover { border-color: var(--phos-a); }
@@ -3715,7 +4070,8 @@ kbd { font-family: var(--font-mono); }
 .wi-play:focus-visible,
 .pf-hood-row:focus-visible,
 .tray-item .t-x:focus-visible,
-.style-chip .sc-play:focus-visible,
+.md-chip-pick:focus-visible,
+.md-chip-play:focus-visible,
 .toast-undo:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -4818,73 +5174,6 @@ input[type="range"]::-moz-range-thumb {
    rack legitimately shows the sound you are hearing. The amber header line
    carries the "this is a candidate" state. */
 
-/* ---------- empty states: HTML, not canvas paint ---------- */
-.crt-wrap { position: relative; }
-.crt-empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: var(--s3);
-  text-align: center;
-  padding: var(--s5);
-}
-/* Pre-fit map: the invitation floats over live dots without stealing them. */
-.crt-empty.translucent {
-  background: var(--rack-55);
-  pointer-events: none;
-}
-.crt-empty.translucent .hw-btn { pointer-events: auto; }
-.crt-empty .ce-title {
-  font-size: var(--t-label);
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--phos-b);
-}
-.crt-empty .ce-copy {
-  font-family: var(--font-silk);
-  font-size: var(--t-body);
-  line-height: 1.55;
-  color: var(--silk-dim);
-  max-width: 44ch;
-}
-.crt-empty .ce-count { font-family: var(--font-mono); font-size: var(--t-body); color: var(--phos-b-dim); }
-.crt-empty .hw-btn { margin-top: var(--s2); }
-.crt-empty .ce-skel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
-  width: min(360px, 60%);
-  margin-bottom: var(--s2);
-}
-.crt-empty .ce-skel i {
-  height: 10px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--phos-b-14), transparent);
-}
-/* Directions: bars of different pulls, so the skeleton previews the chart. */
-.crt-empty .ce-skel.dir { align-items: flex-start; }
-.crt-empty .ce-skel.dir i { align-self: flex-start; width: 85%; }
-.crt-empty .ce-skel.dir i:nth-child(2) { width: 55%; }
-.crt-empty .ce-skel.dir i:nth-child(3) { width: 70%; }
-.crt-empty .ce-skel.dir i:nth-child(4) { width: 38%; }
-/* Trust: the reliability box with its honest diagonal, waiting for dots. */
-.ce-trust-skel {
-  width: 130px;
-  height: 130px;
-  border: 1px solid var(--phos-b-25);
-  border-radius: var(--r1);
-  background: linear-gradient(
-    to top right,
-    transparent calc(50% - 1px),
-    var(--phos-b-35) 50%,
-    transparent calc(50% + 1px)
-  );
-  margin-bottom: var(--s2);
-}
-
 /* ---------- one-time bench walkthrough ---------- */
 .bench-tour {
   display: flex;
@@ -4965,52 +5254,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .teach-link { cursor: pointer; }
 .teach-link:hover { text-decoration: underline; }
-
-/* ---------- taste map affordance ---------- */
-#taste-crt.hit { cursor: pointer; }
-.map-tip {
-  position: fixed;
-  z-index: 45;
-  pointer-events: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-value);
-  line-height: 1.5;
-  color: var(--silk);
-  background: var(--surface-pop);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r1);
-  padding: var(--s1) var(--s2);
-  box-shadow: var(--cast);
-  max-width: 240px;
-}
-.map-tip .mt-name { color: var(--phos-b); }
-.map-tip .mt-dim { color: var(--silk-dim); }
-.map-tip .mt-u { color: var(--phos-b-dim); }
-.map-legend {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  font-family: var(--font-mono);
-  font-size: var(--t-value);
-  color: var(--silk-dim);
-  pointer-events: none;
-}
-.map-legend .ml-ramp {
-  display: inline-block;
-  width: 46px; height: 8px; border-radius: var(--r1);
-  vertical-align: middle;
-  background: linear-gradient(90deg, var(--phos-b-08), var(--phos-b-85));
-}
-.map-legend .ml-ramp-wrap { display: inline-flex; align-items: center; gap: var(--s1); }
-.map-legend .ml-ring { display: inline-flex; align-items: center; gap: var(--s1); }
-.map-legend .ml-ring i { display: inline-block; border: 1px solid var(--phos-b-dim); border-radius: 50%; }
-/* The map's smallest and largest dots, to the pixel: 2 × MAP_R_SURE and
-   2 × MAP_R_UNSURE in main.js. */
-.map-legend .ml-ring .sm { width: 5px; height: 5px; }
-.map-legend .ml-ring .lg { width: 18px; height: 18px; }
 
 /* ===================== handheld gate =====================
    Shown only when the early script in index.html sets html.handheld, which
@@ -5136,6 +5379,33 @@ html.handheld .handheld-gate {
 .keys-span .pc-cap { font-size: var(--t-label); color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .keys-span .perf-sel { flex: 1; min-width: 0; }
 
+/* ===================== faces ===================== */
+/* A sound's face (Plan-005 task 3): the render's spectrum against the bank's,
+   drawn by faces.js (in the sound's green, `--phos-a`) as an image in a slot
+   its place always has. */
+.face-slot { display: inline-block; flex: none; vertical-align: middle; }
+.face-slot .face { display: block; pointer-events: none; }
+/* PATCH's teach strip: the face, then the name. */
+.pd-side .face-slot { margin-right: var(--s1); }
+/* An EVOLVE card's face, before its name; the name keeps the head's free
+   space, so the badge and the flip stay at the right. */
+.panel-head > .face-slot + .duel-name { margin-right: auto; }
+/* At 1000 to 1080 px the bank is wider by the faces' column (228 px, not
+   200); PERFORM's side padding gives the 28 px back, so its eight captions
+   keep the width they had (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .stage > .view.perform { padding-left: var(--s2); padding-right: var(--s2); } /* (0,3,0): over PERFORM's own padding, set further down */
+}
+/* A warm-start card: the face left of its two lines, in a column the card
+   always has. */
+.warm-cell .warm-item { padding-left: calc(var(--s3) + var(--s5) + var(--s2)); }
+.warm-item > .face-slot {
+  position: absolute;
+  left: var(--s3);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 /* ===================== PERFORM ===================== */
 /* The sound under your hands: up to eight named controls from a palette of
    eighteen, Blend, a wander dial and six pads, on one faceplate. Built by
@@ -5154,6 +5424,7 @@ html.handheld .handheld-gate {
   justify-content: space-between;
   gap: var(--s4);
 }
+.pf-head .pf-title { margin-right: auto; } /* the held face sits before it */
 .pf-name {
   font-family: var(--font-silk);
   font-size: 26px; /* token-exempt: PERFORM's held name. The specimen sets it as the level's display (52px) in a layout with room for it, which PERFORM's rebuild makes (Plan-005 task 5); at 52px here it pushes how it works under the keybed */
@@ -5885,4 +6156,245 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   .pf-knob svg { max-width: 68px; }
   .pf-pad { min-height: 44px; }
   .pf-xy-field { height: 118px; }
+}
+
+/* =====================================================================
+   PATCH, Plan-005 task 7 (patch.js): the model's guess, each cable's
+   measured level, a patch from nothing, and the module sheet on touch.
+   ===================================================================== */
+
+/* ---------- a patch from nothing ----------
+   At the right of the name's row, as the specimen puts NEW PATCH beside the
+   title: the callout before it ellipsizes to make room, so the header keeps
+   its two rows at every width (in the toolbar row it broke the tools onto a
+   third from 1200 to 1279 px). The specimen's glyph beside each label; under
+   1280 px only the glyph, the button named by its aria-label and tooltip. */
+.callout-row .seg-new { margin-left: auto; flex: none; padding-left: var(--s3); }
+.callout-row .seg-new:empty { display: none; }
+.seg-new .seg-item { display: inline-flex; align-items: center; gap: var(--s1); }
+.seg-new .pn-ic { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 1279px) {
+  .seg-new .pn-label, .seg-new kbd { display: none; }
+}
+.seg-new kbd {
+  margin-left: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--silk-mute);
+}
+@media (pointer: coarse) { .seg-new kbd { display: none; } }
+
+/* ---------- the guess ----------
+   A guess looks like a guess (voice.md, ADR-012): dashed amber, and the
+   model's italic for its reason. The line sits over the rack's top left, as
+   the prototype's readout does; the module is drawn at its socket. */
+.guess-read {
+  position: absolute;
+  z-index: 5;
+  left: var(--s4);
+  top: var(--s3);
+  right: var(--s7);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  pointer-events: none;
+}
+.guess-read[hidden] { display: none; }
+.gr-chip {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--phos-b);
+}
+.gr-why {
+  min-width: 0;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  color: var(--silk);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.guess-read .gr-why:only-child { color: var(--silk-dim); }
+
+.rack-guess .guess-lead { fill: none; stroke: var(--phos-b-55); stroke-width: 1.6; stroke-dasharray: 5 5; }
+.rack-guess .guess-at { fill: var(--phos-b); }
+.guess-plate { cursor: pointer; outline: none; }
+.guess-plate .gp-body {
+  fill: var(--phos-b-06);
+  stroke: var(--phos-b-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  transition: stroke var(--d-state) ease, fill var(--d-state) ease;
+}
+/* Over an empty socket it covers the socket's own "drop a source" outright. */
+.guess-plate.over .gp-body { fill: var(--rack); }
+.guess-plate.over:hover .gp-body, .guess-plate.over:focus-visible .gp-body { fill: var(--rack); }
+.guess-plate:hover .gp-body,
+.guess-plate:focus-visible .gp-body { stroke: var(--phos-b); fill: var(--phos-b-10); }
+.guess-plate .gp-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-title);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: var(--phos-b);
+}
+.guess-plate .gp-word {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--phos-b-dim);
+}
+.guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Beside the guess plate: the patch's face, and its face with the guess, as
+   rendered (Plan-005 task 3). The words under them are the rack's value tier. */
+.rack-guess .gp-face { pointer-events: none; }
+.rack-guess .gp-face-word { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--silk-dim); text-anchor: middle; pointer-events: none; }
+.guess-plate text { pointer-events: none; }
+.gp-skip { cursor: pointer; outline: none; }
+.gp-skip .gp-skip-hit { fill: transparent; stroke: transparent; }
+.gp-skip path { stroke: var(--phos-b-dim); stroke-width: 1.6; stroke-linecap: round; }
+.gp-skip:hover path, .gp-skip:focus-visible path { stroke: var(--phos-b); }
+.gp-skip:focus-visible .gp-skip-hit { stroke: var(--phos-b-55); }
+
+/* The module rail's row for the guessed kind: an amber mark in the row's own
+   left padding, so its name never moves. */
+.nb-item { position: relative; }
+.nb-item.guessed::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px; /* token-exempt: half the mark, to centre it */
+  border-radius: 50%;
+  background: var(--phos-b);
+  box-shadow: 0 0 6px var(--phos-b-60);
+}
+
+/* ---------- each cable's measured level ----------
+   The light a cable carries at rest is its level as the engine measured it
+   (`edit_cable_levels`): stroke opacity, set per cable by `paintWireLevel`,
+   eased so the light arriving reads as the measurement landing. The mark on
+   its middle lights a bar per third of the meter's range, hollow while the
+   patch has changed since it was measured. */
+/* At rest only: while notes sound the live meter drives it, and a transition
+   would make the meter lag. */
+#rack-svg:not(.flowing) .wire.audio { transition: stroke-opacity var(--d-state) ease; }
+.cable-marks { pointer-events: none; }
+.cable-mark { pointer-events: all; }
+.cable-mark .lm-box { fill: var(--rack-96); stroke: var(--phos-a-45); stroke-width: 1; }
+.cable-mark .lm-bar { fill: none; stroke: var(--phos-a-45); stroke-width: 0.8; }
+.cable-mark .lm-bar.on { fill: var(--phos-a); stroke: var(--phos-a); }
+.cable-mark.unknown .lm-box { stroke: var(--silk-mute); stroke-dasharray: 2 2; }
+.cable-mark.unknown .lm-bar { stroke: var(--silk-mute); }
+
+/* ---------- the module sheet (touch) ----------
+   The prototype's sheet: up from the bottom on a narrow screen, a panel at
+   the bottom right on a wide one. Every setting is a wide slider with − and
+   + steps, or its choices as buttons. */
+.msheet {
+  position: fixed;
+  z-index: 58;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  padding: var(--s1) var(--s3) var(--s3);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-bottom: 0;
+  border-radius: var(--r3) var(--r3) 0 0;
+  box-shadow: 0 -24px 48px -24px var(--black-90);
+  transform: translateY(calc(100% + 24px));
+  visibility: hidden;
+  transition: transform var(--d-move) var(--e-settle), visibility 0s linear var(--d-move);
+}
+.msheet.on { transform: none; visibility: visible; transition: transform var(--d-move) var(--e-settle), visibility 0s; }
+.msheet.dragging { transition: none; }
+@media (min-width: 701px) and (min-height: 501px) {
+  .msheet {
+    left: auto;
+    right: var(--s5);
+    bottom: var(--s5);
+    width: 420px;
+    border-radius: var(--r3);
+    border-bottom: 1px solid var(--hairline);
+  }
+}
+.ms-grab { flex: none; width: 40px; height: 4px; border-radius: 2px; background: var(--hairline); margin: var(--s2) auto; touch-action: none; }
+.ms-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); touch-action: none; }
+.ms-title { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+.ms-name { font-family: var(--font-silk); font-size: var(--t-title); font-weight: 500; color: var(--silk); }
+.ms-sub { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-x {
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: none; border: 0; color: var(--silk-dim); font-size: var(--t-body); cursor: pointer;
+}
+.ms-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; padding-bottom: var(--s1); }
+.ms-says { margin: var(--s1) 0 var(--s2); font-size: var(--t-body); line-height: 1.35; color: var(--silk-dim); }
+.ms-rows { display: grid; gap: var(--s2); }
+.ms-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-areas: "lab lab lab" "minus track plus";
+  gap: 2px var(--s2);
+  align-items: center;
+  border-radius: var(--r2);
+}
+.ms-row > .ms-lab { grid-area: lab; }
+.ms-row > .ms-step:first-of-type { grid-area: minus; }
+.ms-row > .ms-track { grid-area: track; }
+.ms-row > .ms-step:last-of-type { grid-area: plus; }
+.ms-row.hl { background: var(--phos-a-06); box-shadow: 0 0 0 1px var(--phos-a-deep); }
+.ms-lab { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
+.ms-n { font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--silk); }
+.ms-val { font-family: var(--font-mono); font-size: var(--t-value); color: var(--silk-dim); font-variant-numeric: tabular-nums; }
+.ms-step {
+  width: 44px; height: 44px; border-radius: var(--r2);
+  border: 1px solid var(--hairline); background: var(--panel-hi); color: var(--silk);
+  font-family: var(--font-mono); font-size: var(--t-title); line-height: 1;
+  display: grid; place-items: center; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  cursor: pointer;
+}
+.ms-step:active { background: var(--plate-lo); }
+.ms-track { position: relative; height: 44px; touch-action: none; cursor: pointer; border-radius: var(--r2); outline: none; }
+.ms-track:focus-visible { box-shadow: 0 0 0 2px var(--phos-a-deep); }
+.ms-rail, .ms-fill { position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.ms-rail { left: 14px; right: 14px; background: var(--hairline); }
+.ms-fill { left: 14px; background: var(--phos-a); box-shadow: 0 0 8px var(--phos-a-50); }
+.ms-thumb {
+  position: absolute; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; /* token-exempt: half the thumb, to centre it */
+  border-radius: 50%; background: radial-gradient(circle at 40% 35%, var(--knob-hi), var(--knob-mid));
+  border: 2px solid var(--phos-a); box-shadow: 0 2px 6px var(--black-60);
+}
+.ms-row-seg { grid-template-columns: 1fr; grid-template-areas: none; }
+.ms-row-seg > .ms-lab { grid-area: auto; }
+.ms-seg { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.ms-seg button {
+  flex: 1; min-width: 64px; height: 40px; border-radius: var(--r2);
+  border: 1px solid var(--hairline); background: none; cursor: pointer;
+  font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.ms-seg button[aria-checked="true"] { color: var(--phos-a); border-color: var(--phos-a-deep); background: var(--phos-a-06); }
+.ms-foot { flex: none; display: flex; justify-content: flex-end; padding-top: var(--s3); margin-top: var(--s2); border-top: 1px solid var(--hairline); }
+.ms-rm { height: 40px; }
+.ms-rm:hover, .ms-rm:active { color: var(--led-red); }
+
+@media (prefers-reduced-motion: reduce) {
+  #rack-svg:not(.flowing) .wire.audio, .guess-plate .gp-body { transition: none; }
 }

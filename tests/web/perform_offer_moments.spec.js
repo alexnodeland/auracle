@@ -3,10 +3,11 @@
 //
 // - An offer is a short walk from the sound under your hands
 //   (`Engine::offer`, through `perform_offer` with that sound's tree), so B
-//   grows out of the sound's name into its place.
-// - Taken, B fills with green and goes into the name: the bench takes its
+//   grows out of the sound's face (its vessel, as the mock grows it) into its
+//   place.
+// - Taken, B fills with green and goes into the face: the bench takes its
 //   tree, and it is the sound you play.
-// - Passed, B folds back into the name it grew from: it is dropped, and the
+// - Passed, B folds back into the face it grew from: it is dropped, and the
 //   sound you had is the sound you play.
 // - The heard rule, unchanged: an offer can be taken heard or not, and only a
 //   heard one (a second of PEEK, or of BLEND past half, while a note sounds)
@@ -14,7 +15,7 @@
 //
 // The motion is read where it is made: every `Element.animate` call is
 // recorded (by wrapping it before main.js runs), and each moment's keyframes
-// are checked against where the sound's name and B are on the page. Reduced
+// are checked against where the sound's face and B are on the page. Reduced
 // motion is not tested here; each moment is also B's `data-moment`, which is
 // what the assertions on state read.
 const { test, expect } = require("@playwright/test");
@@ -89,7 +90,7 @@ function boxOf(transform, at) {
   return { left: at.left + dx, top: at.top + dy, width: at.width * sx, height: at.height * sy };
 }
 const near = (a, b, px = 2) => ["left", "top", "width", "height"].every((k) => Math.abs(a[k] - b[k]) <= px);
-const nameBox = (page) => page.locator(".pf-name").evaluate((e) => {
+const faceBox = (page) => page.locator(".pf-head .pf-face").evaluate((e) => {
   const r = e.getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 });
@@ -101,17 +102,17 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   await openOnPerform(page, "Glass Pad");
   await page.keyboard.down("a");
 
-  // Grown: B's first frame is the sound's name, its last is B's own place.
+  // Grown: B's first frame is the sound's face, its last is B's own place.
   let n0 = (await anims(page)).length;
-  const name0 = await nameBox(page);
+  const name0 = await faceBox(page);
   await grow(page);
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "grown");
   let grown = (await anims(page)).slice(n0).find((a) => !/ghost/.test(a.cls));
   expect(grown, "B grows").toBeTruthy();
-  expect(near(boxOf(grown.frames[0].transform, grown.at), name0), "from the sound's name").toBe(true);
+  expect(near(boxOf(grown.frames[0].transform, grown.at), name0), "from the sound's face").toBe(true);
   expect(grown.frames[grown.frames.length - 1].transform).toBe("none");
 
-  // Passed (heard): a copy of B folds back into the name; B empties.
+  // Passed (heard): a copy of B folds back into the face; B empties.
   await peek(page, 1800);
   n0 = (await anims(page)).length;
   await page.locator(".pf-pad", { hasText: "Next" }).click();
@@ -119,15 +120,15 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   const folded = (await anims(page)).slice(n0).find((a) => /ghost/.test(a.cls) && a.moment === "folded");
   expect(folded, "B folds back").toBeTruthy();
   expect(folded.frames[0].transform).toBe("none");
-  expect(near(boxOf(folded.frames[folded.frames.length - 1].transform, folded.at), await nameBox(page)), "into the sound's name").toBe(true);
+  expect(near(boxOf(folded.frames[folded.frames.length - 1].transform, folded.at), await faceBox(page)), "into the sound's face").toBe(true);
 
   // Taken (heard): a copy of B fills green from its base, then goes into the
-  // name, and the name is the offer's.
+  // face, and the name is the offer's.
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: 150_000 });
   await peek(page, 1800);
   n0 = (await anims(page)).length;
   const before = await page.locator(".pf-name").textContent();
-  const nameAtTake = await nameBox(page);
+  const nameAtTake = await faceBox(page);
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "taken");
   const after = (await anims(page)).slice(n0);
@@ -135,7 +136,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   expect(fill, "B fills").toBeTruthy();
   expect(fill.frames.map((f) => f.transform)).toEqual(["scaleY(0)", "scaleY(1)"]);
   const taken = after.find((a) => /ghost/.test(a.cls) && a.moment === "taken");
-  expect(near(boxOf(taken.frames[taken.frames.length - 1].transform, taken.at), nameAtTake), "into the sound's name").toBe(true);
+  expect(near(boxOf(taken.frames[taken.frames.length - 1].transform, taken.at), nameAtTake), "into the sound's face").toBe(true);
   await expect(page.locator(".pf-name")).not.toHaveText(before, { timeout: 60_000 });
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   await page.keyboard.up("a");

@@ -1,6 +1,6 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
-last_updated: 2026-10-01
+last_updated: 2026-10-02
 related_adrs: [3, 5]
 ---
 
@@ -59,7 +59,7 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   whole pipeline (grammar edits, rendering and φ, the taste model, the
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js` or `live-audio.js`, to `crates/auracle-session` or
+  `farm.js`, `perform.js`, `patch.js` or `live-audio.js`, to `crates/auracle-session` or
   `crates/auracle-wasm`, to a spec file holding an `@slow` test, or to the
   suite's config and lockfile. Not `main.js`: every view lives there, so it
   would make nearly every app PR a slow run. A `main.js` change that reaches
@@ -81,6 +81,7 @@ runners). Rust tests over a minute, named in the `Makefile` as
 | `auracle-session tests::closed_loop_learns_synthetic_taste` | 76 s |
 | `auracle-session tests::closed_loop_learns_motion_rate` | 72 s |
 | `auracle-session perform::tests::drift_is_local_and_follows_sigma` | 71 s |
+| `auracle-session perform::tests::a_stepped_walk_is_the_walk` | 41 s on a 16-core M3 Max (a preset, two seeds, three kinds of walk, each stepped two ways beside the one call), not yet timed on CI; `auracle-wasm tests::a_stepped_offer_gives_the_reply_the_one_call_gives` (27 s there) stays in the fast tier |
 | `auracle-wasm tests::farm_walks_breed_the_serial_generation` | 70 s |
 | `auracle-session tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one` | 63 s |
 
@@ -103,16 +104,22 @@ held-engine reload test, which boots twice like them; the reload-at-once
 test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
-`perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s), `perform_teaches.spec.js` (54 s), and three that wait on PERFORM's
+`perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (a boot, a
+measurement and a minute: not yet timed on CI), `perform_recentre.spec.js`'s glide home
+(54 s), `perform_teaches.spec.js` (54 s), three that wait on PERFORM's
 engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
 control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
 index and its marks (a measurement each: 13 to 16 and 13 to 15 s there),
 and both tests in `perform_offer_moments.spec.js` (offers grown, heard and
-answered: 17 to 19 and 31 s there), and `audio_in.spec.js`'s capture handed
+answered: 17 to 19 and 31 s there), and `patch_guess.spec.js`'s five that
+fit after the warm start before PATCH guesses (the guess drawn, added,
+skipped and undone; the floor with no crew; keep as new; a new patch's own
+skips; a stale take: 15 to
+25 s each on a 16-core M3 Max, not yet on CI, where the warm start, a fit and
+a render crew's spawn come first), and `audio_in.spec.js`'s capture handed
 to a standing crew (28 s on a 16-core M3 Max, not yet on CI: six picks, a
-refit and a ⚡ walk to raise the crew, then a capture). Twenty-three tests,
-~20 min in one worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
+refit and a ⚡ walk to raise the crew, then a capture). Twenty-nine tests,
+~21 min in one worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
 
@@ -127,14 +134,15 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 
 | Spec | Pins |
 | --- | --- |
-| `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface and the `belief` call `worker.js` calls |
+| `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
 | `evolve_feedback.spec.js` | TAUGHT counts at once, pick toasts replace, the dealing rule, the sixth-pick redraw, every pick's reply carrying ratings that move per pick (ten seeds, ten may-replace), bank ▶ |
 | `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; KEEP AS NEW's blind card (Esc cancels), the one-shot *pick the edit*, a commit retiring the edits' receipts |
-| `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the module rail; the module rail's spec card says a settled lean in sentences; TASTE's early states count what is left |
+| `taste_marks.spec.js` | A guess drawn hollow with a ? in LEARNING's weights and the module rail; the module rail's spec card says a settled lean in sentences; TASTE's and LEARNING's early states count what is left |
+| `taste_learning.spec.js` | A pick draws an arrow from the sound passed to the sound picked, from the engine's reply (and on arrival for a pick made elsewhere), held and then gone under reduced motion; every halo moves to the ratings a pick posts, and a refit settles them all at once; LEARNING's weights, forecasts and math are the worker's numbers (`model_facts`, `forecasts`); copy as JSON gives them back; a mark's slot keeps its label's x; a style renamed on its chip, its ▶ pressed straight after still plays; the track replays the posted history, after a reload too; SOUND and TASTE; pointing at a weight shades the small map by the posted z; the bars equal the styles posted after each pick; REPLAY steps through θ as posted, in order; a REPLAY step across a refit is the refit's, with no pick's ghost or light |
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `narrow_gate.spec.js` | The narrow-window notice at any pointer under 1000 px, not over the handheld gate or "look around anyway" |
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
@@ -143,6 +151,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation deals within 1 s; GENERATIONS and the next-step chip count a generation once a child has landed, not on a pick's status; PERFORM measures and a pressed Offer starts during a generation; stop ends with what's bred, retiring only at the finish; ⚡ leaves the engine free and its stop drops it; ⚡ and EVOLVE POOL take turns, each disabled with its reason while the other runs; the E and the job slot agree |
 | `evolve_from_new.spec.js` | A ⚡ child joins the bank's New group (*new · generation N*, tagged NEW) as a generation's children do, the next-step chip counts it, and its toast names the sound; a ⚡ that bred nothing never says "its parent" |
 | `bank_lineage.spec.js` | Pointing at EVOLVE POOL marks the seeds and what may be replaced from the engine's `ratings`, and during a generation its own seeds (posted with its progress, checked against each walk's `seed`) and `retiring` as *will be replaced*; no mark (the unheard dot, NEW, seed, may be replaced) moves or narrows a row's name, measured; the unheard dot survives a reload and clears when heard; Compare shows a child beside its seed, the diff and both ratings, and plays both while both exist; a refused child buds beside its seed and is gone, and EVOLVE POOL names each walk's outcome; a generation's children land in New with their seed and what changed, and Replaced lists only the names its end replaced; Compare lists every change and scrolls, and opens with c from the bank; while ⚡ walks, its seed and the sound its child would replace are marked, and that is what it replaces; a ⚡ child that replaced nothing leaves Replaced as it was; the name's place and each mark word's fit are measured at 1440 and 1080 px; GENERATIONS counts a generation from its first child with no pick since it opened; a sound saved mid-run loses *will be replaced* and the one that will go instead gains it |
+| `faces.spec.js` | A face lands on every row, EVOLVE card, PATCH's header and teach strip, PERFORM's sound in hand and its offer (the offer's its own), and the warm start's cards; a cut redraws the bank's faces against the bank as it is now; a row's name has the same x and width with and without its face, uncut, on a desktop and a phone; the sound's card downloads at 1200 × 630 with its face, its name and its patch inside (PNG and SVG); after a reload every row draws the same face |
 | `budgets.spec.js` | The response-time budget: the timing marks exist; a preset's controls live ≤ 1 s from its click; a warm-start pick's ≤ 1 s from *teach it*; pick → next pair ≤ 0.3 s; duel ▶ ≤ 0.15 s |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_open_early.spec.js` | With the engine's messages held: a Keep while a patch is still opening is refused and says why; the preset clicked last is the one opened; an open that cannot complete puts the voices back on the rack |
@@ -151,6 +160,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and how it works say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
+| `perform_offer_latency.spec.js` | With a very long spare offer growing, a pick (`perform_record`) is answered within max(2 s, twice a measured step) and a Keep says so within max(4 s, six steps), the spare still growing (the page's CPU is throttled 4x, which need not reach the engine worker, so the bounds rest on the measured step); leaving the patch (`retire`) stops the running walk, answered `retired` |
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's name, a taken B fills and goes into the name, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one |
 | `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |
@@ -160,13 +170,17 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
 | `patch_audible.spec.js` | Measured at the output: a VCO's wave cycled in PATCH has each wave's harmonics under a held note and on ▶ and Space; a selector changed under a held note keeps its level while the engine renders it (nothing reaches the voices before the reply) and plays at its measured makeup once it lands; a knob whose check finds a runaway is muted, as the alarm says, until a check passes; a selector whose check fails is not applied and the alarm says so, and a knob turned after it is not muted for it; an edit's reply leaves alone the makeup of a preset opened from memory while the edit rendered; an undo and a redo of a selector reach the voices at their measured makeup, so a held note's level holds while they render; a cutoff turned down lowers the centroid live and on ▶; ▶ or Space pressed while the edit is still at the engine plays the edit, not the sound before it; Space in PERFORM and EVOLVE plays the edited sound, waiting for an edit the same way, and the dock's label says it waits within 100 ms; that waiting ▶ is lit within 100 ms, and a second press, Space, another ▶ or leaving PATCH takes it back; Space with ▶ disabled says why and plays nothing |
 | `audio_in.spec.js` | AUDIO IN, with the browser's inputs stubbed (tones per fake device, never a microphone): the browser is asked only when AUDIO IN is added, and says what for while it asks; a refusal keeps the module, silent, with ASK AGAIN; each device opens once and fans out to every module reading it (and the input menu reuses it); a tone in is heard at the output with no key down once MONITOR is on and not at all while it is off (a key held or not), monitoring is off after a reload and a sound that listens opens its input without a prompt; the first listen captures a clip the engine takes, NEW CLIP another; a restore that installs a captured clip re-sends the farm's phrase, and (`@slow`) a capture re-sends it to a crew standing; an unplug silences the module and says so, a replug plays again |
+| `patch_guess.spec.js` | The model's guess for the next module, read as the worker posts it: the top guess drawn at its socket with GUESS · ‹module›, its reason and forecast in the model's italic (and *it may not help* when its lower bound is under zero), the rail's mark beside its name without moving the name; a skip shows the next guess, not that family at that socket; adding it sends the guess with the edit; ⌘Z of an added guess counts as a skip; nothing before the warm start (`no_taste`), with no render crew raised for it; every candidate ranked on a crew, the likeliest eight with `?farm=0` and no crew asked for; a skip made after KEEP AS NEW still holds when the kept sound is opened again; a new patch's skips are not the sound's it was started from; a guess added after its socket was filled is refused with the engine's reason |
+| `patch_cables.spec.js` | Each audio cable's light and level mark follow the levels `cable_levels` posts, one per cable, keyed `from>to` as the rack draws them; modulation cables carry neither; never more than one probe at the engine; a knob drag asks for one probe after it settles, its marks hollow until then; every paint of a new structure before its levels arrive is unlit, with hollow marks; sounds opened right after arriving in PATCH, with the probe as slow as a CI runner's render, are not announced as having kept you waiting |
+| `patch_from_nothing.spec.js` | NEW PATCH leaves one empty socket and the amp, named *New patch* and counted in its caption; modules added from the rail; a processor deleted and put back with the toast's undo; a source deleted leaves its socket empty; CLEAR and its undo; BACK TO ‹name› reopens the sound, and NEW PATCH brings the new patch back; ⌘Z past its start ends it |
+| `patch_sheet.spec.js` | On a coarse pointer, a tapped module opens a sheet with a row for every knob the engine describes (a slider with − and + of at least 44 px, or the setting's choices); + edits the knob through the lane, a choice sets a named setting and the arrows move between choices, focus goes into the sheet and leaves it with ×, a tap on another module opens that one; an AUDIO IN in the patch is drawn with its three settings, and its sheet has them |
 | `space_after_a_click.spec.js` | A click leaves no focus on the wave or filter-mode chip, and Space then plays and leaves the chip alone (the second Space stops it); a chip reached with the keyboard cycles on Space and Enter and back with Shift, its name carrying its value and each cycle read out; in PERFORM, Space plays after a drag on a control, a click on the XY pad, and a click on a pad; the ⋯ menu's file items open their dialog on Enter and Space |
 | `midi_announced.spec.js` | A MIDI knob that claims or learns a control is announced in a sentence (*CC 74 now moves Bright, the first free control.*), the later replacing the earlier |
 | `keys_for_the_platform.spec.js` | The ? card, the booth menu and the minimap's tooltip print ⌘ and ⇧ on an Apple platform and Ctrl and Shift elsewhere |
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
-| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on TASTE's tabs, TRUST graded, and TRUST's last line 16 px clear of its edge; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
+| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on LEARNING's forecast strip, whose labels keep their descenders inside it; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
 | `text_fits.spec.js` | Text the type scale enlarged still fits: the warm start's cards inside a 390 and a 360 px phone's screen, and their words inside the cards; at 1000 and 1280 px every PERFORM control caption state whole (no ellipsis, no clamp, nothing past its box), with the knob row one height whatever the captions say |
 
 ## Rules

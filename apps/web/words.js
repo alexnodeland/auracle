@@ -293,6 +293,38 @@ export function fromLine(seedName, changes) {
   return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
 }
 
+/** The line under a sound's name on its card (Plan-005 task 3): where it
+ *  came from. A bred sound's is its bank row's (`fromLine`, from its
+ *  `LineageEvent`); any other's is its origin, as the bank's glyph says it. */
+export function cardLine(origin, seedName, changes) {
+  if (seedName) return fromLine(seedName, changes);
+  return {
+    prior: "grown fresh, with no taste in it yet",
+    refined: "bred toward your taste",
+    edited: "your edit, kept as new",
+    preset: "a hand-made preset",
+  }[origin] || "";
+}
+
+/** Under the two faces beside PATCH's guess plate: the patch as it is, and
+ *  the patch with the guessed module, as rendered for the guess. */
+export const GUESS_FACES = ["as it is", "with it"];
+
+/** Why a card has no face (`noplay`, `few`, `coming`), in the dialog's
+ *  readout. */
+export function cardNoFace(why) {
+  return {
+    noplay: "this edit doesn't play, so it has no face",
+    few: "a face needs at least four sounds to compare with",
+    coming: "its face is on its way",
+  }[why] || "";
+}
+
+/** The download dialog's readout for a card: its size and format. */
+export function cardDims(w, h, fmt) {
+  return `${w} × ${h} px · the sound's card · ${fmt}`;
+}
+
 /** Compare's sentence under its figure. */
 export function grownFrom(seedName, generation) {
   return `Grown from ${seedName} in generation ${generation}.`;
@@ -401,6 +433,202 @@ export function leanSentence(style, share, mean, std) {
     `${mean >= 0 ? "toward" : "away from"} it (θ ${sign}${Math.abs(mean).toFixed(2)} ± ${std.toFixed(2)}).`;
 }
 
+// ---------- TASTE and LEARNING ----------
+
+/** The line under TASTE's and LEARNING's title: what the model was fitted
+ *  from, in the kinds TAUGHT counts ("From 18 picks and 2 stars."), or how
+ *  far it is from its first fit. `left` is picks until the refit that fits
+ *  it, 0 while that fit is due or running. */
+export function fittedFrom({ fitted = false, picks = 0, stars = 0, cuts = 0, left = 0 } = {}) {
+  if (fitted) {
+    const parts = [count(picks, "pick")];
+    if (stars) parts.push(count(stars, "star"));
+    if (cuts) parts.push(count(cuts, "cut"));
+    return `From ${series(parts)}.`;
+  }
+  return left > 0 ? `${count(left, "more pick")} and it fits your taste.` : "Fitting your taste…";
+}
+
+/** The map's footer: how many sounds, and how much of how they differ two
+ *  axes can hold (`TasteMap::explained`). */
+export function mapFoot(n, share) {
+  return `A flat view of ${count(n, "sound")}: close dots usually sound alike (it shows ${pctOf(share)}% of how they differ).`;
+}
+
+/** The map legend's words beside its halos. */
+export function haloLegend(fitted) {
+  return fitted ? "it likes more" : "still a guess";
+}
+
+/** What a pick taught, for the map's live region (the arrow drawn on it). */
+export function pickSaid(picked, passed) {
+  return picked && passed ? `You picked ${picked} over ${passed}. Every rating moved.` : "Every rating moved.";
+}
+
+/** What a refit did, for the map's live region. */
+export function refitSaid() {
+  return "It fitted your taste again. Every rating settled.";
+}
+
+/** A weight row's words for a screen reader: the quality, which way it
+ *  leans, the weight and its spread, and whether it is still a guess. */
+export function weightSaid(word, mean, std, guess) {
+  const sign = mean >= 0 ? "+" : "−";
+  const way = mean >= 0 ? "likes more" : "likes less";
+  return `${word}: ${way}, ${sign}${Math.abs(mean).toFixed(2)} ± ${Math.max(0, std).toFixed(2)}${guess ? ", still a guess" : ""}`;
+}
+
+/** The disclosure under the weights: all of them, or the few that weigh most. */
+export function weightsMore(open, all, few) {
+  return open ? `the ${few} that weigh most` : `all ${all} weights`;
+}
+
+/** The direction panel's legend. `g` is `likingGradient`'s answer, null
+ *  until the ratings spread (no fit yet). */
+export function directionLegend(g) {
+  return g ? `the arrow: liking rises · explains ${pctOf(g.r2)}%` : "no direction yet";
+}
+
+/** Under the forecasts' count: what it expected against what it got. */
+export function forecastNote(score) {
+  return `expected ${pctOf(score.expected)}% · was ${pctOf(score.was)}%`;
+}
+
+/** The weights panel before the first fit, when there are none. */
+export const NO_WEIGHTS = "none yet: it weighs nothing until it first fits";
+
+/** The forecasts panel with none to show: before the first fit, when there
+ *  is nothing to forecast with, or after it, before the next pick. */
+export function noForecasts(fitted) {
+  return fitted ? "none yet: it guesses before each pick from here" : "none yet: it starts guessing when it first fits";
+}
+
+/** The forecast strip's words for a screen reader. */
+export function stripSaid(n) {
+  return `${count(n, "forecast")}: the chance it gave the sound you picked.`;
+}
+
+/** The math, in sentences, from the engine's own numbers
+ *  (`WasmEngine::model_facts`) and the app's refit cadence. Each under 25
+ *  words. */
+export function mathLines(facts, fitEvery) {
+  const f = facts || {};
+  return [
+    `φ is a sound’s ${f.audio} audio and ${f.structural} structural features, standardized, and w holds one weight for each.`,
+    "A pick moves w along φ(picked) − φ(passed), so every sound’s rating moves at once, not only the two you heard.",
+    `It holds ${f.draws} draws of w. Each pick reweights them, and every ${fitEvery} picks it fits them again.`,
+    `It is allowed one more style for every ${f.obs_per_style} things it learns from, up to ${f.styles_max}.`,
+    "It rates a sound by the style that likes it most.",
+  ];
+}
+
+/** The short labels TASTE and LEARNING draw: silk labels lowercase (CSS sets
+ *  them in capitals), tooltips a name and a key. */
+export const TASTE_LABELS = {
+  play: "▶ play",
+  open: "open",
+  openTitle: "Open it · Enter",
+  noGuess: "no guess yet",
+  chipTitle: "Show its weights",
+  nameTitle: "Name this style",
+  exemplarTitle: "Hear the sound it rates highest",
+  noExemplarTitle: "Nothing to play for this style yet",
+  stripEnd: "100% for the one picked",
+  stripEndShort: "100%",
+  togTitle: "Color by taste",
+  sound: "sound",
+  taste: "taste",
+  track: "Taste over time",
+  trackPlay: "Replay how your taste moved",
+  trackStop: "Stop the replay",
+  replay: "replay",
+  replayTitle: "Replay · R",
+  noReplayTitle: "Nothing to replay yet",
+};
+
+/** The picks a moment on the track came after: "after 7 picks", or before
+ *  any. */
+export function pickWords(n) {
+  return n === 0 ? "before any picks" : `after ${count(n, "pick")}`;
+}
+
+/** The track's label: the moment shown, "now · after 7 picks" at its end. */
+export function trackLabel(n, now) {
+  return now ? `now · ${pickWords(n)}` : pickWords(n);
+}
+
+/** The line under TASTE's title while the track shows an earlier moment. */
+export const LOOKING_BACK = "Looking back.";
+
+/** A generation's mark on the track: how many sounds joined the map. */
+export function joinedLabel(n) {
+  return `+${n}`;
+}
+
+/** What one step of LEARNING's replay moved most, for a screen reader. */
+export function movedMost(word, d) {
+  return `That pick moved ${word} most (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(2)}).`;
+}
+
+// What a kept moment was, by its kind (taste-geom's history).
+const MOMENT = { map: "refit", gen: "generation", file: "opened file", star: "a star", cut: "a cut", keep: "a cut" };
+
+/** REPLAY's label for a step: which moment, and the picks it came after
+ *  ("refit · after 24 picks"; a pick's is "after 21 picks"). */
+export function replayAt(kind, n) {
+  return MOMENT[kind] ? `${MOMENT[kind]} · ${pickWords(n)}` : pickWords(n);
+}
+
+/** What a REPLAY step moved most, credited to what it was: a single pick, a
+ *  refit, a generation, an opened file, a star or a cut; or, when moments
+ *  between were not kept, the change since the one before. */
+export function stepMoved(kind, single, word, d) {
+  const by = `${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(2)}`;
+  if (kind === "map") return `The refit moved ${word} most (${by}).`;
+  if (kind === "gen") return `The generation moved ${word} most (${by}).`;
+  if (kind === "file") return `The opened file moved ${word} most (${by}).`;
+  if (!single) return `Since the moment before, ${word} moved most (${by}).`;
+  if (kind === "star") return `That star moved ${word} most (${by}).`;
+  if (kind === "cut" || kind === "keep") return `That cut moved ${word} most (${by}).`;
+  return movedMost(word, d);
+}
+
+/** The small map's legend while a weight is pointed at. */
+export function dotsLegend(word) {
+  return `dots: ${word}`;
+}
+
+/** The card beside a sound on the map: the bank's number for it, as a
+ *  prediction ("would like: 59% · leaning"). */
+export function plateGuess(like) {
+  return `would like: ${guessLabel(like)}`;
+}
+
+/** A play button's tooltip: the sound's name. */
+export function playTitle(name) {
+  return `Play ${name}`;
+}
+
+/** A style chip, for a screen reader: its name and its share of the pool. */
+export function chipSaid(name, share) {
+  return `${name}, ${pctOf(share)}% of the pool`;
+}
+
+/** The weights' own label, for a screen reader: how many are settled. */
+export function weightsSaid(style, settled, guesses) {
+  return `${style}: ${settled} settled, ${guesses} still a guess`;
+}
+
+/** The direction panel, for a screen reader. */
+export function directionSaid(name, legend) {
+  return `The pool on the map${name ? `, ${name} ringed` : ""}. ${legend}.`;
+}
+
+/** The copy button's label as it answers. */
+export function copyLabel(state) {
+  return state === "copied" ? "copied" : state === "select" ? "select and copy" : "copy as JSON";
+}
+
 /** Whether this browser is on an Apple platform, whose keyboards say ⌘. */
 export function onApple(nav = globalThis.navigator) {
   const p = (nav && (nav.userAgentData?.platform || nav.platform)) || "";
@@ -422,6 +650,69 @@ export function platformKeys(s, apple = onApple()) {
     // A modifier on its own ("⇧ places them freely") is just its name.
     return key ? `${names.join(" ")} ${key}` : names.join(" ");
   });
+}
+
+// ---- PATCH: the model's guess for the next module ----
+// The worker's `guess` reply (`WasmEngine::guess_rank`): a ranking, best
+// first by the lower bound of the gain (`lcb`), each guess with the pick
+// forecast `p` and `why`, the part of the gain that leads (a PERFORM control
+// and the end word it moves toward, or a structural coordinate); or a
+// refusal (`reason`). Its reason is the model's italic, lowercase and in the
+// third person (voice.md, the **guess** row).
+
+/** Why the top guess leads, or null when no part of it leans the player's
+ *  way. `nice` names a structural coordinate (`n_reverb` → "reverbs"). */
+export function guessWhy(why, nice = (s) => s) {
+  if (!why) return null;
+  if (why.control && why.word) return `it moves toward ${why.word}, as your picks lean`;
+  if (why.coordinate) return `your picks lean toward ${why.moved < 0 ? "less" : "more"} ${nice(why.coordinate)}`;
+  return null;
+}
+
+/** The model's line for the top guess: its reason, then its forecast with
+ *  the sure word, said over the pool's average when the patch makes no sound
+ *  (`against` "pool"). The lower bound it is ranked by can be under zero
+ *  (the list leads with the best bound, not with a module it is sure will
+ *  help), and then the line says so. */
+export function guessLine(g, against = "patch", nice) {
+  const reason = guessWhy(g.why, nice) || "no part of it leans your way";
+  const pct = `${pctOf(g.p)}%`;
+  const forecast = against === "pool"
+    ? `${pct} over your pool’s average · ${sureWord(g.p)}`
+    : `${pct} · ${sureWord(g.p)}`;
+  return `${reason} · ${forecast}${g.lcb < 0 ? " · it may not help" : ""}`;
+}
+
+/** What the model says when it has no guess to show, or null when it says
+ *  nothing: before the warm start (`no_taste`) and with no patch open. */
+export function guessRefusal(data) {
+  if (!data) return null;
+  switch (data.reason) {
+    case "no_taste":
+    case "no_patch":
+      return null;
+    case "full":
+      return "no guess: nothing more fits, so a module has to come out first";
+    case "unmeasured":
+      return "no guess yet: it hasn’t heard this patch";
+    default:
+      break;
+  }
+  if (Array.isArray(data.guesses) && data.guesses.length === 0) {
+    if (data.rendered < data.planned) return "no guess yet: it has not heard the modules that fit here";
+    return data.skipped > 0
+      ? "no guess left here: every module that fits was skipped"
+      : "no guess: none of the modules that fit here passed the safety check";
+  }
+  return null;
+}
+
+/** A cable's measured level (`edit_cable_levels`, dB re 1 V, the live
+ *  meter's scale) as a tooltip: "−14 dB", or "nothing" at the probe's floor. */
+export function levelWord(db, floor = -120) {
+  if (db == null || !Number.isFinite(db) || db <= floor + 0.5) return "nothing";
+  const r = Math.round(db);
+  return `${r < 0 ? "−" : ""}${Math.abs(r)} dB`;
 }
 
 /** PERFORM's palette: the eighteen controls the engine can measure, in the

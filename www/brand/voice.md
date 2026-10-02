@@ -445,7 +445,7 @@ banned-words check in `make dev-check` reads the list after it.
 | --- | --- | --- |
 | **pick** | Any choice between two sounds: an EVOLVE pair, a PERFORM take or pass, the warm start, and keep as new | vote, choose, preference, "keep the one" |
 | **pair** | The two sounds you pick between | duel (outside the reference) |
-| **fair-test picks** | Pairs dealt at random, the ones TRUST grades | check duels, check picks |
+| **fair-test picks** | Pairs dealt at random, the ones LEARNING's forecasts are graded on | check duels, check picks |
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
@@ -468,6 +468,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
+| **card** | The picture of a sound you download to share: its face, its name and where it came from | poster, thumbnail, share image |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |
 | **AUDIO IN** | The module that brings your own signal into a patch | mic node, input node |
 | **input** | A microphone or an interface the browser offers, numbered from 1 on AUDIO IN | device (except the browser’s own names) |

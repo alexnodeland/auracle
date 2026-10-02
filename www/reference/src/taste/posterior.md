@@ -236,7 +236,7 @@ All weighted by the importance weights:
 | | |
 |---|---|
 | `theta_mean(k)` | $\sum_s w_s \theta_{k,s}$ |
-| `theta_std(k)` | Per-dimension posterior SD: the whiskers in DIRECTIONS |
+| `theta_std(k)` | Per-dimension posterior SD: the whiskers on LEARNING’s weights |
 | `utility_mix(z)` | $(\text{mean}, \text{sd})$ of $u$: glow and size on the map |
 | `responsibilities(z)` | $\sum_s w_s \mathbb{1}[\text{best style of } z \text{ under } \theta_s = k]$ |
 | `style_share(Z)` | `responsibilities` averaged over candidates |
