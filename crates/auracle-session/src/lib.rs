@@ -42,8 +42,8 @@ pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, Reliability
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
     Contribution, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent,
-    Origin, Profile, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig, SessionState,
-    EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
+    Origin, Profile, ReadmitError, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig,
+    SessionState, EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use guess::{
@@ -4398,5 +4398,143 @@ mod tests {
         let f = &farmed.pool[farmed.find(id).unwrap()];
         assert_eq!(f.tree, c.tree);
         assert_eq!(f.features.phi(), c.features.phi());
+    }
+
+    // ---- held sounds: a take that was the sound's only source ----
+
+    /// A sound that is nothing but a CAPTURE with its take, in an engine.
+    fn capture_only_engine() -> (Engine, u64, auracle_grammar::Take) {
+        let mut tree = captured_patch();
+        let capture = match &tree.root {
+            auracle_grammar::AudioNode::Mix { a, .. } => (**a).clone(),
+            n => panic!("{n:?}"),
+        };
+        tree.root = capture;
+        let take = capture_take_at_root(&tree);
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0x4E1D));
+        engine.cfg.pool_size += 1;
+        let id = engine
+            .insert_preset(tree, "only its take")
+            .expect("a capture with its take vets");
+        (engine, id, take)
+    }
+
+    fn capture_take_at_root(tree: &auracle_grammar::PatchTree) -> auracle_grammar::Take {
+        match &tree.root {
+            auracle_grammar::AudioNode::Capture { take, .. } => take.clone(),
+            n => panic!("no capture at the root: {n:?}"),
+        }
+    }
+
+    /// The session file with the take of sound `id` (a capture at the root)
+    /// corrupted: a length its data does not hold.
+    fn with_corrupt_take(engine: &Engine, id: u64) -> (serde_json::Value, serde_json::Value) {
+        let mut saved = serde_json::to_value(engine.export_state()).unwrap();
+        let mut corrupt = serde_json::Value::Null;
+        for e in saved["bank"].as_array_mut().unwrap() {
+            if e["id"] == id {
+                let take = &mut e["tree"]["root"]["Capture"]["take"];
+                take["length"] = 7.into();
+                corrupt = take.clone();
+            }
+        }
+        assert!(!corrupt.is_null(), "sound {id} has no take in the file");
+        (saved, corrupt)
+    }
+
+    /// **A sound whose only source is an unreadable take is held, not lost.**
+    /// The restore leaves it out of the pool and reports it as held, apart
+    /// from the repairs; a save writes it back with the take's bytes exactly
+    /// as they were loaded, and the next restore holds it again. It is never
+    /// dealt or ranked.
+    #[test]
+    fn a_sound_whose_only_take_is_unreadable_is_held_through_save_and_restore() {
+        let (engine, id, _) = capture_only_engine();
+        let (saved, corrupt) = with_corrupt_take(&engine, id);
+        let state: SessionState = serde_json::from_value(saved).unwrap();
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        let restored = back.import_state(state);
+        assert_eq!(
+            restored,
+            engine.pool.len() - 1,
+            "the held sound is not in the pool"
+        );
+        assert!(back.find(id).is_none());
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(back.held()[0].id, id);
+        assert_eq!(back.held()[0].name.as_deref(), Some("only its take"));
+        assert_eq!(
+            back.repair_report(),
+            (0, 0, 0),
+            "held is reported apart from repaired"
+        );
+        // Never dealt, never ranked.
+        let mut rng = StdRng::seed_from_u64(0xDEA1);
+        for _ in 0..60 {
+            let (a, b) = back.next_duel(&mut rng).expect("a duel");
+            assert!(back.pool[a].id != id && back.pool[b].id != id);
+        }
+        assert!(back.ranked().iter().all(|(i, _, _)| back.pool[*i].id != id));
+        // Saved again, the take's bytes are what was loaded.
+        let resaved = serde_json::to_value(back.export_state()).unwrap();
+        let entry = resaved["bank"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .expect("a save keeps the held sound");
+        assert_eq!(entry["tree"]["root"]["Capture"]["take"], corrupt);
+        // And the next restore holds it again.
+        let state: SessionState = serde_json::from_value(resaved).unwrap();
+        let mut again = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        again.import_state(state);
+        assert_eq!(again.held().len(), 1);
+        assert_eq!(again.held()[0].id, id);
+        // A new sound never takes the held sound's id.
+        let new = again
+            .insert_preset(auracle_grammar::presets()[0].1.clone(), "new")
+            .unwrap();
+        assert_ne!(new, id);
+    }
+
+    /// **A held sound comes back with a readable take**, measured as a new
+    /// sound in the pool under its own id and name, and is no longer held. An
+    /// unknown id or an empty take is refused and changes nothing.
+    #[test]
+    fn a_held_sound_is_readmitted_with_a_readable_take() {
+        let (engine, id, take) = capture_only_engine();
+        let (saved, _) = with_corrupt_take(&engine, id);
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(serde_json::from_value(saved).unwrap());
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(
+            back.readmit_held(id + 999, take.clone()),
+            Err(ReadmitError::NotHeld)
+        );
+        assert_eq!(
+            back.readmit_held(id, auracle_grammar::Take::empty()),
+            Err(ReadmitError::NoTake)
+        );
+        assert_eq!(back.held().len(), 1);
+        assert_eq!(back.readmit_held(id, take.clone()), Ok(id));
+        assert!(back.held().is_empty());
+        let c = &back.pool[back.find(id).expect("in the pool")];
+        assert_eq!(capture_take_at_root(&c.tree), take);
+        assert_eq!(c.name.as_deref(), Some("only its take"));
+        let original = &engine.pool[engine.find(id).unwrap()];
+        assert_eq!(
+            c.features.phi(),
+            original.features.phi(),
+            "measured as it sounds"
+        );
+        // Saved once, not twice.
+        let bank = back.export_state().bank;
+        assert_eq!(bank.iter().filter(|e| e.id == id).count(), 1);
     }
 }

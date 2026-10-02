@@ -1497,7 +1497,7 @@ pub enum AudioNode {
         /// What it records.
         input: Box<AudioNode>,
         /// The recording; absent from the saved form when empty.
-        #[serde(default, skip_serializing_if = "Take::is_empty")]
+        #[serde(default, skip_serializing_if = "Take::saves_nothing")]
         take: Take,
         /// Stable identity for this node; see [`Uid`].
         #[serde(default, skip_serializing_if = "Uid::is_new")]
@@ -2771,6 +2771,41 @@ impl PatchTree {
     /// fitness hears the recording (`auracle_session`'s `walk_on`).
     pub fn inherit_takes(&mut self, parent: &PatchTree) {
         inherit_audio(&mut self.root, &parent.root, false);
+    }
+
+    /// Mark every unreadable take here to be written back as it was loaded
+    /// ([`Take::kept`]): for a sound a session holds back because such a take
+    /// was its only source, so a save loses none of it.
+    pub fn keep_unreadable_takes(&mut self) {
+        fn walk(n: &mut AudioNode) {
+            if let AudioNode::Capture { take, .. } = n {
+                *take = take.kept();
+            }
+            for c in n.children_mut() {
+                walk(c);
+            }
+        }
+        walk(&mut self.root);
+    }
+
+    /// Install `fresh` on the first CAPTURE whose take could not be read, in
+    /// walk order, and clear any other unreadable take to plain empty. `false`
+    /// when there is no unreadable take to replace.
+    pub fn replace_lost_take(&mut self, fresh: &Take) -> bool {
+        fn walk(n: &mut AudioNode, fresh: &Take, done: &mut bool) {
+            if let AudioNode::Capture { take, .. } = n {
+                if take.unreadable().is_some() {
+                    *take = if *done { Take::empty() } else { fresh.clone() };
+                    *done = true;
+                }
+            }
+            for c in n.children_mut() {
+                walk(c, fresh, done);
+            }
+        }
+        let mut done = false;
+        walk(&mut self.root, fresh, &mut done);
+        done
     }
 
     /// Whether any CAPTURE here holds a take.

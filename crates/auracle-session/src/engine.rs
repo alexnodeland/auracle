@@ -39,7 +39,7 @@ use auracle_features::{
 };
 use auracle_grammar::prior::N_OPS;
 use auracle_grammar::rng::gen_index;
-use auracle_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree};
+use auracle_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree, Take};
 use auracle_taste::{
     Feedback, FitSet, Observation, ObservationLog, Provenance, Standardizer, TasteConfig,
     TasteModel, TastePosterior,
@@ -702,6 +702,21 @@ pub fn tilt_weights(base: &[f64], tilts: &[f64], eta: f64) -> Vec<f64> {
     out
 }
 
+/// Why [`Engine::readmit_held`] did not bring a held sound back. A code, not
+/// copy: the frontend says it in its own words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadmitError {
+    /// No held sound has that id.
+    NotHeld,
+    /// The take offered is empty, or could not be read itself.
+    NoTake,
+    /// The held sound has no unreadable take for it to replace.
+    NothingToReplace,
+    /// With the new take it still does not vet (its reason).
+    DoesNotVet(String),
+}
+
 /// One bank entry of a saved session (renders and features are re-derived
 /// on import — trees are the source of truth).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1255,6 +1270,18 @@ pub struct Engine {
     /// Why the last restore measured with the reference though the session
     /// held a clip; see [`ClipStatus::unreadable`].
     clip_unreadable: Option<String>,
+    /// Sounds the last restore **held back**: a CAPTURE's take could not be
+    /// read, and without it the sound did not render (the take was its only
+    /// source). Never in the pool, so never dealt, fitted, mapped, wired or
+    /// walked; written back by [`Engine::export_state`] exactly as loaded, so
+    /// a save loses none of them; brought back by [`Engine::readmit_held`].
+    /// See [`Engine::held`].
+    held: Vec<BankEntry>,
+    /// During a restore: each bank entry with an unreadable take, as it was
+    /// loaded, and whether it was already counted as repaired. One that
+    /// lands in the pool is repaired; one still here at
+    /// [`Engine::finish_restore`] is held.
+    pending_held: HashMap<u64, (BankEntry, bool)>,
 }
 
 impl Engine {
@@ -1295,6 +1322,8 @@ impl Engine {
             retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
             clip_unreadable: None,
+            held: Vec::new(),
+            pending_held: HashMap::new(),
         }
     }
 
@@ -4070,6 +4099,9 @@ impl Engine {
                     pinned: c.pinned,
                     auto_name: c.auto_name.clone(),
                 })
+                // Held sounds go back as they came, after the pool: a restore
+                // holds them again until their take is replaced.
+                .chain(self.held.iter().cloned())
                 .collect(),
             lineage: self.lineage.clone(),
             generation: self.generation,
@@ -4169,14 +4201,23 @@ impl Engine {
         //
         // A CAPTURE whose saved take could not be read is the same rule: the
         // sound came back whole with that take empty (`Take`'s loader never
-        // fails the term), and it counts as a repaired sound so the player is
-        // told. Asked before the clamp, which rebuilds a term it mends and so
-        // forgets which take was unreadable.
+        // fails the term). Whether it is *repaired* or *held* depends on
+        // whether it still renders, which the caller finds out: one that lands
+        // in the pool counts as repaired (`absorb_bank_entry`), one that does
+        // not is held (`finish_restore`). Kept as loaded, before the clamp,
+        // which rebuilds a term it mends and so forgets which take was
+        // unreadable, and whose rebuild would drop the take's saved text.
+        self.held.clear();
+        self.pending_held.clear();
         let mut bank = state.bank;
         for entry in &mut bank {
-            let lost = entry.tree.lost_takes() > 0;
-            if entry.tree.clamp_domains() > 0 || lost {
+            let lost = (entry.tree.lost_takes() > 0).then(|| entry.clone());
+            let clamped = entry.tree.clamp_domains() > 0;
+            if clamped {
                 self.repaired_terms += 1;
+            }
+            if let Some(original) = lost {
+                self.pending_held.insert(entry.id, (original, clamped));
             }
         }
         bank
@@ -4299,6 +4340,13 @@ impl Engine {
             .map(|sz| sz.transform(&cached.features.phi()))
             .unwrap_or_default();
         let render = self.admitted_render(&entry.tree, &cached.features, audition);
+        // A sound whose unreadable take was not its only source: it renders
+        // without it, so it is repaired, not held.
+        if let Some((_, clamped)) = self.pending_held.remove(&entry.id) {
+            if !clamped {
+                self.repaired_terms += 1;
+            }
+        }
         // `saturating_add`: a hostile `u64::MAX` in a shared file must not wrap
         // the allocator back to 0 and start reissuing live ids.
         self.next_id = self.next_id.max(entry.id.saturating_add(1));
@@ -4323,6 +4371,19 @@ impl Engine {
     /// before the first fit completes has none — fit one from the restored
     /// bank so φ isn't left raw. Idempotent, and safe on an empty pool.
     pub fn finish_restore(&mut self) -> usize {
+        // Whatever had an unreadable take and never landed did not render
+        // without it: held, not dropped, and reported apart from the repairs
+        // (one also mended by the clamp is uncounted there again).
+        let mut held: Vec<(BankEntry, bool)> = self.pending_held.drain().map(|(_, v)| v).collect();
+        held.sort_by_key(|(e, _)| e.id);
+        for (mut entry, clamped) in held {
+            if clamped {
+                self.repaired_terms = self.repaired_terms.saturating_sub(1);
+            }
+            entry.tree.keep_unreadable_takes();
+            self.next_id = self.next_id.max(entry.id.saturating_add(1));
+            self.held.push(entry);
+        }
         if self.standardizer.is_none() && !self.pool.is_empty() {
             let rows: Vec<Vec<f64>> = self.pool.iter().map(|c| c.features.phi()).collect();
             let sz = Arc::new(Standardizer::fit(&rows));
@@ -4335,6 +4396,48 @@ impl Engine {
         // against the bank it restored.
         self.fix_names();
         self.pool.len()
+    }
+
+    /// The sounds the last restore held back because a CAPTURE's take could
+    /// not be read and the sound did not render without it ("its recording
+    /// couldn't be read"), in id order. Not in the pool: nothing deals, fits,
+    /// maps, wires or walks them until [`Engine::readmit_held`].
+    pub fn held(&self) -> &[BankEntry] {
+        &self.held
+    }
+
+    /// Bring a held sound back with a readable take in place of the one that
+    /// could not be read: the take goes on its first unreadable CAPTURE (any
+    /// other unreadable take is cleared), and the sound is measured as a new
+    /// one and joins the pool under its own id, name and origin. If it still
+    /// does not vet it stays held. Returns its id.
+    pub fn readmit_held(&mut self, id: u64, take: Take) -> Result<u64, ReadmitError> {
+        let at = self
+            .held
+            .iter()
+            .position(|e| e.id == id)
+            .ok_or(ReadmitError::NotHeld)?;
+        if take.is_empty() || take.unreadable().is_some() {
+            return Err(ReadmitError::NoTake);
+        }
+        let mut entry = self.held[at].clone();
+        if !entry.tree.replace_lost_take(&take) {
+            return Err(ReadmitError::NothingToReplace);
+        }
+        entry.tree.clamp_domains();
+        let want_audio = self.wants_admitted_audio();
+        let (cached, audition) =
+            featurize_memo(&entry.tree, &self.cfg.phrase, &self.memo, want_audio)
+                .map_err(|e| ReadmitError::DoesNotVet(e.to_string()))?;
+        self.held.remove(at);
+        let pre = PreFeaturized {
+            tree: entry.tree.clone(),
+            cached,
+            audition,
+        };
+        self.absorb_bank_entry(entry, pre);
+        self.fix_names();
+        Ok(id)
     }
 
     /// Import a profile: replaces the log and re-establishes a standardizer

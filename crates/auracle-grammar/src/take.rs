@@ -36,6 +36,11 @@
 //! ([`Take::unreadable`]), and the session counts the sound as repaired, so
 //! the player is told. The patch around it comes back whole.
 //!
+//! It also keeps the saved text it could not read, unserialized, so a sound
+//! the session holds back because that take was its only source can be
+//! written back exactly as it was loaded ([`Take::kept`]); nothing else ever
+//! writes it.
+//!
 //! ## Not a trace site
 //!
 //! A take is data, not a random choice, so [`crate::genome`] neither encodes
@@ -132,6 +137,11 @@ pub struct Take {
     /// Set when a saved take could not be read, so this one loaded empty:
     /// why. Never serialized.
     unreadable: Option<String>,
+    /// The saved value that could not be read, as it was. Written back only
+    /// when `keep` is set ([`Take::kept`]).
+    raw: Option<Arc<serde_json::Value>>,
+    /// Serialize `raw` verbatim instead of the (empty) take.
+    keep: bool,
 }
 
 impl Take {
@@ -231,10 +241,29 @@ impl Take {
         self.unreadable.as_deref()
     }
 
-    fn refused(why: String) -> Self {
+    /// This take, to be written back as it was loaded: an unreadable take
+    /// that kept its saved value serializes that value verbatim, so a sound
+    /// held back for it loses nothing in a save. Any other take is unchanged.
+    /// Equality and every other reading of the take are unaffected.
+    pub fn kept(&self) -> Self {
+        Self {
+            keep: self.raw.is_some(),
+            ..self.clone()
+        }
+    }
+
+    /// Whether serializing this take writes nothing: an empty take, unless it
+    /// is an unreadable one [`Self::kept`] for writing back.
+    pub fn saves_nothing(&self) -> bool {
+        self.body.is_none() && !(self.keep && self.raw.is_some())
+    }
+
+    fn refused(why: String, raw: serde_json::Value) -> Self {
         Self {
             body: None,
             unreadable: Some(why),
+            raw: Some(Arc::new(raw)),
+            keep: false,
         }
     }
 
@@ -252,7 +281,7 @@ impl Take {
                 sample_rate,
                 hash,
             })),
-            unreadable: None,
+            ..Self::default()
         }
     }
 }
@@ -292,7 +321,10 @@ impl PartialEq for Take {
 
 impl Serialize for Take {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        self.to_saved().serialize(s)
+        match (&self.raw, self.keep) {
+            (Some(raw), true) => raw.serialize(s),
+            _ => self.to_saved().serialize(s),
+        }
     }
 }
 
@@ -306,10 +338,10 @@ impl<'de> Deserialize<'de> for Take {
         if value.is_null() {
             return Ok(Self::empty());
         }
-        Ok(serde_json::from_value::<SavedTake>(value)
+        Ok(serde_json::from_value::<SavedTake>(value.clone())
             .map_err(|e| TakeError::Shape(e.to_string()))
             .and_then(|saved| Take::from_saved(&saved))
-            .unwrap_or_else(|e| Take::refused(e.to_string())))
+            .unwrap_or_else(|e| Take::refused(e.to_string(), value)))
     }
 }
 
@@ -535,5 +567,31 @@ mod tests {
         // Unreadable is bookkeeping, not content.
         let lost: Take = serde_json::from_str("7").unwrap();
         assert_eq!(lost, Take::empty());
+    }
+
+    /// An unreadable take writes nothing, unless it is kept for writing back,
+    /// and then it writes exactly what was loaded, which loads as the same
+    /// unreadable take again.
+    #[test]
+    fn a_kept_unreadable_take_writes_back_what_was_loaded() {
+        let text = r#"{"format":"f32le-base64","sample_rate":48000.0,"length":9,"data":"AAAA"}"#;
+        let lost: Take = serde_json::from_str(text).unwrap();
+        assert!(lost.unreadable().is_some() && lost.saves_nothing());
+        let kept = lost.kept();
+        assert!(!kept.saves_nothing());
+        let back = serde_json::to_string(&kept).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&back).unwrap(),
+            serde_json::from_str::<serde_json::Value>(text).unwrap()
+        );
+        let again: Take = serde_json::from_str(&back).unwrap();
+        assert!(again.unreadable().is_some());
+        // A readable or empty take is not changed by keeping it.
+        assert!(Take::empty().kept().saves_nothing());
+        let t = Take::from_samples(&[0.1, 0.2], 48_000.0).unwrap();
+        assert_eq!(
+            serde_json::to_string(&t.kept()).unwrap(),
+            serde_json::to_string(&t).unwrap()
+        );
     }
 }
