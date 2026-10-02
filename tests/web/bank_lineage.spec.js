@@ -35,7 +35,9 @@ const init = `(() => {
   const log = (window.__pwLog = []);
   // The engine's facts as main.js last heard them: the ranked rows, the
   // lineage, the ratings and the status, whichever message carried them.
-  const state = (window.__pwState = { ranked: null, lineage: null, ratings: null, status: null, views: null, genSeeds: null });
+  // \`names\`: every sound's name as last seen in any ranked list, kept after
+  // it leaves (a seed replaced, a member the fill added after a test began).
+  const state = (window.__pwState = { ranked: null, lineage: null, ratings: null, status: null, views: null, genSeeds: null, names: {} });
   // The bank's marks as each walk of a generation leaves them, read the moment
   // main.js has handled the walk's \`refine_child\`, however fast the walks
   // land: by a listener added after main.js's \`onmessage\` (at the first
@@ -86,6 +88,7 @@ const init = `(() => {
         if (d.views.ratings) state.ratings = d.views.ratings;
       }
       if (d.ranked) state.ranked = d.ranked;
+      for (const r of (d.views && d.views.ranked) || d.ranked || []) if (r && r.name != null) state.names[r.id] = r.name;
       if (d.lineage) state.lineage = d.lineage;
       if (d.ratings) state.ratings = d.ratings;
       if (d.status && typeof d.status === "object") state.status = d.status;
@@ -156,7 +159,22 @@ async function taught(page) {
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 30_000 });
   // The picks' undo windows close, and their ratings land.
   await expect.poll(() => page.evaluate(() => (window.__pwState.ratings ? window.__pwState.ratings.seeds.length : 0)), { timeout: 30_000 }).toBe(10);
+  await fullPool(page);
   return pageErrors;
+}
+
+/** The fill done: the pool at its size. The app is playable at 8 sounds and
+ *  fills the rest behind the player, which on a slow machine (CI) can still
+ *  be going after six picks and a refit. A generation or a ⚡ child replaces
+ *  nothing while the pool is under size, and the ranked rows a test reads at
+ *  its start would miss the members still to come. */
+async function fullPool(page) {
+  const at = await page.evaluate(() => window.__pwState.status && `${window.__pwState.status.pool}/${window.__pwState.status.pool_target}`);
+  console.log(`pool after the picks: ${at}`);
+  await expect.poll(() => page.evaluate(() => {
+    const s = window.__pwState.status;
+    return !!s && s.pool_target > 0 && s.pool >= s.pool_target;
+  }), { timeout: 300_000, message: "the pool never filled" }).toBe(true);
 }
 
 /** Post a message to main.js as the engine worker would. */
@@ -689,8 +707,12 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
 test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
-  const before = await state(page);
-  const names = new Map(before.ranked.map((r) => [r.id, r.name]));
+  // Every name seen, read when it is needed (`__pwState.names`).
+  const nameOf = async (id) => {
+    const n = await page.evaluate((i) => window.__pwState.names[i], id);
+    expect(n, `no name was ever posted for sound ${id}`).toBeTruthy();
+    return n;
+  };
   // At rest, pointing at EVOLVE POOL marks the engine's own lists for the
   // generation it would open: `ratings.seeds` and `ratings.may_replace`.
   // (Each read is of the ratings main.js holds now: a pick's may still land.)
@@ -746,7 +768,7 @@ test("a generation's children land in New with their seed and what changed, and 
     expect(ev, `no lineage event for child ${id}`).toBeTruthy();
     const walk = kids.find((k) => k.child === id);
     expect(ev.parent_id, "the lineage names another seed than the walk's").toBe(walk.seed);
-    const seedName = names.get(ev.parent_id);
+    const seedName = await nameOf(ev.parent_id);
     await expect(row(page, id).locator(".bi-from")).toHaveText(new RegExp(`^from ${reEsc(seedName)}( · .+)?$`));
     await expect(row(page, id).locator(".bi-new")).toHaveText("new");
     await expect(row(page, id).locator(".bi-dot")).toBeVisible();
@@ -766,7 +788,9 @@ test("a generation's children land in New with their seed and what changed, and 
     await fold.scrollIntoViewIfNeeded();
     await expect(fold.locator(".bg-label")).toHaveText(`replaced · generation ${refined.status.generation}`);
     await fold.click();
-    await expect(page.locator("#bank-list .replaced-names span")).toHaveText(gone.map((id) => names.get(id)));
+    const goneNames = [];
+    for (const id of gone) goneNames.push(await nameOf(id));
+    await expect(page.locator("#bank-list .replaced-names span")).toHaveText(goneNames);
     await expect(page.locator("#bank-list .replaced-names button")).toHaveCount(0);
     for (const id of gone) await expect(row(page, id)).toHaveCount(0);
   }
