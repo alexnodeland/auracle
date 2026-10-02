@@ -654,7 +654,9 @@ export function createExplain(host) {
   const cache = new Map();
   const out = new Map(); // token -> key
   let token = 0;
-  const keyOf = (st) => JSON.stringify([host.tasteRev(), st.index, st.tree, st.made, st.turned]);
+  // The wiring's words are part of it too: a measurement that lands with
+  // the control nothing turns changes no knob, but changes what is said.
+  const keyOf = (st) => JSON.stringify([host.tasteRev(), st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
   function request(st, key) {
     if ([...out.values()].includes(key)) return;
     token += 1;

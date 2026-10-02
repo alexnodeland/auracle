@@ -155,6 +155,28 @@ test("every control in the palette opens its figure", { tag: "@slow" }, async ({
   expect(errs).toEqual([]);
 });
 
+test("a control asked about before it is measured answers once it is, a search control too", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Glass Pad");
+  // Placed now, asked at once: their measurement lands with the figure open.
+  // On Glass Pad, with these five beside BRIGHT, nothing turns SWAY: a
+  // measurement that changes no knob still changes what is said.
+  const row = (name, placed) => page.locator(`.pp-row${placed ? ".on" : ":not(.on)"}`, { has: page.locator(".pp-name", { hasText: new RegExp(`^${name}$`) }) });
+  await page.locator(".pf-arrange").click();
+  for (const n of ["Snap", "Motion", "Body", "Grit", "Space"]) await row(n, true).locator(".pp-hide").click();
+  for (const n of ["Sway", "Distance", "Haze", "Bite", "Lo-fi"]) await row(n, false).locator(".pp-place").click();
+  await page.keyboard.press("Escape");
+  await askAbout(page, 1);
+  await expect(page.locator(".xp.on .xp-title")).toHaveText("Sway · what it does");
+  // Whatever the measurement found (it turns, or nothing here does), the
+  // answer says it, from the wiring that landed and the engine's render.
+  const said = await say(page).textContent();
+  expect(said).toMatch(/^(Turned (to|\d+% toward) (fixed|swaying), |Nothing here turns SWAY: )/);
+  expect(said).toContain("between 0.5 and 2 Hz");
+  expect(errs).toEqual([]);
+});
+
 test("a figure says what the worker posted, and follows its control", async ({ page }) => {
   test.setTimeout(400_000);
   const errs = await boot(page);
