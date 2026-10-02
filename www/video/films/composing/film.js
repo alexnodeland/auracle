@@ -32,8 +32,8 @@
 //   recorder). The part is played, then the capture itself is stopped
 //   (`rec`), so the take's real "saved … take" toast is the result shown.
 // - share: both exports are real clicks now (their downloads are not the
-//   shot's sound); the drop is a fixture picture of First Bass, so the rack
-//   visibly changes to the dropped patch.
+//   shot's sound); the picture just exported is dropped back, so it opens
+//   as the same patch, as share3 says.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {

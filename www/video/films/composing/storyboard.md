@@ -18,7 +18,8 @@ sequencers sit in time with the score:
 
 - **plain** — the film's common set-up, `click #warm-skip`.
 - **taught** — `own_setup: true`: `until #warmstart:not(.hidden)` (180 s),
-  `click .warm-item >> nth=0`, `nth=4`, `nth=7`, `click #warm-go`,
+  the deal checked for a card on the films' shortlist (`shotgen.CAST_DEALT`),
+  then `pick("cast")`, `pick("pad")`, `pick("texture")`, `click #warm-go`,
   `wait 3000`, `view evolve`, six votes (`key ArrowLeft`/`ArrowRight`
   alternating, `wait 1500` between), `wait 4000`.
 
@@ -49,12 +50,14 @@ pads as in the playing film.
 
 ## 2. `direction` — shot `co-direction` (direction1–3)
 
-- **Set-up:** `own_setup: true`; `until #warmstart:not(.hidden)` (180 s). The
+- **Set-up:** `own_setup: true`; `until #warmstart:not(.hidden)` (180 s); the
+  deal checked for a card on the shortlist (`CAST_DEALT`, logged). The
   warm-start card is on screen when recording starts.
 - **Marks:** `grid: #warm-grid`, `go: #warm-go`, `mid: #duel-mid`.
-- **Actions:** `direction1:shows` → `click .wi-play >> nth=0` (hear the first
-  card); `direction2:Pick` → `click .warm-item >> nth=0`, `+0.5` `nth=4`,
-  `+1.0` `nth=7` (the button changes to *teach it*); `direction2:eighteen` →
+- **Actions:** `direction1:shows` → ▶ on the card on the shortlist (Ceiling,
+  in this deal: it is heard); `direction2:Pick` → that card, then the first
+  pad and texture card not yet picked, 0.25 s apart (the button changes to
+  *teach it*); `direction2:eighteen` →
   `click #warm-go`; `direction3:duels` → `view evolve`; `direction3:gut` →
   `key ArrowRight`.
 - **Camera:** 1.15 on the card; 1.0 after `direction3:duels`.
@@ -183,7 +186,8 @@ pads as in the playing film.
 - **Actions:** `share1:export` → `click #ovf-btn`, `move #patch-export-btn`
   (hover only, ⚑4); `share2:picture` → `click #image-btn` (the export panel
   opens), eval `#ix-fmt` to `svg` + `change`, `move #ix-go` (hover only);
-  `share3:Drop` → ⚑5 a synthetic drop of a fixture patch file: the veil reads
+  `share3:Drop` → the picture exported at share2, dropped back (footage.mjs
+  `drop {download}`): the veil reads
   *drop a patch to open it · .auracle.json · .png · .svg*, then the toast
   *… is already in the bank — opening it* or *patch imported as …*.
 - **Camera:** 1.3 on the menu and panel (top right); 1.0 for the veil.

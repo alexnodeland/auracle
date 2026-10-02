@@ -237,8 +237,9 @@ chapter 01's card.
   run to its child (so the lineage has both kinds of entry).
 - **Actions:** ⋯ → *Export this patch* (a `.auracle.json`); ⋯ → *Export as
   image…*, SVG, export (its note: the patch rides inside). take2: the panel
-  closed; `fixtures/First_Bass.svg` (a real picture export) dropped on the
-  window: First Bass opens; a bass figure on the beat. take3: EVOLVE, the
+  closed; the picture just exported dropped back on the window (footage.mjs
+  `drop {download}`): the app says the patch is already in the pool and opens
+  it; a figure on the beat. take3: EVOLVE, the
   lineage.
 - **Callouts:** "a .auracle.json file"; "a picture: PNG or SVG"; "the patch
   rides inside the picture"; "what changed, in words" (amber).

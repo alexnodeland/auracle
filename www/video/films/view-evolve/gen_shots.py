@@ -23,7 +23,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
-from shotgen import INIT, FILLED, QUIET, CATS, REDEAL, pick, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, CATS, CAST_DEALT, REDEAL, pick, dump  # noqa: E402
 
 OUT = os.path.join(HERE, "shots.json")
 TB = {b["id"]: b for b in json.load(open(os.path.join(HERE, "timeline.json")))["beats"]}
@@ -253,7 +253,7 @@ shots.append({
 point_marks = {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "sub": "#warmstart .warm-sub"}
 shots.append({
     "id": "ve-point", "beat": "point", "pre": PRE, "own_setup": True,
-    "setup": WARM + [LOG_DEAL, TAG, {"op": "wait", "ms": 1000}, QUIET],
+    "setup": WARM + [CAST_DEALT, LOG_DEAL, TAG, {"op": "wait", "ms": 1000}, QUIET],
     "marks": {**point_marks, "pad": CARD[0], "castplay": CAST_PLAY},
     # The cut lands once PICKS reads 18: "teach it" switches to PERFORM
     # first (stamp taught) and the eighteen picks land a few seconds later

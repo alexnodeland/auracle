@@ -113,11 +113,13 @@ def cast(name, **needs):
 
 
 CAST = {
-    # Chords and swells (Glass Pad's part until now): a supersaw through a
-    # slowly swept filter, Glass Pad's own circuit with the same knob
-    # addresses inside it (node/0#cut, node/0/m#rate…), under a reverb where
-    # Glass Pad had a chorus. Bright, Snap, Motion and Body all turn both
-    # ways, so a gesture picked by what it does finds one.
+    # Chords and swells (Glass Pad's part until now). It has Glass Pad's
+    # layout: a supersaw into a filter an LFO sweeps, with the same knob
+    # addresses inside it (node/0#cut, node/0/m#rate…). Its filter is a band
+    # pass where Glass Pad's is a low pass, and a reverb holds it where Glass
+    # Pad has a chorus. Bright, Snap, Motion and Body ship turning both ways
+    # (Grit is a search control, Space turns toward close), so a gesture
+    # picked by what it does finds one.
     "pad": cast("Slow Weather", Bright="both", Motion="both"),
     # The honest controls: a pad where Space turns toward far only and Grit
     # cannot reach (it asks for a variant), as the lines say.
@@ -139,16 +141,32 @@ CAST = {
 
 def pick(p, then=""):
     """A warm-start card: by index, by name, the first card of a category, or
-    "cast", the first card on the grid that is on the shortlist."""
+    "cast", the first card on the grid that is on the shortlist. A card to
+    pick (no `then`) is one not picked yet, so a later pick by category can
+    never click the cast card again and un-pick it."""
     if isinstance(p, int):
         return ".warm-item >> nth=%d" % p
     names = SHORTLIST if p == "cast" else CATS.get(p, [p])
-    return ", ".join(".warm-item:has(.wi-name:text-is('%s'))%s" % (n, then) for n in names)
+    card = ".warm-item:not(.picked)" if not then else ".warm-item"
+    return ", ".join("%s:has(.wi-name:text-is('%s'))%s" % (card, n, then) for n in names)
+
+
+# Before a shot plays or picks the warm start's card on the shortlist: the
+# deal, logged, and a clear stop when it holds none (the deal moves whenever
+# the app draws one more random number at boot).
+CAST_DEALT = {"op": "log", "name": "cast card", "js": (
+    "(() => { const cast = " + json.dumps(SHORTLIST) + ";"
+    " const deal = [...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent.trim());"
+    " const c = deal.find((n) => cast.includes(n));"
+    " if (!c) throw new Error('shotgen: the warm start dealt no card on the shortlist: ' + deal.join(', '));"
+    " return c + ' (deal: ' + deal.join(', ') + ')'; })()")}
+
+
 def taught(votes=0, picks=(0, 4, 7), redeal=True):
     s = [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         FILLED,
-    ] + [{"op": "click", "sel": pick(p)} for p in picks] + [
+    ] + ([CAST_DEALT] if "cast" in picks else []) + [{"op": "click", "sel": pick(p)} for p in picks] + [
         {"op": "click", "sel": "#warm-go"},
         {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
     ]
@@ -215,16 +233,19 @@ return out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') 
 })()""" % REDEAL_AT}
 def perform(name):
     return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, WIRING]
-_BY_NAME = re.compile(r"text-is\('([^']+)'\)")
+_BY_NAME = re.compile(r"(?:text-is|has-text)\('([^']+)'\)")
 WARM_CARD = "a warm-start card the session dealt"
 SAVED_ROW = "a bank row the session saved"
 
 
 def plays(steps):
     """The presets a list of steps loads (`preset`, `measured`), opens from
-    the bank by name, or plays from the warm start (a card's ▶). A selector
-    naming several (whichever the session dealt or saved) is "the shortlist"
-    when every name is on it, else WARM_CARD or SAVED_ROW."""
+    the bank by name (`text-is` or `has-text`), opens by dropping a fixture
+    file named for one (fixtures/First_Bass.svg), or plays from the warm
+    start (a card's ▶). A selector naming several (whichever the session
+    dealt or saved) is "the shortlist" when every name is on it, else
+    WARM_CARD or SAVED_ROW. A drop of the shot's own export (`download`)
+    reopens a patch the shot already plays, so it adds nothing."""
     out = []
 
     def walk(x):
@@ -237,6 +258,9 @@ def plays(steps):
         op, sel = x.get("op"), x.get("sel")
         if op in ("preset", "measured") and x.get("name"):
             out.append(x["name"])
+        if op == "drop" and isinstance(x.get("file"), str):
+            stem = os.path.splitext(os.path.basename(x["file"]))[0].replace("_", " ")
+            out.append(stem if stem in _SHIPPED else f"a dropped file ({x['file']})")
         if op in ("click", "press", "dblclick") and isinstance(sel, str):
             names = [n for n in _BY_NAME.findall(sel) if n in _SHIPPED]
             cast_only = bool(names) and all(n in SHORTLIST for n in names)

@@ -32,7 +32,7 @@ import sys
 FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 sys.path.insert(0, os.path.join(VIDEO, "tools"))
-from shotgen import INIT, FILLED, QUIET, WIRING, CAST, SHORTLIST, pick, taught, perform, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, WIRING, CAST, CAST_DEALT, SHORTLIST, pick, taught, perform, dump  # noqa: E402
 
 TL = json.load(open(os.path.join(FDIR, "timeline.json")))
 # The first ▶ of a sound that has not been heard yet loads or renders it on
@@ -325,7 +325,7 @@ shots.append({
            {"op": "until", "js": "!document.querySelector('.wi-play.playing')", "ms": 10000},
            {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
            QUIET] if PREHEAR else []),
-        {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((n) => n.textContent).join(', ')"},
+        CAST_DEALT,
     ],
     "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "cast": pick("cast")},
     "actions": [

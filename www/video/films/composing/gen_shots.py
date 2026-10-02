@@ -13,8 +13,7 @@ BLUR = {"op": "eval", "js": "document.activeElement && document.activeElement.bl
 # Bass, Glass Pad and Loom; Ceiling plays the arpeggio where Acid Line did,
 # and Steps goes on Held Under's filter. MIDI clock keeps Loom: its line is
 # about the sequencers a clock starts, and Loom is the one preset with one.
-# The picture dropped in `share` is a fixture of First Bass, seen and not
-# heard.
+# The picture dropped in `share` is the one the shot just exported.
 BASS, PAD, TEXTURE = CAST["bass"], CAST["pad"], CAST["texture"]
 # A low part, a pad and a moving texture: the warm start's card on the
 # shortlist first (it is what the bench holds after the warm start, and what
@@ -53,6 +52,7 @@ spec = {
             "setup": [
                 {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
                 FILLED,
+                CAST_DEALT,
                 QUIET,
             ],
             "clips": [["direction3", "@taught+0.9"]],
@@ -275,9 +275,13 @@ spec = {
                 ]},
                 {"at": "share2:inside", "op": "click", "sel": "#ix-go"},
                 {"at": "share3:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
-                {"at": "share3:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
+                # The picture exported at share2, dropped back: it opens as
+                # the same patch (share3), which the app says is already here.
+                {"at": "share3:Drop", "op": "drop", "download": "\\.svg$", "ms": 1300},
                 {"at": "share3:same", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
                 {"at": "share3:same", "op": "mark", "name": "subject", "sel": "#rack-subject"},
+                {"at": "share3:Drop+0.2", "op": "until", "js": "/Opening it|Opened the patch file/.test(document.getElementById('toasts').textContent)", "ms": 30000, "stamp": "opened"},
+                {"at": "@opened", "op": "log", "name": "opened", "js": "document.getElementById('toasts').innerText + ' | ' + document.getElementById('rack-subject').textContent"},
             ],
         },
         {

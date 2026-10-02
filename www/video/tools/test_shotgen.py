@@ -52,9 +52,21 @@ class TheShortlist(unittest.TestCase):
 
     def test_the_cast_card_on_the_warm_start_is_any_on_the_list(self):
         sel = shotgen.pick("cast", " + .wi-play")
-        self.assertEqual(sel.count(".warm-item:has"), len(sound_defaults.SHORTLIST["roles"]["pads_and_textures"])
-                         + len(sound_defaults.SHORTLIST["roles"]["soft_leads"])
-                         + len(sound_defaults.SHORTLIST["roles"]["low_and_burbling"]))
+        names = [n for names in sound_defaults.SHORTLIST["roles"].values() for n in names]
+        self.assertEqual(sel.count(".warm-item:has"), len(names))
+        for n in names:
+            self.assertIn(f"text-is('{n}')", sel)
+
+    def test_a_pick_never_unpicks_a_card(self):
+        for p in ("cast", "bass", "pad", "Ceiling"):
+            sel = shotgen.pick(p)
+            self.assertEqual(sel.count(".warm-item:not(.picked):has"), sel.count(".warm-item"), p)
+
+    def test_a_cast_pick_checks_the_deal_first(self):
+        steps = shotgen.taught(picks=("cast", "bass", "pad"))
+        i = steps.index(shotgen.CAST_DEALT)
+        self.assertLess(i, next(k for k, s in enumerate(steps) if s.get("op") == "click"))
+        self.assertNotIn(shotgen.CAST_DEALT, shotgen.taught())
 
 
 class WhatAShotPlays(unittest.TestCase):
@@ -103,17 +115,51 @@ class Dump(unittest.TestCase):
             shotgen.dump(s, self.out)
 
 
+# The walkthroughs whose shots.json is written by hand, not by a generator,
+# and why each still plays presets off the shortlist. A new hand-written film
+# has to be added here, with its reason, or be cast.
+LAUNCH = ("launch's three footage shots are seen, not heard (illustrated.sh lays no app sound); "
+          "they are recast when launch moves to N3 (Plan-006 task 8)")
+REPLACED = "replaced by the view films (VIEWS.md), and not to be recorded again"
+HAND_WRITTEN = {
+    "launch": {"Glass Pad": LAUNCH, "First Bass": LAUNCH},
+    "circuit": {"Glass Pad": REPLACED, "Loom": REPLACED, "First Bass": REPLACED},
+    "perform": {"Glass Pad": REPLACED},
+    "zzprobe": {"Glass Pad": "a rehearsal probe of playing's wander shot, never recorded or published"},
+}
+
+
 class TheFilms(unittest.TestCase):
-    """Every walkthrough written by a generator is cast as it is committed."""
+    """Every walkthrough is cast as it is committed, or says why not."""
+
+    def films(self):
+        return sorted(os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(FILMS, "*", "shots.json")))
 
     def test_every_generated_film_is_cast(self):
-        films = sorted(os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(FILMS, "*", "gen_shots.py")))
-        self.assertGreaterEqual(len(films), 8)
-        for f in films:
+        made = [f for f in self.films() if os.path.exists(os.path.join(FILMS, f, "gen_shots.py"))]
+        self.assertGreaterEqual(len(made), 8)
+        for f in made:
             with open(os.path.join(FILMS, f, "shots.json"), encoding="utf-8") as fh:
                 s = json.load(fh)
             with self.subTest(film=f), contextlib.redirect_stdout(io.StringIO()):
                 shotgen.casting(s)
+
+    def test_every_hand_written_film_is_cast_or_says_why(self):
+        hand = [f for f in self.films() if not os.path.exists(os.path.join(FILMS, f, "gen_shots.py"))]
+        self.assertEqual(sorted(hand), sorted(HAND_WRITTEN))
+        for f in hand:
+            with open(os.path.join(FILMS, f, "shots.json"), encoding="utf-8") as fh:
+                s = json.load(fh)
+            for sh in s["shots"]:
+                heard = shotgen.plays([sh.get("setup", []), sh.get("actions", [])])
+                sh["uncast"] = {n: HAND_WRITTEN[f][n] for n in heard if n in HAND_WRITTEN[f]}
+            with self.subTest(film=f), contextlib.redirect_stdout(io.StringIO()):
+                shotgen.casting(s)
+
+    def test_a_dropped_fixture_is_what_it_opens(self):
+        self.assertEqual(shotgen.plays([{"op": "drop", "file": "fixtures/First_Bass.svg"}]), ["First Bass"])
+        self.assertEqual(shotgen.plays([{"op": "drop", "download": "\\.svg$"}]), [])
+        self.assertEqual(shotgen.plays([{"op": "click", "sel": ".bank-item:has-text('Glass Pad')"}]), ["Glass Pad"])
 
 
 if __name__ == "__main__":

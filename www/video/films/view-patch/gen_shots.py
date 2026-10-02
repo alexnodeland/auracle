@@ -28,8 +28,9 @@ from shotgen import INIT, QUIET, CAST, taught, dump  # noqa: E402  (the team's s
 # that widens it) and every chapter between them takes that patch apart; the
 # chains stay on Ask The Dice (move2 describes its sample and hold, quantizer
 # and slew) and Steps on Loom (the one preset with a step sequencer). Slow
-# Weather is Glass Pad's circuit under a reverb, so the re-script (Plan-006
-# task 8) can move the film onto it.
+# Weather has Glass Pad's layout (a supersaw into a filter an LFO sweeps),
+# with a band pass for its low pass and a reverb for its chorus, so the
+# re-script (Plan-006 task 8) can move the film onto it, checking read3.
 ACID = CAST["acid"]
 ONE_PATCH = "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"
 UNCAST = {"Glass Pad": ONE_PATCH}
@@ -566,12 +567,14 @@ shots.append({
         ]},
         {"at": "take2:inside", "op": "click", "sel": "#ix-go"},
         {"at": "take2:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
-        {"at": "take2:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
-        # Opened once First Bass is on the rack (its mod env), not when the
-        # subject first says "opening First Bass…"; the beat cuts to it.
-        {"at": "take2:Drop+0.2", "op": "until", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].some(g => g.dataset.kind === 'modenv')", "ms": 90000, "stamp": "opened"},
-        {"at": "take2:opens", "op": "seq", "steps": [mark("subject2", "#rack-subject"), mark("toast", "#toasts .toast"), RACK_LOG]},
-        # A bass figure on First Bass, on the beat.
+        # The picture exported at take2:inside, dropped back: the patch it
+        # carries opens (take2), and it is the patch on the bench, so the
+        # app says it is already in the pool and opens it. The beat cuts to
+        # the toast that says so.
+        {"at": "take2:Drop", "op": "drop", "download": "\\.svg$", "ms": 1300},
+        {"at": "take2:Drop+0.2", "op": "until", "js": "/Opening it|Opened the patch file/.test(document.getElementById('toasts').textContent)", "ms": 90000, "stamp": "opened"},
+        {"at": "take2:opens", "op": "seq", "steps": [mark("subject2", "#rack-subject"), mark("toast", "#toasts .toast"), RACK_LOG, log("opened", "document.getElementById('toasts').innerText")]},
+        # A figure on the patch it opened, on the beat.
         {"at": "take2:play+0.1", "snap": "beat", "op": "hold", "keys": ["a"], "ms": 330},
         {"at": "take2:play+0.8", "snap": "beat", "op": "hold", "keys": ["a"], "ms": 330},
         {"at": "take2:play+1.5", "snap": "beat", "op": "hold", "keys": ["g"], "ms": 330},
