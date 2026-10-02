@@ -3871,6 +3871,67 @@ mod tests {
         );
     }
 
+    /// **A farm on a stale clip still builds the serial pool.** The farm
+    /// measures with the clip its phrase carries, and after a capture (or a
+    /// restore that installed a clip) it can be a phrase behind. Every draw
+    /// that listens then comes back measured, or vetted out, under the old
+    /// clip. Absorption measures those draws here, so the pool is the one the
+    /// serial fold builds with the session's own clip. Without that, the
+    /// pool admits the old clip's φ under a key that names it.
+    #[test]
+    fn a_farm_on_a_stale_clip_still_builds_the_serial_pool() {
+        const SEED: u64 = 0x5EED_A0D1;
+        // AUDIO IN as the likeliest source, so a six-patch pool holds
+        // listeners.
+        let mut prior = PatchGrammarPrior::default();
+        prior.source_weights[auracle_grammar::prior::N_SOURCES - 1] = 2.0;
+        let cfg = || SessionConfig {
+            pool_size: 6,
+            ..fast()
+        };
+        let mut serial = Engine::new(prior.clone(), cfg());
+        serial.begin_session();
+        serial.set_fill_seed(SEED);
+        serial.fill_pool(&mut StdRng::seed_from_u64(0xDEAD));
+        assert!(
+            serial.pool.iter().filter(|c| c.tree.listens()).count() >= 2,
+            "the pool holds too few listeners to test"
+        );
+
+        let mut farm = Engine::new(prior, cfg());
+        farm.begin_session();
+        farm.set_fill_seed(SEED);
+        let stale = auracle_features::PhraseSpec {
+            clip: Some(sweep_clip(&farm.cfg.phrase)),
+            ..farm.cfg.phrase.clone()
+        };
+        loop {
+            let wave = farm.fill_draw(3);
+            if wave.is_empty() {
+                break;
+            }
+            for d in wave {
+                let pre = if d.dup {
+                    None
+                } else {
+                    PreFeaturized::render(d.tree, &stale, false).ok()
+                };
+                farm.absorb_prior(d.index, pre);
+            }
+        }
+        assert_eq!(
+            pool_signature(&serial),
+            pool_signature(&farm),
+            "a farm a clip behind built another pool"
+        );
+        let keys = |e: &Engine| e.pool.iter().map(|c| c.key.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            keys(&serial),
+            keys(&farm),
+            "a listener kept the old clip's key"
+        );
+    }
+
     /// The wire is `f32`, and that has to be invisible.
     ///
     /// A farm result's audition crosses as `Float32Array` and is rebuilt on

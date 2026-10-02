@@ -1506,20 +1506,28 @@ impl Engine {
             if self.pool.iter().any(|c| c.tree == tree) {
                 continue;
             }
-            let want_audio = self.wants_admitted_audio();
-            if let Ok((cached, audition)) =
-                featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio)
-            {
-                self.push_prior(PreFeaturized {
-                    tree,
-                    cached,
-                    audition,
-                });
+            if let Some(pre) = self.measure_draw(tree) {
+                self.push_prior(pre);
                 added += 1;
             }
         }
         self.standardize_pool();
         added
+    }
+
+    /// Render, vet and featurize a draw here, under this session's phrase
+    /// (and so its audition clip) and memo: the serial fold's measurement,
+    /// and the farm's fallback for a listener it measured under another clip
+    /// ([`Engine::absorb_prior`]). `None` is a vet or compile failure.
+    fn measure_draw(&self, tree: PatchTree) -> Option<PreFeaturized> {
+        let want_audio = self.wants_admitted_audio();
+        let (cached, audition) =
+            featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio).ok()?;
+        Some(PreFeaturized {
+            tree,
+            cached,
+            audition,
+        })
     }
 
     // ------------------------------------------------------------------
@@ -1631,6 +1639,16 @@ impl Engine {
     /// index is consumed either way, exactly as a failed draw burns an attempt
     /// in the serial loop.
     ///
+    /// A draw that **listens** is the one exception: the farm measured it
+    /// with whatever clip its phrase carried, and that is this session's
+    /// measurement only if the result's key, which names the clip, is this
+    /// session's. After a capture, or a restore that installed a clip, the
+    /// farm can still be on the old phrase until it is sent the new one. So a
+    /// listener with another key, or with no result (vetted out under another
+    /// clip, perhaps), is measured here instead, exactly as the serial fold
+    /// would have measured it. A draw that does not listen keys no clip and
+    /// is taken as sent.
+    ///
     /// Returns the new candidate id, or `None` when the draw did not land
     /// (rejected, duplicate, or the pool was already full).
     pub fn absorb_prior(&mut self, index: u64, pre: Option<PreFeaturized>) -> Option<u64> {
@@ -1641,6 +1659,7 @@ impl Engine {
             return None;
         }
         self.consume_draw(index);
+        let pre = self.measured_here_if_stale(index, pre);
         let mut id = None;
         if let Some(pre) = pre {
             if !self.pool.iter().any(|c| c.tree == pre.tree) {
@@ -1649,6 +1668,34 @@ impl Engine {
         }
         self.standardize_pool();
         id
+    }
+
+    /// `pre`, unless draw `index` listens and `pre` is not this session's
+    /// measurement of it, in which case the draw measured here (see
+    /// [`Engine::absorb_prior`]).
+    fn measured_here_if_stale(
+        &self,
+        index: u64,
+        pre: Option<PreFeaturized>,
+    ) -> Option<PreFeaturized> {
+        let current = |p: &PreFeaturized| {
+            !p.tree.listens()
+                || p.cached.key == auracle_features::render_key(&p.tree, &self.cfg.phrase)
+        };
+        match pre {
+            Some(p) if current(&p) => Some(p),
+            pre => {
+                let tree = self.draw_at(index)?;
+                if !tree.listens() {
+                    return pre;
+                }
+                // A duplicate lands nowhere, so there is nothing to measure.
+                if self.pool.iter().any(|c| c.tree == tree) {
+                    return None;
+                }
+                self.measure_draw(tree)
+            }
+        }
     }
 
     /// Mark index `index` as folded in, whatever its outcome.
