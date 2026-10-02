@@ -19,8 +19,9 @@
       "id": "sd-intro",
       "beat": "intro",
       "pre": 1.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -36,8 +37,9 @@
       "id": "sd-open",
       "beat": "open",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -57,15 +59,16 @@
       "id": "sd-lock",
       "beat": "lock",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
         {"op": "wait", "ms": 1200},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"knobs": "#lock-knobs", "wiring": "#lock-structure", "chorus": "#rack-svg g.mod-group[data-key='node']", "cut": "#rack-svg [data-addr='node/0#cut']"},
+      "marks": {"knobs": "#lock-knobs", "wiring": "#lock-structure", "root": "#rack-svg g.mod-group[data-key='node']", "cut": "#rack-svg [data-addr='node/0#cut']"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
         {"at": "lock1:dot-0.6", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 400}, {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"}]},
@@ -80,8 +83,9 @@
       "beat": "evolve",
       "pre": 0.5,
       "clips": [["evolve2", "@benched-0.5"]],
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -103,7 +107,7 @@
         {"at": "evolve2+0.6", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
         {"at": "evolve2+0.8", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "evolve2+0.8", "op": "mark", "name": "subject", "sel": "#rack-subject"},
-        {"at": "evolve2+0.8", "op": "mark", "name": "chorus", "sel": "#rack-svg g.mod-group[data-key='node']"},
+        {"at": "evolve2+0.8", "op": "mark", "name": "root", "sel": "#rack-svg g.mod-group[data-key='node']"},
         {"at": "evolve2+0.8", "op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent"}
       ]
     },
@@ -111,8 +115,9 @@
       "id": "sd-bank",
       "beat": "bank",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -137,8 +142,9 @@
       "id": "sd-spec",
       "beat": "spec",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -161,6 +167,7 @@
       "id": "sd-chains",
       "beat": "chains",
       "pre": 0.5,
+      "uncast": {"Ask The Dice": "chains2 names it and its sample and hold, quantizer and slew"},
       "setup": [
         {"op": "preset", "name": "Ask The Dice"},
         {"op": "view", "v": "play"},
@@ -182,8 +189,9 @@
       "id": "sd-commit",
       "beat": "commit",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -215,15 +223,16 @@
       "beat": "undo",
       "pre": 0.5,
       "clips": [["undo1:undo+0.8", "@undone-0.2"]],
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
         {"op": "wait", "ms": 1200},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"res": "#rack-svg [data-addr='node/0#res']", "chorus": "#rack-svg g.mod-group[data-key='node']", "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"},
+      "marks": {"res": "#rack-svg [data-addr='node/0#res']", "root": "#rack-svg g.mod-group[data-key='node']", "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
         {"at": "undo1:change-0.3", "op": "eval", "js": "window.__res0 = document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent"},
@@ -237,8 +246,9 @@
       "id": "sd-lineage",
       "beat": "lineage",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -270,8 +280,9 @@
       "id": "sd-outro",
       "beat": "outro",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},

@@ -21,7 +21,7 @@
 //   the last one is still queued, the undo is overtaken by it), and it lands
 //   once the engine has re-rendered, which on a busy machine takes seconds,
 //   so the beat can cut from "undo" to the knob snapping back (the shot's
-//   `clips`; no cut when it is quick). The bypassed chorus stays in HELD.
+//   `clips`; no cut when it is quick). The bypassed reverb stays in HELD.
 // - bank: the preview's ▶ is pressed with the pointer still resting on the
 //   socket; a render still on its way when the pointer leaves the socket
 //   falls back to another socket's audition.
@@ -35,7 +35,7 @@ export async function build(stage) {
         shot: "sd-intro",
         chapter: "01 · from a preset",
         cam: [[0, 1.0, 0.5, 0.45], ["intro1:end", ...aim(1.06, 940, 450)]],
-        callouts: [{ at: "intro1:preset", until: "intro1:end", mark: "subject", side: "right", dx: 80, dy: 24, text: "a preset: Glass Pad" }],
+        callouts: [{ at: "intro1:preset", until: "intro1:end", mark: "subject", side: "right", dx: 80, dy: 24, text: "a preset: Slow Weather" }],
       },
       {
         beat: "open",
@@ -67,7 +67,7 @@ export async function build(stage) {
         cam: [[0, 1.0, 0.5, 0.5], ["evolve1-0.2", ...aim(1.4, 1500, 260)], ["evolve2", ...aim(1.15, 1000, 400)]],
         callouts: [
           { at: "evolve1:Evolve", until: "evolve2", mark: "evolve", side: "bottom", dx: -80, dy: 110, text: "⚡ evolve from this" },
-          { at: "evolve2:unlocked", mark: "chorus", side: "top", dx: 60, dy: -90, text: "locked: unchanged" },
+          { at: "evolve2:unlocked", mark: "root", side: "top", dx: 60, dy: -90, text: "locked: unchanged" },
           { at: "evolve2:bench", mark: "subject", side: "bottom", dx: 80, dy: 110, text: "one child, on the bench", color: "b" },
         ],
       },

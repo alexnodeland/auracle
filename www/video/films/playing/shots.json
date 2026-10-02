@@ -13,10 +13,11 @@
       "id": "pl-intro",
       "beat": "intro",
       "pre": 1.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -38,10 +39,11 @@
       "id": "pl-keys",
       "beat": "keys",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -75,10 +77,11 @@
       "id": "pl-touch",
       "beat": "touch",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -94,10 +97,11 @@
       "id": "pl-controls",
       "beat": "controls",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -114,10 +118,11 @@
       "id": "pl-xy",
       "beat": "xy",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -133,6 +138,7 @@
       "pre": 0.5,
       "own_setup": true,
       "clips": [["wander2:taste+0.2", "@drift-0.3"]],
+      "cast": ["Slow Weather"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -144,9 +150,9 @@
         {"op": "log", "name": "redeal", "js": "(async () => {\nconst K = 5;\nconst $ = (id) => document.getElementById(id);\nconst sleep = (ms) => new Promise((r) => setTimeout(r, ms));\nasync function until(fn, ms, what) {\n  const t0 = Date.now();\n  for (;;) { let v = false; try { v = fn(); } catch (e) { v = false; } if (v) return v; if (Date.now() - t0 > ms) throw new Error('redeal: timed out waiting for ' + what); await sleep(150); }\n}\nconst d = window.__deals;\nif (!d) throw new Error('redeal: shotgen.DEALS is not in this film\\'s init');\nconst dealt = () => !$('choose-a').disabled && !$('duel-a').classList.contains('dealing');\nconst ids = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\\D/g, '')));\nconst same = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));\nconst names = () => ids().map((i) => '#' + i).join(' | ');\n// Which deal the pair on the table is (1-based; 0 if not seen). A reply with\n// no pair (a pool too small to deal from) is not counted (DEALS).\nconst index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };\nconst out = [];\nfor (let i = 0; i < 12; i++) {\n  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');\n  const table = ids();\n  // The pair behind it. A deal that repeats the table's pair is refused by\n  // the app and asked again; after three refusals it stops asking, and so\n  // does this wait.\n  await until(() => d.ahead && !same(d.ahead, table), 30000, 'the next pair, dealt ahead').catch(() => {});\n  const n = index();\n  out.push(names() + ' (deal ' + n + ')');\n  if (n >= K) break;\n  const was = names();\n  $('skip-duel').click();\n  await until(() => dealt() && names() !== was, 60000, 'a new pair');\n}\nif (index() !== K) throw new Error('redeal: the table is deal ' + index() + ', not ' + K + ': ' + out.join(' -> '));\nreturn out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') + (d.none ? '; ' + d.none + ' with no pair' : '') + ']';\n})()"},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
         {"op": "midi", "device": "MIDI keyboard"},
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -174,6 +180,7 @@
       "beat": "offer",
       "pre": 0.5,
       "own_setup": true,
+      "cast": ["Slow Weather"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -185,9 +192,9 @@
         {"op": "log", "name": "redeal", "js": "(async () => {\nconst K = 5;\nconst $ = (id) => document.getElementById(id);\nconst sleep = (ms) => new Promise((r) => setTimeout(r, ms));\nasync function until(fn, ms, what) {\n  const t0 = Date.now();\n  for (;;) { let v = false; try { v = fn(); } catch (e) { v = false; } if (v) return v; if (Date.now() - t0 > ms) throw new Error('redeal: timed out waiting for ' + what); await sleep(150); }\n}\nconst d = window.__deals;\nif (!d) throw new Error('redeal: shotgen.DEALS is not in this film\\'s init');\nconst dealt = () => !$('choose-a').disabled && !$('duel-a').classList.contains('dealing');\nconst ids = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\\D/g, '')));\nconst same = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));\nconst names = () => ids().map((i) => '#' + i).join(' | ');\n// Which deal the pair on the table is (1-based; 0 if not seen). A reply with\n// no pair (a pool too small to deal from) is not counted (DEALS).\nconst index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };\nconst out = [];\nfor (let i = 0; i < 12; i++) {\n  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');\n  const table = ids();\n  // The pair behind it. A deal that repeats the table's pair is refused by\n  // the app and asked again; after three refusals it stops asking, and so\n  // does this wait.\n  await until(() => d.ahead && !same(d.ahead, table), 30000, 'the next pair, dealt ahead').catch(() => {});\n  const n = index();\n  out.push(names() + ' (deal ' + n + ')');\n  if (n >= K) break;\n  const was = names();\n  $('skip-duel').click();\n  await until(() => dealt() && names() !== was, 60000, 'a new pair');\n}\nif (index() !== K) throw new Error('redeal: the table is deal ' + index() + ', not ' + K + ': ' + out.join(' -> '));\nreturn out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') + (d.none ? '; ' + d.none + ' with no pair' : '') + ']';\n})()"},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
         {"op": "midi", "device": "MIDI keyboard"},
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -207,10 +214,11 @@
       "id": "pl-keep",
       "beat": "keep",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -224,10 +232,11 @@
       "id": "pl-dock",
       "beat": "dock",
       "pre": 0.5,
+      "cast": ["Ceiling"],
       "setup": [
-        {"op": "preset", "name": "Acid Line"},
+        {"op": "preset", "name": "Ceiling"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Acid Line"},
+        {"op": "measured", "name": "Ceiling"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -255,10 +264,11 @@
       "id": "pl-midi",
       "beat": "midi",
       "pre": 0.5,
+      "cast": ["Slow Weather"],
       "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -303,6 +313,7 @@
       "beat": "outro",
       "pre": 0.5,
       "own_setup": true,
+      "cast": ["Slow Weather"],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -314,9 +325,9 @@
         {"op": "log", "name": "redeal", "js": "(async () => {\nconst K = 5;\nconst $ = (id) => document.getElementById(id);\nconst sleep = (ms) => new Promise((r) => setTimeout(r, ms));\nasync function until(fn, ms, what) {\n  const t0 = Date.now();\n  for (;;) { let v = false; try { v = fn(); } catch (e) { v = false; } if (v) return v; if (Date.now() - t0 > ms) throw new Error('redeal: timed out waiting for ' + what); await sleep(150); }\n}\nconst d = window.__deals;\nif (!d) throw new Error('redeal: shotgen.DEALS is not in this film\\'s init');\nconst dealt = () => !$('choose-a').disabled && !$('duel-a').classList.contains('dealing');\nconst ids = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\\D/g, '')));\nconst same = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));\nconst names = () => ids().map((i) => '#' + i).join(' | ');\n// Which deal the pair on the table is (1-based; 0 if not seen). A reply with\n// no pair (a pool too small to deal from) is not counted (DEALS).\nconst index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };\nconst out = [];\nfor (let i = 0; i < 12; i++) {\n  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');\n  const table = ids();\n  // The pair behind it. A deal that repeats the table's pair is refused by\n  // the app and asked again; after three refusals it stops asking, and so\n  // does this wait.\n  await until(() => d.ahead && !same(d.ahead, table), 30000, 'the next pair, dealt ahead').catch(() => {});\n  const n = index();\n  out.push(names() + ' (deal ' + n + ')');\n  if (n >= K) break;\n  const was = names();\n  $('skip-duel').click();\n  await until(() => dealt() && names() !== was, 60000, 'a new pair');\n}\nif (index() !== K) throw new Error('redeal: the table is deal ' + index() + ', not ' + K + ': ' + out.join(' -> '));\nreturn out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') + (d.none ? '; ' + d.none + ' with no pair' : '') + ']';\n})()"},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
         {"op": "midi", "device": "MIDI keyboard"},
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "Slow Weather"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": "Slow Weather"},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}

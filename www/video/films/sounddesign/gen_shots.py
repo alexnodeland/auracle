@@ -8,7 +8,14 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
 from shotgen import *  # noqa: E402,F403
 CUT = "#rack-svg [data-addr='node/0#cut']"
 RES = "#rack-svg [data-addr='node/0#res']"
-CHORUS = "#rack-svg g.mod-group[data-key='node']"
+# Cast from the films' shortlist (shotgen.CAST): Slow Weather where Glass Pad
+# played. Its circuit is Glass Pad's (a supersaw at node/0/0 through a filter
+# at node/0 that an LFO sweeps), under a reverb at `node` where Glass Pad had
+# a chorus: the plate locked, bypassed and kept here. Ask The Dice stays for
+# the chains, whose line names it and describes its circuit (until the
+# script changes, Plan-006 task 8).
+PAD = CAST["pad"]
+ROOT = "#rack-svg g.mod-group[data-key='node']"
 # A socket's hit target is its ring (the last circle): a cabled socket's box
 # also holds the plug, so the middle of the box can miss the ring.
 def JACK(sel):
@@ -23,8 +30,8 @@ def patch(name):
 LOCKS = [
     {"op": "move", "sel": CUT, "ms": 400},
     {"op": "click", "sel": CUT + " .lock-dot"},
-    {"op": "move", "sel": CHORUS + " .mod-lock", "ms": 400},
-    {"op": "click", "sel": CHORUS + " .mod-lock"},
+    {"op": "move", "sel": ROOT + " .mod-lock", "ms": 400},
+    {"op": "click", "sel": ROOT + " .mod-lock"},
 ]
 HEARD_COMMIT = [
     {"op": "drag", "sel": CUT, "dy": -50, "ms": 700},
@@ -49,7 +56,7 @@ spec = {
     "shots": [
         {
             "id": "sd-intro", "beat": "intro", "pre": 1.5,
-            "setup": patch("Glass Pad") + [QUIET],
+            "setup": patch(PAD) + [QUIET],
             "marks": {"rack": "#rack-scroll", "subject": "#rack-subject"},
             "actions": [
                 {"at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
@@ -57,7 +64,7 @@ spec = {
         },
         {
             "id": "sd-open", "beat": "open", "pre": 0.5,
-            "setup": patch("Glass Pad") + [QUIET],
+            "setup": patch(PAD) + [QUIET],
             "marks": {"filter": "#rack-svg g.mod-group[data-key='node/0']", "hz": CUT, "ms": "#rack-svg [data-addr='amp#release']", "db": "#rack-svg [data-addr='amp#sustain']", "belief": "#belief"},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
@@ -69,8 +76,8 @@ spec = {
         },
         {
             "id": "sd-lock", "beat": "lock", "pre": 0.5,
-            "setup": patch("Glass Pad") + [QUIET],
-            "marks": {"knobs": "#lock-knobs", "wiring": "#lock-structure", "chorus": CHORUS, "cut": CUT},
+            "setup": patch(PAD) + [QUIET],
+            "marks": {"knobs": "#lock-knobs", "wiring": "#lock-structure", "root": ROOT, "cut": CUT},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
                 {"at": "lock1:dot-0.6", "op": "seq", "steps": [
@@ -78,17 +85,17 @@ spec = {
                     {"op": "click", "sel": CUT + " .lock-dot"},
                 ]},
                 {"at": "lock1:square-0.5", "op": "seq", "steps": [
-                    {"op": "move", "sel": CHORUS + " .mod-lock", "ms": 400},
-                    {"op": "click", "sel": CHORUS + " .mod-lock"},
+                    {"op": "move", "sel": ROOT + " .mod-lock", "ms": 400},
+                    {"op": "click", "sel": ROOT + " .mod-lock"},
                 ]},
-                {"at": "lock1:square+0.1", "op": "mark", "name": "square", "sel": CHORUS + " .mod-lock"},
+                {"at": "lock1:square+0.1", "op": "mark", "name": "square", "sel": ROOT + " .mod-lock"},
                 {"at": "lock2:knob", "op": "move", "sel": "#lock-knobs", "ms": 400},
                 {"at": "lock2:wiring", "op": "move", "sel": "#lock-structure", "ms": 400},
             ],
         },
         {
             "id": "sd-evolve", "beat": "evolve", "pre": 0.5,
-            "setup": patch("Glass Pad") + LOCKS + [{"op": "wait", "ms": 800}, QUIET],
+            "setup": patch(PAD) + LOCKS + [{"op": "wait", "ms": 800}, QUIET],
             "clips": [["evolve2", "@benched-0.5"]],
             "marks": {"evolve": "#rack-evolve", "subject": "#rack-subject", "meta": "#rack-meta"},
             "actions": [
@@ -100,13 +107,13 @@ spec = {
                 {"at": "evolve2+0.6", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
                 {"at": "evolve2+0.8", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
                 {"at": "evolve2+0.8", "op": "mark", "name": "subject", "sel": "#rack-subject"},
-                {"at": "evolve2+0.8", "op": "mark", "name": "chorus", "sel": CHORUS},
+                {"at": "evolve2+0.8", "op": "mark", "name": "root", "sel": ROOT},
                 {"at": "evolve2+0.8", "op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent"},
             ],
         },
         {
             "id": "sd-bank", "beat": "bank", "pre": 0.5,
-            "setup": patch("Glass Pad") + [QUIET],
+            "setup": patch(PAD) + [QUIET],
             "marks": {"bank": "#nodebank", "green": "#rack-svg .jack[data-childkey='node/0']", "amber": "#rack-svg .jack[data-childkey='node/0/0']", "dock": "#spec-dock"},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
@@ -140,7 +147,7 @@ spec = {
         },
         {
             "id": "sd-spec", "beat": "spec", "pre": 0.5,
-            "setup": patch("Glass Pad") + [QUIET],
+            "setup": patch(PAD) + [QUIET],
             "marks": {"bank": "#nodebank", "dock": "#spec-dock"},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
@@ -155,6 +162,7 @@ spec = {
         },
         {
             "id": "sd-chains", "beat": "chains", "pre": 0.5,
+            "uncast": {"Ask The Dice": "chains2 names it and its sample and hold, quantizer and slew"},
             "setup": patch("Ask The Dice") + [QUIET],
             "marks": {"rand": "#rack-svg g.mod-group[data-kind='rand']", "quantize": "#rack-svg g.mod-group[data-kind='quantize']", "slew": "#rack-svg g.mod-group[data-kind='slew']", "slot": "#rack-svg .jack[data-modkey='node']", "filter": "#rack-svg g.mod-group[data-key='node']", "vco": "#rack-svg g.mod-group[data-key='node/0']"},
             "actions": [
@@ -179,7 +187,7 @@ spec = {
         },
         {
             "id": "sd-commit", "beat": "commit", "pre": 0.5,
-            "setup": patch("Glass Pad") + [
+            "setup": patch(PAD) + [
                 {"op": "drag", "sel": CUT, "dy": -50, "ms": 700},
                 {"op": "wait", "ms": 2500},
                 {"op": "until", "sel": "#rack-commit:not([disabled])", "ms": 30000},
@@ -210,13 +218,13 @@ spec = {
         },
         {
             "id": "sd-undo", "beat": "undo", "pre": 0.5,
-            "setup": patch("Glass Pad") + [QUIET],
+            "setup": patch(PAD) + [QUIET],
             # ⌘Z lands when the engine has re-rendered the edits before it; on
             # a busy machine that is seconds, so the beat cuts from just after
             # "undo" to just before the knob snaps back (no cut when it is
             # quick: a cut never goes back).
             "clips": [["undo1:undo+0.8", "@undone-0.2"]],
-            "marks": {"res": RES, "chorus": CHORUS, "menu": CHORUS + " .mod-menu-btn"},
+            "marks": {"res": RES, "root": ROOT, "menu": ROOT + " .mod-menu-btn"},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
                 {"at": "undo1:change-0.3", "op": "eval", "js": "window.__res0 = document.querySelector(\"%s\").textContent" % RES},
@@ -234,12 +242,12 @@ spec = {
                     {"op": "until", "js": "document.querySelector(\"%s\").textContent === window.__res0" % RES, "ms": 60000, "stamp": "undone"},
                 ]},
                 {"at": "undo2:bypass-0.5", "op": "seq", "steps": [
-                    {"op": "click", "sel": CHORUS + " .mod-menu-btn"},
+                    {"op": "click", "sel": ROOT + " .mod-menu-btn"},
                     {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000},
                     {"op": "wait", "ms": 300},
                     {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"},
                 ]},
-                # HELD opens when the bypassed chorus lands in it.
+                # HELD opens when the bypassed reverb lands in it.
                 {"at": "undo2:held-0.3", "op": "seq", "steps": [
                     {"op": "until", "sel": "#tray-items .tray-item", "ms": 20000, "stamp": "held"},
                     {"op": "mark", "name": "tray", "sel": "#tray"},
@@ -250,9 +258,9 @@ spec = {
         },
         {
             "id": "sd-lineage", "beat": "lineage", "pre": 0.5,
-            "setup": patch("Glass Pad") + HEARD_COMMIT + [
-                {"op": "move", "sel": CHORUS + " .mod-lock", "ms": 400},
-                {"op": "click", "sel": CHORUS + " .mod-lock"},
+            "setup": patch(PAD) + HEARD_COMMIT + [
+                {"op": "move", "sel": ROOT + " .mod-lock", "ms": 400},
+                {"op": "click", "sel": ROOT + " .mod-lock"},
             ] + EVOLVED + [{"op": "view", "v": "evolve"}, {"op": "wait", "ms": 1500}, QUIET,
                 {"op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerHTML"}],
             "marks": {"lineage": "#lineage-log", "strip": ".lineage-strip"},
@@ -262,9 +270,9 @@ spec = {
         },
         {
             "id": "sd-outro", "beat": "outro", "pre": 0.5,
-            "setup": patch("Glass Pad") + HEARD_COMMIT + [
-                {"op": "move", "sel": CHORUS + " .mod-lock", "ms": 400},
-                {"op": "click", "sel": CHORUS + " .mod-lock"},
+            "setup": patch(PAD) + HEARD_COMMIT + [
+                {"op": "move", "sel": ROOT + " .mod-lock", "ms": 400},
+                {"op": "click", "sel": ROOT + " .mod-lock"},
             ] + EVOLVED + [QUIET],
             "marks": {"rack": "#rack-scroll", "subject": "#rack-subject"},
             "actions": [

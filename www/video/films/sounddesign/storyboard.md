@@ -3,7 +3,7 @@
 A walkthrough over the real instrument, one recorded shot per beat
 (`shots.json` → `tools/footage.mjs`, framed by `stage/walk.js`), eleven beats,
 358 words at speed 0.9. One patch is taken apart and rebuilt on camera:
-**Glass Pad** (a chorus at `node`, an SVF low pass at `node/0` with an LFO on
+**Slow Weather** (a reverb at `node`, an SVF low pass at `node/0` with an LFO on
 its cutoff at `node/0/m`, and a supersaw at `node/0/0`), plus **Ask The Dice**
 for the modulation chain.
 
@@ -37,7 +37,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 
 ## 1. `intro` — shot `sd-intro` (intro1)
 
-- **Set-up:** taught · Glass Pad · view play.
+- **Set-up:** taught · Slow Weather · view play.
 - **Actions:** `at 0.3` hold C (`a d g`) `ms: "end"`.
 - **Camera:** 1.0 → 1.06 on the rack. **Chapter:** `01 · from a preset`.
 
@@ -70,7 +70,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 
 ## 4. `evolve` — shot `sd-evolve` (evolve1–2)
 
-- **Set-up:** taught · Glass Pad · view play · lock the cutoff and the chorus
+- **Set-up:** taught · Slow Weather · view play · lock the cutoff and the reverb
   as in beat 3 · `click #rack-evolve` ·
   `until #toasts .toast:has-text('now on the bench')` (300 s). The walk (40
   steps from this one seed, every locked address held) takes tens of seconds,
@@ -153,7 +153,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 
 ## 8. `commit` — shot `sd-commit` (commit1–4)
 
-- **Set-up:** taught · Glass Pad · view play · drag the cutoff `dy −50` ·
+- **Set-up:** taught · Slow Weather · view play · drag the cutoff `dy −50` ·
   `wait 2500` (the edit settles; `#rack-commit` enables).
 - **Actions:** `at 0.2` hold C 2000 ms. `commit1:Commit` →
   `click #rack-commit` (the duel opens: *WHICH ONE IS BETTER?*, sides in random
@@ -189,7 +189,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 
 ## 10. `lineage` — shot `sd-lineage` (lineage1–2)
 
-- **Set-up:** taught · Glass Pad · view play · edit + commit through the heard
+- **Set-up:** taught · Slow Weather · view play · edit + commit through the heard
   duel (as in beat 8) · lock the chorus · `click #rack-evolve` ·
   `until #rack-evolve:not([disabled])` (300 s) · `view evolve`.
 - **Marks:** `lineage: #lineage-log`.
