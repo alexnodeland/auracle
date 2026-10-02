@@ -166,12 +166,15 @@ test("a tracked sound plays from the input with one voice, and keys over it stop
   // Every key plays the tracked note, so the held keys and the tracked voice
   // are four voices at one pitch, summing by their phases: at 440 Hz alone
   // they read anywhere from cancelled to in phase. A saw's whole output does
-  // not cancel: four saws of one period sum to no less than one saw's RMS
-  // (evenly spaced, a saw of a quarter the period) and to no more than four
-  // in phase (+12 dB), and the leveler and brickwall only take away. The keys
-  // sound, as voices of the tracked note, and no more than four of them.
+  // not cancel. The keys sound at a gain of 0.75 (a computer key's velocity,
+  // 0.78, through the velocity curve) against the lead's 1.0 (the open voice
+  // is held at full velocity); a saw at 1.0 and three at 0.75 of one period
+  // sum to no less than 1.6 dB under the lead alone (their lowest, searched
+  // over every phase), and to no more than 20·log10(1 + 3 × 0.75) = +10.2 dB
+  // in phase, and the leveler and brickwall only take away. The keys sound,
+  // as voices of the tracked note, and no more than three of them.
   expect(held).toBeGreaterThan(lead - 3);
-  expect(held).toBeLessThan(lead + 13);
+  expect(held).toBeLessThan(lead + 11);
   // And they stop with their keys: the tracked voice alone again.
   expect(Math.abs(after - alone)).toBeLessThan(1);
   expect(errors).toEqual([]);

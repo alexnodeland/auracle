@@ -3669,6 +3669,132 @@ mod tests {
         );
     }
 
+    /// One quantum's left channel, the input (330 Hz) written first.
+    fn left_with_input(poly: &mut LivePoly, from: usize, quanta: usize) -> Vec<f32> {
+        let mut x = Vec::with_capacity(quanta * 128);
+        for q in from..from + quanta {
+            quantum_with_input(poly, q * 128, true);
+            // `quantum_with_input` rendered into `out_buf`; read it back.
+            x.extend(poly.out_buf[..256].chunks(2).map(|lr| lr[0]));
+        }
+        x
+    }
+
+    /// The magnitude of `x` at `hz` (one DFT bin, Hann-windowed), at 44.1 kHz.
+    fn level_at(x: &[f32], hz: f64) -> f64 {
+        let n = x.len() as f64;
+        let (mut re, mut im) = (0.0f64, 0.0f64);
+        for (i, s) in x.iter().enumerate() {
+            let w = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n).cos();
+            let ph = std::f64::consts::TAU * hz * i as f64 / 44_100.0;
+            re += w * *s as f64 * ph.cos();
+            im -= w * *s as f64 * ph.sin();
+        }
+        (re * re + im * im).sqrt() / n
+    }
+
+    /// The keys held over a tracked patch: C4, D4 and G4 (none near 330 Hz).
+    const CHORD: [u8; 3] = [60, 62, 67];
+
+    /// Every held key's voice is fed the lead's tracked pitch and gate: the
+    /// input's 330 Hz (log2(330 / C4) V), not its own key.
+    fn assert_followers_fed(poly: &LivePoly, when: &str) {
+        let want = (330.0f64 / 261.625_565).log2();
+        let held: Vec<&Voice> = poly.voices.iter().filter(|v| v.note.is_some()).collect();
+        assert_eq!(held.len(), CHORD.len(), "{when}: the chord's voices");
+        for v in held {
+            let feed = v
+                .voice
+                .track_feeds
+                .values()
+                .next()
+                .expect("a follower has a feed");
+            let (voct, gate) = (feed.voct.get(), feed.gate.get());
+            assert!(
+                (voct - want).abs() < 0.03 && gate >= 2.5,
+                "{when}: key {:?}'s voice is fed {voct:.3} V, gate {gate:.1}, not the input's {want:.3} V",
+                v.note
+            );
+        }
+    }
+
+    /// The chord's pitches are absent from the output and the input's is
+    /// there: every key plays the tracked note.
+    fn assert_plays_the_input(x: &[f32], when: &str) {
+        let at = level_at(x, 330.0);
+        assert!(
+            at > 1.0e-3,
+            "{when}: nothing at the input's 330 Hz ({at:.2e})"
+        );
+        for n in CHORD {
+            let hz = 440.0 * 2f64.powf((n as f64 - 69.0) / 12.0);
+            let own = level_at(x, hz);
+            assert!(
+                own < 0.02 * at,
+                "{when}: key {n} plays its own {hz:.1} Hz ({own:.2e} against {at:.2e} at 330 Hz)"
+            );
+        }
+    }
+
+    /// **A chord under TRACK plays the input's pitch.** Monitored, the open
+    /// voice leads and hands its tracked pitch to every key's voice frame by
+    /// frame (`Tracks::Follow`): each is fed 330 Hz, and the output has the
+    /// input's pitch and none of the keys' own (C4, D4, G4). Without the feed
+    /// a key's voice is never given a pitch or a gate.
+    #[test]
+    fn a_chord_under_track_plays_the_inputs_pitch() {
+        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
+        poly.set_leveler(false);
+        poly.set_makeup(0.06);
+        poly.set_open(true);
+        loudest_with_input(&mut poly, 0, 120);
+        for n in CHORD {
+            poly.note_on(n, 1.0);
+        }
+        loudest_with_input(&mut poly, 120, 40);
+        assert_followers_fed(&poly, "held");
+        let x = left_with_input(&mut poly, 160, 64);
+        assert_plays_the_input(&x, "held");
+    }
+
+    /// **A tracked, monitored patch swaps with keys held.** The new patch's
+    /// open voice leads again, the held keys are re-pressed as followers of
+    /// it, and they still play the input's pitch, not their own; let go,
+    /// they stop, and the lead alone sounds.
+    #[test]
+    fn a_tracked_patch_swaps_with_keys_held_and_they_still_follow() {
+        let mut poly = LivePoly::new(&tracked_patch(), 44_100.0, 4).expect("compiles");
+        poly.set_leveler(false);
+        poly.set_makeup(0.06);
+        poly.set_open(true);
+        loudest_with_input(&mut poly, 0, 120);
+        for n in CHORD {
+            poly.note_on(n, 1.0);
+        }
+        loudest_with_input(&mut poly, 120, 40);
+        // The same patch with a saw for the sine: a structural swap.
+        let swapped = tracked_patch().replace("\"Sine\"", "\"Saw\"");
+        assert_ne!(swapped, tracked_patch());
+        assert!(poly.set_patch(&swapped));
+        loudest_with_input(&mut poly, 160, 120);
+        assert!(poly.open_sounding(), "the swap closed the lead");
+        assert_followers_fed(&poly, "after the swap");
+        let x = left_with_input(&mut poly, 280, 64);
+        assert_plays_the_input(&x, "after the swap");
+        let alone_after = {
+            for n in CHORD {
+                poly.note_off(n);
+            }
+            loudest_with_input(&mut poly, 344, 200);
+            loudest_with_input(&mut poly, 544, 40)
+        };
+        assert!(alone_after > 0.0, "the lead fell silent with the keys");
+        assert!(
+            poly.voices.iter().all(|v| !v.running),
+            "a released key's voice is still running after the swap"
+        );
+    }
+
     /// **A CAPTURE records what is patched into it and reads it back.** With
     /// a key held on one voice, the record gate raised records the input;
     /// dropped, the take reads back as its saved JSON, as long as it ran, and
