@@ -12,6 +12,7 @@ saying so is what makes migration tractable.</p>
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
 | `TastePosterior` | A snapshot. Recomputable from the log |
+| `OwnSound` | [A sound of your own](./features/own-sound.md): its name and the raw $\varphi$ of the coordinates its file measures, **by name**. Never the audio |
 
 Two of these choices carry the design.
 

@@ -233,6 +233,46 @@ before the walk starts. A generation also brings a pool restored over size
 back to size before it opens (`poolTrim`), posting `pool_trimmed` so main
 drops and names the rows.
 
+Breed toward it (a sound of your own, Plan-005 task 11) is a generation over
+the same path: `refine` with `toward: true` makes `breedOpen` call
+`refine_toward_jobs` instead of `refine_jobs`. Its context carries the target
+(`toward`), so `farm_walk` and the engine's fallback walk the same tilted
+target, and its parents are the pool members nearest the sound. It queues,
+absorbs and stops as EVOLVE POOL does. When it opens nothing, `refined` says
+why in `reason` (`Engine::own_breed_blocked`): `untaught` (no fitted taste,
+also set as the flag EVOLVE POOL's refusal carries), `no_sound`, or
+`stale_sound` (a sound saved under coordinates φ no longer has).
+
+The sound itself arrives as `own_sound_set`: the page's decoded file, mixed to
+mono, as a `Float32Array` with its `sampleRate` and the file's `name`.
+`own_sound_set`, `own_sound` and `own_sound_clear` all reply `own_sound`, and
+all three are `soon` requests in one lane, so they are answered in the order
+they were asked: a clear never overtakes the set before it
+(`apps/web/tests/worker-lanes.test.mjs`). `soon`, because the analysis is one
+uninterruptible call. For 30 s of sound it takes 0.16 s at 44.1 kHz, 0.31 s
+at 48, 0.52 s at 96 and 0.94 s at 192 (`examples/own_cost.mjs`, wasm under
+node), and gestures queued first go first.
+
+What the page sends, and what each reply asks of it:
+
+- **Mono, at most 120 s, at most 48 kHz.** The engine measures at most the
+  first 30 s of sound and refuses more than 120 s (`too_long`: the page cuts
+  the file and sends it again). wasm-bindgen copies the samples into linear
+  memory, which never shrinks: two minutes at 48 kHz grow it by about 42 MB,
+  at 192 kHz by 108 MB. So the page downsamples anything above 48 kHz, which
+  also bounds the analysis near a third of a second.
+- **`too_short`** is under half a second of sound once trimmed: a one-shot
+  that short does not measure the coordinates a file is placed by
+  (`FILE_MIN_SECONDS`). The card says so; there is nothing to retry.
+- **`ok: false`** for any reason leaves the sound brought before in place.
+  The card asks `own_sound` to redraw what is kept.
+
+The first own-sound request starts a fetch of `perform-wirings.json` and does
+not wait for it: until it lands only pool members are named as nearest, and
+when it lands it goes to `own_presets_set` and the sound in hand, if any, is
+posted again (`own_sound` with `presets: true`), re-ranked. The UI does not
+send any of these yet.
+
 ## The farm on demand
 
 The engine worker asks main for a crew (`farm_want`); main spawns the workers

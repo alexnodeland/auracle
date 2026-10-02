@@ -33,6 +33,7 @@ pub mod guess;
 pub mod map;
 pub mod migrate;
 pub mod naming;
+pub mod own;
 pub mod perform;
 pub mod surrogate;
 pub mod walk;
@@ -51,8 +52,9 @@ pub use guess::{
     GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
     GUESS_FLOOR, GUESS_TAKEN_KEEP,
 };
-pub use map::{MapPoint, TasteMap};
+pub use map::{MapPoint, OwnPoint, Placement, TasteMap, OWN_PLACEMENT};
 pub use naming::{claim_name, NameScale};
+pub use own::{OwnSound, PresetPhi, Toward, TowardFitness, OWN_GAMMA};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
 pub use walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult, LOCK_SCALE_CAP};
 

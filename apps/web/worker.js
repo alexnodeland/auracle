@@ -1279,7 +1279,10 @@ function genProgress(g) {
 
 // Open a generation. Called from `dispatch`, and returns as soon as the jobs
 // are out: the generation runs from farm messages and `soon` pieces.
-function breedOpen() {
+// `toward`: bred toward the sound of your own (`refine_toward_jobs`): its
+// context carries the target, so every walk, farmed or here, is tilted to
+// it, and it is absorbed and finished as any generation is.
+function breedOpen(toward = false) {
   let parents;
   let ctx = null;
   let jobs = null;
@@ -1288,7 +1291,18 @@ function breedOpen() {
   // retires leave main's bank now and are named, rather than going silently
   // inside `refine_jobs` and staying live in main until the first child.
   poolTrim();
-  if (typeof engine.refine_jobs === "function") {
+  let towardReason = null;
+  if (toward) {
+    const reply = typeof engine.refine_toward_jobs === "function"
+      ? JSON.parse(engine.refine_toward_jobs())
+      : { context: null, jobs: [] };
+    towardReason = reply.reason || null;
+    if (reply.context) {
+      ctx = JSON.stringify(reply.context);
+      jobs = reply.jobs.map((j) => JSON.stringify(j));
+    }
+    parents = reply.jobs.map((j) => j.parent_id);
+  } else if (typeof engine.refine_jobs === "function") {
     const reply = JSON.parse(engine.refine_jobs());
     if (reply.context) {
       // Stringified once: every worker gets this very string.
@@ -1301,8 +1315,16 @@ function breedOpen() {
   }
   if (parents.length === 0) {
     // No posterior yet — nothing to refine *toward*. Report it rather than
-    // burning a minute to produce nothing.
-    post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
+    // burning a minute to produce nothing. A breed toward a sound of your own
+    // says which of its reasons it is (`Engine::own_breed_blocked`): no
+    // taste yet (`untaught`), no sound (`no_sound`), or a sound saved under
+    // coordinates φ no longer has (`stale_sound`: bring the file again).
+    const reason = toward ? towardReason || "untaught" : "untaught";
+    post({
+      type: "refined", views: tasteViews(), status: status(), born: [],
+      untaught: reason === "untaught",
+      ...(toward ? { toward: true, reason, no_sound: reason === "no_sound", stale_sound: reason === "stale_sound" } : {}),
+    });
     return;
   }
   const g = {
@@ -1340,6 +1362,36 @@ function poolTrim() {
     gone = [];
   }
   if (gone.length) post({ type: "pool_trimmed", retired: gone, views: tasteViews(), status: status() });
+}
+
+// Every preset's measurement, for the presets nearest a sound of your own:
+// the wirings the app ships (`perform-wirings.json`, `make perform-wirings`)
+// carry each preset's audio φ, so the engine names the nearest presets
+// without rendering sixty of them. Fetched once, from the first own-sound
+// request, and **never awaited by one**: a request answered while the fetch
+// is out names only pool members, and when the file lands the sound in hand
+// (if any) is posted again, re-ranked. Awaiting it inside `dispatch` let
+// requests behind it (a clear, a breed) overtake the set that started it.
+// With no file (an old bundle, a blocked fetch) only pool members are named.
+let ownPresets = false;
+function ownPresetsFetch() {
+  if (ownPresets || typeof engine.own_presets_set !== "function") return;
+  ownPresets = true;
+  fetch(new URL(`./perform-wirings.json?v=${V}`, self.location.href))
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (!text || poisoned) return;
+      try {
+        engine.own_presets_set(text);
+        const sound = JSON.parse(engine.own_sound());
+        if (sound) post({ type: "own_sound", sound, presets: true });
+      } catch (err) {
+        engineError("own_sound", null, err);
+      }
+    })
+    .catch(() => {
+      /* the nearest presets are a convenience, never load-bearing */
+    });
 }
 
 async function breedFarm(g) {
@@ -1737,6 +1789,16 @@ function laneOf(m) {
   switch (m.type) {
     case "refine":
     case "refine_from":
+      return SOON;
+    // A sound of your own: all three in one lane, so they are answered in
+    // the order they were asked (a clear never overtakes the set before it).
+    // `soon`, because a file's analysis is one uninterruptible call: for 30
+    // s of sound, 0.16 s at 44.1 kHz, 0.31 s at 48, 0.52 s at 96 and 0.94 s
+    // at 192 (`own_cost.mjs`), so the player's gestures queued first go first.
+    // The page sends at most 48 kHz, which bounds it near a third of a second.
+    case "own_sound_set":
+    case "own_sound":
+    case "own_sound_clear":
       return SOON;
     case "perform_wire":
     case "perform_offer":
@@ -2404,8 +2466,34 @@ async function dispatch(m) {
     case "refine": {
       // The breed job (see `breedOpen`): open the generation, hand its walks
       // to the farm, and return. It is absorbed from farm messages, a child
-      // per turn, and nothing else waits for it but a refit.
-      breedOpen();
+      // per turn, and nothing else waits for it but a refit. `toward`: bred
+      // toward the sound of your own (Breed toward it); same lane, same
+      // waits, so it queues behind a generation or ⚡ like any other.
+      breedOpen(m.toward === true);
+      break;
+    }
+    // ---- a sound of your own (Plan-005 task 11) ----
+    // The page decodes a dropped file and sends it mixed to mono: `pcm`, a
+    // Float32Array (transfer it), at `sampleRate`, with the file's `name`.
+    // Replies `own_sound` with the engine's measurement (`sound`: ok or an
+    // error flag, its z with the masked coordinates null, its place on the
+    // map, its nearest pool members and presets, the seeds a breed toward it
+    // starts from). The session saves it as features, never the audio, and
+    // `own_sound` asks for it again after a reload or when the pool moved.
+    case "own_sound_set": {
+      ownPresetsFetch();
+      const sound = JSON.parse(engine.own_sound_set(m.pcm, m.sampleRate, m.name || undefined));
+      post({ type: "own_sound", sound });
+      break;
+    }
+    case "own_sound": {
+      ownPresetsFetch();
+      post({ type: "own_sound", sound: JSON.parse(engine.own_sound()) });
+      break;
+    }
+    case "own_sound_clear": {
+      engine.own_sound_clear();
+      post({ type: "own_sound", sound: null });
       break;
     }
     case "breed_step": {

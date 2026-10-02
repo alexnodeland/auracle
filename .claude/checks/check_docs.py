@@ -1,7 +1,8 @@
 """Keep the agent-facing docs from rotting: every relative link and anchor in
 AGENTS.md / CLAUDE.md files, docs/ and .claude/ resolves, every skill and
-agent has its frontmatter, and every ADR and proposal carries the fields the
-principled-docs hooks require. Run from the repo root (`make dev-check`)."""
+agent has its frontmatter, every ADR and proposal carries the fields the
+principled-docs hooks require, and the site's Markdown holds no control
+characters. Run from the repo root (`make dev-check`)."""
 import glob
 import os
 import re
@@ -63,6 +64,18 @@ for f in FILES:
             missing = fields if fm is None else [k for k in fields if k not in fm]
             if missing:
                 problems.append(f"{f}: frontmatter lacks {', '.join(missing)}")
+
+# No control characters in the site's Markdown. A TAB there is almost always
+# a lost backslash: `\t` written through a string that was not raw turns
+# `\theta` and `\top` into a TAB and "heta", and KaTeX renders the rest.
+CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f]")
+for f in sorted(glob.glob("www/**/*.md", recursive=True)):
+    if f.startswith(SKIP) or any(s in f for s in SKIP):
+        continue
+    for i, line in enumerate(open(f, encoding="utf-8"), 1):
+        m = CONTROL.search(line)
+        if m:
+            problems.append(f"{f}:{i}: control character {m.group(0)!r} (a lost backslash?)")
 
 for p in problems:
     print(f"  {p}")
