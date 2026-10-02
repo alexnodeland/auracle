@@ -52,8 +52,9 @@ pub mod take;
 pub mod term;
 
 pub use compile::{
-    compile, compile_follower, compile_with_input, CompiledVoice, ParamHandle, ParamMap, TrackFeed,
-    COMPILE_MAX_NESTING, INPUT_GAIN_UNITY, TRACK_SENSITIVITY_DEFAULT,
+    compile, compile_follower, compile_with_input, cutoff_hz, lowpass_response, CompiledVoice,
+    ParamHandle, ParamMap, TrackFeed, COMPILE_MAX_NESTING, INPUT_GAIN_UNITY,
+    TRACK_SENSITIVITY_DEFAULT,
 };
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};

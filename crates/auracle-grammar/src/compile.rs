@@ -3598,6 +3598,46 @@ fn compile_voice(
     })
 }
 
+/// The impulse response of a lowpass [`AudioNode::Filter`] (`SvfLp`) at
+/// normalized `cutoff` and `resonance`, as the compiler wires it and heard on
+/// the phrase's held note (C4, `voct` 0, where keytracking moves the corner by
+/// nothing): `len` samples at `sample_rate`, from a unit impulse.
+///
+/// This is the grammar's DSP, not a formula for it: quiver's [`Svf`] driven
+/// with the same values [`compile`] gives it (the cutoff knob as is, the
+/// resonance knob through [`map::resonance`], keytracking at
+/// [`KEYTRACK_AMT`]). The filter is linear, so its response is the whole
+/// story of what it does to any sound; the app's lesson on filters draws its
+/// spectrum (`auracle_features::explain::response_bands`). Pinned against a
+/// compiled filter over white noise by `lowpass_response_is_the_compiled_filter`.
+pub fn lowpass_response(cutoff: f64, resonance: f64, sample_rate: f64, len: usize) -> Vec<f64> {
+    let mut svf = Svf::new(sample_rate);
+    let mut inputs = PortValues::new();
+    let mut outputs = PortValues::new();
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        inputs.clear();
+        // Ports as `Svf::new` declares them: in, cutoff, res, keytrack,
+        // keytrack amount; the lowpass is output 10.
+        inputs.set(0, if i == 0 { 1.0 } else { 0.0 });
+        inputs.set(1, cutoff.clamp(0.0, 1.0));
+        inputs.set(2, map::resonance(resonance.clamp(0.0, 1.0)));
+        inputs.set(4, 0.0);
+        inputs.set(5, KEYTRACK_AMT);
+        outputs.clear();
+        svf.tick(&inputs, &mut outputs);
+        out.push(outputs.get_or(10, 0.0));
+    }
+    out
+}
+
+/// The corner a lowpass [`AudioNode::Filter`]'s `cutoff` knob sets on the
+/// held note (C4), in Hz: quiver's `20 · 1000^x`, which is also what PATCH
+/// prints for the knob.
+pub fn cutoff_hz(cutoff: f64) -> f64 {
+    20.0 * 1000f64.powf(cutoff.clamp(0.0, 1.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4162,6 +4202,55 @@ mod tests {
             im += l * w.sin();
         }
         (re * re + im * im).sqrt() / buf.len() as f64
+    }
+
+    /// `lowpass_response` is what a compiled lowpass does on the held note:
+    /// a sine at C4 through a compiled `SvfLp` comes out scaled by the
+    /// response's gain at C4, at a corner above, near and below the note,
+    /// with and without resonance. Every case keeps C4 at or under unity: the
+    /// voice's limiter holds a full-scale sine at 5 V, so a resonant peak on
+    /// the note would measure the limiter, not the filter.
+    #[test]
+    fn lowpass_response_is_the_compiled_filter() {
+        let c4 = 261.625_565;
+        let gain_at = |h: &[f64], hz: f64| {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (n, x) in h.iter().enumerate() {
+                let w = std::f64::consts::TAU * hz * n as f64 / SR;
+                re += x * w.cos();
+                im -= x * w.sin();
+            }
+            (re * re + im * im).sqrt()
+        };
+        let through = |cutoff: f64, res: f64| {
+            let tree = sustained(AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff,
+                resonance: res,
+                mod_depth: 0.0,
+                input: Box::new(sine_src()),
+                modulation: ModNode::None,
+            });
+            let mut v = compile(&tree, SR).expect("compiles");
+            let out = hold(&mut v, 0.0, 88_200);
+            tone_mag(&out[44_100..], c4, SR)
+        };
+        let dry = {
+            let mut v = compile(&sustained(sine_src()), SR).expect("compiles");
+            let out = hold(&mut v, 0.0, 88_200);
+            tone_mag(&out[44_100..], c4, SR)
+        };
+        for (hz, res) in [(2_000.0, 0.0), (300.0, 0.345), (120.0, 0.345), (150.0, 0.8)] {
+            let cutoff = (hz / 20.0_f64).ln() / 1000.0_f64.ln();
+            assert!((cutoff_hz(cutoff) - hz).abs() < 1e-6);
+            let want = gain_at(&lowpass_response(cutoff, res, SR, 16_384), c4);
+            let got = through(cutoff, res) / dry;
+            assert!(
+                (20.0 * (got / want).log10()).abs() < 0.25,
+                "a {hz} Hz lowpass (res {res}) passed C4 at {got:.4}, its response says {want:.4}"
+            );
+        }
     }
 
     /// The semitone offset (over `range`) whose tone is strongest in `buf`,

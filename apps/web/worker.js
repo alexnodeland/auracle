@@ -1850,6 +1850,10 @@ function laneOf(m) {
     case "perform_wire":
     case "perform_offer":
       return m.bg ? LATER : SOON;
+    // A figure or the lesson, asked for by the player (Plan-005 task 10).
+    case "explain":
+    case "explain_lesson":
+      return SOON;
     case "perform_drift":
     case "fit":
     // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
@@ -2855,6 +2859,47 @@ async function dispatch(m) {
     case "cable_levels": {
       const levels = JSON.parse(engine.edit_cable_levels());
       post({ type: "cable_levels", token: m.token ?? null, tree: engine.edit_tree_json(), levels });
+      break;
+    }
+    // Explain anything (Plan-005 task 10): a control's figure is the
+    // performed state rendered twice, the control at its centre (`made`) and
+    // turned (`turned`, absent for a control nothing turns), each measured by
+    // `explain_render`, one render per turn with the player's gestures served
+    // between. The lesson on filters is one render of the sound in hand with
+    // the grammar's lowpass on it (`lesson_filter`), and its audition. Both
+    // are `soon`: the player asked. Every request is answered, one that fails
+    // with its `error`, and each reply carries the tree it was asked about.
+    case "explain": {
+      const reply = { type: "explain", token: m.token ?? null, tree: m.tree, k: m.k };
+      try {
+        await holdFloor(m, async () => {
+          const k = Number.isInteger(m.k) ? m.k : undefined;
+          const one = (ov) => JSON.parse(engine.explain_render(m.tree, JSON.stringify(ov || []), k));
+          reply.made = one(m.made);
+          if (m.turned) {
+            await breathe(SOON);
+            reply.turned = one(m.turned);
+          }
+        });
+        post(reply);
+      } catch (err) {
+        post({ ...reply, error: String((err && err.message) || err) });
+        throw err;
+      }
+      break;
+    }
+    case "explain_lesson": {
+      const reply = { type: "explain_lesson", token: m.token ?? null, tree: m.tree, cutoff: m.cutoff };
+      try {
+        const r = engine.lesson_filter(m.tree, JSON.stringify(m.overrides || []), m.cutoff);
+        const data = JSON.parse(r.json);
+        const buffer = new Float32Array(r.take_samples());
+        r.free();
+        post({ ...reply, data, buffer, sampleRate: engine.sample_rate() }, buffer.length ? [buffer.buffer] : []);
+      } catch (err) {
+        post({ ...reply, error: String((err && err.message) || err) });
+        throw err;
+      }
       break;
     }
     case "set_style_name": {
