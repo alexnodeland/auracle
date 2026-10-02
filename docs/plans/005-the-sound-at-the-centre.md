@@ -232,6 +232,74 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - A new patch starts empty: remove a module with undo, clear it, skip a
      guess. The guess itself is task 9(d), built; this task draws it and
      raises a render crew for it.
+   - *Progress (2026-10-02):* built in today's rack, in its own module
+     (`apps/web/patch.js`, reached from main.js through a host), before the
+     shell (task 2) rebuilds the view to the specimen's layout:
+     - **the module sheet:** on a coarse pointer, a tap on a module (or one of
+       its knobs) opens the specimen's sheet with every knob the engine
+       describes: a wide slider with − and + (held, they repeat) for each
+       continuous one, the choices of each named one, REMOVE MODULE at its
+       foot. It writes through `sendEdit` and the ordered lane, holding
+       `knobDragging` while a finger is down;
+     - **cables by measured level:** the workbench's audio cables at rest
+       carry the level `cable_levels` measured (−54 to 0 dB re 1 V, the
+       meter's mapping), with the specimen's level mark on each, asked once
+       an edit settles while PATCH is shown; a structure not yet measured is
+       unlit with hollow marks. Modulation cables are not measured: unlit, no
+       mark, still pulsing at their modulator's rate as set (`modBreath`);
+     - **from nothing:** NEW PATCH (one `edit_set_tree`: the root becomes an
+       empty `Silence` socket, the amp is kept), CLEAR and BACK TO ‹name›
+       (Esc), each with an undo; deleting a source now leaves its socket
+       empty (it was refused), so a patch goes back to nothing a module at a
+       time;
+     - **the guess:** GUESS · REVERB over the rack with its reason in the
+       model's italic and its forecast, the module dashed amber at its socket,
+       added (`edit_structure` with `guess`) or skipped (`guess_skip`); the
+       rail marks the guessed kind in the row's own padding. The worker
+       renders the candidates on a walk crew (`farm_render`, `memo_absorb`)
+       without holding the floor, and the floor of eight on its own thread
+       with none;
+     - **the guess's memory** is keyed by its own id (`guess_key`), moved by
+       keep as new, so skips made after the commit stay with the kept sound.
+
+     Where the specimen and the engine (or the specimen and today's rack)
+     differ, the engine was followed:
+     - the specimen's PATCH is a canvas signal flow with the face at OUT, the
+       catalogue at the well's left and a "How to read this" legend. That
+       layout is task 2's rebuild; here the catalogue is the module rail, and
+       the guess hangs at its socket (above the cable, over the empty socket,
+       under the slot) rather than being laid into the chain;
+     - the specimen estimates a new patch's face from its modules' kinds and
+       knobs ("estimated"), and dashes the face without a module under the
+       pointer; the sheet carries the same estimate. These are estimates the
+       engine does not make, so none is drawn (ADR-012); faces are task 3's.
+       The guess's own "estimated vessel" can be measured instead: each
+       candidate is rendered for the ranking (keyed in the engine's memo by
+       `GuessCandidate::key`), so once faces land (#102) and can be taken
+       from that render or kept beside its row, the guess
+       plate gets the candidate's face, labelled as the patch with this
+       module, beside the patch's own. patch.js calls `host.guessFace(g,
+       at, layer)` for it; main.js does not provide it yet;
+     - the specimen's "in 39% of similar presets" counted presets; the
+       engine's guess is ranked by the posterior, so the line is the
+       model's reason and forecast, and says *it may not help* when the lower
+       bound is under zero;
+     - the specimen's "Build a synth / Process a sound" first step needs
+       AUDIO IN in the module rail (another branch's): a new patch opens
+       straight onto its empty socket;
+     - the specimen's AUDIO IN plate chooses a device and one of four uses
+       (process, modulate, play, resample) and draws a shared input fanning
+       out. The engine's `AudioIn` has an input slot, a gain and a channel,
+       and only processing exists, so PATCH draws and edits those three;
+     - the specimen's light points travelling along each cable while it
+       plays: the rack's flow while notes sound (the live meter) stands for
+       it;
+     - the specimen's toasts ("Removed reverb.") keep the rack's own receipts
+       (*Reverb deleted and set aside below.*), whose undo puts it back;
+     - the specimen's turned-knob bar (Compare, Keep, Revert) is the rack's
+       KEEP AS NEW and ⌘Z;
+     - a phone still meets the handheld gate: the sheet is the specimen's
+       phone sheet below 701 px, but laying PATCH out for a phone is task 8.
 8. **Touch.**
    - A phone gets its own layout: a bottom bar, the bank and the palette as
      sheets, the keys as a drawer, swipe to keep.
@@ -253,8 +321,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      maintainer decided it (`guess.rs` in `auracle-session`; the bindings
      `guess_plan`, `guess_rank`, `guess_skip`, `guess_take`; the worker's
      `guess` and `guess_skip`, with no crew yet)
-     ([Measured (task 9d)](#measured-task-9d)). The page draws nothing yet
-     (task 7).
+     ([Measured (task 9d)](#measured-task-9d)). PATCH draws it, and the
+     worker renders it on a crew, since task 7 (2026-10-02).
    - (e) A cable-level probe. *Done (2026-10-01):* `probe_cables` in
      `auracle-features`, `edit_cable_levels` in wasm, the worker's
      `cable_levels` ([Measured (task 9e)](#measured-task-9e)).
