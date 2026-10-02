@@ -971,10 +971,13 @@ def main():
         else:
             for sec in arr["sections"]:
                 f = os.path.join(args.music, f"{sec['section']}.wav")
-                if os.path.exists(f):
-                    lay(bed, load(f), sec["t0"])
-                else:
-                    print(f"  (no {f})", file=sys.stderr)
+                if not os.path.exists(f):
+                    # A section the render does not have (a score renamed or
+                    # edited since it was rendered) would leave its bars
+                    # silent: stop instead.
+                    sys.exit(f"mix.py: no {f} for the arrangement's section {sec['section']!r}: "
+                             "render the score again (tools/sounds.sh renders a changed bed)")
+                lay(bed, load(f), sec["t0"])
         ml = loud(bed)
         bed *= 10 ** ((rest_at - ml) / 20)
         rest = bed.copy()

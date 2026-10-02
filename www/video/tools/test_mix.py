@@ -473,6 +473,18 @@ class AFilmNotYetOnN3(unittest.TestCase):
                         "the bed is out where its level says -60")
         self.assertEqual(report["marks"], [])
 
+    def test_a_section_the_render_lacks_stops_the_mix(self):
+        # A bed rendered by section, one of them missing (a score renamed
+        # since it was rendered): its bars would be silent, so the mix stops.
+        sec = os.path.join(self.film.root, "sections")
+        os.makedirs(sec)
+        mix.write(os.path.join(sec, "a.wav"), tone(220, 8.0, -26))
+        self.film.json("films/f/arrangement.json", {"bed": "signal", "sections": [
+            {"section": "a", "bars": 2, "t0": 0.0}, {"section": "end", "bars": 2, "t0": 8.0}]})
+        with self.assertRaises(SystemExit) as e:
+            self.run_mix("--music", sec)
+        self.assertIn("end.wav", str(e.exception))
+
     def test_its_loudness_and_follower_are_the_ones_it_was_mixed_with(self):
         x = np.random.default_rng(9).standard_normal((3 * SR, 2)).astype(np.float32) * 0.1
         self.assertAlmostEqual(mix.lufs_before(x), mix.lufs(x), places=9)
