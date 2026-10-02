@@ -360,6 +360,24 @@ fn undoing_a_taken_guess_counts_as_a_skip() {
         .unwrap();
     assert!(plan.skipped > 0);
     assert!(plan.jobs.iter().all(|j| j.tree != c.tree));
+
+    // Two guesses taken, then undone twice: each is skipped as the undo
+    // passes back through the tree before it, the newer first.
+    let a = guess_candidates(&tree, None)
+        .into_iter()
+        .find(|c| c.kind == "delay")
+        .expect("a delay at the output");
+    let b = guess_candidates(&a.tree, None)
+        .into_iter()
+        .find(|c| c.kind == "chorus")
+        .expect("a chorus at the output");
+    let mut mem = GuessMemory::default();
+    mem.took(3, a.skip(), tree.clone());
+    mem.took(3, b.skip(), a.tree.clone());
+    assert_eq!(mem.observe(3, &b.tree), None);
+    assert_eq!(mem.observe(3, &a.tree), Some(b.skip()), "the first undo");
+    assert_eq!(mem.observe(3, &tree), Some(a.skip()), "the second undo");
+    assert_eq!(mem.skips(3), [b.skip(), a.skip()]);
 }
 
 /// **Seeded means reproducible.** Two sessions from one seed guess the

@@ -734,8 +734,12 @@ struct Taken {
     before: PatchTree,
 }
 
+/// How many taken guesses a patch remembers: an undo walks back through
+/// them one at a time, and further back than this is not an undo of a guess.
+pub const GUESS_TAKEN_KEEP: usize = 16;
+
 /// What the guesses remember outside the ranking, per patch: the skips, and
-/// the guess last taken, so that undoing it counts as a skip.
+/// the guesses taken, so that undoing one counts as a skip.
 ///
 /// The ranking is a pure function of the tree, so it cannot remember a skip
 /// itself; and the tree a taken guess is undone to ranks it first again.
@@ -744,7 +748,9 @@ struct Taken {
 #[derive(Clone, Debug, Default)]
 pub struct GuessMemory {
     skips: HashMap<u64, Vec<GuessSkip>>,
-    taken: HashMap<u64, Taken>,
+    /// Each patch's taken guesses, oldest first, at most
+    /// [`GUESS_TAKEN_KEEP`].
+    taken: HashMap<u64, Vec<Taken>>,
 }
 
 impl GuessMemory {
@@ -766,19 +772,23 @@ impl GuessMemory {
 
     /// A guess was taken on `patch`, which was `before` without it.
     pub fn took(&mut self, patch: u64, skip: GuessSkip, before: PatchTree) {
-        self.taken.insert(patch, Taken { skip, before });
+        let v = self.taken.entry(patch).or_default();
+        v.push(Taken { skip, before });
+        if v.len() > GUESS_TAKEN_KEEP {
+            v.remove(0);
+        }
     }
 
     /// The patch in hand is now `tree`. If that is the patch as it was
-    /// before its last taken guess (an undo, or the module taken out
-    /// again), the guess counts as skipped: returns the skip it recorded.
-    /// Compared by content, uids aside, as patches are everywhere.
+    /// before a guess taken on it (an undo, or the module taken out again),
+    /// that guess counts as skipped: returns the skip it recorded. Undoing
+    /// two taken guesses passes through the tree before each, newest first,
+    /// so each is skipped in turn. Compared by content, uids aside, as
+    /// patches are everywhere.
     pub fn observe(&mut self, patch: u64, tree: &PatchTree) -> Option<GuessSkip> {
-        let back = self.taken.get(&patch).is_some_and(|t| t.before == *tree);
-        if !back {
-            return None;
-        }
-        let t = self.taken.remove(&patch)?;
+        let v = self.taken.get_mut(&patch)?;
+        let i = v.iter().rposition(|t| t.before == *tree)?;
+        let t = v.remove(i);
         self.skip(patch, t.skip.clone());
         Some(t.skip)
     }
