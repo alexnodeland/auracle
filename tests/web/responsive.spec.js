@@ -169,14 +169,18 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   const reachBefore = await page.evaluate(() => [0, 1, 2, 3, 4, 5].filter((i) => !document.querySelector(`.pf-knob[data-i="${i}"]`).classList.contains("unwired")).length);
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await page.waitForSelector(".pf-offer.ready", { timeout: 120_000 });
-  // Blend toward the offer, as a player auditions it.
+  // Blend toward the offer past half with a note held, as a player
+  // auditions it: a second of that is hearing it, and TAKE waits for it.
+  await page.keyboard.down("a");
   const b = await page.locator(".pf-knob[data-i='6']").boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - i * 12);
   await page.mouse.up();
-  expect(Number(await page.locator(".pf-knob[data-i='6']").getAttribute("aria-valuenow"))).toBeGreaterThan(0.3);
+  expect(Number(await page.locator(".pf-knob[data-i='6']").getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
+  await expect(page.locator(".pf-pad", { hasText: "Take" })).toBeEnabled({ timeout: 10_000 });
   await page.locator(".pf-pad", { hasText: "Take" }).click();
+  await page.keyboard.up("a");
   // Blend is home at once: B is empty.
   await expect(page.locator(".pf-knob[data-i='6']")).toHaveAttribute("aria-valuenow", "0.00");
   // The taken patch is named for what it is.

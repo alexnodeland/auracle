@@ -5051,7 +5051,7 @@ html.handheld .handheld-gate {
 }
 .pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 var(--white-06), 0 1px 0 var(--shadow-ink); }
 @media (hover: hover) {
-  .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
+  .pf-pad:hover:not(:disabled):not([aria-disabled="true"]) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
   .pf-knob:not(.search):not(.pending):hover .pf-k-half:not(.closed) { stroke: var(--silk-dim); }
 }
 .pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
@@ -5059,8 +5059,11 @@ html.handheld .handheld-gate {
 .pf-pad.flash { animation: pf-flash var(--d-move) ease-out; }
 .pf-pad.primary { color: var(--phos-a); border-color: var(--phos-a-deep); }
 /* A pad with nothing to act on is *waiting*, and says for what — at 0.38 it
-   read as broken. Dashed, flat and legible, with the reason underneath. */
-.pf-pad:disabled {
+   read as broken. Dashed, flat and legible, with the reason underneath.
+   TAKE waits pressable (aria-disabled), so a press can say why. */
+.pf-pad:disabled,
+.pf-pad[aria-disabled="true"],
+.pf-pad[aria-disabled="true"]:active {
   opacity: 0.62;
   cursor: default;
   transform: none;
@@ -5072,8 +5075,10 @@ html.handheld .handheld-gate {
 /* …and a pad whose press does more than its name says (Offer, while B holds
    an offer, passes on it: NEXT · passes on B) says so the same way. */
 .pf-pad[data-sub]:not([data-sub=""])::after { content: attr(data-sub); }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
 .pf-pad:disabled[data-wait]:not([data-wait=""])::after,
+.pf-pad[aria-disabled="true"][data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after,
+.pf-pad[aria-disabled="true"][data-wait]:not([data-wait=""])::after,
 .pf-pad[data-sub]:not([data-sub=""])::after {
   display: block;
   margin-top: 3px;
@@ -5265,6 +5270,43 @@ html.handheld .handheld-gate {
 .pf-how-ends { font-size: var(--t-value); color: var(--silk-dim); }
 .pf-how-how { color: var(--silk-dim); }
 .pf-how-here { color: var(--phos-a-dim); }
+
+/* The offer's moments (perform.js growOffer, takeMotion, foldMotion). B
+   grows from the sound's name; a copy of it fills green and goes into the
+   name when taken, or folds back into it when passed. Under reduced motion
+   nothing moves, and B shows the taken state as a fill for a moment. */
+.pf-offer { transform-origin: 0 0; position: relative; }
+.pf-offer-ghost {
+  position: fixed;
+  z-index: 30;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: 0 0;
+  background: var(--rack);
+  /* B's look when it holds an offer (.pf-offer.ready), on a copy of it. */
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--phos-b-deep);
+  border-radius: var(--r1);
+  color: var(--silk);
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+}
+.pf-offer-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--phos-a-24);
+  transform-origin: 50% 100%;
+  transform: scaleY(0);
+}
+.pf-offer[data-moment="taken"] { border-style: solid; border-color: var(--phos-a-deep); }
+@media (prefers-reduced-motion: reduce) {
+  .pf-offer[data-moment="taken"] { background: var(--phos-a-24); }
+}
 
 /* ===================== MIDI panel ===================== */
 button.midi-ind { background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font: inherit; color: inherit; padding: 1px var(--s1); }

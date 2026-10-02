@@ -1450,6 +1450,7 @@ export function createPerform(host) {
   // "what I had over B". Both directions, or the model would only ever hear
   // itself agreed with. An offer taken or passed unheard teaches nothing.
   const HEARD_MS = 1000;
+  const offerHeard = () => !!state.offer && (state.offer.heardMs || 0) >= HEARD_MS;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
     watchAnswer();
@@ -1468,7 +1469,12 @@ export function createPerform(host) {
     if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
     if (!o || !state.visible) return;
-    if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
+    if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) {
+      const was = offerHeard();
+      o.heardMs = (o.heardMs || 0) + 250;
+      // Heard now: TAKE stops waiting.
+      if (!was && offerHeard()) paintPads();
+    }
   }, 250);
 
   // An answer waits out a short window before it is sent, counted from when
@@ -1606,8 +1612,93 @@ export function createPerform(host) {
       live.bMix(state.visible ? state.blend : 0);
     }
     renderOffer();
+    growOffer();
     knobs.forEach(paintKnob);
     if (!again) logImplicit("perform_offer", { why: state.offerWhy || "" });
+  }
+
+  // ---------- the offer's motion ----------
+  // Each moment shows what the engine did, and no more (ADR-012):
+  // - grown: an offer is a short walk from the sound under your hands
+  //   (`Engine::offer`, or `Engine::offer_toward` for a search control's,
+  //   asked by `perform_offer` with this sound's tree and knobs), so B grows
+  //   out of the sound's name into its place;
+  // - taken: B fills with the sound's green and goes into the name: the
+  //   bench takes its tree (`commitTree`, `edit_set_tree`), and a heard one
+  //   is recorded as a pick for it (`perform_record`, `record_tree_duel`);
+  // - folded: passed, B folds back into the name it grew from: it is emptied
+  //   (`bClear`), nothing joins the pool, and a heard one is recorded as a
+  //   pick for the sound you kept (`perform_record`).
+  // Each moment is also B's `data-moment`, so reduced motion (every
+  // duration 0) shows each state without the movement, and nothing waits on
+  // a motion ending: B's own state changes at once, and a copy of it moves.
+  const easeOf = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "ease-out";
+  // The transform that puts box `to` where box `at` is (origin top left).
+  const onto = (at, to) =>
+    `translate(${(at.left - to.left).toFixed(1)}px, ${(at.top - to.top).toFixed(1)}px) scale(${(at.width / to.width).toFixed(3)}, ${(at.height / to.height).toFixed(3)})`;
+  let momentTimer = 0;
+  function moment(name) {
+    offerCard.dataset.moment = name;
+    clearTimeout(momentTimer);
+    // A taken B shows its fill for a moment, then is the empty B it now is.
+    if (name === "taken") momentTimer = setTimeout(() => offerCard.dataset.moment === "taken" && (offerCard.dataset.moment = ""), 1200);
+  }
+  function growOffer() {
+    moment("grown");
+    offerCard.getAnimations().forEach((a) => a.cancel());
+    const ms = motionMs("--d-move");
+    if (!ms || !state.visible) return;
+    const from = nameEl.getBoundingClientRect();
+    const to = offerCard.getBoundingClientRect();
+    if (!from.width || !to.width) return;
+    offerCard.animate([{ transform: onto(from, to), opacity: 0.25 }, { transform: "none", opacity: 1 }], { duration: ms, easing: easeOf("--e-settle") });
+  }
+  // A copy of B as it was, to move while B itself is already what it is now.
+  function ghost(name) {
+    const ms = motionMs("--d-move");
+    const r = offerCard.getBoundingClientRect();
+    if (!ms || !state.visible || !r.width) return null;
+    const g = offerCard.cloneNode(true);
+    // Its own class, never B's: it is a picture of B, not B.
+    g.className = "pf-offer-ghost";
+    g.dataset.moment = name;
+    g.setAttribute("aria-hidden", "true");
+    g.style.left = `${r.left}px`;
+    g.style.top = `${r.top}px`;
+    g.style.width = `${r.width}px`;
+    g.style.height = `${r.height}px`;
+    document.body.append(g);
+    const gone = () => g.remove();
+    setTimeout(gone, ms * 3 + 200);
+    return { g, r, ms, gone };
+  }
+  function takeMotion() {
+    moment("taken");
+    const gh = ghost("taken");
+    if (!gh) return;
+    const fill = el("span", "pf-offer-fill");
+    gh.g.append(fill);
+    // The green rises from the base, then the whole of B goes into the name.
+    fill.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], { duration: gh.ms, easing: easeOf("--e-settle"), fill: "forwards" });
+    const into = gh.g.animate(
+      [
+        { transform: "none", opacity: 1, offset: 0 },
+        { transform: "none", opacity: 1, offset: 0.5 },
+        { transform: onto(nameEl.getBoundingClientRect(), gh.r), opacity: 0 },
+      ],
+      { duration: gh.ms * 2, easing: easeOf("--e-swap"), fill: "forwards" },
+    );
+    into.onfinish = gh.gone;
+  }
+  function foldMotion() {
+    moment("folded");
+    const gh = ghost("folded");
+    if (!gh) return;
+    const back = gh.g.animate(
+      [{ transform: "none", opacity: 1 }, { transform: onto(nameEl.getBoundingClientRect(), gh.r), opacity: 0 }],
+      { duration: gh.ms, easing: easeOf("--e-swap"), fill: "forwards" },
+    );
+    back.onfinish = gh.gone;
   }
 
   function requestDrift() {
@@ -1641,6 +1732,7 @@ export function createPerform(host) {
     const o = state.offer;
     const gen = state.gen;
     const pt = holdAnswer(false);
+    if (o) foldMotion();
     state.offer = null;
     const live = host.live();
     if (live) live.bClear();
@@ -2470,9 +2562,18 @@ export function createPerform(host) {
 
   function take() {
     if (!state.offer) return host.note("Nothing offered yet. Press Offer, or turn Wander up.", { urgent: true });
+    // The heard rule: an offer is taken only once it has been heard (a
+    // second of Peek, or of Blend past half, while notes sound), so every
+    // Take is an answer and teaches the model. Booth attract mode plays by
+    // itself and is exempt (nothing it does is taught).
+    if (!state.quiet && !offerHeard()) {
+      host.note("Hear B before you take it: hold PEEK, or turn BLEND past half, while a note plays.", { urgent: true, replace: "pf-offer" });
+      return;
+    }
     if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
+    takeMotion();
     const json = state.offer.json;
     // Measured when the offer grew: A rebuilds as the offer at its own level,
     // not the old sound's, and B hands over with no jump.
@@ -2596,17 +2697,26 @@ export function createPerform(host) {
       if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
       const aim = state.offer.aim;
       if (aim) body.append(aimNote(aim), document.createTextNode(" · "));
-      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek to hear it, slide Blend, or Take it`));
+      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek or slide Blend to hear it, then Take it`));
     }
     else body.textContent = "no offer: press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
     offerCard.append(lab, body);
-    // Take and Peek act on an offer; until there is one they look it.
-    // Waiting, not broken: a disabled pad says what it is waiting for.
+    paintPads();
+  }
+  // Take and Peek act on an offer; until there is one they look it.
+  // Waiting, not broken: a disabled pad says what it is waiting for. Take
+  // also waits for the offer to be heard (the heard rule, see `take`), and
+  // the attract hand is exempt.
+  function paintPads() {
     for (const k of ["take", "peek"]) {
       if (!padEls[k]) continue;
-      padEls[k].disabled = !state.offer;
-      padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
+      const wait = !state.offer ? "needs an offer" : k === "take" && !state.quiet && !offerHeard() ? "hear it first" : "";
+      // TAKE stays pressable while it waits, so a press is answered with
+      // why (`take`), not with nothing; it looks and reads as waiting.
+      if (k === "take") padEls[k].setAttribute("aria-disabled", String(!!wait));
+      else padEls[k].disabled = !!wait;
+      padEls[k].dataset.wait = wait;
     }
     // While B holds an offer, pressing Offer passes on it: the pad says so
     // before it is pressed, not in a toast after.
@@ -2853,7 +2963,7 @@ export function createPerform(host) {
   const STEPS = [
     { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
     { id: "turn", text: turnStep },
-    { id: "offer", text: () => "Press OFFER, then hold PEEK or TAKE it" },
+    { id: "offer", text: () => "Press OFFER, hold PEEK, then TAKE it" },
   ];
   // Step 2 names a control that turns on *this* patch. It used to say "Turn a
   // lit control: BRIGHT is a good start" on every patch, when the only
@@ -3361,6 +3471,7 @@ export function createPerform(host) {
       // Whatever attract blended in was heard by nobody in particular: an
       // offer it leaves behind starts unheard for the visitor.
       if (!on && state.offer) state.offer.heardMs = 0;
+      paintPads();
     },
     show() {
       state.visible = true;
