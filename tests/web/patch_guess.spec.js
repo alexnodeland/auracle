@@ -232,12 +232,22 @@ test("a guess skipped after keep as new is still skipped when the kept sound is 
   const g = await guessAfter(page, await replied(page, "guess_skipped", tSkip));
   expect(g.data.guesses[0].family === top.family && g.data.guesses[0].socket === top.socket).toBe(false);
 
-  // Another sound, then the kept one again: the skip is its own.
-  await openPreset(page, "Reese");
+  // Another sound, then the kept one again: the skip is its own. The other
+  // sound comes from the pool, not the presets: opening a preset puts it in
+  // the pool, and a full pool (40) makes room by replacing the sound it rates
+  // lowest. A sound just kept as new often is that sound: on a CI runner the
+  // kept sound rated 24%, opening Reese replaced it, and its row was never
+  // there to click.
   await page.locator('.bf[data-f="pool"]').click();
+  const other = await page.locator(`#bank-list .bank-item:not([data-id="${kept}"])`).first().getAttribute("data-id");
+  const tOther = await now(page);
+  await page.locator(`#bank-list .bank-item[data-id="${other}"] .bi-name`).click();
+  await replied(page, "bench", tOther, { subject: Number(other) });
   const tBack = await now(page);
-  // By id: the kept sound has its seed's name, and the seed is in the pool too.
-  await page.locator(`#bank-list .bank-item[data-id="${kept}"] .bi-name`).click();
+  // By id: rows can share a name.
+  const keptRow = page.locator(`#bank-list .bank-item[data-id="${kept}"]`);
+  await expect(keptRow, "the kept sound is still in the pool").toHaveCount(1, { timeout: 10_000 });
+  await keptRow.locator(".bi-name").click();
   const opened = await replied(page, "bench", tBack, { subject: kept });
   await expect(page.locator("#rack-subject")).toContainText(keptName, { timeout: 60_000 });
   const back = await guessAfter(page, opened);
