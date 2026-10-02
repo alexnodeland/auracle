@@ -92,14 +92,6 @@ async function main() {
   const port = srv.address().port;
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--force-color-profile=srgb", "--disable-lcd-text"] });
   try {
-    if (process.argv.includes("--cues")) {
-      const page = await openPage(browser, port);
-      const cues = await page.evaluate(() => window.__stage.cues);
-      const f = path.join(outDir, "cues.json");
-      fs.writeFileSync(f, JSON.stringify(cues, null, 1));
-      console.log(`${f}  (${cues.length} cues)`);
-      return;
-    }
     const at = arg("at");
     if (at) {
       const page = await openPage(browser, port);

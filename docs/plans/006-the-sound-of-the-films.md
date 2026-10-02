@@ -83,8 +83,15 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
        its chord through the bar before Reach instead, as the reel did;
      - a per-demo voicing under a demo: every demo takes the reel's A3 C4
        (`under_demo`).
-6. **Stingers out:** `stingers.json` and every `stage.sfx()` call site are
-   removed. The two marks take their place.
+6. **Stingers out.** *Done.*
+   - `stingers.json` is gone, with `stage.sfx()`, its 25 call sites (launch,
+     taste, math, engine, dsp, and the tour's title card), `render.mjs
+     --cues` and `mix.py`'s count of them. The stage has no sound of its own.
+   - Signal, launch's bed until it is re-voiced, loses its riser and its
+     closing hit; its last section (`end`) is the finale ringing out.
+   - The two marks take the cues' place: `timeline.py` puts Bloom 1.75 s
+     before a film's first word and Reach 1.75 s after its last, where every
+     logo sting stood (an outro's end card), as each film moves to N3.
 7. **Casting:** the shot generators cast from the shortlist, including offers
    a shot grows (the tour's cold open).
 8. **The words:** every script follows `www/brand/voice.md`'s spoken voice, and

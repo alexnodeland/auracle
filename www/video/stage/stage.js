@@ -187,7 +187,6 @@ export class Stage {
     this.frame = document.getElementById("frame");
     this.scenes = [];
     this.pending = [];
-    this.cues = [];
     this._grain = null;
     this._buildOverlay();
   }
@@ -249,16 +248,6 @@ export class Stage {
     this.frame.insertBefore(this._grainEl, null);
     this.frame.insertBefore(this._vignette, this._grainEl);
     return s;
-  }
-
-  /**
-   * A sound cue at absolute time t (a click, a whoosh), registered while a
-   * scene builds. No mix lays these any more: the films have no cues
-   * (ADR-014), and mix.py only counts what render.mjs --cues finds. Plan-006
-   * task 6 removes this and its call sites.
-   */
-  sfx(name, t, gain = 0) {
-    this.cues.push({ name, t: Math.round(t * 1000) / 1000, gain });
   }
 
   /** Scenes can hand back promises (a video seek); seek awaits them. */
@@ -363,7 +352,6 @@ export async function boot(buildFilm, timelineUrl = "timeline.json") {
     seek: (t) => stage.seek(t),
     duration: stage.duration,
     fps: stage.fps,
-    cues: stage.cues,
     ready: true,
   };
 }

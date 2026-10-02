@@ -3,17 +3,16 @@
 # to the encoded MP4 and WebM:
 #   timeline → the bed (a film on N3: its bed and marks written to the
 #   timeline; otherwise the study score fitted to the arrangement) → score
-#   render → the picture's sound cues, counted (the mix lays none) → first
-#   mix (the envelopes the picture pulses with) → frames → final mix, encode,
-#   captions and poster.
+#   render → first mix (the envelopes the picture pulses with) → frames →
+#   final mix, encode, captions and poster.
 #
 #   www/video/tools/illustrated.sh FILM POSTER_SECONDS
 #
 # Run voice.sh FILM first, and sounds.sh once. The mix takes the ladder and
-# the duck from www/brand/sound.json (mix.py's defaults) and lays no cues
-# (ADR-014); a film laid out before the grammar is mixed exactly as it was,
-# bar the cues (`before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's
-# level and its duck for a trial mix.
+# the duck from www/brand/sound.json (mix.py's defaults); the films have no
+# cues (ADR-014). A film laid out before the grammar is mixed as it was before
+# ADR-014, without its cues (`before_the_grammar`). MUSIC_DB / DUCK_DB
+# override the bed's level and its duck for a trial mix.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 F="$1"; POSTER="$2"
@@ -39,7 +38,6 @@ else
   (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 2 | tail -2)
   MUSIC=(--music "out/$F/music/study")
 fi
-node tools/render.mjs "$F" --cues | tail -1
 MIX=(--voice "out/$F/voice" "${MUSIC[@]}"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -1

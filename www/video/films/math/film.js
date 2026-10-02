@@ -2309,7 +2309,6 @@ function sceneOutro({ stage, beat, line }) {
         return d;
       });
       const links = ["taste model", "search", "performance"].map((s, i) => place(el("div", { class: "pill a" }, over, `${s}  ▸`), { x: 960 + (i - 1) * 330, y: 800, ax: 0.5, ay: 0.5 }));
-      stage.sfx("logo_sting", b.t0 - 0.1, -2);
       const tConst = wordTime(l1, "constant");
       const tRef = wordTime(l1, "reference");
       return (tl, t) => {

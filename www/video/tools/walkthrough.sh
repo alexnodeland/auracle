@@ -3,9 +3,8 @@
 # encoded MP4 and WebM:
 #   record every shot → check the takes → the bed (a film on N3: its bed and
 #   marks written to the timeline; otherwise the study score fitted to the
-#   arrangement) → the picture's sound cues, counted (the mix lays none) → the
-#   app's own sound laid under the picture (app_audio.py follows cuts) → first
-#   mix → frames → final mix and encode.
+#   arrangement) → the app's own sound laid under the picture (app_audio.py
+#   follows cuts) → first mix → frames → final mix and encode.
 #
 #   www/video/tools/walkthrough.sh FILM POSTER_SECONDS [--record-only | --no-record]
 #                                  [--shot a,b] [--draft]
@@ -23,9 +22,9 @@
 # shots are pinned to the narration's measured words). This never re-times
 # the narration. The mix takes the ladder and the duck from
 # www/brand/sound.json (mix.py's defaults), brings each demo window to the
-# demo's level, and lays no cues (ADR-014). A film laid out before the grammar
-# (no marks, no demos) is mixed exactly as it was, bar the cues (sound.json
-# `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's level and its
+# demo's level; the films have no cues (ADR-014). A film laid out before the
+# grammar (no marks, no demos) is mixed as it was before ADR-014, without its
+# cues (sound.json `before_the_grammar`). MUSIC_DB / DUCK_DB override the bed's level and its
 # duck for a trial mix, and APP_DB the app's gain; JOBS sets the render's
 # parallel pages (default: one per core).
 set -euo pipefail
@@ -64,7 +63,6 @@ else
   (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/study.fitted.json" "www/video/out/$F/music" --jobs 3 | tail -2)
   MUSIC=(--music "out/$F/music/study")
 fi
-node tools/render.mjs "$F" --cues | tail -1
 python3 tools/app_audio.py "$F" ${APP_DB:+--gain-db "$APP_DB"} > "out/$F/app.json"
 MIX=(--voice "out/$F/voice" "${MUSIC[@]}" --app "out/$F/app.json"
      ${MUSIC_DB:+--music-db "$MUSIC_DB"} ${DUCK_DB:+--duck-db "$DUCK_DB"})

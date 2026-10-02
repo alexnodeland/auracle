@@ -206,8 +206,9 @@ illustrated scenes are drawn by the stage, frame by frame.
    `http://localhost:8000/www/video/films/<film>/?t=12&play`.
 5. **Render:** `www/video/tools/illustrated.sh <film> <poster seconds>`. It
    writes the film's bed and marks (on N3) or fits the study score, and plays
-   it. It counts the picture's sound cues (the mix lays none) and makes a first
-   mix, which gives the envelopes the picture pulses with. Then it renders the
+   it. It makes a first mix, which gives the envelopes the picture pulses
+   with. The picture makes no sound of its own: the stage has no sound cues
+   (ADR-014). Then it renders the
    frames, mixes and encodes: MP4 and WebM, captions, poster.
 
 ## Making a walkthrough
@@ -331,7 +332,7 @@ writes the scores and the mix's defaults from `www/brand/sound.json`.
 | `tools/one_browser.sh` | Run a command when it is its turn for the browser (a first-come, first-served queue) |
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
-| `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
+| `tools/render.mjs` | The frames (or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
 | `tools/mix.py` | Voice, bed, marks and app sound mixed to the ladder and encoded, with captions and poster; the mix measured in `out/<film>/ladder.json`. Lays no cues |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
