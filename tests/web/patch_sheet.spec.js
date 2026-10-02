@@ -18,9 +18,34 @@ const knobsOf = (page, kind) =>
  *  rack has settled (its cables measured, so nothing is rebuilding it). */
 async function tapPlate(page, kind) {
   await expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout: 60_000 });
-  const plate = page.locator(`#rack-svg g[data-kind="${kind}"]:not(.mod-group) .mod-plate`).first();
-  const b = await plate.boundingBox();
-  await page.touchscreen.tap(b.x + Math.min(24, b.width / 4), b.y + Math.min(14, b.height / 5));
+  // …and the camera has stopped moving (an open fits the patch to the frame).
+  const where = () => page.evaluate((k) => JSON.stringify(document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`).getBoundingClientRect()), kind);
+  await expect.poll(async () => {
+    const a = await where();
+    await page.waitForTimeout(400);
+    return a === (await where());
+  }, { timeout: 30_000 }).toBe(true);
+  // The point of bare panel farthest from every control on the plate: a
+  // touch screen moves a tap onto anything that answers one nearby (a knob's
+  // lock dot), and a tap there is that control's.
+  const at = await page.evaluate((k) => {
+    const plate = document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`);
+    const b = plate.getBoundingClientRect();
+    const group = document.querySelector(`#rack-svg g.mod-group[data-kind="${k}"]`);
+    const ctrls = [...group.querySelectorAll("[data-addr], .jack, .mod-menu-btn, .mod-lock, .lock-dot")].map((e) => e.getBoundingClientRect());
+    let best = null;
+    for (let fx = 0.08; fx < 0.95; fx += 0.04) {
+      for (let fy = 0.08; fy < 0.95; fy += 0.04) {
+        const x = b.left + fx * b.width;
+        const y = b.top + fy * b.height;
+        if (document.elementFromPoint(x, y) !== plate) continue;
+        const d = Math.min(...ctrls.map((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))));
+        if (!best || d > best.d) best = { x, y, d };
+      }
+    }
+    return best;
+  }, kind);
+  await page.touchscreen.tap(at.x, at.y);
 }
 
 test("on touch, a tapped module opens a sheet with every setting, and its steps edit the patch", async ({ page }) => {

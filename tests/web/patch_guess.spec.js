@@ -148,9 +148,11 @@ test("a guess skipped after keep as new is still skipped when the kept sound is 
   await openPreset(page, "Reese");
   await page.locator('.bf[data-f="pool"]').click();
   const tBack = await now(page);
-  await page.locator(".bank-item", { hasText: keptName }).first().click();
+  // By id: the kept sound has its seed's name, and the seed is in the pool too.
+  await page.locator(`#bank-list .bank-item[data-id="${kept}"] .bi-name`).click();
+  const opened = await replied(page, "bench", tBack, { subject: kept });
   await expect(page.locator("#rack-subject")).toContainText(keptName, { timeout: 60_000 });
-  const back = await guessAfter(page, await replied(page, "bench", tBack, { subject: kept }));
+  const back = await guessAfter(page, opened);
   const head = back.data.guesses[0];
   expect(head.family === top.family && head.socket === top.socket, "the skip made after keep as new was lost").toBe(false);
   expect(errors, errors.join("\n")).toEqual([]);
