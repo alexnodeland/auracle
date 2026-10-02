@@ -1,0 +1,139 @@
+// A sound's face: its render's spectrum, against the bank's, drawn as a
+// vessel (Plan-005 task 3, RFC-006 §2; the specimen is prototype v2's
+// `A.face`, docs/notes/vision-2026-09/prototype/core.js). Pure, so it is
+// unit-tested (tests/faces.test.mjs); main.js asks for faces and puts this
+// module's markup in their slots.
+//
+// What is drawn is the engine's measurement of the render
+// (`auracle_features::face`, read from the engine's memo by
+// `WasmEngine::face_of`): 40 bands from 35 Hz to 14 kHz, low at the base,
+// each the mean power density over its edges, in dB re the sound's own
+// loudest band, over the whole phrase and in 12 slices of it. Whitening is
+// here: each band minus the bank's mean in that band, over the bank's spread
+// (one number, pooled over every band of every sound in the bank), so the
+// vessel is wide where this sound has more than the bank's sounds have, and
+// narrow where it has less. A face changes only when its render does or when
+// the bank's mean or spread does (a sound added, replaced or cut): nothing
+// here moves by itself (ADR-012).
+
+/** The engine's encoding (`auracle_features::face`): keep in step. */
+export const FACE_BANDS = 40;
+export const FACE_SLICES = 12;
+export const FACE_FLOOR_DB = -60;
+export const FACE_STEP_DB = 0.5;
+export const FACE_LEN = FACE_BANDS + FACE_SLICES * FACE_BANDS + FACE_SLICES;
+/** Below this many faces in the bank there is no mean to draw against, and no
+ *  face is drawn (its slot stays empty). */
+export const FACE_MIN_BANK = 4;
+/** The spread is never taken as less than this (dB): a bank of near copies
+ *  would otherwise blow a fraction of a dB up to the vessel's full width. */
+export const FACE_SPREAD_FLOOR_DB = 3;
+/** A slice this far (dB) under the phrase's loudest draws no layer, and one
+ *  within it draws a layer as large and as bright as it is loud. */
+export const FACE_LAYER_RANGE_DB = 30;
+
+/** The engine's bytes as dB: the long-term spectrum, the slices, their
+ *  loudness. Null for anything that is not a face. */
+export function decodeFace(bytes) {
+  if (!bytes || bytes.length !== FACE_LEN) return null;
+  const db = (i) => FACE_FLOOR_DB + bytes[i] * FACE_STEP_DB;
+  const ltas = new Float64Array(FACE_BANDS);
+  for (let b = 0; b < FACE_BANDS; b++) ltas[b] = db(b);
+  const slices = [];
+  for (let t = 0; t < FACE_SLICES; t++) {
+    const s = new Float64Array(FACE_BANDS);
+    for (let b = 0; b < FACE_BANDS; b++) s[b] = db(FACE_BANDS + t * FACE_BANDS + b);
+    slices.push(s);
+  }
+  const loud = new Float64Array(FACE_SLICES);
+  for (let t = 0; t < FACE_SLICES; t++) loud[t] = db(FACE_BANDS + FACE_SLICES * FACE_BANDS + t);
+  return { ltas, slices, loud };
+}
+
+/** The bank's mean per band and its spread, over the long-term spectra of the
+ *  faces given (the bank's rows); null below FACE_MIN_BANK. */
+export function bankStats(faces) {
+  const fs = faces.filter(Boolean);
+  if (fs.length < FACE_MIN_BANK) return null;
+  const mean = new Float64Array(FACE_BANDS);
+  for (const f of fs) for (let b = 0; b < FACE_BANDS; b++) mean[b] += f.ltas[b];
+  for (let b = 0; b < FACE_BANDS; b++) mean[b] /= fs.length;
+  let ss = 0;
+  for (const f of fs) for (let b = 0; b < FACE_BANDS; b++) ss += (f.ltas[b] - mean[b]) ** 2;
+  const spread = Math.max(FACE_SPREAD_FLOOR_DB, Math.sqrt(ss / (fs.length * FACE_BANDS)));
+  return { mean, spread, n: fs.length };
+}
+
+/** A spectrum (dB) against the bank: in spreads, per band. */
+export function whiten(db, stats) {
+  const out = new Float64Array(FACE_BANDS);
+  for (let b = 0; b < FACE_BANDS; b++) out[b] = (db[b] - stats.mean[b]) / stats.spread;
+  return out;
+}
+
+/** A moving average over 2k + 1 bands (fewer at the ends). */
+export function smooth(a, k) {
+  const out = new Float64Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    let s = 0;
+    let n = 0;
+    for (let j = Math.max(0, i - k); j <= Math.min(a.length - 1, i + k); j++) {
+      s += a[j];
+      n++;
+    }
+    out[i] = s / n;
+  }
+  return out;
+}
+
+const sig = (x) => 1 / (1 + Math.exp(-x));
+const r2 = (x) => Math.round(x * 100) / 100;
+
+/** The vessel's outline as an SVG path: frequency up the box (low at the
+ *  base), mirrored about its centre, half-width `R · σ(1.4 v) · scale` for a
+ *  band `v` spreads from the bank's mean (half the box at the mean), closed
+ *  with quadratic curves through the midpoints, as the specimen draws it. */
+export function vesselPath(dev, box, scale = 1) {
+  const n = dev.length;
+  const cx = box.x + box.w / 2;
+  const R = box.w / 2;
+  const pts = [];
+  for (let i = 0; i < n; i++) pts.push([R * sig(dev[i] * 1.4) * scale, box.y + box.h - (i / (n - 1)) * box.h]);
+  const all = pts.map(([w, y]) => [cx + w, y]).concat(pts.slice().reverse().map(([w, y]) => [cx - w, y]));
+  const m = all.length;
+  let d = `M${r2((all[m - 1][0] + all[0][0]) / 2)} ${r2((all[m - 1][1] + all[0][1]) / 2)}`;
+  for (let i = 0; i < m; i++) {
+    const p = all[i];
+    const q = all[(i + 1) % m];
+    d += `Q${r2(p[0])} ${r2(p[1])} ${r2((p[0] + q[0]) / 2)} ${r2((p[1] + q[1]) / 2)}`;
+  }
+  return `${d}Z`;
+}
+
+/** How large and how bright slice t's layer is (0 draws none). */
+export function layerWeight(loudDb) {
+  const l = Math.max(0, Math.min(1, 1 + loudDb / FACE_LAYER_RANGE_DB));
+  return l < 0.25 ? 0 : l;
+}
+
+/** The face as SVG markup, `w × h` px: the twelve slices as faint layers, each
+ *  as large and bright as the slice is loud, under the whole phrase's
+ *  outline. Empty when there is no face or no bank to draw it against. The
+ *  colours are the stylesheet's (`.face-l`, `.face-o`). */
+export function faceSvg(face, stats, { w, h, layers = true, line = 1 } = {}) {
+  if (!face || !stats) return "";
+  const pad = Math.min(w, h) * 0.06;
+  const box = { x: pad, y: pad, w: w - 2 * pad, h: h - 2 * pad };
+  const k = h < 36 ? 2 : 1;
+  let body = "";
+  if (layers) {
+    for (let t = 0; t < FACE_SLICES; t++) {
+      const l = layerWeight(face.loud[t]);
+      if (!l) continue;
+      const d = vesselPath(smooth(whiten(face.slices[t], stats), k), box, 0.35 + 0.65 * l);
+      body += `<path class="face-l" d="${d}" fill-opacity="${r2(0.05 + 0.11 * l)}"/>`;
+    }
+  }
+  body += `<path class="face-o" d="${vesselPath(smooth(whiten(face.ltas, stats), k), box)}" stroke-width="${line}"/>`;
+  return `<svg class="face" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" focusable="false">${body}</svg>`;
+}
