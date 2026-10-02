@@ -56,10 +56,21 @@ the face.
 - **[The warm start](./getting-started/first-session.md#2-pick-the-three-youd-reach-for)**,
   on each of the nine cards.
 
-A face sits in space its place always keeps, so a name never moves or gets
-shorter when the face arrives. An empty space means the face is on its way:
-a sound from an earlier session, or a preset you haven’t heard, is rendered
-for it once the bank has finished arriving.
+A face sits in space its place always keeps, so a name never moves when the
+face arrives. Where a name could be cut short (the bank, PATCH’s header, A
+and B under the rack), the column is wider by the face; EVOLVE’s and
+PERFORM’s names wrap rather than cut.
+
+An empty space means one of three things:
+
+- **The face is on its way.** A sound from an earlier session, or a preset
+  you haven’t heard, is rendered for it once the bank has finished arriving,
+  after anything else the engine has to do. A preset row scrolled past before
+  its face came asks again when you scroll back.
+- **The sound doesn’t play.** An edit the instrument refuses to play has no
+  render, so it has no face.
+- **There is nothing to compare with yet.** A face is drawn against your bank,
+  and needs at least four sounds there with faces.
 
 ## When a face changes
 
@@ -85,8 +96,10 @@ The card is the sound’s face, its name, and the line its bank row has: the
 seed it grew from and what changed, or where it came from (*a hand-made
 preset*). At **2×** it is 1200 × 630, the size a link preview wants. Like
 every picture Auracle downloads, **the card carries the patch**: drop it on
-Auracle and the sound opens. Until the sound’s face has landed the dialog
-says *its face is on its way*.
+Auracle and the sound opens. While the sound’s face is on its way the dialog
+says so and waits. A sound with no face to draw downloads as a card without
+one, and the dialog says why: *this edit doesn't play, so it has no face*, or
+*a face needs at least four sounds to compare with*.
 
 The [reference](../reference/features/faces.html) has the measurement in
 full: the bands, the slices, and how a face is compared with the bank.

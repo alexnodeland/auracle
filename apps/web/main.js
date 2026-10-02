@@ -127,7 +127,7 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
 } = await import(`./words.js?v=${BUILD}`);
 // A sound's face against the bank (faces.js, tests/faces.test.mjs), and the
 // one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
@@ -293,6 +293,23 @@ const FACE_SIZE = {
   warm: [24, 40],  // the warm start's cards
   share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
 };
+// Bounded: a bench edit is a new tree, so a new ref, key and drawing each
+// time. The least recently used go past FACE_KEEP (the bank's faces are used
+// on every bank render, so they stay); a face needed again is asked again,
+// and the worker answers it from memory.
+const FACE_KEEP = 400;
+function lruGet(map, k) {
+  if (!map.has(k)) return undefined;
+  const v = map.get(k);
+  map.delete(k);
+  map.set(k, v);
+  return v;
+}
+function lruSet(map, k, v) {
+  map.delete(k);
+  map.set(k, v);
+  while (map.size > FACE_KEEP) map.delete(map.keys().next().value);
+}
 const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
 const faceKeyById = new Map();  // pool id -> key
 const faceKeyByRef = new Map(); // tree ref -> key
@@ -309,6 +326,7 @@ const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
 // and an <img> of a drawing already made costs nothing to put back.
 let faceSendQueued = false;
 let facePaintQueued = false;
+let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, result}
 
 /** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
 function treeRef(json) {
@@ -323,19 +341,19 @@ function faceTarget(t) {
   if (t.preset != null) return `p${t.preset}`;
   if (t.tree) {
     const ref = treeRef(t.tree);
-    if (!faceTreeByRef.has(ref)) faceTreeByRef.set(ref, t.tree);
+    if (lruGet(faceTreeByRef, ref) === undefined) lruSet(faceTreeByRef, ref, t.tree);
     return ref;
   }
   return "";
 }
 function faceKeyOfTarget(target) {
-  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : faceKeyByRef.get(target);
+  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : lruGet(faceKeyByRef, target);
 }
 /** The face drawn for a target, as markup, or "" (asked for if not known). */
 function faceMarkup(target, kind, ask = true, build = true) {
   if (!target) return "";
   const key = faceKeyOfTarget(target);
-  const face = key && faceByKey.get(key);
+  const face = key && lruGet(faceByKey, key);
   if (!face) {
     if (ask) wantFace(target);
     return "";
@@ -343,11 +361,11 @@ function faceMarkup(target, kind, ask = true, build = true) {
   if (!faceStats) return "";
   const [w, h] = FACE_SIZE[kind];
   const ck = `${key}|${faceEpoch}|${w}|${h}`;
-  let s = faceMarkupCache.get(ck);
+  let s = lruGet(faceMarkupCache, ck);
   if (s == null && !build) return "";
   if (s == null) {
     s = `<img class="face" src="${faceImage(face, w, h)}" width="${w}" height="${h}" alt="" draggable="false">`;
-    faceMarkupCache.set(ck, s);
+    lruSet(faceMarkupCache, ck, s);
   }
   return s;
 }
@@ -393,16 +411,25 @@ function facesLanded(m) {
   for (const it of m.items || []) {
     const face = decodeFace(it.face);
     if (!face) continue;
-    faceByKey.set(it.key, face);
+    lruSet(faceByKey, it.key, face);
     const target = it.id != null ? `i${it.id}` : it.ref;
     if (it.id != null) faceKeyById.set(it.id, it.key);
-    else faceKeyByRef.set(it.ref, it.key);
+    else lruSet(faceKeyByRef, it.ref, it.key);
     faceAsked.delete(target);
+    faceLazy.delete(target);
   }
   for (const f of m.failed || []) {
     const target = f.id != null ? `i${f.id}` : f.ref;
     faceAsked.delete(target);
+    faceLazy.delete(target);
     faceNone.add(target);
+  }
+  // Dropped by the worker as their slots left the view: asked again when
+  // they come back into it.
+  for (const c of m.cancelled || []) {
+    const target = c.id != null ? `i${c.id}` : c.ref;
+    faceAsked.delete(target);
+    faceLazy.delete(target);
   }
   facesChanged();
 }
@@ -519,21 +546,50 @@ function faceSlot(kind, t, { lazy = false } = {}) {
   return `<span class="face-slot face-${kind}" data-kind="${kind}"${target ? ` data-face="${target}"` : ""}${drawn}${wait} style="width:${w}px;height:${h}px" aria-hidden="true">${inner}</span>`;
 }
 let faceSeer = null;
-/** Ask for the lazy slots under `root` as they come into view. */
+const faceLazy = new Set(); // lazy targets asked for and not answered yet
+let faceDropQueued = null;
+/** Ask for the lazy slots under `root` while they are in view, and let go of
+ *  what is still waiting when one leaves it: a face's render costs half a
+ *  second, and a list scrolled through is not a list looked at. */
 function faceWhenSeen(root) {
-  // A list rebuilt drops its old slots: stop watching them.
+  // A list rebuilt drops its old slots: stop watching them, and drop what
+  // they were waiting on (the new slots ask again as they are seen).
   if (faceSeer) faceSeer.disconnect();
+  faceLazyDrop();
   if (!faceSeer) {
     faceSeer = new IntersectionObserver((seen) => {
       for (const e of seen) {
-        if (!e.isIntersecting) continue;
-        faceSeer.unobserve(e.target);
-        e.target.removeAttribute("data-lazy");
-        if (e.target.dataset.face) wantFace(e.target.dataset.face);
+        const target = e.target.dataset.face;
+        if (!target || faceKeyOfTarget(target)) continue;
+        if (e.isIntersecting) {
+          faceLazy.add(target);
+          wantFace(target);
+        } else if (faceLazy.has(target)) {
+          faceDrop(target);
+        }
       }
     });
   }
   for (const el of root.querySelectorAll(".face-slot[data-lazy]")) faceSeer.observe(el);
+}
+/** Let go of a lazy target's waiting render (the worker says which it
+ *  dropped, `cancelled`). */
+function faceDrop(target) {
+  faceWanted.delete(target);
+  if (!faceAsked.has(target)) return void faceLazy.delete(target);
+  if (!faceDropQueued) {
+    faceDropQueued = new Set();
+    queueMicrotask(() => {
+      const refs = [...faceDropQueued];
+      faceDropQueued = null;
+      if (refs.length) send({ type: "face_cancel", refs });
+    });
+  }
+  faceDropQueued.add(target);
+}
+/** Let go of every lazy face still waiting (the presets are out of sight). */
+function faceLazyDrop() {
+  for (const t of faceLazy) faceDrop(t);
 }
 /** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none. */
 function setFaceSlot(el, kind, t) {
@@ -4366,12 +4422,18 @@ async function bootPerform() {
     // A tree's face and the bank it is drawn against, for a drawing of
     // PERFORM's own at any size (vessel.js `drawVessel`), or null until the
     // face has landed (asked for here).
+    // Stage mode asks every frame: the answer is kept for the tree and the
+    // bank it was given for, the same object until either changes.
     faceOf: (json) => {
+      const k = faceOfLast;
+      if (k && k.json === json && k.epoch === faceEpoch && k.result) return k.result;
       const target = json ? faceTarget({ tree: json }) : "";
       const key = target && faceKeyOfTarget(target);
       const face = key && faceByKey.get(key);
       if (!face && target) wantFace(target);
-      return face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
+      const result = face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
+      faceOfLast = { json, epoch: faceEpoch, result };
+      return result;
     },
     locks: () => [...lockedAddrs()],
     note,
@@ -7252,6 +7314,7 @@ function renderBank() {
     syncBankCursor();
     return;
   }
+  faceLazyDrop(); // the presets are out of sight: their faces' renders can wait
 
   // The pool leads with the latest generation's children, in the order they
   // were bred, under their own heading; the rest keep their ranked order. So
@@ -21166,6 +21229,10 @@ function cardSubject() {
     name: `${benchName(id)}${wb.dirty ? dirtySuffix() : ""}`,
     line: cardLine(rowOf(id)?.origin, lin ? lineageName(lin.parent_id) : "", lin ? lineageChanges(lin.diff) : ""),
     face,
+    // Why there is no face to draw, if there is none: the sound doesn't play
+    // (the engine has no face for a tree its vet refuses), the bank is too
+    // small to compare with, or it is still on its way.
+    noFace: face && faceStats ? "" : faceNone.has(target) ? "noplay" : !faceStats ? "few" : "coming",
   };
 }
 
@@ -21315,12 +21382,11 @@ function imageSync() {
     const sub = cardSubject();
     const dims = $("ix-dims");
     dims.classList.remove("busy");
-    dims.textContent = !sub
-      ? "no sound open"
-      : sub.face && faceStats
-        ? cardDims(CARD_W * imageState.scale, CARD_H * imageState.scale, imageState.fmt.toUpperCase())
-        : "its face is on its way";
-    $("ix-go").disabled = !(sub && sub.face && faceStats);
+    const size = cardDims(CARD_W * imageState.scale, CARD_H * imageState.scale, imageState.fmt.toUpperCase());
+    // Without a face the card is its name and its line: said, and still
+    // downloadable, unless the face is on its way.
+    dims.textContent = !sub ? "no sound open" : sub.noFace ? `${size} · ${cardNoFace(sub.noFace)}` : size;
+    $("ix-go").disabled = !sub || sub.noFace === "coming";
     return;
   }
   const sel = selModule();

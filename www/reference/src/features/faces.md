@@ -16,8 +16,9 @@ Inside every featurization (`featurize_memo`), from the same normalized render
 $\varphi$ is measured on, and carried beside $\varphi$ on the memo row
 (`CachedFeatures::face`). Every render already passes through there (the
 serial fill, the farm’s `farm_render`, a generation’s walks, an offer, an
-edit), so a face costs no render of its own: about 2 ms natively and 4 ms in
-wasm against a featurization of about 430 and 500 ms (under 1%).
+edit), so a face costs no render of its own: 1.66 ms natively against a
+146 ms featurization (1.1%, `examples/face_cost.rs` over the 62 presets), and
+2.5 ms in wasm against 201 ms (`auracle-wasm/examples/face_cost.mjs`).
 
 Samples are read as the `f32` the audition buffer holds, so the face of the
 featurization’s render and the face of the stored audition are the same bytes.
@@ -87,10 +88,10 @@ with, and no face is drawn.
 the set of the bank’s faces changes (a sound added, replaced or cut; at most
 once a frame), and the faces are drawn against them only when they have moved
 since the faces were last drawn by more than `FACE_RESTAT_DB` = 0.25 dB in a
-band or `FACE_RESTAT_SPREAD` = 1% of $\sigma$. A smaller move shifts a 40 px
-face by under a tenth of a pixel. The recomputation is $O(40|\mathcal B|)$;
+band or `FACE_RESTAT_SPREAD` = 1% of $\sigma$. A smaller change moves a row's 24 px face by under a tenth of a pixel at the bank's usual spread (about 13 dB), and by about a third of one at the 3 dB floor; the 150 px card's by under half a pixel, and about two at the floor (a band’s
+half-width moves by $R \cdot 0.35\,\Delta v$ at the mean). The recomputation is $O(40|\mathcal B|)$;
 redrawing is the cost, so the bank’s rows in view are redrawn the next frame
-and the rest when the page is idle (1.5–2 ms in the next frame for a pool
+and the rest when the page is idle (2–3 ms in the next frame for a pool
 of 40, against 17–22 ms when all forty were redrawn at once).
 
 ## The drawing
@@ -123,7 +124,17 @@ A face is filed under its render namespace and render key,
 engine worker copies a face out of the memo (a least-recently-used map a
 generation’s walks churn) the first time it is asked for, and keeps it in
 memory and in an IndexedDB store stamped with the namespace: a build whose
-renders differ cannot read another’s faces. A face the store doesn’t have
-and the memo can’t give is rendered in the worker’s background lane, after
-the bank has finished arriving, and never ahead of a render the keys are
-waiting for.
+renders differ cannot read another’s faces. Only what the worker holds in
+memory is answered at once; the memo, a resident audition and the store are
+looked up in its background lane, and a face none of them has is rendered in
+a lane of its own below that, after the bank has finished arriving, behind a
+refit, a guess or a cable probe, and dropped if the row asking for it has
+left the view. Such a render is not kept, so it pushes no audition out of
+the cache. A face’s render already running (about half a second) is the most
+it can hold anything up by.
+
+**The stage’s live outline** (PERFORM’s stage mode) reads the output’s
+analyzer in the same measure: each band’s mean power density over the same
+fractional bins (`faces.js` `liveBands`, `bandWeights`), so a steady sound’s
+live outline lies on its face. A test checks it against the engine’s own
+fixture, within 1 dB.

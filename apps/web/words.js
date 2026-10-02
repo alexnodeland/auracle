@@ -206,6 +206,16 @@ export function cardLine(origin, seedName, changes) {
   }[origin] || "";
 }
 
+/** Why a card has no face (`noplay`, `few`, `coming`), in the dialog's
+ *  readout. */
+export function cardNoFace(why) {
+  return {
+    noplay: "this edit doesn't play, so it has no face",
+    few: "a face needs at least four sounds to compare with",
+    coming: "its face is on its way",
+  }[why] || "";
+}
+
 /** The download dialog's readout for a card: its size and format. */
 export function cardDims(w, h, fmt) {
   return `${w} × ${h} px · the sound's card · ${fmt}`;

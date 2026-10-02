@@ -1182,7 +1182,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
    the callout into the name's row is also 40px given back to the rack. */
 .patch-head {
   display: grid;
-  grid-template-columns: clamp(180px, 26%, 320px) minmax(0, 1fr) auto;
+  /* The subject's column is wider by its face (20 px and the 8 px gap), so
+     the name keeps the width it had before faces. */
+  grid-template-columns: clamp(208px, calc(26% + 28px), 348px) minmax(0, 1fr) auto;
   grid-template-areas: "subject callout evolve" "tools tools tools";
   align-items: center;
   column-gap: var(--s4);
@@ -3531,7 +3533,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .pd-side {
   background: var(--pd-side); border: 1px solid var(--plate-edge); border-radius: 3px;
   color: var(--phos-a); font: var(--t-value)/1.4 var(--font-mono);
-  padding: 2px var(--s2); cursor: pointer; max-width: 180px;
+  padding: 2px var(--s2); cursor: pointer; max-width: 198px; /* 180 px of name, and the face's 14 and its 4 px */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pd-side:hover { border-color: var(--phos-a); }

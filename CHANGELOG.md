@@ -48,11 +48,14 @@ changelog that edits its own past is not a record.
   where it has less, with faint layers for the phrase over time. It changes
   when the sound's render does (an edit lands, an offer grows) or when the
   bank changes enough to move it, and is redrawn in place. Measuring it
-  costs under 1% of each render, and it never holds up a sound you asked to
-  hear.
+  costs about 1% of each render, and the engine works on faces after
+  everything else, the sound you asked to hear included; a face's own
+  render, when one is needed, takes about half a second.
 - **A face never moves or shortens a name.** Every row and card keeps the
-  face's space whether or not it has arrived, and the bank is wider by the
-  face's column (280 px, 228 px under 1080 px wide).
+  face's space whether or not it has arrived. Where a name could be cut
+  short, its column is wider by the face: the bank (280 px, 228 px under
+  1080 px wide), PATCH's header and the A and B under the rack. EVOLVE's and
+  PERFORM's names wrap rather than cut.
 - **Share a sound as a card.** *Download as a picture…* has a new choice,
   *the sound's card*: its face, its name and where it came from, 1200 × 630
   at 2×, with the patch inside like every picture Auracle downloads, so

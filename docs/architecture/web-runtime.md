@@ -185,7 +185,7 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   `featurize_memo` from the render φ is measured on and rides on the memo row
   (`CachedFeatures::face`), so farm rows (`farm_render`), walk results
   (`farm_walk`) and offers carry it without a render of their own. It is not
-  part of φ. In wasm it costs 4.3 ms against a 498 ms featurization
+  part of φ. In wasm it costs 2.5 ms against a 201 ms featurization
   (`crates/auracle-wasm/examples/face_cost.mjs`).
 - **Filed by the worker under `"<ns>/<render key>"`**, as a farm row is
   (`face_key` for a pool member, `farm_key` for a tree). The memo is an LRU a
@@ -194,19 +194,29 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   store (`auracle-faces`), stamped with the namespace as the render cache is
   (`faceStoreOpen`): a build whose renders differ never reads another's.
 - **`faces`** (now lane; main → worker): `{ids, trees: [{ref, tree} | {ref,
-  preset}], render}`. Answered at once with `{type: "faces", items: [{id |
-  ref, key, face}], pending, failed}`: every face the memo (`face_of`,
-  `face_of_tree`), a resident audition or the store can give. With `render`,
-  each of the rest is queued in `later` as **`face_render`**, blocked until
-  boot has finished (`blocked`: half a second each, they would slow the
-  fill), and answered as it lands, or in `failed` (a tree that does not vet).
-  A preset is asked by index (`preset_tree_json`), so its face does not
-  insert it into the bank. Every request is answered; a `not_ready` or an
-  `engine_error` for one makes main ask again when a slot next wants it.
-- **After a `render`**, the worker posts the buffer first and then, if main
-  hasn't been sent it, the face (`faceAfterRender`), from the stored audition
-  (not the PCM main is sent: `audition_pcm` limits). A face never delays a
-  render reaching the keys.
+  preset}], render}`. Answered at once from memory alone, with `{type:
+  "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
+  are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
+  `face_of_tree`, a resident audition, the store), each posted as a `faces`
+  as it is found. With `render`, what none of them has is queued as
+  **`face_render`** in the **faces lane**, below `later` (`FACES`), so a
+  refit, a guess or a cable probe always goes first, and blocked until boot
+  has finished (`blocked`: half a second each, they would slow the fill);
+  each is answered as it lands, or in `failed` (a tree that does not vet).
+  Rendering a pool member for its face does not make it resident, so it
+  evicts no audition. A preset is asked by index (`preset_tree_json`), so its
+  face does not insert it into the bank. Every request is answered; a
+  `not_ready` or an `engine_error` for one makes main ask again when a slot
+  next wants it.
+- **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
+  that left the view (a preset row scrolled past, the PRESETS tab left) is
+  dropped from the faces lane and from waiting lookups, and answered as `faces`
+  with `cancelled`; main asks again when the slot comes back into view.
+- **After a `render`**, the worker posts the buffer first; the face, if main
+  hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
+  stored audition (not the PCM main is sent: `audition_pcm` limits). No face
+  work runs in the render's turn; a face's render already running (about half
+  a second) can still hold up a render that arrives during it.
 - **Main whitens and draws** (`faces.js`, `faceRestat`, `paintFaces` in
   `main.js`): the bank's mean per band and pooled spread over the faces of the
   rows the bank shows, recomputed when that set changes (once a frame) and

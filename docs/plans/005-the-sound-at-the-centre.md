@@ -84,11 +84,13 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - the analysis is Rust (`auracle_features::face`), taken inside every
        featurization and carried on the memo row beside φ, not in it, so
        the fill, the farm, a generation's walks and an offer give a face
-       without a render of its own: 4.3 ms in wasm against a 498 ms
-       featurization;
+       without a render of its own: 2.5 ms in wasm against a 201 ms
+       featurization, 1.66 ms against 146 ms natively (1.1%);
      - the worker files each face under its render namespace and key, in
-       memory and in IndexedDB, answers `faces` without a render, and
-       renders only what it has no face for, in `later`, after boot;
+       memory and in IndexedDB, answers `faces` from memory in `now`, looks
+       the rest up in `later`, and renders only what it has no face for, in
+       a lane of its own below `later`, after boot, dropping what is waiting
+       for a slot that left the view;
      - main whitens against the pool's faces (`faces.js`), and one
        renderer draws the specimen's vessel at every size (`vessel.js`
        `drawVessel(ctx, face, stats, {box, slices, glow, reflection})`): a
@@ -100,11 +102,14 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        its spread by 1%;
      - faces are on the bank's rows (pool and presets), EVOLVE's cards,
        PATCH's header and teach strip, PERFORM's sound in hand and B, and
-       the warm start's cards, each in a slot its place always has; the
-       bank is widened by the face's column (252 to 280 px), so no name
-       loses width;
+       the warm start's cards, each in a slot its place always has; where a
+       name could be cut short, its column is wider by the face (the bank
+       252 to 280 px, PATCH's subject column by 28 px, the teach strip's A
+       and B by 18), and EVOLVE's and PERFORM's names wrap rather than cut;
      - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
-       × 630 at 2×), with the patch inside.
+       × 630 at 2×), with the patch inside; without a face (an edit the vet
+       refuses, a bank of fewer than four) it says why, and downloads
+       without one.
 
      Where the specimen and the engine differ, the engine was followed:
      - the specimen's data summed whole FFT bins, so its two narrowest bands
