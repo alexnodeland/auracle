@@ -85,6 +85,18 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.bRetire = null;
     this.arpMsg = null;
     this.held = new Map();
+    // AUDIO IN (ADR-015): with monitoring on, each quantum of the node's one
+    // input is written into the voices' input stream before they render, and
+    // a patch that listens is held open (set_open) so it sounds with no key.
+    // Off, nothing is written (quiver never repeats a block, so the input is
+    // silent) and the open voice is let go. The views into wasm memory follow
+    // the output view's rule: re-made whenever memory has grown or the
+    // pointer moved, checked every quantum.
+    this.monitor = false;
+    this.inView = null;
+    this.inPtr = 0;
+    this.inViewB = null;
+    this.inPtrB = 0;
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -176,6 +188,8 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
             }
           } else {
             this.polyB = new LivePoly(m.tree, sampleRate, 4);
+            this.inViewB = null;
+            if (this.monitor) this.polyB.set_open(true);
             if (this.glideAmt != null) this.polyB.set_glide(this.glideAmt);
             if (this.uni) this.polyB.set_unison(this.uni.on, this.uni.detune, this.uni.spread);
             if (this.arpMsg) this.applyArp(this.polyB, this.arpMsg);
@@ -191,6 +205,17 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: "b_ready" });
         } catch (err) {
           this.port.postMessage({ type: "b_error", error: String(err) });
+        }
+        break;
+      }
+      // Monitoring: the input reaches the voices, and a patch that listens
+      // is held open. Main sends it on only while an input is connected.
+      case "monitor": {
+        this.monitor = !!m.on;
+        for (const p of [this.poly, this.polyB]) {
+          if (!p) continue;
+          p.set_open(this.monitor);
+          if (!this.monitor) p.clear_input();
         }
         break;
       }
@@ -263,6 +288,26 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
     }
   }
+  // One quantum of the node's input into a voice's input stream, interleaved
+  // stereo (the node's input is two channels, a mono device up-mixed to both).
+  // No allocation: the view is re-made only when wasm memory has grown or the
+  // pointer moved, and that is checked every quantum.
+  writeInput(p, inp, n, b) {
+    const ptr = p.input_ptr();
+    let view = b ? this.inViewB : this.inView;
+    if (!view || (b ? this.inPtrB : this.inPtr) !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
+      view = new Float32Array(wasm.memory.buffer, ptr, p.input_capacity() * 2);
+      if (b) { this.inViewB = view; this.inPtrB = ptr; }
+      else { this.inView = view; this.inPtr = ptr; }
+    }
+    const l = inp[0];
+    const r = inp[1] || inp[0];
+    for (let i = 0; i < n; i++) {
+      view[2 * i] = l[i];
+      view[2 * i + 1] = r[i];
+    }
+    p.write_input(n, 2);
+  }
   applyArp(p, m) {
     p.set_arp(
       m.on, m.mode, m.div, m.bpm,
@@ -284,8 +329,10 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         }
       } else {
         this.poly = new LivePoly(m.tree, sampleRate, 4);
+        this.inView = null;
         if (m.makeup != null) this.poly.set_makeup(m.makeup);
         if (this.syncOn) this.poly.set_sync(true);
+        if (this.monitor) this.poly.set_open(true);
         this.port.postMessage({ type: "patched" });
       }
     } catch (err) {
@@ -298,6 +345,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     const R = out[1] || out[0];
     if (this.poly && L) {
       const n = L.length;
+      // The input first: the voices read it as they render this quantum.
+      const inp = inputs[0];
+      if (this.monitor && inp && inp.length > 0 && inp[0].length === n) {
+        this.writeInput(this.poly, inp, n, false);
+        if (this.polyB) this.writeInput(this.polyB, inp, n, true);
+      }
       // Zero-allocation render: the synth fills a persistent wasm buffer;
       // we view its memory directly. The cached view is rebuilt only when
       // wasm memory grows (buffer identity changes) or the pointer moves.
@@ -399,7 +452,8 @@ registerProcessor("auracle-voice", EvoVoiceProcessor);
 
 // A film's sound: whatever reaches the master bus, voices and auditions
 // alike, captured from the next quantum after "on" until "off", then handed
-// back in one block. Only the ?film capture hook creates one.
+// back in one block. The ?film capture hook creates one on the master bus,
+// and AUDIO IN one on an input, for the clip (audio-in.js).
 class TapProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -449,10 +503,16 @@ export async function initLiveAudio(audioCtx, build, dest) {
 
   const bytes = await (await fetch(`./pkg/auracle_wasm_bg.wasm?v=${build}`)).arrayBuffer();
 
+  // One input: the live input AUDIO IN reads (audio-in.js connects it), two
+  // channels, a mono device up-mixed to both. Nothing connected is a quantum
+  // with no channels, and the worklet writes nothing then.
   const node = new AudioWorkletNode(audioCtx, "auracle-voice", {
-    numberOfInputs: 0,
+    numberOfInputs: 1,
     numberOfOutputs: 1,
     outputChannelCount: [2],
+    channelCount: 2,
+    channelCountMode: "explicit",
+    channelInterpretation: "speakers",
   });
   const gain = audioCtx.createGain();
   gain.gain.value = 0.8;
@@ -552,6 +612,11 @@ export async function initLiveAudio(audioCtx, build, dest) {
     // `meter` messages carrying RMS dB per tap.
     meter(on) {
       node.port.postMessage({ type: "meter", on });
+    },
+    // AUDIO IN's monitoring: the node's input reaches the voices, and a patch
+    // that listens is held open so it sounds with no key down.
+    monitor(on) {
+      node.port.postMessage({ type: "monitor", on: !!on });
     },
     setVolume(v) {
       // A step assignment zippers audibly while notes sound; a 10ms time

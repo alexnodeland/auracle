@@ -63,7 +63,8 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The three `audition_clip` methods are the
 // session's clip (Plan-007 task 3), and the live voice's input surface is what
-// the worklet will write a capture through (task 4).
+// the worklet writes the player's input through, with the open voice that
+// holds a patch that listens open while it is monitored (task 4).
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -76,7 +77,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "refine_seed", "last_refine_reason", "belief", "edit_known_makeup",
       "audition_clip", "set_audition_clip", "clear_audition_clip",
     ];
-    const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
+    const live = ["input_ptr", "input_capacity", "write_input", "clear_input", "set_open", "open_sounding"];
     return {
       farm_walk: typeof mod.farm_walk,
       cache_namespace: typeof mod.cache_namespace,
