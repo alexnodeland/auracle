@@ -8,9 +8,10 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
 from shotgen import *  # noqa: E402,F403
 DEV = {"op": "midi", "device": "MIDI keyboard"}
 # Cast from the films' shortlist (shotgen.CAST): Slow Weather where Glass Pad
-# played (its circuit, every named control but Space turning both ways, so
-# the XY pad's Bright across and Motion up both move it), Ceiling where Acid
-# Line did. Wander and Offer grow from Slow Weather.
+# played (Glass Pad's layout, with a band-pass filter; Bright, Snap, Motion
+# and Body ship turning both ways, so the XY pad's Bright across and Motion
+# up both move it; Grit is a search control), Ceiling where Acid Line did.
+# Wander and Offer grow from Slow Weather.
 PAD = CAST["pad"]
 TAUGHT = taught() + [DEV]
 old = json.load(open(os.path.join(HERE, "gen_base.json")))
@@ -68,7 +69,12 @@ nudges = [{"at": "controls1:named", "op": "seq", "steps": [dict({k: v for k, v i
 # The long press: on the first control that reaches (a search control has
 # nothing to play).
 ctl = [dict(a, sel=REACH + " >> nth=0") if a["op"] == "press" and a["sel"] == ".pf-knob[data-i='3']" else a for a in ctl]
-marks = dict(shots["pl-controls"]["marks"], body=REACH + " >> nth=0")
+# "Turning them never interrupts a note": the last named control that turns
+# upward in this session, turned up under the held note (it was Space, which
+# Slow Weather ships turning toward close only).
+ctl = [dict(a, sel=UP + " >> nth=-1") if a["op"] == "drag" and a["sel"] == ".pf-knob[data-i='5']" else a for a in ctl]
+marks = {("turned" if k == "space" else k): (UP + " >> nth=-1" if k == "space" else v) for k, v in shots["pl-controls"]["marks"].items()}
+marks["body"] = REACH + " >> nth=0"
 add("pl-controls", plain(PAD), actions=ctl[:1] + nudges + ctl[1:], marks=marks)
 add("pl-xy", plain(PAD))
 wander = [dict(a) for a in shots["pl-wander"]["actions"]]

@@ -105,11 +105,11 @@
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
+      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "turned": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=-1", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
         {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=1", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=1", "dy": 30, "ms": 450}]},
-        {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -40, "ms": 900},
+        {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=-1", "dy": -40, "ms": 900},
         {"at": "controls3:ride-0.2", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2300},
         {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "ms": 700}
       ]
