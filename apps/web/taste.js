@@ -566,10 +566,17 @@ export function createTaste(host) {
       input.addEventListener("input", fit);
       input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
       input.addEventListener("keyup", (e) => e.stopPropagation());
+      // A rename updates this chip and the weights' label in place: a
+      // rebuild here would replace the chip's ▶ under a pointer that blurred
+      // the name by pressing it, and the press would be lost.
       input.onblur = () => {
         const name = input.value.trim();
         if ((s.name || "") === name) return;
+        s.name = name;
         host.setStyleName(s.k, name);
+        input.placeholder = host.styleName({ ...s, name: "" }, s.k);
+        pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
+        renderBars();
       };
       const play = document.createElement("button");
       play.className = "md-chip-play";

@@ -18444,14 +18444,13 @@ taste = createTaste({
   niceName,
   styleName,
   styleColor: (k) => STYLE_COLORS[k % STYLE_COLORS.length],
-  // The name, at once, everywhere the style is mentioned; the next fit's
-  // views carry it from the engine.
+  // The name, in the views every surface reads; the next fit's views carry
+  // it from the engine. LEARNING updates its own chip in place.
   setStyleName: (k, name) => {
     const s = views && views.styles && views.styles[k];
     if (s) s.name = name;
     send({ type: "set_style_name", k, name });
     scheduleSave();
-    drawTaste();
   },
   fittedFrom: () => words.fittedFrom({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
   taught: () => taughtKinds(),

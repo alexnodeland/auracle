@@ -7,8 +7,8 @@
 //   (`WasmEngine::belief`). TASTE drew nothing per pick before: the ratings
 //   were stored and the map changed only with a refit.
 // - A refit (a views post) settles every halo at once.
-// - LEARNING's weights, forecasts and maths are the engine's numbers: the
-//   maths reads `model_facts` and the strip `forecasts`, both posted with the
+// - LEARNING's weights, forecasts and math are the engine's numbers: the
+//   math reads `model_facts` and the strip `forecasts`, both posted with the
 //   calibration; the weights are the styles' θ.
 // - Copy as JSON gives back exactly what the engine posted.
 // - A mark (a guess's "?", the chosen style's dot) sits in a slot its row
@@ -27,10 +27,13 @@ const INIT = `(() => {
   const workers = (window.__pwWorkers = []);
   const counts = (window.__pwCounts = {});
   const last = (window.__pwLast = {});
+  const sent = (window.__pwSent = []);
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     w.__pwUrl = String(url);
     workers.push(w);
+    const post = w.postMessage.bind(w);
+    w.postMessage = (m, t) => { if (m && m.type) sent.push(m); return t ? post(m, t) : post(m); };
     w.addEventListener("message", (e) => {
       const d = e.data;
       if (!d || typeof d.type !== "string") return;
@@ -160,8 +163,10 @@ test("a pick draws an arrow from the sound passed to the sound picked, from the 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
   await expect(page.locator("#taste-live")).toHaveText(`You picked ${real.picked} over ${real.passed}. Every rating moved.`);
-  // …and its arrow, drawn on arrival, goes once its hold is over.
-  await expect.poll(() => arrowPixels(page), { timeout: 5_000 }).toBeGreaterThan(20);
+  // …and its arrow, drawn on arrival, goes once its hold is over. The pair is
+  // the engine's deal, so the two may sit close: any arrow at all is the
+  // check here, and the far pair below checks its geometry.
+  await expect.poll(() => arrowPixels(page), { timeout: 5_000 }).toBeGreaterThan(0);
   await expect.poll(() => arrowPixels(page), { timeout: 8_000 }).toBe(0);
 
   // The arrow itself, on a pair far apart, delivered as the worker delivers
@@ -243,7 +248,7 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("LEARNING's weights, forecasts and maths are the engine's numbers, and copy as JSON gives them back", async ({ page, context }) => {
+test("LEARNING's weights, forecasts and math are the engine's numbers, and copy as JSON gives them back", async ({ page, context }) => {
   test.setTimeout(300_000);
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const pageErrors = await boot(page);
@@ -259,18 +264,18 @@ test("LEARNING's weights, forecasts and maths are the engine's numbers, and copy
   }, null, { timeout: 30_000 });
   await openView(page, "learning");
 
-  // The maths: every number is the worker's `model_facts`.
+  // The math: every number is the worker's `model_facts`.
   const facts = await page.evaluate(() => window.__pwLast.calibration.facts);
   const theta = await page.evaluate(() => window.__pwViews.styles[0].theta.map((t) => t.name));
   expect(facts.audio, "the audio half is the tagged names").toBe(theta.filter((n) => n.includes(":")).length);
   expect(facts.audio + facts.structural, "φ is every weight").toBe(theta.length);
   expect([facts.audio, facts.structural, facts.draws, facts.styles_max, facts.obs_per_style]).toEqual([18, 26, 500, 5, 20]);
   await page.locator("#md-math-btn").click();
-  const maths = await page.locator("#md-math-lines").textContent();
-  expect(maths).toContain(`${facts.audio} audio and ${facts.structural} structural features`);
-  expect(maths).toContain(`It holds ${facts.draws} draws of w.`);
-  expect(maths).toContain("every 6 picks it fits them again");
-  expect(maths).toContain(`one more style for every ${facts.obs_per_style} things it learns from, up to ${facts.styles_max}`);
+  const math = await page.locator("#md-math-lines").textContent();
+  expect(math).toContain(`${facts.audio} audio and ${facts.structural} structural features`);
+  expect(math).toContain(`It holds ${facts.draws} draws of w.`);
+  expect(math).toContain("every 6 picks it fits them again");
+  expect(math).toContain(`one more style for every ${facts.obs_per_style} things it learns from, up to ${facts.styles_max}`);
 
   // The weights: the chosen style's θ, every one, largest first.
   const shown = await page.evaluate(() => {
@@ -357,5 +362,24 @@ test("a mark sits left of its label: the label's x is the same with the mark and
   await expect(chips.nth(1).locator(".md-chip-pick")).toHaveAttribute("aria-checked", "true");
   expect(await offset(chips.nth(1))).toBe(chosen);
   await expect(rows).toHaveCount(1);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("a style is named on its chip, and the chip's ▶ pressed straight after still plays", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await openView(page, "learning");
+  const chip = page.locator(".md-chip").first();
+  await expect(chip).toBeVisible();
+  const k = Number(await chip.getAttribute("data-k"));
+  await chip.locator(".md-chip-name").fill("Night Drive");
+  // Pressing ▶ blurs the name, which renames the style; the press must
+  // still land on the button it began on.
+  const play = chip.locator(".md-chip-play");
+  await play.click();
+  await expect.poll(() => page.evaluate((k) => window.__pwSent.some((m) => m.type === "set_style_name" && m.k === k && m.name === "Night Drive"), k)).toBe(true);
+  await expect(play, "the same ▶, still in the chip, plays").toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+  await expect(chip.locator(".md-chip-name")).toHaveValue("Night Drive");
+  await expect(chip.locator(".md-chip-pick")).toHaveAttribute("aria-label", /^Night Drive, \d+% of the pool$/);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
