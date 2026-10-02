@@ -115,6 +115,11 @@ generation is open or a ⚡ walk is out, a press would wait its turn (see
 [The worker's lanes](#the-workers-lanes)), so they describe one that has not
 started. What the running generation will replace is `refine_child`'s
 `retiring` (said *will be replaced*: it only grows, one per child admitted).
+A save, a preset or a kept edit joining the pool can change it too
+(`eviction_order` passes over saved sounds, and a new member moves the
+lowest), so while a generation is open the `pinned`, `preset_loaded` and
+`committed` replies carry `retiring` as well (`openRetiring` in
+`worker.js`), and main repaints the marks from it.
 Its seeds come with its progress: every `refine_progress` carries `seeds`,
 `refine_jobs`' parents in job order (job `i` walks from `seeds[i]`). Main
 used to take the last `ratings.seeds` posted before the generation opened,

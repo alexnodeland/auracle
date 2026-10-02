@@ -165,7 +165,8 @@ seeds, and **WILL BE REPLACED** on the sounds its end will replace, whether
 you stop it now or let it finish: none before its first child, then one more
 with each child it takes in. That isn’t all that can go: each child still to
 come can add the next lowest-rated unsaved sound. A save still keeps a sound
-while the generation runs.
+while the generation runs: its mark goes, and the sound that will be replaced
+in its place is marked instead.
 
 While ⚡ evolve from this walks, hovering **EVOLVE POOL** marks its seed, and
 **MAY BE REPLACED** on the one sound its child would replace: the

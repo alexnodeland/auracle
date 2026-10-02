@@ -1160,6 +1160,14 @@ function refineRetiring() {
   }
 }
 
+/** What the open generation's end will replace now, for a reply that can
+ *  change it (a save, a preset or a kept edit joining the pool: each moves
+ *  the pool's lowest unsaved members); undefined with none open, so main
+ *  keeps its own. */
+function openRetiring() {
+  return gen ? refineRetiring() : undefined;
+}
+
 /** Milliseconds this generation still owes, from this session's walk times,
  *  or null before any walk has finished. */
 function genEta(g) {
@@ -2363,6 +2371,7 @@ async function dispatch(m) {
         outcome: m.outcome || "none",
         views: tasteViews(),
         status: status(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2608,8 +2617,11 @@ async function dispatch(m) {
         ok,
         budget,
         ranked: JSON.parse(engine.ranked()),
-        // A save changes what a generation may replace.
+        // A save changes what a generation may replace, and while one is
+        // open, what its end will: a saved sound leaves `retiring` and the
+        // next lowest unsaved one takes its place (`openRetiring`).
         ratings: engineRatings(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2640,7 +2652,7 @@ async function dispatch(m) {
       post({
         type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
         prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
-        views: tasteViews(), status: status(),
+        views: tasteViews(), status: status(), retiring: openRetiring(),
       });
       // A preset clicked open: main answers `preset_loaded` with the bench
       // open (`edit_begin`), a round trip in which the engine is free to

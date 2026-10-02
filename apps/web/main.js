@@ -2176,6 +2176,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
+      takeRetiring(m); // a kept edit joining the pool moves what will be replaced
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       if (m.id > 0) {
@@ -2362,6 +2363,7 @@ worker.onmessage = (e) => {
     case "pinned": {
       if (m.ranked && views) views.ranked = m.ranked;
       if (m.ratings && views) views.ratings = m.ratings; // a save changes what may be replaced
+      takeRetiring(m); // and what a running generation will replace
       if (mayGoShown) markMayGo(true);
       if (m.budget) pinBudget = m.budget;
       // A control that cannot act says so. `set_pinned` fails for exactly two
@@ -2400,6 +2402,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "preset_loaded": {
+      takeRetiring(m); // so does a preset joining it
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -6402,6 +6405,15 @@ function markMayGo(on) {
   mayGo = new Set(m.may.filter((id) => !seedMarks.has(id)));
   mayKind = m.kind;
   for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) paintMarks(el, Number(el.dataset.id));
+}
+/** A reply that can move what the running generation will replace (a save, a
+ *  preset or a kept edit: `eviction_order` passes over saved sounds, and a
+ *  new member moves the lowest) carries `retiring` while one is open; only
+ *  `refine_child` did, so a sound saved mid-run kept "will be replaced"
+ *  while the one that would go instead was unmarked. The caller repaints
+ *  (`applyViews` and the `pinned` case do). */
+function takeRetiring(m) {
+  if (breeding && Array.isArray(m.retiring)) breeding.retiring = m.retiring;
 }
 /** The word a row carries while EVOLVE POOL is pointed at, or "". */
 function flagWord(id) {

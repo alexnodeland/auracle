@@ -142,7 +142,10 @@ and marks them in the bank while EVOLVE POOL is pointed at. Once a generation
 is open both describe the next one, so the app marks the running
 generation's own instead: its parents, which the worker posts with the
 generation's progress (job `i` walks from `seeds[i]`), and `retiring()`, which
-each absorbed walk's message carries with the job's `parent_id`. The app says
+each absorbed walk's message carries with the job's `parent_id`, as does the
+reply to a save, a preset or a kept edit while the generation is open: a
+saved member drops out of `eviction_order` and the next lowest takes its
+place, and a new member can move the lowest. The app says
 *will be replaced* for `retiring()`, not *may be*: it is the lowest unpinned
 members, as many as the children put the pool over size, under the posterior
 the generation opened with, so each child admitted adds one member and removes

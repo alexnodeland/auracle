@@ -18,7 +18,8 @@ changelog that edits its own past is not a record.
   out for itself, and the seeds were not shown at all. While a generation
   runs, the marks are that generation's: its seeds, and *will be replaced* on
   what its end will replace, one more with each child it takes in (more can
-  follow). While ⚡ evolve from this walks, its seed and the one sound its
+  follow). Save one and the mark moves to the sound that will go instead.
+  While ⚡ evolve from this walks, its seed and the one sound its
   child would replace are marked; only the seed was.
 - **EVOLVE POOL says what each walk came back as**: *walk 3 of 10 · joined
   the pool*, *rated below the pool*, *already in the pool*, *came back

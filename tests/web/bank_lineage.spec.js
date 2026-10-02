@@ -563,6 +563,57 @@ test("Compare lists every change a long walk made, and the list scrolls", async 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
+test("a sound saved while a generation runs loses its mark, and the one that will go instead gains it", { tag: "@slow" }, async ({ page }) => {
+  // A save takes a sound out of what the running generation's end will
+  // replace (\`eviction_order\` passes over saved sounds), and the next lowest
+  // unsaved one takes its place. Only \`refine_child\` carried \`retiring\`, so
+  // the saved row kept "will be replaced" and the other went unmarked until
+  // the next walk landed, or for good after the last.
+  test.setTimeout(600_000);
+  const pageErrors = await taught(page);
+  await page.locator("#evolve-wrap").hover();
+  await page.locator("#evolve-btn").click(); // the pointer stays on EVOLVE POOL
+  await expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.breeding && s.may.length > 0)), { timeout: 400_000 }).toBe(true);
+  const snap = await page.evaluate(() => window.__pwMarks.filter((s) => s.breeding && s.may.length > 0).pop());
+  const target = snap.may[0];
+  // Saved from the keyboard, so the pointer stays on EVOLVE POOL.
+  await page.locator("#bank-list").focus();
+  for (let i = 0; i < 60; i++) {
+    const at = await page.evaluate(() => document.querySelector("#bank-list .bank-item.kbd")?.dataset.id ?? null);
+    if (at === String(target)) break;
+    await page.keyboard.press("ArrowDown");
+  }
+  const breeding = await page.evaluate(() => document.getElementById("evolve-btn").classList.contains("breeding"));
+  test.skip(!breeding, "the generation ended before the save");
+  const saves = await page.evaluate(() => window.__pwCounts.pinned || 0);
+  await page.keyboard.press("m");
+  await expect.poll(() => page.evaluate(() => window.__pwCounts.pinned || 0), { timeout: 10_000 }).toBeGreaterThan(saves);
+  const pinned = await page.evaluate(() => window.__pwLast.pinned);
+  expect(pinned.ok, "the save was refused").toBe(true);
+  expect(pinned.retiring, "a save while a generation runs carries what its end will replace").toBeTruthy();
+  expect(pinned.retiring).not.toContain(target);
+  // The marks follow the latest word on it: this save's, or a walk landed since.
+  await expect.poll(async () => {
+    const now = await page.evaluate(() => {
+      const last = window.__pwLog.filter((e) => e.type === "pinned" || e.type === "refine_child").pop();
+      const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
+      return { retiring: last.retiring || [], rows: ids("[data-id]"), may: ids(".may-go"), seed: ids(".seed") };
+    });
+    const want = now.retiring.filter((id) => now.rows.includes(id) && !now.seed.includes(id)).sort((a, b) => a - b);
+    return JSON.stringify({ may: now.may, has: now.may.includes(target) }) === JSON.stringify({ may: want, has: false });
+  }, { timeout: 10_000 }).toBe(true);
+  await expect(row(page, target)).not.toHaveClass(/\bmay-go\b/);
+  // One sound not marked before is marked now: the one that will go instead.
+  const after = await page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)));
+  console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(after)}`);
+  expect(after.some((id) => !snap.may.includes(id)), "no sound took the saved one's place").toBe(true);
+  await page.mouse.move(5, 5);
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
+  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
 test("GENERATIONS counts a generation from its first child, with no pick since it opened", { tag: "@slow" }, async ({ page }) => {
   // The guide says GENERATIONS counts a generation once its first child
   // lands. With no status posted since the generation opened (no pick), it
