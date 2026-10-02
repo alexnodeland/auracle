@@ -948,6 +948,13 @@ export function createPatch(host) {
       guess.data = null;
       guess.skipping = false;
       guess.want = true;
+      // The rack was rebuilt for this reply before it reached here (main
+      // draws, then calls this), with the last structure's levels and guess:
+      // a cable whose key survived the edit (`node>amp`) was lit by a level
+      // measured on another patch, and the old guess was drawn on the new
+      // rack. Painted again now, in the same task, so neither is ever seen.
+      paintLevels();
+      drawGuess();
     } else if (m.edited !== undefined) {
       // A knob: the cables are where they were, and their levels are no
       // longer measured (hollow marks) until the probe has heard the change.

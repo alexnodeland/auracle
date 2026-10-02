@@ -76,7 +76,11 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await expect.poll(asked, { timeout: 30_000 }).toBe(before + 1);
   await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 30_000 }).toBe(true);
 
-  // A new structure is unlit until it is measured: no estimate is drawn.
+  // Probes are slow from here (4 s each at the engine). A source placed in a
+  // new patch while the empty patch's probe is still out: the page holds the
+  // next probe back until that one answers (checked at the end), and the
+  // probe that answers then measured whatever tree the bench held by then,
+  // which can be the one with the source in it: a measurement, so lit.
   await slowWorker(page, { cable_levels: 4000 });
   await page.locator("#patch-new-btn").click();
   // The empty socket is on the rack before a source is put in it.
@@ -84,10 +88,23 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.locator('#nb-groups .nb-item[data-kind="supersaw"]').click();
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="supersaw"]').length), { timeout: 30_000 }).toBe(1);
+  const measuredHere = () =>
+    page.evaluate(() => !!window.__pwLast.cable_levels && window.__pwLast.cable_levels.tree === window.__pwLast.bench.treeJson);
+  await expect.poll(measuredHere, { timeout: 30_000 }).toBe(true);
+  await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 15_000 }).toBe(true);
+
+  // A new structure is unlit until it is measured: no estimate is drawn. With
+  // no probe out, the next one is asked once this edit settles, and takes
+  // 4 s at the engine, so the rack as rebuilt is read before it can land.
+  await page.locator('#nb-groups .nb-item[data-kind="filter"]').click();
+  await page.locator('#rack-svg .jack[data-childkey="node"]').click();
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="filter"]').length), { timeout: 30_000 }).toBe(1);
+  expect(await measuredHere(), "the new structure was measured before it was read").toBe(false);
   const unmeasured = await drawn(page);
   for (const w of unmeasured.wires) expect(w.opacity, `${w.key} before its level`).toBeCloseTo(0.2, 2);
   for (const m of unmeasured.marks) expect(m.unknown).toBe(true);
-  await expect.poll(async () => (await drawn(page)).marks.some((m) => !m.unknown), { timeout: 30_000 }).toBe(true);
+  await expect.poll(measuredHere, { timeout: 30_000 }).toBe(true);
+  await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 15_000 }).toBe(true);
   await slowWorker(page, {});
   // Never more than one probe at the engine: a probe asked while one was
   // out waited for its answer (the slow probe above had edits settle under it).
