@@ -1198,6 +1198,13 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             };
             std::mem::swap(a, b);
         }
+        // A fragment the panel sent with a recording that couldn't be read is
+        // refused, as `SetTake` refuses one, not installed silently empty.
+        StructOp::ReplaceTree { node, .. } | StructOp::InsertTree { node, .. }
+            if node.has_lost_take() =>
+        {
+            return Err(lost_take());
+        }
         StructOp::ReplaceTree { key, node } => {
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
@@ -1241,6 +1248,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
         }
     }
     finish(out)
+}
+
+/// The refusal for a fragment carrying a recording that couldn't be read:
+/// installed, it would play silence where the player sent a take.
+fn lost_take() -> StructError {
+    StructError::Invalid("that recording couldn’t be read, so nothing changed".into())
 }
 
 /// The two audio children of a binary node, `(/0, /1)`, or `None` for

@@ -38,7 +38,7 @@
 //!
 //! It also keeps the saved text it could not read, unserialized, so a sound
 //! the session holds back because that take was its only source can be
-//! written back exactly as it was loaded ([`Take::kept`]); nothing else ever
+//! written back JSON-equal to what was loaded ([`Take::kept`]); nothing else ever
 //! writes it.
 //!
 //! ## Not a trace site

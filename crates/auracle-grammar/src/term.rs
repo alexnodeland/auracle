@@ -1889,6 +1889,13 @@ impl AudioNode {
         }
     }
 
+    /// Does any CAPTURE in this subtree hold a take that could not be read
+    /// when it was loaded ([`Take::unreadable`])?
+    pub fn has_lost_take(&self) -> bool {
+        matches!(self, AudioNode::Capture { take, .. } if take.unreadable().is_some())
+            || self.children().into_iter().any(AudioNode::has_lost_take)
+    }
+
     /// Does this subtree read an input? See [`PatchTree::listens`].
     pub fn listens(&self) -> bool {
         matches!(self, AudioNode::AudioIn { .. })

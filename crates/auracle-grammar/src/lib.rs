@@ -2497,7 +2497,25 @@ mod tests {
         assert!(!cleared.has_takes());
         assert!(mutate::apply_struct_op(&tree, &op("node/1", take.clone())).is_err());
         let unreadable: Take = serde_json::from_str("{\"format\":\"nope\"}").unwrap();
-        assert!(mutate::apply_struct_op(&set, &op("node/0", unreadable)).is_err());
+        assert!(mutate::apply_struct_op(&set, &op("node/0", unreadable.clone())).is_err());
+        // So is a fragment carrying one, by either splice.
+        let fragment = captured(term::CaptureMode::Hold, unreadable);
+        for op in [
+            StructOp::ReplaceTree {
+                key: "node/1".into(),
+                node: fragment.clone(),
+            },
+            StructOp::InsertTree {
+                key: "node/1".into(),
+                node: fragment.clone(),
+            },
+        ] {
+            let refused = mutate::apply_struct_op(&tree, &op);
+            assert!(
+                matches!(&refused, Err(StructError::Invalid(why)) if why.contains("couldn’t be read")),
+                "{refused:?}"
+            );
+        }
     }
 
     /// The sites a walk holds: every AUDIO IN's input and every player
