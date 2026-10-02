@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::engine::Engine;
-use crate::map::most_responsible;
+use crate::map::{liking_direction, most_responsible, LikingDirection};
 
 /// One pool member under the posterior as it stands.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -44,6 +44,12 @@ pub struct Belief {
     /// The members a generation opened now could retire, lowest first
     /// ([`Engine::may_replace`]).
     pub may_replace: Vec<u64>,
+    /// Which way liking rises across the last map drawn ([`liking_direction`]
+    /// of each member's liking on its map coordinates): what LEARNING draws
+    /// as its arrow. `None` before a fit or before a map. A pick moves the
+    /// ratings, so it moves with every pick.
+    #[serde(default)]
+    pub direction: Option<LikingDirection>,
 }
 
 impl Engine {
@@ -81,6 +87,23 @@ impl Engine {
             utility[i] = mean;
         }
         let may_replace = self.may_replace_after(retiring, seeds.len(), |i| utility[i]);
+        // Liking is the bank's number for a member, the logistic of its mean.
+        let direction = if self.posterior.is_some() {
+            let pts: Vec<[f64; 3]> = rows
+                .iter()
+                .filter_map(|&(i, mean, _, _)| {
+                    let c = &self.pool[i];
+                    if c.phi_std.is_empty() {
+                        return None;
+                    }
+                    let (x, y) = self.map_coordinates(&c.phi_std)?;
+                    Some([x, y, 1.0 / (1.0 + (-mean).exp())])
+                })
+                .collect();
+            liking_direction(&pts)
+        } else {
+            None
+        };
         Belief {
             ranked: rows
                 .into_iter()
@@ -93,6 +116,7 @@ impl Engine {
                 .collect(),
             seeds,
             may_replace,
+            direction,
         }
     }
 }

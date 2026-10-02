@@ -1787,8 +1787,13 @@ impl WasmEngine {
     /// ```json
     /// {"ranked":[{"id":12,"mean":0.84,"std":0.31,"style":1}, …],
     ///  "seeds":[12,7,31, …],
-    ///  "may_replace":[40,3, …]}
+    ///  "may_replace":[40,3, …],
+    ///  "direction":{"gx":0.031,"gy":-0.012,"r2":0.42}}
     /// ```
+    ///
+    /// `direction` is which way liking rises across the last map drawn
+    /// (`auracle_session::liking_direction`, in map units), what LEARNING
+    /// draws as its arrow; `null` before a fit or a map.
     ///
     /// `ranked` is [`WasmEngine::ranked`]'s rows and order with the numbers
     /// only, plus `style`, the lens the map colors the member by. Each number
