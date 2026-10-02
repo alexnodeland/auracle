@@ -468,4 +468,103 @@ mod tests {
             "{err}"
         );
     }
+
+    /// Frequency of `x` from its rising zero crossings, interpolated (Hz at
+    /// `sr`); `None` with fewer than two.
+    fn crossing_hz(x: &[f64], sr: f64) -> Option<f64> {
+        let mean = x.iter().sum::<f64>() / x.len() as f64;
+        let (mut first, mut last, mut n) = (None, 0.0, 0usize);
+        for i in 1..x.len() {
+            let (a, b) = (x[i - 1] - mean, x[i] - mean);
+            if a < 0.0 && b >= 0.0 {
+                let t = (i - 1) as f64 + a / (a - b);
+                match first {
+                    None => first = Some(t),
+                    Some(_) => n += 1,
+                }
+                last = t;
+            }
+        }
+        first.filter(|_| n > 0).map(|f| sr * n as f64 / (last - f))
+    }
+
+    /// **TRACK on the reference clip plays the clip's notes.** A sine VCO under
+    /// a TRACK listening to an AUDIO IN, rendered on the standard phrase the
+    /// way every measurement is (`render_phrase`, the reference on the host's
+    /// clock, chord voices joining mid-render), sings each of the figure's
+    /// fourteen notes, A2 to E4. Measured from the render's zero crossings
+    /// between 60 and 140 ms after each onset (after the tracker's ~48 ms to
+    /// confirm a note, before the next one or a chord voice joins), every note
+    /// is the figure's note within `NOTE_CENTS`, and the typical note is within
+    /// `TYPICAL_CENTS`.
+    ///
+    /// Measured (2026-10-02): thirteen notes within 1.4 cents; the D4 at 1.75 s
+    /// reads 17 cents sharp, because the figure is not quite monophonic there:
+    /// the E4 held from 1.00 s (decaying over 0.35 s) still rings under the
+    /// quieter, darker D4, and YIN hears the pair. That is the tracker reading
+    /// its input honestly, so the bound for one note is the note, not 5 cents.
+    #[test]
+    fn track_plays_the_reference_figures_notes() {
+        use auracle_grammar::term::{PitchBand, Waveform};
+        use auracle_grammar::{ModNode, TRACK_SENSITIVITY_DEFAULT};
+        /// A quarter-tone: every note is the right note.
+        const NOTE_CENTS: f64 = 25.0;
+        /// The median note: quiver pins a plucked note within 5 cents.
+        const TYPICAL_CENTS: f64 = 5.0;
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: PARAM_MAX,
+                release: 0.6,
+            },
+            root: AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Sine,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                listen: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+            },
+        };
+        assert!(tree.listens());
+        let spec = PhraseSpec::default();
+        let render = render_phrase(&tree, &spec).expect("renders");
+        let sr = render.sample_rate;
+        let mut errors = Vec::new();
+        let mut report = Vec::new();
+        for (at, note) in crate::clip::reference_notes() {
+            let want = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
+            let (from, to) = (((at + 0.06) * sr) as usize, ((at + 0.14) * sr) as usize);
+            let hz = crossing_hz(&render.samples[from..to], sr)
+                .unwrap_or_else(|| panic!("nothing plays after the note at {at} s"));
+            let cents = 1200.0 * (hz / want).log2();
+            report.push(format!("{at:.2}s midi {note}: {cents:+.1}c"));
+            errors.push(cents.abs());
+        }
+        let report = report.join(", ");
+        assert_eq!(errors.len(), 14);
+        errors.sort_by(f64::total_cmp);
+        let (median, worst) = (errors[errors.len() / 2], errors[errors.len() - 1]);
+        assert!(
+            worst < NOTE_CENTS,
+            "a tracked note strays {worst:.1} cents: {report}"
+        );
+        assert!(
+            median < TYPICAL_CENTS,
+            "the typical tracked note strays {median:.1} cents: {report}"
+        );
+    }
 }
