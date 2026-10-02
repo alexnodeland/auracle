@@ -475,6 +475,16 @@ export function createAudioIn(host) {
       // settings, or by what the tap heard, where the settings say nothing),
       // so the clip, saved with the session, is not twice the size it needs.
       if (e.data.channels === 1) c.channels = 1;
+      // A browser may hand a mono input on as two identical channels (and
+      // say nothing of its channel count): two channels equal sample for
+      // sample hold one channel's information, so they are sent as one.
+      if (c.channels === 2) {
+        let same = true;
+        for (let i = 0; i + 1 < samples.length; i += 2) {
+          if (samples[i] !== samples[i + 1]) { same = false; break; }
+        }
+        if (same) c.channels = 1;
+      }
       if (c.channels === 1) {
         const mono = new Float32Array(samples.length >> 1);
         for (let i = 0; i < mono.length; i++) mono[i] = samples[2 * i];
