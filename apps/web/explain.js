@@ -741,7 +741,7 @@ export function createExplain(host) {
     const ctx = sizeCanvas(cv, W, H);
     cv.style.aspectRatio = `${W} / ${H}`;
     cv.setAttribute("role", "img");
-    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, say));
+    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, say, !!(made && turnedP && !st.search)));
     let fig;
     if (made) fig = FIGURES[kind](ctx, c, made, st.search ? null : turnedP);
     else fig = waitingFigure(ctx, failed ? "" : UI.listening);
@@ -878,6 +878,8 @@ export function createExplain(host) {
       returnTo: document.activeElement,
     });
     lesson.classList.add("on");
+    // A refusal or an alarm said during the lesson stays in sight above it.
+    document.documentElement.classList.add("xl-on");
     askLesson(null);
     renderLesson();
   }
@@ -887,6 +889,7 @@ export function createExplain(host) {
     cancelAnimationFrame(L.raf);
     L.raf = 0;
     lesson.classList.remove("on");
+    document.documentElement.classList.remove("xl-on");
     L.returnTo?.focus?.({ preventScroll: true });
   }
   // One request out at a time; the latest cutoff waits for it.

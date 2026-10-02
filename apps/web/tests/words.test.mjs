@@ -480,6 +480,7 @@ test("every palette control has a figure, and each figure says what was measured
     assert.ok(!/NaN|undefined/.test(s), s);
     assert.ok(s.split(/\s+/).length <= 40, s);
     voiced(explainAlt(c, "Reese", FIGURE_OF[c.name], s));
+    assert.ok(explainAlt(c, "Reese", FIGURE_OF[c.name], s, false).includes(", as it is. "));
     assert.equal(explainTitle(c.name), `${c.name} · what it does`);
   }
   const bright = PALETTE[0];

@@ -6079,8 +6079,9 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
    The ? chip beside a control, a touch's hold ring, the answer (a figure, a
    sentence) and the lesson on filters. The chip and the answer are fixed
    overlays: nothing in a row moves for them. Among the popovers (40–45),
-   the answer above the palette; the lesson is a dialog over everything but
-   the toasts. */
+   the answer above the palette; the lesson is a dialog over the views, and
+   while it is open the toasts and the alarm are lifted over it, as stage
+   mode lifts them. */
 .xp-chip {
   position: fixed;
   z-index: 46;
@@ -6227,6 +6228,8 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   padding: var(--s4);
 }
 .xl.on { display: grid; }
+html.xl-on .toasts { z-index: 61; }
+html.xl-on .alarm { z-index: 62; }
 .xl-panel {
   width: min(760px, 100%);
   box-sizing: border-box;

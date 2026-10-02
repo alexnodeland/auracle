@@ -735,8 +735,10 @@ function saysOf(c, st, made, turned) {
   return `${capital(turnedWord(c, st.at))}, ${fact[1](made, turned)}.${knobs}`;
 }
 
-/** The figure's text for a screen reader: what is drawn, then what it says. */
-export function explainAlt(c, sound, kind, say) {
+/** The figure's text for a screen reader: what is drawn, then what it says.
+ *  `turned` is whether a turned render is drawn beside the made one; without
+ *  it, the sound as it is is the whole figure. */
+export function explainAlt(c, sound, kind, say, turned = true) {
   const what = {
     bands: "its spectrum, low at the base",
     onset: "the first note’s first 400 ms",
@@ -744,7 +746,7 @@ export function explainAlt(c, sound, kind, say) {
     motion: "a held note over time",
     harmonics: "a held note’s harmonics",
   }[kind];
-  return `${c.name.toUpperCase()} on ${sound}: ${what}, as made dashed and turned lit. ${say}`;
+  return `${c.name.toUpperCase()} on ${sound}: ${what}, ${turned ? "as made dashed and turned lit" : "as it is"}. ${say}`;
 }
 
 /** The lesson on filters: its title, its button, and its three steps.
