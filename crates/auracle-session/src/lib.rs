@@ -4450,8 +4450,8 @@ mod tests {
 
     /// **A sound whose only source is an unreadable take is held, not lost.**
     /// The restore leaves it out of the pool and reports it as held, apart
-    /// from the repairs; a save writes it back with the take's bytes exactly
-    /// as they were loaded, and the next restore holds it again. It is never
+    /// from the repairs; a save writes its take back JSON-equal to what was
+    /// loaded, and the next restore holds it again. It is never
     /// dealt or ranked.
     #[test]
     fn a_sound_whose_only_take_is_unreadable_is_held_through_save_and_restore() {
@@ -4481,7 +4481,7 @@ mod tests {
             assert!(back.pool[a].id != id && back.pool[b].id != id);
         }
         assert!(back.ranked().iter().all(|(i, _, _)| back.pool[*i].id != id));
-        // Saved again, the take's bytes are what was loaded.
+        // Saved again, the take is JSON-equal to what was loaded.
         let resaved = serde_json::to_value(back.export_state()).unwrap();
         let entry = resaved["bank"]
             .as_array()
@@ -4536,5 +4536,30 @@ mod tests {
         // Saved once, not twice.
         let bank = back.export_state().bank;
         assert_eq!(bank.iter().filter(|e| e.id == id).count(), 1);
+    }
+
+    /// A file that repeats an id cannot make one held sound drop another:
+    /// two entries under one id, each a capture whose only take is
+    /// unreadable, are both held and both saved again.
+    #[test]
+    fn a_repeated_id_never_drops_a_held_sound() {
+        let (engine, id, _) = capture_only_engine();
+        let (mut saved, _) = with_corrupt_take(&engine, id);
+        let bank = saved["bank"].as_array_mut().unwrap();
+        let mut twin = bank.iter().find(|e| e["id"] == id).unwrap().clone();
+        twin["name"] = "its twin".into();
+        bank.push(twin);
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.import_state(serde_json::from_value(saved).unwrap());
+        let names: Vec<_> = back.held().iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert_eq!(
+            back.export_state()
+                .bank
+                .iter()
+                .filter(|e| e.id == id)
+                .count(),
+            2
+        );
     }
 }

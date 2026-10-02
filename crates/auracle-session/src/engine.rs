@@ -702,6 +702,18 @@ pub fn tilt_weights(base: &[f64], tilts: &[f64], eta: f64) -> Vec<f64> {
     out
 }
 
+/// A restored entry with an unreadable take, waiting to land in the pool
+/// (repaired) or be held ([`Engine::finish_restore`]).
+#[derive(Clone, Debug)]
+struct PendingHeld {
+    /// As it was loaded, which is what a held sound is saved as.
+    original: BankEntry,
+    /// Already counted as repaired by the domain clamp.
+    clamped: bool,
+    /// As restore handed it on, which is what an absorbed entry carries.
+    restored: PatchTree,
+}
+
 /// Why [`Engine::readmit_held`] did not bring a held sound back. A code, not
 /// copy: the frontend says it in its own words.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1273,15 +1285,16 @@ pub struct Engine {
     /// Sounds the last restore **held back**: a CAPTURE's take could not be
     /// read, and without it the sound did not render (the take was its only
     /// source). Never in the pool, so never dealt, fitted, mapped, wired or
-    /// walked; written back by [`Engine::export_state`] exactly as loaded, so
+    /// walked; written back by [`Engine::export_state`] JSON-equal to what was loaded, so
     /// a save loses none of them; brought back by [`Engine::readmit_held`].
     /// See [`Engine::held`].
     held: Vec<BankEntry>,
     /// During a restore: each bank entry with an unreadable take, as it was
     /// loaded, and whether it was already counted as repaired. One that
     /// lands in the pool is repaired; one still here at
-    /// [`Engine::finish_restore`] is held.
-    pending_held: HashMap<u64, (BankEntry, bool)>,
+    /// [`Engine::finish_restore`] is held. Keyed by id, but a list per id: a
+    /// file can repeat an id, and one entry must never drop another.
+    pending_held: HashMap<u64, Vec<PendingHeld>>,
 }
 
 impl Engine {
@@ -4217,7 +4230,14 @@ impl Engine {
                 self.repaired_terms += 1;
             }
             if let Some(original) = lost {
-                self.pending_held.insert(entry.id, (original, clamped));
+                self.pending_held
+                    .entry(entry.id)
+                    .or_default()
+                    .push(PendingHeld {
+                        original,
+                        clamped,
+                        restored: entry.tree.clone(),
+                    });
             }
         }
         bank
@@ -4342,9 +4362,18 @@ impl Engine {
         let render = self.admitted_render(&entry.tree, &cached.features, audition);
         // A sound whose unreadable take was not its only source: it renders
         // without it, so it is repaired, not held.
-        if let Some((_, clamped)) = self.pending_held.remove(&entry.id) {
-            if !clamped {
+        if let Some(waiting) = self.pending_held.get_mut(&entry.id) {
+            // The one this is, by content; a repeated id cannot make another
+            // entry's record stand in for it.
+            let at = waiting
+                .iter()
+                .position(|p| p.restored == entry.tree)
+                .unwrap_or(0);
+            if !waiting.remove(at).clamped {
                 self.repaired_terms += 1;
+            }
+            if waiting.is_empty() {
+                self.pending_held.remove(&entry.id);
             }
         }
         // `saturating_add`: a hostile `u64::MAX` in a shared file must not wrap
@@ -4374,7 +4403,12 @@ impl Engine {
         // Whatever had an unreadable take and never landed did not render
         // without it: held, not dropped, and reported apart from the repairs
         // (one also mended by the clamp is uncounted there again).
-        let mut held: Vec<(BankEntry, bool)> = self.pending_held.drain().map(|(_, v)| v).collect();
+        let mut held: Vec<(BankEntry, bool)> = self
+            .pending_held
+            .drain()
+            .flat_map(|(_, v)| v)
+            .map(|p| (p.original, p.clamped))
+            .collect();
         held.sort_by_key(|(e, _)| e.id);
         for (mut entry, clamped) in held {
             if clamped {
