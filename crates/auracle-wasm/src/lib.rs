@@ -1999,6 +1999,9 @@ impl WasmEngine {
         let id = id as u64;
         match self.engine.find(id) {
             Some(i) => {
+                // A patch opened (another, or this one again): an edit back to
+                // a tree from before is no longer an undo of a taken guess.
+                self.guesses.clear_taken();
                 self.bench_tree = Some(self.engine.pool[i].tree.clone());
                 self.bench_makeup = live_makeup(&self.engine.pool[i].features);
                 // Materializes the buffer if the lazy pool had let it go: the
@@ -2303,8 +2306,9 @@ impl WasmEngine {
     }
 
     /// Whatever the bench just became, ask the guesses' memory whether it is
-    /// the patch as it was before its last taken guess: an undo (or the
-    /// module taken out again), which counts as a skip, logged as one.
+    /// the patch as it was before one of its taken guesses: an undo (or the
+    /// module taken out again), which counts as a skip, logged once (a family
+    /// already skipped there is not logged again).
     fn guess_observe(&mut self) {
         let patch = self.guess_patch();
         let Some(tree) = &self.bench_tree else {
@@ -2447,6 +2451,12 @@ impl WasmEngine {
     /// skip. Returns an empty string, or the reason the edit was refused.
     /// Not evidence: the edit is an ordinary one, and keep as new is where
     /// the player says what they thought of it.
+    ///
+    /// The guess must still be one for the patch in hand
+    /// ([`auracle_session::guess_is_current`]: the same edit, socket and
+    /// family among its candidates now). A guess ranked on an earlier tree is
+    /// refused, not applied: a source ranked for an empty socket, sent after
+    /// the player filled it, would otherwise wipe what they placed there.
     pub fn guess_take(&mut self, guess_json: &str) -> String {
         #[derive(serde::Deserialize)]
         struct Taken {
@@ -2461,6 +2471,9 @@ impl WasmEngine {
         let Some(before) = self.bench_tree.clone() else {
             return "there is no sound open to edit".into();
         };
+        if !auracle_session::guess_is_current(&before, &taken.op, &taken.socket, &taken.family) {
+            return "the patch changed after that guess, so it was not placed".into();
+        }
         let err = match serde_json::to_string(&taken.op) {
             Ok(op) => self.edit_structure_apply(&op),
             Err(e) => format!("the engine couldn’t read that edit ({e})"),
@@ -2478,7 +2491,9 @@ impl WasmEngine {
     }
 
     /// The cables of the patch in hand, measured on one render of this
-    /// engine's phrase ([`auracle_features::probe_cables`]): `{"cables":
+    /// engine's phrase ([`auracle_features::probe_cables`]), its **audio**
+    /// cables only (the compiler taps audio nodes; PATCH draws a modulation
+    /// cable by its rate): `{"cables":
     /// [{"from":"node/0","to":"node","from_uid":7,"to_uid":3,"rms_db":-4.1,
     /// "peak_db":2.0}],"samples":n}`, `null` with nothing open. The cables are
     /// those [`Self::edit_describe`] draws, in its order and keyed the same
@@ -2528,9 +2543,16 @@ impl WasmEngine {
         let (Some(tree), true) = (self.bench_tree.clone(), self.bench_vet_ok) else {
             return 0;
         };
-        self.engine
+        let id = self
+            .engine
             .commit_edit(self.bench_original, tree, outcome)
-            .unwrap_or(0) as u32
+            .unwrap_or(0);
+        // The new sound is the patch the player is working on: it keeps the
+        // guesses' skips and takes.
+        if let (true, Some(from)) = (id > 0, self.bench_original) {
+            self.guesses.carry(from, id);
+        }
+        id as u32
     }
 
     /// The pool id the bench was opened from (0 for none) — what a commit
@@ -2637,6 +2659,7 @@ impl WasmEngine {
 
     /// Clear the workbench.
     pub fn edit_cancel(&mut self) {
+        self.guesses.clear_taken();
         self.bench_tree = None;
         self.bench_render = None;
         self.bench_original = None;
@@ -3080,6 +3103,124 @@ mod tests {
         assert!(engine.import_session(&saved) > 0);
         assert!(engine.edit_begin(id));
         assert!(engine.guess_skip(skip), "a skip outlived the import");
+    }
+
+    /// A guess for the bench as JSON, as `guess_rank` would give it: the
+    /// first of `guess_candidates` of `kind`.
+    fn a_guess(engine: &WasmEngine, kind: &str) -> String {
+        let tree = engine.bench_tree.clone().unwrap();
+        let c = auracle_session::guess_candidates(&tree, None)
+            .into_iter()
+            .find(|c| c.kind == kind)
+            .unwrap_or_else(|| panic!("no {kind} to guess"));
+        serde_json::json!({ "op": c.op, "socket": c.socket, "family": c.family }).to_string()
+    }
+
+    fn pool_ids(engine: &WasmEngine) -> Vec<u32> {
+        serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect()
+    }
+
+    fn guess_skips_logged(engine: &WasmEngine) -> usize {
+        engine
+            .engine
+            .events
+            .iter()
+            .filter(|ev| ev.kind == "guess_skip")
+            .count()
+    }
+
+    /// **An old take does not turn an unrelated undo into a skip.** Take a
+    /// guess on A, open B, open A again (back at the tree before the guess),
+    /// make an edit, then undo it to that tree: that undo is of the edit, not
+    /// of the guess, so nothing is skipped or logged.
+    #[test]
+    fn an_old_take_does_not_turn_an_unrelated_undo_into_a_skip() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids = pool_ids(&engine);
+        assert!(engine.edit_begin(ids[0]));
+        let t0 = engine.edit_tree_json();
+        let reverb = a_guess(&engine, "reverb");
+        assert_eq!(engine.guess_take(&reverb), "");
+        assert!(engine.edit_begin(ids[1]));
+        assert!(engine.edit_begin(ids[0]));
+        assert_eq!(
+            engine.edit_tree_json(),
+            t0,
+            "back at the tree before the guess"
+        );
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure_apply(edit), "");
+        assert_eq!(engine.edit_set_tree_apply(&t0), "");
+        assert_eq!(
+            guess_skips_logged(&engine),
+            0,
+            "an unrelated undo was a skip"
+        );
+        assert!(engine.guess_skip(&reverb), "the family was hidden");
+        assert_eq!(guess_skips_logged(&engine), 1);
+    }
+
+    /// **A guess ranked on an earlier tree is refused, not applied.** A noise
+    /// ranked for the empty socket, sent after the player put a pluck there
+    /// and a filter after it, would wipe both: it is refused with a reason,
+    /// and the bench is untouched.
+    #[test]
+    fn a_stale_guess_is_refused() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert!(engine.edit_begin(pool_ids(&engine)[0]));
+        let mut empty: PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        empty.root = auracle_grammar::AudioNode::Silence {
+            uid: auracle_grammar::Uid::NEW,
+        };
+        assert_eq!(
+            engine.edit_set_tree_apply(&serde_json::to_string(&empty).unwrap()),
+            ""
+        );
+        let noise = a_guess(&engine, "noise");
+        for op in [
+            r#"{"op":"replace","key":"node","kind":"pluck"}"#, // voice: name
+            r#"{"op":"insert","key":"node","kind":"filter"}"#, // voice: name
+        ] {
+            assert_eq!(engine.edit_structure_apply(op), "");
+        }
+        let built = engine.edit_tree_json();
+        let err = engine.guess_take(&noise);
+        assert!(!err.is_empty(), "a stale guess was applied");
+        assert_eq!(
+            engine.edit_tree_json(),
+            built,
+            "the refusal moved the bench"
+        );
+        // A guess for the patch as it is now is taken.
+        let reverb = a_guess(&engine, "reverb");
+        assert_eq!(engine.guess_take(&reverb), "");
+    }
+
+    /// **Keep as new carries the skips.** The kept sound is the patch the
+    /// player is working on, so a family skipped before keeping stays
+    /// skipped on it.
+    #[test]
+    fn keep_as_new_carries_the_skips() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert!(engine.edit_begin(pool_ids(&engine)[0]));
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert!(engine.edit_begin(kept));
+        assert!(
+            !engine.guess_skip(&reverb),
+            "the skip stayed with the old id"
+        );
     }
 
     /// **A guess's renders respect the render namespace.** Each job's
