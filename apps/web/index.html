@@ -337,6 +337,9 @@
                them is the one the whole app is for — which is why it has the
                row above to itself. -->
           <div class="rack-tools">
+            <!-- A patch from nothing: NEW PATCH, then CLEAR and BACK TO ‹name›
+                 while one is open. Filled by patch.js (`renderTools`). -->
+            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
             <div class="seg seg-teach" role="group" aria-label="Teach the model">
               <!-- The express path. Commit normally plays both versions and asks;
                    tick this when you already know, and it commits straight away.
@@ -470,6 +473,10 @@
                 <span class="fh-copy">This layout has spread past the frame.</span>
                 <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
               </div>
+              <!-- The model's guess for the next module: GUESS · FILTER and its
+                   reason in the model's italic, over the rack's top left. Its
+                   module is drawn at its socket in the rack (patch.js). -->
+              <div class="guess-read" id="guess-read" role="status" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
             <!-- The final say on the split below, and the in-house pattern for

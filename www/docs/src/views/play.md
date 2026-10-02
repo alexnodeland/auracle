@@ -55,10 +55,44 @@ clicking it does the step it names:
 **⚡ EVOLVE FROM THIS**, on the name’s row: breeding from this sound alone. See
 [locks, and evolving from here](../rack.md#locks-and-evolving-from-here).
 
-**The toolbar.** **PICK THE EDIT** and **KEEP AS NEW**; the layout and view
-controls (**CHAIN**, **SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and
-the locks (**LOCK KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and
-editing the rack](../rack.md) covers them all.
+**The toolbar.** **NEW PATCH** ([a patch from nothing](#a-patch-from-nothing));
+**PICK THE EDIT** and **KEEP AS NEW**; the layout and view controls (**CHAIN**,
+**SNAP**, **RESET**, **DETAIL**, **LEANS**, **MAP**); and the locks (**LOCK
+KNOBS**, **LOCK WIRING**, **CLEAR LOCKS**). [Reading and editing the
+rack](../rack.md) covers them all.
+
+**The model's guess for the next module,** over the rack's top left once the
+model has fitted your taste: *GUESS · REVERB*, then its reason in the model's
+italic, then how likely it guesses you'd pick the patch with it over the patch
+as it is:
+
+```text
+GUESS · REVERB   it moves toward still, as your picks lean · 67% · leaning
+```
+
+The module itself is drawn dashed amber at its place in the patch: above the
+cable it would be patched into, over the empty socket it would fill, or under
+the module whose modulation input it would take. Click it (or focus it and
+press <kbd>Enter</kbd>) to add it, the same edit the module rail makes, and
+<kbd>⌘Z</kbd> takes it out. Its **×** (or <kbd>Delete</kbd>) skips it: that
+kind of module stays away from that place for this patch, and the next guess
+shows. Undoing a guess you added counts as skipping it. The module rail marks
+the guessed module with an amber dot beside its name.
+
+- It ranks by how sure it is the module helps, not by the percentage, so its
+  first guess can be one it isn't sure of. Then the line ends *it may not help*.
+- Before the warm start it has nothing to guess from, and shows nothing.
+- With no room left (the patch is at a ceiling), it says *no guess: nothing
+  more fits, so a module has to come out first*.
+- On an empty patch, the percentage is over your pool's average sound, and the
+  line says so.
+
+It is worked out again after each change to the patch's structure and after
+each refit, never per knob turn: it renders the modules that could go at the
+output, all of them on a render crew where the machine has the cores, or the
+likeliest eight with none, and stops after about three seconds of rendering.
+Right after the warm start the first guess also waits for the refit, and for
+the crew to start. [How it guesses](../../reference/search/guess.html).
 
 **The guess.** What the model guesses about the sound you’re playing, and why:
 
@@ -85,6 +119,16 @@ when the patch is close to it (*5/6 depth*, in amber) or at it (red): a patch
 at a ceiling has no room to grow, and a hand-built patch past one is refused.
 
 **The rack.** The patch itself. See [reading and editing the rack](../rack.md).
+Each green cable carries light by the level the engine measured on it, and a
+mark on its middle lights a bar for each third of the meter's range; point at
+the mark for the number. The amber modulation cables are not measured, so they
+carry no mark. [Cables and their levels](../rack.md#reading-it).
+
+**On a touch screen,** tap a module to open its settings in a sheet: every knob
+as a wide slider with **−** and **+** steps, and every named setting as its
+choices. Hold **−** or **+** to keep stepping. Close it with **×**, a swipe
+down, a tap outside, or <kbd>Esc</kbd>. **REMOVE MODULE** at its foot deletes
+the module, as **delete** in its ⋯ menu does.
 
 **The scope,** at the bottom right of the frame, tracing the output while you
 play. Set it up from **⋯** › *Scope & analyzer…*: waveform or spectrum, where
@@ -117,6 +161,24 @@ is still catching up. **⋯** › **Show measurements** adds the sound’s id an
 short structural summary to the caption, and all three budget ceilings to the
 budget (*8/24 modules · 4/6 depth · 1/3 mod depth*).
 ```
+
+## A patch from nothing
+
+**NEW PATCH** empties the sound you're playing down to its amp envelope: the
+name reads *New patch*, its caption *from nothing · 0 modules · nothing to hear
+yet*, and the rack holds one [empty socket](../rack.md#empty-sockets) before
+`ENV / OUT`. Then:
+
+1. Add modules from the [module rail](../wiring.md), or take the model's guess.
+2. Delete any module from its ⋯ menu. A source leaves its socket empty; the
+   toast's undo, or <kbd>⌘Z</kbd>, puts it back.
+3. **CLEAR** empties it again, with an undo.
+4. **KEEP AS NEW** adds it to the pool as a sound of its own, once it makes a
+   sound.
+
+**BACK TO** *the sound's name* (or <kbd>Esc</kbd>) reopens the sound you started
+from. A new patch with modules in it waits: **NEW PATCH** from that sound brings
+it back. <kbd>⌘Z</kbd> past the start, or opening another sound, also ends it.
 
 ## The three things PATCH is for
 

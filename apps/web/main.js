@@ -129,6 +129,10 @@ const {
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES,
 } = await import(`./words.js?v=${BUILD}`);
+// PATCH's guess, cable levels, new patch and module sheet (patch.js), built
+// on the rack below through the host it is handed (`patchView`).
+const PATCH_WORDS = await import(`./words.js?v=${BUILD}`);
+const { createPatch } = await import(`./patch.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -1157,12 +1161,71 @@ let renderNs = null;
 // wiring by it. Null until then, or from a binary too old to say.
 let auditionClip = null;
 
+// PATCH's own module (patch.js): the model's guess at its socket, each cable's
+// measured level, a patch from nothing, and the module sheet on touch. It
+// reaches the rack, the bench lane and the worker through this host only.
+const patchView = createPatch({
+  words: PATCH_WORDS,
+  send: (msg) => send(msg),
+  visible: () => currentView === "play",
+  hasRack: () => !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0),
+  rack: () => wb.rack,
+  benchTree: () => wb.tree,
+  benchTreeJson: () => benchTreeJson,
+  subjectId: () => wb.subjectId,
+  vetSilent: () => !!wb.vetSilent,
+  benchSettled: () => benchSettled(),
+  knobDragging: () => knobDragging,
+  setKnobDragging: (on) => { knobDragging = on; },
+  rackSvg: () => $("rack-svg"),
+  rackFrame: () => rackFrame,
+  rackBoxes: () => rackBoxes,
+  flowing: () => !!$("rack-svg")?.classList.contains("flowing"),
+  paintWireLevel: (elx, lv) => paintWireLevel(elx, lv),
+  renderRack: () => renderRack(),
+  renderSubject: () => renderSubject(),
+  queueStruct: (msg, landed, tag) => queueStruct(msg, landed, tag),
+  applyTreeRewrite: (fn, tag) => applyTreeRewrite(fn, tag),
+  noteOnLanding: (text, opts) => noteOnLanding(text, opts),
+  doUndo: () => doUndo(),
+  undoDepth: () => undoStack.length,
+  openOnBench: (id) => openOnBench(id),
+  benchName: (id) => benchName(id),
+  kindName: (kind) => kindName(kind),
+  kindAt: (key) => rackKindAt(key),
+  kindModTarget: (kind) => kindModTarget(kind),
+  blurbOf: (kind) => MOD_BY_KIND[kind]?.blurb || "",
+  niceName: (name) => niceName(name),
+  capital: (s) => capital(s),
+  heardUnit: (addr, v, kind, variant, long) => heardUnit(addr, v, kind, variant, long),
+  enumDisplay: (k) => enumDisplay(k),
+  knobByAddr: (addr) => knobByAddr(addr),
+  paintRackKnob: (addr) => {
+    const kg = $("rack-svg")?.querySelector(`g[data-addr="${CSS.escape(addr)}"]`);
+    const k = knobByAddr(addr);
+    if (kg && k) paintKnob(kg, k);
+  },
+  sendEdit: (addr, v, isIndex) => sendEdit(addr, v, isIndex),
+  pushUndo: () => pushUndo(),
+  releaseHeldEdits: () => releaseHeldEdits(),
+  removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
+  touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
+  // Esc has another job first: something floating, a module in hand, a cable
+  // half made, or a rack knob it backs out of.
+  escBusy: () =>
+    !!(armed || connectPick || wire || compareId != null) ||
+    !$("ctx-menu").classList.contains("hidden") ||
+    !$("ovf-menu").classList.contains("hidden") ||
+    !!document.activeElement?.closest?.("#rack-svg [data-addr]"),
+});
+
 worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
     if (perform) perform.onWorker(m);
     return;
   }
+  if (patchView.onWorker(m)) return;
   switch (m.type) {
     case "fill_progress": {
       // Monotonic: the restore stage posts {pool:0,target:1}, which used to
@@ -1547,6 +1610,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       // The bench's guess under the model just fitted ("was" is the old one).
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
+      patchView.refit(); // and the next module's, ranked again under it
       refreshInstruments();
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -2032,6 +2096,8 @@ worker.onmessage = (e) => {
       // Whatever is next in the lane goes now — and if nothing is, a COMMIT
       // that was waiting on this edit goes instead (see `pumpLane`).
       pumpLane();
+      // The guess and the cable levels are owed for this patch once it settles.
+      patchView.benchLanded(m);
       break;
     }
     // A request that arrived before the engine finished booting. The worker
@@ -2140,6 +2206,8 @@ worker.onmessage = (e) => {
       // times over. The stacks are untouched, so nothing is lost by stopping.
       if (refusedRestore && benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
       pumpLane();
+      // A guess taken after the patch moved on was refused, and said why above.
+      patchView.rejected();
       break;
     }
     // The answer to "is there a duel to deal here, and what does the other
@@ -2188,6 +2256,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
+      patchView.committed(m); // a new patch kept is a sound of its own
       takeRetiring(m); // a kept edit joining the pool moves what will be replaced
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -2408,6 +2477,7 @@ worker.onmessage = (e) => {
     case "warm_done": {
       applyViews(m.views);
       applyStatus(m.status);
+      patchView.refit(); // the first fit: a guess is possible from here
       refreshInstruments();
       warmStartDone(m);
       scheduleSave();
@@ -3692,6 +3762,8 @@ function showView(name) {
     t.setAttribute("aria-selected", String(on));
   });
   if (name === "play") refitRack();
+  if (name === "play") patchView.shown();
+  else patchView.hidden();
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
@@ -9329,7 +9401,9 @@ function repaintMeasuredFlow() {
     if (it.w.kind === "mod") continue;
     const g = meterGain(it.w.from);
     const reach = rackFrame.flow.get(it.w.from) ?? 1;
-    paintWireLevel(it.inkEl, g == null ? reach : g * reach);
+    // With no note sounding (or no tap on this cable), the level measured at
+    // rest (`edit_cable_levels`), or unlit until it is measured.
+    paintWireLevel(it.inkEl, g == null ? (patchView.restLevel(it.w) ?? 0) : g * reach);
   }
 }
 
@@ -9642,6 +9716,7 @@ function renderRack(rebuild = false) {
     syncFitHint(); // nothing drawn is not a stranded layout
     syncMapBtn();
     nbSync();
+    patchView.rackBuilt();
     return;
   }
 
@@ -9722,6 +9797,8 @@ function renderRack(rebuild = false) {
   // lowercase and a `startsWith("ENV")` test silently never matches.
   ampPlateEl = $("rack-svg").querySelector('g[data-kind="amp"] .mod-plate');
 
+  // The guess and the level marks, over the rack just built.
+  patchView.rackBuilt();
 }
 
 // The patch is the headline; its provenance is the caption. While a TEACH
@@ -9745,6 +9822,14 @@ function renderSubject() {
     nameEl.textContent = "no sound open";
     nameEl.title = "";
     metaEl.textContent = "";
+    return;
+  }
+  // A patch started from nothing is named for that (patch.js `subject`).
+  const fresh = patchView.subject();
+  if (fresh) {
+    nameEl.textContent = fresh.name;
+    nameEl.title = fresh.name;
+    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
     return;
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
@@ -9948,7 +10033,11 @@ function buildRack(svg, rack, opts) {
       // about this patch — a class per stop would be five rules that say the
       // same thing, and a level is a number, not a state.
       wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
-      paintWireLevel(wireEl, flow.get(w.from) ?? 1);
+      // The workbench's cables at rest carry the level the engine measured
+      // on them (`edit_cable_levels`, patch.js `restLevel`), and sit unlit
+      // until it has; a reach estimate is not a measurement (ADR-012). The
+      // duel minis are pictures of other patches, with no probe.
+      paintWireLevel(wireEl, interactive ? (patchView.restLevel(w) ?? 0) : (flow.get(w.from) ?? 1));
     }
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
@@ -10840,6 +10929,7 @@ function startRackMotion(before) {
       it.plateG.style.willChange = "";
       it.g.style.willChange = "";
     }
+    patchView.platesMoved(); // the level marks and the guess, on the cables' final routes
   };
   step(t0);
   return true;
@@ -10891,6 +10981,7 @@ function movePlateTo(it, x, y) {
     w.caseEl.setAttribute("d", d);
     w.inkEl.setAttribute("d", d);
   }
+  patchView.platesMoved();
 }
 
 /** True if this press was taken. */
@@ -12018,7 +12109,8 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // fitting the patch, and `.` typed a full stop. Hand the focus back to the
   // thing the gesture is actually about.
   releaseTextEntry();
-  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  // The model's guess (patch.js) is pressed to add it, and its × to skip it.
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess");
   // In freeform, a plain press on a faceplate moves the module. Tested after
   // the modifier gestures below would be too late — they are tested here, in
   // order, and space still wins so the pan modifier keeps working over a plate
@@ -13060,7 +13152,13 @@ function deleteBlurb(key, node, fields, inNames) {
   if (par && par.binary) {
     return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
   }
-  return fields.length === 0 ? "a lone source can’t be deleted" : "one module, and what it feeds moves up";
+  if (fields.length === 0) {
+    // A source leaves its socket empty (`deleteSource`); an empty socket has
+    // nothing to take out.
+    const k = rackKindAt(key);
+    return SOURCE_KINDS.includes(k) || k === "audio_in" ? "the socket it leaves is empty" : "a lone source can’t be deleted";
+  }
+  return "one module, and what it feeds moves up";
 }
 
 /** The parent of a trace key, and whether that parent is one of the six
@@ -13233,6 +13331,16 @@ function deleteModule(key, x, y) {
     }]);
   }
 
+  // A source in a socket of its own (a chain's first module, or the whole
+  // patch): the socket is left empty and the source set aside, as an unplug
+  // leaves one. The engine's `delete` has nothing to put there, and refused
+  // it; a patch that can be built from nothing can be taken back to nothing
+  // (Plan-005 task 7).
+  const kindHere = rackKindAt(key);
+  if (f.length === 0 && (SOURCE_KINDS.includes(kindHere) || kindHere === "audio_in")) {
+    return deleteSource(key);
+  }
+
   if (f.length === 0) {
     // Deliberately still sent: the engine's refusal is the right sentence, and
     // it is the one the player should hear from the thing that refuses.
@@ -13240,6 +13348,28 @@ function deleteModule(key, x, y) {
   }
 
   return deletePlain(key);
+}
+
+/** A source out of its socket: a `Silence` leaf takes its place (the hole an
+ *  unplug leaves, which renders nothing) and the source goes to the shelf.
+ *  Its own function so a delete that has to wait its turn is re-run as this. */
+function deleteSource(key) {
+  const node = nodeAtKey(key);
+  if (!node) return note("That module has moved.");
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+  if (holdRewrite([key], deleteSource, `delete of the ${name}`)) return;
+  let gone = null;
+  const ok = applyTreeRewrite((tree) => {
+    const n = nodeAtIn(tree, key);
+    if (!n) return "That module has moved. Try again.";
+    gone = n;
+    if (!setNodeAtIn(tree, key, placeholderNode())) return "That module has moved. Try again.";
+    return null;
+  }, { op: "delete_source", key, kind: rackKindAt(key) });
+  if (!ok) return;
+  const uid = gone ? stageFragment(gone, false) : null;
+  noteOnLanding(`${capital(name)} deleted and set aside below. Its socket is empty.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
 }
 
 /** The plain case — one module out of a chain, what it feeds moves up. No
@@ -21803,6 +21933,8 @@ bootMidi();
 // toast at a moment the app would not normally produce one.
 window.__aur = {
   audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // PATCH's guess, cable levels and new patch, as patch.js holds them.
+  patch: () => patchView.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")

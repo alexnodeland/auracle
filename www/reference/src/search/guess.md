@@ -205,7 +205,9 @@ The worker answers `guess` in its `later` lane, in two phases:
   other long work are served throughout.
 - **The floor.** Then, holding the floor, it renders with `memo_render` what
   is still owed of the first `GUESS_FLOOR` in order, one per turn: nothing
-  after a crew that rendered them, everything with no crew.
+  after a crew that rendered them, everything with no crew (at width 0,
+  `?farm=0` or a machine with one core, the page answers the request for a
+  crew with none).
 
 It ranks over every candidate when a crew ran, over the first eight when none
 did, and posts the ranking with the tree it ranked, or the error if the engine

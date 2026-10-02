@@ -162,8 +162,31 @@ Its cost is one render of the phrase. Natively, a probed render took a median
 a shared machine, so the reads are lost in the noise); in wasm under node it
 took a median 160 to 206 ms over two runs, against 183 to 238 ms for a render with φ
 (`crates/auracle-wasm/examples/cable_cost.mjs`). That is not a per-block
-cost, so the probe runs once a structural edit has settled, in the worker's
+cost, so the probe runs once an edit has settled, in the worker's
 `later` lane, and the live meter covers the patch while notes sound.
+
+### How PATCH uses it
+
+PATCH (`apps/web/patch.js`) asks for the probe once the bench has settled
+after an open or an edit (nothing in the edit lane, nothing opening, no knob
+held, about half a second after the last reply), and only while PATCH is in
+sight; a knob turned during a drag asks once, after the drag. A reply measured
+on a tree the bench has since left is dropped and asked again. With the
+levels in hand, each audio cable at rest:
+
+- carries light by its level, mapped as the live meter maps one: −54 dB re 1 V
+  and below is unlit, 0 dB full, linear between (`paintWireLevel`'s stroke
+  opacity, eased over `--d-state`);
+- wears a level mark on its middle that lights one bar per third of that range,
+  with the level as its tooltip.
+
+Until a structure has been measured, its cables are unlit and its marks
+hollow: the rack used to draw an estimate here (each cable's share of the
+output through the mixers above it, every source at unity), which is not a
+measurement and is not drawn on the workbench any more. After a knob turn the
+marks stay hollow until the change has been measured. Modulation cables carry
+no light and no mark. The pictures of other patches (EVOLVE's pair) still
+draw the estimate; they have no probe.
 
 ## One compiler, two callers
 

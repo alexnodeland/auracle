@@ -24,6 +24,10 @@ import {
   bredRatings,
   changeParts,
   markWord,
+  guessWhy,
+  guessLine,
+  guessRefusal,
+  levelWord,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -295,4 +299,38 @@ test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
   assert.equal(markWord("will"), "will be replaced");
   assert.equal(markWord("other"), "");
   for (const k of ["seed", "may", "will"]) voiced(markWord(k));
+});
+
+test("the model's guess says why in its own words, its forecast with a word, and when it may not help", () => {
+  const nice = (s) => ({ n_reverb: "reverbs", n_drive: "drive & fold" })[s] || s;
+  const dark = { control: "Bright", word: "dark", coordinate: null, moved: -1.06, part: 0.2, style: 0 };
+  const drive = { control: null, word: null, coordinate: "n_drive", moved: 1, part: 0.1, style: 0 };
+  assert.equal(guessWhy(dark, nice), "it moves toward dark, as your picks lean");
+  assert.equal(guessWhy(drive, nice), "your picks lean toward more drive & fold");
+  assert.equal(guessWhy({ ...drive, moved: -1 }, nice), "your picks lean toward less drive & fold");
+  assert.equal(guessWhy(null), null);
+  assert.equal(guessLine({ why: dark, p: 0.59, lcb: 0.02 }, "patch", nice), "it moves toward dark, as your picks lean · 59% · leaning");
+  // Ranked by a lower bound that can be under zero: said, not hidden.
+  assert.equal(guessLine({ why: dark, p: 0.53, lcb: -0.1 }, "patch", nice), "it moves toward dark, as your picks lean · 53% · a hunch · it may not help");
+  // An empty patch is guessed against the pool's average sound.
+  assert.equal(guessLine({ why: null, p: 0.73, lcb: 0.3 }, "pool", nice), "no part of it leans your way · 73% over your pool’s average · fairly sure");
+  for (const g of [{ why: dark, p: 0.59, lcb: 0.02 }, { why: drive, p: 0.4, lcb: -1 }]) voiced(guessLine(g, "patch", nice));
+});
+
+test("the guess's refusals: nothing before the warm start, words for the rest", () => {
+  assert.equal(guessRefusal({ reason: "no_taste" }), null);
+  assert.equal(guessRefusal({ reason: "no_patch" }), null);
+  assert.equal(guessRefusal({ reason: "full" }), "no guess: nothing more fits, so a module has to come out first");
+  assert.equal(guessRefusal({ reason: "unmeasured" }), "no guess yet: it hasn’t heard this patch");
+  assert.equal(guessRefusal({ guesses: [], skipped: 3 }), "no guess left here: every module that fits was skipped");
+  assert.equal(guessRefusal({ guesses: [], skipped: 0 }), "no guess: none of the modules that fit here passed the safety check");
+  assert.equal(guessRefusal({ guesses: [{}], skipped: 0 }), null);
+  for (const r of ["full", "unmeasured"]) voiced(guessRefusal({ reason: r }));
+});
+
+test("a cable's measured level reads in decibels, or nothing at the probe's floor", () => {
+  assert.equal(levelWord(-14.2), "−14 dB");
+  assert.equal(levelWord(3.6), "4 dB");
+  assert.equal(levelWord(-120), "nothing");
+  assert.equal(levelWord(null), "nothing");
 });

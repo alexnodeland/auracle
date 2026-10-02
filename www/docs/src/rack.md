@@ -24,9 +24,18 @@ everywhere in the instrument.
 - **Jacks** are small rings labeled `in` and `out`. Their color is the kind of
   signal they carry, and only matching kinds connect.
 - **Audio cables** are green, and run left to right through the signal chain.
+  Each carries light by its level: once an edit settles, the engine renders
+  the phrase once more and measures every audio cable, and the brighter the
+  cable, the louder the signal on it. A mark on its middle lights one bar per
+  third of the meter's range (−54 dB to 0 dB re 1 V); point at it for the
+  number, *measured at rest: −14 dB*. Until a new structure is measured its
+  cables sit dim and its marks hollow, and after a knob turn the marks go
+  hollow until the change is measured. While notes sound, the cables move at
+  the level the live voice measures instead.
 - **Modulation cables** are amber, and each one ends in a named destination:
   `PITCH`, `THRESHOLD`, `MORPH`, `DEPTH`. A modulation cable pulses at its
-  modulator’s rate, so you can see a 0.2 Hz sweep before you hear it.
+  modulator’s rate, so you can see a 0.2 Hz sweep before you hear it. It is
+  not measured, so it has no level mark and carries no light.
 - **The last module** is always `ENV / OUT`: the amp envelope and the output.
   Every patch has one, with a limiter before it that you can’t remove.
 
@@ -201,7 +210,7 @@ Each module’s **⋯** menu:
 | **modulate → *destination*** | Arms the module rail at the modulators, for this module’s modulation input. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
 | **swap the two inputs** | On the six two-input modules only |
-| **delete** | Below a rule, in red |
+| **delete** | Below a rule, in red. A source leaves its socket empty |
 
 **replace with…**, **insert…**, and **modulate** hand off to the [module
 rail](./wiring.md) with the socket already chosen and lit, so there is one
@@ -213,8 +222,8 @@ and stays there across a reload.
 
 ## Empty sockets
 
-Unplug a cable, set a module aside, or move a source into another socket, and
-the socket it leaves is **empty**. It shows as a small dashed module titled
+Unplug a cable, set a module aside, delete a source, or move a source into
+another socket, and the socket it leaves is **empty**. It shows as a small dashed module titled
 *empty*, it’s listed as *empty* under **IN THIS PATCH**, and it’s silent. On
 one side of a mix, only that side goes quiet.
 
