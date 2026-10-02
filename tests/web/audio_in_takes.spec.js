@@ -42,7 +42,7 @@ async function boot(page, { granted = false } = {}) {
 
 const amp = { attack: 0.01, decay: 0.3, sustain: 0.95, release: 0.05 };
 const ain = (input) => ({ AudioIn: { input, gain: 24 / 36, channel: "Both" } });
-const vco = { Vco: { wave: "Sine", octave: 0, detune: 0.5, mod_depth: 0, modulation: "None" } };
+const saw = { Vco: { wave: "Saw", octave: 0, detune: 0.5, mod_depth: 0, modulation: "None" } };
 
 async function openFile(page, data, dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -52,12 +52,14 @@ async function openFile(page, data, dir) {
 }
 
 const at = (page, hz) => page.evaluate((h) => window.__pwAt(h), hz);
-async function loudest(page, hz, ms = 1200) {
+/** The loudest reading over `ms` (read every 100 ms): at `hz` (dB), or with
+ *  `{ rms: true }` the whole output's RMS (dBFS). */
+async function loudest(page, hz, ms = 1200, { rms = false } = {}) {
   let db = -Infinity;
   const end = Date.now() + ms;
   while (Date.now() < end) {
     const r = await at(page, hz);
-    if (r) db = Math.max(db, r.db);
+    if (r) db = Math.max(db, rms ? r.rms : r.db);
     await page.waitForTimeout(100);
   }
   return db;
@@ -92,10 +94,10 @@ test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an in
 
 test("a tracked sound plays from the input with one voice, and keys over it stop with their keys", async ({ page }, info) => {
   const errors = await boot(page, { granted: true });
-  // A sine VCO played by the pitch of input 1 (a 440 Hz tone).
+  // A saw VCO played by the pitch of input 1 (a 440 Hz tone).
   await openFile(page, {
-    name: "Sung Sine",
-    tree: { amp, root: { Track: { band: "mid", sensitivity: 0.5, dynamics: 0, input: vco, listen: ain(0) } } },
+    name: "Sung Saw",
+    tree: { amp, root: { Track: { band: "mid", sensitivity: 0.5, dynamics: 0, input: saw, listen: ain(0) } } },
   }, info.outputDir);
   const lane = page.locator("#rack-svg .ain-lane").first();
   await expect(lane).toHaveAttribute("data-state", "live", { timeout: 60_000 });
@@ -105,19 +107,28 @@ test("a tracked sound plays from the input with one voice, and keys over it stop
   await expect.poll(() => loudest(page, 440, 600), { timeout: 15_000 }).toBeGreaterThan(-60);
   await page.waitForTimeout(1500);
   const alone = await loudest(page, 440, 1500);
+  const lead = await loudest(page, 440, 1500, { rms: true });
   // Keys over it: three held, then let go.
   for (const k of ["a", "d", "g"]) await page.keyboard.down(k);
   await page.waitForTimeout(1200);
-  const held = await loudest(page, 440, 800);
+  const held = await loudest(page, 440, 800, { rms: true });
   for (const k of ["a", "d", "g"]) await page.keyboard.up(k);
   await page.waitForTimeout(2500);
   const after = await loudest(page, 440, 1500);
-  console.log(`440 Hz: unmonitored ${off.toFixed(1)} dB, the tracked voice ${alone.toFixed(1)} dB, keys held ${held.toFixed(1)} dB, keys let go ${after.toFixed(1)} dB`);
+  console.log(`440 Hz: unmonitored ${off.toFixed(1)} dB, the tracked voice ${alone.toFixed(1)} dB, keys let go ${after.toFixed(1)} dB; ` +
+    `RMS: the tracked voice ${lead.toFixed(1)} dBFS, keys held ${held.toFixed(1)} dBFS (${(held - lead).toFixed(1)} dB)`);
   expect(off).toBeLessThan(-100);
   expect(alone).toBeGreaterThan(-45);
-  // The leveler holds a held chord near one voice's level, so the keys are
-  // only shown to sound; what matters is that they stop.
-  expect(held).toBeGreaterThan(-60);
+  // Every key plays the tracked note, so the held keys and the tracked voice
+  // are four voices at one pitch, summing by their phases: at 440 Hz alone
+  // they read anywhere from cancelled to in phase. A saw's whole output does
+  // not cancel: four saws of one period sum to no less than one saw's RMS
+  // (evenly spaced, a saw of a quarter the period) and to no more than four
+  // in phase (+12 dB), and the leveler and brickwall only take away. The keys
+  // sound, as voices of the tracked note, and no more than four of them.
+  expect(held).toBeGreaterThan(lead - 3);
+  expect(held).toBeLessThan(lead + 13);
+  // And they stop with their keys: the tracked voice alone again.
   expect(Math.abs(after - alone)).toBeLessThan(1);
   expect(errors).toEqual([]);
 });

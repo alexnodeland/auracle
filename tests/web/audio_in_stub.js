@@ -214,7 +214,7 @@ const INIT = `(() => {
     return r;
   };
   // The output's level at \`hz\` (dB, the strongest bin within 3%), and its
-  // peak over the window (dBFS).
+  // peak and RMS over the window (dBFS).
   window.__pwAt = (hz) => {
     const a = window.__pwTap;
     if (!a) return null;
@@ -226,8 +226,10 @@ const INIT = `(() => {
     const b = new Float32Array(a.fftSize);
     a.getFloatTimeDomainData(b);
     let peak = 0;
-    for (const x of b) peak = Math.max(peak, Math.abs(x));
-    return { db, peak: peak > 0 ? 20 * Math.log10(peak) : -Infinity };
+    let sum = 0;
+    for (const x of b) { peak = Math.max(peak, Math.abs(x)); sum += x * x; }
+    const rms = Math.sqrt(sum / b.length);
+    return { db, peak: peak > 0 ? 20 * Math.log10(peak) : -Infinity, rms: rms > 0 ? 20 * Math.log10(rms) : -Infinity };
   };
   try {
     for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"]) localStorage.setItem(k, "1");
