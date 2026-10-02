@@ -93,9 +93,10 @@ the guessed module with an amber dot beside its name.
 It is worked out again after each change to the patch's structure and after
 each refit, never per knob turn: it renders the modules that could go at the
 output, all of them on a render crew where the machine has the cores, or the
-likeliest eight with none, and stops after about three seconds of rendering.
-Right after the warm start the first guess also waits for the refit, and for
-the crew to start. [How it guesses](../../reference/search/guess.html).
+likeliest eight with none. A guess takes a few seconds, longer the first
+time: the crew has to start (and right after the warm start, the refit runs
+first), and the three seconds of rendering it allows itself count from
+there. [How it guesses](../../reference/search/guess.html).
 
 **The guess.** What the model guesses about the sound you’re playing, and why:
 
@@ -112,8 +113,8 @@ line dims and ends in *· rating…*: the model rating the edited sound again.
 
 When the model has no basis for a guess, the line says so instead of printing a
 number. When nothing reaches the output (the patch’s only source socket is
-[empty](../rack.md#empty-sockets)), it says *no guess while nothing reaches the
-output*. [Reading what it learned](../reading-the-model.md) says how to read
+[empty](../rack.md#empty-sockets)), it says *nothing to rate: no source
+reaches the output*. [Reading what it learned](../reading-the-model.md) says how to read
 it.
 
 **The budget,** beside the guess: the ceilings breeding searches within (24

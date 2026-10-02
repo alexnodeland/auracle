@@ -89,5 +89,18 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   for (const m of unmeasured.marks) expect(m.unknown).toBe(true);
   await expect.poll(async () => (await drawn(page)).marks.some((m) => !m.unknown), { timeout: 30_000 }).toBe(true);
   await slowWorker(page, {});
+  // Never more than one probe at the engine: a probe asked while one was
+  // out waited for its answer (the slow probe above had edits settle under it).
+  const most = await page.evaluate(() => {
+    const ev = [
+      ...window.__pwPosted.filter((p) => p.type === "cable_levels").map((p) => [p.t, 1]),
+      ...window.__pwReplies.filter((r) => r.type === "cable_levels").map((r) => [r.t, -1]),
+    ].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let out = 0;
+    let max = 0;
+    for (const [, d] of ev) { out += d; max = Math.max(max, out); }
+    return max;
+  });
+  expect(most, "probes piled up at the engine").toBe(1);
   expect(errors, errors.join("\n")).toEqual([]);
 });

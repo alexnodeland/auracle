@@ -199,7 +199,14 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - the specimen estimates a new patch's face from its modules' kinds and
        knobs ("estimated"), and dashes the face without a module under the
        pointer; the sheet carries the same estimate. These are estimates the
-       engine does not make, so none is drawn (ADR-012); faces are task 3's;
+       engine does not make, so none is drawn (ADR-012); faces are task 3's.
+       The guess's own "estimated vessel" can be measured instead: each
+       candidate is rendered for the ranking (keyed in the engine's memo by
+       `GuessCandidate::key`), so once faces land (#102) and can be taken
+       from that render or kept beside its row, the guess
+       plate gets the candidate's face, labelled as the patch with this
+       module, beside the patch's own. patch.js calls `host.guessFace(g,
+       at, layer)` for it; main.js does not provide it yet;
      - the specimen's "in 39% of similar presets" counted presets; the
        engine's guess is ranked by the posterior, so the line is the
        model's reason and forecast, and says *it may not help* when the lower

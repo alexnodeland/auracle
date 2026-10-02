@@ -95,6 +95,47 @@ test("nothing is guessed before the warm start", async ({ page }) => {
   await expect(page.locator("#rack-svg .guess-plate")).toHaveCount(0);
   await expect(page.locator("#guess-read")).toBeHidden();
   await expect(page.locator("#nb-groups .nb-item.guessed")).toHaveCount(0);
+  // …and nothing was rendered for it: no render crew was raised to be told no.
+  expect(await page.evaluate(() => window.__pwCounts.farm_want || 0)).toBe(0);
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("a new patch's skips are its own: the sound it was started from does not inherit them", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(420_000);
+  const errors = await boot(page, { warmed: false });
+  await warmStartAndFit(page);
+  await openPreset(page, "Reese");
+  const reese = await page.evaluate(() => window.__aur.wb.subjectId);
+  await drawnGuess(page);
+
+  // A new patch that sounds, so its guesses are at the output, as Reese's are.
+  await page.locator("#patch-new-btn").click();
+  await expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout: 30_000 });
+  await page.locator('#nb-groups .nb-item[data-kind="vco"]').click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator('#rack-svg g.mod-group[data-kind="vco"]')).toHaveCount(1, { timeout: 30_000 });
+  // Skip until a skip is at the output, the socket Reese has too (a skip at
+  // the vco's own slot names a module Reese has not got).
+  let top = (await drawnGuess(page)).data.guesses[0];
+  let skippedOut = false;
+  for (let i = 0; i < 8 && !skippedOut; i++) {
+    const at = top.socket;
+    const tSkip = await now(page);
+    await page.locator("#rack-svg .guess-plate .gp-skip").click();
+    const next = await guessAfter(page, await replied(page, "guess_skipped", tSkip));
+    skippedOut = at === "out";
+    if (skippedOut) break;
+    top = next.data.guesses[0];
+    await expect(page.locator("#rack-svg .guess-plate")).toHaveAttribute("data-socket", top.socket, { timeout: 15_000 });
+  }
+
+  expect(skippedOut, "no guess at the output to skip").toBe(true);
+
+  // BACK TO Reese: it has skipped nothing.
+  const tBack = await now(page);
+  await page.locator("#patch-back").click();
+  const back = await guessAfter(page, await replied(page, "bench", tBack, { subject: reese }));
+  expect(back.data.skipped, "Reese took the new patch's skip").toBe(0);
   expect(errors, errors.join("\n")).toEqual([]);
 });
 

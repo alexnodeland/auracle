@@ -71,21 +71,34 @@ export function createPatch(host) {
   // the live meter's dB scale. A modulation cable is not measured (the
   // compiler taps audio nodes only), so it carries no light and no mark: it
   // keeps its dashes, moving at its modulator's rate as set (`modBreath`).
-  const probe = { want: false, out: null, levels: null, tree: null, stale: false };
+  const probe = { want: false, out: null, again: false, levels: null, tree: null, stale: false };
   // The meter's mapping (`METER_FLOOR_DB` in main.js): −54 dB is the quietest
   // level worth lighting, 0 dB re 1 V is full.
   const FLOOR_DB = -54;
   const gainOf = (db) => (db == null || !Number.isFinite(db) ? 0 : Math.max(0, Math.min(1, (db - FLOOR_DB) / -FLOOR_DB)));
   const wireKey = (w) => `${w.from}>${w.to}`;
 
+  // At most one probe at the engine and one owed: a probe asked while one is
+  // out waits for its answer, and is then asked for the tree on screen then
+  // (the latest wins), so edits settling faster than a render cannot pile
+  // renders up in the `later` lane.
   function askProbe() {
     probe.want = false;
+    if (probe.out) {
+      probe.again = true;
+      return;
+    }
     probe.out = ++seq;
     host.send({ type: "cable_levels", token: probe.out });
   }
   function onLevels(m) {
     if (m.token !== probe.out) return;
     probe.out = null;
+    if (probe.again) {
+      probe.again = false;
+      probe.want = true;
+      scheduleSettle(0);
+    }
     // Measured on a tree the bench has since left (a knob turned while the
     // probe rendered): ask again for the tree on screen.
     if (m.tree !== host.benchTreeJson()) {
@@ -354,6 +367,12 @@ export function createPatch(host) {
     });
     layer.appendChild(plate);
     svg.appendChild(layer);
+    // The faces' hook (Plan-005 task 3, #102): the guess's candidate is a
+    // real render in the engine's memo (`GuessCandidate::key`), so its face
+    // is a measurement, not the specimen's estimate. Once faces exist the
+    // host draws it beside the plate, labelled as the patch with this module,
+    // with the patch's own face to compare (`guessFace(g, at, layer)`).
+    if (host.guessFace) host.guessFace(g, at, layer);
     // Over a narrow socket the words can be wider than the plate: condensed
     // to fit, as the rack's own silkscreen is (`fitLabels`).
     for (const t of [t1, t2, t3]) {
@@ -383,12 +402,13 @@ export function createPatch(host) {
   // ⌘Z takes it back. Opening another sound, keep as new, or an undo past
   // the start ends it; BACK TO ‹name› reopens the sound it was started from,
   // and a new patch left with modules in it is waiting under NEW PATCH.
-  const fresh = { on: false, fromId: null, fromName: "", depth: 0, pending: false, saved: null };
+  const fresh = { on: false, fromId: null, fromName: "", depth: 0, pending: false, saved: null, key: 0 };
 
   function enterNew() {
     if (!host.hasRack() || fresh.on) return;
     const fromId = host.subjectId();
-    const resume = fresh.saved && fresh.saved.fromId === fromId ? fresh.saved.tree : null;
+    const saved = fresh.saved && fresh.saved.fromId === fromId ? fresh.saved : null;
+    const resume = saved ? saved.tree : null;
     const ok = host.applyTreeRewrite((tree) => {
       if (resume) {
         tree.root = JSON.parse(JSON.stringify(resume.root));
@@ -399,6 +419,11 @@ export function createPatch(host) {
       return null;
     }, { op: "new_patch" });
     if (!ok) return;
+    // A patch of its own: the model's guesses for it are filed under a key
+    // of its own (`guess_patch_as`), not the sound's it was started from, and
+    // a new patch come back to finds its own skips again.
+    fresh.key = saved && saved.key ? saved.key : 0;
+    host.send({ type: "guess_patch_as", token: ++seq, key: fresh.key });
     fresh.on = true;
     fresh.fromId = fromId;
     fresh.fromName = host.benchName(fromId);
@@ -423,7 +448,7 @@ export function createPatch(host) {
     const id = fresh.fromId;
     // A new patch with something in it waits under NEW PATCH.
     const tree = host.benchTree();
-    fresh.saved = tree && moduleCount() > 0 ? { fromId: id, tree: JSON.parse(JSON.stringify(tree)) } : null;
+    fresh.saved = tree && moduleCount() > 0 ? { fromId: id, tree: JSON.parse(JSON.stringify(tree)), key: fresh.key } : null;
     exitNew();
     host.openOnBench(id);
   }
@@ -514,7 +539,7 @@ export function createPatch(host) {
   // steps for each continuous one and its choices as buttons for each named
   // one, edited through the same lane as the rack's knobs. It closes by ×, a
   // swipe down, a tap outside, or Esc.
-  const sheet = { el: null, uid: null, key: null, rows: [], holding: false, drag: null };
+  const sheet = { el: null, uid: null, key: null, rows: [], holding: false, drag: null, returnTo: null };
 
   function moduleByUid(uid, key) {
     const mods = (host.rack() && host.rack().modules) || [];
@@ -528,15 +553,28 @@ export function createPatch(host) {
     if (!sheet.el) buildSheetShell();
     sheet.uid = m.uid || null;
     sheet.key = m.key;
+    // Focus moves into the sheet, and goes back where it was when it closes.
+    const was = document.activeElement;
+    if (!sheet.el.contains(was)) sheet.returnTo = was && was !== document.body ? was : null;
     renderSheet(m, focusAddr);
     sheet.el.classList.add("on");
     sheet.el.setAttribute("aria-hidden", "false");
+    const hl = focusAddr && sheet.el.querySelector(`.ms-row[data-addr="${CSS.escape(focusAddr)}"]`);
+    const first = (hl || sheet.el).querySelector(".ms-track, .ms-seg [tabindex='0']") || sheet.el.querySelector(".ms-x");
+    if (first) first.focus({ preventScroll: true });
   }
 
   function closeSheet() {
     if (!sheet.el || !sheet.el.classList.contains("on")) return;
+    const inside = sheet.el.contains(document.activeElement);
     sheet.el.classList.remove("on");
     sheet.el.setAttribute("aria-hidden", "true");
+    const back = sheet.returnTo;
+    sheet.returnTo = null;
+    if (inside) {
+      if (back && back.isConnected) back.focus({ preventScroll: true });
+      else document.activeElement.blur();
+    }
     sheet.uid = null;
     sheet.key = null;
     sheet.rows = [];
@@ -689,16 +727,29 @@ export function createPatch(host) {
     const opts = [];
     for (let i = 0; i < n; i++) {
       const text = k.kind.t === "octave" ? `${i - 2 >= 0 ? "+" : ""}${i - 2}` : String(k.kind.options[i]);
-      const b = el("button", { type: "button", role: "radio", "data-v": String(i), text });
-      b.addEventListener("click", () => {
-        if (Math.round(current(k.addr)) === i) return;
-        host.pushUndo();
-        setValue(k.addr, i, true);
-        host.renderRack();
-      });
+      const b = el("button", { type: "button", role: "radio", tabindex: "-1", "data-v": String(i), text });
+      b.addEventListener("click", () => choose(i));
       opts.push(b);
     }
+    const choose = (i) => {
+      if (Math.round(current(k.addr)) === i) return;
+      host.pushUndo();
+      setValue(k.addr, i, true);
+      host.renderRack();
+    };
     const seg = el("div", { class: "ms-seg", role: "radiogroup", "aria-label": label }, ...opts);
+    // A radio group: one stop for Tab (the checked choice), and the arrows
+    // move between choices, choosing as they go.
+    seg.addEventListener("keydown", (e) => {
+      const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const at = opts.indexOf(document.activeElement);
+      const i = ((at < 0 ? Math.round(current(k.addr)) : at) + d + n) % n;
+      choose(i);
+      opts[i].focus();
+    });
     const row = el("div", { class: "ms-row ms-row-seg", "data-addr": k.addr },
       el("div", { class: "ms-lab" }, el("span", { class: "ms-n", text: label })), seg);
     sheet.rows.push({ addr: k.addr, kind: k.kind, row, seg });
@@ -784,7 +835,11 @@ export function createPatch(host) {
         r.track.setAttribute("aria-valuenow", v.toFixed(3));
         r.track.setAttribute("aria-valuetext", host.heardUnit(r.addr, v, m.kind, variant, true));
       } else {
-        for (const b of r.seg.children) b.setAttribute("aria-checked", String(Number(b.dataset.v) === Math.round(v)));
+        for (const b of r.seg.children) {
+          const on = Number(b.dataset.v) === Math.round(v);
+          b.setAttribute("aria-checked", String(on));
+          b.tabIndex = on ? 0 : -1;
+        }
       }
     }
   }
@@ -847,7 +902,8 @@ export function createPatch(host) {
       fresh.depth = host.undoDepth();
     } else if (fresh.on && !fresh.pending && host.undoDepth() < fresh.depth) {
       // ⌘Z past the start of the new patch: the sound it was started from
-      // is back.
+      // is back, and its guesses are filed under its own id again.
+      host.send({ type: "guess_patch_as", token: ++seq, key: fresh.fromId });
       exitNew();
     }
     if (structural) {
@@ -897,6 +953,11 @@ export function createPatch(host) {
         return true;
       case "guess":
         onGuess(m);
+        return true;
+      case "guess_patch":
+        // The key a new patch's guesses are filed under, kept so the new
+        // patch, left and come back to, is filed under it again.
+        if (fresh.on) fresh.key = m.key;
         return true;
       case "guess_skipped":
         // The next guess the engine ranks, with that family kept away.

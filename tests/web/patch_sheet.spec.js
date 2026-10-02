@@ -58,6 +58,8 @@ test("on touch, a tapped module opens a sheet with every setting, and its steps 
   await tapPlate(page, "filter");
   const sheet = page.locator("#module-sheet");
   await expect(sheet).toHaveClass(/\bon\b/);
+  // Focus goes into the sheet when it opens.
+  expect(await page.evaluate(() => document.getElementById("module-sheet").contains(document.activeElement))).toBe(true);
   await expect(sheet.locator(".ms-name")).toHaveText("filter");
   // Every setting: a slider with − and + for each continuous knob, and the
   // choices of each named one.
@@ -91,11 +93,21 @@ test("on touch, a tapped module opens a sheet with every setting, and its steps 
     const pick = Math.round(named.value) === 0 ? 1 : 0;
     await seg.nth(pick).tap();
     await expect(seg.nth(pick)).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+    // A radio group: the checked choice is its one Tab stop, and an arrow
+    // key moves to the next choice and chooses it.
+    await expect(seg.nth(pick)).toHaveAttribute("tabindex", "0");
+    await seg.nth(pick).focus();
+    await page.keyboard.press("ArrowRight");
+    const after = (pick + 1) % (await seg.count());
+    await expect(seg.nth(after)).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+    await expect(seg.nth(after)).toBeFocused();
   }
 
   // ×, then a tap on another module opens that one.
   await sheet.locator(".ms-x").tap();
   await expect(sheet).not.toHaveClass(/\bon\b/);
+  // …and leaves it when it closes.
+  expect(await page.evaluate(() => document.getElementById("module-sheet").contains(document.activeElement))).toBe(false);
   await tapPlate(page, "lfo");
   await expect(sheet).toHaveClass(/\bon\b/);
   await expect(sheet.locator(".ms-name")).toHaveText("lfo");

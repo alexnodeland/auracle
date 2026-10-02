@@ -5755,7 +5755,7 @@ function renderBelief() {
     // A silent bench has no φ to score, whatever the model knows: say that,
     // not "not yet", which would promise a number the next pick cannot give.
     const why = !wb.vetOk && wb.vetSilent
-      ? "no guess while nothing reaches the output"
+      ? "nothing to rate: no source reaches the output"
       : fitting
       ? "fitting to what you taught it…"
       : n === 0 || !fitted

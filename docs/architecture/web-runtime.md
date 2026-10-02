@@ -190,8 +190,9 @@ it drops a stale pre-placement audition.
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live. PATCH asks once the bench
   has settled (`benchSettled`, no knob held, about 450 ms after the last
-  reply) and only while PATCH is shown, keys each level by the cable's
-  `from>to`, and drops a reply whose `tree` is not the bench's
+  reply) and only while PATCH is shown, with at most one probe at the
+  engine (one asked meanwhile waits for its answer, then measures the tree
+  on screen), keys each level by the cable's `from>to`, and drops a reply whose `tree` is not the bench's
   (`benchTreeJson`), asking again. At rest a cable's light is its measured
   level (patch.js `restLevel`, read by `buildRack` and `repaintMeasuredFlow`);
   a structure not measured yet is unlit, with hollow marks.

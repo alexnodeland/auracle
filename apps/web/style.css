@@ -5984,7 +5984,9 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
    eased so the light arriving reads as the measurement landing. The mark on
    its middle lights a bar per third of the meter's range, hollow while the
    patch has changed since it was measured. */
-#rack-svg .wire.audio { transition: stroke-opacity var(--d-state) ease; }
+/* At rest only: while notes sound the live meter drives it, and a transition
+   would make the meter lag. */
+#rack-svg:not(.flowing) .wire.audio { transition: stroke-opacity var(--d-state) ease; }
 .cable-marks { pointer-events: none; }
 .cable-mark { pointer-events: all; }
 .cable-mark .lm-box { fill: var(--rack-96); stroke: var(--phos-a-45); stroke-width: 1; }
@@ -6090,5 +6092,5 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
 .ms-rm:hover, .ms-rm:active { color: var(--led-red); }
 
 @media (prefers-reduced-motion: reduce) {
-  #rack-svg .wire.audio, .guess-plate .gp-body { transition: none; }
+  #rack-svg:not(.flowing) .wire.audio, .guess-plate .gp-body { transition: none; }
 }

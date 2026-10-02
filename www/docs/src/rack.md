@@ -229,8 +229,8 @@ one side of a mix, only that side goes quiet.
 
 If the empty socket was the patch’s only source, the whole patch is silent.
 The caption under its name says *silent: nothing reaches the output*, ▶ and
-**KEEP AS NEW** wait for a source, and the guess above the rack says it has no
-guess.
+**KEEP AS NEW** wait for a source, and the line above the rack says *nothing
+to rate: no source reaches the output*.
 
 1. Pick any source in the module rail. The empty socket is the one already
    chosen.

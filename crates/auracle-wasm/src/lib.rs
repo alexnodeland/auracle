@@ -662,6 +662,9 @@ pub struct WasmEngine {
     /// filed under the old id, so the kept sound, opened again, offered
     /// them back.
     guess_key: Option<u64>,
+    /// The last key [`Self::guess_patch_as`] made for a patch of its own,
+    /// counting down from `u32::MAX`, clear of every pool id.
+    guess_fresh: u64,
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -796,6 +799,7 @@ impl WasmEngine {
             pending_bank: Vec::new(),
             guesses: GuessMemory::default(),
             guess_key: None,
+            guess_fresh: u32::MAX as u64 + 1,
         }
     }
 
@@ -2555,6 +2559,28 @@ impl WasmEngine {
         }
     }
 
+    /// File the bench's guesses under `key` from here on, and return it; 0
+    /// gives the bench a key of its own that no pool id has. A patch started
+    /// from nothing (PATCH's NEW PATCH) is not the sound it was started from:
+    /// its skips must not be that sound's when the player goes back to it,
+    /// nor that sound's skips its. The page keeps the key it is given, to
+    /// file a new patch it comes back to under the same key, and gives the
+    /// sound's own id back when an undo leaves the new patch. Taken guesses
+    /// are forgotten (an edit back to a tree from before is no longer an
+    /// undo of one). Keep as new carries whatever the key holds, as it does
+    /// a sound's.
+    pub fn guess_patch_as(&mut self, key: u32) -> u32 {
+        self.guesses.clear_taken();
+        let key = if key > 0 {
+            key as u64
+        } else {
+            self.guess_fresh = self.guess_fresh.saturating_sub(1);
+            self.guess_fresh
+        };
+        self.guess_key = Some(key);
+        key as u32
+    }
+
     /// Skip a guess: its family stays away from its socket for the patch in
     /// hand. `guess_json` is a guess as [`Self::guess_rank`] gives it (its
     /// `socket` and `family` are read). Logged, not evidence. False when it
@@ -3564,6 +3590,43 @@ mod tests {
         assert!(
             !engine.guess_skip(&reverb),
             "the skip stayed with the old id"
+        );
+    }
+
+    /// **A new patch keeps its own skips.** NEW PATCH empties the sound in
+    /// hand into a patch of its own (`guess_patch_as(0)`): a skip made there
+    /// is not the sound's when the player goes back to it, the sound's are
+    /// not the new patch's, and coming back to the new patch under its key
+    /// finds its skip again.
+    #[test]
+    fn a_new_patch_files_its_skips_under_its_own_key() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let sound = pool_ids(&engine)[0];
+        assert!(engine.edit_begin(sound));
+        let delay = a_guess(&engine, "delay");
+        assert!(engine.guess_skip(&delay), "the sound's own skip");
+        let key = engine.guess_patch_as(0);
+        assert!(key > 0 && key != sound);
+        assert!(
+            engine.guess_skip(&delay),
+            "the new patch took the sound's skip"
+        );
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        // BACK TO the sound: its skips are its own.
+        assert!(engine.edit_begin(sound));
+        assert!(
+            engine.guess_skip(&reverb),
+            "the sound took a skip made on the new patch"
+        );
+        // NEW PATCH again, under the key it was given: its skip is there.
+        assert_eq!(engine.guess_patch_as(key), key);
+        assert!(!engine.guess_skip(&reverb), "the new patch lost its skip");
+        assert_ne!(
+            engine.guess_patch_as(0),
+            key,
+            "a second new patch reused a key"
         );
     }
 
