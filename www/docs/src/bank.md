@@ -62,16 +62,20 @@ marks.</figcaption>
   goes when its phrase plays (its **▶**, a pair’s **▶ SAMPLE**,
   [Compare](#compare-a-sound-beside-its-seed), or <kbd>Space</kbd> while it’s
   the sound you’re playing) or you play a note on it, and it is remembered
-  across a reload until then.
+  across a reload until then. Playing an edit of it doesn’t count: that’s
+  another sound.
 - **The name** comes from what the sound is, and it keeps that name as the
   bank changes around it. Double-click it to rename it. NEW and the dot sit in
   a column every row keeps left of the name, so the name never moves for
   them.
 - **The line under a bred sound’s name** says which seed it grew from and
   what changed: *from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*, the first
-  three changes and then how many more. A module that moved from one place in
-  the patch to another isn’t counted as a change. Click the line to
-  [compare](#compare-a-sound-beside-its-seed) the sound with its seed.
+  three changes and then how many more. The modules are counted, so the line
+  says what the patch gained and lost: a module that moved from one place in
+  the patch to another isn’t a change, and a swap (`filter → delay`) is said
+  only where one module went and another came. Click the line, or press
+  <kbd>c</kbd> on the row, to [compare](#compare-a-sound-beside-its-seed) the
+  sound with its seed.
 - **The percentage** is the model’s guess: roughly how likely you are to pick
   this sound in a pair. Its tooltip adds the word for how sure that reads
   (*59% · leaning*). Before the model has been fitted it reads **·**.
@@ -94,16 +98,17 @@ A cut sound stays in the pool until a generation replaces it.
 
 ## Compare a sound beside its seed
 
-Click the line under a bred sound’s name. Compare opens beside the bank:
+Click the line under a bred sound’s name, or press <kbd>c</kbd> with the
+bank’s cursor on it. Compare opens beside the bank:
 
 - **The figure** draws the seed’s phrase as a dashed outline, and the child’s
   growing out of it into its own. Only the two ends are the engine’s: a walk
   keeps no record of its steps, so the frames between are the one shape
   turning into the other, not the walk’s path.
 - **What changed**, every change the walk made, one a line: modules added
-  (**+**) or removed (**−**), a module swapped (`filter → delay`), and knobs
-  in their own units. A walk can change a couple of dozen things, and past
-  about ten lines the list scrolls.
+  (**+**) or removed (**−**), a module swapped (`filter → delay`), counted as
+  the row’s line counts them, and knobs in their own units. A walk can change
+  a couple of dozen things, and past about ten lines the list scrolls.
 - **What the model rated each when it bred them**, in its own words: *when it
   bred them, it rated Soft Pad 60% · leaning and Warm Drone 2 52% · a hunch*.
   A child rated well below its seed is marked *exploring*, as the
@@ -112,7 +117,8 @@ Click the line under a bred sound’s name. Compare opens beside the bank:
   a generation has replaced is only a name (*Soft Pad · replaced*): its sound
   was dropped, so there is nothing to play.
 
-Press <kbd>Esc</kbd>, **×**, or click anywhere else to close it.
+Press <kbd>Esc</kbd>, **×**, or click anywhere else to close it. From the
+keyboard, <kbd>Esc</kbd> hands the keys back to the bank.
 
 ## Stars are not saves
 
@@ -146,16 +152,25 @@ Wash, Glass Rain, and 1 more.*
 
 1. Hover **EVOLVE POOL** in EVOLVE (or move the focus to it). The ten sounds
    the next generation would breed from get a solid amber rail and **SEED**;
-   the sounds it may replace get a dashed rail and **MAY BE REPLACED**. Both
-   words sit where the stars are, so no name moves.
-2. Save any of them you want to keep, even while the generation is running.
+   the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
+   other sound can be replaced when it ends. The words sit where the stars
+   are, so no name moves.
+2. Save any you want to keep before you press it.
 
 The marks are the engine’s own lists, and they move as your picks move the
-model’s ratings. While a generation runs, hovering **EVOLVE POOL** marks that
-generation’s seeds, and the sounds its end would replace if it ended now: none
-before its first child, then one more with each child it takes in. While ⚡
-evolve from this walks, its one seed is marked, and nothing is replaced until
-its child is in.
+model’s ratings.
+
+While a generation runs, hovering **EVOLVE POOL** marks that generation’s
+seeds, and **WILL BE REPLACED** on the sounds its end will replace, whether
+you stop it now or let it finish: none before its first child, then one more
+with each child it takes in. That isn’t all that can go: each child still to
+come can add the next lowest-rated unsaved sound. A save still keeps a sound
+while the generation runs.
+
+While ⚡ evolve from this walks, hovering **EVOLVE POOL** marks its seed, and
+**MAY BE REPLACED** on the one sound its child would replace: the
+lowest-rated unsaved sound other than its seed, if the pool is full and the
+child rates high enough to join it.
 
 When a generation ends, **REPLACED · GENERATION 3** at the foot of **POOL**
 counts what it replaced. Click it for their names. Names are all that’s kept:
@@ -194,6 +209,7 @@ The bank is a single tab stop. Reach it with <kbd>Tab</kbd>, then:
 | <kbd>Enter</kbd> | Open the sound |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate it |
 | <kbd>m</kbd> | Save it |
+| <kbd>c</kbd> | Compare a bred sound with its seed |
 
 In **PRESETS**, <kbd>Enter</kbd> opens the preset under the cursor and
 <kbd>p</kbd> plays it. <kbd>p</kbd> is also a note (D♯), but not while the

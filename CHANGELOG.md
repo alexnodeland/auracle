@@ -12,28 +12,35 @@ changelog that edits its own past is not a record.
 
 - **Pointing at EVOLVE POOL marks its seeds as well as what it may
   replace.** The ten sounds the next generation would breed from get a solid
-  amber rail and *seed*; the ones it may replace keep their dashed rail and
-  *may be replaced*. Both are the model's own lists and move with your picks.
-  Before, only *may be replaced* was marked, by a rule the bank worked out for
-  itself, and the seeds were not shown at all. While a generation runs, the
-  marks are that generation's: its seeds, and what its end would replace if
-  it ended now, which grows by one with each child it takes in.
+  amber rail and *seed*; the ones it may replace still have their dashed rail
+  and *may be replaced*. Both are the model's own lists and move with your
+  picks. Before, only *may be replaced* was marked, by a rule the bank worked
+  out for itself, and the seeds were not shown at all. While a generation
+  runs, the marks are that generation's: its seeds, and *will be replaced* on
+  what its end will replace, one more with each child it takes in (more can
+  follow). While ⚡ evolve from this walks, its seed and the one sound its
+  child would replace are marked; only the seed was.
 - **EVOLVE POOL says what each walk came back as**: *walk 3 of 10 · joined
   the pool*, *rated below the pool*, *already in the pool*, *came back
   unchanged*, or *couldn't start*. It used to count the walks and say
   nothing about them.
 - **A bred sound's row says which seed it grew from and what changed**
-  (*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*), and click that line to
-  compare the two: the seed's phrase as an outline with the child's grown out
-  of it, every change, what the model rated each when it bred them, and both
-  to play while both are in the pool.
+  (*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*), counting the modules
+  it gained and lost, so a module that only moved isn't a change. Click that
+  line, or press <kbd>c</kbd> on the row, to compare the two: the seed's
+  phrase as an outline with the child's grown out of it, every change, what
+  the model rated each when it bred them, and both to play while both are in
+  the pool.
 - **A child you haven't heard has a green dot** left of its name until its
-  phrase plays or you play a note on it, across a reload.
+  own phrase plays or you play a note on it, across a reload. Playing an edit
+  of it doesn't count.
 - **Children grow out of their seeds.** As each lands, where its seed's row
   is in view, it buds out of it and moves up into the New group, now headed
   *New · generation 3* with its count. A child the pool won't take buds
   beside its seed with the reason and fades. Nothing moves with your system
   set to reduce motion, and the same facts are on the rows and the button.
+  When children land in a burst, each bud lands as the next child arrives,
+  so none flies from or to a row that has moved.
 - **Replaced lists what the latest generation replaced, by name only**, at
   the foot of the pool: the sounds themselves are dropped, so there is
   nothing to play or bring back.
@@ -43,9 +50,9 @@ changelog that edits its own past is not a record.
   and could cut it short. Every name in the bank starts a little further
   right to make that room.
 - **GENERATIONS counts a generation as soon as its first child lands**, as
-  the guide says. If you hadn't picked since pressing EVOLVE POOL, it kept
-  the count from before (0, with three children already in New) until the
-  generation ended.
+  the guide says. If you hadn't picked since pressing EVOLVE POOL, it went on
+  showing the count from before (0, with three children already in New) until
+  the generation ended.
 
 ### Fixed: Space and the settings on the rack
 

@@ -117,7 +117,10 @@ says each walk as it comes back, and what came of it: **WALK 3 OF 10**
 unchanged*, or *couldn’t start*. The job slot in the menu bar counts the
 walks with the time left (*⚡ breeding 3/10 · about 40 s*), in every view.
 **GENERATIONS** in the menu bar counts the generation once its first child
-lands.
+lands. Hover **EVOLVE POOL** while it breeds and the bank marks this
+generation’s seeds, and **WILL BE REPLACED** on the sounds its end will
+replace so far; each child still to come can add one more, so save what you
+want to keep.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
 GENERATION 1**, tagged **NEW** with a green dot until you hear it, and can be

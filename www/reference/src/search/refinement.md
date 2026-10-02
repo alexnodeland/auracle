@@ -140,9 +140,21 @@ The app is sent both with every pick, beside the ranked numbers
 ([the posterior](../taste/posterior.md#what-the-app-is-sent-after-each-pick)),
 and marks them in the bank while EVOLVE POOL is pointed at. Once a generation
 is open both describe the next one, so the app marks the running
-generation's own instead: the `seeds` it last heard before the generation
-opened (job `i` walks from `seeds[i]`, by the shared rule), and `retiring()`,
-which each absorbed walk's message carries with the job's `parent_id`.
+generation's own instead: its parents, which the worker posts with the
+generation's progress (job `i` walks from `seeds[i]`), and `retiring()`, which
+each absorbed walk's message carries with the job's `parent_id`. The app says
+*will be replaced* for `retiring()`, not *may be*: it is the lowest unpinned
+members, as many as the children put the pool over size, under the posterior
+the generation opened with, so each child admitted adds one member and removes
+none, and the end replaces them whether it is stopped or runs out. Each child
+still to come can add one more.
+
+While ⚡ walks with no generation open, its child is admitted and the pool
+trimmed at once (`evict_to_size`, the seed protected), lowest first by
+`eviction_order`, which passes over a seed in flight. `may_replace()` ranks
+the same way, so its first `pool + 1 − pool_size` members (one with the pool
+at size) are what the child would replace; the app marks those, and the
+seed.
 
 ## The split is measured
 
@@ -295,8 +307,14 @@ pub struct LineageEvent {
 `tree_diff` produces the address-level diff, which the app renders as `attack
 0.59→0.83, +noise, −distortion · liked +0.65`, naming the parent and child
 by their bank names. The bank shows each bred child's event under its name
-(*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*), with a module removed
-in one place and added in another netted out, and Compare shows it whole:
+(*from Soft Pad · +delay, cutoff 1.2 kHz → 3.4 kHz*). The diff is
+positional, so a module inserted above others shifts their addresses and one
+change to what the patch holds can read as several swaps, removals and
+additions. The app counts the modules instead: every module site nets its old
+name −1 and its new name +1, a swap is said only where it accounts for a lost
+module and a gained one, and the rest is said as gained (+) or lost (−). A
+module removed in one place and added in another nets to nothing. Compare
+shows it whole:
 both utilities, through the same logistic as the bank's percentages
 ($\sigma(u)$), and the diff. A refused child (`NotAdmitted`) records no
 event; the app knows it only from the walk's reason and its job's
