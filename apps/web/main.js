@@ -130,7 +130,7 @@ const {
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims,
 } = await import(`./words.js?v=${BUILD}`);
 // A sound's face against the bank, as markup (faces.js, tests/faces.test.mjs).
-const { decodeFace, bankStats, faceSvg } = await import(`./faces.js?v=${BUILD}`);
+const { decodeFace, bankStats, statsMoved, faceSvg } = await import(`./faces.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -301,7 +301,12 @@ const faceWanted = new Set();   // targets to ask for at the next send
 let faceStats = null;           // the bank's mean and spread (faces.js `bankStats`)
 let faceBankKeys = "";          // the keys those were taken over
 let faceEpoch = 0;              // bumped when they change: every face redraws
-const faceMarkupCache = new Map(); // "key|epoch|w|h" -> markup
+const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
+// Each face is drawn once per bank, as an image the browser decodes once:
+// rows are rebuilt as HTML on every bank render, and forty faces of thirteen
+// paths each as inline SVG were a megabyte of markup to parse every time.
+let faceUrls = new Set(); // this epoch's object URLs
+let faceUrlsOld = [];     // the last epoch's, revoked once every slot is redrawn
 let faceSendQueued = false;
 let facePaintQueued = false;
 
@@ -327,7 +332,7 @@ function faceKeyOfTarget(target) {
   return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : faceKeyByRef.get(target);
 }
 /** The face drawn for a target, as markup, or "" (asked for if not known). */
-function faceMarkup(target, kind, ask = true) {
+function faceMarkup(target, kind, ask = true, build = true) {
   if (!target) return "";
   const key = faceKeyOfTarget(target);
   const face = key && faceByKey.get(key);
@@ -339,8 +344,12 @@ function faceMarkup(target, kind, ask = true) {
   const [w, h] = FACE_SIZE[kind];
   const ck = `${key}|${faceEpoch}|${w}|${h}`;
   let s = faceMarkupCache.get(ck);
+  if (s == null && !build) return "";
   if (s == null) {
-    s = faceSvg(face, faceStats, { w, h, layers: h >= 20, line: h >= 120 ? 2 : 1 });
+    const svg = faceSvg(face, faceStats, { w, h, layers: h >= 20, line: h >= 120 ? 2 : 1, color: tok("--phos-a") });
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    faceUrls.add(url);
+    s = `<img class="face" src="${url}" width="${w}" height="${h}" alt="" draggable="false">`;
     faceMarkupCache.set(ck, s);
   }
   return s;
@@ -401,11 +410,17 @@ function facesChanged() {
     facePaintQueued = false;
     faceRestat();
     paintFaces();
+    // Every slot in the page now shows this epoch's drawing; a slot out of
+    // the page (PERFORM's B with no offer) is redrawn when it is set again.
+    for (const u of faceUrlsOld) URL.revokeObjectURL(u);
+    faceUrlsOld = [];
     imageSync(); // a card waiting on its face
   });
 }
 /** The bank's mean and spread, over the faces of the rows the bank shows
- *  (the pool, less what was cut). Taken again only when that set changed. */
+ *  (the pool, less what was cut). Taken again when that set changes, and
+ *  drawn against when they have moved since the faces were last drawn
+ *  (faces.js `statsMoved`: 0.25 dB in a band, or 1% of the spread). */
 function faceRestat() {
   const ranked = (views && views.ranked) || [];
   const keys = [];
@@ -418,14 +433,59 @@ function faceRestat() {
   const sig = keys.join(",");
   if (sig === faceBankKeys) return false;
   faceBankKeys = sig;
-  faceStats = bankStats(keys.map((k) => faceByKey.get(k)));
+  const now = bankStats(keys.map((k) => faceByKey.get(k)));
+  if (!statsMoved(faceStats, now)) return false;
+  faceStats = now;
   faceEpoch++;
   faceMarkupCache.clear();
+  faceUrlsOld.push(...faceUrls);
+  faceUrls = new Set();
   return true;
 }
-/** Draw every slot whose face or bank changed since it was drawn. */
+/** Draw every slot whose face or bank changed since it was drawn. The bank's
+ *  rows are drawn the rows in view first (`faceRedraw`, the next frame) and
+ *  the rest a few at a time when the page is idle (`faceIdle`): forty faces
+ *  drawn at once took 17 ms, a dropped frame, and the bank shows about ten.
+ *  Until a row is drawn again it shows the drawing it had. */
+let faceRedraw = null;
+const faceIdleQueue = new Set();
+let faceIdleArmed = false;
+const idleSoon = window.requestIdleCallback
+  ? (f) => window.requestIdleCallback(f, { timeout: 1000 })
+  : (f) => setTimeout(() => f({ timeRemaining: () => 8 }), 50);
+function faceIdle(deadline) {
+  faceIdleArmed = false;
+  for (const el of faceIdleQueue) {
+    if (deadline.timeRemaining() < 2) break;
+    faceIdleQueue.delete(el);
+    if (el.isConnected) paintFaceSlot(el);
+  }
+  if (faceIdleQueue.size) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
+}
 function paintFaces(root = document) {
-  for (const el of root.querySelectorAll(".face-slot[data-face]")) paintFaceSlot(el);
+  if (!faceRedraw) {
+    faceRedraw = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        faceRedraw.unobserve(e.target);
+        if (e.isIntersecting) paintFaceSlot(e.target);
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-face]")) {
+    if (!el.closest("#bank-list")) {
+      paintFaceSlot(el);
+      continue;
+    }
+    faceRedraw.observe(el);
+    faceIdleQueue.add(el);
+  }
+  if (faceIdleQueue.size && !faceIdleArmed) {
+    faceIdleArmed = true;
+    idleSoon(faceIdle);
+  }
 }
 function paintFaceSlot(el) {
   const target = el.dataset.face;
@@ -443,7 +503,10 @@ function paintFaceSlot(el) {
 function faceSlot(kind, t, { lazy = false } = {}) {
   const target = faceTarget(t);
   const [w, h] = FACE_SIZE[kind];
-  const inner = faceMarkup(target, kind, !lazy);
+  // A row draws what is already drawn for it; a face not drawn yet for this
+  // bank is drawn after the row is in the page (`paintFaces`), so a bank
+  // rebuilt on every rating does not draw forty faces each time.
+  const inner = faceMarkup(target, kind, !lazy, kind !== "row");
   const key = target ? faceKeyOfTarget(target) || "" : "";
   const drawn = inner ? ` data-drawn="${key}|${faceEpoch}|true"` : "";
   const wait = lazy && !inner && target ? " data-lazy" : "";
@@ -474,7 +537,7 @@ function setFaceSlot(el, kind, t) {
   el.style.width = `${w}px`;
   el.style.height = `${h}px`;
   const target = faceTarget(t);
-  if (target === (el.dataset.face || "") && el.dataset.drawn) return;
+  if (target && target === el.dataset.face) return void paintFaceSlot(el);
   if (target) el.dataset.face = target;
   else delete el.dataset.face;
   el.dataset.drawn = "";
@@ -21153,20 +21216,13 @@ async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
     }
     const m = px("--s4");
     add("rect", { x: m + 0.5, y: m + 0.5, width: CARD_W - 2 * m - 1, height: CARD_H - 2 * m - 1, rx: px("--r3"), fill: "none", stroke: tok("--hairline") });
-    // The face: `faceSvg`'s markup, nested, with its paint written on (a
-    // file carries no stylesheet): the sound's green, as `.face-l` and
-    // `.face-o` paint it in the app.
+    // The face: `faceSvg`'s markup, nested, in the sound's green, as the
+    // app's slots draw it.
     const [fw, fh] = FACE_SIZE.share;
     const fx = px("--s7");
     const fy = (CARD_H - fh) / 2;
     const holder = add("g", { transform: `translate(${fx} ${fy})` });
-    if (sub.face && faceStats) holder.innerHTML = faceSvg(sub.face, faceStats, { w: fw, h: fh, line: 2 });
-    for (const p of holder.querySelectorAll(".face-l")) p.setAttribute("fill", tok("--phos-a"));
-    for (const p of holder.querySelectorAll(".face-o")) {
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke", tok("--phos-a"));
-      p.setAttribute("stroke-linejoin", "round");
-    }
+    if (sub.face && faceStats) holder.innerHTML = faceSvg(sub.face, faceStats, { w: fw, h: fh, line: 2, color: tok("--phos-a") });
     // The words: the name at the display size (the title's if it will not
     // fit on one line, then over two lines), the line under it, the mark.
     const tx = fx + fw + px("--s7");

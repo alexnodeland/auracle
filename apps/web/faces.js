@@ -2,7 +2,7 @@
 // vessel (Plan-005 task 3, RFC-006 §2; the specimen is prototype v2's
 // `A.face`, docs/notes/vision-2026-09/prototype/core.js). Pure, so it is
 // unit-tested (tests/faces.test.mjs); main.js asks for faces and puts this
-// module's markup in their slots.
+// module's drawing in their slots, as an image, and on the sound's card.
 //
 // What is drawn is the engine's measurement of the render
 // (`auracle_features::face`, read from the engine's memo by
@@ -28,6 +28,12 @@ export const FACE_MIN_BANK = 4;
 /** The spread is never taken as less than this (dB): a bank of near copies
  *  would otherwise blow a fraction of a dB up to the vessel's full width. */
 export const FACE_SPREAD_FLOOR_DB = 3;
+/** The bank's mean and spread are drawn against again only when they have
+ *  moved by more than this since the faces were last drawn: a band's mean by
+ *  FACE_RESTAT_DB, or the spread by FACE_RESTAT_SPREAD of itself. Less moves
+ *  a 40 px face by under a tenth of a pixel, and a card's by under one. */
+export const FACE_RESTAT_DB = 0.25;
+export const FACE_RESTAT_SPREAD = 0.01;
 /** A slice this far (dB) under the phrase's loudest draws no layer, and one
  *  within it draws a layer as large and as bright as it is loud. */
 export const FACE_LAYER_RANGE_DB = 30;
@@ -64,6 +70,14 @@ export function bankStats(faces) {
   return { mean, spread, n: fs.length };
 }
 
+/** Have the bank's stats moved enough since `drawn` to draw against `now`? */
+export function statsMoved(drawn, now) {
+  if (!drawn || !now) return drawn !== now;
+  if (Math.abs(now.spread - drawn.spread) > FACE_RESTAT_SPREAD * drawn.spread) return true;
+  for (let b = 0; b < FACE_BANDS; b++) if (Math.abs(now.mean[b] - drawn.mean[b]) > FACE_RESTAT_DB) return true;
+  return false;
+}
+
 /** A spectrum (dB) against the bank: in spreads, per band. */
 export function whiten(db, stats) {
   const out = new Float64Array(FACE_BANDS);
@@ -88,12 +102,14 @@ export function smooth(a, k) {
 
 const sig = (x) => 1 / (1 + Math.exp(-x));
 const r2 = (x) => Math.round(x * 100) / 100;
+const r1 = (x) => Math.round(x * 10) / 10;
 
 /** The vessel's outline as an SVG path: frequency up the box (low at the
  *  base), mirrored about its centre, half-width `R · σ(1.4 v) · scale` for a
  *  band `v` spreads from the bank's mean (half the box at the mean), closed
  *  with quadratic curves through the midpoints, as the specimen draws it. */
-export function vesselPath(dev, box, scale = 1) {
+export function vesselPath(dev, box, scale = 1, fine = true) {
+  const r = fine ? r2 : r1;
   const n = dev.length;
   const cx = box.x + box.w / 2;
   const R = box.w / 2;
@@ -101,11 +117,11 @@ export function vesselPath(dev, box, scale = 1) {
   for (let i = 0; i < n; i++) pts.push([R * sig(dev[i] * 1.4) * scale, box.y + box.h - (i / (n - 1)) * box.h]);
   const all = pts.map(([w, y]) => [cx + w, y]).concat(pts.slice().reverse().map(([w, y]) => [cx - w, y]));
   const m = all.length;
-  let d = `M${r2((all[m - 1][0] + all[0][0]) / 2)} ${r2((all[m - 1][1] + all[0][1]) / 2)}`;
+  let d = `M${r((all[m - 1][0] + all[0][0]) / 2)} ${r((all[m - 1][1] + all[0][1]) / 2)}`;
   for (let i = 0; i < m; i++) {
     const p = all[i];
     const q = all[(i + 1) % m];
-    d += `Q${r2(p[0])} ${r2(p[1])} ${r2((p[0] + q[0]) / 2)} ${r2((p[1] + q[1]) / 2)}`;
+    d += `Q${r(p[0])} ${r(p[1])} ${r((p[0] + q[0]) / 2)} ${r((p[1] + q[1]) / 2)}`;
   }
   return `${d}Z`;
 }
@@ -119,21 +135,26 @@ export function layerWeight(loudDb) {
 /** The face as SVG markup, `w × h` px: the twelve slices as faint layers, each
  *  as large and bright as the slice is loud, under the whole phrase's
  *  outline. Empty when there is no face or no bank to draw it against. The
- *  colours are the stylesheet's (`.face-l`, `.face-o`). */
-export function faceSvg(face, stats, { w, h, layers = true, line = 1 } = {}) {
+ *  colours are the stylesheet's (`.face-l`, `.face-o`), or `color` written
+ *  on, for a file that stands alone (an image, the card). */
+export function faceSvg(face, stats, { w, h, layers = true, line = 1, color = null } = {}) {
   if (!face || !stats) return "";
   const pad = Math.min(w, h) * 0.06;
   const box = { x: pad, y: pad, w: w - 2 * pad, h: h - 2 * pad };
   const k = h < 36 ? 2 : 1;
+  // A tenth of a pixel is finer than a small face can show.
+  const fine = h >= 120;
   let body = "";
   if (layers) {
     for (let t = 0; t < FACE_SLICES; t++) {
       const l = layerWeight(face.loud[t]);
       if (!l) continue;
-      const d = vesselPath(smooth(whiten(face.slices[t], stats), k), box, 0.35 + 0.65 * l);
-      body += `<path class="face-l" d="${d}" fill-opacity="${r2(0.05 + 0.11 * l)}"/>`;
+      const d = vesselPath(smooth(whiten(face.slices[t], stats), k), box, 0.35 + 0.65 * l, fine);
+      body += `<path class="face-l" d="${d}"${color ? ` fill="${color}"` : ""} fill-opacity="${r2(0.05 + 0.11 * l)}"/>`;
     }
   }
-  body += `<path class="face-o" d="${vesselPath(smooth(whiten(face.ltas, stats), k), box)}" stroke-width="${line}"/>`;
-  return `<svg class="face" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" focusable="false">${body}</svg>`;
+  const paint = color ? ` fill="none" stroke="${color}" stroke-linejoin="round"` : "";
+  body += `<path class="face-o" d="${vesselPath(smooth(whiten(face.ltas, stats), k), box, 1, fine)}"${paint} stroke-width="${line}"/>`;
+  const ns = color ? ` xmlns="http://www.w3.org/2000/svg"` : "";
+  return `<svg${ns} class="face" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" focusable="false">${body}</svg>`;
 }

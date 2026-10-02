@@ -5121,11 +5121,10 @@ html.handheld .handheld-gate {
 
 /* ===================== faces ===================== */
 /* A sound's face (Plan-005 task 3): the render's spectrum against the bank's,
-   drawn by faces.js into a slot its place always has. Green: it is the sound. */
+   drawn by faces.js (in the sound's green, `--phos-a`) as an image in a slot
+   its place always has. */
 .face-slot { display: inline-block; flex: none; vertical-align: middle; }
-.face-slot .face { display: block; overflow: visible; }
-.face .face-l { fill: var(--phos-a); stroke: none; }
-.face .face-o { fill: none; stroke: var(--phos-a); stroke-linejoin: round; }
+.face-slot .face { display: block; pointer-events: none; }
 /* PATCH's teach strip: the face, then the name. */
 .pd-side .face-slot { margin-right: var(--s1); }
 /* Beside a name that sits on its baseline (an EVOLVE card's), centred. */

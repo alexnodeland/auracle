@@ -10,6 +10,7 @@ import {
   FACE_SPREAD_FLOOR_DB,
   decodeFace,
   bankStats,
+  statsMoved,
   whiten,
   smooth,
   vesselPath,
@@ -115,4 +116,25 @@ test("a quiet slice draws a smaller, fainter layer, and silence none", () => {
 
 test("smoothing averages its neighbours, fewer at the ends", () => {
   assert.deepEqual([...smooth(Float64Array.from([0, 3, 0, 3]), 1)], [1.5, 1, 2, 1.5]);
+});
+
+test("faces are drawn against the bank again only once its stats have moved", () => {
+  const bank = [tilt(0.5), tilt(1), tilt(1.5), tilt(2)].map((t) => decodeFace(bytes(t)));
+  const s = bankStats(bank);
+  assert.equal(statsMoved(null, s), true, "the first bank is drawn against");
+  assert.equal(statsMoved(s, bankStats(bank.map((f) => ({ ...f })))), false, "the same bank is not");
+  const nudged = { mean: Float64Array.from(s.mean, (m, i) => (i === 7 ? m + 0.2 : m)), spread: s.spread };
+  assert.equal(statsMoved(s, nudged), false, "0.2 dB in one band moves no face by a pixel");
+  const moved = { mean: Float64Array.from(s.mean, (m, i) => (i === 7 ? m + 0.3 : m)), spread: s.spread };
+  assert.equal(statsMoved(s, moved), true);
+  assert.equal(statsMoved(s, { mean: s.mean, spread: s.spread * 1.02 }), true);
+  assert.equal(statsMoved(s, null), true, "a bank too small to draw against is a change");
+});
+
+test("a face drawn to stand alone (an image, the card) carries its own paint", () => {
+  const bank = [tilt(0.5), tilt(1), tilt(1.5), tilt(2)].map((t) => decodeFace(bytes(t)));
+  const svg = faceSvg(bank[1], bankStats(bank), { w: 24, h: 40, color: "#8ef0b1" });
+  assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+  assert.match(svg, /class="face-o" d="[^"]+" fill="none" stroke="#8ef0b1"/);
+  assert.equal((svg.match(/class="face-l" d="[^"]+" fill="#8ef0b1"/g) || []).length, FACE_SLICES);
 });
