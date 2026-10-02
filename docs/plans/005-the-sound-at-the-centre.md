@@ -108,7 +108,14 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - a duplicate or an unmoved walk breeds no child, so nothing fades for
        it;
      - the button says "joined the pool" where the specimen says "kept"
-       (the word table keeps "keep" for PERFORM's pad).
+       (the word table keeps "keep" for PERFORM's pad);
+     - the specimen pictures a child as its seed after a short walk, knobs
+       nudged and now and then a module swapped; the engine's 40-step walk
+       changed 26 sites in one child of a review run, so Compare lists every
+       change and its list scrolls;
+     - the specimen breeds one walk at a time; on the farm the last walks
+       are absorbed within milliseconds of each other, so their buds fly
+       together, as the generation's end is said.
 5. **PERFORM.**
    - The offer grows from the sound in hand, is filled when taken and folds
      back when passed. The heard rule is unchanged.
