@@ -34,6 +34,10 @@
 //!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
+//! - **The open voice**: a patch that listens is built one voice longer, and
+//!   [`LivePoly::set_open`] holds that voice open at C4, outside the keys'
+//!   allocation, so the input sounds through the patch with no key down. A
+//!   patch that does not listen has none, so holding it open is silent.
 //!
 //! ## What a patch swap costs, and whom
 //!
@@ -74,6 +78,10 @@ pub const LIVE_INPUT_CHANNELS: usize = 2;
 /// quantum is 128 frames; this leaves room for a host that renders larger
 /// blocks, and is all the stream allocates.
 pub const LIVE_INPUT_FRAMES: usize = 1024;
+/// The key the open voice is held at ([`LivePoly::set_open`]): C4, which is
+/// 0 V on the pitch CV (`press` maps note `n` to `(n - 60) / 12`), the voice's
+/// home pitch, and the note the audition phrase opens on.
+pub const OPEN_NOTE: u8 = 60;
 /// |L|+|R| below this counts as silence for voice parking.
 const SILENCE_EPS: f64 = 1.0e-6;
 /// Consecutive silent frames (post-release) before a voice is parked.
@@ -350,7 +358,7 @@ struct Voice {
 struct ParamSlot {
     addr: String,
     map: ParamMap,
-    /// Index-parallel to `voices`.
+    /// Index-parallel to `voices`, then the open voice's when there is one.
     values: Vec<Arc<AtomicF64>>,
 }
 
@@ -425,7 +433,9 @@ struct TouchSite {
 /// order is a property of the patch and not of `HashMap` iteration. Every
 /// voice is the same tree compiled, so voice 0's keys are everyone's keys;
 /// a voice missing one (which cannot happen) simply has no entry to write.
-fn intern_params(voices: &[Voice]) -> Vec<ParamSlot> {
+/// The open voice ([`LivePoly::set_open`]), when the patch has one, is in the
+/// table too, so a knob turned while it sounds reaches it as it reaches a key.
+fn intern_params(voices: &[Voice], open: Option<&Voice>) -> Vec<ParamSlot> {
     let Some(first) = voices.first() else {
         return Vec::new();
     };
@@ -438,6 +448,7 @@ fn intern_params(voices: &[Voice]) -> Vec<ParamSlot> {
             map: first.voice.params[addr].map,
             values: voices
                 .iter()
+                .chain(open)
                 .filter_map(|v| v.voice.params.get(addr).map(|h| Arc::clone(&h.value)))
                 .collect(),
         })
@@ -559,6 +570,14 @@ pub struct LivePoly {
     /// [`LivePoly::write_input`] publishes it: a view into wasm memory
     /// ([`LivePoly::input_ptr`]), so a quantum's input costs no allocation.
     input_buf: Vec<f32>,
+    /// The open voice: one more copy of the current patch, built only when
+    /// the patch listens, held open at [`OPEN_NOTE`] while [`Self::open_on`]
+    /// so the input sounds through the patch with no key down. It is not one
+    /// of `voices`, so no key, chord, unison or arpeggio can take it, and
+    /// `all_off` does not close it. See [`LivePoly::set_open`].
+    open: Option<Voice>,
+    /// The host asked for the open voice (the AUDIO IN's MONITOR is on).
+    open_on: bool,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -680,6 +699,52 @@ fn build_voice(
     })
 }
 
+/// Render one sounding voice's `frames` into the interleaved `out`, metering
+/// it when `meter` is given, and park it once its release tail is silent.
+fn tick_voice(v: &mut Voice, frames: usize, out: &mut [f32], mut meter: Option<&mut Meter>) {
+    let held = v.note.is_some();
+    let mut tail_silent = 0u32;
+    for f in 0..frames {
+        let (l, r) = v.voice.patch.tick();
+        // Per sample, not per quantum: the capture is allocation-free
+        // and quiver's own guidance is that a per-block sample aliases
+        // everything above `sample_rate / (2 * block_size)`. A level
+        // read 128 samples apart is not a level.
+        if let Some(m) = meter.as_deref_mut() {
+            m.observer.collect_sample(&v.voice.patch);
+        }
+        // Re-raise *after* the tick: the patch has to actually observe
+        // the low gate for one sample, or the ADSR's edge detector
+        // never sees a falling edge and the retrigger is a no-op.
+        if v.regate_in > 0 {
+            v.regate_in -= 1;
+            if v.regate_in == 0 {
+                v.voice.gate.set(GATE_ON);
+            }
+        }
+        let g = v.vel * std::f32::consts::SQRT_2 * VOLT_SCALE;
+        out[f * 2] += l as f32 * g * v.pan_l;
+        out[f * 2 + 1] += r as f32 * g * v.pan_r;
+        if !held && l.abs() + r.abs() < SILENCE_EPS {
+            tail_silent += 1;
+        } else {
+            tail_silent = 0;
+        }
+    }
+    if held {
+        v.silent_run = 0;
+    } else {
+        if tail_silent == frames as u32 {
+            v.silent_run += tail_silent;
+        } else {
+            v.silent_run = tail_silent;
+        }
+        if v.silent_run >= PARK_AFTER {
+            v.running = false;
+        }
+    }
+}
+
 #[wasm_bindgen]
 impl LivePoly {
     /// Build an `n_voices`-voice instrument from a `PatchTree` JSON.
@@ -696,7 +761,14 @@ impl LivePoly {
             .map(|_| build_voice(&tree, sample_rate, &input))
             .collect::<Result<_, _>>()
             .map_err(|e| JsValue::from_str(&e))?;
-        let param_slots = intern_params(&voices);
+        // A patch that listens gets its open voice now, here in the port
+        // handler, like the rest; one that does not never compiles one.
+        let open = if tree.listens() {
+            Some(build_voice(&tree, sample_rate, &input).map_err(|e| JsValue::from_str(&e))?)
+        } else {
+            None
+        };
+        let param_slots = intern_params(&voices, open.as_ref());
         Ok(LivePoly {
             voices,
             n_voices: n,
@@ -746,6 +818,8 @@ impl LivePoly {
             sync_lanes: Vec::new(),
             input,
             input_buf: vec![0.0; LIVE_INPUT_FRAMES * LIVE_INPUT_CHANNELS],
+            open,
+            open_on: false,
         })
         .map(|mut p| {
             p.rebuild_sync_lanes();
@@ -1582,6 +1656,13 @@ impl LivePoly {
             }
             v.voice.pitch.set(v.pitch_cur + self.bend);
         }
+        // The open voice stays on its key; the bend reaches it as it reaches
+        // a held one.
+        if let Some(v) = self.open.as_mut() {
+            if v.running {
+                v.voice.pitch.set(v.pitch_cur + self.bend);
+            }
+        }
     }
 
     fn advance_smoothers(&mut self) {
@@ -1631,49 +1712,28 @@ impl LivePoly {
             if !v.running {
                 continue;
             }
-            let meter_this = metered == Some(vi);
-            let held = v.note.is_some();
-            let mut tail_silent = 0u32;
-            for f in 0..frames {
-                let (l, r) = v.voice.patch.tick();
-                // Per sample, not per quantum: the capture is allocation-free
-                // and quiver's own guidance is that a per-block sample aliases
-                // everything above `sample_rate / (2 * block_size)`. A level
-                // read 128 samples apart is not a level.
-                if meter_this {
-                    self.meter.observer.collect_sample(&v.voice.patch);
-                }
-                // Re-raise *after* the tick: the patch has to actually observe
-                // the low gate for one sample, or the ADSR's edge detector
-                // never sees a falling edge and the retrigger is a no-op.
-                if v.regate_in > 0 {
-                    v.regate_in -= 1;
-                    if v.regate_in == 0 {
-                        v.voice.gate.set(GATE_ON);
-                    }
-                }
-                let g = v.vel * std::f32::consts::SQRT_2 * VOLT_SCALE;
-                self.out_buf[f * 2] += l as f32 * g * v.pan_l;
-                self.out_buf[f * 2 + 1] += r as f32 * g * v.pan_r;
-                if !held && l.abs() + r.abs() < SILENCE_EPS {
-                    tail_silent += 1;
-                } else {
-                    tail_silent = 0;
-                }
-            }
-            if held {
-                v.silent_run = 0;
+            let meter = if metered == Some(vi) {
+                Some(&mut self.meter)
             } else {
-                if tail_silent == frames as u32 {
-                    v.silent_run += tail_silent;
+                None
+            };
+            tick_voice(v, frames, &mut self.out_buf, meter);
+        }
+        // The open voice, after the keys'. The meter reads it when no key's
+        // voice is sounding, so the rack's levels follow the input then.
+        let mut open_metered = false;
+        if let Some(v) = self.open.as_mut() {
+            if v.running {
+                open_metered = self.meter.on && metered.is_none();
+                let meter = if open_metered {
+                    Some(&mut self.meter)
                 } else {
-                    v.silent_run = tail_silent;
-                }
-                if v.silent_run >= PARK_AFTER {
-                    v.running = false;
-                }
+                    None
+                };
+                tick_voice(v, frames, &mut self.out_buf, meter);
             }
         }
+        let metered = metered.or(open_metered.then_some(usize::MAX));
         if metered.is_some() {
             self.meter.drain();
         }
@@ -1718,7 +1778,18 @@ impl LivePoly {
                 match build_voice(&tree, self.sample_rate, &self.input) {
                     Ok(v) => {
                         built.push(v);
-                        if built.len() >= self.n_voices {
+                        // A patch that listens is built one voice longer: the
+                        // last is its open voice (`set_open`).
+                        let listens = tree.listens();
+                        if built.len() >= self.n_voices + usize::from(listens) {
+                            let open = if listens { built.pop() } else { None };
+                            // The open voice's envelope is carried like a held
+                            // note's, so a swap does not re-attack the input.
+                            let open_phase = self
+                                .open
+                                .as_ref()
+                                .filter(|v| v.note.is_some())
+                                .map(|v| v.voice.env_phase());
                             // Where every sounding note's amp envelope had got
                             // to, read off the *outgoing* voices while they are
                             // still here. This is the whole of the envelope
@@ -1739,8 +1810,9 @@ impl LivePoly {
                             // voices that exist now. This is the one place
                             // outside `new` that allocates for parameters,
                             // and it is inside the swap that already compiles.
+                            self.open = open;
                             self.smoothers.clear();
-                            self.param_slots = intern_params(&self.voices);
+                            self.param_slots = intern_params(&self.voices, self.open.as_ref());
                             self.rebuild_sync_lanes();
                             // New patch, new node ids, and a new set of module
                             // keys. Re-taking the subscriptions here is what
@@ -1775,6 +1847,15 @@ impl LivePoly {
                                         continue;
                                     };
                                     v.voice.seed_env_phase(*phase);
+                                }
+                            }
+                            // The new patch's open voice, if it has one and the
+                            // host wants it; a patch with none has nothing to
+                            // hold (the old one went with the old voices).
+                            self.sync_open();
+                            if let (Some(v), Some(phase)) = (self.open.as_mut(), open_phase) {
+                                if v.note.is_some() {
+                                    v.voice.seed_env_phase(phase);
                                 }
                             }
                             self.event = EVENT_PATCHED;
@@ -1856,6 +1937,66 @@ impl LivePoly {
     /// went away.
     pub fn clear_input(&mut self) {
         self.input.clear();
+    }
+
+    /// Hold the patch open for its input, or let it close.
+    ///
+    /// Every patch ends in the amp envelope, gated by the keys, so a patch
+    /// that listens is silent with no key down however loud its input is: an
+    /// AUDIO IN into a filter would be heard only while a note is held, and a
+    /// patch played by its input (a tracker) not at all. With `on`, a patch
+    /// that listens sounds its **open voice**: one more voice of the patch,
+    /// gated as if [`OPEN_NOTE`] were held at full velocity, so the input
+    /// sounds through the whole patch, amp envelope included (it settles at
+    /// the sustain level, as a held key does). The keys play the other voices
+    /// over it. Each of those hears the input too, as every voice of a chord
+    /// in the phrase does, so a key held over the open voice adds a second
+    /// copy of the input for as long as it sounds.
+    ///
+    /// A patch that does not listen has no open voice, so `on` changes nothing
+    /// you can hear (no drone from a patch with no input). It is kept across
+    /// patch swaps: a swap to a patch that listens opens the new open voice,
+    /// carrying the old one's envelope as a held note's is carried, and a swap
+    /// to one that does not lets it ring out. `off` releases it into its tail.
+    ///
+    /// Allocation free: the open voice is compiled with the patch (in
+    /// [`Self::new`] or the swap's rebuild), never here.
+    pub fn set_open(&mut self, on: bool) {
+        self.open_on = on;
+        self.sync_open();
+    }
+
+    /// Is the open voice sounding (held open, or ringing out)?
+    pub fn open_sounding(&self) -> bool {
+        self.open.as_ref().is_some_and(|v| v.running)
+    }
+
+    /// Bring the open voice's gate in line with [`Self::open_on`].
+    fn sync_open(&mut self) {
+        let on = self.open_on;
+        let bend = self.bend;
+        self.counter += 1;
+        let at = self.counter;
+        let Some(v) = self.open.as_mut() else { return };
+        if on && v.note.is_none() {
+            v.pitch_cur = 0.0;
+            v.pitch_tgt = 0.0;
+            v.voice.pitch.set(bend);
+            v.voice.gate.set(GATE_ON);
+            v.regate_in = 0;
+            v.note = Some(OPEN_NOTE);
+            v.stamp = at;
+            v.running = true;
+            v.silent_run = 0;
+            v.vel = Self::vel_gain(1.0);
+            v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
+            v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+        } else if !on && v.note.is_some() {
+            v.voice.gate.set(0.0);
+            v.note = None;
+            v.released = at;
+            v.regate_in = 0;
+        }
     }
 
     /// Render `frames` frames into the internal interleaved-stereo buffer
@@ -3130,5 +3271,110 @@ mod tests {
             b > 1.5 * a,
             "the second voice did not hear the block: one voice {a}, two voices {b}"
         );
+    }
+
+    /// The loudest sample over `quanta` quanta of input, starting at quantum
+    /// `from`.
+    fn loudest_with_input(poly: &mut LivePoly, from: usize, quanta: usize) -> f32 {
+        (from..from + quanta).fold(0.0f32, |m, q| {
+            m.max(quantum_with_input(poly, q * 128, true))
+        })
+    }
+
+    /// **A patch that listens sounds with no key down while it is held open.**
+    /// Closed, the amp envelope keeps the input out however loud it is. Open,
+    /// the open voice plays it through the whole patch; no key, chord or
+    /// `all_off` takes it; a knob reaches it; a swap keeps it open; and
+    /// closing it lets it ring out and park.
+    #[test]
+    fn the_open_voice_plays_the_input_with_no_key() {
+        let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
+        poly.set_leveler(false);
+        let closed = loudest_with_input(&mut poly, 0, 20);
+        assert!(closed < 1.0e-6, "no key and not open, yet heard ({closed})");
+        assert!(!poly.open_sounding());
+
+        poly.set_open(true);
+        let open = loudest_with_input(&mut poly, 20, 40);
+        assert!(open > 0.05, "held open, the input is heard ({open})");
+        assert!(poly.open_sounding());
+
+        // Five keys on four voices, then everything released: the open voice
+        // is not one of the four, so it is still sounding, and still heard.
+        for n in [62, 64, 67, 71, 74] {
+            poly.note_on(n, 1.0);
+        }
+        loudest_with_input(&mut poly, 60, 10);
+        poly.all_off();
+        loudest_with_input(&mut poly, 70, 60);
+        assert!(
+            poly.open_sounding(),
+            "a key or all_off closed the open voice"
+        );
+        let after_keys = loudest_with_input(&mut poly, 130, 20);
+        assert!(
+            (after_keys - open).abs() < open * 0.05,
+            "the open voice alone after the keys: {after_keys} against {open}"
+        );
+
+        // A knob reaches it: the input's gain down to its floor (−24 dB).
+        assert!(poly.set_param("node#gain", 0.0));
+        loudest_with_input(&mut poly, 150, 40);
+        let turned = loudest_with_input(&mut poly, 190, 20);
+        assert!(
+            turned < open / 8.0,
+            "the gain knob did not reach the open voice: {turned} against {open}"
+        );
+        assert!(poly.set_param("node#gain", auracle_grammar::INPUT_GAIN_UNITY));
+        loudest_with_input(&mut poly, 210, 40);
+
+        // A swap to the same patch keeps it open and heard.
+        assert!(poly.set_patch(&input_patch()));
+        loudest_with_input(&mut poly, 250, 40);
+        let swapped = loudest_with_input(&mut poly, 290, 20);
+        assert!(
+            swapped > open * 0.9,
+            "the open voice did not survive a swap: {swapped} against {open}"
+        );
+
+        // Closed: it rings out and parks.
+        poly.set_open(false);
+        loudest_with_input(&mut poly, 310, 80);
+        assert!(!poly.open_sounding(), "a closed open voice never parked");
+        let shut = loudest_with_input(&mut poly, 390, 10);
+        assert!(shut < 1.0e-6, "closed, yet heard ({shut})");
+    }
+
+    /// **A patch that does not listen has no open voice.** Holding it open
+    /// plays nothing (no drone from a patch with no input), and a swap to a
+    /// patch that listens opens one, which a swap away lets go.
+    #[test]
+    fn only_a_patch_that_listens_is_held_open() {
+        let mut poly = LivePoly::new(&pad_json(), 44_100.0, 4).expect("compiles");
+        poly.set_leveler(false);
+        poly.set_open(true);
+        let drone = loudest_with_input(&mut poly, 0, 40);
+        assert!(
+            drone < 1.0e-6,
+            "a patch with no input droned when held open ({drone})"
+        );
+        assert!(!poly.open_sounding());
+
+        assert!(poly.set_patch(&input_patch()));
+        loudest_with_input(&mut poly, 40, 40);
+        let heard = loudest_with_input(&mut poly, 80, 20);
+        assert!(
+            heard > 0.05,
+            "a swap to a patch that listens did not open it ({heard})"
+        );
+
+        assert!(poly.set_patch(&pad_json()));
+        loudest_with_input(&mut poly, 100, 120);
+        assert!(
+            !poly.open_sounding(),
+            "a swap away left the open voice sounding"
+        );
+        let quiet = loudest_with_input(&mut poly, 220, 10);
+        assert!(quiet < 1.0e-6, "the pad droned after the swap ({quiet})");
     }
 }
