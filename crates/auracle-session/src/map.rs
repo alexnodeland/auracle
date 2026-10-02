@@ -72,10 +72,6 @@ pub struct OwnPoint {
 }
 
 /// How a point measured on only some coordinates of φ is put on the map.
-///
-/// Chosen by measurement (`examples/own_census.rs`, which places every
-/// preset in a pool from a recording of it, both ways and by its nearest
-/// neighbors, against where the map draws the preset itself).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placement {
     /// The map point most probable given the measured coordinates, under the
@@ -85,9 +81,19 @@ pub enum Placement {
     /// every other point gets (shrunk by its noise); with few, it leans on
     /// the axes' spread rather than on coordinates it does not have.
     Fit,
-    /// The projection with every unmeasured coordinate at the map's mean.
+    /// The map's own projection with every unmeasured coordinate at the
+    /// map's mean: a projection is linear, so a coordinate at the mean adds
+    /// exactly nothing, the rule for anything linear in φ.
     Imputed,
 }
+
+/// How a sound of your own is placed ([`TasteMap::own`]). Chosen by
+/// measurement (`examples/own_census.rs` places 18 presets from recordings
+/// of them against where the map draws each preset itself): `Imputed` was
+/// off by 0.37 ± 0.05 of the map's spread, `Fit` by 0.41 ± 0.04, and the
+/// centroid of the three nearest pool members (the prototype's way) by
+/// 0.53 ± 0.07. The shrinkage `Fit` adds costs more than it saves here.
+pub const OWN_PLACEMENT: Placement = Placement::Imputed;
 
 /// What a map is drawn on: the rows, their center, and the two axes.
 struct MapFrame {
@@ -386,7 +392,7 @@ impl Engine {
             converged: f.converged,
             own: self
                 .own_toward(crate::own::OWN_GAMMA)
-                .map(|t| place(&t, &f, Placement::Fit)),
+                .map(|t| place(&t, &f, OWN_PLACEMENT)),
         }
     }
 

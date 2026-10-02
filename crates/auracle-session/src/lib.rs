@@ -52,7 +52,7 @@ pub use guess::{
     GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
     GUESS_FLOOR, GUESS_TAKEN_KEEP,
 };
-pub use map::{MapPoint, OwnPoint, Placement, TasteMap};
+pub use map::{MapPoint, OwnPoint, Placement, TasteMap, OWN_PLACEMENT};
 pub use naming::{claim_name, NameScale};
 pub use own::{OwnSound, PresetPhi, Toward, TowardFitness, OWN_GAMMA};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};

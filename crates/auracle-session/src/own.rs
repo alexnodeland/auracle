@@ -15,8 +15,9 @@
 //!   left out of the sum, not filled in: filling it with the mean would pull
 //!   every distance toward the pool's center and call the average patch the
 //!   nearest.
-//! - **Its place on the map:** [`crate::TasteMap::own`], the map point whose
-//!   measured coordinates best explain the file's ([`Engine::taste_map`]).
+//! - **Its place on the map:** [`crate::TasteMap::own`], the map's own
+//!   projection of the measured coordinates, the rest at the map's mean
+//!   ([`crate::map::OWN_PLACEMENT`], chosen by measurement).
 //! - **Breeding toward it:** [`Engine::refine_toward_jobs`] opens a
 //!   generation whose walks sample a target tilted toward it
 //!   ([`TowardFitness`]).
@@ -41,9 +42,36 @@ use crate::walk::{WalkContext, WalkJob};
 /// How hard a walk bred toward a sound of your own is pulled to it: γ in
 /// [`TowardFitness`]'s target, in fitness per σ² of squared distance (halved).
 /// With the session's β = 2, the file reads as a measurement of the patch's
-/// sound with noise `τ = 1/√(βγ)` σ on each coordinate it measures. Chosen by
-/// census (`examples/own_census.rs`).
-pub const OWN_GAMMA: f64 = 1.0;
+/// sound with noise `τ = 1/√(βγ)` σ on each coordinate it measures.
+///
+/// Chosen by census (`examples/own_census.rs`, 90 walks an arm): 4 gives
+/// `τ ≈ 0.35σ`, the size of a recording's own error on the coordinates it
+/// measures (0.03 to 0.43σ in `auracle-features`' `file_phi`), so the walk
+/// trusts the file about as far as the file can be trusted. It is the
+/// smallest γ measured whose walks from the parents nearest the sound end
+/// nearer than they began (−0.09 ± 0.03σ; untilted, +1.94σ), and from the
+/// taste's own parents it ends nearest both the recording (0.79 ± 0.05σ) and
+/// the preset it was recorded from (0.84σ): at 8 the pull is so steep that
+/// [`OWN_FLOOR`] leaves farther walks unguided, and both get worse.
+pub const OWN_GAMMA: f64 = 4.0;
+
+/// The most a walk bred toward a sound of your own is charged for being far
+/// from it, in fitness: the tilt is `min((γ/2)·d², OWN_FLOOR)`.
+///
+/// Without a floor the pull is unbounded, and a quarantined proposal (which
+/// has no φ to measure, so it keeps [`QUARANTINE_FITNESS`], −50, untilted)
+/// outscores any patch more than `√(100/γ)`σ from the target: 5σ at γ = 4.
+/// The first census, without it, saw strongly pulled walks from the taste's
+/// own parents end on patches that do not vet; with it, none did. Half the
+/// quarantine's depth keeps every vetted patch above quarantine for any
+/// taste above −25, and pulls out to `√(2·25/γ)` ≈ 3.5σ at γ = 4, well past
+/// where a breed toward a sound starts (its parents, the members nearest the
+/// sound, were 0.6σ from it on average in the census).
+///
+/// Read as Bayes, it is the likelihood a contaminated measurement has: the
+/// recording is the patch's sound with noise τ, or, beyond the floor, a sound
+/// this grammar does not make, and then distance says nothing more.
+pub const OWN_FLOOR: f64 = 25.0;
 
 /// Longest name kept for a sound of your own, in characters.
 pub const OWN_NAME_MAX: usize = 32;
@@ -154,12 +182,14 @@ impl Toward {
 /// Any fitness, tilted toward a target: a walk bred toward a sound of your
 /// own samples
 ///
-/// `π(x) ∝ p_grammar(x) · exp(β·(f(x) − (γ/2)·Σ_{j∈O} (z_j(x) − z*_j)²))`
+/// `π(x) ∝ p_grammar(x) · exp(β·(f(x) − min((γ/2)·d(x)², OWN_FLOOR)))`,
+/// `d(x)² = Σ_{j∈O} (z_j(x) − z*_j)²`
 ///
 /// where `f` is the taste surrogate, `z(x)` the patch's standardized φ, `z*`
 /// the file's and `O` the coordinates the file measures. Read as Bayes, it
 /// is the taste's target times a Gaussian likelihood `N(z*_O; z_O(x), τ²I)`,
-/// `τ² = 1/(βγ)`: the patches you would like, weighted by how well each
+/// `τ² = 1/(βγ)`, floored where the recording stops saying anything
+/// ([`OWN_FLOOR`]): the patches you would like, weighted by how well each
 /// explains the recording as a measurement of its sound. A coordinate the
 /// file does not measure has no factor at all, which is that likelihood
 /// marginalized over it.
@@ -200,7 +230,7 @@ where
                 let d = self
                     .toward
                     .distance_raw(&cf.features.phi(), &self.standardizer);
-                f - 0.5 * self.toward.gamma * d * d
+                f - (0.5 * self.toward.gamma * d * d).min(OWN_FLOOR)
             }
             Err(_) => f,
         }
@@ -528,6 +558,19 @@ mod tests {
             moved[20] -= 2.0;
             assert_eq!(toward.sq_distance(&moved), toward.sq_distance(&z));
         }
+        // However far a vetted patch is from the target, it scores above a
+        // proposal that does not vet: the pull is floored at OWN_FLOOR.
+        let far = TowardFitness {
+            toward: Toward {
+                target: vec![40.0, -40.0],
+                ..toward.clone()
+            },
+            ..fit.clone()
+        };
+        for t in &trees {
+            assert_eq!(far.evaluate(t), -OWN_FLOOR);
+            assert!(far.evaluate(t) > QUARANTINE_FITNESS);
+        }
         let silent = auracle_grammar::PatchTree {
             amp: trees[0].amp.clone(),
             root: auracle_grammar::term::AudioNode::Silence {
@@ -652,7 +695,7 @@ mod tests {
         );
         let own = map.own.expect("placed");
         assert_eq!(own.observed, t.observed.len());
-        assert_eq!(engine.own_on_map(crate::Placement::Fit), Some(own));
+        assert_eq!(engine.own_on_map(crate::map::OWN_PLACEMENT), Some(own));
 
         let presets = vec![PresetPhi {
             index: 7,

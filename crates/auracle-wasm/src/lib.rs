@@ -1564,7 +1564,7 @@ impl WasmEngine {
             truncated: Some(own.truncated),
             z: self.engine.own_z(),
             masked: Some(auracle_features::file_masked_names()),
-            map: Some(self.engine.own_on_map(auracle_session::Placement::Fit)),
+            map: Some(self.engine.own_on_map(auracle_session::OWN_PLACEMENT)),
             nearest: Some(
                 self.engine
                     .own_nearest(OWN_NEAREST)
