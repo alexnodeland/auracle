@@ -11283,6 +11283,8 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  // The model's guess is kept in sight of the camera (patch.js `inView`).
+  patchView.cameraMoved();
   // The scope is *not* in the world — that is the point of parenting it to the
   // frame — but what is underneath it moved, so whether it is in the way is a
   // question this answers. Debounced: the answer only matters where the pan

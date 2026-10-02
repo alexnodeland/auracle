@@ -75,7 +75,9 @@ GUESS · REVERB   it moves toward still, as your picks lean · 67% · leaning
 
 The module itself is drawn dashed amber at its place in the patch: above the
 cable it would be patched into, over the empty socket it would fill, or under
-the module whose modulation input it would take. Click it (or focus it and
+the module whose modulation input it would take, with a dashed lead to that
+place. It stays in view: with no room above the cable it hangs below the
+patch, or at the top of the view. Click it (or focus it and
 press <kbd>Enter</kbd>) to add it, the same edit the module rail makes, and
 <kbd>⌘Z</kbd> takes it out. Its **×** (or <kbd>Delete</kbd>) skips it: that
 kind of module stays away from that place for this patch, and the next guess

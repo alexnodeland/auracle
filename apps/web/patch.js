@@ -273,9 +273,8 @@ export function createPatch(host) {
       return { x: box.x, y: box.y, w: box.w, h: box.h, over: true };
     }
     if (g.op.op === "set_mod") {
-      const x = box.x + Math.max(0, (box.w - GW) / 2);
-      const y = box.y + box.h + 44;
-      return { x, y, w: GW, h: GH, lead: [x + GW / 2, y, box.x + 13 + Math.max(0, (box.w - Math.min(96, box.w - 8)) / 2), box.y + box.h + 7] };
+      const jack = [box.x + 13 + Math.max(0, (box.w - Math.min(96, box.w - 8)) / 2), box.y + box.h + 7];
+      return inView(box.x + Math.max(0, (box.w - GW) / 2), box.y + box.h + 44, jack, null, box.y + box.h + 44);
     }
     // insert: the wire out of `key`, into whatever consumes it.
     const it = frame && frame.wires.find((x) => x.w.kind !== "mod" && x.w.from === key);
@@ -286,9 +285,44 @@ export function createPatch(host) {
     const p = it.inkEl.getPointAtLength(len / 2);
     const to = boxes.get(it.w.to);
     const top = Math.min(box.y, to ? to.y : box.y);
-    const x = p.x - GW / 2;
-    const y = top - GH - 30;
-    return { x, y, w: GW, h: GH, lead: [p.x, y + GH, p.x, p.y] };
+    const bottom = Math.max(box.y + box.h, to ? to.y + to.h : box.y + box.h);
+    return inView(p.x - GW / 2, top - GH - 30, [p.x, p.y], top - GH - 30, bottom + 36);
+  }
+
+  // Where the camera is looking, in rack units, and how many pixels a unit
+  // is, from the rack's viewBox (`applyView`).
+  function cameraBox() {
+    const svg = host.rackSvg();
+    const vb = svg && svg.getAttribute("viewBox");
+    if (!vb) return null;
+    const [x, y, w, h] = vb.split(/\s+/).map(Number);
+    if (!(w > 0 && h > 0)) return null;
+    return { x, y, w, h, s: svg.clientWidth / w || 1 };
+  }
+
+  /** A guess plate kept in sight: above its socket where there is room in
+   *  the camera's view (`above`), else below the chain (`below`), else at
+   *  the view's top; its dashed lead always ends at the socket (`at`). The
+   *  camera is the player's, so the plate moves into it rather than the
+   *  view moving to the plate, and the line above the rack names it
+   *  whatever the camera shows. */
+  function inView(x, y, at, above, below) {
+    const cam = cameraBox();
+    if (cam) {
+      const top = cam.y + 44 / cam.s; // clear of the GUESS · line over the rack
+      const foot = cam.y + cam.h - 12 / cam.s;
+      if (above != null && above >= top) y = above;
+      else if (below != null && below + GH <= foot) y = below;
+      else y = Math.max(top, Math.min(y, foot - GH));
+      x = Math.max(cam.x + 8 / cam.s, Math.min(x, cam.x + cam.w - GW - 8 / cam.s));
+    }
+    const fromTop = y > at[1];
+    return { x, y, w: GW, h: GH, lead: [x + GW / 2, fromTop ? y : y + GH, at[0], at[1]] };
+  }
+
+  /** The camera moved: the plate follows, to stay in sight. */
+  function cameraMoved() {
+    if (topGuess()) drawGuess();
   }
 
   function drawGuess() {
@@ -1027,6 +1061,7 @@ export function createPatch(host) {
     benchLanded,
     rackBuilt,
     platesMoved,
+    cameraMoved,
     restLevel,
     subject,
     rejected,
