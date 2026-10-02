@@ -25,7 +25,7 @@
 const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys } = await import(`./words.js${new URL(import.meta.url).search}`);
 // A sound's face and the one renderer that draws it (Plan-005 task 3): stage
 // mode draws the sound in hand's.
-const { whiten, smooth, vesselPoints, liveBands, FACE_BANDS } = await import(`./faces.js${new URL(import.meta.url).search}`);
+const { whiten, smooth, vesselPoints, createLiveMeter, FACE_BANDS, FACE_FRAME } = await import(`./faces.js${new URL(import.meta.url).search}`);
 const { drawVessel, traceVessel, tint } = await import(`./vessel.js${new URL(import.meta.url).search}`);
 
 const NS = "http://www.w3.org/2000/svg";
@@ -3261,8 +3261,14 @@ export function createPerform(host) {
   // What the still layer was drawn for: the size and the face object `faceOf`
   // gave (the same object until the tree or the bank changes).
   let stageBase = null;
-  let stageBuf = null;
-  let stageLast = null; // the last frame's live spectrum, against the bank
+  // What sounds now, measured as a face is (faces.js `createLiveMeter`: the
+  // analyser's samples through the face's own Hann frame and bands), into
+  // buffers made once.
+  const stageMeter = createLiveMeter();
+  const stageTime = new Float32Array(FACE_FRAME);
+  const stageLive = new Float64Array(FACE_BANDS);
+  const stageDev = new Float64Array(FACE_BANDS);
+  let stageHas = false; // `stageLive` holds the last frame's
   let stageLoud = 0; // how loud, eased (the mock's `s.loud`)
   let stageLoudAt = 0; // when the stage last drew a sound
   const stageBox = (W, H) => {
@@ -3316,20 +3322,20 @@ export function createPerform(host) {
     }
     const an = st.analyser;
     if (!an || !f) return;
-    if (!stageBuf || stageBuf.length !== an.frequencyBinCount) stageBuf = new Float32Array(an.frequencyBinCount);
-    an.getFloatFrequencyData(stageBuf);
-    const { db, top } = liveBands(stageBuf, an.context.sampleRate / 2);
-    // How loud: −80 dBFS in the loudest bin is nothing, −20 is all.
-    const target = clamp((top + 80) / 60, 0, 1);
+    an.getFloatTimeDomainData(stageTime);
+    const { db, rmsDb } = stageMeter.measure(stageTime, an.context.sampleRate);
+    // How loud, as the mock reads it: −42 dBFS (RMS) is nothing, −8 is all.
+    const target = clamp((rmsDb + 42) / 34, 0, 1);
     stageLoud += (target - stageLoud) * (target > stageLoud ? 0.5 : 0.08);
     if (target < 0.05) {
-      stageLast = null;
+      stageHas = false;
       return;
     }
     stageLoudAt = performance.now();
-    let live = whiten(db, f.stats);
-    if (stageLast) live = live.map((v, i) => stageLast[i] * 0.5 + v * 0.5);
-    stageLast = live;
+    whiten(db, f.stats, stageDev);
+    for (let b = 0; b < FACE_BANDS; b++) stageLive[b] = stageHas ? stageLive[b] * 0.5 + stageDev[b] * 0.5 : stageDev[b];
+    stageHas = true;
+    const live = stageLive;
     if (st.still) return; // reduced motion: the face alone, nothing that moves
     x.save();
     // The vessel's own outline, lit by how loud it is.

@@ -16,48 +16,46 @@ import {
   smooth,
   vesselPoints,
   layerWeight,
-  liveBands,
-  bandEdgesHz,
+  createLiveMeter,
   bandWeights,
+  FACE_FRAME,
   FACE_FLOOR_DB,
 } from "../faces.js";
 
-test("what sounds now is read in the face's measure: a steady sound's live bands are its face", () => {
-  // The engine's own fixture (auracle-features face::tests): a steady
-  // sawtooth's face, and its mean power per bin as an analyser gives it.
-  const fx = JSON.parse(readFileSync(new URL("./fixtures/steady-face.json", import.meta.url), "utf8"));
+// The engine's own fixture (auracle-features face::tests): one frame of a C3
+// sawtooth, and the face the engine takes of exactly those samples.
+const frameFixture = () => JSON.parse(readFileSync(new URL("./fixtures/live-frame-face.json", import.meta.url), "utf8"));
+
+test("what sounds now is read in the face's measure: one frame's live bands are its face", () => {
+  const fx = frameFixture();
   const face = decodeFace(Buffer.from(fx.face, "base64"));
-  const { db } = liveBands(Float32Array.from(fx.bins_db), fx.sample_rate / 2);
-  let compared = 0;
+  const { db } = createLiveMeter().measure(Float32Array.from(fx.samples), fx.sample_rate);
   for (let b = 0; b < FACE_BANDS; b++) {
-    if (face.ltas[b] <= FACE_FLOOR_DB + 1) continue;
     assert.ok(Math.abs(db[b] - face.ltas[b]) <= 1, `band ${b}: live ${db[b].toFixed(2)} dB, face ${face.ltas[b]} dB`);
-    // Every slice of a steady sound is the same, but for the noise floor.
-    if (face.ltas[b] > -30) for (const sl of face.slices) assert.ok(Math.abs(db[b] - sl[b]) <= 1, `band ${b} against a slice`);
-    compared++;
+    assert.ok(Math.abs(db[b] - face.slices[6][b]) <= 1, `band ${b} against its slice`);
   }
-  assert.ok(compared >= 30, `${compared} bands compared`);
 });
 
-test("what sounds now: a tone lights its band, a narrow band reads its bin, silence nothing", () => {
-  const nyq = 22050;
-  const bins = new Float32Array(1024).fill(-120);
-  const at = (hz) => Math.round((hz / nyq) * bins.length);
-  bins[at(1000)] = -20;
-  const { db, top } = liveBands(bins, nyq);
-  const e = bandEdgesHz();
-  const band = e.findIndex((x, i) => at(1000) * (nyq / 1024) >= x && at(1000) * (nyq / 1024) < e[i + 1]);
-  assert.equal(top, -20);
-  assert.equal(db[band], 0, "the tone's band is the densest");
-  // A band narrower than one bin reads the bin it sits in.
-  bins.fill(-120);
-  bins[2] = -30;
-  const w = bandWeights(1024, nyq / 1024);
-  assert.ok(w.every((ws) => ws.length > 0), "no band is empty");
-  assert.equal(liveBands(bins, nyq).db[1], 0, "35 to 46 Hz, inside one bin, reads it");
-  const silent = liveBands(new Float32Array(1024).fill(-Infinity), nyq);
-  assert.ok(silent.db.every((v) => v === FACE_FLOOR_DB));
-  assert.equal(silent.top, -Infinity);
+test("an analyser's Blackman window would not read the face (what the meter replaces)", () => {
+  const fx = frameFixture();
+  const face = decodeFace(Buffer.from(fx.face, "base64"));
+  const { db } = createLiveMeter({ window: "blackman" }).measure(Float32Array.from(fx.samples), fx.sample_rate);
+  let worst = 0;
+  for (let b = 0; b < FACE_BANDS; b++) worst = Math.max(worst, Math.abs(db[b] - face.ltas[b]));
+  assert.ok(worst > 3, `Blackman departs by ${worst.toFixed(1)} dB at most`);
+});
+
+test("the meter: silence reads nothing, and a measure allocates nothing new", () => {
+  const m = createLiveMeter();
+  const quiet = m.measure(new Float32Array(FACE_FRAME), 48000);
+  assert.ok(quiet.db.every((v) => v === FACE_FLOOR_DB));
+  assert.equal(quiet.rmsDb, -Infinity);
+  const tone = Float32Array.from({ length: FACE_FRAME }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 1000 * i) / 48000));
+  const again = m.measure(tone, 48000);
+  assert.equal(again, quiet, "the same result object, refilled");
+  assert.ok(Math.abs(again.rmsDb - 20 * Math.log10(0.5 / Math.SQRT2)) < 0.2);
+  // 35 to 46 Hz sits inside one bin, and no band is empty.
+  assert.ok(bandWeights(FACE_FRAME / 2 + 1, 48000 / FACE_FRAME).every((w) => w.length > 0));
 });
 
 /** Bytes for a face whose long-term spectrum is `ltas` (dB), every slice the

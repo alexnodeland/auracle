@@ -438,45 +438,39 @@ mod tests {
         }
     }
 
-    /// The fixture `apps/web/tests/fixtures/steady-face.json`: a steady
-    /// signal's face and its mean power per FFT bin (dB, the first 1024 bins,
-    /// as an `AnalyserNode` of fftSize 2048 gives them), so the app's live
-    /// bands (`faces.js` `liveBands`, stage mode's trail) are checked against
-    /// this measurement rather than a copy of it. Fails when the analysis has
-    /// moved and the fixture has not; `AURACLE_UPDATE_FIXTURES=1` rewrites it.
+    /// The fixture `apps/web/tests/fixtures/live-frame-face.json`: one frame
+    /// of [`FRAME`] samples (a C3 sawtooth, the note the stage read worst
+    /// through an analyser's Blackman window) and the face the engine takes
+    /// of exactly those samples. One frame is one slice (its center is in
+    /// slice 6) and the whole long-term spectrum, so the app's live meter
+    /// (`faces.js` `createLiveMeter`), fed the same samples, must read the
+    /// same bands. Fails when the analysis has moved and the fixture has
+    /// not; `AURACLE_UPDATE_FIXTURES=1` rewrites it.
     #[test]
-    fn the_steady_fixture_is_current() {
-        // A 220 Hz sawtooth with a little noise under it, steady throughout.
-        let mut s = 0x2545_F491_4F6C_DD1Du64;
-        let x: Vec<f64> = (0..N)
+    fn the_live_frame_fixture_is_current() {
+        let hz = 130.812_782_650_299_3; // C3
+        let x: Vec<f32> = (0..FRAME)
             .map(|i| {
-                s ^= s << 13;
-                s ^= s >> 7;
-                s ^= s << 17;
-                let noise = (s >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
-                let phase = (i as f64 * 220.0 / SR).fract();
-                0.4 * (2.0 * phase - 1.0) + 0.02 * noise
+                let phase = (i as f64 * hz / SR).fract();
+                (0.4 * (2.0 * phase - 1.0)) as f32
             })
             .collect();
-        let face = Face::of_f64(&x, SR);
-        let (acc, frames) = slice_power(x.len(), |i| x[i] as f32 as f64);
-        let total: usize = frames.iter().sum();
-        let bins_db: Vec<f64> = (0..FRAME / 2)
-            .map(|j| {
-                let p = acc.iter().map(|a| a[j]).sum::<f64>() / total as f64;
-                (db(p) * 1000.0).round() / 1000.0
-            })
-            .collect();
+        let face = Face::of_f32(&x, SR);
+        assert_eq!(
+            face.slice_db(6),
+            face.ltas_db(),
+            "one frame is its own long-term spectrum"
+        );
+        let samples: Vec<f64> = x.iter().map(|s| f64::from(*s)).collect();
         let json = serde_json::to_string(&serde_json::json!({
-            "about": "A steady signal's face and its mean power per FFT bin (dB). Written by auracle-features' face::tests::the_steady_fixture_is_current; do not edit.",
+            "about": "One frame of a C3 sawtooth and the face the engine takes of it. Written by auracle-features' face::tests::the_live_frame_fixture_is_current; do not edit.",
             "sample_rate": SR,
-            "fft_size": FRAME,
-            "bins_db": bins_db,
+            "samples": samples,
             "face": face,
         }))
         .unwrap();
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../apps/web/tests/fixtures/steady-face.json");
+            .join("../../apps/web/tests/fixtures/live-frame-face.json");
         if std::env::var_os("AURACLE_UPDATE_FIXTURES").is_some() {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, format!("{json}\n")).unwrap();

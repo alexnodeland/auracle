@@ -90,35 +90,95 @@ export function bandWeights(n, binHz) {
   return out;
 }
 
-const weightCache = new Map(); // "n|binHz" -> bandWeights
+/** The face's frame (`auracle_features::face`): 2048 samples, Hann. */
+export const FACE_FRAME = 2048;
 
-/** What sounds now, in the face's measure: an analyser's dB per bin (`bins`,
- *  `n` of them from 0 Hz to `nyquist`) as each band's mean power density over
- *  its edges, the face's own reading (`bandWeights`), in dB re the densest
- *  band and floored as a face is. `peak` is that densest band (dB), `top`
- *  the loudest single bin (dBFS), for how loud it is. So it is drawn against
- *  the bank in the face's coordinates, and a steady sound's live bands are
- *  its face's (tests/faces.test.mjs, against the engine's fixture). */
-export function liveBands(bins, nyquist) {
-  const n = bins.length;
-  const ck = `${n}|${nyquist}`;
-  let weights = weightCache.get(ck);
-  if (!weights) {
-    weights = bandWeights(n, nyquist / n);
-    weightCache.set(ck, weights);
+/** A meter for what sounds now, in the face's own measure: one frame of
+ *  `FACE_FRAME` samples (an analyser's `getFloatTimeDomainData`), Hann-
+ *  windowed and transformed here exactly as the engine frames a render, read
+ *  as each band's mean power density over the same fractional bins
+ *  (`bandWeights`), in dB re the densest band and floored as a face is. Not
+ *  the analyser's own spectrum: that is Blackman-windowed, which reads a low
+ *  note's bands up to 17 dB away from its face. Everything is allocated once;
+ *  `measure` allocates nothing.
+ *
+ *  `measure(samples, sampleRate)` returns `{db, peak, rmsDb}`, the same
+ *  object each time: `db` the bands, `peak` the densest band (dB, unscaled),
+ *  `rmsDb` the frame's level (dBFS). */
+export function createLiveMeter({ window: kind = "hann" } = {}) {
+  const N = FACE_FRAME;
+  const LOG = Math.log2(N);
+  const win = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const t = (2 * Math.PI * i) / N;
+    // Blackman only for the tests, to show what the analyser would read.
+    win[i] = kind === "blackman" ? 0.42 - 0.5 * Math.cos(t) + 0.08 * Math.cos(2 * t) : 0.5 - 0.5 * Math.cos(t);
   }
-  const db = new Float64Array(FACE_BANDS);
-  let peak = -Infinity;
-  let top = -Infinity;
-  for (let i = 0; i < n; i++) if (bins[i] > top) top = bins[i];
-  for (let b = 0; b < FACE_BANDS; b++) {
-    let p = 0;
-    for (const [j, w] of weights[b]) p += Math.pow(10, bins[j] / 10) * w;
-    db[b] = p > 0 ? 10 * Math.log10(p) : -Infinity;
-    if (db[b] > peak) peak = db[b];
+  const rev = new Uint32Array(N);
+  for (let i = 0; i < N; i++) {
+    let r = 0;
+    for (let k = 0; k < LOG; k++) r |= ((i >> k) & 1) << (LOG - 1 - k);
+    rev[i] = r;
   }
-  for (let b = 0; b < FACE_BANDS; b++) db[b] = Number.isFinite(peak) ? Math.max(FACE_FLOOR_DB, db[b] - peak) : FACE_FLOOR_DB;
-  return { db, peak, top };
+  const cos = new Float64Array(N / 2);
+  const sin = new Float64Array(N / 2);
+  for (let i = 0; i < N / 2; i++) {
+    cos[i] = Math.cos((2 * Math.PI * i) / N);
+    sin[i] = -Math.sin((2 * Math.PI * i) / N);
+  }
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  const power = new Float64Array(N / 2 + 1);
+  const out = { db: new Float64Array(FACE_BANDS), peak: -Infinity, rmsDb: -Infinity };
+  let weights = null;
+  let weightsRate = 0;
+  function measure(samples, sampleRate) {
+    const n = Math.min(samples.length, N);
+    const off = samples.length - n; // the latest frame of what is given
+    let ss = 0;
+    for (let i = 0; i < N; i++) {
+      const x = i < n ? samples[off + i] : 0;
+      ss += x * x;
+      re[rev[i]] = x * win[i];
+      im[rev[i]] = 0;
+    }
+    out.rmsDb = ss > 0 ? 10 * Math.log10(ss / N) : -Infinity;
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const step = N / size;
+      for (let start = 0; start < N; start += size) {
+        for (let k = 0; k < half; k++) {
+          const c = cos[k * step];
+          const sn = sin[k * step];
+          const i = start + k;
+          const j = i + half;
+          const tr = re[j] * c - im[j] * sn;
+          const ti = re[j] * sn + im[j] * c;
+          re[j] = re[i] - tr;
+          im[j] = im[i] - ti;
+          re[i] += tr;
+          im[i] += ti;
+        }
+      }
+    }
+    for (let j = 0; j <= N / 2; j++) power[j] = re[j] * re[j] + im[j] * im[j];
+    if (!weights || weightsRate !== sampleRate) {
+      weights = bandWeights(N / 2 + 1, sampleRate / N);
+      weightsRate = sampleRate;
+    }
+    let peak = -Infinity;
+    for (let b = 0; b < FACE_BANDS; b++) {
+      let p = 0;
+      const ws = weights[b];
+      for (let k = 0; k < ws.length; k++) p += power[ws[k][0]] * ws[k][1];
+      out.db[b] = p > 0 ? 10 * Math.log10(p) : -Infinity;
+      if (out.db[b] > peak) peak = out.db[b];
+    }
+    for (let b = 0; b < FACE_BANDS; b++) out.db[b] = Number.isFinite(peak) ? Math.max(FACE_FLOOR_DB, out.db[b] - peak) : FACE_FLOOR_DB;
+    out.peak = peak;
+    return out;
+  }
+  return { measure };
 }
 
 /** The bank's mean per band and its spread, over the long-term spectra of the
@@ -144,15 +204,13 @@ export function statsMoved(drawn, now) {
 }
 
 /** A spectrum (dB) against the bank: in spreads, per band. */
-export function whiten(db, stats) {
-  const out = new Float64Array(FACE_BANDS);
+export function whiten(db, stats, out = new Float64Array(FACE_BANDS)) {
   for (let b = 0; b < FACE_BANDS; b++) out[b] = (db[b] - stats.mean[b]) / stats.spread;
   return out;
 }
 
 /** A moving average over 2k + 1 bands (fewer at the ends). */
-export function smooth(a, k) {
-  const out = new Float64Array(a.length);
+export function smooth(a, k, out = new Float64Array(a.length)) {
   for (let i = 0; i < a.length; i++) {
     let s = 0;
     let n = 0;

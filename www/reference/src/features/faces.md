@@ -133,8 +133,12 @@ left the view. Such a render is not kept, so it pushes no audition out of
 the cache. A face’s render already running (about half a second) is the most
 it can hold anything up by.
 
-**The stage’s live outline** (PERFORM’s stage mode) reads the output’s
-analyzer in the same measure: each band’s mean power density over the same
-fractional bins (`faces.js` `liveBands`, `bandWeights`), so a steady sound’s
-live outline lies on its face. A test checks it against the engine’s own
-fixture, within 1 dB.
+**The stage’s live outline** (PERFORM’s stage mode) is measured as a face
+is: the output’s latest 2048 samples, through the same Hann frame and FFT,
+read as each band’s mean power density over the same fractional bins
+(`faces.js` `createLiveMeter`, `bandWeights`), into buffers made once. Not
+the analyzer node’s own spectrum, which is Blackman-windowed: on a C3
+sawtooth it read a low band 16.5 dB away from the face. A test feeds the
+meter the engine’s own fixture (one frame of that sawtooth and the face the
+engine takes of it) and holds every band to the face within 1 dB (it agrees
+to 0.24 dB); the same frame through Blackman fails it.
