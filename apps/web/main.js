@@ -6357,43 +6357,60 @@ function renderEvolveBtn() {
 // first. Every mark is the engine's own list (ADR-012), never worked out here:
 // - at rest, a generation opened now: `ratings.seeds` (`Engine::next_seeds`,
 //   the rule `refine_jobs` takes its parents by) and `ratings.may_replace`
-//   (`Engine::may_replace`: nothing outside it can leave at its end);
+//   (`Engine::may_replace`: nothing outside it can leave at its end), said
+//   "may be replaced";
 // - while one runs, that generation: the seeds it opened with
-//   (`breeding.seeds`), and what its end would replace if it ended now
-//   (`refine_child`'s `retiring`, `Engine::retiring`). That list grows by one
-//   with each child admitted (`admit_refined` defers the eviction), so it is
-//   empty until the first child lands;
-// - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed).
-//   Nothing is replaced before its child is in, and then at once.
+//   (`breeding.seeds`, posted with its progress: `refine_jobs`' parents), and
+//   what its end would replace if it ended now (`refine_child`'s `retiring`,
+//   `Engine::retiring`), said "will be replaced": stopped now or run out, its
+//   end replaces them. That list grows by one with each child admitted
+//   (`admit_refined` defers the eviction) and loses none, so it is empty until
+//   the first child lands, and a child still to come can add a sound not on
+//   it: it is not the whole of what may go (words.js `markWord`);
+// - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed),
+//   and what its child would replace if the pool takes it. With no
+//   generation open `absorb_from` evicts at once (`evict_to_size`, the seed
+//   protected) the lowest of `eviction_order`, which passes over the seed in
+//   flight (`evolving`); `may_replace` ranks the same way, so its first
+//   `pool + 1 − pool_target` (one at size, none while the pool fills) are
+//   those.
 // The rail carries the mark (amber, the model's choice: solid for a seed,
-// dashed for may be replaced) and the word sits on the row's second line,
-// over the stars, so the name never moves.
+// dashed for what may go) and the word sits on the row's second line, over
+// the stars, so the name never moves.
 let mayGoShown = false;
 let mayGo = new Set();
+let mayKind = "may"; // which word the dashed rail's rows carry (`markWord`)
 let seedMarks = new Set();
 // Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
 // takes its focus away while the pointer is still on it.
 const mayGoBy = { hover: false, focus: false };
 function evolveMarks() {
-  if (breeding) return { seeds: breeding.seeds || [], may: breeding.retiring || [] };
-  if (evolvingFrom) return { seeds: [evolvingFrom.id], may: [] };
   const r = views && views.ratings;
-  return { seeds: (r && r.seeds) || [], may: (r && r.may_replace) || [] };
+  if (breeding) return { seeds: breeding.seeds || [], may: breeding.retiring || [], kind: "will" };
+  if (evolvingFrom) {
+    const owed = status ? Math.max(0, (status.pool || 0) + 1 - (status.pool_target || Infinity)) : 0;
+    const may = ((r && r.may_replace) || []).filter((id) => id !== evolvingFrom.id).slice(0, owed);
+    return { seeds: [evolvingFrom.id], may, kind: "may" };
+  }
+  return { seeds: (r && r.seeds) || [], may: (r && r.may_replace) || [], kind: "may" };
 }
 function markMayGo(on) {
   mayGoShown = on;
-  const m = on ? evolveMarks() : { seeds: [], may: [] };
+  const m = on ? evolveMarks() : { seeds: [], may: [], kind: "may" };
   seedMarks = new Set(m.seeds);
   mayGo = new Set(m.may.filter((id) => !seedMarks.has(id)));
+  mayKind = m.kind;
   for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) paintMarks(el, Number(el.dataset.id));
 }
+/** The word a row carries while EVOLVE POOL is pointed at, or "". */
+function flagWord(id) {
+  return seedMarks.has(id) ? markWord("seed") : mayGo.has(id) ? markWord(mayKind) : "";
+}
 function paintMarks(el, id) {
-  const seed = seedMarks.has(id);
-  const may = mayGo.has(id);
-  el.classList.toggle("seed", seed);
-  el.classList.toggle("may-go", may);
+  el.classList.toggle("seed", seedMarks.has(id));
+  el.classList.toggle("may-go", mayGo.has(id));
   const flag = el.querySelector(".bi-flag");
-  if (flag) flag.textContent = seed ? "seed" : may ? "may be replaced" : "";
+  if (flag) flag.textContent = flagWord(id);
 }
 {
   const wrap = $("evolve-wrap");
@@ -6965,7 +6982,7 @@ function bankRow(r, fitted) {
   // (`LineageEvent`, from `lineage()`).
   const lin = lineageOf(r.id);
   const isNew = lastBorn.has(r.id);
-  const flag = seedMarks.has(r.id) ? "seed" : mayGo.has(r.id) ? "may be replaced" : "";
+  const flag = flagWord(r.id);
   el.className = "bank-item"
     + (r.id === wb.subjectId ? " live" : "")
     // The keyboard cursor is state, so it is carried by *id* and re-applied
@@ -14016,6 +14033,7 @@ function startEvolveFrom(id) {
   // Said in the job slot (and on the button), not a toast: a toast carries
   // the result of a gesture, and this one's result comes when the walk lands.
   evolvingFrom = { id, name: nameOf(id), stoppable: false };
+  if (mayGoShown) markMayGo(true); // its seed, and what its child would replace
   lampOn("refine_from");
   renderEvolveFrom();
   renderEvolveBtn(); // EVOLVE POOL waits for ⚡
