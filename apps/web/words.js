@@ -607,3 +607,191 @@ export function onThisSound(name, { search = false, pending = false, knobs = [],
 export function panelCount(n, max) {
   return `${n} of ${max} on the panel`;
 }
+
+// ---------- Explain anything (explain.js, Plan-005 task 10) ----------
+// A control's figure says what it measured: the sound in hand rendered with
+// the control at its center and turned (`WasmEngine::explain_render`), read
+// through the φ coordinate the control's direction is made of first
+// (`perform::PALETTE`'s axis), in that coordinate's own unit
+// (`auracle_features::explain::Facts`). The lesson's words are below.
+
+/** A frequency in its unit: "640 Hz", "1.2 kHz", "12 kHz". */
+export function hzWord(hz) {
+  const f = Number(hz) || 0;
+  if (f < 999.5) return `${Math.round(f)} Hz`;
+  return f < 9950 ? `${(f / 1000).toFixed(1)} kHz` : `${Math.round(f / 1000)} kHz`;
+}
+
+/** A level in dB, with a true minus: "−18 dB"; `signed` adds a plus. */
+export function dbWord(d, signed = false) {
+  const r = Math.round(Number(d) || 0);
+  const sign = r < 0 ? "−" : signed && r > 0 ? "+" : "";
+  return `${sign}${Math.abs(r)} dB`;
+}
+
+/** A time in ms, or s from a second up: "3.2 ms", "153 ms", "1.2 s". */
+export function msWord(ms) {
+  const t = Math.max(0, Number(ms) || 0);
+  if (t >= 999.5) return `${(t / 1000).toFixed(1)} s`;
+  return t < 9.95 ? `${t.toFixed(1)} ms` : `${Math.round(t)} ms`;
+}
+
+const pctWord = (x) => `${Math.round(Number(x) || 0)}%`;
+const twoPlaces = (x) => (Number(x) || 0).toFixed(2);
+// Spectral flatness (0 a pure tone, 1 white noise) in dB, as it is usually
+// read: a note sits tens of dB down, noise at 0.
+const flatDb = (x) => dbWord(10 * Math.log10(Math.max(1e-9, Number(x) || 0)));
+// A level against another: "32 dB under", "3 dB over".
+const against = (d) => `${Math.abs(Math.round(Number(d) || 0))} dB ${Math.round(Number(d) || 0) < 0 ? "under" : "over"}`;
+
+/** Which figure each control draws: the measurement its direction is made of
+ *  (`auracle_features::explain::Portrait`). `bands`, the long-term spectrum;
+ *  `onset`, the first note's attack; `level`, the phrase's level and its
+ *  tail; `motion`, a held note's brightness or level over time;
+ *  `harmonics`, a held note's harmonics and what lies between them. */
+export const FIGURE_OF = {
+  Bright: "bands", Body: "bands", Warmth: "bands", Air: "bands",
+  Snap: "onset", Round: "onset",
+  Punch: "level", Thump: "level", Heft: "level", Space: "level", Distance: "level", Haze: "level",
+  Motion: "motion", Throb: "motion", Sway: "motion",
+  Grit: "harmonics", Bite: "harmonics", "Lo-fi": "harmonics",
+};
+
+// Each control's first fact: how to say it at rest, and how to say it
+// moving, from `Facts` (the engine's names).
+const SAY_FACT = {
+  Bright: [(f) => `its center sits at ${hzWord(f.centroid_hz)}`, (m, t) => `its center moves from ${hzWord(m.centroid_hz)} to ${hzWord(t.centroid_hz)}`],
+  Air: [(f) => `its top rolls off at ${hzWord(f.rolloff_hz)}`, (m, t) => `its top rolls off at ${hzWord(m.rolloff_hz)}, then ${hzWord(t.rolloff_hz)}`],
+  Body: [(f) => `${pctWord(f.bass_pct)} of it is below 250 Hz`, (m, t) => `its share below 250 Hz goes from ${pctWord(m.bass_pct)} to ${pctWord(t.bass_pct)}`],
+  Snap: [(f) => `its attack takes ${msWord(f.attack_ms)}`, (m, t) => `its attack goes from ${msWord(m.attack_ms)} to ${msWord(t.attack_ms)}`],
+  Motion: [(f) => `a held note’s brightness wanders ${twoPlaces(f.held_move_oct)} octave`, (m, t) => `a held note’s brightness wanders ${twoPlaces(m.held_move_oct)} octave, then ${twoPlaces(t.held_move_oct)}`],
+  Grit: [(f) => `its spectrum’s flatness is ${flatDb(f.flatness)}, where noise is 0 dB`, (m, t) => `its spectrum’s flatness goes from ${flatDb(m.flatness)} to ${flatDb(t.flatness)}, where noise is 0 dB`],
+  Space: [(f) => `its last 300 ms sits ${against(f.tail_db)} the phrase`, (m, t) => `its last 300 ms sits ${against(m.tail_db)} the phrase, then ${against(t.tail_db)}`],
+  Punch: [(f) => `its peaks stand ${dbWord(f.crest_db)} over its average`, (m, t) => `its peaks stand ${dbWord(m.crest_db)} over its average, then ${dbWord(t.crest_db)}`],
+  Heft: [(f) => `its level averages ${dbWord(f.level_db)}`, (m, t) => `its level averages ${dbWord(m.level_db)}, then ${dbWord(t.level_db)}`],
+  Throb: [(f) => `a held note moves ${twoPlaces(f.motion_oct[1])} octave between 2 and 8 Hz`, (m, t) => `a held note moves ${twoPlaces(m.motion_oct[1])} octave between 2 and 8 Hz, then ${twoPlaces(t.motion_oct[1])}`],
+  Sway: [(f) => `a held note moves ${twoPlaces(f.motion_oct[0])} octave between 0.5 and 2 Hz`, (m, t) => `a held note moves ${twoPlaces(m.motion_oct[0])} octave between 0.5 and 2 Hz, then ${twoPlaces(t.motion_oct[0])}`],
+  Bite: [(f) => `its spectrum changes ${pctWord(f.flux * 100)} from frame to frame`, (m, t) => `its spectrum changes ${pctWord(m.flux * 100)} from frame to frame, then ${pctWord(t.flux * 100)}`],
+};
+SAY_FACT.Warmth = SAY_FACT.Body;
+SAY_FACT.Thump = SAY_FACT.Body;
+SAY_FACT.Round = SAY_FACT.Snap;
+SAY_FACT.Distance = SAY_FACT.Space;
+SAY_FACT.Haze = SAY_FACT.Space;
+SAY_FACT["Lo-fi"] = SAY_FACT.Grit;
+
+/** The figures' and the lesson's own words: names, keys and states. */
+export const EXPLAIN_UI = {
+  ask: "Ask about this (?)",
+  askTitle: "Ask · ?",
+  close: "Close (esc)",
+  others: "Explain another control",
+  again: "Play it again",
+  failed: "That didn’t render, so there is nothing to draw.",
+  hear: "hear it",
+  hearTitle: "Its sweep, by ear",
+  listening: "listening…",
+  back: "Back",
+  next: "Next",
+  done: "Done",
+  cutoff: "Filter cutoff",
+  shape: (name) => `${name}: its spectrum, low at the base`,
+};
+
+/** A figure's title: "Bright · what it does" (set in capitals by CSS). */
+export function explainTitle(name) {
+  return `${name} · what it does`;
+}
+
+/** How far the figure turned the control: "turned to bright" at a full
+ *  turn, "turned 40% toward dark" where the player has it. */
+export function turnedWord(c, at) {
+  const word = at > 0 ? c.high : c.low;
+  return Math.abs(at) >= 0.995 ? `turned to ${word}` : `turned ${Math.round(Math.abs(at) * 100)}% toward ${word}`;
+}
+
+/** What a control's figure says, from its wiring and what the engine
+ *  measured: two sentences at most. `st` is `{at, search, pending, knobs,
+ *  only}` (perform.js `explainOf`: the turn the figure shows, the knobs'
+ *  names in words, the one end it turns to if only one); `made` and `turned`
+ *  are `Facts` (null while listening; `turned` null when nothing turns it). */
+export function explainSays(c, st, made, turned) {
+  const NAME = c.name.toUpperCase();
+  const fact = SAY_FACT[c.name];
+  if (st.pending) return `${NAME} hasn’t been measured on this sound yet. It turns once it has.`;
+  if (st.search) {
+    const now = made && fact ? ` Here ${fact[0](made)}.` : "";
+    return `Nothing here turns ${NAME}: turn it past the notch, and it asks for an offer instead.${now}`;
+  }
+  if (!made) return "listening…";
+  if (!turned) return capital(`${fact[0](made)}.`);
+  const only = st.only ? `, toward ${st.only} only` : "";
+  const knobs = st.knobs && st.knobs.length ? ` Here it turns ${series(st.knobs)}${only}.` : "";
+  return `${capital(turnedWord(c, st.at))}, ${fact[1](made, turned)}.${knobs}`;
+}
+
+/** The figure's text for a screen reader: what is drawn, then what it says. */
+export function explainAlt(c, sound, kind, say) {
+  const what = {
+    bands: "its spectrum, low at the base",
+    onset: "the first note’s first 400 ms",
+    level: "its level over the phrase",
+    motion: "a held note over time",
+    harmonics: "a held note’s harmonics",
+  }[kind];
+  return `${c.name.toUpperCase()} on ${sound}: ${what}, as made dashed and turned lit. ${say}`;
+}
+
+/** The lesson on filters: its title, its button, and its three steps.
+ *  `name` is the sound in hand; `bright` is what BRIGHT does on it
+ *  (perform.js `explainOf` for BRIGHT: `pending`, `search`, `knobs` in words,
+ *  and `cut`, whether one of them is a filter's cutoff). */
+export const LESSON_TITLE = "Learn · what a filter does";
+export const LESSON_BUTTON = "Learn: what a filter does";
+export const LESSON_LENGTH = "1 min";
+export function lessonSteps(name, bright) {
+  let third;
+  if (!bright) third = "BRIGHT listens for where the energy sits, whatever moves it.";
+  else if (bright.pending) third = `BRIGHT listens for where the energy sits; on ${name} it is still listening.`;
+  else if (bright.search) third = `On ${name}, no knob moves BRIGHT: turned, it asks for an offer instead.`;
+  else if (bright.cut) third = bright.knobs.length > 1 ? `On ${name}, BRIGHT turns ${series(bright.knobs)}: a filter’s cutoff is one of them.` : `On ${name}, BRIGHT turns ${bright.knobs[0]}: the same kind of knob as this lesson’s cutoff.`;
+  else third = `On ${name}, BRIGHT turns ${series(bright.knobs)}, not a filter: it listens for where the energy sits, whatever moves it.`;
+  return [
+    {
+      h: "A sound has a shape",
+      p: [`This is ${name}, its spectrum stood up: low frequencies at the base, high ones at the top.`, "Where the shape is wide, more of the sound is in that band; where it is narrow, less."],
+      try: "Play it, and watch the bright line: that is what you hear, now.",
+    },
+    {
+      h: "A filter lets some through",
+      p: [`This lowpass filter, on ${name}, keeps what is below its cutoff and cuts what is above.`],
+      try: "Drag the cutoff down while it plays: the top of the shape narrows, and the sound darkens.",
+    },
+    {
+      h: "What to remember",
+      list: [
+        "A lowpass filter keeps the lows and cuts the highs.",
+        "Its cutoff is where the cutting starts.",
+        third,
+        "The shape shows it: its top is the sound’s highs.",
+      ],
+      try: `Done leaves ${name} as it was: the filter was only for the lesson.`,
+    },
+  ];
+}
+
+/** The lesson's cutoff, in the knob's own unit, on the held note. */
+export function cutoffWord(hz) {
+  return `cutoff ${hzWord(hz)}`;
+}
+
+/** The lesson's ▶, by what it plays. */
+export function lessonPlay(name, filtered, playing) {
+  if (playing) return "Stop";
+  return filtered ? `Play ${name} through it` : `Play ${name}`;
+}
+
+/** Where the lesson is: "2 of 3". */
+export function stepOf(i, n) {
+  return `${i + 1} of ${n}`;
+}

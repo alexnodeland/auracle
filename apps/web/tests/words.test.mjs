@@ -52,6 +52,19 @@ import {
   bredRatings,
   changeParts,
   markWord,
+  hzWord,
+  dbWord,
+  msWord,
+  FIGURE_OF,
+  EXPLAIN_UI,
+  explainTitle,
+  explainSays,
+  explainAlt,
+  turnedWord,
+  lessonSteps,
+  cutoffWord,
+  lessonPlay,
+  stepOf,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -423,4 +436,92 @@ test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
   assert.equal(markWord("will"), "will be replaced");
   assert.equal(markWord("other"), "");
   for (const k of ["seed", "may", "will"]) voiced(markWord(k));
+});
+
+// ---------- Explain anything (explain.js) ----------
+
+// The facts a render measures (`auracle_features::explain::Facts`), as made
+// and turned toward the high end, for every control's sentence.
+const FACTS_MADE = {
+  centroid_hz: 359, rolloff_hz: 1210, zcr_hz: 640, flatness: 0.0001, flux: 0.09, attack_ms: 5.7,
+  crest_db: 16.3, level_db: -19.4, swing: 0.76, tail_db: -60, bass_pct: 76.2, high_db: -1.1,
+  held_move_oct: 0.044, motion_oct: [0.28, 0.4, 0.04],
+};
+const FACTS_TURNED = {
+  centroid_hz: 2480, rolloff_hz: 6200, zcr_hz: 2100, flatness: 0.004, flux: 0.12, attack_ms: 447,
+  crest_db: 9.2, level_db: -17, swing: 0.93, tail_db: -14.4, bass_pct: 31, high_db: 0.7,
+  held_move_oct: 0.31, motion_oct: [0.34, 0.36, 0.05],
+};
+
+test("a measurement is said in its own unit", () => {
+  assert.equal(hzWord(359.4), "359 Hz");
+  assert.equal(hzWord(999.7), "1.0 kHz");
+  assert.equal(hzWord(2480), "2.5 kHz");
+  assert.equal(hzWord(12400), "12 kHz");
+  assert.equal(dbWord(-18.4), "−18 dB", "a true minus");
+  assert.equal(dbWord(3, true), "+3 dB");
+  assert.equal(msWord(5.73), "5.7 ms");
+  assert.equal(msWord(447.4), "447 ms");
+  assert.equal(msWord(1240), "1.2 s");
+  assert.equal(cutoffWord(3700), "cutoff 3.7 kHz");
+});
+
+test("every palette control has a figure, and each figure says what was measured, made then turned", () => {
+  assert.deepEqual(Object.keys(FIGURE_OF).sort(), PALETTE.map((c) => c.name).sort());
+  for (const c of PALETTE) {
+    const st = { at: 1, knobs: ["filter cutoff", "env / out decay"], only: "" };
+    const s = explainSays(c, st, FACTS_MADE, FACTS_TURNED);
+    voiced(s);
+    assert.ok(s.startsWith(`Turned to ${c.high}, `), s);
+    assert.ok(s.endsWith(" Here it turns filter cutoff and env / out decay."), s);
+    assert.ok(s.split(/(?<=\.)\s/).length <= 2, `at most two sentences: ${s}`);
+    assert.ok(!/NaN|undefined/.test(s), s);
+    assert.ok(s.split(/\s+/).length <= 40, s);
+    voiced(explainAlt(c, "Reese", FIGURE_OF[c.name], s));
+    assert.equal(explainTitle(c.name), `${c.name} · what it does`);
+  }
+  const bright = PALETTE[0];
+  assert.equal(
+    explainSays(bright, { at: 1, knobs: ["filter cutoff"] }, FACTS_MADE, FACTS_TURNED),
+    "Turned to bright, its center moves from 359 Hz to 2.5 kHz. Here it turns filter cutoff.",
+  );
+  const snap = PALETTE[1];
+  assert.equal(
+    explainSays(snap, { at: -0.4, knobs: ["env / out attack"], only: "bloom" }, FACTS_MADE, FACTS_TURNED),
+    "Turned 40% toward bloom, its attack goes from 5.7 ms to 447 ms. Here it turns env / out attack, toward bloom only.",
+  );
+  const space = PALETTE.find((c) => c.name === "Space");
+  assert.equal(
+    explainSays(space, { search: true }, FACTS_MADE, null),
+    "Nothing here turns SPACE: turn it past the notch, and it asks for an offer instead. Here its last 300 ms sits 60 dB under the phrase.",
+  );
+  const grit = PALETTE.find((c) => c.name === "Grit");
+  assert.ok(explainSays(grit, { at: 1, knobs: [] }, FACTS_MADE, FACTS_TURNED).includes("goes from −40 dB to −24 dB, where noise is 0 dB"));
+  assert.equal(explainSays(bright, { pending: true }, null, null), "BRIGHT hasn’t been measured on this sound yet. It turns once it has.");
+  assert.equal(explainSays(bright, { at: 1 }, null, null), EXPLAIN_UI.listening);
+  assert.equal(turnedWord(bright, 0.995), "turned to bright");
+  assert.equal(turnedWord(bright, -0.25), "turned 25% toward dark");
+});
+
+test("the lesson on filters is about the sound in hand, and says what BRIGHT does on it", () => {
+  const steps = lessonSteps("Reese", { knobs: ["filter cutoff"], cut: true });
+  assert.equal(steps.length, 3);
+  assert.ok(steps[0].p[0].startsWith("This is Reese,"));
+  assert.ok(steps[1].p[0].includes("on Reese"));
+  assert.ok(steps[2].try.startsWith("Done leaves Reese as it was"));
+  assert.equal(steps[2].list[2], "On Reese, BRIGHT turns filter cutoff: the same kind of knob as this lesson’s cutoff.");
+  assert.equal(
+    lessonSteps("Glass Pad", { knobs: ["vco detune", "lfo rate"], cut: false })[2].list[2],
+    "On Glass Pad, BRIGHT turns vco detune and lfo rate, not a filter: it listens for where the energy sits, whatever moves it.",
+  );
+  assert.ok(lessonSteps("Hornet", { search: true })[2].list[2].includes("no knob moves BRIGHT"));
+  assert.ok(lessonSteps("Hornet", { pending: true })[2].list[2].includes("still listening"));
+  assert.equal(lessonSteps("Hornet", null)[2].list[2], "BRIGHT listens for where the energy sits, whatever moves it.");
+  for (const s of lessonSteps("Reese", { knobs: ["filter cutoff", "env / out decay"], cut: true })) {
+    for (const t of [s.h, ...(s.p || []), ...(s.list || []), s.try]) voiced(t);
+  }
+  assert.equal(lessonPlay("Reese", false, false), "Play Reese");
+  assert.equal(lessonPlay("Reese", true, false), "Play Reese through it");
+  assert.equal(lessonPlay("Reese", true, true), "Stop");
+  assert.equal(stepOf(1, 3), "2 of 3");
 });

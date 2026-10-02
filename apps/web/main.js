@@ -263,6 +263,7 @@ const playCounts = new Map();
 let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let perform = null;          // from perform.js, once the voices exist
+let explain = null;          // from explain.js, once PERFORM exists (Plan-005 task 10)
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
 // a preset already in the bank opens directly, and its reply can come after
@@ -1192,6 +1193,11 @@ worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
     if (perform) perform.onWorker(m);
+    return;
+  }
+  // A control's figure and the lesson on filters (explain.js).
+  if (m.type === "explain" || m.type === "explain_lesson") {
+    if (explain) explain.onWorker(m);
     return;
   }
   switch (m.type) {
@@ -3723,6 +3729,7 @@ function showView(name) {
   if (name !== "play") { disarm(); cancelPending(); }
   if (name !== currentView) playWaitCancel();
   if (name !== currentView) closeCompare(); // it belongs to where it was asked
+  if (name !== currentView && explain) explain.close(); // so does a figure
   currentView = name;
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
@@ -4067,6 +4074,18 @@ const PERFORM_CONTROLS = [
 ];
 
 let outTap = null; // stage mode's analyser on the master (see `outAnalyser`)
+// What comes out of the speakers, for stage mode and the lesson on filters
+// to draw: the live voices and every phrase played (auditions skip the
+// voices' own analysers), after the master gain. Made on first use.
+function outAnalyser() {
+  if (!outTap) {
+    outTap = audioCtx.createAnalyser();
+    outTap.fftSize = 2048;
+    outTap.smoothingTimeConstant = 0.6;
+    master.connect(outTap);
+  }
+  return outTap;
+}
 async function bootPerform() {
   const { createPerform } = await import(`./perform.js?v=${BUILD}`);
   perform = createPerform({
@@ -4081,18 +4100,8 @@ async function bootPerform() {
     },
     // Stage mode's tap: Space's ▶, for a screen with no Space.
     play: () => toggleAudition(),
-    // What comes out of the speakers, for stage mode to draw: the live
-    // voices and every phrase played (auditions skip the voices' own
-    // analysers), after the master gain. Made on first use.
-    outAnalyser: () => {
-      if (!outTap) {
-        outTap = audioCtx.createAnalyser();
-        outTap.fftSize = 2048;
-        outTap.smoothingTimeConstant = 0.6;
-        master.connect(outTap);
-      }
-      return outTap;
-    },
+    // What comes out of the speakers, for stage mode to draw.
+    outAnalyser,
     send,
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
@@ -4133,6 +4142,10 @@ async function bootPerform() {
     // A control moved without its pot: set by the mouse, the keys or the XY
     // pad (the pot lets go), or re-centred (the pot keeps working, anchored).
     controlMoved: (i, how) => midi && midi.controlMovedElsewhere(i, how),
+    // A control turned: its open figure follows it (explain.js).
+    controlTurned: (i) => explain && explain.controlTurned(i),
+    // A long press on a touch screen asks what the control does.
+    askHold: (el) => !!explain && explain.askHold(el),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
     knobInfo: (addr, v) => {
@@ -4192,6 +4205,27 @@ async function bootPerform() {
       // grew), is what the voices take the tree at before its render.
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}), ...(makeup > 0 ? { makeup } : {}) }, null, { op: "perform" });
     },
+  });
+  // Explain anything (Plan-005 task 10): each control's figure, measured on
+  // the sound in hand, and the lesson on filters. It draws and asks; the
+  // worker renders, and PERFORM says what to render (`explainOf`).
+  const { createExplain } = await import(`./explain.js?v=${BUILD}`);
+  explain = createExplain({
+    words,
+    tok,
+    canvasFont,
+    motionMs,
+    INK,
+    inkAlpha,
+    send,
+    perform: () => perform,
+    label: () => liveLabelText,
+    tasteRev: () => status.observations,
+    audio: { ctx: audioCtx, out: master },
+    analyser: outAnalyser,
+    stopAudition: () => stopAudition(),
+    // The ? chip is chrome: not on film, not at a kiosk.
+    chrome: () => !new URLSearchParams(location.search).has("film") && !booth?.on,
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
   if (perform.marquee) perform.marquee.append($("booth-attract"));
