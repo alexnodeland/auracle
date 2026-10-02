@@ -3,7 +3,7 @@
 A walkthrough over the real instrument, one recorded shot per beat
 (`shots.json` → `tools/footage.mjs`, framed by `stage/walk.js`), eleven beats,
 358 words at speed 0.9. One patch is taken apart and rebuilt on camera:
-**Slow Weather** (a reverb at `node`, an SVF low pass at `node/0` with an LFO on
+**Slow Weather** (a reverb at `node`, an SVF band pass at `node/0` with a triangle LFO on
 its cutoff at `node/0/m`, and a supersaw at `node/0/0`), plus **Ask The Dice**
 for the modulation chain.
 
@@ -16,7 +16,7 @@ and *⚡ evolve from this* all need a fitted model. `own_setup: true`:
 **Selectors.** Knobs by trace address: `#rack-svg [data-addr='node/0#cut']`
 (cutoff, Hz), `[data-addr='node/0#res']` (resonance), `[data-addr='amp#release']`
 (ms), `[data-addr='amp#sustain']` (dB); a knob's lock `… .lock-dot`; a module
-`#rack-svg g.mod-group[data-key='node']` (the chorus) with its `.mod-lock` (▢)
+`#rack-svg g.mod-group[data-key='node']` (the reverb) with its `.mod-lock` (▢)
 and `.mod-menu-btn` (⋯); the menu `#ctx-menu .cm-item:has-text('bypass')`;
 jacks `#rack-svg .jack[data-childkey='…']` (audio) and `.jack[data-modkey='…']`
 (modulation), lit ones `.jack.legal`, amber ones `.jack.legal.replaces`; the
@@ -62,7 +62,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
   `wiring: #lock-structure`.
 - **Actions:** `at 0.2` hold Am (`h k ;`) `ms: "end"`. `lock1:dot-0.6` →
   `move` onto the cutoff; `lock1:dot` → `click` its `.lock-dot` (a halo);
-  `lock1:square` → `click` the chorus's `.mod-lock` (▢ → ▣: every address in
+  `lock1:square` → `click` the reverb's `.mod-lock` (▢ → ▣: every address in
   the module). `lock2:knob` → `move #lock-knobs`; `lock2:wiring` →
   `move #lock-structure` (hover only; pressing them would lock everything).
 - **Callouts:** `lock1:dot` on `dot` "one knob"; `lock1:square` on `square`
@@ -82,7 +82,7 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 - **Camera:** 1.4 on the ⚡ button for `evolve1`; 1.2 on the subject block and
   the rack for `evolve2`.
 - **Callouts:** `evolve1:Evolve` on `evolve` "⚡ evolve from this";
-  `evolve2:unlocked` on the chorus plate "locked: unchanged";
+  `evolve2:unlocked` on the reverb plate "locked: unchanged";
   `evolve2:bench` on `subject` (amber) "one child, on the bench".
 - **⚑1:** the press itself is not on camera. A jump cut inside a beat
   (`walk.js` places one continuous clip per beat) would let the press and the
@@ -175,8 +175,8 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
   `menu: g.mod-group[data-key='node'] .mod-menu-btn`, `tray: #tray`.
 - **Actions:** `at 0.2` hold C `ms: "end"`. `undo1:change` → drag the
   resonance `dy −60` (600 ms); `undo1:undo` → `hold ["Control", "z"]` 150 ms
-  (it springs back). `undo2:bypass` → `click` the chorus's ⋯, then
-  `click #ctx-menu .cm-item:has-text('bypass')` (the chorus leaves the chain
+  (it springs back). `undo2:bypass` → `click` the reverb's ⋯, then
+  `click #ctx-menu .cm-item:has-text('bypass')` (the reverb leaves the chain
   and appears in HELD with its settings; the toast offers *switch it back
   in*).
 - **Camera:** 1.4 on the filter plate for `undo1`; the tray under the rack for
@@ -184,13 +184,13 @@ The hover-revealed controls (lock dots) are reached the way `c-edit` does it:
 - **Callouts:** `undo2:held` on `tray` "held, with its settings";
   `undo2:reload` on `tray` "kept across a reload" (not demonstrated: a reload
   would end the shot's recording).
-- **⚑2:** dragging the held chorus back onto a lit ○ needs a drag to a target
+- **⚑2:** dragging the held reverb back onto a lit ○ needs a drag to a target
   element; `footage.mjs`'s `drag` only moves by `dx`/`dy` from the source.
 
 ## 10. `lineage` — shot `sd-lineage` (lineage1–2)
 
 - **Set-up:** taught · Slow Weather · view play · edit + commit through the heard
-  duel (as in beat 8) · lock the chorus · `click #rack-evolve` ·
+  duel (as in beat 8) · lock the reverb · `click #rack-evolve` ·
   `until #rack-evolve:not([disabled])` (300 s) · `view evolve`.
 - **Marks:** `lineage: #lineage-log`.
 - **Actions:** hold a chord `ms: "end"`.

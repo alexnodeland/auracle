@@ -95,19 +95,32 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
 7. **Casting.** *Done.* The shot generators cast from the shortlist in
    `sound.json` (`cast.shortlist`), including offers a shot grows.
    - `shotgen.CAST` names the preset each role plays, checked against the
-     wiring it ships with: Slow Weather for chords and swells (Glass Pad's
-     circuit under a reverb), Morph Pad for the honest controls (Space
-     toward far only, Grit a search control), Wobble Board for runs and
-     touch, Ceiling for the acid line (Acid Line's circuit), Held Under for
-     the bass and Rotor for a moving texture. `pick("cast")` is the warm
-     start's card on the list (Ceiling, in the seeded deal), played and
-     picked first, so it is what PERFORM opens and what My patches plays.
+     wiring it ships with:
+     - Slow Weather for chords and swells: Glass Pad's layout (a supersaw
+       into a filter an LFO sweeps, the same knob addresses), with a band
+       pass where Glass Pad has a low pass and a reverb where it has a
+       chorus;
+     - Morph Pad for the honest controls: it ships with Space toward far
+       only and Grit a search control, and was measured so in session
+       (vp-honest: *turns toward far only*, and Grit grew an offer);
+     - Wobble Board for runs and touch; Ceiling for the acid line (Acid
+       Line's circuit); Held Under for the bass; Rotor for a moving
+       texture.
+
+     `pick("cast")` is the warm start's card on the list (Ceiling, in the
+     seeded deal), played and picked first, so it is what PERFORM opens and
+     what My patches plays. `CAST_DEALT` logs the deal and stops with a
+     clear message when it holds no card on the list, and a pick never
+     clicks a card already picked.
    - An offer is grown from a cast preset and logged. The tour's cold open
      grows its offer from Slow Weather (rehearsed: *reverb → eq, resonance
      Q 0.8 → Q 0.9, detune 60% → 84%, +3 more*, then taken).
-   - `shotgen.dump` refuses an off-list preset unless the shot's `uncast`
-     gives the reason, and `tools/test_shotgen.py` holds every generated
-     walkthrough to it in `make dev-check`. The exceptions, each because a
+   - `shotgen.dump` refuses an off-list preset (loaded, opened, played on
+     the warm start or dropped as a fixture) unless the shot's `uncast`
+     gives the reason, and `tools/test_shotgen.py` holds every walkthrough
+     to it in `make dev-check`; the four written by hand (launch's footage,
+     seen and not heard; `circuit` and `perform`, replaced; `zzprobe`, a
+     probe) are listed there with why. The exceptions, each because a
      line names the preset or describes its circuit: view-patch's one patch
      (Glass Pad, seven shots: read3 to read5 and hear5), its chains (Ask The
      Dice) and Steps (Loom); view-perform's Bell Jar (named9) and Loom
@@ -116,11 +129,16 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
      re-scripts: view-patch onto Slow Weather.
    - Not cast, and logged instead: what the session deals (the pool,
      duels, the warm start's other two picks). Casting those waits for the
-     sonic floor (RFC-005). Composing's dropped picture stays a fixture of
-     First Bass, seen and not heard.
+     sonic floor (RFC-005).
+   - A picture dropped back onto the app is the one the shot just exported
+     (footage.mjs `drop {download}`), so view-patch's take2 and composing's
+     share3 ("it opens as the same patch") are literally true; the First
+     Bass fixtures are gone.
    - Rehearsed (shared lane, 1 October): the tour's `to-open`, `to-first`
-     and `to-bank` and view-patch's `vp-cold` pass. Every other recast shot
-     is generated and validated; its full rehearsal is task 8's.
+     and `to-bank`, view-patch's `vp-cold` and `vp-take`, view-perform's
+     `vp-honest`, and composing's `co-direction` and `co-share` pass. Every
+     other recast shot is generated and validated; its full rehearsal is
+     task 8's.
 8. **The words:** every script follows `www/brand/voice.md`'s spoken voice, and
    is re-voiced and re-timed.
    - **Known stale in the published films, fixed by re-voicing** (each line
@@ -145,7 +163,8 @@ the films whose footage must be re-recorded wait for one (Plan-004 task 8).
      Each needs its line rewritten around a preset on the shortlist (or a
      Steps module added on camera), then the shot recast. view-patch's
      `KNOB_H` for Slow Weather is measured in its first rehearsal, as
-     Ceiling's was.
+     Ceiling's was, and read3 needs checking on the move: Slow Weather's
+     filter is a band pass, so "a filter softens it" may not hold.
 9. **The re-mix:**
    - films that need no new footage are re-mixed and published after review;
    - the walkthroughs are re-recorded on a quiet machine (Plan-004 task 8).

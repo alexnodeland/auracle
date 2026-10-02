@@ -32,8 +32,8 @@
 // - The PERFORM wiring is measured per session, and the seeded session
 //   decides it. Each chapter is cast for what it shows (gen_shots.py): the
 //   honest controls on Morph Pad, which ships with Space toward far only and
-//   Grit a search control; the rest on Slow Weather, whose controls turn
-//   both ways. Bell Jar's Bright turns its wavefolder's threshold. Each shot
+//   Grit a search control; the rest on Slow Weather, whose Bright, Snap,
+//   Motion and Body turn both ways (Grit is a search control there too). Bell Jar's Bright turns its wavefolder's threshold. Each shot
 //   logs its wiring.
 // - Presets ship wired, so Bell Jar plays the moment it is opened and the
 //   status line reads "re-checking" while PERFORM measures it again; the

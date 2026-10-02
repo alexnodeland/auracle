@@ -25,9 +25,9 @@ from shotgen import INIT as SEED_INIT, FILLED, QUIET, CAST, taught, dump  # noqa
 
 # Cast from the films' shortlist (shotgen.CAST), each for what its chapter
 # shows, by the wiring it ships with:
-# - CHORDS, Slow Weather, where Glass Pad played: every named control but
-#   Space turns both ways (so the XY pad's Bright and Motion both move it),
-#   and Wander and Offer grow from it;
+# - CHORDS, Slow Weather, where Glass Pad played: Bright, Snap, Motion and
+#   Body ship turning both ways (so the XY pad's Bright and Motion both move
+#   it; Grit is a search control), and Wander and Offer grow from it;
 # - FAR, Morph Pad, for the honest controls: Space turns toward far only and
 #   Grit cannot reach this patch, as honest2 to honest5 say;
 # - LEAD, Wobble Board, where Tine played the keys: a quick attack for runs

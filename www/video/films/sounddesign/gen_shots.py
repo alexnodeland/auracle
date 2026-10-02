@@ -9,9 +9,10 @@ from shotgen import *  # noqa: E402,F403
 CUT = "#rack-svg [data-addr='node/0#cut']"
 RES = "#rack-svg [data-addr='node/0#res']"
 # Cast from the films' shortlist (shotgen.CAST): Slow Weather where Glass Pad
-# played. Its circuit is Glass Pad's (a supersaw at node/0/0 through a filter
-# at node/0 that an LFO sweeps), under a reverb at `node` where Glass Pad had
-# a chorus: the plate locked, bypassed and kept here. Ask The Dice stays for
+# played. It has Glass Pad's layout (a supersaw at node/0/0 into a filter at
+# node/0 that an LFO sweeps; a band pass where Glass Pad's is a low pass),
+# under a reverb at `node` where Glass Pad has a chorus: the plate locked,
+# bypassed and kept here. Ask The Dice stays for
 # the chains, whose line names it and describes its circuit (until the
 # script changes, Plan-006 task 8).
 PAD = CAST["pad"]
