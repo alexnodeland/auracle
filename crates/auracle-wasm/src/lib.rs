@@ -312,6 +312,37 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
+/// Every audio cable of `tree_json`, measured on one render of
+/// `phrase_json` ([`auracle_features::probe_cables`]): `{"cables":[{"from":
+/// "node/0","to":"node","from_uid":7,"to_uid":3,"rms_db":-4.1,"peak_db":
+/// 2.0}],"samples":n}`, in the rack's cable order, levels in dB re 1 V (the
+/// live meter's scale), a cable that carries nothing at
+/// [`auracle_features::PROBE_FLOOR_DB`]. `null` when either argument does not
+/// parse or the tree does not compile.
+///
+/// Stateless, like [`farm_render`], so a farm worker can run it; the engine
+/// worker asks [`WasmEngine::edit_cable_levels`] for the patch in hand. It
+/// costs one render of the phrase (`examples/cable_cost.mjs`), so it is asked
+/// once a structural edit has settled, not per knob step and never per
+/// quantum: while notes sound, `LivePoly`'s meter reads the cables live.
+#[wasm_bindgen]
+pub fn cable_levels(tree_json: &str, phrase_json: &str) -> String {
+    let (Ok(tree), Ok(spec)) = (
+        serde_json::from_str::<PatchTree>(tree_json),
+        serde_json::from_str::<PhraseSpec>(phrase_json),
+    ) else {
+        return "null".into();
+    };
+    cable_levels_json(&tree, &spec)
+}
+
+fn cable_levels_json(tree: &PatchTree, spec: &PhraseSpec) -> String {
+    auracle_features::cable_levels(tree, spec)
+        .ok()
+        .and_then(|p| serde_json::to_string(&p).ok())
+        .unwrap_or_else(|| "null".into())
+}
+
 // ----------------------------------------------------------------------
 // Walks on the farm (RFC-001, ADR-007)
 // ----------------------------------------------------------------------
@@ -2269,6 +2300,17 @@ impl WasmEngine {
         out
     }
 
+    /// The cables of the patch in hand, measured: [`cable_levels`] for the
+    /// bench's tree under this engine's phrase, `null` with nothing open.
+    /// The cables are those [`Self::edit_describe`] draws, keyed the same way.
+    /// One render; it changes nothing on the bench.
+    pub fn edit_cable_levels(&self) -> String {
+        match &self.bench_tree {
+            Some(t) => cable_levels_json(t, &self.engine.cfg.phrase),
+            None => "null".into(),
+        }
+    }
+
     /// Rack description of the workbench tree as JSON (`null` if empty).
     pub fn edit_describe(&self) -> String {
         match &self.bench_tree {
@@ -2616,6 +2658,79 @@ mod tests {
             "a stored row's key must begin with the namespace it was measured in"
         );
         assert_eq!(farm_key("{", &phrase), "", "an unparsable tree is a miss");
+    }
+
+    /// The bench's cable probe names the cables PATCH draws, keyed as the rack
+    /// keys them (`data-from`/`data-to`, and the uids of `midOf`), measures
+    /// each, and leaves the bench as it found it: the same buffer, bit for
+    /// bit, and the same tree. The stateless export says the same.
+    #[test]
+    fn the_bench_probe_names_the_cables_patch_draws() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert_eq!(engine.edit_cable_levels(), "null", "nothing open");
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let (before, tree) = (engine.edit_render(), engine.edit_tree_json());
+        let probe: serde_json::Value = serde_json::from_str(&engine.edit_cable_levels()).unwrap();
+        assert_eq!(
+            engine.edit_render(),
+            before,
+            "the probe moved the bench's buffer"
+        );
+        assert_eq!(
+            engine.edit_tree_json(),
+            tree,
+            "the probe moved the bench's tree"
+        );
+        let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
+        let uid = |key: &serde_json::Value| {
+            rack["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| &m["key"] == key)
+                .map(|m| m["uid"].clone())
+                .unwrap()
+        };
+        let drawn: Vec<_> = rack["wires"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|w| w["kind"] == "audio")
+            .map(|w| {
+                (
+                    w["from"].clone(),
+                    w["to"].clone(),
+                    uid(&w["from"]),
+                    uid(&w["to"]),
+                )
+            })
+            .collect();
+        let probed: Vec<_> = probe["cables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                assert!(c["rms_db"].as_f64().unwrap().is_finite());
+                (
+                    c["from"].clone(),
+                    c["to"].clone(),
+                    c["from_uid"].clone(),
+                    c["to_uid"].clone(),
+                )
+            })
+            .collect();
+        assert!(!drawn.is_empty());
+        assert_eq!(probed, drawn, "the probe's cables are not the rack's");
+        assert_eq!(
+            cable_levels(&tree, &engine.phrase_json()),
+            engine.edit_cable_levels(),
+            "the export and the bench disagree"
+        );
+        assert_eq!(cable_levels("{", &engine.phrase_json()), "null");
     }
 
     /// The menu bar's TAUGHT tooltip splits the count by kind from

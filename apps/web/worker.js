@@ -1652,6 +1652,7 @@ function laneOf(m) {
       return m.bg ? LATER : SOON;
     case "perform_drift":
     case "fit":
+    case "cable_levels":
       return LATER;
     case "load_preset":
       return m.prewarm ? LATER : NOW;
@@ -2562,6 +2563,17 @@ async function dispatch(m) {
     }
     case "describe": {
       post({ type: "described", id: m.id, rack: JSON.parse(engine.describe_of(m.id)) });
+      break;
+    }
+    // The cables of the patch in hand, measured (Plan-005 task 9e): one
+    // render of the phrase with every audio cable read after every tick
+    // (`edit_cable_levels`), each keyed as the rack draws it. `later`: it is
+    // asked once an edit has settled, and nobody is waiting on it. The reply
+    // carries the tree it measured, so a page that has moved on drops it;
+    // `levels` is null with nothing open.
+    case "cable_levels": {
+      const levels = JSON.parse(engine.edit_cable_levels());
+      post({ type: "cable_levels", token: m.token ?? null, tree: engine.edit_tree_json(), levels });
       break;
     }
     case "set_style_name": {
