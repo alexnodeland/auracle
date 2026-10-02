@@ -134,6 +134,16 @@ export function foldHidden(bases, wire, values, keep) {
   }
   return out;
 }
+// The bases that keep every knob sounding where it does when the wiring
+// under the controls changes (a re-check measured new gains, or new halves):
+// for each knob, what it sounds at under the old wiring and values, less what
+// the new wiring at the new values adds. Unclamped, as `foldHidden`'s are:
+// everything sent to the voices goes through `soundingOf`, which clamps once.
+export function rebase(bases, oldWire, oldValues, newWire, newValues) {
+  const out = new Map();
+  for (const [a, b] of bases) out.set(a, soundingOf(b, a, oldWire, oldValues) - keptSum(a, newWire, newValues));
+  return out;
+}
 // What the controls with non-zero `values` add to knob `addr`, unclamped.
 function keptSum(addr, wire, values) {
   let v = 0;
@@ -2108,26 +2118,23 @@ export function createPerform(host) {
       applyWired(data);
       return;
     }
-    const cl = (w, c) => {
-      const [lo, hi] = rangeOf(w);
-      return clamp(c, lo, hi);
-    };
-    const base = new Map(state.cur.knobs);
+    // What each knob sounds at now, under the old wiring, stays: a control
+    // whose half the re-check closed stops at the centre on that side, as a
+    // drag would, and the bases absorb the difference (`rebase`, unclamped:
+    // a base clamped on its own here undid a hide's fold, `foldHidden`).
+    const oldValues = controlValues();
     old.forEach((w, i) => {
       const nw = fresh[i];
       if (!turns(w) || !state.c[i]) return;
-      const cOld = cl(w, state.c[i]);
-      const cNew = cl(nw, state.c[i]);
-      for (const [a, g] of w.knobs) if (base.has(a)) base.set(a, base.get(a) + cOld * g);
-      for (const [a, g] of nw.knobs) if (base.has(a)) base.set(a, base.get(a) - cNew * g);
+      const [lo, hi] = rangeOf(nw);
+      const cNew = clamp(state.c[i], lo, hi);
       if (cNew !== state.c[i]) {
         state.c[i] = cNew;
         const k = knobs[i];
         if (k) k.value = cNew;
       }
     });
-    for (const [a, v] of base) base.set(a, clamp(v, 0, KNOB_MAX));
-    state.cur.knobs = base;
+    state.cur.knobs = rebase(state.cur.knobs, old, oldValues, fresh, controlValues());
     state.wiredAt = new Map(data.addrs.map((a, i) => [a, data.values[i]]));
     state.wire = fresh;
     state.carried = false;
