@@ -28,12 +28,17 @@ the bank head walks through what a generation is and what evolving costs.
   the fixed A/B stimulus) under a **teaching meter** that counts down to the
   next refit and takes the strip over when the model learns. Candidates carry
   names, not s-expressions. Plus EVOLVE POOL and the generation lineage.
-- **TASTE** — the model's mind, full-screen: map / styles / directions /
-  **trust**, with nameable, colour-coded style chips and exemplar audition.
-  The map encodes posterior *uncertainty* as dot size; TRUST is a reliability
-  diagram plus Brier skill, because a running hit-rate is not a proper scoring
-  rule and is pinned near 50% by an acquisition function that serves near-ties
-  on purpose.
+- **TASTE** — the map of the pool (`taste.js`): each sound where the
+  engine's map puts it, an amber halo for its rating, size for the
+  posterior's *uncertainty*. Each pick draws as an arrow from the sound
+  passed to the sound picked, and every halo moves to the ratings the pick's
+  reply carries (`WasmEngine::belief`); a refit settles them all at once.
+- **LEARNING** — the model room (`taste.js`): the chosen style's weights
+  with their credible intervals (nameable style chips, exemplar audition),
+  the direction liking rises on the map, every forecast scored with Brier
+  skill (a running hit-rate is not a proper scoring rule and is pinned near
+  50% by an acquisition function that serves near-ties on purpose), copy as
+  JSON, and the math, its numbers read from the engine.
 
 ## The node bank
 
@@ -352,10 +357,10 @@ to a pinned `role="alert"` strip that stays until resolved.
   **⚡ evolve from this**: MH refines everything *except* the locked
   addresses. **Commit** saves an edit as a new candidate; the "my edit is
   better" toggle also teaches the model an edited-beats-original duel.
-- **Taste tabs**: MAP is a 2D PCA of every patch heard (glow = posterior
-  utility, size = posterior *uncertainty*, hue = style island, click to open);
-  STYLES shows each learned lens with its pool share; DIRECTIONS shows what
-  each lens listens for; TRUST is the reliability diagram.
+- **TASTE and LEARNING**: TASTE's map is a 2D PCA of the pool (halo =
+  posterior utility, size = posterior *uncertainty*, click to open), drawn
+  per pick from the ratings; LEARNING shows each learned lens's θ with its
+  pool share, the direction utility rises on the map, and the forecasts.
 - **EVOLUTION** strip: per-generation utility trace plus a humanized diff of
   what each step actually did ("cutoff 0.31→0.78, +chorus · Δtaste +0.42").
 - All feedback surfaces emit into one observation stream; the posterior

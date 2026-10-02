@@ -8,6 +8,31 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: TASTE draws each pick, and LEARNING is the model room
+
+- **A pick draws as an arrow on TASTE's map, and every glow moves with
+  it.** The map changed only when the model fitted again, every sixth pick,
+  so a pick left no mark there. Now each pick draws an arrow from the sound
+  you passed to the sound you picked, and every sound's glow moves to the
+  model's new rating at once, because a pick moves its view of every sound.
+  Picks made in EVOLVE are drawn in turn when you open TASTE. A refit
+  settles every glow and every place together.
+- **TASTE is the map, with a card for each sound.** Each sound glows amber
+  by how much the model guesses you’d like it, dashed while it has no
+  guess, and is larger where it is less sure. Point at one for its name,
+  the guess (*would like: 59% · leaning*), **▶ PLAY** and **OPEN**; the
+  arrow keys walk the map. The MAP, STYLES, DIRECTIONS and TRUST tabs are
+  gone: their contents are in LEARNING.
+- **LEARNING, a new view, shows what the model weighs and how it has
+  guessed.** Each style's 44 weights, a guess drawn hollow with a **?** in
+  the margin; which way liking rises across the map; every forecast it made
+  before a pick, scored (*14 / 22*, *expected 64% · was 58%*) with the skill
+  the menu bar shows; **COPY AS JSON**; and **THE MATH**, whose numbers (18
+  audio and 26 structural features, 500 draws, a style for every 20 things
+  it learns from, up to five) come from the model itself. Name a style on
+  its chip here. TRUST's reliability chart is not drawn any more; its
+  numbers are in the copied JSON.
+
 ### Fixed: Space and the settings on the rack
 
 - **Space plays the sound you’re playing as it stands on the rack, in
@@ -49,8 +74,7 @@ changelog that edits its own past is not a record.
   canvas is smaller than 12 px.** Labels, chips, and captions that were
   10 px are 11 px, and values and readouts are 12. The minimap's bookmark
   numbers, which were 7 px, are 11 on a larger pip. The scopes' and TASTE's
-  canvas text, which was 9 to 11 px, is 12, and TRUST's last line no longer
-  sits on the canvas's bottom edge. The rack keeps its own sizes, which grow
+  canvas text, which was 9 to 11 px, is 12. The rack keeps its own sizes, which grow
   and shrink with its zoom, and a glyph on a button is sized to its button.
 - **Some text grew and some shrank.** Prose is 14 px where it was 13, a
   sound's name and a card's title are 21 where they were 17, and the model's

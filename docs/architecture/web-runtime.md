@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-01
+last_updated: 2026-10-02
 related_adrs: [1, 2, 7, 12]
 ---
 
@@ -102,11 +102,27 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
   so the seeds and what may be replaced.
 
-Main keeps the latest as `views.ratings` and draws nothing from it yet
-(Plan-005 draws picks as directions and moves the glows per pick from it).
-`views.ranked` and `views.map` still change only when views are posted. A pick
-in EVOLVE reaches the worker when its undo window closes, so its ratings
-arrive then, not at the click.
+Main keeps the latest as `views.ratings`, and TASTE draws from it
+(`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
+arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
+every halo on the map moves to the ratings it carries, in one tween; a views
+post settles every halo and every place at once. LEARNING's arrow (which way
+liking rises on the map) turns with the same ratings. `views.ranked` and
+`views.map` still change only when views are posted, so the bank's numbers
+follow the last refit. A pick in EVOLVE reaches the worker when its undo
+window closes, so its ratings arrive then, not at the click; picks made while
+TASTE is hidden are drawn in turn when it opens.
+
+## The forecasts and the math's numbers
+
+The `calibration` reply main asks for after every `status` carries, beside the
+summary, every forecast it scores (`forecasts`, `WasmEngine::forecasts`: each
+pair's `p_a`, the answer, whether it was a fair test, and its provenance) and
+the numbers LEARNING's math states (`facts`, `WasmEngine::model_facts`: φ's
+audio and structural halves, the draws the model holds, its styles, their cap
+and the observations per style). Every views post carries `facts` too, since a
+fit changes how many styles it was allowed. The forecasts persist in the
+engine; main keeps the latest of each and draws them only in LEARNING.
 
 **`seeds` and `may_replace` describe a generation opened now.** At rest that
 is the next press of EVOLVE POOL, and they are what to mark. While a

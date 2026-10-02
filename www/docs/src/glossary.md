@@ -15,7 +15,7 @@ library). See [the bank](./bank.md).
 How much better than a coin flip the model’s guesses have been. 0 is a coin
 flip, 1 is perfect, and below 0 is worse than guessing. The menu bar shows it
 (*13% sharper than chance*), and so does
-[TRUST](./views/taste.md#trust-is-its-confidence-honest).
+[its forecasts in LEARNING](./views/learning.md#its-forecasts).
 
 ### Budget
 
@@ -45,9 +45,9 @@ strip](./views/evolve.md#the-evolution-strip).
 ### Fair-test picks
 
 The pairs dealt at random, which is every pair EVOLVE and PATCH deal you; the
-line beside **ANOTHER PAIR** says so (*◇ random pair · a fair test*). TRUST
-grades the model on them apart, as *the number to trust*, because you didn’t
-choose them.
+line beside **ANOTHER PAIR** says so (*◇ random pair · a fair test*).
+LEARNING grades the model on them apart, as *the number to trust*, because
+you didn’t choose them.
 
 ### Generation
 

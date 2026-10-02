@@ -121,7 +121,8 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
 | `evolve_feedback.spec.js` | TAUGHT counts at once, pick toasts replace, the dealing rule, the sixth-pick redraw, every pick's reply carrying ratings that move per pick (ten seeds, ten may-replace), bank ▶ |
 | `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; KEEP AS NEW's blind card (Esc cancels), the one-shot *pick the edit*, a commit retiring the edits' receipts |
-| `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the module rail; the module rail's spec card says a settled lean in sentences; TASTE's early states count what is left |
+| `taste_marks.spec.js` | A guess drawn hollow with a ? in LEARNING's weights and the module rail; the module rail's spec card says a settled lean in sentences; TASTE's and LEARNING's early states count what is left |
+| `taste_learning.spec.js` | A pick draws an arrow from the sound passed to the sound picked, from the engine's reply (and on arrival for a pick made elsewhere), held and then gone under reduced motion; every halo moves to the ratings a pick posts, and a refit settles them all at once; LEARNING's weights, forecasts and math are the worker's numbers (`model_facts`, `forecasts`); copy as JSON gives them back; a mark's slot keeps its label's x |
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `narrow_gate.spec.js` | The narrow-window notice at any pointer under 1000 px, not over the handheld gate or "look around anyway" |
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
@@ -148,7 +149,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
-| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on TASTE's tabs, TRUST graded, and TRUST's last line 16 px clear of its edge; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
+| `type_scale.spec.js` | The type scale in the browser: no text in the page under 11 px on any view or the ? card, pseudo-elements and the minimap's bookmark numbers included (the rack's SVG and a lone glyph aside); no canvas font under 12 px on the scopes and on LEARNING's forecast strip, whose labels keep their descenders inside it; the menu bar as tall as `--menubar-h` at 1440, 1000, 860 and 390 px; and `--d-press`, `--d-state` and `--d-move` all 0 under reduced motion |
 | `text_fits.spec.js` | Text the type scale enlarged still fits: the warm start's cards inside a 390 and a 360 px phone's screen, and their words inside the cards; at 1000 and 1280 px every PERFORM control caption state whole (no ellipsis, no clamp, nothing past its box), with the knob row one height whatever the captions say |
 
 ## Rules

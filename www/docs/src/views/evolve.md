@@ -66,7 +66,7 @@ from one scale: *a hunch*, *leaning*, and *fairly sure*.
 **How the pair was dealt.** Beside **ANOTHER PAIR**, *◇ random pair · a fair
 test* says that every pair is dealt at random from the pool. The model
 doesn’t choose what you hear, so every pick is a fair test of its guess.
-[TRUST](./taste.md#trust-is-its-confidence-honest) grades them all.
+[its forecasts in LEARNING](./learning.md#its-forecasts) are graded on them all.
 
 **EVOLVE POOL**, at the right. It’s the next section.
 

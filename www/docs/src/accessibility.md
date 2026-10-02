@@ -102,9 +102,12 @@ than every frame. The guide and the reference follow the setting too.
   stand-in screen instead of the instrument. That is deliberate for now: a
   phone would pay for about 40 renders at boot and have nowhere to show them.
   It does mean Auracle can’t be played on a phone.
-- **The taste map is visual only.** STYLES and DIRECTIONS carry the same
-  information as named qualities, and are the accessible way to it, but the
-  map’s spatial reading has no other form.
+- **The taste map is mostly visual.** Its sounds can be walked with the arrow
+  keys, each card says the sound’s name and the model’s guess, and a pick is
+  announced (*You picked Glass Pad over Soft Wash. Every rating moved.*).
+  LEARNING’s weights carry the model’s leans as named qualities, each row
+  read with its weight and whether it is still a guess. The map’s spatial
+  reading has no other form.
 - **Screen-reader support is deepest where it was tested.** The bank and the
   wiring path were built and checked with a screen reader. The scope’s
   settings and the picture download were not.

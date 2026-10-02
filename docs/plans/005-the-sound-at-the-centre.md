@@ -4,7 +4,7 @@ number: 5
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-10-01
+updated: 2026-10-02
 originating_proposal: 6
 related_adrs: [4, 11, 12]
 ---
@@ -106,6 +106,19 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
    - LEARNING shows the weights, the direction, the scored forecasts, the
      export as JSON, and the maths (18 audio and 26 structural features, 500
      draws, the lenses).
+   - *Done (2026-10-02):* `apps/web/taste.js`, to prototype v2's `taste.js`
+     and `model.js`. TASTE is the map alone: the status that answers
+     `record_duel` draws the arrow (its `vote` and `choseA`) and moves every
+     halo to the `ratings` it carries, in one tween; picks made elsewhere are
+     drawn in turn when TASTE opens; a views post settles every halo and
+     place together. LEARNING is a fifth view (a tab beside TASTE until the
+     shell's levels, task 2): the chosen style's 44 weights, the direction
+     liking rises, the forecasts scored, copy as JSON, and the math, whose
+     numbers come from `WasmEngine::model_facts`; the forecasts from
+     `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
+     is one function (`drawMark`, `host.drawFace`), the faces' slot (task 3).
+     Where the mock and the engine disagree, the app follows the engine
+     ([Measured (task 6)](#measured-task-6)).
 7. **PATCH.**
    - On touch, a tapped module opens a sheet with every setting.
    - Cables carry light by signal. Measured levels wait for task 9.
@@ -213,6 +226,68 @@ Decisions:
   prediction, without renders.
 - `apps/web/perform-wirings.json` keeps the six. With the twelve it would be
   2.3 times the size (392 KB), for controls the panel does not show yet.
+
+## Measured (task 6)
+
+`crates/auracle-wasm/examples/pick_belief.mjs` now also times what the
+calibration reply carries after every pick. The built package under node, 100
+picks, a refit every sixth, on an Apple M3 Max; medians in ms by the lenses
+the fit was allowed:
+
+| Lenses | `belief` | `calibration` | `forecasts` | `model_facts` | `styles` (θ), not posted per pick |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.55 | 0.01 | 0.01 | 0.01 | 0.57 |
+| 3 | 1.30 | 0.01 | 0.01 | 0.01 | 4.83 |
+| 5 | 2.23 | 0.01 | 0.02 | 0.01 | 12.00 |
+
+The forecasts are 7.8 KB of JSON at 95 forecasts. On the main thread, the
+redraw a pick starts (the arrow and every halo's tween) and a refit's settle
+held 16.7 ms frames, at most 16.8, at 1440 and 1080 px wide (headless
+Chromium, 40 sounds). Posting the belief after every pick costs what task 9a
+measured; the forecasts and the math's numbers add nothing measurable.
+
+Where the mock draws something the engine doesn't do, or leaves out something
+it does, the app follows the engine:
+
+- **The weights move at a refit, not per pick.** The mock's weights move with
+  every pick, and LEARNING's Replay flows each pick's light into the bars.
+  The belief per pick carries the ratings, not θ, and the styles' θ costs up
+  to 12 ms a pick (above), so the bars change with a views post, and there is
+  no Replay. Posting θ alone per pick (without `styles`' shares and
+  exemplars) would be the way to it, measured first.
+- **A weight whose interval crosses zero is drawn as a guess.** The mock draws
+  every fitted bar solid; at 18 picks most of the engine's are guesses
+  (`pullMark`: hollow, its "?" in a slot left of the word).
+- **Five styles over 44 features, not one w over 18.** LEARNING shows the
+  chosen style's 44 weights, and the style chips (naming, ▶) moved here.
+- **No forecasts before the first fit.** The mock draws hollow forecasts from
+  the first pick; the engine forecasts only with a posterior, so the warm
+  start's picks have none.
+- **The export has no picks by name.** A forecast carries no ids, so the JSON
+  has the forecasts as the engine keeps them, and each sound's rating by id
+  and name.
+- **No arrow for a PERFORM offer.** An offer never joins the pool, so it has
+  no place on the map; its reply still moves every halo.
+- **The arrow lands when the engine takes the pick,** at the end of an EVOLVE
+  pick's seven-second undo window, or on TASTE's next opening.
+- **Size stays the doubt.** The mock's faces are one size; RFC-006 §7 keeps
+  size for the posterior's std, so the map's mark (the faces' slot) keeps it.
+- **Not built:** taste over time and its replay (the engine keeps no history of
+  the belief; a session's could be kept in the page, not across a reload);
+  the Sound/Taste tint (the lens, ⌥, is the shell's); hovering a weight to
+  shade the map by that feature (the page holds no sound's φ).
+- **TRUST's reliability diagram is not drawn,** as the mock has none. The
+  engine's buckets stay in `calibration()` and in the copied JSON; LEARNING's
+  *expected · was* shows overconfidence in two numbers.
+- **The words follow voice.md:** styles, not lenses; "every 20 things it
+  learns from", because a fit's lenses count observations (picks, stars and
+  cuts), not picks; "the math".
+
+Owed elsewhere: the landing page's TASTE pane and DIRECTIONS figure, the
+guide's figures (`www/landing/assets/screens`, `capture-screens.mjs`) and the
+films that show TASTE (view-taste, the tour, How Auracle learns) show the four
+tabs; and the bank's percentages follow `views.ranked`, the last refit's, while
+the map's cards follow every pick.
 
 ## Done when
 
