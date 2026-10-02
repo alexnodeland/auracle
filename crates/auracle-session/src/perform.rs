@@ -1729,16 +1729,38 @@ mod tests {
                 assert_eq!(purity(&d, &m).to_bits(), was.to_bits(), "{}", c.name);
             }
         }
+        // Where a palette control leans on one of the six (Thump on Snap,
+        // through `crest`), the rest of that axis, the part orthogonal to the
+        // control's own direction, is another control's gesture and must
+        // count against it in full: a move of the control's direction plus
+        // that remainder, in equal parts, is 1/√2 pure. This is the
+        // Gram–Schmidt branch of `purity_basis`; dropping a leaning axis
+        // instead reads the same move as pure (1).
+        let mut leaning = 0;
         for c in &PALETTE {
             let d = direction(c, &names);
             assert!((purity(&d, &d) - 1.0).abs() < 1e-12, "{}", c.name);
             for o in &CONTROLS {
                 let a = direction(o, &names);
-                if dot(&a, &d).abs() < 1e-12 {
-                    assert!(purity(&d, &a).abs() < 1e-12, "{} vs {}", c.name, o.name);
+                let share = dot(&a, &d);
+                let mut rest: Vec<f64> = a.iter().zip(&d).map(|(x, y)| x - share * y).collect();
+                let n = rest.iter().map(|x| x * x).sum::<f64>().sqrt();
+                if share.abs() < 1e-12 || n < 1e-9 {
+                    continue; // orthogonal to it, or the control is this axis
                 }
+                rest.iter_mut().for_each(|x| *x /= n);
+                let m: Vec<f64> = d.iter().zip(&rest).map(|(x, y)| x + y).collect();
+                let p = purity(&d, &m);
+                assert!(
+                    (p - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-9,
+                    "{} leaning on {}: purity {p}",
+                    c.name,
+                    o.name
+                );
+                leaning += 1;
             }
         }
+        assert!(leaning >= 10, "only {leaning} leaning pairs were checked");
     }
 
     /// PERFORM only turns knobs the voices can take live. Every live knob has

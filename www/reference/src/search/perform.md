@@ -241,11 +241,12 @@ $$
 For one of the six this is the formula above, bit for bit: the other five axes
 share no coordinate with it, so they enter the basis unchanged (a unit test
 holds the two equal). A control that leans on some of the six (Thump on Body,
-and on Snap through `crest`) takes up what it shares with them, and only the
-remainder of each counts against it. One with a coordinate of its own (Air’s
-`zcr_mean`) widens the span by that much. A move along the control’s own
-direction has $\rho = 1$, and a move along a named axis orthogonal to it has
-$\rho = 0$.
+and on Snap through `crest`) takes up what it shares with them, and the
+remainder of each, the part orthogonal to $\hat e$, counts against it in full:
+a move of $\hat e$ plus an equal part of that remainder has
+$\rho = 1/\sqrt2$ (the unit test checks this for every such pair). One with a
+coordinate of its own (Air’s `zcr_mean`) widens the span by that much. A move
+along the control’s own direction has $\rho = 1$.
 
 Measured over the first 24 patches of a fresh session pool (`reach_census`,
 seed 7), with verification on real renders:
