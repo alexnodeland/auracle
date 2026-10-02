@@ -42,7 +42,7 @@ are stepping through them with the arrow keys.
 | <kbd>m</kbd> | Save the sound you’re on |
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
-| <kbd>?</kbd> | The key map and gestures |
+| <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
 
 ## In EVOLVE

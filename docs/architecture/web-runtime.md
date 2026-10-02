@@ -54,7 +54,8 @@ served within a lane (`laneOf` in `worker.js`):
   `breed_step`s), and runs between that job's pieces. A `now` render of the
   same id supersedes it.
 - **soon**: long work the player asked for (a generation, a pressed offer, the
-  first measurement of the patch in their hands).
+  first measurement of the patch in their hands, a control's figure, the
+  lesson on filters).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
   offers, Wander's drift, booth pre-warms, the model's guess, the cable
   probe).
@@ -220,6 +221,35 @@ it drops a stale pre-placement audition.
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live.
+
+## A control's figure and the lesson on filters
+
+Explain anything (Plan-005 task 10, `apps/web/explain.js`): a control's
+figure is what the engine measured on the sound in hand, never a recipe
+([reference](../../www/reference/src/search/explain.md)).
+
+- **`explain`** (`soon`; `{token, tree, made, turned, k}`): PERFORM's
+  `explainOf(i)` gives the performed tree and two sets of knob overrides,
+  the control at its center (`made`) and turned (`turned`, absent when
+  nothing turns it). The worker holds the floor and renders each with
+  `explain_render` (featurize, then `auracle_features::explain::portrait`,
+  and `along`, the render's place on palette control `k`), breathing
+  between the two, and answers `explain` with `{token, tree, k, made,
+  turned}` or `{…, error}`. A render that does not vet answers `{error}` in
+  its place. The page keys replies by the control, the tree, both override
+  sets and the observation count, and drops a reply whose token it no
+  longer waits for after caching it.
+- **`explain_lesson`** (`soon`; `{token, tree, overrides, cutoff}`): one
+  `lesson_filter` render, the performed state with the grammar's lowpass at
+  `cutoff` on its output (none: the sound as it is), answered with `{token,
+  tree, cutoff, data, buffer, sampleRate}` (`buffer` transferred). The page
+  keeps one out at a time and sends the latest cutoff when it lands.
+
+Neither touches the pool, the bench or the log. An open figure follows its
+control (perform.js calls `host.controlTurned`, and the figure asks again
+once the turn has rested for 300 ms) and closes when its view does. A long
+press on a control on a touch screen asks (`host.askHold`) instead of
+sweeping; with a mouse it still sweeps.
 
 ## The breed job
 

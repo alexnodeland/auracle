@@ -8,6 +8,28 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added: ask a control what it does, and a lesson on filters
+
+- **Every control on PERFORM answers with a figure of what it does to the
+  sound you're playing.** Point at a control and press **?** (or the small
+  **?** beside it, or hold it on a touch screen). The instrument renders your
+  sound twice, the control at its center and turned, measures both the way
+  the model hears them, and draws the measurement that control listens to:
+  BRIGHT and the tone controls the spectrum, SNAP the attack, SPACE the tail,
+  MOTION the held note moving at its own pace, GRIT the harmonics. A sentence
+  gives the numbers (*Turned to bright, its center moves from 359 Hz to
+  2.5 kHz. Here it turns filter cutoff.*). Every placed control is a tap
+  away, and the answer follows the control as you turn it. Before, the only
+  way to learn a control was to hear its sweep, or to read which knobs it
+  turns.
+- **BRIGHT's answer has a one-minute lesson: what a filter does, on your own
+  sound.** A lowpass filter from the instrument's own modules goes on the
+  sound you're playing; drag its cutoff, see the filter's curve and the
+  sound's shape change, and hear it, rendered at each position. The sound
+  itself is left as it was.
+- On a touch screen, a long press on a control now opens its answer, whose
+  **HEAR IT** plays the sweep the long press used to.
+
 ### Changed: TASTE draws each pick, and LEARNING is the model room
 
 - **A pick draws as an arrow on TASTE's map, and every glow moves with

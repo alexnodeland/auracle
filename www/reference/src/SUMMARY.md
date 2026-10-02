@@ -44,6 +44,7 @@
 - [Locks as conditional refinement](./search/locks.md)
 - [Refinement](./search/refinement.md)
 - [Performance controls](./search/perform.md)
+- [Explaining a control](./search/explain.md)
 - [The model's guess](./search/guess.md)
 - [Acquisition](./search/acquisition.md)
 
