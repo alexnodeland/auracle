@@ -85,6 +85,7 @@ import {
   TAKE_SILK,
   TAKE_TIPS,
   TAKE_SAID,
+  TAKE_ERRORS,
   takeLine,
   takeRolling,
   takeAgain,
@@ -659,8 +660,14 @@ test("CAPTURE says how long its take is, and what recording did, in the voice", 
     voiced(s);
     assert.ok(s.split(/\s+/).length <= 8, s);
   }
-  for (const s of [...Object.values(TAKE_SAID), takeRolling(4), takeAgain("Mic Loop", 4), takeReadmitted("Mic Loop")]) {
+  for (const s of [...Object.values(TAKE_SAID), ...Object.values(TAKE_ERRORS), takeRolling(4), takeAgain("Mic Loop", 4), takeReadmitted("Mic Loop")]) {
     voiced(s);
     assert.ok(s.split(/[.…] /).length <= 2, s);
   }
+  // While RECORD rolls its button reads STOP, so that is what is lit.
+  assert.match(TAKE_SAID.empty, /while STOP is lit/);
+  // Every code the worklet sends has its own sentence, and each says that
+  // nothing was recorded or changed.
+  assert.deepEqual(Object.keys(TAKE_ERRORS).sort(), ["failed", "no_capture", "not_ready"]);
+  for (const s of Object.values(TAKE_ERRORS)) assert.match(s, /nothing (was recorded|changed)/);
 });

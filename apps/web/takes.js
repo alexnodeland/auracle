@@ -7,7 +7,7 @@
 // - **Recording happens in an instrument of its own.** RECORD asks the
 //   worklet to build one voice of the patch (`take_start`), hold its key,
 //   raise the CAPTURE's record gate and write the input into it each quantum;
-//   STOP (or the take's limit, `TAKE_SECONDS`) drops the gate and reads the
+//   STOP (or the take's limit, the engine's `take_seconds`) drops the gate and reads the
 //   recording back (`take_done`). So recording needs no MONITOR and leaves the
 //   voices under the player's hands alone, and what it records is what the
 //   CAPTURE's own input branch makes, not the raw input.
@@ -27,9 +27,10 @@
 const W = await import(new URL(`./words.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-/** `TAKE_SECONDS` in auracle-grammar: the longest recording a CAPTURE
- *  holds. RECORD stops itself a little after it. */
-export const TAKE_SECONDS = 4;
+/** The longest take a CAPTURE holds until the engine says (`take_seconds`,
+ *  in its `ready`): `TAKE_SECONDS` in auracle-grammar. RECORD stops itself
+ *  a little after it. */
+const TAKE_SECONDS_UNTIL_READY = 4;
 /** The lane under a CAPTURE's setting (rack units): see `drawLane`. */
 export const TAKE_LANE_H = 30;
 
@@ -39,6 +40,7 @@ export function createTakes(host) {
   // benchId() → the sound on the bench
   let rolling = null;   // {key, held: entry|null, bench, moved, timer, release}
   let held = [];        // the sounds a restore kept safe: {id, name, auto_name, note, capture, tree}
+  let limit = TAKE_SECONDS_UNTIL_READY; // seconds: the engine's take_seconds once it is ready
 
   // ---- recording ----
   /** The input slot the first AUDIO IN under node `key` of `tree` reads, or
@@ -72,8 +74,8 @@ export function createTakes(host) {
     live.takeStart(treeJson, key);
     // The take's own limit stops the recording; the control stops a moment
     // after it, so the whole take is read back.
-    rolling.timer = setTimeout(() => stop(), TAKE_SECONDS * 1000 + 250);
-    host.note(heldEntry ? W.takeAgain(nameOf(heldEntry), TAKE_SECONDS) : W.takeRolling(TAKE_SECONDS), {
+    rolling.timer = setTimeout(() => stop(), limit * 1000 + 250);
+    host.note(heldEntry ? W.takeAgain(nameOf(heldEntry), limit) : W.takeRolling(limit), {
       urgent: true, replace: "take",
     });
     paint();
@@ -108,11 +110,17 @@ export function createTakes(host) {
     clearTimeout(r.timer);
     if (r.release) r.release();
     paint();
+    if (m.type === "take_error") {
+      if (!r.moved) host.note(W.TAKE_ERRORS[m.code] || W.TAKE_ERRORS.failed, { urgent: true, replace: "take" });
+      return;
+    }
+    // No take: nothing was recorded (a STOP before the first quantum). The
+    // worklet sends none rather than the take the CAPTURE already held.
     let take = null;
-    try { take = m.type === "take_done" && m.take ? JSON.parse(m.take) : null; } catch (_) { take = null; }
+    try { take = m.take ? JSON.parse(m.take) : null; } catch (_) { take = null; }
     const seconds = take && take.sample_rate > 0 ? (take.length | 0) / take.sample_rate : 0;
     if (!take || seconds <= 0) {
-      host.note(W.TAKE_SAID.empty, { urgent: true, replace: "take" });
+      if (!r.moved) host.note(W.TAKE_SAID.empty, { urgent: true, replace: "take" });
       return;
     }
     if (r.held) {
@@ -177,6 +185,7 @@ export function createTakes(host) {
     btn.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return;
       ev.preventDefault();
+      if (ev.repeat) return; // a held key presses once: RECORD, not RECORD-STOP-RECORD
       run();
     });
     lane.appendChild(btn);
@@ -270,6 +279,8 @@ export function createTakes(host) {
     paint,
     onWorklet,
     benchMoved,
+    /** The engine's longest take, in seconds (its `ready`). */
+    setLimit: (s) => { if (Number.isFinite(s) && s > 0) limit = s; },
     setHeld,
     readmitted,
     appendKept,

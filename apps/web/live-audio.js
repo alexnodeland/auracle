@@ -104,6 +104,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     // renders it.
     this.taker = null;
     this.takeKey = null;
+    this.takeFrames = 0; // frames the taker has rendered since RECORD
     this.inViewT = null;
     this.inPtrT = 0;
     this.port.onmessage = (e) => {
@@ -230,7 +231,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
       case "take_start": {
         if (!this.ready) {
-          this.port.postMessage({ type: "take_error", key: m.key, error: "not ready" });
+          this.port.postMessage({ type: "take_error", key: m.key, code: "not_ready" });
           break;
         }
         if (this.taker) { this.taker.free(); this.taker = null; }
@@ -240,21 +241,22 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
           t.note_on(60, 1.0);
           if (!t.set_record(m.key, true)) {
             t.free();
-            this.port.postMessage({ type: "take_error", key: m.key, error: "no capture there" });
+            this.port.postMessage({ type: "take_error", key: m.key, code: "no_capture" });
             break;
           }
           this.taker = t;
           this.takeKey = m.key;
+          this.takeFrames = 0;
           this.inViewT = null;
           this.port.postMessage({ type: "take_started", key: m.key });
         } catch (err) {
-          this.port.postMessage({ type: "take_error", key: m.key, error: String(err) });
+          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: String(err) });
         }
         break;
       }
       case "take_stop": {
         if (!this.taker) {
-          this.port.postMessage({ type: "take_error", key: m.key, error: "not recording" });
+          this.port.postMessage({ type: "take_error", key: m.key, code: "failed", error: "not recording" });
           break;
         }
         const t = this.taker;
@@ -262,7 +264,9 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         this.taker = null;
         this.takeKey = null;
         t.set_record(key, false);
-        const take = t.take_json(key);
+        // Stopped before a quantum ran: nothing was recorded, and the CAPTURE
+        // still holds the take it was built with, which is no new take.
+        const take = this.takeFrames > 0 ? t.take_json(key) : null;
         t.free();
         this.port.postMessage({ type: "take_done", key, take });
         break;
@@ -407,6 +411,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       if (this.taker) {
         if (hasInput) this.writeInput(this.taker, inp, n, "t");
         this.taker.process_ptr(n);
+        this.takeFrames += n;
       }
       // Zero-allocation render: the synth fills a persistent wasm buffer;
       // we view its memory directly. The cached view is rebuilt only when

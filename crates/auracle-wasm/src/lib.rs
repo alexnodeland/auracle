@@ -158,6 +158,14 @@ pub fn budget_ceilings() -> String {
     format!(r#"{{"size":{MAX_SIZE},"depth":{MAX_DEPTH},"mod":{MAX_MOD_DEPTH}}}"#)
 }
 
+/// The longest take a CAPTURE holds, in seconds (`TAKE_SECONDS` in the
+/// grammar, quiver's `Capture::DEFAULT_SECONDS`). RECORD stops itself a
+/// little after it; the app reads it here rather than restate it.
+#[wasm_bindgen]
+pub fn take_seconds() -> f64 {
+    auracle_grammar::TAKE_SECONDS
+}
+
 // ----------------------------------------------------------------------
 // The render farm's stateless surface
 // ----------------------------------------------------------------------

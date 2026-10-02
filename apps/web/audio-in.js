@@ -632,6 +632,7 @@ export function createAudioIn(host) {
       g.addEventListener("keydown", (ev) => {
         if (ev.key !== "Enter" && ev.key !== " ") return;
         ev.preventDefault();
+        if (ev.repeat) return; // a held key presses once
         run(ev);
       });
     }
@@ -669,6 +670,7 @@ export function createAudioIn(host) {
       dev.addEventListener("keydown", (ev) => {
         if (ev.key !== "Enter" && ev.key !== " ") return;
         ev.preventDefault();
+        if (ev.repeat) return; // a held key opens the menu once
         run();
       });
     }

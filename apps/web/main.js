@@ -2703,6 +2703,7 @@ worker.onmessage = (e) => {
       renderNs = typeof m.ns === "string" && m.ns ? m.ns : null;
       auditionClip = m.clip && typeof m.clip.id === "string" ? m.clip.id : null;
       if (m.clip) audioIn.clip({ clip: m.clip });
+      takes.setLimit(m.takeSeconds);
       const c = m.ceilings;
       if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
         BUDGET = { size: c.size, depth: c.depth, mod: c.mod };

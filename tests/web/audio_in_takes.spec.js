@@ -216,6 +216,31 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   expect(errors).toEqual([]);
 });
 
+test("a STOP before anything was recorded leaves the take as it was, and says nothing was recorded", async ({ page }, info) => {
+  const errors = await boot(page, { granted: true });
+  await openFile(page, {
+    name: "Mic Loop",
+    tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
+  }, info.outputDir);
+  const lane = page.locator("#rack-svg .take-lane").first();
+  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s", { timeout: 60_000 });
+  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  // RECORD and STOP in one task: both reach the worklet before its next
+  // quantum, so nothing is recorded. The CAPTURE's take is not sent back as
+  // a new one (which was an edit, an undo step and "Recorded 0.1 s").
+  await lane.locator(".take-rec").evaluate((b) => {
+    b.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    b.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 10_000 })
+    .toContain("Nothing was recorded. Play into the capture’s input while STOP is lit, then try again.");
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.__pwToasts.join("\n"))).not.toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
+  expect(errors).toEqual([]);
+});
+
 test("a recording stops when you move to another sound, and its take lands on neither", async ({ page }, info) => {
   const errors = await boot(page, { granted: true });
   // Two sounds with a CAPTURE at the same key: A holds 0.1 s, B 0.2 s.

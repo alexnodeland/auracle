@@ -2707,7 +2707,12 @@ async function dispatch(m) {
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.
-        post({ type: "ready", ceilings, ns, clip: auditionClip() });
+        // The longest take a CAPTURE holds (RECORD's limit), from the grammar.
+        let takeSeconds = null;
+        try {
+          takeSeconds = mod.take_seconds();
+        } catch (_) { /* older engine */ }
+        post({ type: "ready", ceilings, ns, clip: auditionClip(), takeSeconds });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.
