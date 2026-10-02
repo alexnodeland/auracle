@@ -6591,12 +6591,12 @@ function openCompare(id, anchor) {
 }
 function closeCompare() {
   if (compareId == null) return;
-  const back = bankRowEl(compareId)?.querySelector(".bi-from");
   compareId = null;
   compareDrawn = "";
   cancelAnimationFrame(compareRaf);
   $("compare").classList.add("hidden");
-  if ($("compare").contains(document.activeElement)) (back || $("bank-list")).focus({ preventScroll: true });
+  // Back to the bank, its one tab stop, where the keys that opened it work.
+  if ($("compare").contains(document.activeElement)) $("bank-list").focus({ preventScroll: true });
 }
 /** Beside the bank, level with the row it was opened from. */
 function placeCompare(row) {
@@ -7067,7 +7067,7 @@ function bankRow(r, fitted) {
       <span class="bi-id">#${r.id}</span>
     </div>${
       lin
-        ? `<div class="bi-sub"><span class="bi-mark" aria-hidden="true"></span><button class="bi-from" type="button" title="Compare with its seed" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${esc(fromLine(seedName, lineageChanges(lin.diff)))}</button></div>`
+        ? `<div class="bi-sub"><span class="bi-mark" aria-hidden="true"></span><button class="bi-from" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${esc(fromLine(seedName, lineageChanges(lin.diff)))}</button></div>`
         : ""
     }
     <div class="bi-row">
@@ -7529,6 +7529,16 @@ $("bank-list").addEventListener("keydown", (e) => {
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere
     rateRow(Number(e.key));
+  } else if (e.key.toLowerCase() === "c" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Compare the row under the cursor with its seed: the lineage line is a
+    // button out of the tab order, as the row's others are. `c` is not a
+    // note (z and x are the octave; c is free in the note layout). A sound
+    // with no seed in the lineage has nothing to compare.
+    const id = kbdRowId ?? bankRows[0].id;
+    if (!lineageOf(id)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openCompare(id);
   }
 });
 
