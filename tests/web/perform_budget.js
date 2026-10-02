@@ -47,14 +47,55 @@ const INIT = `(() => {
   window.Worker = Wrapped;
 })();`;
 
+// AURACLE_CPU_THROTTLE for the engine. Chrome's CPU throttling is for pages
+// only: sent to the engine worker's target it answers "Operation is only
+// supported for pages, not workers", and with the page throttled 4x a step
+// measured 270 ms against 260 ms unthrottled. So the engine is slowed where
+// its time goes, in its wasm calls: prefixed onto worker.js, this wraps every
+// function the engine's wasm instance exports so that a call taking d ms
+// then spins for (rate - 1) d more. A render, a step and a measurement take
+// `rate` times as long; the page's protocol, its lanes and its order are
+// untouched. The farm's workers are not slowed.
+const SLOW_ENGINE = (rate) => `(() => {
+  const RATE = ${rate};
+  const slow = (fn) => function (...args) {
+    const t = performance.now();
+    const out = fn.apply(this, args);
+    const until = performance.now() + (performance.now() - t) * (RATE - 1);
+    while (performance.now() < until) {}
+    return out;
+  };
+  const wrap = (inst) => {
+    const ex = {};
+    for (const [k, v] of Object.entries(inst.exports)) ex[k] = typeof v === "function" ? slow(v) : v;
+    const fake = Object.create(WebAssembly.Instance.prototype);
+    Object.defineProperty(fake, "exports", { value: Object.freeze(ex) });
+    return fake;
+  };
+  const wrapResult = (r) => (r instanceof WebAssembly.Instance ? wrap(r) : r && r.instance ? { module: r.module, instance: wrap(r.instance) } : r);
+  const instantiate = WebAssembly.instantiate.bind(WebAssembly);
+  WebAssembly.instantiate = (...a) => instantiate(...a).then(wrapResult);
+  if (WebAssembly.instantiateStreaming) {
+    const streaming = WebAssembly.instantiateStreaming.bind(WebAssembly);
+    WebAssembly.instantiateStreaming = (...a) => streaming(...a).then(wrapResult);
+  }
+})();
+`;
+
 /** Before the page loads: keep the engine worker in reach, and apply
- *  AURACLE_CPU_THROTTLE (as patch_page.js does) to the page. */
+ *  AURACLE_CPU_THROTTLE: to the page as patch_page.js does (CDP), and to the
+ *  engine worker's wasm calls (`SLOW_ENGINE`), which CDP cannot reach. */
 async function watch(page) {
   await page.addInitScript(INIT);
   const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
   if (rate > 1) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+    await page.route(/\/worker\.js(\?|$)/, async (route) => {
+      const resp = await route.fetch();
+      const body = await resp.text();
+      await route.fulfill({ response: resp, body: SLOW_ENGINE(rate) + body, contentType: "text/javascript" });
+    });
   }
 }
 

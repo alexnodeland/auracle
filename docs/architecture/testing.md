@@ -105,7 +105,7 @@ test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (44 to 52 s
-on CI at 198659b; it now first waits out the page's own re-check and spare,
+on CI at 198659b and on #106; it now first waits out the page's own re-check and spare,
 about a minute more there, not yet timed), `perform_recentre.spec.js`'s glide home
 (54 s), `perform_teaches.spec.js` (54 s), three that wait on PERFORM's
 engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
@@ -202,4 +202,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
   elsewhere) and 120 steps measured on the machine at the start of the test,
   and it grows the test's timeout by one budget per wait. What must not wait
   for an offer (a pick, a Keep, NEXT) keeps its own bound from a measured step.
-  `perform_budget.watch` also applies `AURACLE_CPU_THROTTLE` to the page.
+  `perform_budget.watch` also applies `AURACLE_CPU_THROTTLE` to the page
+  (CDP) and to the engine worker's wasm calls, which CDP's throttling does
+  not reach: with `AURACLE_CPU_THROTTLE=4` a step measures 1.8 to 2.4 s on a
+  16-core M3 Max, about a CI runner's, against 0.3 s without it.
