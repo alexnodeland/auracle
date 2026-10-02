@@ -113,6 +113,26 @@ follow the last refit. A pick in EVOLVE reaches the worker when its undo
 window closes, so its ratings arrive then, not at the click; picks made while
 TASTE is hidden are drawn in turn when it opens.
 
+## Taste over time, kept by the page
+
+The engine keeps no history of its ratings, its map or its θ, so the page
+keeps what it was sent (`taste-geom.js`: `recordEntry`, `attachStyles`,
+`entryView`). One entry per change: each `status` with `ratings` (a pick, a
+star, a cut, a PERFORM answer), and each views post with a new map (a refit,
+or a generation when the engine's generation count moved), with the picks
+TAUGHT counted, the observation count, whether a fit existed and the pick's
+two sounds. Maps are kept once and referenced. After each `status` with
+`ratings`, main asks for `styles` (a `later`-lane request, 0.6 to 12 ms by the
+lenses) and the reply is kept with the entry whose observation count it
+names; every surface's `views.styles` takes it too, so LEARNING's bars move
+per pick. The history is bounded to the last 200 entries and saved with the
+session as `ui.taste` (`{v: 1, maps, entries, names}`), JS-owned like the rest
+of `ui`; a reset drops it, and `readHistory` drops one this build cannot read.
+TASTE's track draws from it and LEARNING's REPLAY steps through its `styles`.
+Every views post also carries `features` (`WasmEngine::pool_features`: each
+pool member's z), which LEARNING shades its small map by while a weight is
+pointed at.
+
 ## The forecasts and the math's numbers
 
 The `calibration` reply main asks for after every `status` carries, beside the

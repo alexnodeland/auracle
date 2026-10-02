@@ -117,8 +117,11 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      numbers come from `WasmEngine::model_facts`; the forecasts from
      `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
      is one function (`drawMark`, `host.drawFace`), the faces' slot (task 3).
-     Where the mock and the engine disagree, the app follows the engine
-     ([Measured (task 6)](#measured-task-6)).
+     Then, to match Vision II exactly: the taste-over-time track and its
+     replay, SOUND / TASTE, a weight's shading of the small map
+     (`WasmEngine::pool_features`), the weights moving per pick (a `styles`
+     request after each) and REPLAY, the history kept by the page where the
+     engine keeps none ([Measured (task 6)](#measured-task-6)).
 7. **PATCH.**
    - On touch, a tapped module opens a sheet with every setting.
    - Cables carry light by signal. Measured levels wait for task 9.
@@ -234,7 +237,7 @@ calibration reply carries after every pick. The built package under node, 100
 picks, a refit every sixth, on an Apple M3 Max; medians in ms by the lenses
 the fit was allowed:
 
-| Lenses | `belief` | `calibration` | `forecasts` | `model_facts` | `styles` (θ), not posted per pick |
+| Lenses | `belief` | `calibration` | `forecasts` | `model_facts` | `styles` (θ), posted per pick in `later` |
 | --- | --- | --- | --- | --- | --- |
 | 1 | 0.55 | 0.01 | 0.01 | 0.01 | 0.57 |
 | 3 | 1.30 | 0.01 | 0.01 | 0.01 | 4.83 |
@@ -246,15 +249,29 @@ held 16.7 ms frames, at most 16.8, at 1440 and 1080 px wide (headless
 Chromium, 40 sounds). Posting the belief after every pick costs what task 9a
 measured; the forecasts and the math's numbers add nothing measurable.
 
-Where the mock draws something the engine doesn't do, or leaves out something
-it does, the app follows the engine:
+The maintainer asked for Vision II exactly: where the mock shows a fact the
+engine doesn't keep, the page keeps it, as long as it stays true (ADR-012).
 
-- **The weights move at a refit, not per pick.** The mock's weights move with
-  every pick, and LEARNING's Replay flows each pick's light into the bars.
-  The belief per pick carries the ratings, not θ, and the styles' θ costs up
-  to 12 ms a pick (above), so the bars change with a views post, and there is
-  no Replay. Posting θ alone per pick (without `styles`' shares and
-  exemplars) would be the way to it, measured first.
+- **The weights move per pick, and REPLAY steps through them.** After every
+  `status` with ratings, main asks for `styles` in the worker's `later` lane
+  and every surface takes the reweighted θ. They are asked for after every
+  pick whichever view shows, not only while LEARNING does, because REPLAY
+  needs each pick's θ; at most 12 ms at five lenses on the M3 Max, in a lane
+  that yields to every gesture. REPLAY (R) steps the bars through the kept
+  picks with a dashed ghost and the most-moved weight lit; the prototype's
+  faces flying into the evidence strip are not drawn.
+- **Taste over time is kept by the page.** The engine keeps no history of its
+  belief, so the page keeps each reply as it came (`taste-geom.js`), bounded
+  to 200 moments and saved with the session as `ui.taste`, versioned. The
+  track and its replay show exactly what was posted; it begins when the
+  session began keeping it.
+- **SOUND / TASTE** follows the prototype's `taste.js`: SOUND draws the glows
+  once there is a fit (or on the track); TASTE always, dashed before a fit,
+  and dims each mark by its liking (0.22 + 0.78 × liking). So SOUND is not
+  glow-free after a fit; that is the mock's own rule.
+- **Pointing at a weight shades the small map** by each sound's z on it, from
+  `WasmEngine::pool_features`, posted with every views post, the same post
+  that brings the map those sounds sit on.
 - **A weight whose interval crosses zero is drawn as a guess.** The mock draws
   every fitted bar solid; at 18 picks most of the engine's are guesses
   (`pullMark`: hollow, its "?" in a slot left of the word).
@@ -272,11 +289,8 @@ it does, the app follows the engine:
   pick's seven-second undo window, or on TASTE's next opening.
 - **Size stays the doubt.** The mock's faces are one size; RFC-006 §7 keeps
   size for the posterior's std, so the map's mark (the faces' slot) keeps it.
-- **Not built:** taste over time and its replay (the engine keeps no history of
-  the belief; a session's could be kept in the page, not across a reload);
-  the Sound/Taste tint (the lens, ⌥, is the shell's); hovering a weight to
-  shade the map by that feature (the page holds no sound's φ).
-- **TRUST's reliability diagram is not drawn,** as the mock has none. The
+- **TRUST's reliability diagram is not drawn,** as the mock has none (the
+  maintainer confirmed). The
   engine's buckets stay in `calibration()` and in the copied JSON; LEARNING's
   *expected · was* shows overconfidence in two numbers.
 - **The words follow voice.md:** styles, not lenses; "every 20 things it

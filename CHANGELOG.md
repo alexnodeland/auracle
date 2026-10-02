@@ -32,6 +32,15 @@ changelog that edits its own past is not a record.
   it learns from, up to five) come from the model itself. Name a style on
   its chip here. TRUST's reliability chart is not drawn any more; its
   numbers are in the copied JSON.
+- **TASTE's map has a track of your taste over time.** Drag it, or press ▶,
+  to see the glows and places as the model had them after any pick this
+  session has kept, with that pick's arrow. It is saved with your session
+  and starts when this version first ran.
+- **SOUND / TASTE** at the map's top left: SOUND shows the sounds as they
+  are, TASTE dims each by how little the model likes it.
+- **LEARNING's weights move with every pick, and REPLAY (R) steps them
+  through your picks.** Pointing at a weight shades the small map by how
+  much of that quality each sound has.
 
 ### Fixed: Space and the settings on the rack
 

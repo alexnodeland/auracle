@@ -40,9 +40,19 @@ fold*), the technical name beside it, a bar, and the weight.
 - **Hollow, with a ? in the margin:** the line crosses the center, so the
   lean could go either way. Early on nearly every row is hollow.
 
-The weights shown are the last fit’s. A pick reweights the model’s draws at
-once (TASTE’s glows move with it), but these bars change at the next refit,
-generation or file you open.
+The bars move with every pick. A pick reweights the model’s draws, and after
+each one LEARNING asks for the weights under the reweighted draws and moves
+every bar to them; a refit, a generation or a file you open moves them too.
+
+**Point at a weight** (or Tab to it) and the small map beside it shades every
+sound by how much of that quality it has: brighter and larger for more,
+dimmer for less. The legend names it (*dots: grit*).
+
+**REPLAY** (or <kbd>R</kbd>) steps the bars through the picks this session
+kept, one after another: each bar moves to where that pick left it, where it
+was stays a moment as a dashed outline, and the weight the pick moved most
+lights up. The label beside it says which pick (*after 21 picks*). It ends on
+now. It starts from the first pick the session kept, as TASTE’s track does.
 
 On a narrow window the six that weigh most show, and **ALL 44 WEIGHTS** opens
 the rest. Before the first fit there are none: *none yet: it weighs nothing

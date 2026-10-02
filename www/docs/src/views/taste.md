@@ -26,12 +26,23 @@ taste.*).
 | **Place** | Where the sound sits among the others: close sounds usually sound alike |
 | **Amber glow** | How much it guesses you’d like the sound: brighter and wider is more |
 | **Dot size** | How unsure it is: bigger is less sure |
-| **Dashed ring** | No guess yet: before the first fit, every glow is a dashed ring |
+| **Dashed ring** | No guess yet: before the first fit, with **TASTE** on, every glow is a dashed ring |
 | **Green ring** | The sound you’re playing |
 | **Dotted ring** | A sound on its way to you, after a click |
 
 The legend at the top right says which you are looking at: *it likes more*
 beside two glows, or *still a guess* beside a dashed ring.
+
+## SOUND and TASTE
+
+The switch at the map’s top left chooses how the sounds are shown.
+
+- **SOUND**, the default, shows the sounds as they are. Once the model has
+  fitted, their glows show too; before that, there are none.
+- **TASTE** colors the map by what the model thinks you’d like: every sound
+  is dimmed by how little it is liked, so the ones it guesses you’d reach for
+  stand out. Before the first fit it shows every glow as a dashed ring, a
+  guess.
 
 Size is the one people miss, and it’s the useful one. A big, dim dot is a
 sound the model has no guess about. A small, bright one is a sound it’s sure
@@ -63,6 +74,29 @@ From the keyboard: Tab to the map, then the arrow keys move to the nearest
 sound in that direction, <kbd>Enter</kbd> opens it, and <kbd>Esc</kbd> closes
 its card. <kbd>Space</kbd> plays the sound you’re playing, as it does in
 every view.
+
+## Taste over time
+
+Once there are two moments to move between, a track runs along the map’s
+foot. Each tick is one moment: amber for a pick (thin and dim before the
+first fit), a short silk tick below the line for a star or a cut, a faint line
+where the map was redrawn, and a green diamond for a generation, with how many
+sounds joined (*+3*). The label says which moment the map shows: *now · after
+26 picks* at the right-hand end.
+
+1. Drag along the track, or click it, to look back. The line under the title
+   reads *Looking back.*, and the map shows the glows and places as the
+   model had them then, with that moment’s pick drawn as its arrow (reversed
+   when you step back past it).
+2. With the track focused, <kbd>←</kbd> and <kbd>→</kbd> step one moment,
+   and <kbd>Home</kbd> and <kbd>End</kbd> go to the first and to now.
+3. **▶** at the track’s left replays every moment in turn, from the first.
+
+The track shows exactly what the model posted at each moment, because the
+page keeps each reply as it arrives: the model itself keeps no history of its
+ratings. The track begins when this session began keeping it, so a session
+from before this version starts its track at its first load since. It holds
+the last 200 moments and is saved with your session; a reset clears it.
 
 ## A pick, drawn as what it teaches
 
