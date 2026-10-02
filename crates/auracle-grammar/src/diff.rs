@@ -42,7 +42,8 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 // `crate::prior`'s tables, whose lengths are the arity
                 // constants, so a production cannot be added without a label.
                 "src" => name(&crate::prior::SOURCE_LABELS),
-                "op" => name(&crate::prior::OP_LABELS),
+                // The twenty drawn kinds, then the two player kinds.
+                "op" => crate::prior::op_label(*i).map(str::to_string),
                 "mod" => name(&crate::prior::MOD_LABELS),
                 "table" => name(&[
                     "sine",
@@ -60,6 +61,8 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 // selector shows it, and its channel by name.
                 "input" => Some((i + 1).to_string()),
                 "channel" => name(&["left", "right", "both"]),
+                "band" => name(&["low", "mid", "high"]),
+                "play" => name(&["once", "hold", "loop"]),
                 _ => None,
             }
             .unwrap_or_else(|| i.to_string())

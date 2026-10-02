@@ -8,7 +8,7 @@
 //! |---|---|---|
 //! | source-vs-processor | `<p>#leaf` | `Bernoulli(source_prob)` (forced at max depth) |
 //! | source kind | `<p>#src` | `Categorical(source_weights)` |
-//! | processor kind | `<p>#op` | `Categorical(op_weights)` |
+//! | processor kind | `<p>#op` | `Categorical(op_weights)`, plus the two player kinds ([`OpKind`]) |
 //! | modulation kind | `<p>/m#mod` | `Categorical(mod_weights)` (leaves only at max mod depth; never empty below a processor) |
 //! | CV-processor kind | `<p>/m#modop` | uniform over [`ModOp::ALL`] |
 //! | CV-combiner kind | `<p>/m#pairop` | uniform over [`PairOp::ALL`] |
@@ -44,9 +44,10 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::rng::gen_index;
+use crate::take::Take;
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp,
-    PatchTree, TableShape, Uid, Waveform, INPUT_SLOTS,
+    AmpEnv, AudioNode, CaptureMode, DriveMode, FilterKind, InputChannel, ModNode, ModOp,
+    NoiseColor, PairOp, PatchTree, PitchBand, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 /// Source-kind categorical order: Vco, Supersaw, Noise, Wavetable, Pluck,
@@ -58,7 +59,24 @@ pub const N_SOURCES: usize = 8;
 /// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus,
 /// Reverb, Distortion, Bitcrush, Phaser, RingMod, Flanger, Tremolo, Vibrato,
 /// Eq, Granular, Shift, Comp, Duck, Gate, Vocoder.
+///
+/// The kinds the prior **draws**, and the length of
+/// [`PatchGrammarPrior::op_weights`]. The `#op` categorical itself is
+/// [`N_OP_KINDS`] wide: the two player kinds follow these twenty.
 pub const N_OPS: usize = 20;
+/// `#op` index of [`AudioNode::Track`], the first player kind.
+pub const OP_TRACK: usize = N_OPS;
+/// `#op` index of [`AudioNode::Capture`], the second player kind.
+pub const OP_CAPTURE: usize = N_OPS + 1;
+/// How many player kinds follow the drawn ones at `#op`.
+pub const N_PLAYER_OPS: usize = 2;
+/// The `#op` categorical's arity: the twenty drawn kinds, then the player
+/// kinds. Append-only, like every categorical whose index a trace stores.
+pub const N_OP_KINDS: usize = N_OPS + N_PLAYER_OPS;
+/// The probability the scorer gives a player kind at `#op` (see [`OpKind`]):
+/// Silence's and AUDIO IN's source weight, the grammar's other two kinds a
+/// player puts in place.
+pub const PLAYER_OP_MASS: f64 = 0.005;
 /// Modulation-kind categorical order: None, Lfo, Env, Rand, Follow, Euclid,
 /// Op, Pair, Steps.
 ///
@@ -78,6 +96,10 @@ const MOD_OP: usize = 6;
 const MOD_PAIR: usize = 7;
 /// `#mod` index of [`ModNode::Steps`], the step-sequencer leaf.
 const MOD_STEPS: usize = 8;
+
+/// The continuous trace sites of an [`AudioNode::Track`], after its `#band`,
+/// in draw (and encode) order: sensitivity, dynamics.
+pub const TRACK_SITES: &[&str] = &["tsens", "tdyn"];
 
 /// The trace sites of a [`ModNode::Steps`], in draw (and encode) order: rate,
 /// length, glide, then the eight latent step values.
@@ -138,6 +160,18 @@ pub const OP_LABELS: [&str; N_OPS] = [
     "gate",
     "vocoder",
 ];
+
+/// Display labels for the player kinds at `#op`, in index order after
+/// [`OP_LABELS`]; sized by [`N_PLAYER_OPS`].
+pub const PLAYER_OP_LABELS: [&str; N_PLAYER_OPS] = ["track", "capture"];
+
+/// The display label of any `#op` index: a drawn kind or a player kind.
+pub fn op_label(i: usize) -> Option<&'static str> {
+    OP_LABELS
+        .get(i)
+        .or_else(|| PLAYER_OP_LABELS.get(i.wrapping_sub(N_OPS)))
+        .copied()
+}
 
 /// Display labels for the `#mod` categorical, in index order; sized by
 /// [`N_MODS`].
@@ -394,6 +428,58 @@ impl fugue::Distribution<usize> for PlayerInput {
 
     fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
         Box::new(*self)
+    }
+}
+
+/// The distribution of an `#op` site: the drawn kinds by
+/// [`PatchGrammarPrior::op_weights`], and the two **player kinds**, TRACK and
+/// CAPTURE, which the prior never draws and always scores.
+///
+/// Like [`PlayerInput`], two jobs no stock distribution does together:
+///
+/// - **`sample` is today's draw, bit for bit.** It delegates to the
+///   categorical over the twenty drawn kinds, built exactly as before the
+///   player kinds existed, so it reads the stream the same way and returns
+///   the same index: every prior draw, and so every pool and every random
+///   tree statistic, is unchanged, and no draw holds a player kind.
+/// - **`log_prob` keeps a player's patch in support.** A drawn kind scores
+///   what it always scored. A player kind scores `ln(`[`PLAYER_OP_MASS`]`)`,
+///   finite: at weight zero a patch holding a TRACK would score `−∞`, and a
+///   walk refuses to start from one (`EvolutionChain::init_from` is `None`),
+///   so a player's tracked or captured sound could never be evolved.
+///
+/// The extra mass makes the scorer unnormalized, which is harmless: a walk
+/// holds every player kind's `#op` (`PatchTree::player_sites`), so that term
+/// is the same constant in every ratio the walk takes, and it cancels.
+#[derive(Clone)]
+pub struct OpKind {
+    drawn: Categorical,
+}
+
+impl OpKind {
+    /// The `#op` distribution for these drawn-kind weights.
+    pub fn new(op_weights: &[f64; N_OPS]) -> Self {
+        Self {
+            drawn: weighted_cat(op_weights),
+        }
+    }
+}
+
+impl fugue::Distribution<usize> for OpKind {
+    fn sample(&self, rng: &mut dyn rand::RngCore) -> usize {
+        fugue::Distribution::sample(&self.drawn, rng)
+    }
+
+    fn log_prob(&self, x: &usize) -> f64 {
+        match *x {
+            i if i < N_OPS => fugue::Distribution::log_prob(&self.drawn, &i),
+            i if i < N_OP_KINDS => PLAYER_OP_MASS.ln(),
+            _ => f64::NEG_INFINITY,
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn fugue::Distribution<usize>> {
+        Box::new(self.clone())
     }
 }
 
@@ -737,7 +823,7 @@ impl PatchGrammarPrior {
             } else {
                 let cfg2 = cfg.clone();
                 let key2 = key.clone();
-                sample(addr!(key.clone(), "op"), weighted_cat(&cfg.op_weights))
+                sample(addr!(key.clone(), "op"), OpKind::new(&cfg.op_weights))
                     .bind(move |op| cfg2.op_model(key2.clone(), op, depth))
             }
         })
@@ -1175,6 +1261,45 @@ impl PatchGrammarPrior {
                     modulation: m,
                 },
             ),
+            // The player kinds. `OpKind` never samples them, so these two arms
+            // run only when a trace that holds one is scored or replayed (a
+            // walk over a player's patch). Draw order is the codec's.
+            OP_TRACK => {
+                let (ka, kb) = (child_key(&key, 0), child_key(&key, 1));
+                let (cfg_a, cfg_b) = (cfg.clone(), cfg.clone());
+                sample(
+                    addr!(key.clone(), "band"),
+                    uniform_cat(PitchBand::ALL.len()),
+                )
+                .bind(move |band| {
+                    u01_seq(key.clone(), TRACK_SITES).bind(move |p| {
+                        cfg_a.audio_model(ka, depth + 1).bind(move |input| {
+                            cfg_b
+                                .audio_model(kb, depth + 1)
+                                .map(move |listen| AudioNode::Track {
+                                    uid: Uid::NEW,
+                                    band: PitchBand::from_index(band),
+                                    sensitivity: p[0],
+                                    dynamics: p[1],
+                                    input: Box::new(input.clone()),
+                                    listen: Box::new(listen),
+                                })
+                        })
+                    })
+                })
+            }
+            OP_CAPTURE => {
+                let k0 = child_key(&key, 0);
+                sample(addr!(key, "play"), uniform_cat(CaptureMode::ALL.len())).bind(move |play| {
+                    cfg.audio_model(k0.clone(), depth + 1)
+                        .map(move |input| AudioNode::Capture {
+                            uid: Uid::NEW,
+                            play: CaptureMode::from_index(play),
+                            input: Box::new(input),
+                            take: Take::empty(),
+                        })
+                })
+            }
             _ => self.binary_mod_op(
                 key,
                 &["bands", "vatt", "vrel", "mdepth"],
@@ -1697,5 +1822,55 @@ mod tests {
         assert_eq!(w[N_SOURCES - 1], AUDIO_IN_WEIGHT);
         assert_ne!(weighted_choice(&mut Fixed(u64::MAX), &w), N_SOURCES - 1);
         assert_eq!(weighted_choice(&mut Fixed(0), &w), 0);
+    }
+
+    /// **`#op` draws what it drew before the player kinds existed, bit for
+    /// bit.** For the default weights and for tilted ones, `OpKind` and the
+    /// categorical the prior used to build over `op_weights` return the same
+    /// index from the same stream, and leave the stream in the same state, so
+    /// no fill, walk or offer deals anything different. The drawn kinds score
+    /// exactly what they scored; the player kinds score finite; past them is
+    /// outside the support.
+    #[test]
+    fn op_kind_samples_what_the_old_table_sampled() {
+        use fugue::Distribution;
+        use rand::Rng;
+        let mut tilt = StdRng::seed_from_u64(0x0B5);
+        let mut tables = vec![PatchGrammarPrior::default().op_weights];
+        for _ in 0..8 {
+            let mut w = PatchGrammarPrior::default().op_weights;
+            for x in &mut w {
+                *x *= (tilt.gen::<f64>() * 2.0 - 1.0).exp();
+            }
+            tables.push(w);
+        }
+        for w in &tables {
+            let (new, old) = (OpKind::new(w), weighted_cat(w));
+            for seed in 0..50u64 {
+                let mut a = StdRng::seed_from_u64(seed);
+                let mut b = StdRng::seed_from_u64(seed);
+                for _ in 0..400 {
+                    let (x, y) = (new.sample(&mut a), old.sample(&mut b));
+                    assert_eq!(x, y, "#op drew {x}, the old table {y}");
+                    assert!(x < N_OPS, "a player kind was drawn");
+                }
+                assert_eq!(
+                    a.gen::<u64>(),
+                    b.gen::<u64>(),
+                    "the stream moved differently"
+                );
+            }
+            for i in 0..N_OPS {
+                assert_eq!(new.log_prob(&i).to_bits(), old.log_prob(&i).to_bits());
+            }
+            for i in [OP_TRACK, OP_CAPTURE] {
+                assert_eq!(new.log_prob(&i), PLAYER_OP_MASS.ln());
+            }
+            assert_eq!(new.log_prob(&N_OP_KINDS), f64::NEG_INFINITY);
+        }
+        assert_eq!(op_label(OP_TRACK), Some("track"));
+        assert_eq!(op_label(OP_CAPTURE), Some("capture"));
+        assert_eq!(op_label(N_OPS - 1), Some("vocoder"));
+        assert_eq!(op_label(N_OP_KINDS), None);
     }
 }

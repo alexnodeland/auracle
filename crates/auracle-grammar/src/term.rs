@@ -15,6 +15,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::take::Take;
+
 /// A stable identity for one node, independent of where it sits.
 ///
 /// # Why the tree needs one
@@ -129,7 +131,7 @@ macro_rules! audio_variants {
         $mac!(
             Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, AudioIn, Mix, Filter, Fold,
             Delay, Chorus, Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq,
-            Granular, RingMod, Shift, Comp, Duck, Gate, Vocoder
+            Granular, RingMod, Shift, Comp, Duck, Gate, Vocoder, Track, Capture
         )
     };
 }
@@ -408,6 +410,84 @@ impl InputChannel {
             InputChannel::Left => "left",
             InputChannel::Right => "right",
             InputChannel::Both => "both",
+        }
+    }
+}
+
+/// The pitch band a [`AudioNode::Track`] listens in: quiver's `PitchRange`,
+/// in the same index order (the `#band` categorical).
+///
+/// A band is about three and a half octaves wide. Pick the one the notes sit
+/// in, below its top: near the top of a band a weak fundamental can read an
+/// octave low.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PitchBand {
+    /// 40 to 500 Hz: bass instruments, low voices.
+    Low,
+    /// 70 to 1000 Hz: voices, guitar, most melodic instruments.
+    Mid,
+    /// 140 to 2000 Hz: high voices, flute, whistling, lead lines.
+    High,
+}
+
+impl PitchBand {
+    /// All bands, in categorical-site index order.
+    pub const ALL: [PitchBand; 3] = [PitchBand::Low, PitchBand::Mid, PitchBand::High];
+
+    /// Categorical-site index.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|b| *b == self).expect("in table")
+    }
+
+    /// From a categorical-site index.
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL[i % Self::ALL.len()]
+    }
+
+    /// Silkscreen label; also the s-expression tag.
+    pub fn label(self) -> &'static str {
+        match self {
+            PitchBand::Low => "low",
+            PitchBand::Mid => "mid",
+            PitchBand::High => "high",
+        }
+    }
+}
+
+/// How a [`AudioNode::Capture`] plays its take when a note starts. Index
+/// order matches the `#play` categorical.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureMode {
+    /// Each note plays the take to its end, however short the note.
+    Once,
+    /// The take plays while the note is held and stops when it is let go.
+    Hold,
+    /// The take plays from the top while the note is held, round and round.
+    Loop,
+}
+
+impl CaptureMode {
+    /// All modes, in categorical-site index order.
+    pub const ALL: [CaptureMode; 3] = [CaptureMode::Once, CaptureMode::Hold, CaptureMode::Loop];
+
+    /// Categorical-site index.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|m| *m == self).expect("in table")
+    }
+
+    /// From a categorical-site index.
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL[i % Self::ALL.len()]
+    }
+
+    /// Silkscreen label; also the s-expression tag.
+    pub fn label(self) -> &'static str {
+        match self {
+            CaptureMode::Once => "once",
+            CaptureMode::Hold => "hold",
+            CaptureMode::Loop => "loop",
         }
     }
 }
@@ -1352,6 +1432,77 @@ pub enum AudioNode {
         #[serde(default, skip_serializing_if = "Uid::is_new")]
         uid: Uid,
     },
+    /// TRACK: a voice or an instrument plays the patch
+    /// ([ADR-015](../../../docs/decisions/015-audio-in.md), RFC-008's *play the
+    /// patch*). Compiled to quiver's `PitchTracker` (pitch by YIN, a gate and
+    /// a level) listening to `/1`.
+    ///
+    /// **The input is the keyboard for `/0`.** While the compiler builds the
+    /// played branch, the tracker's pitch and gate stand where the keys' pitch
+    /// and gate stand everywhere else: a VCO there sings the tracked note (its
+    /// octave knob still transposes it), a pluck is plucked and a mod envelope
+    /// fires on every tracked onset. The tracker's gate also opens the voice's
+    /// amp envelope, summed with the keys' (either one plays it), so a note
+    /// sung into an AUDIO IN sounds the way a key does. Outside `/0`, the keys
+    /// play the patch as before. The level shapes `/0`'s output as far as
+    /// `dynamics` asks, as a key's velocity would.
+    ///
+    /// `/0` is the branch you hear and `/1` the one that drives it, the
+    /// convention of the other two-input modules, so an Insert seats the chain
+    /// as the played branch, and the default `/1` is an AUDIO IN.
+    ///
+    /// A **player kind**: the prior never draws it (`prior`'s `#op` index
+    /// [`crate::prior::OP_TRACK`], scored but never sampled), and a walk holds
+    /// it where the player put it. No modulation slot: its knobs are how it
+    /// listens, not a sound to move.
+    Track {
+        /// Which pitch band it listens in.
+        band: PitchBand,
+        /// Normalized gate sensitivity (0-1; up opens on a quieter input).
+        sensitivity: f64,
+        /// Normalized dynamics (0-1; 0 ignores the input's level, 1 follows
+        /// it fully).
+        dynamics: f64,
+        /// The branch it plays.
+        input: Box<AudioNode>,
+        /// The signal it follows.
+        listen: Box<AudioNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
+    },
+    /// CAPTURE: records what is patched into it and plays the recording back
+    /// as a source ([ADR-015](../../../docs/decisions/015-audio-in.md),
+    /// RFC-008's *resample*). Compiled to quiver's `Capture`.
+    ///
+    /// **Its output is its take, not its input.** `/0` is only what it would
+    /// record; it is built and running, and never heard. So an Insert of a
+    /// CAPTURE turns the chain below it into what is recorded, and the patch
+    /// plays the take instead. Each note plays the take as `play` says,
+    /// pitched by the keys (C4 plays it at the speed it was recorded), and an
+    /// empty take plays silence.
+    ///
+    /// **The take is the sound's content**, saved with it ([`Take`]), never a
+    /// trace site, so a walk can never propose a new one; it is carried
+    /// through a rebuilt term by [`PatchTree::inherit_uids`]. Recording is the
+    /// host's: the compiled voice exposes a record gate and reads the take
+    /// back ([`crate::CompiledVoice::take`]); a measurement render never
+    /// records, so a capture measures the same every time.
+    ///
+    /// A **player kind**, as [`AudioNode::Track`] is
+    /// ([`crate::prior::OP_CAPTURE`]).
+    Capture {
+        /// How each note plays the take.
+        play: CaptureMode,
+        /// What it records.
+        input: Box<AudioNode>,
+        /// The recording; absent from the saved form when empty.
+        #[serde(default, skip_serializing_if = "Take::is_empty")]
+        take: Take,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
+    },
 }
 
 /// The mandatory amplitude envelope on every voice (ADSR, normalized 0-1).
@@ -1569,8 +1720,14 @@ impl AudioNode {
                 carrier: input,
                 modulator: other,
                 ..
+            }
+            | AudioNode::Track {
+                input,
+                listen: other,
+                ..
             } => vec![input, other],
             AudioNode::Shift { input, .. }
+            | AudioNode::Capture { input, .. }
             | AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
@@ -1619,8 +1776,14 @@ impl AudioNode {
                 carrier: input,
                 modulator: other,
                 ..
+            }
+            | AudioNode::Track {
+                input,
+                listen: other,
+                ..
             } => vec![input, other],
             AudioNode::Shift { input, .. }
+            | AudioNode::Capture { input, .. }
             | AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
@@ -1655,16 +1818,20 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The five productions with nothing worth modulating:
+                    // The seven productions with nothing worth modulating:
                     // `Noise` has only a colour, `Silence` has nothing at all,
-                    // `AudioIn` has only a level, and `Mix`/`RingMod` have two
-                    // audio inputs and a blend. Named rather than wildcarded so
-                    // a new module with a slot cannot silently land here.
+                    // `AudioIn` has only a level, `Mix`/`RingMod` have two
+                    // audio inputs and a blend, and `Track`/`Capture` are how
+                    // a player's input plays the patch, not a sound to move.
+                    // Named rather than wildcarded so a new module with a slot
+                    // cannot silently land here.
                     AudioNode::Noise { .. }
                     | AudioNode::Silence { .. }
                     | AudioNode::AudioIn { .. }
                     | AudioNode::Mix { .. }
-                    | AudioNode::RingMod { .. } => None,
+                    | AudioNode::RingMod { .. }
+                    | AudioNode::Track { .. }
+                    | AudioNode::Capture { .. } => None,
                 }
             };
         }
@@ -1677,16 +1844,20 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The five productions with nothing worth modulating:
+                    // The seven productions with nothing worth modulating:
                     // `Noise` has only a colour, `Silence` has nothing at all,
-                    // `AudioIn` has only a level, and `Mix`/`RingMod` have two
-                    // audio inputs and a blend. Named rather than wildcarded so
-                    // a new module with a slot cannot silently land here.
+                    // `AudioIn` has only a level, `Mix`/`RingMod` have two
+                    // audio inputs and a blend, and `Track`/`Capture` are how
+                    // a player's input plays the patch, not a sound to move.
+                    // Named rather than wildcarded so a new module with a slot
+                    // cannot silently land here.
                     AudioNode::Noise { .. }
                     | AudioNode::Silence { .. }
                     | AudioNode::AudioIn { .. }
                     | AudioNode::Mix { .. }
-                    | AudioNode::RingMod { .. } => None,
+                    | AudioNode::RingMod { .. }
+                    | AudioNode::Track { .. }
+                    | AudioNode::Capture { .. } => None,
                 }
             };
         }
@@ -1769,8 +1940,14 @@ impl AudioNode {
                 carrier: input,
                 modulator: other,
                 ..
+            }
+            | AudioNode::Track {
+                input,
+                listen: other,
+                ..
             } => 1 + input.depth().max(other.depth()),
             AudioNode::Shift { input, .. }
+            | AudioNode::Capture { input, .. }
             | AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
@@ -1818,8 +1995,14 @@ impl AudioNode {
                 carrier: input,
                 modulator: other,
                 ..
+            }
+            | AudioNode::Track {
+                input,
+                listen: other,
+                ..
             } => 1 + input.size() + other.size(),
             AudioNode::Shift { input, .. }
+            | AudioNode::Capture { input, .. }
             | AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
@@ -1926,6 +2109,12 @@ impl AudioNode {
                 modulation,
                 ..
             } => 2 + 4 + carrier.site_count() + modulator.site_count() + modulation.site_count(),
+            // #band #tsens #tdyn, two audio subterms, and no modulation slot.
+            AudioNode::Track { input, listen, .. } => {
+                2 + 3 + input.site_count() + listen.site_count()
+            }
+            // #play and the subterm it records. The take is not a site.
+            AudioNode::Capture { input, .. } => 2 + 1 + input.site_count(),
         }
     }
 
@@ -2220,6 +2409,27 @@ impl AudioNode {
                 carrier.to_sexpr(),
                 modulator.to_sexpr()
             ),
+            AudioNode::Track {
+                band,
+                sensitivity,
+                dynamics,
+                input,
+                listen,
+                ..
+            } => format!(
+                "(track {} s={sensitivity:.2} d={dynamics:.2} {} {})",
+                band.label(),
+                input.to_sexpr(),
+                listen.to_sexpr()
+            ),
+            AudioNode::Capture {
+                play, input, take, ..
+            } => format!(
+                "(capture {} {:.2}s {})",
+                play.label(),
+                take.seconds(),
+                input.to_sexpr()
+            ),
         }
     }
 }
@@ -2377,6 +2587,13 @@ fn spine_tags(n: &AudioNode, out: &mut Vec<&'static str>) {
             spine_tags(carrier, out);
             out.push("voc");
         }
+        AudioNode::Track { input, .. } => {
+            spine_tags(input, out);
+            out.push("trk");
+        }
+        // What is heard is the take, so the capture is a source on the spine;
+        // what it records is a side branch, as a sidechain is.
+        AudioNode::Capture { .. } => out.push("cap"),
     }
 }
 
@@ -2414,6 +2631,48 @@ impl PatchTree {
         let mut out = Vec::new();
         walk(&self.root, "node", &mut out);
         out
+    }
+
+    /// Every site a walk must hold because it belongs to the player, in walk
+    /// order: each AUDIO IN's `#input` ([`Self::input_sites`]) and each
+    /// TRACK's and CAPTURE's `#op`.
+    ///
+    /// Holding a node's `#op` holds the node where it is, and so every node
+    /// above it: a step that regrows any subtree containing it would have to
+    /// redraw that `#op`, and the prior never draws a player kind. So a walk
+    /// keeps a TRACK, the chain it plays and the chain it follows, and keeps a
+    /// CAPTURE and its take, while it moves every knob on them and everything
+    /// beside them. The two kinds' knobs stay free.
+    pub fn player_sites(&self) -> Vec<String> {
+        fn walk(n: &AudioNode, key: &str, out: &mut Vec<String>) {
+            match n {
+                AudioNode::AudioIn { .. } => out.push(format!("{key}#input")),
+                AudioNode::Track { .. } | AudioNode::Capture { .. } => {
+                    out.push(format!("{key}#op"))
+                }
+                _ => {}
+            }
+            for (i, c) in n.children().into_iter().enumerate() {
+                walk(c, &format!("{key}/{i}"), out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.root, "node", &mut out);
+        out
+    }
+
+    /// Whether any CAPTURE here holds a take that could not be read when the
+    /// term was loaded (it loaded empty; see [`Take::unreadable`]). A session
+    /// counts such a sound as repaired, so the player is told.
+    pub fn lost_takes(&self) -> usize {
+        fn walk(n: &AudioNode) -> usize {
+            let own = match n {
+                AudioNode::Capture { take, .. } => usize::from(take.unreadable().is_some()),
+                _ => 0,
+            };
+            own + n.children().into_iter().map(walk).sum::<usize>()
+        }
+        walk(&self.root)
     }
 
     /// Short human-readable signature along the main signal spine
@@ -2493,8 +2752,34 @@ impl PatchTree {
     ///
     /// Anything left unmatched (a genuinely new module, a branch that grew)
     /// stays [`Uid::NEW`] and is minted by the following [`Self::ensure_uids`].
+    ///
+    /// **It carries CAPTURE takes too**, by the same positional match
+    /// ([`Self::inherit_takes`]): a take is not a trace site either, so the
+    /// decoder hands back every CAPTURE empty, and every place that has to
+    /// recover a rebuilt term's identities (a refined child, a knob edit, a
+    /// repair) has to recover its recordings for the same reason.
     pub fn inherit_uids(&mut self, parent: &PatchTree) {
-        inherit_audio(&mut self.root, &parent.root);
+        inherit_audio(&mut self.root, &parent.root, true);
+    }
+
+    /// Carry `parent`'s CAPTURE takes onto this tree wherever a CAPTURE sits
+    /// at the same place in both and this one's take is empty.
+    ///
+    /// Only an *empty* take is filled: a term the decoder rebuilt has nothing
+    /// but empty ones, and a take this tree already holds is newer than any
+    /// it could inherit. A walk calls this on every term it scores, so the
+    /// fitness hears the recording (`auracle_session`'s `walk_on`).
+    pub fn inherit_takes(&mut self, parent: &PatchTree) {
+        inherit_audio(&mut self.root, &parent.root, false);
+    }
+
+    /// Whether any CAPTURE here holds a take.
+    pub fn has_takes(&self) -> bool {
+        fn walk(n: &AudioNode) -> bool {
+            matches!(n, AudioNode::Capture { take, .. } if !take.is_empty())
+                || n.children().into_iter().any(walk)
+        }
+        walk(&self.root)
     }
 }
 
@@ -2555,17 +2840,30 @@ fn settle_mod(n: &mut ModNode, seen: &mut std::collections::HashSet<u64>) {
     }
 }
 
-fn inherit_audio(child: &mut AudioNode, parent: &AudioNode) {
+/// The lockstep walk behind [`PatchTree::inherit_uids`] (`uids`: identities
+/// and takes) and [`PatchTree::inherit_takes`] (takes only).
+fn inherit_audio(child: &mut AudioNode, parent: &AudioNode, uids: bool) {
     if std::mem::discriminant(&*child) == std::mem::discriminant(parent) {
-        child.set_uid(parent.uid());
+        if uids {
+            child.set_uid(parent.uid());
+        }
+        if let (AudioNode::Capture { take, .. }, AudioNode::Capture { take: theirs, .. }) =
+            (&mut *child, parent)
+        {
+            if take.is_empty() && !theirs.is_empty() {
+                *take = theirs.clone();
+            }
+        }
     }
-    if let (Some(cm), Some(pm)) = (child.modulation_mut(), parent.modulation()) {
-        inherit_mod(cm, pm);
+    if uids {
+        if let (Some(cm), Some(pm)) = (child.modulation_mut(), parent.modulation()) {
+            inherit_mod(cm, pm);
+        }
     }
     let pk = parent.children();
     for (i, c) in child.children_mut().into_iter().enumerate() {
         if let Some(p) = pk.get(i) {
-            inherit_audio(c, p);
+            inherit_audio(c, p, uids);
         }
     }
 }
