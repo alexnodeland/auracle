@@ -16,6 +16,7 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `examples/pick_belief.mjs` | The same loop against the built package under node, for the wasm figures (`make wasm` first) |
 | `examples/guess_cost.mjs` | What the model's guess costs in wasm under node: the bindings the worker calls (`guess_plan`, `memo_render`, `guess_rank`) after both warm starts, at the floor and in full (`make wasm` first); native twin `auracle-session`'s `guess_cost` |
 | `examples/cable_cost.mjs` | What the cable probe (`edit_cable_levels`) costs in wasm under node on every preset, beside a render with φ (`make wasm` first); native twin `auracle-features`'s `cable_probe` |
+| `examples/face_cost.mjs` | What a face costs in wasm: featurizing the same seeded pool with and without one (pass a package built before faces), and the analysis alone from a resident audition (`make wasm` first) |
 | `examples/suggest_cost.mjs` | What one rendered module suggestion costs in wasm: `preview_op` over the candidates `suggest_census --ops` lists, in CPU time under node (`make wasm` first; `docs/notes/suggest-2026-10/`) |
 | `examples/own_cost.mjs` | What a sound of your own costs in wasm under node: `own_sound_set` on a decoded file (by length and rate), `own_sound`, `own_presets_set`, and one walk of a breed toward it (`make wasm` first) |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |

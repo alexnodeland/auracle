@@ -9,6 +9,8 @@
 //   ellipsis or a clamp. The knob row keeps one height whatever the captions
 //   say, so it does not jump when one changes (Wander's does, every few
 //   seconds). The same at 1280.
+// - At 1000 and 1080 px, PATCH's callout is whole in each of its short
+//   states: the step it names and its ▸.
 const { test, expect } = require("@playwright/test");
 
 const SEEN = (warmed) => `(() => {
@@ -145,6 +147,48 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
           .filter((e) => e.scrollWidth > e.clientWidth + 1)
           .map((e) => e.textContent));
       expect(ends, "control names and ends cut").toEqual([]);
+      expect(errs).toEqual([]);
+    });
+  });
+}
+
+// PATCH's callout (`renderNextStep`) names the step it takes, and its ▸ says
+// it is a button: at 1000 and 1080 px, beside a name column and a bank both
+// wider by their faces, each of its short states is whole. (A generation's
+// "bred N new sounds: they're at the top of the bank" was cut here before
+// faces too; its words up to the count still show.)
+const CALLOUTS = [
+  "Play it first: press A, or tap a key below ▸",
+  "Teach it your taste: 6 quick picks below ▸",
+  "3 more picks and it refits ▸",
+  "It’s learned something. Breed a generation ▸",
+  "Breeding: keep playing ▸",
+  "Generation 3 bred: see what it learned ▸",
+];
+for (const width of [1000, 1080]) {
+  test.describe(`PATCH at ${width} px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+    test(`PATCH's callout is whole at ${width} px, its step and its ▸`, async ({ page }) => {
+      test.setTimeout(240_000);
+      const errs = [];
+      page.on("pageerror", (e) => errs.push(e.message));
+      await page.addInitScript(SEEN(true));
+      await page.goto("/");
+      await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
+      await page.locator('.viewtab[data-view="play"]').click();
+      await expect(page.locator("#nextstep")).toBeVisible();
+      const cut = await page.evaluate((labels) => {
+        const el = document.getElementById("nextstep");
+        const was = el.textContent;
+        const out = [];
+        for (const l of labels) {
+          el.textContent = l;
+          if (el.scrollWidth > el.clientWidth + 0.5) out.push(`"${l}": ${el.scrollWidth} px in ${el.clientWidth}`);
+        }
+        el.textContent = was;
+        return out;
+      }, CALLOUTS);
+      expect(cut, "callouts cut").toEqual([]);
       expect(errs).toEqual([]);
     });
   });

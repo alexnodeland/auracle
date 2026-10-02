@@ -32,8 +32,10 @@ You can also open a sound with **OPEN IN PATCH** on either side of a pair in
 
 From the top:
 
-**The name.** The sound’s name, *(edited)* once you have changed it, and a
-caption for what you did to it (*2 locked*). **▶**, or <kbd>Space</kbd>, plays
+**The name.** The sound’s [face](../faces.md), its name, *(edited)* once
+you have changed it, and a caption for what you did to it (*2 locked*). The
+face is the sound as it stands: an edit shows in it once the edit’s render
+lands. **▶**, or <kbd>Space</kbd>, plays
 the standard phrase on the sound as it stands. Pressed while an edit is still on
 its way to the engine, ▶ wears a dotted amber ring and plays once the edit
 lands; press it again to take that back. Space plays the same phrase from
@@ -83,6 +85,16 @@ press <kbd>Enter</kbd>) to add it, the same edit the module rail makes, and
 kind of module stays away from that place for this patch, and the next guess
 shows. Undoing a guess you added counts as skipping it. The module rail marks
 the guessed module with an amber dot beside its name.
+
+Beside the guessed module stand two [faces](../faces.md): *as it is*, the
+patch's own, and *with it*, the patch with the guessed module added. The
+second isn't an estimate: to rank its guesses the engine rendered the patch
+with each candidate module, and this is that render's face. Until a face
+arrives its place stays empty; an empty patch has no sound, so it has no
+*as it is*. Both describe the patch as it was when the guess was made, so
+turning a knob takes them away: a knob doesn't change the guess, and the
+faces come back when the next one is made (after you add, remove or skip a
+module, or open another sound).
 
 - It ranks by how sure it is the module helps, not by the percentage, so its
   first guess can be one it isn't sure of. Then the line ends *it may not help*.

@@ -89,16 +89,41 @@ changelog that edits its own past is not a record.
   last touched, with the rest a tap away: what you hear it do, what it
   listens to, and what it turns on this sound. It used to describe three of
   the six in one paragraph.
-- **An offer shows where it came from.** B grows out of the sound's name,
+- **An offer shows where it came from.** B grows out of the sound's face,
   because it is grown from the sound you're playing. Taken, it fills with
-  green and goes into the name; passed, it folds back into it. With reduced
+  green and goes into the face; passed, it folds back into it. With reduced
   motion on, nothing moves.
 - **Stage mode.** In PERFORM, <kbd>⇧F</kbd> puts the sound you're playing on the whole
-  screen, drawn from what you hear, for a gig or a stream. The keys and
+  screen, for a gig or a stream: its face, large, and what you hear drawn
+  over it, fading like phosphor. The keys and
   Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.
 - **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put
   them on the panel, and a MIDI controller's first eight knobs take the
   deck's first eight controls.
+
+### Added: every sound has a face
+
+- **A face beside every sound's name**: on the bank's rows, EVOLVE's cards,
+  PATCH's header and its teach strip (and, beside the model's guess, the
+  patch as it is and with the guessed module, from the guess's own render), PERFORM's sound in hand and its offer,
+  and the warm start's cards. A face is the sound's spectrum from its own
+  render, stood upright (the lows at the base) and compared with the rest of
+  your bank: wide where this sound has more than your bank's sounds, narrow
+  where it has less, with faint layers for the phrase over time. It changes
+  when the sound's render does (an edit lands, an offer grows) or when the
+  bank changes enough to move it, and is redrawn in place. Measuring it
+  costs about 1% of each render, and the engine works on faces after
+  everything else, the sound you asked to hear included; a face's own
+  render, when one is needed, takes about half a second.
+- **A face never moves or shortens a name.** Every row and card keeps the
+  face's space whether or not it has arrived. Where a name could be cut
+  short, its column is wider by the face: the bank (280 px, 228 px under
+  1080 px wide), PATCH's header and the A and B under the rack. EVOLVE's and
+  PERFORM's names wrap rather than cut.
+- **Share a sound as a card.** *Download as a picture…* has a new choice,
+  *the sound's card*: its face, its name and where it came from, 1200 × 630
+  at 2×, with the patch inside like every picture Auracle downloads, so
+  dropping it on Auracle opens the sound.
 
 ### Changed: the bank shows what a generation does
 

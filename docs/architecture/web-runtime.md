@@ -255,6 +255,73 @@ calls it back at a handful of points: `onWorker` (its three replies),
 `benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
 `committed`, and `shown`/`hidden`.
 
+## Faces
+
+Every row, chip and card draws its sound's face (Plan-005 task 3; the guide's
+`faces.md`, the reference's `features/faces.md`): the render's spectrum in 40
+bands × 12 slices (`auracle_features::face`), drawn against the bank.
+
+- **Taken in the featurization.** The face is computed inside
+  `featurize_memo` from the render φ is measured on and rides on the memo row
+  (`CachedFeatures::face`), so farm rows (`farm_render`), walk results
+  (`farm_walk`) and offers carry it without a render of their own. It is not
+  part of φ. In wasm it costs 2.5 ms against a 201 ms featurization
+  (`crates/auracle-wasm/examples/face_cost.mjs`).
+- **Filed by the worker under `"<ns>/<render key>"`**, as a farm row is
+  (`face_key` for a pool member, `farm_key` for a tree). The memo is an LRU a
+  generation's walks churn, so the worker copies a face out the first time it
+  is asked for and keeps it in memory (`faceMem`) and in its own IndexedDB
+  store (`auracle-faces`), stamped with the namespace as the render cache is
+  (`faceStoreOpen`): a build whose renders differ never reads another's.
+- **`faces`** (now lane; main → worker): `{ids, trees: [{ref, tree} | {ref,
+  preset} | {ref, memo}], render}`. A `memo` is a render key already in the
+  engine's memo: PATCH's guess names the render of each candidate
+  (`Guess::key`), and its face is read with `face_of_key`, which never
+  renders (a row evicted since is `failed`). Answered at once from memory alone, with `{type:
+  "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
+  are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
+  `face_of_tree`, a resident audition, the store), each posted as a `faces`
+  as it is found. With `render`, what none of them has is queued as
+  **`face_render`** in the **faces lane**, below `later` (`FACES`), so a
+  refit, a guess or a cable probe always goes first, and blocked until boot
+  has finished (`blocked`: half a second each, they would slow the fill);
+  each is answered as it lands, or in `failed` (a tree that does not vet).
+  Rendering a pool member for its face does not make it resident, so it
+  evicts no audition. A preset is asked by index (`preset_tree_json`), so its
+  face does not insert it into the bank. Every request is answered; a
+  `not_ready` or an `engine_error` for one makes main ask again when a slot
+  next wants it.
+- **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
+  that left the view (a preset row scrolled past, the PRESETS tab left) is
+  dropped from the faces lane and from waiting lookups, and answered as `faces`
+  with `cancelled`; main asks again when the slot comes back into view.
+- **After a `render`**, the worker posts the buffer first; the face, if main
+  hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
+  stored audition (not the PCM main is sent: `audition_pcm` limits). No face
+  work runs in the render's turn; a face's render already running (about half
+  a second) can still hold up a render that arrives during it.
+- **Main whitens and draws** (`faces.js`, `faceRestat`, `paintFaces` in
+  `main.js`): the bank's mean per band and pooled spread over the faces of the
+  rows the bank shows, recomputed when that set changes (once a frame) and
+  drawn against only when it has moved more than 0.25 dB in a band or 1% of
+  the spread. One renderer draws a face at every size (`vessel.js`
+  `drawVessel`); a slot shows it drawn once per bank as an image (a PNG data
+  URL); after the bank changes, the bank's rows in view are redrawn the next
+  frame and the rest when the page is idle. A slot is fixed-size and present
+  whether or not its face has arrived, so no name moves for it.
+- **Stage mode** (`stageDraw` in `perform.js`) draws the sound in hand's
+  face (`host.faceOf(tree)`: the face and the bank) with `drawVessel` at full
+  height, with its glow and reflection, on a still layer drawn again only
+  when the face, the bank or the size changes; what sounds is drawn over it
+  on a second canvas (`st-trail`), measured as a face is (`createLiveMeter`:
+  the analyser's time-domain samples through the face's Hann frame and band
+  weights, in buffers made once) against the same bank, fading like phosphor
+  and cleared in silence.
+- **TASTE's map** draws each sound as its face (`host.drawFace`, main's
+  `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
+  per bank and size; a dot until the face lands, and the map is redrawn as
+  faces do.
+
 ## The breed job
 
 EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
