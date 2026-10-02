@@ -21,8 +21,9 @@ instrument plays, and up under the orientation beats where nothing plays —
 the title, *up top* and the outro (loop_b there).
 
 **One session, the one a newcomer has.** Every shot is the same seeded
-session with the three-pick warm start answered: the first bass, pad and
-texture card on the grid. The first-visit beat does exactly that on camera,
+session with the three-pick warm start answered: the card on the films'
+shortlist (Ceiling, in this deal), then the first bass and pad card on the
+grid. The first-visit beat does exactly that on camera,
 so the film's world is what someone sees after picking three: PICKS reads
 18, My patches holds those three, TASTE has a first map.
 
@@ -45,7 +46,7 @@ sound*; PATCH, *inside the sound*; EVOLVE, *breeding sounds you like*; TASTE,
 
 ## 0. `open` — the cold open (no words; shot `to-open`)
 
-*What does it sound like?* Five bars at 84, wide, on Glass Pad in PERFORM:
+*What does it sound like?* Five bars at 84, wide, on Slow Weather in PERFORM:
 **C** with Bright swelling up; **Am** as Blend crosses into the offer waiting
 in B; **F** on the offer; **G**, and **Take**; **C** on the sound just taken.
 One chord a bar, on the score's bar lines. The offer is grown in set-up
@@ -75,7 +76,7 @@ B*) until Take empties B.
 > it learned about you.
 
 - *views1*: aim 1.7 at the tabs, callout *four views*; back to wide.
-- PERFORM (Glass Pad): C, then Am with the first control that turns up
+- PERFORM (Slow Weather): C, then Am with the first control that turns up
   (Bright, when it can) ridden up.
 - PATCH: F held while the filter's cutoff turns on the rack.
 - EVOLVE: ▶ A, ▶ B, choose B; the next pair is up at once (dealt ahead
@@ -93,14 +94,14 @@ B*) until Take empties B.
 > much you'll like it. My patches holds the ones you save. Press play to hear
 > one. Click it, and it's yours to play.
 
-- Am · F · C · G on Glass Pad under the first four lines, one per line.
+- Am · F · C · G on Slow Weather under the first four lines, one per line.
 - The three lists clicked in turn; callout *its guess* on a row's percentage.
-- ▶ on the pad among My patches (its standard phrase); space stops it as the
+- ▶ on the card on the shortlist among My patches (Ceiling; its standard phrase); space stops it as the
   row is clicked, which opens it in PATCH at once (no cut); Am, then F, on it
   the moment it lands; callout *open, and live* on the row.
 - Camera: aim 1.7 at the rail; out to 1.15 on the rack when the row opens.
 
-## 4. `dock` — 03 · the dock (shot `to-dock`, Acid Line at 84)
+## 4. `dock` — 03 · the dock (shot `to-dock`, Ceiling at 84)
 
 *How do I play it?*
 
@@ -151,12 +152,12 @@ B*) until Take empties B.
 > starts out pointed at you. Your three are saved, and PERFORM opens, ready to
 > play.
 
-- The nine cards; ▶ on the bass card as the narrator says "it asks" (the real
+- The nine cards; ▶ on the card on the shortlist as the narrator says "it asks" (the real
   first press), its phrase running up to
-  the cut; the first bass, pad and texture picked; *teach it* (callout
+  the cut; it, then the first bass and pad card, picked; *teach it* (callout
   *3 picks × 6 passed = 18*).
-- A cut from the press to the "18 preferences learned… Your three are
-  saved." toast (seconds of engine work; no cut if it is quick); PERFORM is
+- A cut from the press to the "Your three taught it 18 picks… Your three are
+  saved, and Ceiling is under your fingers." toast (seconds of engine work; no cut if it is quick); PERFORM is
   open on the first pick, its controls live at once (its wiring came with it;
   PERFORM re-checks it in the background). The job slot says "refitting your
   taste map…" meanwhile.

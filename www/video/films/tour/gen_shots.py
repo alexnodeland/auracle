@@ -7,9 +7,16 @@ Writes www/video/films/tour/shots.json. Actions are pinned to the narration's
 words (timeline.json), so run this again after every timeline.py.
 
 One taught session for every shot: the three-pick warm start answered with
-the first bass, pad and texture card on the grid, which is exactly what the
-first-visit shot does on camera, so what the tour shows is what a newcomer
-sees after picking three. Chords are in the computer keymap (a = C4):
+the first card on the shortlist, then the first bass and pad card on the
+grid, which is exactly what the first-visit shot does on camera, so what the
+tour shows is what a newcomer sees after picking three.
+
+Cast from the films' shortlist (shotgen.CAST): Slow Weather where Glass Pad
+played, Ceiling where Acid Line did. The warm start's one card on the
+shortlist is the one played and picked first, so it is what PERFORM opens
+and what the bank plays from My patches; the other two picks are seen, not
+heard. The cold open's offer is grown from Slow Weather, and B's log says
+what grew. Chords are in the computer keymap (a = C4):
 C a d g · Am h k ; · F f h k · G g j l.
 
 Every shot stops its own capture half a second after its beat (`rec` off),
@@ -25,7 +32,7 @@ import sys
 FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 sys.path.insert(0, os.path.join(VIDEO, "tools"))
-from shotgen import INIT, FILLED, QUIET, WIRING, CATS, pick, taught, perform, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, WIRING, CAST, SHORTLIST, pick, taught, perform, dump  # noqa: E402
 
 TL = json.load(open(os.path.join(FDIR, "timeline.json")))
 # The first ▶ of a sound that has not been heard yet loads or renders it on
@@ -38,13 +45,17 @@ BAR = 60 / 84 * 4  # 2.857 s
 C, AM, F, G = ["a", "d", "g"], ["h", "k", ";"], ["f", "h", "k"], ["g", "j", "l"]
 TAB = lambda v: ".viewtab[data-view='%s']" % v  # noqa: E731
 MIDI_DEV = {"op": "midi", "device": "MIDI keyboard"}
-TEACH = taught(picks=("bass", "pad", "texture")) + [MIDI_DEV]
+# The card on the shortlist first: PERFORM opens on the first pick.
+PICKS = ("cast", "bass", "pad")
+TEACH = taught(picks=PICKS) + [MIDI_DEV]
 SETTLED = {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
-# The pad among My patches (the warm start saved one of each: bass, pad, texture).
-_PAD = ["#bank-list .bank-item:has(.bi-name:text-is('%s'))" % n for n in CATS["pad"]]
-PAD_ROW = ", ".join(_PAD)
-PAD_HEAR = ", ".join(x + " .bi-hear" for x in _PAD)
-PAD_NAME = ", ".join(x + " .bi-name" for x in _PAD)
+# The cast row among My patches (the warm start saved the three picks, the
+# first of them the card on the shortlist).
+_CAST = ["#bank-list .bank-item:has(.bi-name:text-is('%s'))" % n for n in SHORTLIST]
+CAST_ROW = ", ".join(_CAST)
+CAST_HEAR = ", ".join(x + " .bi-hear" for x in _CAST)
+CAST_NAME = ", ".join(x + " .bi-name" for x in _CAST)
+PAD = CAST["pad"]
 # The named control a swell rides: the first of the six that reaches this
 # patch and can turn up (Bright when it can). Which way each control reaches
 # is measured per session, so it is picked by what it does, not by name.
@@ -72,7 +83,7 @@ def hold(at, keys, **kw):
 
 shots = []
 
-# ---- open: the cold open, wide. Glass Pad: C, then a Bright swell; Am as
+# ---- open: the cold open, wide. Slow Weather: C, then a Bright swell; Am as
 # Blend crosses into the offer in B; F on the offer; G, and Take; C on the
 # sound just taken. One chord a bar at 84 BPM, on the score's bar lines.
 # The offer is grown in set-up (Offer, until it lands in B): a fresh one takes
@@ -80,7 +91,7 @@ shots = []
 # Take empties B, and the pad reads Offer again.
 shots.append({
     "id": "to-open", "beat": "open", "pre": 0.5,
-    "setup": perform_settled("Glass Pad") + [
+    "setup": perform_settled(PAD) + [
         {"op": "wait", "ms": 1500},
         {"op": "click", "sel": ".pf-pad.primary"},
         {"op": "until", "sel": ".pf-offer.ready", "ms": 120000},
@@ -107,7 +118,7 @@ shots.append({
 # ---- title: the whole instrument, idle, under the title card; then the map.
 shots.append({
     "id": "to-map", "beat": "title", "pre": 0.5,
-    "setup": perform_settled("Glass Pad") + [QUIET],
+    "setup": perform_settled(PAD) + [QUIET],
     "marks": {"tabs": ".viewtabs", "bank": "aside.bank", "dock": "footer.keybar", "top": ".menubar-right", "piano": "#piano", "filters": ".bank-filters"},
     "actions": [],
 })
@@ -119,7 +130,7 @@ shots.append({
 shots.append({
     "id": "to-views", "beat": "views", "pre": 0.5,
     "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": PAD},
         {"op": "view", "v": "evolve"},
         {"op": "wait", "ms": 1500},
         {"op": "click", "sel": "#play-a"},
@@ -130,7 +141,7 @@ shots.append({
         {"op": "until", "js": "!document.querySelector('#play-b.playing')", "ms": 20000},
         {"op": "log", "name": "duel", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"op": "view", "v": "perform"},
-        {"op": "measured", "name": "Glass Pad"},
+        {"op": "measured", "name": PAD},
         WIRING,
         QUIET,
     ],
@@ -160,19 +171,19 @@ shots.append({
 })
 
 # ---- bank: three lists, then ▶ one row and open it. A progression on
-# Glass Pad under the first four lines; the audition after it. The row opens
+# Slow Weather under the first four lines; the audition after it. The row opens
 # as it is clicked (its sound was just heard, and its wiring came with it):
 # no cut, and its chords wait for it to land rather than for a clock.
 shots.append({
     "id": "to-bank", "beat": "bank", "pre": 0.5,
     "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": PAD},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         SETTLED,
         *([{"op": "click", "sel": ".bf[data-f='mine']"},
            {"op": "wait", "ms": 800},
-           {"op": "click", "sel": PAD_HEAR},
+           {"op": "click", "sel": CAST_HEAR},
            {"op": "wait", "ms": 9000},
            {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}] if PREHEAR else []),
         {"op": "click", "sel": ".bf[data-f='pool']"},
@@ -193,16 +204,16 @@ shots.append({
         {"at": "bank4:patches-0.3", "op": "click", "sel": ".bf[data-f='mine']"},
         {"at": "bank4:save", "op": "mark", "name": "row", "sel": "#bank-list .bank-item"},
         {"at": "bank4:save", "op": "log", "name": "rows", "js": "[...document.querySelectorAll('#bank-list .bank-item .bi-name')].map((n) => n.textContent).join(', ')"},
-        {"at": "bank5:play-0.15", "op": "click", "sel": PAD_HEAR},
-        {"at": "bank5:play+0.1", "op": "mark", "name": "hear", "sel": PAD_HEAR},
+        {"at": "bank5:play-0.15", "op": "click", "sel": CAST_HEAR},
+        {"at": "bank5:play+0.1", "op": "mark", "name": "hear", "sel": CAST_HEAR},
         {"at": "bank5:Click-0.25", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": " ", "ms": 60}]},
         {"at": "bank5:Click-0.1", "op": "seq", "steps": [
             {"op": "eval", "js": "window.__subject = document.getElementById('rack-subject').textContent"},
-            {"op": "click", "sel": PAD_NAME},
+            {"op": "click", "sel": CAST_NAME},
             {"op": "until", "js": "document.getElementById('rack-subject').textContent !== window.__subject", "ms": 90000, "stamp": "opened"},
             {"op": "log", "name": "opened", "js": "document.getElementById('rack-subject').textContent"},
         ]},
-        {"at": "bank5:Click+0.4", "op": "mark", "name": "padrow", "sel": PAD_ROW},
+        {"at": "bank5:Click+0.4", "op": "mark", "name": "padrow", "sel": CAST_ROW},
         # The row's own sound, live, the moment it lands.
         hold("@opened+0.35", AM, ms=1300),
         hold("@opened+1.7", F, ms="end"),
@@ -213,7 +224,7 @@ shots.append({
 # running arpeggio, and ● rec pressed on camera (a real take, and its toast).
 shots.append({
     "id": "to-dock", "beat": "dock", "pre": 0.5,
-    "setup": perform_settled("Acid Line") + [
+    "setup": perform_settled(CAST["acid"]) + [
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         QUIET,
     ],
@@ -264,7 +275,7 @@ shots.append({
 shots.append({
     "id": "to-header", "beat": "header", "pre": 0.5,
     "setup": [
-        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": PAD},
         {"op": "view", "v": "evolve"},
         {"op": "wait", "ms": 1500},
         {"op": "click", "sel": "#evolve-btn"},
@@ -307,34 +318,34 @@ shots.append({
         FILLED,
         MIDI_DEV,
         QUIET,
-        *([{"op": "click", "sel": pick("bass", " + .wi-play")},
+        *([{"op": "click", "sel": pick("cast", " + .wi-play")},
            {"op": "until", "sel": ".wi-play.playing", "ms": 120000},
            {"op": "wait", "ms": 1200},
-           {"op": "click", "sel": pick("bass", " + .wi-play")},
+           {"op": "click", "sel": pick("cast", " + .wi-play")},
            {"op": "until", "js": "!document.querySelector('.wi-play.playing')", "ms": 10000},
            {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
            QUIET] if PREHEAR else []),
         {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((n) => n.textContent).join(', ')"},
     ],
-    "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "bass": pick("bass")},
+    "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "cast": pick("cast")},
     "actions": [
-        # ▶ on the bass card as the narrator says "it asks": its five-second
+        # ▶ on the card on the shortlist as the narrator says "it asks": its five-second
         # phrase runs under "Play them, pick three…" up to the cut.
-        {"at": "first1:asks-0.1", "op": "click", "sel": pick("bass", " + .wi-play")},
+        {"at": "first1:asks-0.1", "op": "click", "sel": pick("cast", " + .wi-play")},
         {"at": "first1:asks+0.1", "op": "until", "sel": ".wi-play.playing", "ms": 20000, "stamp": "heard"},
         {"at": "first2:pick-0.1", "op": "seq", "steps": [
-            {"op": "click", "sel": pick("bass")},
+            {"op": "click", "sel": pick(PICKS[0])},
             {"op": "wait", "ms": 220},
-            {"op": "click", "sel": pick("pad")},
+            {"op": "click", "sel": pick(PICKS[1])},
             {"op": "wait", "ms": 220},
-            {"op": "click", "sel": pick("texture")},
+            {"op": "click", "sel": pick(PICKS[2])},
         ]},
         {"at": "first2:teach-0.1", "op": "click", "sel": "#warm-go"},
         {"at": "first2:teach+0.2", "op": "seq", "steps": [
             {"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
-            {"op": "until", "js": "/preferences learned/.test(document.getElementById('toasts').textContent)", "ms": 60000, "stamp": "learned"},
-            # PERFORM on the first pick (the bass card), whatever it showed first.
-            {"op": "until", "js": "%s.some((n) => (document.querySelector('.pf-name')?.textContent || '').trim().startsWith(n))" % json.dumps(CATS["bass"]), "ms": 60000, "stamp": "landed"},
+            {"op": "until", "js": "/taught it \\d+ picks/.test(document.getElementById('toasts').textContent)", "ms": 60000, "stamp": "learned"},
+            # PERFORM on the first pick (the card on the shortlist), whatever it showed first.
+            {"op": "until", "js": "%s.some((n) => (document.querySelector('.pf-name')?.textContent || '').trim().startsWith(n))" % json.dumps(SHORTLIST), "ms": 60000, "stamp": "landed"},
         ]},
         {"at": "first3:eighteen", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "first3:eighteen", "op": "mark", "name": "picks", "sel": "#duel-count"},
@@ -363,7 +374,7 @@ shots.append({
 # ---- where next: a film per view, each tab clicked as its film is named.
 shots.append({
     "id": "to-next", "beat": "next", "pre": 0.5,
-    "setup": perform_settled("Glass Pad") + [
+    "setup": perform_settled(PAD) + [
         {"op": "view", "v": "taste"},
         {"op": "wait", "ms": 1200},
         QUIET,
