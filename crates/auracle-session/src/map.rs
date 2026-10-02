@@ -53,14 +53,60 @@ pub struct TasteMap {
     /// checked convergence when they were written.
     #[serde(default)]
     pub converged: [bool; 2],
+    /// Where a sound of your own sits on this map ([`crate::own`]), if the
+    /// session has one. Placed on the map's axes, never one of the points the
+    /// axes were fitted to: bringing a sound does not move the map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own: Option<OwnPoint>,
+}
+
+/// A sound of your own's place on the map.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OwnPoint {
+    /// First principal coordinate, on the map's own scale.
+    pub x: f64,
+    /// Second principal coordinate.
+    pub y: f64,
+    /// How many coordinates of φ placed it (the ones the file measures).
+    pub observed: usize,
+}
+
+/// How a point measured on only some coordinates of φ is put on the map.
+///
+/// Chosen by measurement (`examples/own_census.rs`, which places every
+/// preset in a pool from a recording of it, both ways and by its nearest
+/// neighbors, against where the map draws the preset itself).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Placement {
+    /// The map point most probable given the measured coordinates, under the
+    /// map read as probabilistic PCA: a prior on the point of the two axes'
+    /// variances, and on each coordinate the variance the two axes leave
+    /// unexplained. With every coordinate measured this is the projection
+    /// every other point gets (shrunk by its noise); with few, it leans on
+    /// the axes' spread rather than on coordinates it does not have.
+    Fit,
+    /// The projection with every unmeasured coordinate at the map's mean.
+    Imputed,
+}
+
+/// What a map is drawn on: the rows, their center, and the two axes.
+struct MapFrame {
+    rows: Vec<Vec<f64>>,
+    meta: Vec<(Option<u64>, String)>,
+    centered: Vec<Vec<f64>>,
+    mean: Vec<f64>,
+    axes: [Vec<f64>; 2],
+    variance: [f64; 2],
+    total_var: f64,
+    converged: [bool; 2],
 }
 
 /// Most recent history φs to include as ghost points.
 const MAX_HISTORY: usize = 400;
 
-fn mean_center(rows: &mut [Vec<f64>]) {
+fn mean_center(rows: &mut [Vec<f64>]) -> Vec<f64> {
     if rows.is_empty() {
-        return;
+        return Vec::new();
     }
     let d = rows[0].len();
     let n = rows.len() as f64;
@@ -74,6 +120,54 @@ fn mean_center(rows: &mut [Vec<f64>]) {
         for (x, m) in r.iter_mut().zip(&mu) {
             *x -= m;
         }
+    }
+    mu
+}
+
+/// Put a target measured on `t.observed` on a frame's axes (see
+/// [`Placement`]).
+fn place(t: &crate::own::Toward, f: &MapFrame, how: Placement) -> OwnPoint {
+    // The target's offset from the map's center, on the coordinates it has.
+    let c: Vec<(usize, f64)> = t
+        .observed
+        .iter()
+        .zip(&t.target)
+        .filter(|(&j, _)| j < f.mean.len())
+        .map(|(&j, &v)| (j, v - f.mean[j]))
+        .collect();
+    let a = |k: usize, j: usize| f.axes[k].get(j).copied().unwrap_or(0.0);
+    let atc = [0, 1].map(|k| c.iter().map(|&(j, v)| a(k, j) * v).sum::<f64>());
+    let [x, y] = match how {
+        Placement::Imputed => atc,
+        Placement::Fit => {
+            // Probabilistic PCA's posterior mean for a partly observed row:
+            // (AᵀA + σ²Λ⁻¹)⁻¹ Aᵀc over the observed rows of A = [a₁ a₂], with
+            // Λ the axes' variances and σ² the variance per coordinate the
+            // two axes leave over.
+            let d = f.mean.len().max(3) as f64;
+            let noise = ((f.total_var - f.variance[0] - f.variance[1]) / (d - 2.0)).max(1e-6);
+            let mut m = [[0.0; 2]; 2];
+            for (k, row) in m.iter_mut().enumerate() {
+                for (l, cell) in row.iter_mut().enumerate() {
+                    *cell = c.iter().map(|&(j, _)| a(k, j) * a(l, j)).sum::<f64>();
+                }
+                row[k] += noise / f.variance[k].max(1e-9);
+            }
+            let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            if det.abs() < 1e-12 {
+                [0.0, 0.0]
+            } else {
+                [
+                    (m[1][1] * atc[0] - m[0][1] * atc[1]) / det,
+                    (m[0][0] * atc[1] - m[1][0] * atc[0]) / det,
+                ]
+            }
+        }
+    };
+    OwnPoint {
+        x,
+        y,
+        observed: c.len(),
     }
 }
 
@@ -245,6 +339,73 @@ impl Engine {
     /// first takes the sign convention in [`leading_axis`]), so a refit turns
     /// the map rather than mirroring it.
     pub fn taste_map(&self) -> TasteMap {
+        let Some(f) = self.map_frame(true) else {
+            return TasteMap {
+                points: Vec::new(),
+                explained: [0.0, 0.0],
+                // Nothing was solved, so nothing converged. Reported as such
+                // rather than as a vacuous success.
+                converged: [false, false],
+                own: None,
+            };
+        };
+        let [ax1, ax2] = &f.axes;
+        let points = f
+            .centered
+            .iter()
+            .zip(f.rows.iter())
+            .zip(f.meta.iter().cloned())
+            .map(|((c, phi), (id, origin))| {
+                let x: f64 = c.iter().zip(ax1).map(|(a, b)| a * b).sum();
+                let y: f64 = c.iter().zip(ax2).map(|(a, b)| a * b).sum();
+                let (utility, utility_std, style) = match &self.posterior {
+                    Some(p) => {
+                        let (m, s) = p.utility_mix(phi);
+                        (m, s, lens_of(p, phi))
+                    }
+                    None => (0.0, 0.0, 0),
+                };
+                MapPoint {
+                    id,
+                    x,
+                    y,
+                    utility,
+                    utility_std,
+                    style,
+                    origin,
+                }
+            })
+            .collect();
+
+        TasteMap {
+            points,
+            explained: [
+                (f.variance[0] / f.total_var.max(1e-12)).min(1.0),
+                (f.variance[1] / f.total_var.max(1e-12)).min(1.0),
+            ],
+            converged: f.converged,
+            own: self
+                .own_toward(crate::own::OWN_GAMMA)
+                .map(|t| place(&t, &f, Placement::Fit)),
+        }
+    }
+
+    /// Where the sound of your own sits on the map as it would be drawn now,
+    /// placed `how`, without drawing it: no utilities are computed and the
+    /// map's remembered orientation is read, not written. `None` without a
+    /// sound, a standardizer, or a map (fewer than three points).
+    pub fn own_on_map(&self, how: Placement) -> Option<OwnPoint> {
+        let t = self.own_toward(crate::own::OWN_GAMMA)?;
+        let f = self.map_frame(false)?;
+        Some(place(&t, &f, how))
+    }
+
+    /// The rows the map is drawn from (the pool, then recent history, all
+    /// standardized), their center and the two axes, each facing the way the
+    /// last drawn map's did. `remember` records these axes as the last drawn
+    /// (drawing the map does; placing a point on it does not). `None` below
+    /// three rows.
+    fn map_frame(&self, remember: bool) -> Option<MapFrame> {
         let mut rows: Vec<Vec<f64>> = Vec::new();
         let mut meta: Vec<(Option<u64>, String)> = Vec::new();
         for c in &self.pool {
@@ -282,17 +443,11 @@ impl Engine {
         }
 
         if rows.len() < 3 {
-            return TasteMap {
-                points: Vec::new(),
-                explained: [0.0, 0.0],
-                // Nothing was solved, so nothing converged. Reported as such
-                // rather than as a vacuous success.
-                converged: [false, false],
-            };
+            return None;
         }
 
         let mut centered = rows.clone();
-        mean_center(&mut centered);
+        let mean = mean_center(&mut centered);
         let total_var: f64 = centered
             .iter()
             .map(|r| r.iter().map(|x| x * x).sum::<f64>())
@@ -306,43 +461,20 @@ impl Engine {
                 orient(&mut ax1, d1);
                 orient(&mut ax2, d2);
             }
-            *drawn = Some([ax1.clone(), ax2.clone()]);
+            if remember {
+                *drawn = Some([ax1.clone(), ax2.clone()]);
+            }
         }
-
-        let points = centered
-            .iter()
-            .zip(rows.iter())
-            .zip(meta)
-            .map(|((c, phi), (id, origin))| {
-                let x: f64 = c.iter().zip(&ax1).map(|(a, b)| a * b).sum();
-                let y: f64 = c.iter().zip(&ax2).map(|(a, b)| a * b).sum();
-                let (utility, utility_std, style) = match &self.posterior {
-                    Some(p) => {
-                        let (m, s) = p.utility_mix(phi);
-                        (m, s, lens_of(p, phi))
-                    }
-                    None => (0.0, 0.0, 0),
-                };
-                MapPoint {
-                    id,
-                    x,
-                    y,
-                    utility,
-                    utility_std,
-                    style,
-                    origin,
-                }
-            })
-            .collect();
-
-        TasteMap {
-            points,
-            explained: [
-                (var1 / total_var.max(1e-12)).min(1.0),
-                (var2 / total_var.max(1e-12)).min(1.0),
-            ],
+        Some(MapFrame {
+            rows,
+            meta,
+            centered,
+            mean,
+            axes: [ax1, ax2],
+            variance: [var1, var2],
+            total_var,
             converged: [ok1, ok2],
-        }
+        })
     }
 }
 

@@ -94,6 +94,12 @@ pub struct WalkContext {
     pub beta: f64,
     /// Which state of the walk becomes the child.
     pub refine_keep: RefineKeep,
+    /// A sound of your own to breed toward, if this generation does
+    /// ([`crate::Engine::refine_toward_jobs`]): every walk's target is then
+    /// tilted toward it ([`crate::own::TowardFitness`]). `None` for every
+    /// other generation, which walks exactly as before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toward: Option<crate::own::Toward>,
 }
 
 /// One walk: everything that differs between the walks of a generation.
@@ -164,16 +170,34 @@ pub fn run_walk(ctx: &WalkContext, job: &WalkJob, memo: &RenderMemo) -> WalkResu
     };
     let locked: HashSet<String> = job.locked.iter().cloned().collect();
     let mut rng = StdRng::seed_from_u64(job.rng_seed);
-    let walk = walk_on(
-        ctx.prior.clone(),
-        ctx.beta,
-        ctx.refine_keep,
-        fitness,
-        &mut rng,
-        &job.seed,
-        &locked,
-        job.steps,
-    );
+    let walk = match &ctx.toward {
+        None => walk_on(
+            ctx.prior.clone(),
+            ctx.beta,
+            ctx.refine_keep,
+            fitness,
+            &mut rng,
+            &job.seed,
+            &locked,
+            job.steps,
+        ),
+        Some(toward) => walk_on(
+            ctx.prior.clone(),
+            ctx.beta,
+            ctx.refine_keep,
+            crate::own::TowardFitness {
+                inner: fitness,
+                toward: toward.clone(),
+                standardizer: Arc::clone(&ctx.standardizer),
+                phrase: ctx.phrase.clone(),
+                memo: memo.clone(),
+            },
+            &mut rng,
+            &job.seed,
+            &locked,
+            job.steps,
+        ),
+    };
     let (child, reason, cached) = match walk {
         Ok(tree) => {
             // A memo hit: the walk scored the state it ended on.
