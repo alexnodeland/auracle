@@ -41,6 +41,7 @@ pub mod clip;
 pub mod loudness;
 pub mod phrase;
 pub mod pipeline;
+pub mod probe;
 pub mod render;
 pub mod structural;
 pub mod vet;
@@ -56,6 +57,7 @@ pub use clip::{
 pub use loudness::{integrated_lufs, normalize_to, MAX_GAIN_DB, PEAK_CEILING};
 pub use phrase::PhraseSpec;
 pub use pipeline::{featurize, Features, FeaturizeError, VettedCandidate, TARGET_LUFS};
+pub use probe::{cable_levels, probe_cables, CableLevel, CableProbe, PROBE_FLOOR_DB};
 pub use render::{render_phrase, render_playback, Audition, RenderedPhrase};
 pub use structural::{struct_features, StructFeatures};
 pub use vet::{vet, VetConfig, VetFailure, VetReport};

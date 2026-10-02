@@ -34,6 +34,15 @@ input a node reads is the player’s, so a walk conditions on it as on a
 player’s lock, and the node stays where it was with the input it had. A node
 the walk grows reads the first input (the grammar never chooses one).
 
+It holds the `#op` of each
+[TRACK and CAPTURE](../genome/grammar.md#player-kinds-scored-and-never-drawn)
+the same way. The prior never draws either, so a step that regrew one away
+could never grow it back. Holding a node’s `#op` holds the node and every node
+above it, since regrowing any subtree that contains it would redraw that site;
+its knobs and everything beside it stay free. A capture’s take is not a site at
+all, so no walk can propose a new one, and the walk carries it onto every term
+it scores, and onto the term it returns.
+
 ## Why all three, and why both directions
 
 The third, *creates*, is the one that gets omitted, and omitting it breaks the

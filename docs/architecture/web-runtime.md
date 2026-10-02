@@ -56,7 +56,8 @@ served within a lane (`laneOf` in `worker.js`):
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
-  offers, Wander's drift, booth pre-warms).
+  offers, Wander's drift, booth pre-warms, the model's guess, the cable
+  probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
 so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
@@ -136,6 +137,43 @@ size): ⚡'s child is trimmed against at once when it is absorbed
 (`evict_to_size` with the seed protected), lowest first by
 `eviction_order`, which passes over a seed in flight, and `may_replace` ranks
 the same way.
+
+## The model's guess and the cable probe
+
+Two Plan-005 task 9 surfaces the page does not call yet (PATCH's task 7 draws
+them). Both are about the patch in hand, and each reply carries the tree it
+was computed for (`edit_tree_json`), so a page that has moved on drops it, as
+it drops a stale pre-placement audition.
+
+- **`guess`** (`later`, holds the floor; `{token, at?}`): the module the model
+  guesses the player would add next
+  ([reference](../../www/reference/src/search/guess.md)). `guessRun` asks the
+  engine what it owes (`guess_plan`: the patch first if unmeasured, then the
+  output's candidates in render order), renders the first `GUESS_FLOOR` (8)
+  with `memo_render`, one per turn, breathing between them as PERFORM's
+  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of render
+  time is spent (render time only, checked after each render, so it can run
+  over by one), and posts `guess` with `{token, tree, data}`: the ranking
+  (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
+  the grammar's ceiling, `no_patch` with nothing open). It gives way to work
+  the player asks for and resumes from the memo. `at`, a module's key, ranks
+  that deeper socket instead of the output's. Rendering the candidates on a
+  crew (`farm_render`, then `memo_absorb`; each job's `cache` is its key in
+  the farm's store) is not wired yet.
+- **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
+  edit with the same replies, remembered so that a later edit back to the
+  tree before it (⌘Z) counts as a skip. A guess no longer current for the
+  patch (ranked on an earlier tree) is refused with `edit_rejected` and its
+  reason. A crash in `guessRun` still answers: `guess` with `{token, error}`.
+- **`guess_skip`** (`now`; `{token, guess}`): keeps that guess's family away
+  from its socket for this patch, and answers `guess_skipped` with `{token,
+  ok}`. Skips and takes are logged, never evidence.
+- **`cable_levels`** (`later`; `{token}`): every audio cable of the patch in
+  hand, measured on one render of the phrase (`edit_cable_levels`), keyed as
+  the rack draws them (`from`, `to`, and both uids), in the live meter's dB
+  scale; posted as `cable_levels` with `{token, tree, levels}`. One render
+  (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
+  sound, the worklet's meter reads the cables live.
 
 ## The breed job
 
@@ -290,13 +328,22 @@ differently) is played at once and re-measured.
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
 binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without
-them the engine wires the six. The page sends none yet, so every wiring it
-measures, caches and ships is the six's. The palette's panel (Plan-005 task 5)
-will ask for the controls placed on it. Each wiring in the reply carries its
-palette `index`, and the panel must name a control back by it (an aimed
-offer's `control`, a graft's `k`), not by its position, which follows the
-order asked; and `wireKey` must then hold the set asked for as well as the
-patch.
+them the engine wires the six. The page asks for the controls on the player's
+panel (`state.panel`, at most eight, saved as `perf.panel` with the session):
+nothing for the six, so their request, key and shipped file are what they
+were, and otherwise the panel's set in palette order (`setOf`), so the answer
+depends on the set and not on the order the panel shows it in. Each wiring in
+the reply carries its palette `index`, and the page lays it on the panel by
+that index (`alignWiring`) and names a control back by it (an aimed offer's
+`control`, a graft's `k`, `indexAt`), never by its position. `wireKey` holds
+the set as well as the patch (`#controls=` and the set, empty for the six),
+and for a sound with an AUDIO IN the audition clip, on the patch's part
+before the set (`wireKeyOf`: `patch|clip:<id>#controls=<set>`). A
+placed control is measured lazily, on the sound in hand and only in sight
+(`measurePanel`), borrowing what other sets of that patch measured
+(`borrowWiring`) meanwhile; a measurement of a set the panel has since left is
+cached and not played. Changing the panel rebuilds the deck (`setPanel`), never
+under a held pointer (`panelLater`).
 
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when

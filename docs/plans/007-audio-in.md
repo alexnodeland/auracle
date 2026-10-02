@@ -135,6 +135,16 @@ measured with audition clips, from quiver to the PATCH plate.
      captures again. One clip for every input (a clip per input stays open);
    - the farm's phrase re-sent after a capture and after a restore that
      installs a clip; *done* (`farmResendPhrase`);
+   - **held sounds** (task 6), owed (the second web PR): a bank surface for the sounds a restore
+     kept aside because a CAPTURE's recording couldn't be read
+     (`held_sounds`), which opens one on the bench to record it again and
+     sends the take (`readmit_held`); both are wired in `worker.js` with
+     nothing asking yet, and the restore's note says so once per set;
+   - **TRACK live**, owed (the second web PR): a key let go while the input still sounds holds its
+     voice open (the tracker's gate is summed into the amp's), so voices can
+     stack while the player plays keys over a sung line, each a copy of the
+     tracked note. The audition render's chord voices are followers that
+     stop with their key; `LivePoly` has no follower yet;
    - **turning AUDIO IN on in the prior** once a player can hear a live input:
      set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
      task 2 measured exactly that setting, so if nothing else has changed it
@@ -164,11 +174,59 @@ measured with audition clips, from quiver to the PATCH plate.
    - `LivePoly`'s input stream is built in `LivePoly::new`, which the worklet
      calls in its port handler (`port.onmessage`), never in `process()`.
 5. **Track** (pitch by YIN, gate, level) in quiver and the grammar. Play the
-   patch from a voice or an instrument. quiver's half is done
-   (`PitchTracker`, 0.4.0).
+   patch from a voice or an instrument. quiver's half is done (`PitchTracker`,
+   0.4.0). *Done* (engine):
+   - `AudioNode::Track { band, sensitivity, dynamics, /0 played, /1 followed }`,
+     `#op` 20, compiled to `PitchTracker` on `/1`. While `/0` is built the
+     tracker's pitch and gate stand in for the keys', so everything in the
+     played branch follows the input; its gate is summed into the amp gate
+     (either one opens the voice); `dynamics` sets how far the level shapes
+     `/0`. Outside `/0` the keys play as before;
+   - described as `track`, "track", with "band", "sensitivity", "dynamics";
+     `NodeKind::Track` in #90's checklist (the default `/1` is an AUDIO IN);
+   - a **player kind**: `OpKind` never draws it and scores it finite
+     (`PLAYER_OP_MASS`), so draws, the pool and φ are unchanged and no
+     revalidate is owed, while a player's tracked sound stays evolvable
+     (once AUDIO IN is on: while its weight is 0, an AUDIO IN under a
+     TRACK still scores −∞);
+   - every walk holds its `#op` (`PatchTree::player_sites`), so the node,
+     the chain it plays and the input chain it follows stay;
+   - rendered on the reference clip, it plays the figure's notes (thirteen of
+     fourteen within 1.4 cents; one over a ringing note, 17 cents).
+   - Open: live, `LivePoly` ran a voice only while a key was held. Task 4's
+     open voice (`LivePoly::set_open`) now holds one open while the input is
+     monitored, which is what a tracked patch needs to sound from the input
+     alone; it has not been measured with a TRACK yet. Still open: a tracker
+     holding the gate defeats the stolen-voice regate, and the node bank
+     entry and the plate (the second web PR).
 6. **Capture** (record and play back) in quiver and the grammar. A captured
    buffer is saved with the sound. quiver's half is done (`Capture`, 0.4.0,
-   which saves its take with the patch).
+   which saves its take with the patch). *Done* (engine):
+   - `AudioNode::Capture { play, /0 recorded, take }`, `#op` 21, compiled to
+     quiver's `Capture` holding the take, played by the keys (once, hold,
+     loop) at the keys' pitch; its output is the take, never `/0`;
+   - the take (`auracle_grammar::Take`) is saved in the term as quiver's own
+     state (`f32le-base64`, lossless), bounded like `SavedClip`: rate at most
+     192 kHz, length at most `TAKE_SECONDS` (4 s, quiver's default buffer) at
+     that rate, the data's length checked before it is decoded. An
+     unreadable take loads empty with the sound intact and counts as a
+     repaired sound on restore;
+   - the compiled voice has a record gate per capture and `take(key)` reads
+     the recording back; `StructOp::SetTake` puts a take in the term through
+     the existing `edit_structure` binding. A render never records;
+   - a player kind, like TRACK; walks hold its `#op`, never propose a take
+     (it is not a trace site), and carry it onto every term they score.
+   - a sound whose only source was a take that couldn't be read is **held**:
+     restore keeps it out of the pool (never dealt, fitted, mapped, wired or
+     bred), reports it apart from the repairs, and the app says "One sound's
+     recording couldn't be read. It's kept safe until you record it again."
+     once per set of such sounds; a save writes its take back JSON-equal to
+     what was loaded; `Engine::readmit_held` (wasm `readmit_held`) brings it
+     back with a readable take, measured as a new sound;
+   - a recording stops at `TAKE_SECONDS` at the voice's rate
+     (`RecordWindow`), so it always reads back as a take.
+   - Open: `LivePoly`'s record and read-back bindings and the record control,
+     and showing held sounds in the bank (task 4).
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
    is *done* (*Audition clips*, with the AUDIO IN term on the grammar page),

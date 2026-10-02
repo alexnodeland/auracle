@@ -29,6 +29,35 @@ changelog that edits its own past is not a record.
   built-in plucked phrase.
 - A sound with AUDIO IN can’t be bred from yet: ⚡ evolve from this says so.
 
+### Added: PERFORM's palette, its offers in motion, and stage mode
+
+- **You choose PERFORM's controls.** **ARRANGE** opens the palette: the
+  eighteen controls the instrument can measure, in six families (tone,
+  weight, dynamics, movement, space, and character). Place up to eight on
+  the panel, hide any, and put them in your order; the panel is kept with
+  your session. The twelve new ones are WARMTH, AIR, THUMP, HEFT, PUNCH,
+  ROUND, THROB, SWAY, DISTANCE, HAZE, BITE, and LO-FI. Until now the panel
+  was always the six.
+- **A control you place is measured on the sound you're playing, and says
+  so.** It reads *listening…* in amber while it is measured, the status line
+  names it (*listening to Bite…*), and the controls beside it keep playing.
+  Nothing off the panel is measured, and a set measured on a sound before is
+  kept.
+- **HOW IT WORKS covers every control on the panel.** It opens on the one you
+  last touched, with the rest a tap away: what you hear it do, what it
+  listens to, and what it turns on this sound. It used to describe three of
+  the six in one paragraph.
+- **An offer shows where it came from.** B grows out of the sound's name,
+  because it is grown from the sound you're playing. Taken, it fills with
+  green and goes into the name; passed, it folds back into it. With reduced
+  motion on, nothing moves.
+- **Stage mode.** In PERFORM, <kbd>⇧F</kbd> puts the sound you're playing on the whole
+  screen, drawn from what you hear, for a gig or a stream. The keys and
+  Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.
+- **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put
+  them on the panel, and a MIDI controller's first eight knobs take the
+  deck's first eight controls.
+
 ### Changed: the bank shows what a generation does
 
 - **Pointing at EVOLVE POOL marks its seeds as well as what it may

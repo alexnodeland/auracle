@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use auracle_grammar::{compile_with_input, PatchTree};
+use auracle_grammar::{compile_follower, compile_with_input, PatchTree};
 use quiver::{AudioInputStream, PatchError};
 
 use crate::phrase::PhraseSpec;
@@ -82,10 +82,42 @@ const PARK_RUN: usize = 1024;
 /// [`crate::phrase::PhraseSpec::max_voices`]. Chord voices tick from their
 /// note's onset (cold start, like live voice allocation), share the note's
 /// gate, and after release keep ticking until their output parks on silence
-/// so a long tail is never truncated into a click. Tick order per sample is
+/// so a long tail is never truncated into a click. A chord voice of a patch
+/// with a TRACK is a follower (`auracle_grammar::compile_follower`): it plays
+/// the note the main voice's tracker hears that frame, from its first, and its
+/// amp keeps the chord note's gate, so it starts on the tracked note and stops
+/// with its key. Tick order per sample is
 /// fixed (main voice, then chord voices in pitch order), which keeps the
 /// thread-local RNG draw sequence — and therefore the render — deterministic.
 pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhrase, PatchError> {
+    render_phrase_observed(tree, spec, &mut ())
+}
+
+/// What may watch a render: the main voice once it is compiled, then after
+/// every tick. It reads the voice and never writes it, so a render it watches
+/// is the render it would have been (`crate::probe`'s tests hold that bit for
+/// bit). Chord voices are not shown to it.
+pub(crate) trait VoiceObserver {
+    /// The main voice, compiled, before its first tick.
+    fn start(&mut self, voice: &auracle_grammar::CompiledVoice);
+    /// The main voice, just ticked.
+    fn tick(&mut self, voice: &auracle_grammar::CompiledVoice);
+}
+
+/// No observer: [`render_phrase`] itself.
+impl VoiceObserver for () {
+    #[inline(always)]
+    fn start(&mut self, _: &auracle_grammar::CompiledVoice) {}
+    #[inline(always)]
+    fn tick(&mut self, _: &auracle_grammar::CompiledVoice) {}
+}
+
+/// [`render_phrase`], with `obs` watching the main voice.
+pub(crate) fn render_phrase_observed<O: VoiceObserver>(
+    tree: &PatchTree,
+    spec: &PhraseSpec,
+    obs: &mut O,
+) -> Result<RenderedPhrase, PatchError> {
     // Determinism: fix the stochastic-module RNG for this render — **before**
     // anything is compiled. quiver's RNG is one thread-local stream, and some
     // of its module constructors draw from it (`AnalogVco` takes four). No
@@ -106,12 +138,16 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
     let mut samples = Vec::with_capacity(spec.total_samples());
     let mut note_onsets = Vec::with_capacity(spec.notes.len());
     let mut spans = Vec::with_capacity(spec.notes.len());
+    obs.start(&voice);
 
     let tick_all =
         |voice: &mut auracle_grammar::CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
             let (l, r) = voice.patch.tick();
             let mut s = (l + r) * 0.5 / 5.0;
             for cv in chord.iter_mut().filter(|cv| !cv.parked) {
+                // A chord voice plays the note the main voice's TRACKs hear
+                // this frame (a no-op for a patch without one).
+                voice.lead(&cv.voice);
                 let (cl, cr) = cv.voice.patch.tick();
                 let c = (cl + cr) * 0.5 / 5.0;
                 s += c;
@@ -140,8 +176,12 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
             chord_voices.retain(|cv| !cv.parked);
             for &voct in &note.chord {
                 // On the same stream: its AUDIO IN reads the frame the main
-                // voice is on, from this, its first, tick.
-                let v = compile_with_input(tree, spec.sample_rate, input.as_ref())?;
+                // voice is on, from this, its first, tick. A follower: each
+                // TRACK in it plays what the main voice's tracks (so it starts
+                // on the tracked note, not on C4 while a cold tracker settles)
+                // and its amp keeps this note's gate, so it stops with the
+                // dyad. For a patch with no TRACK it is the same voice.
+                let v = compile_follower(tree, spec.sample_rate, input.as_ref())?;
                 v.pitch.set(voct);
                 v.gate.set(5.0);
                 chord_voices.push(ChordVoice {
@@ -160,6 +200,7 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
         for _ in 0..(note.on_s * spec.sample_rate) as usize {
             let s = tick_all(&mut voice, &mut chord_voices);
             samples.push(s);
+            obs.tick(&voice);
         }
         let on_end = samples.len();
         voice.gate.set(0.0);
@@ -170,6 +211,7 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
         for _ in 0..(note.off_s * spec.sample_rate) as usize {
             let s = tick_all(&mut voice, &mut chord_voices);
             samples.push(s);
+            obs.tick(&voice);
         }
         spans.push(NoteSpan {
             voct: note.voct,
@@ -435,6 +477,184 @@ mod tests {
                 crate::FeaturizeError::Quarantined(crate::VetFailure::Silent { .. })
             ),
             "{err}"
+        );
+    }
+
+    /// Frequency of `x` from its rising zero crossings, interpolated (Hz at
+    /// `sr`); `None` with fewer than two.
+    fn crossing_hz(x: &[f64], sr: f64) -> Option<f64> {
+        let mean = x.iter().sum::<f64>() / x.len() as f64;
+        let (mut first, mut last, mut n) = (None, 0.0, 0usize);
+        for i in 1..x.len() {
+            let (a, b) = (x[i - 1] - mean, x[i] - mean);
+            if a < 0.0 && b >= 0.0 {
+                let t = (i - 1) as f64 + a / (a - b);
+                match first {
+                    None => first = Some(t),
+                    Some(_) => n += 1,
+                }
+                last = t;
+            }
+        }
+        first.filter(|_| n > 0).map(|f| sr * n as f64 / (last - f))
+    }
+
+    /// **TRACK on the reference clip plays the clip's notes.** A sine VCO under
+    /// a TRACK listening to an AUDIO IN, rendered on the standard phrase the
+    /// way every measurement is (`render_phrase`, the reference on the host's
+    /// clock, chord voices joining mid-render), sings each of the figure's
+    /// fourteen notes, A2 to E4. Measured from the render's zero crossings
+    /// between 60 and 140 ms after each onset (after the tracker's ~48 ms to
+    /// confirm a note, before the next one or a chord voice joins), every note
+    /// is the figure's note within `NOTE_CENTS`, and the typical note is within
+    /// `TYPICAL_CENTS`.
+    ///
+    /// Measured (2026-10-02): thirteen notes within 1.4 cents; the D4 at 1.75 s
+    /// reads 17 cents sharp, because the figure is not quite monophonic there:
+    /// the E4 held from 1.00 s (decaying over 0.35 s) still rings under the
+    /// quieter, darker D4, and YIN hears the pair. That is the tracker reading
+    /// its input honestly, so the bound for one note is the note, not 5 cents.
+    #[test]
+    fn track_plays_the_reference_figures_notes() {
+        use auracle_grammar::term::{PitchBand, Waveform};
+        use auracle_grammar::{ModNode, TRACK_SENSITIVITY_DEFAULT};
+        /// A quarter-tone: every note is the right note.
+        const NOTE_CENTS: f64 = 25.0;
+        /// The median note: quiver pins a plucked note within 5 cents.
+        const TYPICAL_CENTS: f64 = 5.0;
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: PARAM_MAX,
+                release: 0.6,
+            },
+            root: AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Sine,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                listen: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+            },
+        };
+        assert!(tree.listens());
+        let spec = PhraseSpec::default();
+        let render = render_phrase(&tree, &spec).expect("renders");
+        let sr = render.sample_rate;
+        let mut errors = Vec::new();
+        let mut report = Vec::new();
+        for (at, note) in crate::clip::reference_notes() {
+            let want = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
+            let (from, to) = (((at + 0.06) * sr) as usize, ((at + 0.14) * sr) as usize);
+            let hz = crossing_hz(&render.samples[from..to], sr)
+                .unwrap_or_else(|| panic!("nothing plays after the note at {at} s"));
+            let cents = 1200.0 * (hz / want).log2();
+            report.push(format!("{at:.2}s midi {note}: {cents:+.1}c"));
+            errors.push(cents.abs());
+        }
+        let report = report.join(", ");
+        assert_eq!(errors.len(), 14);
+        errors.sort_by(f64::total_cmp);
+        let (median, worst) = (errors[errors.len() / 2], errors[errors.len() - 1]);
+        assert!(
+            worst < NOTE_CENTS,
+            "a tracked note strays {worst:.1} cents: {report}"
+        );
+        assert!(
+            median < TYPICAL_CENTS,
+            "the typical tracked note strays {median:.1} cents: {report}"
+        );
+    }
+
+    /// **A TRACK's chord voice is gate-synced with its note and starts on the
+    /// tracked pitch.** The standard phrase rendered with its dyad and without
+    /// it differs only by the chord voice. That difference is exactly silent
+    /// before the dyad's onset and silent again once its key is up (the
+    /// tracker's gate keeps only the main voice open), and from its first
+    /// frame it sings the note the main voice is tracking (G3, the figure's
+    /// note at 2.25 s), with no C4 while a cold tracker would settle.
+    #[test]
+    fn a_tracks_chord_voice_starts_on_the_tracked_note_and_stops_with_its_key() {
+        use auracle_grammar::term::{PitchBand, Waveform};
+        use auracle_grammar::{ModNode, TRACK_SENSITIVITY_DEFAULT};
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.2,
+                sustain: PARAM_MAX,
+                release: 0.4,
+            },
+            root: AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::Mid,
+                sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                dynamics: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Sine,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                listen: Box::new(AudioNode::AudioIn {
+                    uid: Uid::NEW,
+                    input: 0,
+                    gain: INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+            },
+        };
+        let with = PhraseSpec::default();
+        let mut without = with.clone();
+        let dyad = without
+            .notes
+            .iter()
+            .position(|n| !n.chord.is_empty())
+            .expect("the standard phrase has a dyad");
+        without.notes[dyad].chord.clear();
+        let a = render_phrase(&tree, &with).unwrap();
+        let b = render_phrase(&tree, &without).unwrap();
+        let sr = with.sample_rate;
+        let onset: f64 = with.notes[..dyad].iter().map(|n| n.on_s + n.off_s).sum();
+        let off = onset + with.notes[dyad].on_s;
+        let chord: Vec<f64> = a
+            .samples
+            .iter()
+            .zip(&b.samples)
+            .map(|(x, y)| x - y)
+            .collect();
+        let at = |t: f64| (t * sr) as usize;
+        assert!(
+            chord[..at(onset)].iter().all(|d| *d == 0.0),
+            "the dyad changed the render before it began"
+        );
+        let after = chord[at(off + 0.3)..]
+            .iter()
+            .fold(0.0f64, |m, d| m.max(d.abs()));
+        assert!(
+            after < 1e-6,
+            "the chord voice still sounds after its key is up ({after:.2e})"
+        );
+        let first = &chord[at(onset)..at(onset + 0.03)];
+        let hz = crossing_hz(first, sr).expect("the chord voice sounds at once");
+        let cents_from_g3 = 1200.0 * (hz / 195.997_717_99).log2();
+        assert!(
+            cents_from_g3.abs() < 30.0,
+            "the chord voice starts at {hz:.1} Hz, not the tracked G3"
         );
     }
 }

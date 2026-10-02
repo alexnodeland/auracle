@@ -401,3 +401,91 @@ export function platformKeys(s, apple = onApple()) {
     return key ? `${names.join(" ")} ${key}` : names.join(" ");
   });
 }
+
+/** PERFORM's palette: the eighteen controls the engine can measure, in the
+ *  engine's order (`auracle_session::perform::PALETTE`, whose index is how a
+ *  control is named across the boundary: a wiring's `index`, an aimed
+ *  offer's `control`, a graft's `k`). The first six are the panel's six
+ *  (`CONTROLS`), at the same indices. Names and end words are the engine's
+ *  (`NamedControl::name`, `low`, `high`), approved with the palette
+ *  (www/brand/voice.md's word table); `aim` is "more of it" each way, [low,
+ *  high], for an aimed offer's line (*grittier by 0.8σ*); `hear` is what a
+ *  player hears it do, and `how` what it listens to, for How it works. Keep
+ *  this table in step with `PALETTE`: `tests/words.test.mjs` checks its
+ *  shape, and `perform_palette.spec.js` checks the names against what the
+ *  engine wires. */
+export const PALETTE = [
+  { name: "Bright", low: "dark", high: "bright", family: "Tone", aim: ["darker", "brighter"],
+    hear: "Where the energy sits, low or high: the top opens or closes.",
+    how: "It listens to where the spectrum’s center sits and where its top rolls off." },
+  { name: "Snap", low: "bloom", high: "snap", family: "Dynamics", aim: ["softer", "snappier"],
+    hear: "How fast the attack is, and how sharp its peak.",
+    how: "It listens to the attack’s length and how far the peak stands above the rest." },
+  { name: "Motion", low: "still", high: "restless", family: "Movement", aim: ["stiller", "more restless"],
+    hear: "How much a held note moves: slow sweeps, pulsing, and flutter.",
+    how: "It listens to a held note’s movement in all three bands, and how far its center wanders." },
+  { name: "Body", low: "thin", high: "full", family: "Weight", aim: ["thinner", "fuller"],
+    hear: "How much weight sits below about 250 Hz.",
+    how: "It listens to the share of the sound below about 250 Hz." },
+  { name: "Grit", low: "smooth", high: "rough", family: "Character", aim: ["smoother", "grittier"],
+    hear: "How noisy the sound is, rather than tonal.",
+    how: "It listens to how flat the spectrum is: noise is flat, a note is peaked." },
+  { name: "Space", low: "close", high: "far", family: "Space", aim: ["closer", "farther"],
+    hear: "How loud the tail is after the notes stop.",
+    how: "It listens to the tail’s level after the notes end, which the release sets." },
+  { name: "Warmth", low: "cold", high: "warm", family: "Tone", aim: ["colder", "warmer"],
+    hear: "Weight low down, and a softer top of the keyboard.",
+    how: "It listens to the share below about 250 Hz, and how much quieter the highest note is than the held one." },
+  { name: "Air", low: "closed", high: "airy", family: "Tone", aim: ["more closed", "airier"],
+    hear: "The very top, above the notes, opening while the body stays.",
+    how: "It listens to the highest partials and any breath, against where the spectrum’s center sits." },
+  { name: "Thump", low: "light", high: "thumping", family: "Weight", aim: ["lighter", "more thumping"],
+    hear: "Weight low down that hits.",
+    how: "It listens to the share below about 250 Hz, and how far the peaks stand above the rest." },
+  { name: "Heft", low: "slight", high: "heavy", family: "Weight", aim: ["slighter", "heavier"],
+    hear: "Dense, held weight: the opposite of a light pluck.",
+    how: "It listens to how full of level the sound stays, and the share below about 250 Hz." },
+  { name: "Punch", low: "gentle", high: "punchy", family: "Dynamics", aim: ["gentler", "punchier"],
+    hear: "The size of the hit against the rest.",
+    how: "It listens to the peaks, and how much the level moves over the phrase." },
+  { name: "Round", low: "hard", high: "round", family: "Dynamics", aim: ["harder", "rounder"],
+    hear: "A soft attack and few harmonics.",
+    how: "It listens to the attack’s length and where the top rolls off." },
+  { name: "Throb", low: "steady", high: "throbbing", family: "Movement", aim: ["steadier", "more throbbing"],
+    hear: "Pulsing and tremolo.",
+    how: "It listens to a held note’s movement between 2 and 8 Hz, alone." },
+  { name: "Sway", low: "fixed", high: "swaying", family: "Movement", aim: ["more fixed", "more swaying"],
+    hear: "Slow sweeps and breathing.",
+    how: "It listens to a held note’s movement between 0.5 and 2 Hz, alone." },
+  { name: "Distance", low: "near", high: "distant", family: "Space", aim: ["nearer", "more distant"],
+    hear: "What distance does to a sound: a longer tail, a softer attack, smaller peaks, and a duller top.",
+    how: "It listens to the tail, and at half weight to the attack, the peaks, and where the top rolls off." },
+  { name: "Haze", low: "clear", high: "hazy", family: "Space", aim: ["clearer", "hazier"],
+    hear: "A wash: a tail, a shimmer, and the peaks smoothed away.",
+    how: "It listens to the tail, a held note’s movement between 8 and 30 Hz, and the peaks." },
+  { name: "Bite", low: "mild", high: "biting", family: "Character", aim: ["milder", "more biting"],
+    hear: "An edge: a filter that snaps open, or a resonance that rings.",
+    how: "It listens to how fast the spectrum changes, and to the highest partials." },
+  { name: "Lo-fi", low: "clean", high: "worn", family: "Character", aim: ["cleaner", "more worn"],
+    hear: "Worn like tape: hiss, a dull top, and flutter.",
+    how: "It listens to how flat the spectrum is, where the top rolls off, and movement between 8 and 30 Hz." },
+];
+
+/** The palette's six families, in the order the palette lists them. */
+export const FAMILIES = ["Tone", "Weight", "Dynamics", "Movement", "Space", "Character"];
+
+/** What a control does on the sound you're playing, from its measured
+ *  wiring (`perform_wire`'s entry for it), for How it works: the knobs it
+ *  turns, that the knobs here can't do it, or that it hasn't been measured
+ *  yet. `knobs` is the knobs' names, already in words. */
+export function onThisSound(name, { search = false, pending = false, knobs = [], only = "" } = {}) {
+  if (pending) return `${name} hasn’t been measured on this sound yet. It turns once it has.`;
+  if (search) return `Nothing here turns ${name}: turn it past the notch, and it asks for an offer instead.`;
+  const turns = knobs.length ? `On this sound it turns ${series(knobs)}.` : `On this sound it turns nothing yet.`;
+  return only ? `${turns} It turns toward ${only} only.` : turns;
+}
+
+/** The palette's count, for its header: "6 of 8 on the panel". */
+export function panelCount(n, max) {
+  return `${n} of ${max} on the panel`;
+}

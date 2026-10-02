@@ -16,10 +16,11 @@ use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use fugue_evo::genome::traits::EvolutionaryGenome;
 use rand::Rng;
 
-use crate::prior::{PatchGrammarPrior, STEPS_SITES};
+use crate::prior::{PatchGrammarPrior, OP_CAPTURE, OP_TRACK, STEPS_SITES, TRACK_SITES};
+use crate::take::Take;
 use crate::term::{
-    AmpEnv, AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp,
-    PatchTree, TableShape, Uid, Waveform, INPUT_SLOTS,
+    AmpEnv, AudioNode, CaptureMode, DriveMode, FilterKind, InputChannel, ModNode, ModOp,
+    NoiseColor, PairOp, PatchTree, PitchBand, TableShape, Uid, Waveform, INPUT_SLOTS,
 };
 
 impl EvolutionaryGenome for PatchTree {
@@ -841,6 +842,50 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 + node_distance(ca, cb)
                 + node_distance(ma, mb)
         }
+        (
+            Track {
+                band: ba,
+                sensitivity: sa,
+                dynamics: da,
+                input: ia,
+                listen: la,
+                ..
+            },
+            Track {
+                band: bb,
+                sensitivity: sb,
+                dynamics: db,
+                input: ib,
+                listen: lb,
+                ..
+            },
+        ) => {
+            (if ba == bb { 0.0 } else { 1.0 })
+                + (sa - sb).abs()
+                + (da - db).abs()
+                + node_distance(ia, ib)
+                + node_distance(la, lb)
+        }
+        // Two takes are content, not a knob: a different recording is as far
+        // apart as a different module would be.
+        (
+            Capture {
+                play: pa,
+                input: ia,
+                take: ta,
+                ..
+            },
+            Capture {
+                play: pb,
+                input: ib,
+                take: tb,
+                ..
+            },
+        ) => {
+            (if pa == pb { 0.0 } else { 1.0 })
+                + (if ta == tb { 0.0 } else { 1.0 })
+                + node_distance(ia, ib)
+        }
         // Different constructors: whole-subtree penalty.
         _ => (a.size() + b.size()) as f64,
     }
@@ -1401,6 +1446,33 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             encode_node(carrier, &child_key(key, 0), t);
             encode_node(modulator, &child_key(key, 1), t);
         }
+        // The player kinds, appended after the twenty drawn ones. Draw order:
+        // band, sensitivity, dynamics, then `/0` and `/1`, as `prior` scores
+        // them.
+        Track {
+            band,
+            sensitivity,
+            dynamics,
+            input,
+            listen,
+            ..
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", OP_TRACK);
+            put_usize(t, key, "band", band.index());
+            put_f64(t, key, TRACK_SITES[0], *sensitivity);
+            put_f64(t, key, TRACK_SITES[1], *dynamics);
+            encode_node(input, &child_key(key, 0), t);
+            encode_node(listen, &child_key(key, 1), t);
+        }
+        // The take is not a site: a trace holds choices, and a recording is
+        // content. `PatchTree::inherit_uids` carries it across a decode.
+        Capture { play, input, .. } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", OP_CAPTURE);
+            put_usize(t, key, "play", play.index());
+            encode_node(input, &child_key(key, 0), t);
+        }
     }
 }
 
@@ -1785,6 +1857,21 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_mod(t, &mod_key(key))?,
                 carrier: Box::new(decode_node(t, &child_key(key, 0))?),
                 modulator: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            OP_TRACK => Ok(AudioNode::Track {
+                uid: Uid::NEW,
+                band: PitchBand::from_index(get_index(t, key, "band", PitchBand::ALL.len())?),
+                sensitivity: get_f64(t, key, TRACK_SITES[0])?,
+                dynamics: get_f64(t, key, TRACK_SITES[1])?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+                listen: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            // Empty: the take was never in the trace.
+            OP_CAPTURE => Ok(AudioNode::Capture {
+                uid: Uid::NEW,
+                play: CaptureMode::from_index(get_index(t, key, "play", CaptureMode::ALL.len())?),
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+                take: Take::empty(),
             }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "op kind {k} out of range at {key}"

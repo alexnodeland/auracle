@@ -251,13 +251,27 @@ where
     // node, outside the kernel. A node the walk grows reads slot 0. The lock
     // compensation below counts these sites, since proposals on them are
     // wasted like proposals on any lock.
-    let inputs = seed.input_sites();
-    let with_inputs: HashSet<String>;
-    let locked = if inputs.is_empty() {
+    //
+    // TRACK and CAPTURE are the player's too, so their `#op` is held the same
+    // way (`PatchTree::player_sites`): the prior never draws either, so a step
+    // that regrew one away could never grow it back, and a capture's take
+    // would go with it. Their knobs, and everything around them, stay free.
+    let held = seed.player_sites();
+    let with_held: HashSet<String>;
+    let locked = if held.is_empty() {
         locked
     } else {
-        with_inputs = locked.iter().cloned().chain(inputs).collect();
-        &with_inputs
+        with_held = locked.iter().cloned().chain(held).collect();
+        &with_held
+    };
+    // A take is not a trace site, so every term the kernel decodes comes back
+    // with empty captures. The fitness hears each one with the seed's takes
+    // carried back (a walk holds every capture where it was, so the match is
+    // exact), and so does the term the walk returns, below.
+    let carries = seed.has_takes();
+    let fitness = WithTakes {
+        inner: fitness,
+        seed: carries.then(|| Arc::new(seed.clone())),
     };
     let model = EvolutionModel::new(prior, fitness).with_beta(beta);
     let mut chain = EvolutionChain::new(model);
@@ -336,6 +350,12 @@ where
     if let Some((_, best_tree)) = best {
         current = best_tree;
     }
+    // Before the fixed-point test: a decoded term without its takes would
+    // never equal a seed that has them, and a walk that moved nothing would
+    // come back as a change.
+    if carries {
+        current.inherit_takes(seed);
+    }
     // The mutation boundary, and the reason the clamp is *here* rather than
     // at the knob that draws the number: everything downstream of this line
     // — φ, the observation log, the faceplate, the exported PNG — takes the
@@ -362,6 +382,34 @@ where
         Err(RefineOutcome::NoMove)
     } else {
         Ok(current)
+    }
+}
+
+/// A walk's fitness, hearing every term with the seed's CAPTURE takes carried
+/// back onto it ([`PatchTree::inherit_takes`]). `seed` is `None` when the
+/// seed holds no take, and then this is the inner fitness exactly.
+#[derive(Clone)]
+struct WithTakes<F> {
+    inner: F,
+    seed: Option<Arc<PatchTree>>,
+}
+
+impl<F> fugue_evo::fitness::traits::Fitness for WithTakes<F>
+where
+    F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>,
+{
+    type Genome = PatchTree;
+    type Value = f64;
+
+    fn evaluate(&self, genome: &PatchTree) -> f64 {
+        match &self.seed {
+            None => self.inner.evaluate(genome),
+            Some(seed) => {
+                let mut heard = genome.clone();
+                heard.inherit_takes(seed);
+                self.inner.evaluate(&heard)
+            }
+        }
     }
 }
 
@@ -463,5 +511,182 @@ mod tests {
             moved >= 20,
             "only {moved} of 24 walks moved, so this proved little"
         );
+    }
+
+    /// A seed holding both player kinds: a TRACK playing a saw from input 3
+    /// beside a filter over a CAPTURE with a take.
+    fn player_seed() -> PatchTree {
+        use auracle_grammar::term::{CaptureMode, PitchBand};
+        use auracle_grammar::{Take, TRACK_SENSITIVITY_DEFAULT};
+        let take: Vec<f32> = (0..2_000).map(|i| (i as f32 * 0.05).sin() * 0.4).collect();
+        PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.4,
+                sustain: 0.7,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Track {
+                    uid: Uid::NEW,
+                    band: PitchBand::Mid,
+                    sensitivity: TRACK_SENSITIVITY_DEFAULT,
+                    dynamics: 0.5,
+                    input: Box::new(AudioNode::Vco {
+                        uid: Uid::NEW,
+                        wave: Waveform::Saw,
+                        octave: 0,
+                        detune: 0.5,
+                        mod_depth: 0.0,
+                        modulation: ModNode::None,
+                    }),
+                    listen: Box::new(AudioNode::AudioIn {
+                        uid: Uid::NEW,
+                        input: 3,
+                        gain: INPUT_GAIN_UNITY,
+                        channel: InputChannel::Both,
+                    }),
+                }),
+                b: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
+                    kind: FilterKind::SvfLp,
+                    cutoff: 0.5,
+                    resonance: 0.2,
+                    mod_depth: 0.0,
+                    input: Box::new(AudioNode::Capture {
+                        uid: Uid::NEW,
+                        play: CaptureMode::Once,
+                        input: Box::new(AudioNode::AudioIn {
+                            uid: Uid::NEW,
+                            input: 0,
+                            gain: INPUT_GAIN_UNITY,
+                            channel: InputChannel::Left,
+                        }),
+                        take: Take::from_samples(&take, 44_100.0).unwrap(),
+                    }),
+                    modulation: ModNode::None,
+                }),
+            },
+        }
+    }
+
+    /// The take of the CAPTURE at `node/1/0`, whatever the walk made of the
+    /// modules above it.
+    fn take_at(tree: &PatchTree) -> Option<auracle_grammar::Take> {
+        let mut n = &tree.root;
+        for i in [1, 0] {
+            n = *n.children().get(i)?;
+        }
+        match n {
+            AudioNode::Capture { take, .. } => Some(take.clone()),
+            _ => None,
+        }
+    }
+
+    /// A fitness that counts the terms it was asked about that hold the
+    /// seed's CAPTURE with its take missing. (The kernel also scores
+    /// proposals that remove the capture, which the hold then rejects; those
+    /// have no take to carry and are not counted.)
+    #[derive(Clone)]
+    struct CountsDeaf(Arc<std::sync::atomic::AtomicUsize>);
+    impl fugue_evo::fitness::traits::Fitness for CountsDeaf {
+        type Genome = PatchTree;
+        type Value = f64;
+        fn evaluate(&self, g: &PatchTree) -> f64 {
+            if take_at(g).is_some_and(|t| t.is_empty()) {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            0.0
+        }
+    }
+
+    /// **Walks hold TRACK and CAPTURE, and never touch a take.** On the bare
+    /// prior, where nothing about the sound holds a site, every child keeps
+    /// the TRACK and the CAPTURE where they were, the input the TRACK
+    /// follows, and the take bit for bit, while the rest of the patch moves.
+    /// The fitness is never asked about a term without its take.
+    ///
+    /// Without the `#op` hold this fails at once: the kernel regrows either
+    /// node away and the prior can never draw it back.
+    #[test]
+    fn walks_hold_track_and_capture_and_their_take() {
+        let seed = player_seed();
+        assert_eq!(
+            seed.player_sites(),
+            [
+                "node/0#op",
+                "node/0/1#input",
+                "node/1/0#op",
+                "node/1/0/0#input"
+            ]
+        );
+        let op = |t: &PatchTree, key: &str| t.to_trace().get_usize(&fugue::addr!(key, "op"));
+        let take = take_at(&seed).unwrap();
+        let deaf = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut moved = 0;
+        for w in 0..24u64 {
+            let mut rng = StdRng::seed_from_u64(0x7AC0_0000 + w);
+            let end = walk_on(
+                // The seed listens through AUDIO IN, off in the shipped prior.
+                PatchGrammarPrior::default().with_audio_in(),
+                1.0,
+                RefineKeep::Last,
+                CountsDeaf(Arc::clone(&deaf)),
+                &mut rng,
+                &seed,
+                &HashSet::new(),
+                120,
+            );
+            let Ok(child) = end else { continue };
+            moved += 1;
+            assert_eq!(op(&child, "node/0"), Some(auracle_grammar::prior::OP_TRACK));
+            assert_eq!(
+                op(&child, "node/1/0"),
+                Some(auracle_grammar::prior::OP_CAPTURE)
+            );
+            assert_eq!(reads(&child, "node/0/1"), Some(3), "{}", child.to_sexpr());
+            assert_eq!(
+                take_at(&child).as_ref(),
+                Some(&take),
+                "walk {w} lost the take"
+            );
+        }
+        assert!(moved >= 20, "only {moved} of 24 walks moved");
+        assert_eq!(
+            deaf.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "the fitness heard a capture without its take"
+        );
+    }
+
+    /// A walk that accepts only steps changing nothing is no move, even
+    /// though every term it accepted came back from the decoder without the
+    /// take: the take is carried back before the fixed-point test.
+    #[test]
+    fn a_walk_that_moves_nothing_is_no_move_with_a_take() {
+        let seed = player_seed();
+        let every: HashSet<String> = seed
+            .to_trace()
+            .choices
+            .keys()
+            .map(|a| a.to_string())
+            .collect();
+        for w in 0..4u64 {
+            let mut rng = StdRng::seed_from_u64(0x0F1E + w);
+            let end = walk_on(
+                // The seed listens through AUDIO IN, off in the shipped prior.
+                PatchGrammarPrior::default().with_audio_in(),
+                1.0,
+                RefineKeep::Last,
+                Flat,
+                &mut rng,
+                &seed,
+                &every,
+                60,
+            );
+            assert!(matches!(end, Err(RefineOutcome::NoMove)), "{end:?}");
+        }
     }
 }

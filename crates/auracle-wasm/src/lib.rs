@@ -60,8 +60,9 @@ use auracle_grammar::{
     PatchTree, StructOp,
 };
 use auracle_session::{
-    run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, Origin, PreFeaturized,
-    Profile, RenderPolicy, SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
+    run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, GuessMemory, GuessSkip,
+    Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy, SessionConfig, SessionState,
+    WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -337,6 +338,25 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
+/// `{"reason": code}`: why a guess has nothing to say.
+fn refusal(code: &str) -> String {
+    #[derive(Serialize)]
+    struct Refusal<'a> {
+        reason: &'a str,
+    }
+    serde_json::to_string(&Refusal { reason: code }).unwrap_or_default()
+}
+
+/// Every audio cable of `tree`, measured on one render of `spec`
+/// ([`auracle_features::probe_cables`]), as [`WasmEngine::edit_cable_levels`]
+/// replies; `null` when the tree does not compile.
+fn cable_levels_json(tree: &PatchTree, spec: &PhraseSpec) -> String {
+    auracle_features::cable_levels(tree, spec)
+        .ok()
+        .and_then(|p| serde_json::to_string(&p).ok())
+        .unwrap_or_else(|| "null".into())
+}
+
 // ----------------------------------------------------------------------
 // Walks on the farm (RFC-001, ADR-007)
 // ----------------------------------------------------------------------
@@ -433,6 +453,47 @@ fn clip_note(status: &ClipStatus) -> &'static str {
         }
         (ClipSource::Reference, true) => {
             "The saved input clip didn't load, so the model hears sounds with an input through the built-in phrase. Capture your input again to replace it."
+        }
+    }
+}
+
+/// One sound the last restore held back, as [`WasmEngine::held_sounds`]
+/// lists it. Ids are `u32` at the boundary.
+#[derive(Serialize)]
+struct HeldView {
+    id: u32,
+    /// The player's name for it, if it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// The name it was shown under, if it had a generated one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_name: Option<String>,
+    note: &'static str,
+}
+
+/// The sentence for a held sound.
+const HELD_NOTE: &str = "Its recording couldn’t be read. It’s kept safe until you record it again.";
+
+/// [`WasmEngine::readmit_held`]'s reply.
+#[derive(Serialize)]
+struct ReadmitReply {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'static str>,
+}
+
+/// The sentence for a held sound that did not come back.
+fn readmit_note(e: &ReadmitError) -> &'static str {
+    match e {
+        ReadmitError::NotHeld => "That sound isn’t waiting for a recording, so nothing changed.",
+        ReadmitError::NoTake => "That recording couldn’t be read, so the sound is still kept safe.",
+        ReadmitError::NothingToReplace => {
+            "That sound has no lost recording to replace, so nothing changed."
+        }
+        ReadmitError::DoesNotVet(_) => {
+            "With that recording it still makes no usable sound, so it’s still kept safe."
         }
     }
 }
@@ -589,6 +650,9 @@ pub struct WasmEngine {
     /// by index — the same statelessness the pool fill gets from its draw
     /// stream.
     pending_bank: Vec<BankEntry>,
+    /// The model's guesses' skips and last taken guess, per patch (the pool
+    /// id the bench was opened from): what the ranking cannot remember.
+    guesses: GuessMemory,
 }
 
 /// The workbench's audition buffer after a featurize.
@@ -721,6 +785,7 @@ impl WasmEngine {
             bench_phi: None,
             bench_phi_prev: None,
             pending_bank: Vec::new(),
+            guesses: GuessMemory::default(),
         }
     }
 
@@ -867,6 +932,8 @@ impl WasmEngine {
     fn begin_deferred_import(&mut self, state: SessionState) -> Vec<serde_json::Value> {
         self.pending_bank = self.engine.import_state_deferred(state);
         self.engine.begin_session();
+        // Another session's ids: its patches are not the ones skipped here.
+        self.guesses = GuessMemory::default();
         self.pending_bank
             .iter()
             .enumerate()
@@ -2046,6 +2113,9 @@ impl WasmEngine {
         let id = id as u64;
         match self.engine.find(id) {
             Some(i) => {
+                // A patch opened (another, or this one again): an edit back to
+                // a tree from before is no longer an undo of a taken guess.
+                self.guesses.clear_taken();
                 self.bench_tree = Some(self.engine.pool[i].tree.clone());
                 self.bench_makeup = live_makeup(&self.engine.pool[i].features);
                 // Materializes the buffer if the lazy pool had let it go: the
@@ -2138,6 +2208,7 @@ impl WasmEngine {
         match apply_struct_op(tree, &op) {
             Ok(edited) => {
                 self.bench_tree = Some(edited);
+                self.guess_observe();
                 String::new()
             }
             Err(e) => e.to_string(),
@@ -2185,6 +2256,7 @@ impl WasmEngine {
         // gesture that changed nothing but a wire.
         tree.ensure_uids();
         self.bench_tree = Some(tree);
+        self.guess_observe();
         String::new()
     }
 
@@ -2341,6 +2413,216 @@ impl WasmEngine {
         out
     }
 
+    /// The patch the bench's guesses are remembered under: the pool id it
+    /// was opened from.
+    fn guess_patch(&self) -> u64 {
+        self.bench_original.unwrap_or(0)
+    }
+
+    /// Whatever the bench just became, ask the guesses' memory whether it is
+    /// the patch as it was before one of its taken guesses: an undo (or the
+    /// module taken out again), which counts as a skip, logged once (a family
+    /// already skipped there is not logged again).
+    fn guess_observe(&mut self) {
+        let patch = self.guess_patch();
+        let Some(tree) = &self.bench_tree else {
+            return;
+        };
+        if let Some(skip) = self.guesses.observe(patch, tree) {
+            self.log_guess("guess_skip", &skip, true);
+        }
+    }
+
+    /// One row of the implicit stream for a guess: logged, as a revert is,
+    /// and never evidence.
+    fn log_guess(&mut self, kind: &str, skip: &GuessSkip, undo: bool) {
+        #[derive(Serialize)]
+        struct Detail<'a> {
+            socket: &'a str,
+            family: &'a str,
+            undo: bool,
+        }
+        let detail = serde_json::to_string(&Detail {
+            socket: &skip.socket,
+            family: &skip.family,
+            undo,
+        })
+        .unwrap_or_default();
+        let patch = self.guess_patch();
+        self.engine
+            .log_event_detail(kind, patch, 0.0, &detail, Vec::new(), Vec::new());
+    }
+
+    /// What the model's guess for the patch in hand still owes (Plan-005
+    /// task 9d, [`auracle_session::Engine::guess_plan`]): `{"jobs":[{"key",
+    /// "cache","tree"}],"total","planned","skipped"}`, or `{"reason":
+    /// "no_taste"|"full"|"no_patch"}`. Renders nothing.
+    ///
+    /// Each job is one render, `tree` as JSON text: on the farm,
+    /// [`farm_render`] (`cache` is its key in the persistent store,
+    /// namespace first, as [`farm_key`] makes it) and then
+    /// [`Self::memo_absorb`]; with none, [`Self::memo_render`], one per turn.
+    /// `key` is the memo's: a job that does not vet goes into `failed_json`,
+    /// a JSON array of such keys. Ask again until `jobs` is empty, then
+    /// [`Self::guess_rank`] with the same arguments. While the patch itself
+    /// is unmeasured, it is the only job. `at` names one deeper socket by
+    /// its module's key (the output's candidates otherwise); `limit` is how
+    /// many candidates to render, likeliest first (0 for all;
+    /// `GUESS_FLOOR`, 8, with no farm).
+    pub fn guess_plan(&self, at: Option<String>, failed_json: &str, limit: u32) -> String {
+        #[derive(Serialize)]
+        struct Job {
+            key: String,
+            cache: String,
+            tree: String,
+        }
+        #[derive(Serialize)]
+        struct Plan {
+            jobs: Vec<Job>,
+            total: usize,
+            planned: usize,
+            skipped: usize,
+        }
+        let Some(tree) = &self.bench_tree else {
+            return refusal("no_patch");
+        };
+        let phrase = &self.engine.cfg.phrase;
+        match self.engine.guess_plan(
+            tree,
+            at.as_deref(),
+            self.guesses.skips(self.guess_patch()),
+            &key_set(failed_json),
+            limit as usize,
+        ) {
+            Ok(p) => serde_json::to_string(&Plan {
+                jobs: p
+                    .jobs
+                    .into_iter()
+                    .map(|j| Job {
+                        cache: persistent_key(&j.tree, phrase),
+                        tree: serde_json::to_string(&j.tree).unwrap_or_default(),
+                        key: j.key,
+                    })
+                    .collect(),
+                total: p.total,
+                planned: p.planned,
+                skipped: p.skipped,
+            })
+            .unwrap_or_else(|_| refusal("full")),
+            Err(r) => refusal(r.code()),
+        }
+    }
+
+    /// The model's guesses for the patch in hand, best first by the lower
+    /// bound of the gain, from the renders the memo holds
+    /// ([`auracle_session::Engine::guess_rank`]): `{"guesses":[{"op",
+    /// "kind","family","socket","lcb","mean","sd","p","why"}],"rendered",
+    /// "planned","total","skipped","against","observations"}`, or
+    /// `{"reason"}` as [`Self::guess_plan`] gives it, or `"unmeasured"` when
+    /// the patch itself has not been rendered. The same arguments as the
+    /// plan. Renders nothing.
+    ///
+    /// `op` is what TRY applies ([`Self::guess_take`]); `socket` and
+    /// `family` are what a skip covers ([`Self::guess_skip`]); `p` is the
+    /// pick forecast the app words; `why` the part of the gain that leads
+    /// (a PERFORM control and its end word, or a structural coordinate), or
+    /// null when no part leans the player's way.
+    pub fn guess_rank(&self, at: Option<String>, failed_json: &str, limit: u32) -> String {
+        let Some(tree) = &self.bench_tree else {
+            return refusal("no_patch");
+        };
+        match self.engine.guess_rank(
+            tree,
+            at.as_deref(),
+            self.guesses.skips(self.guess_patch()),
+            &key_set(failed_json),
+            limit as usize,
+        ) {
+            Ok(r) => serde_json::to_string(&r).unwrap_or_else(|_| refusal("full")),
+            Err(r) => refusal(r.code()),
+        }
+    }
+
+    /// Skip a guess: its family stays away from its socket for the patch in
+    /// hand. `guess_json` is a guess as [`Self::guess_rank`] gives it (its
+    /// `socket` and `family` are read). Logged, not evidence. False when it
+    /// does not parse or was already skipped.
+    pub fn guess_skip(&mut self, guess_json: &str) -> bool {
+        let Ok(skip) = serde_json::from_str::<GuessSkip>(guess_json) else {
+            return false;
+        };
+        let patch = self.guess_patch();
+        let fresh = self.guesses.skip(patch, skip.clone());
+        if fresh {
+            self.log_guess("guess_skip", &skip, false);
+        }
+        fresh
+    }
+
+    /// Take a guess: apply its `op` to the bench **without** re-rendering,
+    /// exactly as [`Self::edit_structure_apply`] does (and owing the same
+    /// [`Self::edit_revet`]), and remember it, so that undoing it counts as a
+    /// skip. Returns an empty string, or the reason the edit was refused.
+    /// Not evidence: the edit is an ordinary one, and keep as new is where
+    /// the player says what they thought of it.
+    ///
+    /// The guess must still be one for the patch in hand
+    /// ([`auracle_session::guess_is_current`]: the same edit, socket and
+    /// family among its candidates now). A guess ranked on an earlier tree is
+    /// refused, not applied: a source ranked for an empty socket, sent after
+    /// the player filled it, would otherwise wipe what they placed there.
+    pub fn guess_take(&mut self, guess_json: &str) -> String {
+        #[derive(serde::Deserialize)]
+        struct Taken {
+            op: StructOp,
+            socket: String,
+            family: String,
+        }
+        let taken: Taken = match serde_json::from_str(guess_json) {
+            Ok(t) => t,
+            Err(e) => return format!("the engine couldn’t read that edit ({e})"),
+        };
+        let Some(before) = self.bench_tree.clone() else {
+            return "there is no sound open to edit".into();
+        };
+        if !auracle_session::guess_is_current(&before, &taken.op, &taken.socket, &taken.family) {
+            return "the patch changed after that guess, so it was not placed".into();
+        }
+        let err = match serde_json::to_string(&taken.op) {
+            Ok(op) => self.edit_structure_apply(&op),
+            Err(e) => format!("the engine couldn’t read that edit ({e})"),
+        };
+        if err.is_empty() {
+            let skip = GuessSkip {
+                socket: taken.socket,
+                family: taken.family,
+            };
+            let patch = self.guess_patch();
+            self.guesses.took(patch, skip.clone(), before);
+            self.log_guess("guess_take", &skip, false);
+        }
+        err
+    }
+
+    /// The cables of the patch in hand, measured on one render of this
+    /// engine's phrase ([`auracle_features::probe_cables`]), its **audio**
+    /// cables only (the compiler taps audio nodes; PATCH draws a modulation
+    /// cable by its rate): `{"cables":
+    /// [{"from":"node/0","to":"node","from_uid":7,"to_uid":3,"rms_db":-4.1,
+    /// "peak_db":2.0}],"samples":n}`, `null` with nothing open. The cables are
+    /// those [`Self::edit_describe`] draws, in its order and keyed the same
+    /// way; levels are in dB re 1 V, the live meter's scale, and a cable that
+    /// carries nothing reads [`auracle_features::PROBE_FLOOR_DB`]. One render
+    /// (`examples/cable_cost.mjs`), so it is asked once an edit has settled,
+    /// never per knob step or per quantum: while notes sound, `LivePoly`'s
+    /// meter reads the cables live. It changes nothing on the bench.
+    pub fn edit_cable_levels(&self) -> String {
+        match &self.bench_tree {
+            Some(t) => cable_levels_json(t, &self.engine.cfg.phrase),
+            None => "null".into(),
+        }
+    }
+
     /// Rack description of the workbench tree as JSON (`null` if empty).
     pub fn edit_describe(&self) -> String {
         match &self.bench_tree {
@@ -2375,9 +2657,16 @@ impl WasmEngine {
         let (Some(tree), true) = (self.bench_tree.clone(), self.bench_vet_ok) else {
             return 0;
         };
-        self.engine
+        let id = self
+            .engine
             .commit_edit(self.bench_original, tree, outcome)
-            .unwrap_or(0) as u32
+            .unwrap_or(0);
+        // The new sound is the patch the player is working on: it keeps the
+        // guesses' skips and takes.
+        if let (true, Some(from)) = (id > 0, self.bench_original) {
+            self.guesses.carry(from, id);
+        }
+        id as u32
     }
 
     /// The pool id the bench was opened from (0 for none) — what a commit
@@ -2484,6 +2773,7 @@ impl WasmEngine {
 
     /// Clear the workbench.
     pub fn edit_cancel(&mut self) {
+        self.guesses.clear_taken();
         self.bench_tree = None;
         self.bench_render = None;
         self.bench_original = None;
@@ -2563,6 +2853,7 @@ impl WasmEngine {
             Ok(state) => {
                 let n = self.engine.import_state(state);
                 self.engine.begin_session();
+                self.guesses = GuessMemory::default();
                 n
             }
             Err(_) => 0,
@@ -2581,6 +2872,7 @@ impl WasmEngine {
             Ok(state) => {
                 let n = self.engine.import_state(state);
                 self.engine.begin_session();
+                self.guesses = GuessMemory::default();
                 (if n == 0 { "empty" } else { "ok" }, n)
             }
         };
@@ -2596,9 +2888,61 @@ impl WasmEngine {
     /// domain gate. Non-zero means the profile *was* being fitted on values
     /// that were not measurements, and the player is entitled to be told so
     /// rather than have it quietly corrected under them.
+    ///
+    /// `held` counts apart from the repairs: sounds whose only source was a
+    /// CAPTURE take that couldn't be read, kept out of the pool and in the
+    /// save ([`Self::held_sounds`]).
     pub fn repair_report(&self) -> String {
         let (terms, cells, dropped) = self.engine.repair_report();
-        format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped}}}"#)
+        let held = self.engine.held().len();
+        format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped},"held":{held}}}"#)
+        // voice: name
+    }
+
+    /// The sounds the last restore held back, as JSON
+    /// `[{"id":3,"name":"…","note":"Its recording couldn’t be read. …"}]`:
+    /// each one's only source was a CAPTURE whose take couldn't be read. They
+    /// are not in the bank's pool (never dealt, ranked or bred) and are saved
+    /// with the session unchanged. The capture plate (Plan-007 task 4) lists
+    /// them and opens one to record it again, then calls
+    /// [`Self::readmit_held`].
+    pub fn held_sounds(&self) -> String {
+        let held: Vec<HeldView> = self
+            .engine
+            .held()
+            .iter()
+            .map(|e| HeldView {
+                id: e.id as u32,
+                name: e.name.clone(),
+                auto_name: e.auto_name.clone(),
+                note: HELD_NOTE,
+            })
+            .collect();
+        serde_json::to_string(&held).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Bring held sound `id` back with a new recording: `take_json` is a take's
+    /// saved form, quiver's `Capture` state (`{"format":"f32le-base64",
+    /// "sample_rate":…,"length":…,"data":…}`). The sound is measured as a new
+    /// one and joins the pool. Replies as JSON: `{"ok":true,"id":3}`, or
+    /// `{"ok":false,"error":"…"}` with the sentence to show, the sound still
+    /// held.
+    pub fn readmit_held(&mut self, id: u32, take_json: &str) -> String {
+        let take: auracle_grammar::Take =
+            serde_json::from_str(take_json).unwrap_or_else(|_| auracle_grammar::Take::empty());
+        let reply = match self.engine.readmit_held(id as u64, take) {
+            Ok(id) => ReadmitReply {
+                ok: true,
+                id: Some(id as u32),
+                error: None,
+            },
+            Err(e) => ReadmitReply {
+                ok: false,
+                id: None,
+                error: Some(readmit_note(&e)),
+            },
+        };
+        serde_json::to_string(&reply).unwrap_or_default()
     }
 
     // ------------------------------------------------------------------
@@ -2770,6 +3114,82 @@ mod tests {
         assert_eq!(farm_key("{", &phrase), "", "an unparsable tree is a miss");
     }
 
+    /// The bench's cable probe names the cables PATCH draws, keyed as the rack
+    /// keys them (`data-from`/`data-to`, and the uids of `midOf`), measures
+    /// each, and leaves the bench as it found it: the same buffer, bit for
+    /// bit, and the same tree.
+    #[test]
+    fn the_bench_probe_names_the_cables_patch_draws() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert_eq!(engine.edit_cable_levels(), "null", "nothing open");
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let (before, tree) = (engine.edit_render(), engine.edit_tree_json());
+        let probe: serde_json::Value = serde_json::from_str(&engine.edit_cable_levels()).unwrap();
+        assert_eq!(
+            engine.edit_render(),
+            before,
+            "the probe moved the bench's buffer"
+        );
+        assert_eq!(
+            engine.edit_tree_json(),
+            tree,
+            "the probe moved the bench's tree"
+        );
+        let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
+        let uid = |key: &serde_json::Value| {
+            rack["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| &m["key"] == key)
+                .map(|m| m["uid"].clone())
+                .unwrap()
+        };
+        let drawn: Vec<_> = rack["wires"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|w| w["kind"] == "audio")
+            .map(|w| {
+                (
+                    w["from"].clone(),
+                    w["to"].clone(),
+                    uid(&w["from"]),
+                    uid(&w["to"]),
+                )
+            })
+            .collect();
+        let probed: Vec<_> = probe["cables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                assert!(c["rms_db"].as_f64().unwrap().is_finite());
+                (
+                    c["from"].clone(),
+                    c["to"].clone(),
+                    c["from_uid"].clone(),
+                    c["to_uid"].clone(),
+                )
+            })
+            .collect();
+        assert!(!drawn.is_empty());
+        assert_eq!(probed, drawn, "the probe's cables are not the rack's");
+        let direct: PatchTree = serde_json::from_str(&tree).unwrap();
+        assert_eq!(
+            serde_json::to_string(
+                &auracle_features::cable_levels(&direct, &engine.engine.cfg.phrase).unwrap()
+            )
+            .unwrap(),
+            engine.edit_cable_levels(),
+            "the binding and the probe disagree"
+        );
+    }
+
     /// The session's clip, through the boundary the worker uses. A capture is
     /// taken (resampled from the context's rate), reported, carried in the
     /// phrase the farm is handed, folded into a listening sound's stored key
@@ -2902,6 +3322,287 @@ mod tests {
         }
         engine.fit();
         engine
+    }
+
+    /// Plan and render a guess the way the worker does with no farm
+    /// (`memo_render`, one job at a time, a job that does not vet into
+    /// `failed`), then rank. Returns the ranking and the failed keys.
+    fn guess_serial(engine: &WasmEngine, limit: u32) -> (serde_json::Value, String) {
+        let mut failed: Vec<String> = Vec::new();
+        for _ in 0..4 {
+            let fj = serde_json::to_string(&failed).unwrap();
+            let plan: serde_json::Value =
+                serde_json::from_str(&engine.guess_plan(None, &fj, limit)).unwrap();
+            let jobs = plan["jobs"].as_array().expect("jobs").clone();
+            if jobs.is_empty() {
+                break;
+            }
+            for j in jobs {
+                if !engine.memo_render(j["tree"].as_str().unwrap()) {
+                    failed.push(j["key"].as_str().unwrap().to_string());
+                }
+            }
+        }
+        let fj = serde_json::to_string(&failed).unwrap();
+        (
+            serde_json::from_str(&engine.guess_rank(None, &fj, limit)).unwrap(),
+            fj,
+        )
+    }
+
+    /// **The guess through the bindings, and an undo that counts as a skip.**
+    /// No guess before the fit; after it, the bench's patch is planned
+    /// first, then its candidates; the ranking runs by the lower bound.
+    /// Taking the top guess is an ordinary edit of the bench, and putting the
+    /// tree back (as ⌘Z does, through `edit_set_tree_apply`) skips that
+    /// family at that socket for this patch, logged as a skip; another
+    /// patch keeps its own (empty) skips.
+    #[test]
+    fn a_taken_guess_undone_is_a_skip_through_the_bindings() {
+        let mut cold = WasmEngine::new(5, 6);
+        while cold.fill_step(3) > 0 {}
+        let first = serde_json::from_str::<Vec<serde_json::Value>>(&cold.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(cold.edit_begin(first));
+        assert_eq!(cold.guess_plan(None, "[]", 0), r#"{"reason":"no_taste"}"#);
+
+        let mut engine = taught_wasm(5);
+        assert_eq!(engine.guess_plan(None, "[]", 0), r#"{"reason":"no_patch"}"#);
+        let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        assert!(engine.edit_begin(ids[0]));
+        let before = engine.edit_tree_json();
+        let (rank, failed) = guess_serial(&engine, 8);
+        let guesses = rank["guesses"].as_array().expect("guesses").clone();
+        assert!(!guesses.is_empty(), "{rank}");
+        assert!(rank["planned"].as_u64().unwrap() <= 8);
+        for w in guesses.windows(2) {
+            assert!(w[0]["lcb"].as_f64().unwrap() >= w[1]["lcb"].as_f64().unwrap());
+        }
+        let top = guesses[0].clone();
+        assert_eq!(engine.guess_take(&top.to_string()), "");
+        engine.edit_revet();
+        assert_ne!(engine.edit_tree_json(), before, "the guess went in");
+        // ⌘Z: the tree before the guess comes back whole.
+        assert_eq!(engine.edit_set_tree_apply(&before), "");
+        engine.edit_revet();
+        let skip = |e: &WasmEngine| {
+            e.engine
+                .events
+                .iter()
+                .filter(|ev| ev.kind == "guess_skip")
+                .count()
+        };
+        assert_eq!(skip(&engine), 1, "the undo was not logged as a skip");
+        let again: serde_json::Value =
+            serde_json::from_str(&engine.guess_rank(None, &failed, 8)).unwrap();
+        assert!(again["skipped"].as_u64().unwrap() >= 1, "{again}");
+        assert!(again["guesses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| g["socket"] != top["socket"] || g["family"] != top["family"]));
+        assert!(!engine.guess_skip(&top.to_string()), "already skipped");
+        // Another patch has its own skips.
+        assert!(engine.edit_begin(ids[1]));
+        let other: serde_json::Value =
+            serde_json::from_str(&engine.guess_plan(None, "[]", 0)).unwrap();
+        assert_eq!(other["skipped"], 0, "{other}");
+        assert_eq!(skip(&engine), 1);
+    }
+
+    /// Skips are remembered per patch by pool id, and an import brings
+    /// another session's ids: after one, no skip from before applies.
+    #[test]
+    fn an_import_forgets_the_skips() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let skip = r#"{"socket":"out","family":"drive"}"#;
+        assert!(engine.guess_skip(skip));
+        assert!(!engine.guess_skip(skip), "remembered");
+        let saved = engine.export_session();
+        assert!(engine.import_session(&saved) > 0);
+        assert!(engine.edit_begin(id));
+        assert!(engine.guess_skip(skip), "a skip outlived the import");
+    }
+
+    /// A guess for the bench as JSON, as `guess_rank` would give it: the
+    /// first of `guess_candidates` of `kind`.
+    fn a_guess(engine: &WasmEngine, kind: &str) -> String {
+        let tree = engine.bench_tree.clone().unwrap();
+        let c = auracle_session::guess_candidates(&tree, None)
+            .into_iter()
+            .find(|c| c.kind == kind)
+            .unwrap_or_else(|| panic!("no {kind} to guess"));
+        serde_json::json!({ "op": c.op, "socket": c.socket, "family": c.family }).to_string()
+    }
+
+    fn pool_ids(engine: &WasmEngine) -> Vec<u32> {
+        serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect()
+    }
+
+    fn guess_skips_logged(engine: &WasmEngine) -> usize {
+        engine
+            .engine
+            .events
+            .iter()
+            .filter(|ev| ev.kind == "guess_skip")
+            .count()
+    }
+
+    /// **An old take does not turn an unrelated undo into a skip.** Take a
+    /// guess on A, open B, open A again (back at the tree before the guess),
+    /// make an edit, then undo it to that tree: that undo is of the edit, not
+    /// of the guess, so nothing is skipped or logged.
+    #[test]
+    fn an_old_take_does_not_turn_an_unrelated_undo_into_a_skip() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids = pool_ids(&engine);
+        assert!(engine.edit_begin(ids[0]));
+        let t0 = engine.edit_tree_json();
+        let reverb = a_guess(&engine, "reverb");
+        assert_eq!(engine.guess_take(&reverb), "");
+        assert!(engine.edit_begin(ids[1]));
+        assert!(engine.edit_begin(ids[0]));
+        assert_eq!(
+            engine.edit_tree_json(),
+            t0,
+            "back at the tree before the guess"
+        );
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure_apply(edit), "");
+        assert_eq!(engine.edit_set_tree_apply(&t0), "");
+        assert_eq!(
+            guess_skips_logged(&engine),
+            0,
+            "an unrelated undo was a skip"
+        );
+        assert!(engine.guess_skip(&reverb), "the family was hidden");
+        assert_eq!(guess_skips_logged(&engine), 1);
+    }
+
+    /// **A guess ranked on an earlier tree is refused, not applied.** A noise
+    /// ranked for the empty socket, sent after the player put a pluck there
+    /// and a filter after it, would wipe both: it is refused with a reason,
+    /// and the bench is untouched.
+    #[test]
+    fn a_stale_guess_is_refused() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert!(engine.edit_begin(pool_ids(&engine)[0]));
+        let mut empty: PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        empty.root = auracle_grammar::AudioNode::Silence {
+            uid: auracle_grammar::Uid::NEW,
+        };
+        assert_eq!(
+            engine.edit_set_tree_apply(&serde_json::to_string(&empty).unwrap()),
+            ""
+        );
+        let noise = a_guess(&engine, "noise");
+        for op in [
+            r#"{"op":"replace","key":"node","kind":"pluck"}"#, // voice: name
+            r#"{"op":"insert","key":"node","kind":"filter"}"#, // voice: name
+        ] {
+            assert_eq!(engine.edit_structure_apply(op), "");
+        }
+        let built = engine.edit_tree_json();
+        let err = engine.guess_take(&noise);
+        assert!(!err.is_empty(), "a stale guess was applied");
+        assert_eq!(
+            engine.edit_tree_json(),
+            built,
+            "the refusal moved the bench"
+        );
+        // A guess for the patch as it is now is taken.
+        let reverb = a_guess(&engine, "reverb");
+        assert_eq!(engine.guess_take(&reverb), "");
+    }
+
+    /// **Keep as new carries the skips.** The kept sound is the patch the
+    /// player is working on, so a family skipped before keeping stays
+    /// skipped on it.
+    #[test]
+    fn keep_as_new_carries_the_skips() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        assert!(engine.edit_begin(pool_ids(&engine)[0]));
+        let reverb = a_guess(&engine, "reverb");
+        assert!(engine.guess_skip(&reverb));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert!(engine.edit_begin(kept));
+        assert!(
+            !engine.guess_skip(&reverb),
+            "the skip stayed with the old id"
+        );
+    }
+
+    /// **A guess's renders respect the render namespace.** Each job's
+    /// `cache` key is the persistent store's (`farm_key`: this binary's
+    /// namespace, then the content address), and a farm row rendered under
+    /// another phrase is refused by `memo_absorb`, so the candidate stays
+    /// unrendered rather than ranked on another stimulus's φ.
+    #[test]
+    fn a_guess_respects_the_render_namespace() {
+        let mut engine = taught_wasm(6);
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let phrase = engine.phrase_json();
+        let ns = cache_namespace(&phrase);
+        let plan = |e: &WasmEngine| -> serde_json::Value {
+            serde_json::from_str(&e.guess_plan(None, "[]", 2)).unwrap()
+        };
+        // The patch first, if the memo lacks it.
+        let mut p = plan(&engine);
+        if p["jobs"][0]["tree"].as_str() == Some(engine.edit_tree_json().as_str()) {
+            assert!(engine.memo_render(p["jobs"][0]["tree"].as_str().unwrap()));
+            p = plan(&engine);
+        }
+        let jobs = p["jobs"].as_array().unwrap().clone();
+        assert!(!jobs.is_empty());
+        let mut other: PhraseSpec = serde_json::from_str(&phrase).unwrap();
+        other.seed ^= 1;
+        let other = serde_json::to_string(&other).unwrap();
+        for j in &jobs {
+            let tree = j["tree"].as_str().unwrap();
+            assert_eq!(j["cache"].as_str().unwrap(), farm_key(tree, &phrase));
+            assert!(j["cache"].as_str().unwrap().starts_with(&format!("{ns}/")));
+            let foreign = farm_render(tree, &other, false);
+            assert!(foreign.ok);
+            assert!(
+                !engine.memo_absorb(tree, &foreign.cached),
+                "a row from another stimulus was absorbed"
+            );
+        }
+        let r: serde_json::Value = serde_json::from_str(&engine.guess_rank(None, "[]", 2)).unwrap();
+        assert_eq!(r["rendered"], 0, "{r}");
+        // This stimulus's rows are taken, and ranked.
+        for j in &jobs {
+            let tree = j["tree"].as_str().unwrap();
+            let row = farm_render(tree, &phrase, false);
+            if row.ok {
+                assert!(engine.memo_absorb(tree, &row.cached));
+            }
+        }
+        let r: serde_json::Value = serde_json::from_str(&engine.guess_rank(None, "[]", 2)).unwrap();
+        assert!(r["rendered"].as_u64().unwrap() > 0, "{r}");
     }
 
     fn twins(seed: u64) -> (WasmEngine, WasmEngine) {
@@ -4325,5 +5026,128 @@ mod tests {
         }
         // The one the sockets are priced through most often.
         assert!(map.contains_key("n_filter"));
+    }
+
+    /// **A take reaches a sound through the edit the app already sends.** A
+    /// CAPTURE placed on the bench plays nothing yet and fails the vet as
+    /// silent, as an unplugged socket does; a recording arriving as a
+    /// `set_take` structural edit (the saved form quiver's `Capture` writes)
+    /// makes it a sound that vets, saved in the bench's term; an unreadable
+    /// one is refused in words and changes nothing. No new binding: the web
+    /// task's capture flow rides `edit_structure`.
+    #[test]
+    fn a_take_arrives_on_the_bench_through_a_structural_edit() {
+        let mut engine = WasmEngine::new(0xCA9, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"replace","key":"node","kind":"capture"}"#),
+            ""
+        );
+        assert!(
+            engine.edit_vet_silent(),
+            "an empty capture played something"
+        );
+        let sr = auracle_features::PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..(1.5 * sr) as usize)
+            .map(|i| (0.5 * (i as f64 * 220.0 * std::f64::consts::TAU / sr).sin()) as f32)
+            .collect();
+        let take =
+            serde_json::to_string(&auracle_grammar::Take::from_samples(&x, sr).unwrap()).unwrap();
+        let set = format!(r#"{{"op":"set_take","key":"node","take":{take}}}"#);
+        assert_eq!(engine.edit_structure(&set), "");
+        assert!(engine.edit_vet_ok(), "a capture with a take failed the vet");
+        let bench: auracle_grammar::PatchTree =
+            serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        assert!(bench.has_takes(), "the take is not in the bench's term");
+        let refused =
+            engine.edit_structure(r#"{"op":"set_take","key":"node","take":{"format":"x"}}"#);
+        assert!(!refused.is_empty(), "an unreadable take was taken");
+        assert!(engine.edit_vet_ok(), "a refused take changed the bench");
+    }
+
+    /// **A held sound, through the boundary the worker uses.** A session whose
+    /// bank holds a sound that is only a CAPTURE with an unreadable take
+    /// restores without it in the pool, reports it as held (apart from the
+    /// repairs) and lists it with its sentence; a readable take brings it back
+    /// into the pool, and a bad one is refused in words and changes nothing.
+    #[test]
+    fn a_held_sound_is_listed_and_readmitted_through_the_worker_surface() {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
+        let mut engine = WasmEngine::new(0x4E1D, 6);
+        while engine.fill_step(3) > 0 {}
+        let sr = PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..sr as usize)
+            .map(|i| (0.5 * (i as f64 * 196.0 * std::f64::consts::TAU / sr).sin()) as f32)
+            .collect();
+        let take = auracle_grammar::Take::from_samples(&x, sr).unwrap();
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.02,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Capture {
+                uid: auracle_grammar::Uid::NEW,
+                play: CaptureMode::Once,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: auracle_grammar::Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+                take: take.clone(),
+            },
+        };
+        let mut state: serde_json::Value = serde_json::from_str(&engine.export_session()).unwrap();
+        let bank = state["bank"].as_array_mut().unwrap();
+        let mut held = bank[0].clone();
+        held["id"] = 9_999.into();
+        held["name"] = "Held One".into();
+        held["tree"] = serde_json::to_value(&tree).unwrap();
+        held["tree"]["root"]["Capture"]["take"]["length"] = 3.into();
+        bank.push(held);
+        let restored = engine.import_session(&state.to_string());
+        let listed: serde_json::Value = serde_json::from_str(&engine.held_sounds()).unwrap();
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+        assert_eq!(listed[0]["id"], 9_999);
+        assert_eq!(listed[0]["name"], "Held One");
+        assert!(listed[0]["note"]
+            .as_str()
+            .unwrap()
+            .contains("couldn’t be read"));
+        let report: serde_json::Value = serde_json::from_str(&engine.repair_report()).unwrap();
+        assert_eq!(report["held"], 1);
+        assert_eq!(
+            report["terms"], 0,
+            "a held sound is not counted as repaired"
+        );
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        assert!(
+            ranked.iter().all(|r| r["id"] != 9_999),
+            "a held sound was ranked"
+        );
+        assert_eq!(ranked.len(), restored);
+        // A take that can't be read is refused in words.
+        let refused: serde_json::Value =
+            serde_json::from_str(&engine.readmit_held(9_999, r#"{"format":"x"}"#)).unwrap();
+        assert_eq!(refused["ok"], false);
+        assert!(!refused["error"].as_str().unwrap().is_empty());
+        // A readable one brings it back.
+        let good = serde_json::to_string(&take).unwrap();
+        let back: serde_json::Value =
+            serde_json::from_str(&engine.readmit_held(9_999, &good)).unwrap();
+        assert_eq!(back["ok"], true);
+        assert_eq!(back["id"], 9_999);
+        assert_eq!(engine.held_sounds(), "[]");
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        assert!(
+            ranked.iter().any(|r| r["id"] == 9_999),
+            "the readmitted sound is not in the bank"
+        );
     }
 }

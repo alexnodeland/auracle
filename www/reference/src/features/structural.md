@@ -35,8 +35,8 @@ coordinates](./audio.md) to give $\varphi \in \R^{44}$.
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
 and the auto-namer both want “two filters”, not “two subtractive stages”), but
-`NAMES` and `to_vec` collapse **forty-four productions into nineteen family
-counts**, and one of them, `AudioIn`, into none (see [below](#audio-in-counted-and-not-a-column)).
+`NAMES` and `to_vec` collapse **forty-six productions into nineteen family
+counts**, and three of them, `AudioIn`, `Track` and `Capture`, into none (see [below](#audio-in-counted-and-not-a-column)).
 
 Two reasons.
 
@@ -135,6 +135,12 @@ coordinates count it with no help (`chain_balance` and `frac_sidechained` read
 arity from the tree, where it is a leaf), and what an input patch does to a
 signal reaches the model through $\varphi_{\text{audio}}$, measured on the
 [audition clip](../audition/clips.md).
+
+`Track` and `Capture` are counted the same way, with `n_track` and `n_capture`
+and no column, and one more reason: the prior never draws either (they are
+[player kinds](../genome/grammar.md#player-kinds-scored-and-never-drawn)), so a
+column would be zero in every drawn row. The shape coordinates read them from
+the tree: a TRACK is a binary node, a CAPTURE a unary one over what it records.
 
 The identity holds exactly, for every tree. It became a *general* statement
 only when the four sidechained productions (comp, duck, gate, and vocoder)
