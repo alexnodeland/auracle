@@ -110,8 +110,17 @@ listen. The live instrument, `LivePoly`, binds its own stream: quiver’s cursor
 mode, built once in `LivePoly::new`, which the worklet calls in its port
 handler and never in `process()`, and which every voice it rebuilds shares.
 The worklet writes each quantum’s input through `input_ptr` and `write_input`,
-with no allocation, and a quantum with no write is silent. (Feeding it a
-capture is not built yet: that is Plan-007 task 4.)
+with no allocation, and a quantum with no write is silent. It writes only
+while the player monitors (MONITOR on the AUDIO IN module); otherwise the live
+input is silent and only the module’s meter reads it.
+
+Every patch ends in its amp envelope, gated by the keys, so a live patch that
+listens would be silent with no key down. `LivePoly` builds such a patch one
+voice longer (`LivePoly::set_open`): with monitoring on, that **open voice** is
+held at C4 (0 V, `OPEN_NOTE`) at full velocity, outside the keys’ allocation,
+so the input sounds through the whole patch, amp envelope included. Every
+voice reads the one stream, so a key held over the open voice adds a second
+copy of the input while it sounds, as a chord voice in the phrase does.
 
 ## Cache keys
 
@@ -152,9 +161,29 @@ carries the old clip’s key:
 - **A restore**’s entry is refused by `bank_absorb`, and the worker measures
   it with `bank_render`.
 
-The pool is right either way, but each such patch costs a serial render.
-Re-sending the handshake after a capture and after a restore that installs a
-clip is part of the capture (Plan-007 task 4).
+The pool is right either way, but each such patch costs a serial render. So
+the engine worker sends the handshake again (`farmResendPhrase` in
+`worker.js`): to the crew standing whenever a capture is taken, and in a
+staged restore right after the import installs a captured clip, before the
+bank’s first render goes out. A crew raised later is handed the current
+phrase when it starts.
+
+## Capturing a clip
+
+The web app captures the clip from the player’s input (`audio-in.js`):
+
+- **On first listen.** When an AUDIO IN’s input first carries a signal (over
+  −50 dBFS RMS, `CLIP_SIGNAL_DB`) and the session’s clip is still the
+  reference, it records `CLIP_SECONDS` (6 s) of that input, before the patch,
+  at the browser’s rate. The engine cuts it to the phrase (about 5.05 s), so
+  the capture leaves room over it; a mono device is sent as one channel.
+- **On NEW CLIP**, whatever the session holds.
+- It is sent to the engine worker as `set_audition_clip`, which calls
+  `WasmEngine::set_audition_clip`; the reply carries the engine’s sentence,
+  which the app shows, and what it measured again.
+
+A silent capture is refused (see above) and changes nothing; the app shows the
+engine’s sentence and does not capture again by itself.
 
 ## Stored with the session
 
@@ -195,15 +224,16 @@ they were logged with.
 
 ## What is open
 
-- **AUDIO IN in the prior.** Its weight is 0 until a player can hear a live
-  input (`AUDIO_IN_WEIGHT`), so no fill or walk draws one and nothing in the
-  app places one. Everything on this page is built and tested with the term
-  on (`PatchGrammarPrior::with_audio_in`), which is the prior task 4 ships.
-
-- **Capture.** The permission flow, the device list, the worklet’s input and
-  the farm’s handshake after a capture are Plan-007 task 4. Until then every
-  patch that listens is measured with the reference, and the worker’s
-  `set_audition_clip` message is how a capture will arrive.
+- **AUDIO IN in the prior.** Its weight is still 0 (`AUDIO_IN_WEIGHT`), so no
+  fill or walk draws one. A player places one from the module rail, and such a
+  patch has `log p = −∞` under the shipped prior: ⚡ evolve from it is refused
+  (`OutsideSupport`, which the app explains as AUDIO IN), and a generation’s
+  walk from it never starts. Everything on this page is built and tested with
+  the term on (`PatchGrammarPrior::with_audio_in`); turning it on is setting
+  `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT` (Plan-007 task 4).
 - **One clip for every input.** The session has one clip, and every AUDIO IN
   reads it whatever its input slot. A clip per input would make the render
   depend on the slot.
+- **One live input.** `LivePoly` binds one input stream, so in the live voices
+  every AUDIO IN reads the device of the patch’s first one; the app opens
+  each other input for its module’s meter only, and says so.

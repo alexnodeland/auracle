@@ -8,6 +8,27 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added: play through Auracle with AUDIO IN
+
+- **AUDIO IN brings your own signal into a patch**: a microphone, or a
+  guitar or a line out through an interface. It is under SOURCES in the
+  module rail; put a filter, a delay or a follower after it. The browser asks
+  for an input only when you add one, and what it hears stays in the browser.
+  Refuse, and the module stays in the patch, silent, with ASK AGAIN.
+- **MONITOR plays your input through the sound with no key down.** It starts
+  off every time Auracle opens, so a microphone never reaches the speakers
+  until you ask; the module’s square shows your input’s level either way.
+  Use headphones.
+- **Pick the input on the module.** Each device gets an input number that
+  stays with it, a device is opened once however many modules read it, and
+  one that is unplugged goes silent and says so, then plays again when it is
+  back.
+- **The model hears a sound with AUDIO IN through a clip of your playing**:
+  six seconds captured the first time your input carries a signal, saved with
+  your session. NEW CLIP captures another. Until there is one, it hears a
+  built-in plucked phrase.
+- A sound with AUDIO IN can’t be bred from yet: ⚡ evolve from this says so.
+
 ### Changed: the bank shows what a generation does
 
 - **Pointing at EVOLVE POOL marks its seeds as well as what it may

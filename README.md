@@ -82,8 +82,9 @@ it keeps what you teach it, across sessions, and breeds toward it.
   voices' parameters (no recompile) and the genome. Rewire by dragging typed
   jacks; a structural edit is a grammar operation, so an edit always leaves a
   playable patch. Undo and redo, and locks per knob and per module.
-- **Forty-two modules.** Six sources (a wavetable, a physically modeled pluck,
-  and a formant oscillator among them), twenty processors, and sixteen
+- **Forty-three modules.** Seven sources (a wavetable, a physically modeled
+  pluck, a formant oscillator, and AUDIO IN, your own input, among them),
+  twenty processors, and sixteen
   modulators. Six processors take two inputs: a mix and a ring modulator that
   merge two chains into one, and a compressor, ducker, gate, and vocoder whose
   second input is a *control*, so sidechaining lives in a typed tree. Nearly

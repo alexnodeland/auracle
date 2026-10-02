@@ -466,11 +466,15 @@ banned-words check in `make dev-check` reads the list after it.
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |
+| **AUDIO IN** | The module that brings your own signal into a patch | mic node, input node |
+| **input** | A microphone or an interface the browser offers, numbered from 1 on AUDIO IN | device (except the browser’s own names) |
+| **monitor**, MONITOR | Hearing your input through the sound, at the speakers | listen (that is PERFORM’s *listening…*) |
+| **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample, recording, take |
 | **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |
-| **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 42 modules") |
+| **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 43 modules") |
 | **set aside** | Modules unplugged or deleted, waiting to go back | HELD |
 | **59% · leaning** | A prediction: a percentage and a word | MODEL'S GUESS 0.59 |
 | **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |

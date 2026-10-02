@@ -4,7 +4,7 @@ number: 7
 status: active
 author: Claude Code
 created: 2026-09-30
-updated: 2026-10-01
+updated: 2026-10-02
 originating_proposal: 8
 related_adrs: [4, 12, 15]
 ---
@@ -91,9 +91,9 @@ measured with audition clips, from quiver to the PATCH plate.
 3. **Audition clips:**
    - a built-in reference signal; *done*: a plucked figure (A2 to E4, a noise
      pick on every note, a quiet tail), deterministic, mono;
-   - capturing a few seconds on first listen; *open*, the web half (task 4).
-     The engine takes a capture through `WasmEngine::set_audition_clip` and
-     the worker's `set_audition_clip` message;
+   - capturing a few seconds on first listen; *done* (task 4's web half): 6 s
+     of the input once it carries a signal, through the worker's
+     `set_audition_clip` message to `WasmEngine::set_audition_clip`;
    - storing clips with the session; *done*: one session clip, saved as 16-bit
      base64 and bounded like quiver's `Capture`; an unreadable one restores as
      the reference and says so;
@@ -103,21 +103,49 @@ measured with audition clips, from quiver to the PATCH plate.
      carries the clip, and `LivePoly` binds a cursor-mode input stream. A
      fill's farm result for a listener measured under another clip (or vetted
      out under one) is measured on the engine instead (`Engine::absorb_prior`),
-     and a restore's falls back to `bank_render`. Open: re-sending the farm's
-     phrase (task 4), and a clip per input.
-4. **Web capture:**
-   - the permission flow, only when a node is added;
+     and a restore's falls back to `bank_render`. The farm's phrase is re-sent
+     after a capture and a restore that installs one (task 4). Open: a clip
+     per input.
+4. **Web capture.** *Done* (web), except the live face and the prior's switch
+   (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
+   `tests/web/audio_in.spec.js`):
+   - the permission flow, only when a node is added; *done*: `queueStruct`
+     asks inside the gesture; a sound that listens opened later opens its
+     input only if the browser already granted one, otherwise the module
+     shows ALLOW INPUT; a refusal keeps the node, silent, with ASK AGAIN;
    - `enumerateDevices`, and one capture stream per input fanned out to every
-     node that uses it;
-   - the live worklet's input;
-   - the AUDIO IN plate: device select, level meter, live face;
-   - monitoring off, with a headphones note;
+     node that uses it; *done*: slot → device in `auracle-inputs`, one
+     `getUserMedia` per device the bench reads, one source fanned out to each
+     module's meter, the voices and the capture; unplug and replug handled.
+     `LivePoly` binds one stream, so the voices hear the first AUDIO IN's
+     device and a module on another input is metered only (said on it);
+   - the live worklet's input; *done*: the voice node has one input, written
+     through `input_ptr`/`write_input` before `process_ptr` for A and B, the
+     view re-checked every quantum. A patch that listens is held open by an
+     **open voice** (`LivePoly::set_open`): one more voice of the patch, built
+     with it, gated at C4 outside the keys' allocation while monitoring is on;
+   - the AUDIO IN plate: device select, level meter, live face; *done* but
+     the face: the input line opens the input menu, and the face's square
+     draws the level meter until faces (Plan-005 task 3, `claude/faces`) land
+     (`FACE SLOT` in `audio-in.js`);
+   - monitoring off, with a headphones note; *done*: MONITOR, off on every
+     load and never saved, USE HEADPHONES under it and in its toast;
+   - the clip on first listen (task 3's web half); *done*: 6 s of the voices'
+     input once it carries a signal, sent as `set_audition_clip`; NEW CLIP
+     captures again. One clip for every input (a clip per input stays open);
+   - the farm's phrase re-sent after a capture and after a restore that
+     installs a clip; *done* (`farmResendPhrase`);
    - **turning AUDIO IN on in the prior** once a player can hear a live input:
      set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
      task 2 measured exactly that setting, so if nothing else has changed it
      owes no new run; it does owe `make perform-wirings` and a re-pinned boot
      probe (`UPDATE_BOOT_PROBE=1`, `crates/auracle-wasm/tests/boot_agrees.rs`),
-     because the pool a seed deals moves.
+     because the pool a seed deals moves. *Open, the maintainer's call*: a
+     player can hear a live input now. Until it is on, a placed AUDIO IN has
+     `log p = −∞`, so ⚡ from it is refused (the app says AUDIO IN is why) and
+     a generation's walk from it never starts. Turning it on also owes a
+     CHANGELOG line (generations may now breed a sound with AUDIO IN) and the
+     guide's *What it doesn't do yet* section.
 
    Constraints the engine half leaves for this task:
    - **Re-send the farm's phrase** after a capture *and* after any restore
@@ -143,8 +171,8 @@ measured with audition clips, from quiver to the PATCH plate.
    which saves its take with the patch).
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
-   is *done* (*Audition clips*, with the AUDIO IN term on the grammar page);
-   the guide page waits for task 4.
+   is *done* (*Audition clips*, with the AUDIO IN term on the grammar page),
+   and so is the guide page (*Playing through Auracle*, with task 4).
 
 ## Done when
 

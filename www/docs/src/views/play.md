@@ -85,6 +85,9 @@ when the patch is close to it (*5/6 depth*, in amber) or at it (red): a patch
 at a ceiling has no room to grow, and a hand-built patch past one is refused.
 
 **The rack.** The patch itself. See [reading and editing the rack](../rack.md).
+An **AUDIO IN** module carries a row of its own under its settings: the input
+it reads, your input’s level, **MONITOR** and **NEW CLIP**. See [playing
+through Auracle](../playing-through.md).
 
 **The scope,** at the bottom right of the frame, tracing the output while you
 play. Set it up from **⋯** › *Scope & analyzer…*: waveform or spectrum, where

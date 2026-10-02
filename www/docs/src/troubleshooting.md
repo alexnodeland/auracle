@@ -88,6 +88,22 @@ anywhere in this one to play MIDI here.
 and it appears without a reload. On Windows, a device another program has open
 can’t be opened by the browser too; close that program and plug it in again.
 
+## AUDIO IN is silent
+
+Its input line says why:
+
+- ***no input yet***: the browser hasn’t been asked. Press **ALLOW INPUT**.
+- ***input refused***: you refused it earlier. Allow the microphone for the
+  site in the browser’s site settings (the icon left of the address), then
+  press **ASK AGAIN**.
+- ***no input found*** or ***input didn’t open***: plug in a microphone or an
+  interface, close any other app holding it, then press **ASK AGAIN**.
+- ***unplugged***: the device went away. Plug it back in; it opens by itself.
+- The square shows a level but you hear nothing: **MONITOR** is off. It starts
+  off every time. Put on headphones, then press it.
+- *meter only*: the keys hear the first AUDIO IN’s input. See [your
+  inputs](./playing-through.md#your-inputs).
+
 ## Evolution does nothing
 
 While a generation breeds, **EVOLVE POOL** is its own progress bar, saying
@@ -120,10 +136,12 @@ When every sound the model chose to breed from is out of breeding’s reach, the
 toast is different:
 
 > *Generation 4: nothing could be bred, because every seed it picked has a
-> knob on its stop or is deeper than the model scores. Nudge those knobs off
-> their stops.*
+> knob on its stop, is deeper than the model scores, or has AUDIO IN. Nudge
+> those knobs off their stops.*
 
-More picks won’t fix that one; moving those knobs will.
+More picks won’t fix that one; moving those knobs will. A sound with AUDIO IN
+can’t be bred from yet ([what it doesn’t do
+yet](./playing-through.md#what-it-doesnt-do-yet)).
 
 ## An edit didn’t take
 

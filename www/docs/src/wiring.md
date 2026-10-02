@@ -1,6 +1,6 @@
 # Wiring and the module rail
 
-<p class="lede">The module rail on the right of PATCH holds all 42 modules.
+<p class="lede">The module rail on the right of PATCH holds all 43 modules.
 This page is about adding a module to a patch, rewiring it with cables, and
 reading what the model makes of each module.</p>
 
@@ -41,7 +41,7 @@ says what it does to a wave, what it takes and gives, and what the model makes
 of it.</figcaption>
 </figure>
 
-The rail, headed **MODULES**, holds 42 modules in ten groups, in the order a
+The rail, headed **MODULES**, holds 43 modules in ten groups, in the order a
 signal meets them:
 
 - the sound: **SOURCES**, **SHAPE**, **FILTER**, **SPACE**, **MOTION**,
