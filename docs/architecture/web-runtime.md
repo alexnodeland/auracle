@@ -412,6 +412,13 @@ figure is what the engine measured on the sound in hand, never a recipe
   cutoff when it lands; after a failed plain render, or a tree it cannot
   read, it asks nothing more.
 
+- **`explain_cancel`** (`{kind}`, answered on arrival, never queued): an
+  answer or the lesson put away. Every `explain` or `explain_lesson` request
+  of that kind still waiting is taken out of its lane and answered with
+  `error: "cancelled"` (the page keeps nothing for it), so none stands in
+  `soon` ahead of what the player asks next; one already rendering
+  finishes. With nothing open the page sends neither request.
+
 Neither touches the pool, the bench or the log. An open figure follows its
 control (perform.js calls `host.controlTurned`, and the figure asks again
 once the turn has rested for 300 ms) and closes when its view does, and when

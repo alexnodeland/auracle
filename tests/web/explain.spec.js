@@ -72,17 +72,15 @@ const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
 const sounds = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeGreaterThan(-50);
 const quiet = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeLessThan(-80);
 
-// EXPLAIN_CPU_THROTTLE=4 runs the page at a quarter of the machine's speed
-// (Chrome's CPU throttling), the slow laptop the figures must still answer on.
-const THROTTLE = Number(process.env.EXPLAIN_CPU_THROTTLE || 0);
+// AURACLE_CPU_THROTTLE=4 runs the page and the engine worker at a quarter of
+// the machine's speed (perform_budget.js's `watch`), the slow laptop the
+// figures must still answer on.
+const budget = require("./perform_budget.js");
 
 async function boot(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  if (THROTTLE > 1) {
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
-  }
+  await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -561,5 +559,31 @@ test("with a bank of faces, BRIGHT's figure and the lesson draw the sound's face
   await page.locator(".xp.on .xp-learn").click();
   await expect(page.locator(".xl.on .xl-body p").first()).toHaveText(/^This is Reese’s face: /, { timeout: 60_000 });
   await expect(page.locator(".xl.on .xl-shape")).toHaveAttribute("aria-label", "Reese’s face, low at the base");
+  expect(errs).toEqual([]);
+});
+
+test("with no answer or lesson open, nothing asks the engine for a figure, and putting one away cancels its wait", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  // Nothing open: an Offer grows with no explain request beside it.
+  await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
+  await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: 180_000 });
+  await page.waitForTimeout(1_000);
+  expect(await page.evaluate(() => window.__xsent.filter((m) => /^explain/.test(m.type)).length)).toBe(0);
+  // An answer opened and put away at once: its request, if still waiting,
+  // is cancelled, answered, and nothing more is sent while nothing is open.
+  await knob(page, 0).hover();
+  await page.keyboard.press("?");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".xp.on")).toHaveCount(0);
+  const sent = await page.evaluate(() => window.__xsent.length);
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(2_000);
+  const after = await page.evaluate(() => window.__xsent.slice());
+  expect(after.slice(sent).filter((m) => m.type === "explain")).toEqual([]);
+  // Every explain request got its reply (rendered or cancelled).
+  const replies = await page.evaluate(() => window.__xgot.filter((m) => m.type === "explain").map((m) => m.token));
+  for (const m of after.filter((q) => q.type === "explain")) expect(replies).toContain(m.token);
   expect(errs).toEqual([]);
 });

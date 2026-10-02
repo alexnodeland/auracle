@@ -2557,6 +2557,21 @@ self.onmessage = (e) => {
     evolveStop();
     return;
   }
+  // An answer or the lesson put away: its requests still waiting in `soon`
+  // are nobody's now, and must not stand ahead of what the player asks next
+  // (a pressed Offer). Each is answered, as every request is, with
+  // `error: "cancelled"`; one already rendering finishes.
+  if (m.type === "explain_cancel") {
+    for (const lane of lanes) {
+      for (let i = lane.length - 1; i >= 0; i--) {
+        const q = lane[i];
+        if (q.type !== m.kind) continue;
+        lane.splice(i, 1);
+        post({ type: q.type, token: q.token ?? null, tree: q.tree, k: q.k, cutoff: q.cutoff, error: "cancelled" });
+      }
+    }
+    return;
+  }
   // Background work became the player's: Offer claimed a spare still waiting
   // in `later`, or PERFORM came back into sight with its measurement demoted
   // (see `retire`). It waits in `soon` now, and a running one stops giving way.

@@ -779,6 +779,13 @@ export function createExplain(host) {
     const was = pop.classList.contains("on");
     pop.classList.remove("on");
     shown = null;
+    // A request still waiting in the engine's `soon` lane is nobody's now:
+    // it must not stand ahead of what the player asks next.
+    if (busy) {
+      host.send({ type: "explain_cancel", kind: "explain" });
+      busy = 0;
+      clearTimeout(busyT);
+    }
     if (was && returnTo && document.contains(returnTo)) {
       returnTo.focus?.({ preventScroll: true });
       // Focus given back is the keyboard's only if it was the keyboard's
@@ -999,6 +1006,10 @@ export function createExplain(host) {
   }
   function closeLesson() {
     if (!lesson.classList.contains("on")) return;
+    if (L.asked != null) host.send({ type: "explain_cancel", kind: "explain_lesson" });
+    L.asked = null;
+    L.want = null;
+    clearTimeout(L.askT);
     stopLesson();
     cancelAnimationFrame(L.raf);
     clearTimeout(L.timer);
@@ -1428,6 +1439,9 @@ export function createExplain(host) {
       busy = 0;
       clearTimeout(busyT);
     }
+    // Cancelled before it rendered (the answer was put away): nothing was
+    // measured, so nothing is kept.
+    if (m.error === "cancelled") return;
     cache.set(key, m.error ? { error: m.error } : { made: m.made, turned: m.turned || null });
     while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
     if (!shown || !pop.classList.contains("on")) return;
