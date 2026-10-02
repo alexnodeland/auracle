@@ -104,14 +104,15 @@ held-engine reload test, which boots twice like them; the reload-at-once
 test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
-`perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (a boot, a
-measurement and a minute: not yet timed on CI), `perform_recentre.spec.js`'s glide home
+`perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (44 to 52 s
+on CI at 198659b; it now first waits out the page's own re-check and spare,
+about a minute more there, not yet timed), `perform_recentre.spec.js`'s glide home
 (54 s), `perform_teaches.spec.js` (54 s), three that wait on PERFORM's
 engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
 control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
 index and its marks (a measurement each: 13 to 16 and 13 to 15 s there),
 and both tests in `perform_offer_moments.spec.js` (offers grown, heard and
-answered: 17 to 19 and 31 s there), and `patch_guess.spec.js`'s five that
+answered: 17 to 19 and 31 s there, 36 to 42 and 50 to 78 s on CI), and `patch_guess.spec.js`'s five that
 fit after the warm start before PATCH guesses (the guess drawn, added,
 skipped and undone; the floor with no crew; keep as new; a new patch's own
 skips; a stale take: 15 to
@@ -160,7 +161,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and how it works say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
-| `perform_offer_latency.spec.js` | With a very long spare offer growing, a pick (`perform_record`) is answered within max(2 s, twice a measured step) and a Keep says so within max(4 s, six steps), the spare still growing (the page's CPU is throttled 4x, which need not reach the engine worker, so the bounds rest on the measured step); leaving the patch (`retire`) stops the running walk, answered `retired` |
+| `perform_offer_latency.spec.js` | With the page's own `later` work done (the shipped wiring's re-check, the page's spare) and then a very long spare offer growing, a pick (`perform_record`) is answered within max(2 s, twice a measured step) and a Keep says so within max(4 s, six steps), the spare still growing (the page's CPU is throttled 4x, which need not reach the engine worker, so the bounds rest on the measured step); leaving the patch (`retire`) stops the running walk, answered `retired` |
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's name, a taken B fills and goes into the name, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one |
 | `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |
@@ -194,3 +195,11 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
   changes. Check the session-start hook's warning, or `make wasm` first.
 - **Timing assertions need slack** on a loaded machine (1.5 s or more), and a
   spec should accept the app being faster than when it was written.
+- **A wait on PERFORM's engine growth uses `offerBudget`**
+  (`tests/web/perform_budget.js`): an offer, a drift, or work queued ahead of
+  one is renders, about a quarter of a second each on a 16-core M3 Max and 1.5 to
+  2 s on a CI runner. The budget is the longer of a floor (240 s on CI, 90 s
+  elsewhere) and 120 steps measured on the machine at the start of the test,
+  and it grows the test's timeout by one budget per wait. What must not wait
+  for an offer (a pick, a Keep, NEXT) keeps its own bound from a measured step.
+  `perform_budget.watch` also applies `AURACLE_CPU_THROTTLE` to the page.

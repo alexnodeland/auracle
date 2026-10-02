@@ -1,0 +1,111 @@
+// How long a PERFORM spec may wait for the engine to grow an offer or a
+// drift, on the machine it runs on. Not a spec: `playwright.config.js` matches
+// `*.spec.js` only.
+//
+// An offer is a walk of about twenty steps, each step a phrase render, and it
+// may wait behind a measurement of the patch in hand (sixteen to thirty-odd
+// renders) that was asked for first. Measured on a 16-core M3 Max, one step
+// is about 0.26 s, a re-check of Glass Pad's shipped wiring 32 steps' worth, a
+// taken offer's first measurement 16 and a spare offer 15. On CI's four-core
+// runners one step is 1.5 to 2.1 s, and seconds more when the runner is
+// loaded, so a fixed wait that holds on a laptop runs out there for the
+// machine, not the app. A wait on offer growth is therefore the longer of a
+// floor (CI's 240 s, the bound perform_teaches.spec.js has used since the
+// first spare took 62 s there; 90 s elsewhere) and STEPS steps measured on
+// this machine, now. STEPS is more than twice the longest wait in steps the
+// specs have (an offer behind a first measurement, about fifty), so a budget
+// that runs out means an offer that is not coming, or one many times slower
+// than it was.
+//
+// What must not wait for an offer (a pick, a Keep, NEXT handing over a spare)
+// is held to its own tight bounds where it is tested; this budget is only for
+// waiting on the engine's growth.
+const { test } = require("@playwright/test");
+
+const FLOOR_MS = process.env.CI ? 240_000 : 90_000;
+const STEPS = 120;
+
+// The engine worker, and the tree of the last `perform_wire` the page asked
+// for (the patch on PERFORM), kept by wrapping `Worker` before main.js runs.
+// It composes with a spec's own wrapper: each wraps whatever `Worker` is when
+// it runs, and both see every message.
+const INIT = `(() => {
+  const Orig = window.Worker;
+  function Wrapped(url, opts) {
+    const w = new Orig(url, opts);
+    if (/worker\\.js/.test(String(url))) {
+      window.__pbEngine = w;
+      const post = w.postMessage.bind(w);
+      w.postMessage = (m, ...rest) => {
+        if (m && m.type === "perform_wire" && m.tree) window.__pbTree = m.tree;
+        return post(m, ...rest);
+      };
+    }
+    return w;
+  }
+  Wrapped.prototype = Orig.prototype;
+  window.Worker = Wrapped;
+})();`;
+
+/** Before the page loads: keep the engine worker in reach, and apply
+ *  AURACLE_CPU_THROTTLE (as patch_page.js does) to the page. */
+async function watch(page) {
+  await page.addInitScript(INIT);
+  const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
+  if (rate > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+  }
+}
+
+// The spec-side request ids used here, clear of the page's (a counter from 1)
+// and of the ones specs post themselves (9_000_000 and up).
+let nextReq = 8_800_000;
+
+/** One step of the engine here, now: the worst of `n` offers of one step
+ *  (one render; the home patch is in the memo) from the patch on PERFORM.
+ *  The worst, because a step can be answered from the memo in milliseconds.
+ *  Asked in the `soon` lane, so background work gives way to it at its next
+ *  render, and it waits at most for that. */
+async function measureStep(page, n = 2) {
+  let step = 0;
+  for (let i = 0; i < n; i++) {
+    const req = nextReq++;
+    const took = await page.evaluate(
+      ([r, limit]) =>
+        new Promise((resolve) => {
+          const w = window.__pbEngine;
+          if (!w || !window.__pbTree) return resolve(null);
+          const at = performance.now();
+          const timer = setTimeout(() => resolve(null), limit);
+          const on = (e) => {
+            if (!e.data || e.data.type !== "perform_offered" || e.data.req !== r) return;
+            w.removeEventListener("message", on);
+            clearTimeout(timer);
+            resolve(performance.now() - at);
+          };
+          w.addEventListener("message", on);
+          w.postMessage({ type: "perform_offer", req: r, tree: window.__pbTree, overrides: [], locks: [], steps: 1 });
+        }),
+      [req, FLOOR_MS],
+    );
+    if (took == null) return null;
+    step = Math.max(step, took);
+  }
+  return step;
+}
+
+/** How long to wait for an offer (or a drift) to grow here: the floor, or
+ *  STEPS measured steps when that is longer. Call it with a patch on PERFORM
+ *  (its controls reached), after `watch`. `waits`: how many such waits the
+ *  test has left; its timeout grows by a budget for each. */
+async function offerBudget(page, { waits = 0 } = {}) {
+  const step = await measureStep(page);
+  const ms = Math.round(Math.max(FLOOR_MS, step == null ? 0 : STEPS * step));
+  const say = step == null ? "no step measured" : `one step ${step.toFixed(0)} ms`;
+  console.log(`${say} here: an offer may take ${(ms / 1000).toFixed(0)} s`);
+  if (waits > 0) test.setTimeout(test.info().timeout + waits * ms);
+  return ms;
+}
+
+module.exports = { watch, measureStep, offerBudget, FLOOR_MS, STEPS };
