@@ -186,11 +186,40 @@ export function haloOf(like, s0) {
  *  margins `mapLayout` keeps (`box`), the mark size the halos are drawn to
  *  (`s0`, sized to the room the sounds share: legible on a small screen,
  *  never crowding a large one), and the nearest two marks may sit (`minD`). */
-export function mapFrame(w, h, n) {
+export function mapFrame(w, h, n, { track = false } = {}) {
   const small = w < 520;
   const m = small ? Math.max(22, w * 0.06) : Math.max(48, w * 0.07);
   const s0 = Math.round(Math.max(20, Math.min(32, Math.sqrt((w * h) / Math.max(1, n)) * 0.5)));
-  return { box: { w, h, left: m, right: m, top: small ? 48 : 56, bottom: small ? 40 : 48 }, s0, minD: s0 * 1.05 };
+  // With the taste-over-time track along the bottom, the sounds keep clear of it.
+  const bottom = track ? (small ? 78 : 96) : small ? 40 : 48;
+  return { box: { w, h, left: m, right: m, top: small ? 48 : 56, bottom }, s0, minD: s0 * 1.05 };
+}
+
+/** LEARNING's small map: each pool point `[{id, x, y}]` min–max scaled into
+ *  a `w` × `h` canvas inside `pad` px, with no opening up (the small map
+ *  shows the engine's coordinates as they are). Returns a Map from id to
+ *  `{x, y}`. */
+export function miniLayout(points, w, h, pad) {
+  const out = new Map();
+  const pts = (points || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!pts.length) return out;
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  for (const p of pts) {
+    out.set(p.id, {
+      x: pad + ((p.x - x0) / Math.max(1e-9, x1 - x0)) * (w - 2 * pad),
+      y: pad + ((p.y - y0) / Math.max(1e-9, y1 - y0)) * (h - 2 * pad),
+    });
+  }
+  return out;
+}
+
+/** How a sound's mark is drawn while a weight is pointed at: its z on that
+ *  feature against the largest |z| in the pool (`v`, −1 to 1), as an alpha
+ *  and a radius in px (the prototype's model.js). */
+export function shadeOf(z, zmax) {
+  const v = Math.max(-1, Math.min(1, (Number(z) || 0) / Math.max(1e-6, zmax)));
+  return { v, alpha: 0.15 + 0.85 * (v * 0.5 + 0.5), r: 1.6 + 2.6 * Math.max(0, v) };
 }
 
 /** How far each axis is pulled toward its ranks: about halfway, as the
@@ -335,4 +364,115 @@ export function forecastScore(scored) {
   const hits = scored.filter((f) => f.hit).length;
   const expected = scored.reduce((s, f) => s + Math.max(f.p, 1 - f.p), 0) / scored.length;
   return { hits, n: scored.length, expected, was: hits / scored.length };
+}
+
+// ---------- taste over time: what the engine posted, kept ----------
+// The engine keeps no history of its ratings, its map or its θ: each reply
+// carries the posterior as it stands. The page keeps what it was sent, one
+// entry per change (a pick's, a star's or a cut's reply with its `ratings`;
+// a views post with a new map), so TASTE's track and LEARNING's replay show
+// exactly what was posted at each one, rounded to four decimal places. The
+// maps are kept once each and referenced, since a map changes only at a
+// refit. Bounded to the last HISTORY_MAX entries, and saved with the session
+// (`ui.taste`) as JS-owned state with a version.
+
+export const HISTORY_VERSION = 1;
+export const HISTORY_MAX = 200;
+const r4 = (x) => Math.round((Number(x) || 0) * 1e4) / 1e4;
+
+/** An empty history. */
+export function newHistory() {
+  return { v: HISTORY_VERSION, maps: [], entries: [], names: null };
+}
+
+/** A saved history if it is one this build can read, else an empty one. */
+export function readHistory(saved) {
+  const ok = saved && saved.v === HISTORY_VERSION && Array.isArray(saved.maps) && Array.isArray(saved.entries) &&
+    saved.maps.every((m) => m && Array.isArray(m.points)) &&
+    saved.entries.every((e) => e && Number.isInteger(e.m) && e.m >= 0 && e.m < saved.maps.length && Array.isArray(e.r));
+  if (!ok) return newHistory();
+  return { v: HISTORY_VERSION, maps: saved.maps, entries: saved.entries, names: Array.isArray(saved.names) ? saved.names : null };
+}
+
+/** Keep one change. `e`: `{kind, n, obs, gen, fit, map: {points, explained},
+ *  ratings: [{id, mean, std}], pick: {a, b} | null}`. `kind` is `start`,
+ *  `pick`, `star`, `cut`, `keep`, `offer`, `map` or `gen`; `n` the picks
+ *  TAUGHT counted then; `obs` the engine's observation count; `gen` its
+ *  generation; `fit` whether a fit existed. A generation's entry also says
+ *  which sounds joined the map (`joined`). Returns the entry kept. */
+export function recordEntry(h, e, max = HISTORY_MAX) {
+  const points = (e.map?.points || []).filter((p) => p && p.id != null).map((p) => [p.id, r4(p.x), r4(p.y)]);
+  const explained = (e.map?.explained || [0, 0]).map(r4);
+  const last = h.entries[h.entries.length - 1];
+  const lastMap = last ? h.maps[last.m] : null;
+  let m;
+  if (lastMap && JSON.stringify(lastMap.points) === JSON.stringify(points)) m = last.m;
+  else {
+    h.maps.push({ points, explained });
+    m = h.maps.length - 1;
+  }
+  const before = new Set(lastMap ? lastMap.points.map((p) => p[0]) : []);
+  const r = (e.ratings || []).map((x) => [x.id, r4(x.mean), r4(x.std)]);
+  // A redrawn map that changes nothing (a reload sends the map it saved) is
+  // not a new moment.
+  if (e.kind === "map" && last && last.m === m && JSON.stringify(last.r) === JSON.stringify(r)) return last;
+  const entry = {
+    kind: e.kind,
+    n: e.n | 0,
+    obs: e.obs | 0,
+    gen: e.gen | 0,
+    fit: !!e.fit,
+    m,
+    r,
+    pick: e.pick ? [e.pick.a, e.pick.b] : null,
+    joined: e.kind === "gen" && lastMap ? points.filter((p) => !before.has(p[0])).length : 0,
+  };
+  h.entries.push(entry);
+  if (h.entries.length > max) {
+    h.entries.splice(0, h.entries.length - max);
+    const used = [...new Set(h.entries.map((x) => x.m))].sort((a, b) => a - b);
+    const at = new Map(used.map((old, i) => [old, i]));
+    h.maps = used.map((old) => h.maps[old]);
+    for (const x of h.entries) x.m = at.get(x.m);
+  }
+  return entry;
+}
+
+/** The styles a reply posted after a pick (`WasmEngine::styles`), kept with
+ *  that pick's entry: the last one whose observation count is `obs`.
+ *  Returns the entry, or null when no entry is that pick's. */
+export function attachStyles(h, obs, styles) {
+  if (!Array.isArray(styles) || !styles.length) return null;
+  let entry = null;
+  for (let i = h.entries.length - 1; i >= 0; i--) {
+    if (h.entries[i].obs === obs) { entry = h.entries[i]; break; }
+  }
+  if (!entry) return null;
+  const names = styles[0].theta.map((t) => t.name);
+  if (!h.names) h.names = names;
+  if (JSON.stringify(h.names) !== JSON.stringify(names)) entry.names = names;
+  entry.s = styles.map((s) => ({ share: r4(s.share), m: s.theta.map((t) => r4(t.mean)), d: s.theta.map((t) => r4(t.std)) }));
+  return entry;
+}
+
+/** Entry `i` as the views it was: the map (its points carrying the ratings
+ *  then), the ratings, whether a fit existed, the pick, and the styles if
+ *  they were posted. */
+export function entryView(h, i) {
+  const e = h.entries[i];
+  if (!e) return null;
+  const map = h.maps[e.m];
+  const ratings = new Map(e.r.map(([id, mean, std]) => [id, { mean, std }]));
+  const points = map.points.map(([id, x, y]) => ({
+    id, x, y, utility: ratings.get(id)?.mean ?? 0, utility_std: ratings.get(id)?.std ?? 0,
+  }));
+  const names = e.names || h.names || [];
+  const styles = e.s
+    ? e.s.map((s) => ({ share: s.share, theta: s.m.map((mean, j) => ({ name: names[j], mean, std: s.d[j] })) }))
+    : null;
+  return {
+    kind: e.kind, n: e.n, fit: e.fit, gen: e.gen, joined: e.joined,
+    pick: e.pick ? { a: e.pick[0], b: e.pick[1] } : null,
+    map: { points, explained: map.explained }, ratings, styles,
+  };
 }

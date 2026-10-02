@@ -32,6 +32,12 @@ import {
   plateGuess,
   NO_WEIGHTS,
   TASTE_LABELS,
+  pickWords,
+  trackLabel,
+  LOOKING_BACK,
+  joinedLabel,
+  movedMost,
+  dotsLegend,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -262,4 +268,14 @@ test("the math states the engine's numbers, and nothing else", () => {
   // Other numbers, other words: nothing in it is written down twice.
   const other = mathLines({ audio: 20, structural: 30, draws: 250, styles: 1, styles_max: 3, obs_per_style: 10 }, 8);
   assert.match(other.join(" "), /20 audio and 30 structural.*250 draws.*every 8 picks.*every 10 things.*up to 3/);
+});
+
+test("the track and the replay say which moment they show", () => {
+  assert.equal(trackLabel(7, true), "now · after 7 picks");
+  assert.equal(trackLabel(1, false), "after 1 pick");
+  assert.equal(pickWords(0), "before any picks");
+  assert.equal(joinedLabel(3), "+3");
+  assert.equal(movedMost("grit", -0.123), "That pick moved grit most (−0.12).");
+  assert.equal(dotsLegend("grit"), "dots: grit");
+  for (const t of [trackLabel(7, true), LOOKING_BACK, movedMost("grit", 0.1), dotsLegend("body")]) voiced(t);
 });

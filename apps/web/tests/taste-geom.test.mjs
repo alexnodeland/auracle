@@ -24,6 +24,14 @@ import {
   turnBetween,
   scoredForecasts,
   forecastScore,
+  miniLayout,
+  shadeOf,
+  HISTORY_MAX,
+  newHistory,
+  readHistory,
+  recordEntry,
+  attachStyles,
+  entryView,
 } from "../taste-geom.js";
 
 test("map: a taught pool's sd spreads its dots from smallest to largest", () => {
@@ -271,4 +279,75 @@ test("forecasts: the chance it gave the sound you picked, and the score", () => 
   assert.ok(Math.abs(sc.was - 2 / 3) < 1e-12);
   assert.equal(forecastScore([]), null);
   assert.deepEqual(scoredForecasts(null), []);
+});
+
+// ---------- taste over time ----------
+
+const mapOf = (ids, dx = 0) => ({ points: ids.map((id, i) => ({ id, x: i + dx, y: i * 2 })), explained: [0.2, 0.1] });
+const ratingsOf = (ids, m) => ids.map((id) => ({ id, mean: m + id / 100, std: 0.5 }));
+
+test("history: each moment as posted, its map kept once, and read back exactly", () => {
+  const h = newHistory();
+  const ids = [1, 2, 3];
+  const map = mapOf(ids);
+  recordEntry(h, { kind: "start", n: 0, obs: 0, gen: 0, fit: false, map, ratings: ratingsOf(ids, 0) });
+  recordEntry(h, { kind: "pick", n: 1, obs: 1, gen: 0, fit: true, map, ratings: ratingsOf(ids, 0.3), pick: { a: 1, b: 3 } });
+  assert.equal(h.maps.length, 1, "an unchanged map is kept once");
+  const v = entryView(h, 1);
+  assert.equal(v.kind, "pick");
+  assert.deepEqual(v.pick, { a: 1, b: 3 });
+  assert.equal(v.ratings.get(2).mean, 0.32);
+  assert.equal(v.map.points[2].utility, 0.33, "the map's points carry that moment's ratings");
+  // A redraw that changes nothing is not a new moment; one that does is.
+  recordEntry(h, { kind: "map", n: 1, obs: 1, gen: 0, fit: true, map, ratings: ratingsOf(ids, 0.3) });
+  assert.equal(h.entries.length, 2);
+  recordEntry(h, { kind: "gen", n: 1, obs: 1, gen: 1, fit: true, map: mapOf([1, 2, 3, 4, 5], 1), ratings: ratingsOf([1, 2, 3, 4, 5], 0.3) });
+  assert.equal(h.entries.length, 3);
+  assert.equal(h.entries[2].joined, 2, "a generation says how many sounds joined the map");
+  // Saved and read back: the same moments.
+  const back = readHistory(JSON.parse(JSON.stringify(h)));
+  assert.deepEqual(entryView(back, 1), entryView(h, 1));
+  // Anything this build cannot read is no history, not a broken one.
+  assert.deepEqual(readHistory({ v: 99, maps: [], entries: [] }), newHistory());
+  assert.deepEqual(readHistory({ v: 1, maps: [], entries: [{ m: 3, r: [] }] }), newHistory());
+  assert.deepEqual(readHistory(null), newHistory());
+});
+
+test("history: the styles posted after a pick join that pick's moment", () => {
+  const h = newHistory();
+  const ids = [1, 2];
+  recordEntry(h, { kind: "pick", n: 19, obs: 19, gen: 0, fit: true, map: mapOf(ids), ratings: ratingsOf(ids, 0) });
+  recordEntry(h, { kind: "pick", n: 20, obs: 20, gen: 0, fit: true, map: mapOf(ids), ratings: ratingsOf(ids, 0.1) });
+  const styles = [{ share: 0.6, theta: [{ name: "a:p2", mean: 0.123456, std: 0.2 }, { name: "n_vco", mean: -0.3, std: 0.1 }] }];
+  assert.equal(attachStyles(h, 19, styles), h.entries[0], "matched by the observation count");
+  assert.equal(attachStyles(h, 7, styles), null, "a reply for no kept moment is dropped");
+  const v = entryView(h, 0);
+  assert.deepEqual(v.styles, [{ share: 0.6, theta: [{ name: "a:p2", mean: 0.1235, std: 0.2 }, { name: "n_vco", mean: -0.3, std: 0.1 }] }]);
+  assert.equal(entryView(h, 1).styles, null);
+});
+
+test("history: bounded to the newest moments, with the maps they use", () => {
+  const h = newHistory();
+  for (let i = 0; i < HISTORY_MAX + 30; i++) {
+    recordEntry(h, { kind: "gen", n: i, obs: i, gen: i, fit: true, map: mapOf([1, 2], i), ratings: ratingsOf([1, 2], i) });
+  }
+  assert.equal(h.entries.length, HISTORY_MAX);
+  assert.equal(h.entries[0].n, 30, "the oldest went first");
+  assert.equal(h.maps.length, HISTORY_MAX, "maps no moment uses are dropped");
+  for (let i = 0; i < h.entries.length; i++) assert.equal(entryView(h, i).map.points[0].x, h.entries[i].n);
+});
+
+test("the small map and its shading", () => {
+  const pos = miniLayout([{ id: 1, x: 0, y: 0 }, { id: 2, x: 10, y: 5 }], 200, 100, 20);
+  assert.deepEqual(pos.get(1), { x: 20, y: 20 });
+  assert.deepEqual(pos.get(2), { x: 180, y: 80 });
+  const hi = shadeOf(2, 2), lo = shadeOf(-2, 2), mid = shadeOf(0, 2);
+  assert.ok(hi.alpha > mid.alpha && mid.alpha > lo.alpha, "more of the feature, brighter");
+  assert.ok(hi.r > mid.r && mid.r === lo.r, "and larger, above the middle");
+  assert.equal(hi.alpha, 1);
+});
+
+test("the track keeps the sounds clear of it", () => {
+  const off = mapFrame(1100, 560, 40), on = mapFrame(1100, 560, 40, { track: true });
+  assert.ok(on.box.bottom > off.box.bottom);
 });

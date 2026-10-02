@@ -275,7 +275,45 @@ export const TASTE_LABELS = {
   noExemplarTitle: "Nothing to play for this style yet",
   stripEnd: "100% for the one picked",
   stripEndShort: "100%",
+  togTitle: "Color by taste",
+  sound: "sound",
+  taste: "taste",
+  track: "Taste over time",
+  trackPlay: "Replay how your taste moved",
+  trackStop: "Stop the replay",
+  replay: "replay",
+  replayTitle: "Replay · R",
+  noReplayTitle: "Nothing to replay yet",
 };
+
+/** The picks a moment on the track came after: "after 7 picks", or before
+ *  any. */
+export function pickWords(n) {
+  return n === 0 ? "before any picks" : `after ${count(n, "pick")}`;
+}
+
+/** The track's label: the moment shown, "now · after 7 picks" at its end. */
+export function trackLabel(n, now) {
+  return now ? `now · ${pickWords(n)}` : pickWords(n);
+}
+
+/** The line under TASTE's title while the track shows an earlier moment. */
+export const LOOKING_BACK = "Looking back.";
+
+/** A generation's mark on the track: how many sounds joined the map. */
+export function joinedLabel(n) {
+  return `+${n}`;
+}
+
+/** What one step of LEARNING's replay moved most, for a screen reader. */
+export function movedMost(word, d) {
+  return `That pick moved ${word} most (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(2)}).`;
+}
+
+/** The small map's legend while a weight is pointed at. */
+export function dotsLegend(word) {
+  return `dots: ${word}`;
+}
 
 /** The card beside a sound on the map: the bank's number for it, as a
  *  prediction ("would like: 59% · leaning"). */

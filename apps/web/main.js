@@ -640,6 +640,9 @@ function uiState() {
     // places is what let the old bank apologise for eviction without being
     // able to prevent it.
     bank: bankFilter,
+    // What TASTE's track and LEARNING's replay show: the engine's replies as
+    // they came, kept by the page (taste-geom's history, versioned, bounded).
+    taste: taste ? taste.history() : null,
     born: [...lastBorn],
     bornGen,
     // What you pulled out of a patch and have not put back. "Removed" is
@@ -1459,6 +1462,14 @@ worker.onmessage = (e) => {
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
+    // The styles after a pick (`WasmEngine::styles`): θ under the draws the
+    // pick reweighted. Every surface reads the fresher θ; LEARNING keeps it
+    // with that pick's moment and moves its bars.
+    case "styles": {
+      if (m.styles && views) views.styles = m.styles;
+      if (taste) taste.onStyles(m);
+      break;
+    }
     case "calibration": {
       engineCalib = m.calib;
       if (m.forecasts) engineForecasts = m.forecasts;
@@ -1476,9 +1487,13 @@ worker.onmessage = (e) => {
       // The ratings a taken pick left (`WasmEngine::belief`): TASTE moves
       // every halo to them, and draws a pair's pick as its arrow.
       if (m.ratings && views) views.ratings = m.ratings;
-      if (taste && views) taste.onStatus(m);
       applyStatus(m.status);
+      // After the status, so the moment TASTE keeps counts this pick.
+      if (taste && views) taste.onStatus(m);
       send({ type: "calibration" });
+      // The styles under the reweighted draws, for LEARNING's bars and its
+      // replay: answered in the worker's `later` lane.
+      if (m.ratings) send({ type: "styles" });
       // The engine took nothing: the patch left the pool between the gesture
       // and the end of its undo window. The UI has already acted as if the
       // vote were taken — put that back, and say so.
@@ -18454,6 +18469,13 @@ taste = createTaste({
   },
   fittedFrom: () => words.fittedFrom({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
   taught: () => taughtKinds(),
+  // What the track keeps with each moment: the engine's picks, observation
+  // count and generation as the last status said them (not TAUGHT, which
+  // also counts picks still inside their undo window).
+  picks: () => status.picks | 0,
+  observations: () => status.observations | 0,
+  generation: () => status.generation | 0,
+  scheduleSave: () => scheduleSave(),
   skillText: () => skillText(),
   kindsText,
   fitEvery: FIT_EVERY,
@@ -20477,6 +20499,7 @@ bootMidi();
     restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
     restoreHoles(saved.ui.holes);
+    if (taste) taste.restore(saved.ui.taste);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

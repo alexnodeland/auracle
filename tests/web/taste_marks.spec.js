@@ -192,6 +192,12 @@ test("TASTE's and LEARNING's early states count what is left, and the map says w
   await openView(page, "taste");
   await expect(page.locator("#taste-sub")).toHaveText("6 more picks and it fits your taste.", { timeout: 30_000 });
   await expect(page.locator("#taste-legend .tl-words")).toHaveText("still a guess");
+  // As in the prototype: before a fit SOUND shows no glow at all, and TASTE
+  // shows each as a guess (a dashed ring, and the legend saying so).
+  await expect(page.locator("#taste-legend")).not.toHaveClass(/\bon\b/);
+  await page.locator("#taste-tog").click();
+  await expect(page.locator("#taste-legend")).toHaveClass(/\bon\b/);
+  await page.locator("#taste-tog").click();
   await openView(page, "learning");
   await expect(page.locator("#md-sub")).toHaveText("6 more picks and it fits your taste.");
   await expect(page.locator("#md-weights-none")).toHaveText("none yet: it weighs nothing until it first fits");

@@ -13,6 +13,10 @@
 // - Copy as JSON gives back exactly what the engine posted.
 // - A mark (a guess's "?", the chosen style's dot) sits in a slot its row
 //   keeps, so the label's x is the same with it and without.
+// - The track replays the moments the page kept of what the engine posted,
+//   after a reload too; SOUND and TASTE show what the prototype's do;
+//   pointing at a weight shades the small map by the posted z; the bars
+//   move to the styles posted after each pick; REPLAY steps through them.
 //
 // The engine worker is reached by wrapping `Worker` before main.js runs, as
 // taste_marks.spec.js does. Positions on the map are computed with the app's
@@ -44,6 +48,8 @@ const INIT = `(() => {
       if (d.views && d.views.ratings) window.__pwRatings = d.views.ratings;
       if (d.ratings) window.__pwRatings = d.ratings;
       if (d.type === "status" && d.vote && d.vote.kind === "duel" && d.recorded) window.__pwPick = d;
+      if (d.type === "status" && d.ratings) (window.__pwStatusLog = window.__pwStatusLog || []).push(d);
+      if (d.type === "styles" && d.styles) (window.__pwStylesLog = window.__pwStylesLog || []).push(d);
     });
     return w;
   }
@@ -78,17 +84,19 @@ async function openView(page, view) {
 }
 
 /** Where the map draws each pool sound, by the app's own layout. */
-function mapPositions(page) {
-  return page.evaluate(async () => {
+function mapPositions(page, points = null) {
+  return page.evaluate(async (given) => {
     const geom = await import("/taste-geom.js");
     const well = document.getElementById("taste-well");
     const W = Math.max(200, well.clientWidth);
     const H = Math.max(160, well.clientHeight);
-    const pts = window.__pwViews.map.points.filter((p) => p.id != null);
-    const f = geom.mapFrame(W, H, pts.length);
+    const pts = (given || window.__pwViews.map.points).filter((p) => p.id != null);
+    // The track along the map's foot, once it shows, moves the sounds up.
+    const track = document.getElementById("taste-time").classList.contains("on");
+    const f = geom.mapFrame(W, H, pts.length, { track });
     const pos = geom.mapLayout(pts, f.box, f.minD);
     return { s0: f.s0, pos: Object.fromEntries([...pos].map(([id, q]) => [id, q])) };
-  });
+  }, points);
 }
 
 /** Opaque amber on the map's canvas at each CSS-px point (within 1 px): the
@@ -381,5 +389,205 @@ test("a style is named on its chip, and the chip's ▶ pressed straight after st
   await expect(play, "the same ▶, still in the chip, plays").toHaveClass(/\bplaying\b/, { timeout: 30_000 });
   await expect(chip.locator(".md-chip-name")).toHaveValue("Night Drive");
   await expect(chip.locator(".md-chip-pick")).toHaveAttribute("aria-label", /^Night Drive, \d+% of the pool$/);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+/** Picks in EVOLVE, each taken by the engine (its `status`) and followed by
+ *  its styles. */
+async function picks(page, n) {
+  const before = await page.evaluate(() => ({ s: (window.__pwStatusLog || []).length, t: (window.__pwStylesLog || []).length }));
+  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
+  await openView(page, "evolve");
+  for (let i = 0; i < n; i++) {
+    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    await page.locator(i % 2 ? "#choose-b" : "#choose-a").click();
+    await page.waitForTimeout(400);
+  }
+  await page.waitForFunction((b) => (window.__pwStatusLog || []).length >= b.s + 3 && (window.__pwStylesLog || []).length >= b.t + 3, before, { timeout: 60_000 });
+}
+
+/** The means a pick's reply posted, by sound. */
+const meansOf = (reply) => Object.fromEntries(reply.ratings.ranked.map((r) => [r.id, r.mean]));
+
+/** The track's label, after moving it left until it reads `label`. */
+async function scrubTo(page, label) {
+  await page.locator("#taste-track").focus();
+  for (let i = 0; i < 12; i++) {
+    if ((await page.locator("#taste-tlabel").textContent()) === label) return;
+    await page.keyboard.press("ArrowLeft");
+  }
+  await expect(page.locator("#taste-tlabel")).toHaveText(label);
+}
+
+/** What the saved session holds of the track. */
+function savedMoments(page) {
+  return page.evaluate(() => new Promise((done) => {
+    const req = indexedDB.open("auracle", 1);
+    req.onsuccess = () => {
+      const tx = req.result.transaction("kv", "readonly").objectStore("kv").get("state");
+      tx.onsuccess = () => done(((tx.result && tx.result.ui && tx.result.ui.taste) || { entries: [] }).entries.length);
+      tx.onerror = () => done(0);
+    };
+    req.onerror = () => done(0);
+  }));
+}
+
+test("the track replays what the engine posted at each pick, and is still there after a reload", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await picks(page, 3);
+  const second = await page.evaluate(() => window.__pwStatusLog[window.__pwStatusLog.length - 2]);
+  const posted = meansOf(second);
+  const n = second.status.picks;
+  const points = await page.evaluate(() => window.__pwViews.map.points);
+  await openView(page, "taste");
+  await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
+  await expect(page.locator("#taste-tlabel")).toHaveText(`now · after ${n + 1} picks`);
+
+  // One step back: the second pick's moment, the map as that reply had it,
+  // and the third pick's arrow, reversed.
+  await scrubTo(page, `after ${n} picks`);
+  await expect(page.locator("#taste-sub")).toHaveText("Looking back.");
+  await expect.poll(() => arrowPixels(page), { timeout: 5_000 }).toBeGreaterThan(0);
+  const { pos } = await mapPositions(page, points);
+  const ids = Object.keys(pos).map(Number).slice(0, 3);
+  const before = [];
+  for (const id of ids) {
+    const like = (await plateOf(page, pos[id])).like;
+    expect(like).toMatch(new RegExp(`^would like: ${pct(posted[id])}% · `));
+    before.push(like);
+  }
+  await page.mouse.move(1, 1);
+
+  // Saved with the session, and read back on load.
+  const kept = await page.evaluate(() => document.getElementById("taste-track").getAttribute("aria-valuemax"));
+  await expect.poll(() => savedMoments(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(Number(kept) + 1);
+  await page.reload();
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+  await openView(page, "taste");
+  await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
+  await scrubTo(page, `after ${n} picks`);
+  for (let i = 0; i < ids.length; i++) {
+    expect((await plateOf(page, pos[ids[i]])).like, "the same moment after a reload").toBe(before[i]);
+  }
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openView(page, "taste");
+  const tog = page.locator("#taste-tog");
+  await expect(tog).toHaveAttribute("aria-pressed", "false");
+  // Fitted, SOUND shows the glows (the prototype's `halosOn`).
+  await expect(page.locator("#taste-legend")).toHaveClass(/\bon\b/);
+  const { pos } = await mapPositions(page);
+  // The sound it likes least.
+  const least = await page.evaluate(() => {
+    const r = window.__pwViews.ratings.ranked;
+    return r[r.length - 1].id;
+  });
+  // How opaque its mark is at the centre: SOUND draws it whole, TASTE at
+  // 0.22 + 0.78 × liking.
+  const green = () => page.evaluate(([x, y]) => {
+    const cv = document.getElementById("taste-crt");
+    const d = window.devicePixelRatio || 1;
+    return cv.getContext("2d").getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data[3];
+  }, [pos[least].x, pos[least].y]);
+  const sound = await green();
+  await tog.click();
+  await expect(tog).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(green, { timeout: 5_000 }).toBeLessThan(sound - 40);
+  await tog.click();
+  await expect(tog).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(green, { timeout: 5_000 }).toBe(sound);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("pointing at a weight shades the small map by each sound's z on that feature, as the engine posted it", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await openView(page, "learning");
+  const first = page.locator("#md-bars .md-row").first();
+  await first.hover();
+  await expect(page.locator("#md-maplegend")).toHaveText(/^dots: /);
+  const shade = await page.evaluate(async () => {
+    const geom = await import("/taste-geom.js");
+    const v = window.__pwViews;
+    const style = v.styles.map((s, k) => ({ ...s, k })).filter((s) => s.share >= 0.02).sort((a, b) => b.share - a.share)[0];
+    const name = [...style.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))[0].name;
+    const cv = document.getElementById("md-map-cv");
+    const W = Math.max(160, cv.parentElement.clientWidth), H = Math.max(120, cv.parentElement.clientHeight);
+    const pos = geom.miniLayout(v.map.points.filter((p) => p.id != null), W, H, 28);
+    const zi = v.features.names.indexOf(name);
+    const z = new Map(v.features.rows.map((r) => [r.id, r.z[zi]]));
+    const subject = window.__aur && window.__aur.wb ? window.__aur.wb.subjectId : null;
+    const ids = [...pos.keys()].filter((id) => id !== subject && z.has(id)).sort((a, b) => z.get(b) - z.get(a));
+    const d = window.devicePixelRatio || 1;
+    const ctx = cv.getContext("2d");
+    const alpha = (id) => ctx.getImageData(Math.round(pos.get(id).x * d), Math.round(pos.get(id).y * d), 1, 1).data[3];
+    const hi = ids.slice(0, 3).map(alpha), lo = ids.slice(-3).map(alpha);
+    return { hi, lo, zi };
+  });
+  expect(shade.zi).toBeGreaterThanOrEqual(0);
+  expect(Math.min(...shade.hi), `the highest z drawn brightest (${shade.hi} against ${shade.lo})`).toBeGreaterThan(Math.max(...shade.lo) + 60);
+  await page.mouse.move(1, 1);
+  await expect(page.locator("#md-maplegend")).toHaveText(/^(the arrow|no direction)/);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+/** Each bar's weight as LEARNING shows it, by feature (two weights equal at
+ *  four places may sort either way, so rows are matched by name). */
+const barsShown = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#md-bars .md-row")].map((r) => [
+  r.querySelector(".md-tech").textContent, Number(r.querySelector(".md-val").textContent.replace("−", "-")),
+])));
+/** The worker's θ for one style, by the same names. */
+const byName = (theta) => Object.fromEntries(theta.map((t) => [String(t.name).split(":")[0], t.mean]));
+function expectBars(shown, theta, tol, what) {
+  const want = byName(theta);
+  expect(Object.keys(shown).sort(), what).toEqual(Object.keys(want).sort());
+  for (const [name, g] of Object.entries(shown)) expect(Math.abs(g - want[name]), `${what}: ${name}`).toBeLessThan(tol);
+}
+const shownK = (page) => page.evaluate(() => Number(document.querySelector('.md-chip-pick[aria-checked="true"]').closest(".md-chip").dataset.k));
+
+test("the weights move to the styles posted after each pick, and REPLAY steps through them", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  await picks(page, 3);
+  await openView(page, "learning");
+  // Now: the styles the last pick's reply brought, not the fit's.
+  const k = await shownK(page);
+  const last = await page.evaluate((k) => window.__pwStylesLog[window.__pwStylesLog.length - 1].styles[k].theta, k);
+  const now = await barsShown(page);
+  expect(Object.keys(now).length).toBe(44);
+  expectBars(now, last, 0.006, "now");
+
+  // REPLAY (R): each kept pick in turn, the bars as its styles reply had them.
+  await page.keyboard.press("r");
+  await expect(page.locator("#md-replay")).toHaveClass(/\bon\b/);
+  const seen = new Set();
+  for (let i = 0; i < 3; i++) {
+    await expect(page.locator("#md-replay-at")).toHaveText(/^after \d+ picks$/, { timeout: 5_000 });
+    const label = await page.locator("#md-replay-at").textContent();
+    const shown = await barsShown(page);
+    const picksAt = Number(/after (\d+) picks/.exec(label)[1]);
+    if (!seen.has(picksAt)) {
+      seen.add(picksAt);
+      const theta = await page.evaluate(([k, p]) => {
+        const r = window.__pwStylesLog.find((x) => x.observations === p);
+        return r ? r.styles[k].theta : null;
+      }, [k, picksAt]);
+      expect(theta, `a styles reply after ${picksAt} picks`).not.toBeNull();
+      expectBars(shown, theta, 0.011, label);
+    }
+    await page.waitForFunction((l) => document.getElementById("md-replay-at").textContent !== l, label, { timeout: 5_000 }).catch(() => {});
+  }
+  expect(seen.size, "REPLAY showed more than one pick").toBeGreaterThan(1);
+  // It ends on now.
+  await expect(page.locator("#md-replay")).not.toHaveClass(/\bon\b/, { timeout: 10_000 });
+  await expect(page.locator("#md-replay-at")).toHaveText("");
+  expectBars(await barsShown(page), last, 0.006, "back to now");
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

@@ -20,10 +20,17 @@
 //     `belief`);
 //   - LEARNING's arrow turning: the same `ratings` on the same map;
 //   - a forecast landing on the strip: `WasmEngine::forecasts`, posted with
-//     the calibration after every pick.
+//     the calibration after every pick;
+//   - the weight bars moving after a pick: the `styles` reply that follows it
+//     (`WasmEngine::styles`, the reweighted θ);
+//   - the track's scrub and its replay, and LEARNING's replay: those same
+//     replies, kept in the page as they came (taste-geom's history), since
+//     the engine keeps no history of its own;
+//   - the small map shaded by a feature: `WasmEngine::pool_features`, each
+//     sound's z, posted with every views post.
 // What the engine does not record is not drawn: no arrow for a pick whose two
 // sounds are not both on the map (a PERFORM offer is never in the pool), and
-// no weights moving between refits (the belief carries ratings, not θ).
+// no moment on the track from before the page began keeping them.
 //
 // main.js owns the data (`views`, the calibration), the bank and the bench;
 // this module draws, and asks main (`host`) to open, play or rename. Pure
@@ -105,21 +112,44 @@ export function createTaste(host) {
   }
 
   // ---------- what the engine says ----------
-  const fitted = () => !!(host.views() && host.views().styles);
+  // While TASTE's track shows an earlier moment, `scrubView` is that moment
+  // as it was posted (taste-geom `entryView`), and the map draws from it.
+  let scrubView = null;
+  const fitted = () => (scrubView ? scrubView.fit : !!(host.views() && host.views().styles));
   const mapOf = () => {
+    if (scrubView) return scrubView.map;
     const v = host.views();
     return v && v.map && Array.isArray(v.map.points) ? v.map : null;
   };
-  /** The pool's map points, without the history ghosts or what was cut. */
-  const poolPoints = () => (mapOf()?.points || []).filter((p) => p.id != null && !host.isCut(p.id));
+  /** The pool's map points, without the history ghosts or what was cut (an
+   *  earlier moment shows its pool as it was). */
+  const poolPoints = () => (mapOf()?.points || []).filter((p) => p.id != null && (scrubView || !host.isCut(p.id)));
   /** id → {mean, std} as the engine rates the pool now: the ratings after
    *  the last pick (`WasmEngine::belief`), else the map's own numbers. */
   function ratingsNow() {
+    if (scrubView) return scrubView.ratings;
     const out = new Map();
     for (const p of mapOf()?.points || []) if (p.id != null) out.set(p.id, { mean: p.utility, std: p.utility_std });
     const r = host.views()?.ratings;
     if (r && Array.isArray(r.ranked)) for (const row of r.ranked) out.set(row.id, { mean: row.mean, std: row.std });
     return out;
+  }
+
+  // ---------- the history: what was posted, kept (taste-geom) ----------
+  let history = geom.newHistory();
+  /** Keep the views as they stand now, as one moment of `kind`. */
+  function record(kind, pick, obs) {
+    const v = host.views();
+    if (!v || !v.map || !Array.isArray(v.map.points)) return null;
+    const r = v.ratings && Array.isArray(v.ratings.ranked)
+      ? v.ratings.ranked.map((x) => ({ id: x.id, mean: x.mean, std: x.std }))
+      : v.map.points.filter((p) => p.id != null).map((p) => ({ id: p.id, mean: p.utility, std: p.utility_std }));
+    const entry = geom.recordEntry(history, {
+      kind, pick, obs: obs ?? host.observations(), n: host.picks(), gen: host.generation(),
+      fit: !!v.styles, map: v.map, ratings: r,
+    });
+    host.scheduleSave();
+    return entry;
   }
 
   // =====================================================================
@@ -140,10 +170,17 @@ export function createTaste(host) {
   let arrivals = [];        // picks made while the map was not showing
   let seenMap = null, seenRatings = null, seenFitted = null;
   let active = null, activeKbd = false, plateTimer = 0;
+  // SOUND (false) or TASTE (true): the toggle at the map's top left. Not
+  // saved, as in the prototype.
+  let tasteMode = false;
+  let scrub = null; // the track's moment shown, an index into the history, or null for now
+  const halosOn = () => fitted() || tasteMode || scrub != null;
 
+  // The track shows once there are two moments to move between.
+  const trackOn = () => history.entries.length >= 2;
   function relayout() {
     const pts = poolPoints();
-    const frame = geom.mapFrame(W, H, pts.length);
+    const frame = geom.mapFrame(W, H, pts.length, { track: trackOn() });
     S0 = frame.s0;
     target = geom.mapLayout(pts, frame.box, frame.minD);
   }
@@ -232,8 +269,10 @@ export function createTaste(host) {
     const unsure = geom.mapUnsureScale(pts.map((p) => stdNow.get(p.id)));
     // The halos first, all of them, so every mark sits on the light. The glow
     // is the engine's rating (`BeliefRow::mean` after a pick, `MapPoint::utility`
-    // after a refit) through the bank's logistic.
-    for (const p of pts) {
+    // after a refit) through the bank's logistic. As in the prototype, SOUND
+    // shows them once there is a fit (and on the track); TASTE always, dashed
+    // while there is no fit, and dims each sound by how little it is liked.
+    if (halosOn()) for (const p of pts) {
       const q = shownPos.get(p.id);
       if (!q) continue;
       if (!isFit) {
@@ -264,7 +303,9 @@ export function createTaste(host) {
       const q = shownPos.get(p.id);
       if (!q) continue;
       const r = geom.mapDotRadius(isFit ? unsure(stdNow.get(p.id)) : 0.5);
+      ctx.globalAlpha = tasteMode && isFit ? 0.22 + 0.78 * (likeShown.get(p.id) ?? 0.5) : 1;
       drawMark(ctx, p.id, q.x, q.y, r);
+      ctx.globalAlpha = 1;
       // The sound you're playing: a green ring. One on its way: dotted silk.
       if (p.id === subject || (p.id === pending && pending !== subject)) {
         ctx.save();
@@ -488,14 +529,209 @@ export function createTaste(host) {
   });
 
   function syncTasteText() {
-    $("taste-sub").textContent = host.fittedFrom();
+    $("taste-sub").textContent = scrub != null ? words.LOOKING_BACK : host.fittedFrom();
     const map = mapOf();
     const n = poolPoints().length;
     $("taste-foot").textContent = map && n ? words.mapFoot(n, (map.explained?.[0] || 0) + (map.explained?.[1] || 0)) : "";
     const legend = $("taste-legend");
-    legend.classList.toggle("on", n > 0);
+    legend.classList.toggle("on", n > 0 && halosOn());
     legend.classList.toggle("guess", !fitted());
     legend.querySelector(".tl-words").textContent = words.haloLegend(fitted());
+  }
+
+  // ---------- SOUND / TASTE ----------
+  const tog = $("taste-tog");
+  tog.title = words.TASTE_LABELS.togTitle;
+  tog.addEventListener("click", () => {
+    tasteMode = !tasteMode;
+    tog.setAttribute("aria-pressed", String(tasteMode));
+    syncTasteText();
+    drawMap();
+  });
+
+  // ---------- taste over time: the track ----------
+  // Every moment the page kept (taste-geom's history) as a tick: amber for a
+  // pick (thin and dim before the first fit), silk below the line for a star
+  // or a cut, a faint line where it first fitted, a green diamond for a
+  // generation with how many sounds joined the map. Scrubbing shows the map
+  // as it was posted then, and the step's own pick as its arrow: forward as
+  // taught, backward reversed.
+  const time = $("taste-time");
+  const track = $("taste-track");
+  const tcv = $("taste-track-cv");
+  const tlabel = $("taste-tlabel");
+  const tplay = $("taste-tplay");
+  const TPAD = 12;
+  let replayT = 0;
+  tplay.setAttribute("aria-label", words.TASTE_LABELS.trackPlay);
+  tplay.title = words.TASTE_LABELS.trackPlay;
+  track.setAttribute("aria-label", words.TASTE_LABELS.track);
+
+  function indexAt(e) {
+    const r = track.getBoundingClientRect();
+    const n = history.entries.length;
+    const k = (e.clientX - r.left - TPAD) / Math.max(1, r.width - 2 * TPAD);
+    return Math.round(Math.max(0, Math.min(1, k)) * (n - 1));
+  }
+  function setScrub(i) {
+    const last = history.entries.length - 1;
+    if (last < 0) return;
+    i = Math.max(0, Math.min(last, i));
+    const next = i >= last ? null : i;
+    if (next === scrub) return;
+    const from = scrub ?? last;
+    const fwd = i > from;
+    scrub = next;
+    scrubView = next == null ? null : geom.entryView(history, next);
+    // The step's own pick, as it was posted with that moment.
+    const step = geom.entryView(history, fwd ? i : from);
+    strokes = step && step.pick
+      ? [{ a: fwd ? step.pick.a : step.pick.b, b: fwd ? step.pick.b : step.pick.a, t0: performance.now() }]
+      : [];
+    if (next == null) {
+      seenMap = mapOf();
+      seenFitted = fitted();
+      seenRatings = host.views()?.ratings || null;
+    }
+    adopt({ move: true });
+    syncTasteText();
+    drawTime();
+    renderPlate();
+    kick();
+  }
+  function stopReplay() {
+    if (!replayT) return;
+    clearInterval(replayT);
+    replayT = 0;
+    tplay.classList.remove("on");
+    tplay.setAttribute("aria-label", words.TASTE_LABELS.trackPlay);
+    tplay.title = words.TASTE_LABELS.trackPlay;
+  }
+  // The replay steps through every kept moment from the first, on a timer
+  // (when each step comes, not how it moves); under reduced motion each step
+  // jumps.
+  function replay() {
+    if (replayT) { stopReplay(); return; }
+    const n = history.entries.length;
+    if (n < 2) return;
+    let i = 0;
+    setScrub(0);
+    tplay.classList.add("on");
+    tplay.setAttribute("aria-label", words.TASTE_LABELS.trackStop);
+    tplay.title = words.TASTE_LABELS.trackStop;
+    const stepMs = Math.max(180, Math.min(520, 4200 / n));
+    replayT = setInterval(() => {
+      i += 1;
+      setScrub(i);
+      if (i >= n - 1) stopReplay();
+    }, stepMs);
+  }
+  tplay.addEventListener("click", replay);
+  let tdown = false;
+  track.addEventListener("pointerdown", (e) => {
+    tdown = true;
+    track.setPointerCapture(e.pointerId);
+    track.focus({ preventScroll: true });
+    stopReplay();
+    setScrub(indexAt(e));
+  });
+  track.addEventListener("pointermove", (e) => { if (tdown) setScrub(indexAt(e)); });
+  const tup = () => { tdown = false; };
+  track.addEventListener("pointerup", tup);
+  track.addEventListener("pointercancel", tup);
+  track.addEventListener("keydown", (e) => {
+    const last = history.entries.length - 1;
+    const at = scrub ?? last;
+    let to = null;
+    if (e.key === "ArrowLeft") to = at - 1;
+    else if (e.key === "ArrowRight") to = at + 1;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = last;
+    if (to == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stopReplay();
+    setScrub(to);
+  });
+  new ResizeObserver(() => drawTime()).observe(track);
+
+  function drawTime() {
+    const on = trackOn();
+    const was = time.classList.contains("on");
+    time.classList.toggle("on", on);
+    if (on !== was && visible === "taste" && W) {
+      resizeMap();
+      drawMap();
+      placePlate();
+    }
+    if (!on || visible !== "taste") return;
+    const w = Math.max(40, track.clientWidth);
+    const h = Math.max(20, track.clientHeight);
+    const ctx = sizeCanvas(tcv, w, h);
+    ctx.clearRect(0, 0, w, h);
+    const es = history.entries;
+    const n = es.length;
+    const last = n - 1;
+    const at = scrub ?? last;
+    const base = Math.round(h * 0.62);
+    const X = (i) => TPAD + (n > 1 ? i / last : 0) * (w - 2 * TPAD);
+    ctx.fillStyle = tok("--hairline");
+    ctx.fillRect(TPAD, base, w - 2 * TPAD, 1);
+    const fitAt = es.findIndex((e) => e.fit);
+    if (fitAt > 0) {
+      ctx.fillStyle = inkAlpha(INK.amber, 0.18);
+      ctx.fillRect(X(fitAt) - 0.5, 4, 1, h - 8);
+    }
+    ctx.beginPath();
+    ctx.arc(X(0), base, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = INK.silk;
+    ctx.fill();
+    for (let i = 1; i < n; i++) {
+      const e = es[i];
+      const past = i <= at;
+      if (e.kind === "gen") continue; // its diamond, below
+      if (e.kind === "map") {
+        ctx.fillStyle = inkAlpha(INK.amber, past ? 0.3 : 0.12);
+        ctx.fillRect(X(i) - 0.5, 6, 1, h - 12);
+      } else if (e.kind === "star" || e.kind === "cut" || e.kind === "keep") {
+        ctx.fillStyle = inkAlpha(INK.silk, past ? 0.7 : 0.3);
+        ctx.fillRect(X(i) - 0.5, base + 2, 1, 6);
+      } else {
+        ctx.fillStyle = inkAlpha(INK.amber, (e.fit ? 0.95 : 0.5) * (past ? 1 : 0.45));
+        ctx.fillRect(X(i) - (e.fit ? 1 : 0.5), base - 11, e.fit ? 2 : 1, 11);
+      }
+    }
+    for (let i = 1; i < n; i++) {
+      const e = es[i];
+      if (e.kind !== "gen") continue;
+      const past = i <= at;
+      const gx = X(i);
+      ctx.save();
+      ctx.translate(gx, base);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = past ? INK.green : inkAlpha(INK.green, 0.4);
+      ctx.fillRect(-3.5, -3.5, 7, 7);
+      ctx.restore();
+      if (e.joined) {
+        ctx.fillStyle = inkAlpha(INK.green, past ? 0.9 : 0.4);
+        text(ctx, words.joinedLabel(e.joined), gx + 7, base - 4, "left");
+      }
+    }
+    const hx = X(at);
+    ctx.fillStyle = inkAlpha(INK.silk, scrub != null ? 0.9 : 0.5);
+    ctx.fillRect(hx - 0.5, 3, 1, h - 6);
+    ctx.beginPath();
+    ctx.arc(hx, base, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = INK.silk;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = tok("--bezel");
+    ctx.stroke();
+    const label = words.trackLabel(es[at].n, scrub == null);
+    tlabel.textContent = label;
+    track.setAttribute("aria-valuemax", String(last));
+    track.setAttribute("aria-valuenow", String(at));
+    track.setAttribute("aria-valuetext", label);
   }
 
   // =====================================================================
@@ -525,6 +761,7 @@ export function createTaste(host) {
 
   function renderChips() {
     const box = $("md-chips");
+    if (document.activeElement && box.contains(document.activeElement) && document.activeElement.matches("input")) return;
     const ss = activeStyles();
     box.replaceChildren();
     box.classList.toggle("hidden", !ss.length);
@@ -552,6 +789,7 @@ export function createTaste(host) {
       pick.append(mark, sw, share);
       pick.setAttribute("aria-label", words.chipSaid(host.styleName(s, s.k), s.share));
       pick.onclick = () => {
+        stopBarReplay();
         styleK = s.k;
         renderLearning();
       };
@@ -595,93 +833,200 @@ export function createTaste(host) {
     }
   }
 
-  function renderBars() {
+  // The rows are kept per feature and updated in place, so a bar moves to a
+  // new weight (a CSS transition on `--d-move`) rather than being redrawn.
+  const rowEls = new Map(); // feature name → its row's elements
+  let shownK = null;        // the style the rows draw
+  let barReplay = null;     // {list, i, timer} while REPLAY runs
+  let barHover = null;      // the feature pointed at, shading the small map
+
+  function rowFor(name) {
+    let el = rowEls.get(name);
+    if (el) return el;
+    const row = document.createElement("div");
+    row.setAttribute("role", "listitem");
+    row.tabIndex = 0;
+    // A guess's mark sits in a slot every row keeps, left of the word, so
+    // the word never moves.
+    const mark = document.createElement("span");
+    mark.className = "md-mark";
+    mark.setAttribute("aria-hidden", "true");
+    const nameEl = document.createElement("span");
+    nameEl.className = "md-name";
+    nameEl.setAttribute("aria-hidden", "true");
+    const word = document.createElement("span");
+    word.className = "md-word";
+    word.textContent = host.niceName(name);
+    const tech = document.createElement("span");
+    tech.className = "md-tech";
+    tech.textContent = String(name).split(":")[0];
+    nameEl.append(word, tech);
+    const track = document.createElement("span");
+    track.className = "md-track";
+    track.setAttribute("aria-hidden", "true");
+    const zero = document.createElement("i");
+    zero.className = "md-zero";
+    // Where the weight was before a replayed pick, dashed, while it moves.
+    const ghostEl = document.createElement("i");
+    ghostEl.className = "md-ghost";
+    const bar = document.createElement("i");
+    const whisk = document.createElement("i");
+    whisk.className = "md-whisker";
+    track.append(zero, ghostEl, bar, whisk);
+    const val = document.createElement("span");
+    val.className = "md-val";
+    val.setAttribute("aria-hidden", "true");
+    row.append(mark, nameEl, track, val);
+    // Pointing at a weight shades the small map by that feature's z.
+    const on = () => { barHover = name; row.classList.add("lit"); drawDirection(); };
+    const off = () => { if (barHover === name) barHover = null; row.classList.remove("lit"); drawDirection(); };
+    row.addEventListener("pointerenter", on);
+    row.addEventListener("pointerleave", off);
+    row.addEventListener("focus", on);
+    row.addEventListener("blur", off);
+    el = { row, mark, bar, ghostEl, whisk, val };
+    rowEls.set(name, el);
+    return el;
+  }
+
+  /** The weights as bars: the chosen style's θ, or, during REPLAY, a kept
+   *  moment's (`view`: the style with that moment's θ, the one before it as
+   *  `prev`, and the feature it moved most). */
+  function renderBars(view = null) {
     const box = $("md-bars");
-    const s = chosenStyle();
+    const s = view || chosenStyle();
     const more = $("md-more");
-    box.replaceChildren();
     $("md-weights-none").classList.toggle("hidden", !!s);
     $("md-weights-none").textContent = words.NO_WEIGHTS;
     $("md-scale").classList.toggle("hidden", !s);
     if (!s) {
+      box.replaceChildren();
+      rowEls.clear();
+      shownK = null;
       more.classList.add("hidden");
       return;
+    }
+    if (s.k !== shownK) {
+      // Another style: its rows, without motion.
+      box.replaceChildren();
+      rowEls.clear();
+      shownK = s.k;
     }
     const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean));
     // One scale for every row, fitted as the module rail's are (taste-geom
     // `directionsScale`), in percent of the track's half-width.
-    const scale = geom.directionsScale(rows, 50);
+    const scale = geom.directionsScale(view && view.prev ? [...rows, ...view.prev] : rows, 50);
+    const prev = view && view.prev ? new Map(view.prev.map((t) => [t.name, t])) : null;
+    const keep = new Set();
     rows.forEach((r, i) => {
+      const el = rowFor(r.name);
+      keep.add(r.name);
       const mark = geom.pullMark(r, scale, 50);
-      const row = document.createElement("div");
-      row.className = `md-row${mark.guess ? " guess" : ""}${i >= FEW_WEIGHTS ? " extra" : ""}`;
-      row.setAttribute("role", "listitem");
-      const word = host.niceName(r.name);
-      row.setAttribute("aria-label", words.weightSaid(word, r.mean, r.std, mark.guess));
-      // A guess's mark sits in a slot every row keeps, left of the word, so
-      // the word never moves (a "?" after it used to push nothing, but a
-      // mark before it would have).
-      const m = document.createElement("span");
-      m.className = "md-mark";
-      m.setAttribute("aria-hidden", "true");
-      m.textContent = mark.guess ? "?" : "";
-      const name = document.createElement("span");
-      name.className = "md-name";
-      name.setAttribute("aria-hidden", "true");
-      const w = document.createElement("span");
-      w.className = "md-word";
-      w.textContent = word;
-      const tech = document.createElement("span");
-      tech.className = "md-tech";
-      tech.textContent = String(r.name).split(":")[0];
-      name.append(w, tech);
-      const track = document.createElement("span");
-      track.className = "md-track";
-      track.setAttribute("aria-hidden", "true");
-      const zero = document.createElement("i");
-      zero.className = "md-zero";
-      const bar = document.createElement("i");
-      bar.className = `md-bar${mark.hollow ? " hollow" : ""}${r.mean < 0 ? " neg" : ""}`;
-      bar.style.left = `${50 + Math.min(0, mark.len)}%`;
-      bar.style.width = `${Math.abs(mark.len)}%`;
-      const wh = document.createElement("i");
-      wh.className = "md-whisker";
-      wh.style.left = `${50 + mark.lo}%`;
-      wh.style.width = `${Math.max(0, mark.hi - mark.lo)}%`;
-      wh.style.opacity = String(mark.whiskerAlpha);
-      track.append(zero, bar, wh);
-      const val = document.createElement("span");
-      val.className = "md-val";
-      val.setAttribute("aria-hidden", "true");
-      val.textContent = `${r.mean >= 0 ? "+" : "−"}${Math.abs(r.mean).toFixed(2)}`;
-      row.append(m, name, track, val);
-      box.append(row);
+      el.row.className = `md-row${mark.guess ? " guess" : ""}${i >= FEW_WEIGHTS ? " extra" : ""}` +
+        `${view && view.moved === r.name ? " moved" : ""}${barHover === r.name ? " lit" : ""}`;
+      el.row.setAttribute("aria-label", words.weightSaid(host.niceName(r.name), r.mean, r.std, mark.guess));
+      el.mark.textContent = mark.guess ? "?" : "";
+      el.bar.className = `md-bar${mark.hollow ? " hollow" : ""}${r.mean < 0 ? " neg" : ""}`;
+      el.bar.style.left = `${50 + Math.min(0, mark.len)}%`;
+      el.bar.style.width = `${Math.abs(mark.len)}%`;
+      el.whisk.style.left = `${50 + mark.lo}%`;
+      el.whisk.style.width = `${Math.max(0, mark.hi - mark.lo)}%`;
+      el.whisk.style.opacity = String(mark.whiskerAlpha);
+      const p = prev && prev.get(r.name);
+      if (p) {
+        const pm = geom.pullMark(p, scale, 50);
+        el.ghostEl.style.left = `${50 + Math.min(0, pm.len)}%`;
+        el.ghostEl.style.width = `${Math.abs(pm.len)}%`;
+        el.ghostEl.classList.add("on");
+      } else el.ghostEl.classList.remove("on");
+      el.val.textContent = `${r.mean >= 0 ? "+" : "−"}${Math.abs(r.mean).toFixed(2)}`;
+      box.append(el.row);
     });
+    for (const [name, el] of rowEls) {
+      if (keep.has(name)) continue;
+      el.row.remove();
+      rowEls.delete(name);
+    }
     box.classList.toggle("collapsed", !moreOpen);
     more.classList.remove("hidden");
     more.setAttribute("aria-expanded", String(moreOpen));
     more.querySelector(".lbl").textContent = words.weightsMore(moreOpen, rows.length, FEW_WEIGHTS);
     const { settled, guesses } = geom.countPulls(rows.map((r) => geom.pullMark(r, scale, 50)));
     box.setAttribute("aria-label", words.weightsSaid(host.styleName(s, s.k), settled, guesses));
+    syncReplayButton();
   }
+
+  // ---------- REPLAY: the weights through the picks ----------
+  // Each kept moment that has the styles posted after it (`styles`, taste-geom
+  // `attachStyles`), for the chosen style, in turn: the bars move to each,
+  // the one before stays a moment as a dashed ghost, and the weight that
+  // moved most lights. The steps come on a timer (when, not how it moves);
+  // under reduced motion each step jumps.
+  const replayBtn = $("md-replay");
+  function replayList() {
+    const s = chosenStyle();
+    if (!s) return [];
+    const out = [];
+    for (let i = 0; i < history.entries.length; i++) {
+      if (!history.entries[i].s) continue;
+      const v = geom.entryView(history, i);
+      const st = v.styles && v.styles[s.k];
+      if (st) out.push({ n: v.n, theta: st.theta });
+    }
+    return out;
+  }
+  function syncReplayButton() {
+    const can = replayList().length >= 2;
+    replayBtn.disabled = !can && !barReplay;
+    replayBtn.title = can ? words.TASTE_LABELS.replayTitle : words.TASTE_LABELS.noReplayTitle;
+  }
+  function replayStep() {
+    const r = barReplay;
+    const cur = r.list[r.i];
+    const prev = r.i > 0 ? r.list[r.i - 1] : null;
+    let moved = null, d = 0;
+    if (prev) {
+      const before = new Map(prev.theta.map((t) => [t.name, t.mean]));
+      for (const t of cur.theta) {
+        const dd = t.mean - (before.get(t.name) ?? t.mean);
+        if (Math.abs(dd) > Math.abs(d)) { d = dd; moved = t.name; }
+      }
+    }
+    const s = chosenStyle();
+    renderBars({ ...s, theta: cur.theta, prev: prev ? prev.theta : null, moved });
+    $("md-replay-at").textContent = words.pickWords(cur.n);
+    $("md-replay-live").textContent = moved ? words.movedMost(host.niceName(moved), d) : "";
+  }
+  function replayBars() {
+    if (barReplay) { stopBarReplay(); return; }
+    const list = replayList();
+    if (list.length < 2) return;
+    barReplay = { list, i: 0, timer: 0 };
+    replayBtn.classList.add("on");
+    replayStep();
+    const stepMs = Math.max(180, Math.min(520, 4200 / list.length));
+    barReplay.timer = setInterval(() => {
+      barReplay.i += 1;
+      if (barReplay.i >= barReplay.list.length) { stopBarReplay(); return; }
+      replayStep();
+    }, stepMs);
+  }
+  function stopBarReplay() {
+    if (!barReplay) return;
+    clearInterval(barReplay.timer);
+    barReplay = null;
+    replayBtn.classList.remove("on");
+    $("md-replay-at").textContent = "";
+    if (visible === "learning") renderBars();
+  }
+  replayBtn.addEventListener("click", replayBars);
 
   // ---------- where liking rises ----------
   const mdCv = $("md-map-cv");
   let MW = 0, MH = 0;
   const MPAD = 28;
   function miniPositions() {
-    const pts = poolPoints();
-    const out = new Map();
-    if (!pts.length) return out;
-    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    for (const p of pts) {
-      out.set(p.id, {
-        x: MPAD + ((p.x - x0) / Math.max(1e-9, x1 - x0)) * (MW - 2 * MPAD),
-        y: MPAD + ((p.y - y0) / Math.max(1e-9, y1 - y0)) * (MH - 2 * MPAD),
-      });
-    }
-    return out;
+    return geom.miniLayout(poolPoints(), MW, MH, MPAD);
   }
   /** The direction now: least squares of the engine's ratings
    *  (`WasmEngine::belief`) on the engine's map (`taste_map`), as drawn. */
@@ -724,7 +1069,21 @@ export function createTaste(host) {
     const pos = miniPositions();
     const r = ratingsNow();
     const isFit = fitted();
+    // A weight pointed at: every sound shaded by its z on that feature, as
+    // the engine posted it (`WasmEngine::pool_features`).
+    const f = host.views()?.features;
+    const zi = barHover && f && Array.isArray(f.names) ? f.names.indexOf(barHover) : -1;
+    const zOf = zi >= 0 ? new Map(f.rows.map((row) => [row.id, row.z[zi]])) : null;
+    const zmax = zOf ? Math.max(1e-6, ...[...pos.keys()].map((id) => Math.abs(zOf.get(id) ?? 0))) : 1;
     for (const [id, q] of pos) {
+      if (zOf) {
+        const sh = geom.shadeOf(zOf.get(id) ?? 0, zmax);
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, sh.r, 0, Math.PI * 2);
+        ctx.fillStyle = inkAlpha(INK.green, sh.alpha);
+        ctx.fill();
+        continue;
+      }
       if (isFit) {
         const l = geom.liking(r.get(id)?.mean ?? 0);
         const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 5 + l * 14);
@@ -809,7 +1168,7 @@ export function createTaste(host) {
       ctx.fillStyle = inkAlpha(INK.silk, 0.9);
       text(ctx, host.nameOf(sid) || "", sq.x, Math.min(MH - 4, sq.y + 24), "center");
     }
-    const legend = words.directionLegend(gNow);
+    const legend = zOf ? words.dotsLegend(host.niceName(barHover)) : words.directionLegend(gNow);
     $("md-maplegend").textContent = legend;
     mdCv.setAttribute("aria-label", words.directionSaid(sq ? host.nameOf(sid) : "", legend));
   }
@@ -952,7 +1311,7 @@ export function createTaste(host) {
     $("md-sub").textContent = host.fittedFrom();
     $("view-learning").classList.toggle("guess", !fitted());
     renderChips();
-    renderBars();
+    if (!barReplay) renderBars();
     renderForecasts();
     renderMath();
     drawDirection();
@@ -982,8 +1341,25 @@ export function createTaste(host) {
   }).observe($("view-learning"));
 
   /** The views or the ratings changed (a refit, a generation, an import, a
-   *  child landing, a pick): adopt what is new. */
+   *  child landing, a pick): keep a new map as a moment, and adopt what is
+   *  new. */
+  let recordedMap = null;
   function sync() {
+    const liveMap = host.views()?.map || null;
+    if (liveMap && Array.isArray(liveMap.points) && liveMap !== recordedMap) {
+      // The history begins with the first map this page is sent; after that,
+      // each new map is a moment: a generation's when the engine's
+      // generation count moved, a redraw's otherwise.
+      const last = history.entries[history.entries.length - 1];
+      if (!last) record("start");
+      else record(host.generation() > last.gen ? "gen" : "map");
+      recordedMap = liveMap;
+    }
+    if (visible === "taste" && scrub != null) {
+      // Looking back: the map stays on the moment shown; the track grows.
+      drawTime();
+      return;
+    }
     const map = mapOf();
     const ratings = host.views()?.ratings || null;
     const fit = fitted();
@@ -1001,6 +1377,7 @@ export function createTaste(host) {
       }
       seenRatings = ratings;
       syncTasteText();
+      drawTime();
       renderPlate();
       kick();
     } else if (visible === "learning") {
@@ -1010,12 +1387,31 @@ export function createTaste(host) {
     }
   }
 
+  // R replays LEARNING's weights, as in the prototype, while LEARNING shows
+  // and nothing is being typed.
+  document.addEventListener("keydown", (e) => {
+    if (visible !== "learning" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key !== "r" && e.key !== "R") return;
+    if (e.target?.closest?.("input, select, textarea, [contenteditable]")) return;
+    e.preventDefault();
+    replayBars();
+  });
+
   return {
     /** Which view is showing. Called by `showView`. */
     setView(name) {
       const was = visible;
       visible = name === "taste" || name === "learning" ? name : null;
-      if (visible !== "taste") setActive(null);
+      if (visible !== "taste") {
+        setActive(null);
+        if (was === "taste") {
+          // Leaving TASTE leaves the track at now.
+          stopReplay();
+          scrub = null;
+          scrubView = null;
+        }
+      }
+      if (visible !== "learning") stopBarReplay();
       if (visible === "taste" && was !== "taste") {
         measureMap();
         seenMap = mapOf();
@@ -1042,6 +1438,7 @@ export function createTaste(host) {
         if (last && target.has(last.a) && target.has(last.b)) live.textContent = words.pickSaid(host.nameOf(last.b), host.nameOf(last.a));
         arrivals = [];
         syncTasteText();
+        drawTime();
         drawMap();
         kick();
       }
@@ -1057,15 +1454,18 @@ export function createTaste(host) {
     /** Redraw with whatever views main now holds. */
     draw: sync,
     /** A `status` reply: a pick, a star or a cut the engine took, with the
-     *  ratings it left (`WasmEngine::belief`). A pair's pick (`record_duel`)
-     *  also draws its arrow, from the sound passed to the sound picked. */
+     *  ratings it left (`WasmEngine::belief`). It is kept as a moment on the
+     *  track. A pair's pick (`record_duel`) also draws its arrow, from the
+     *  sound passed to the sound picked. */
     onStatus(m) {
       if (!m || m.recorded === false || !m.ratings) return;
       const v = m.vote;
       const pick = v && v.kind === "duel" && v.a != null && v.b != null && typeof m.choseA === "boolean"
         ? { a: m.choseA ? v.b : v.a, b: m.choseA ? v.a : v.b }
         : null;
-      if (pick && visible === "taste") {
+      const kind = !v ? "offer" : v.kind === "stars" ? "star" : v.kind === "keep" ? (v.kept ? "keep" : "cut") : "pick";
+      record(kind, pick, m.status && m.status.observations);
+      if (pick && visible === "taste" && scrub == null) {
         strokes.push({ ...pick, t0: performance.now() });
         if (shownPos.get(pick.a) && shownPos.get(pick.b)) {
           live.textContent = words.pickSaid(host.nameOf(pick.b), host.nameOf(pick.a));
@@ -1076,6 +1476,18 @@ export function createTaste(host) {
       }
       sync();
     },
+    /** A `styles` reply after a pick (`WasmEngine::styles`): kept with that
+     *  pick's moment, and LEARNING's bars move to it. main has already put
+     *  the styles in its views. */
+    onStyles(m) {
+      if (!m || !m.styles) return;
+      geom.attachStyles(history, m.observations, m.styles);
+      host.scheduleSave();
+      if (visible === "learning" && !barReplay) {
+        renderChips();
+        renderBars();
+      }
+    },
     /** A `calibration` reply: the forecasts and the math's numbers. */
     onCalibration() {
       if (visible === "learning") {
@@ -1083,6 +1495,13 @@ export function createTaste(host) {
         renderMath();
         kick();
       }
+    },
+    /** What the page kept, to save with the session (JS-owned, versioned). */
+    history: () => history,
+    /** A saved history, read back on load (or an empty one if unreadable). */
+    restore(saved) {
+      history = geom.readHistory(saved);
+      recordedMap = null;
     },
   };
 }
