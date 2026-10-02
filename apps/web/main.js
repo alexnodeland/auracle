@@ -123,8 +123,12 @@ const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, coun
   await import(`./taste-geom.js?v=${BUILD}`);
 // Sentences built from engine facts (a generation's outcome, a prediction's
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
-const { count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal, leanSentence, platformKeys } =
-  await import(`./words.js?v=${BUILD}`);
+const {
+  count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
+  leanSentence, platformKeys,
+  walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
+  changeParts, STRUCT_SITES, SKIP_SITES,
+} = await import(`./words.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -175,10 +179,15 @@ let meterFitting = false;
 // next pick, not for a timer's 3.2 s (which fired when the fit was *sent*).
 let learnedShown = false;
 // The long jobs the job slot shows. EVOLVE POOL: `{generation, done, total,
-// eta, etaAt, farm, stopping, retiring}` — `done` is jobs absorbed, `eta` the
-// worker's estimate (ms, from this session's walk times) as of `etaAt`, and
-// `farm` whether its walks run on the farm (the engine answers everything
-// meanwhile) or in the engine worker (a deal waits for the walk in progress).
+// eta, etaAt, farm, stopping, retiring, seeds, said}` — `done` is jobs
+// absorbed, `eta` the worker's estimate (ms, from this session's walk times)
+// as of `etaAt`, and `farm` whether its walks run on the farm (the engine
+// answers everything meanwhile) or in the engine worker (a deal waits for the
+// walk in progress). `seeds` are the generation's own, best first (job `i`
+// walks from `seeds[i]`): the last `ratings.seeds` posted before it opened,
+// taken at its first `refine_progress` (`Engine::next_seeds` and
+// `refine_jobs` share one rule, `seed_rows`). `said` is what the last walk to
+// land came back as (words.js `walkSaid`), which EVOLVE POOL narrates.
 // ⚡ evolve from this: `{id, name, stoppable}`. A refit waits for either. The
 // two take turns: while one runs the other's button is disabled and says why
 // (`EVOLVE_WAITS_FOR_ZAP`, `ZAP_WAITS_FOR_GENERATION`), and the worker holds
@@ -193,6 +202,22 @@ const ZAP_WAITS_FOR_GENERATION =
 let bornGen = 0;
 // Children that landed since the last bank render: they glow once.
 const landedNow = new Set();
+// Children not heard yet: the dot left of a bank row's name. A child joins as
+// it lands (`refine_child`, `evolved_from`) and leaves when its phrase plays
+// (`play`) or a note is played on it (`liveNoteOn`). Persisted (`uiState`).
+const unheard = new Set();
+// How many children of generation `gen` are not in the New group: refused when
+// they landed (`not_admitted`) or replaced when it ended. Said under the group
+// while it is that generation's.
+let bredBelow = { gen: 0, n: 0 };
+// What the latest generation replaced, by name, `{gen, names}`: the engine
+// drops a replaced sound's tree and keeps nothing but the name main last saw
+// (RFC-006, Open 1: names only). Persisted.
+let replacedLast = null;
+let replacedOpen = false; // the Replaced fold, open or shut
+// Children whose bud is on its way from the seed: the row's name waits for
+// it (`budFrom`).
+const budding = new Set();
 let playingSrc = null;
 // ⚡'s child, waiting for the bench to hold it before it is announced:
 // {id, text(name)} — see `evolved_from` and the `bench` reply.
@@ -207,7 +232,7 @@ let views = null;          // {map, styles, lineage, ranked, ratings, …} from 
 // well as with every views post; `views.ranked` and `views.map` still change
 // only when views are posted. While a generation runs, what it will replace is
 // `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
-// so read it at rest. Stored, not drawn yet (Plan-005).
+// so read it at rest. Pointing at EVOLVE POOL marks both (`evolveMarks`).
 let tasteTab = "map";
 let currentView = "play";
 
@@ -632,6 +657,12 @@ function uiState() {
     bank: bankFilter,
     born: [...lastBorn],
     bornGen,
+    // The bank's lineage marks that the engine does not keep: which children
+    // are not heard yet, how many of the New group's generation were bred and
+    // rated below the pool, and the names the latest generation replaced.
+    unheard: [...unheard],
+    below: bredBelow,
+    replaced: replacedLast,
     // What you pulled out of a patch and have not put back. "Removed" is
     // supposed to mean "recoverable"; before this it meant "recoverable until
     // you refresh", which is not a promise worth making.
@@ -1408,6 +1439,7 @@ worker.onmessage = (e) => {
       if (m.failed || !m.buffer || m.buffer.length === 0) {
         renderFailures.set(m.id, m.reason || null);
         onRenderArrived(m.id); // a pending scope stops sweeping and says so
+        compareRenderArrived(m.id);
         // The duel table asks for its buffers fire-and-forget (after the
         // settle delay), so nothing is polling on its behalf — without this a
         // side that cannot render is just a scope that stays blank.
@@ -1420,6 +1452,7 @@ worker.onmessage = (e) => {
       buf.copyToChannel(m.buffer, 0);
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
       onRenderArrived(m.id);
+      compareRenderArrived(m.id);
       requestAhead();
       break;
     }
@@ -1472,8 +1505,10 @@ worker.onmessage = (e) => {
       // Taken or refused, the log has answered for this one: from here the
       // engine's count is the whole truth about it (see `taughtAhead`).
       if (m.vote) aheadDrop(aheadKey(m.vote));
-      // The ratings a taken pick left (`WasmEngine::belief`).
+      // The ratings a taken pick left (`WasmEngine::belief`), and the seeds
+      // and may-be-replaced they mark at rest.
       if (m.ratings && views) views.ratings = m.ratings;
+      if (m.ratings && mayGoShown) markMayGo(true);
       applyStatus(m.status);
       send({ type: "calibration" });
       // The engine took nothing: the patch left the pool between the gesture
@@ -1522,18 +1557,25 @@ worker.onmessage = (e) => {
     }
     case "refine_progress": {
       breedingFrom(m);
+      if (mayGoShown) markMayGo(true); // the generation's own seeds, from now
       renderEvolveBtn();
       renderJobSlot();
       sayDealing(); // a deal waiting on a walk here names the seed it waits on
       break;
     }
     // One job of the generation absorbed, in job order: its child (if it
-    // bred one) goes into the bank's "new · gen N" group at once, playable,
+    // bred one) goes into the bank's "new · generation N" group at once, playable,
     // without re-sorting the ranked rows. Nothing leaves the bank until the
     // generation ends.
     case "refine_child": {
       breedingFrom(m);
-      if (breeding) breeding.retiring = m.retiring || [];
+      if (breeding) {
+        breeding.retiring = m.retiring || [];
+        breeding.said = walkSaid(m.child, m.reason);
+      }
+      // The walk's seed: the job's parent (`WalkJob.parent_id`), and for an
+      // older worker the generation's own seeds in job order.
+      const seed = m.seed != null ? m.seed : breeding && breeding.seeds ? breeding.seeds[m.index] : null;
       if (m.child > 0) {
         if (bornGen !== m.generation) {
           lastBorn.clear();
@@ -1541,6 +1583,9 @@ worker.onmessage = (e) => {
         }
         lastBorn.add(m.child);
         landedNow.add(m.child);
+        unheard.add(m.child);
+      } else if (m.reason === "not_admitted") {
+        countBelow(m.generation, 1);
       }
       applyViews({
         ...(views || {}),
@@ -1548,6 +1593,9 @@ worker.onmessage = (e) => {
         ratings: m.ratings || null,
         ...(m.lineage ? { lineage: m.lineage } : {}),
       });
+      // The bud leaves before the bank is drawn, so the row it flies to is
+      // drawn waiting for it.
+      const bud = m.child > 0 ? budStart(m.child) : false;
       renderBank();
       renderPlayDuel();
       drawLineage();
@@ -1556,6 +1604,11 @@ worker.onmessage = (e) => {
       renderGenCount(); // the generation counts from its first child
       renderNextStep();
       if (mayGoShown) markMayGo(true);
+      // A child buds from its seed (its `LineageEvent`'s parent), and a child
+      // the pool would not take fades beside its seed (`not_admitted`: it
+      // rated below the weakest member it would displace, `admit_refined`).
+      if (bud) budFrom(lineageOf(m.child)?.parent_id ?? seed, m.child);
+      else if (m.reason === "not_admitted") fadeBeside(seed, walkSaid(0, m.reason));
       scheduleSave();
       break;
     }
@@ -1566,6 +1619,8 @@ worker.onmessage = (e) => {
     case "pool_trimmed": {
       const trimmed = Array.isArray(m.retired) ? m.retired : [];
       applyViews(m.views);
+      // That generation's end: what it replaced, by name.
+      if (trimmed.length) replacedLast = { gen: m.status.generation, names: trimmed.map((id) => knownNames.get(id) || "a sound") };
       applyStatus(m.status);
       refreshInstruments();
       scheduleSave();
@@ -1602,6 +1657,13 @@ worker.onmessage = (e) => {
         lastBorn.clear();
         for (const id of kept) lastBorn.add(id);
         bornGen = m.status.generation;
+      }
+      if (!m.untaught) {
+        // A child bred early and replaced at the end was rated below the pool
+        // too; and what the end replaced is kept as names, which is all the
+        // engine keeps (`refine_finish` drops the trees).
+        countBelow(m.status.generation, dropped);
+        replacedLast = { gen: m.status.generation, names: replaced.map((id) => knownNames.get(id) || "a sound") };
       }
       if (mayGoShown) markMayGo(true);
       applyStatus(m.status);
@@ -2126,6 +2188,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
+      takeRetiring(m); // a kept edit joining the pool moves what will be replaced
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       if (m.id > 0) {
@@ -2229,9 +2292,19 @@ worker.onmessage = (e) => {
         }
         lastBorn.add(m.childId);
         landedNow.add(m.childId);
+        unheard.add(m.childId);
+        // ⚡'s admission replaced what it displaced at once (one generation
+        // of one walk): Replaced holds those names. A child that displaced
+        // nothing (the pool was filling) leaves the last generation's.
+        if (evolveEvicted.length) replacedLast = { gen: m.status.generation, names: evolveEvicted.map((id) => knownNames.get(id) || "a sound") };
       }
+      const zapBud = m.childId > 0 ? budStart(m.childId) : false;
       applyStatus(m.status);
       refreshInstruments();
+      // The child buds from the sound ⚡ walked from (`refine_from_job`'s
+      // seed, its `LineageEvent`'s parent), or, refused, fades beside it.
+      if (zapBud) budFrom(m.seedId, m.childId);
+      else if (m.reason === "not_admitted") fadeBeside(m.seedId, walkSaid(0, m.reason));
       if (m.reason === "stopped") {
         note("⚡ stopped. Nothing was added to the pool.", { replace: "evolve-from" });
       } else if (m.childId > 0) {
@@ -2302,6 +2375,8 @@ worker.onmessage = (e) => {
     case "pinned": {
       if (m.ranked && views) views.ranked = m.ranked;
       if (m.ratings && views) views.ratings = m.ratings; // a save changes what may be replaced
+      takeRetiring(m); // and what a running generation will replace
+      if (mayGoShown) markMayGo(true);
       if (m.budget) pinBudget = m.budget;
       // A control that cannot act says so. `set_pinned` fails for exactly two
       // reasons and they need different sentences: the budget is full (the
@@ -2339,6 +2414,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "preset_loaded": {
+      takeRetiring(m); // so does a preset joining it
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -2680,13 +2756,15 @@ function renderPicks() {
 /** Generations that have bred. The engine counts a generation from the
  *  moment it opens, so any status posted while it breeds (a pick's) carries
  *  it already; GENERATIONS, the next-step chip and the EVOLUTION strip count
- *  it once a child of it has landed in the bank, or once it has finished. */
+ *  it once a child of it has landed in the bank, or once it has finished.
+ *  With no status since it opened, the last one predates it: a child landed
+ *  (`refine_child`, which carries no status) still counts it. */
 function gensBred() {
   const g = status.generation || 0;
   const open = breeding && breeding.generation;
-  if (!open || g < open) return g; // the status predates the open generation
+  if (!open) return g;
   const landed = bornGen === open && lastBorn.size > 0;
-  return landed ? open : open - 1;
+  return landed ? Math.max(g, open) : Math.min(g, open - 1);
 }
 function renderGenCount() {
   $("gen-count").textContent = gensBred();
@@ -2953,7 +3031,7 @@ function renderNextStep() {
   el.onclick = act || null;
 }
 
-/** The bank's "new · gen N" group, in view and flashed once. */
+/** The bank's "new · generation N" group, in view and flashed once. */
 function showNewGroup() {
   if (bankFilter !== "pool") selectBank("pool");
   const head = document.querySelector("#bank-list .bank-group");
@@ -3441,6 +3519,8 @@ function applyViews(next) {
     renderAnnounced.delete(id);
     starsById.delete(id);
     cutIds.delete(id);
+    unheard.delete(id);
+    budding.delete(id);
     goneIds.add(id);
     const t = pendingCuts.get(id);
     if (t !== undefined) {
@@ -3460,6 +3540,8 @@ function applyViews(next) {
     dealAnother();
   }
   checkAhead();
+  // New ratings move the seeds and what may be replaced, if they are marked.
+  if (mayGoShown) markMayGo(true);
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -3592,6 +3674,7 @@ function showView(name) {
   // view other than the one it was pressed in.
   if (name !== "play") { disarm(); cancelPending(); }
   if (name !== currentView) playWaitCancel();
+  if (name !== currentView) closeCompare(); // it belongs to where it was asked
   currentView = name;
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
@@ -3802,6 +3885,18 @@ function play(id, btn, key = null) {
   if (!r) return;
   mark("first-sound", { via: "a phrase" }, { once: true });
   playBuffer(r.buffer, btn, key);
+  heard(id);
+}
+
+/** A child's phrase played, or a note on it: its unheard dot goes. */
+function heard(id) {
+  if (id == null || !unheard.delete(id)) return;
+  const row = document.querySelector(`#bank-list .bank-item[data-id="${id}"]`);
+  if (row) {
+    row.querySelector(".bi-dot")?.remove();
+    row.setAttribute("aria-label", (row.getAttribute("aria-label") || "").replace(", not heard yet", ""));
+  }
+  scheduleSave();
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -4317,6 +4412,7 @@ function liveNoteOn(note_, vel = 1.0) {
   if (!boothQuiet) perform?.notePlayed?.();
   if (livePatchId != null) {
     playCounts.set(livePatchId, (playCounts.get(livePatchId) || 0) + 1);
+    heard(livePatchId);
   }
 }
 
@@ -4565,6 +4661,7 @@ document.addEventListener("keydown", (e) => {
     // and hands focus back to the control that opened it.
     cancelPending();
     endConnectPick();
+    if (compareId != null) closeCompare();
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
@@ -6190,7 +6287,9 @@ $("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
   if (breeding || evolvingFrom) return;
   lampOn("refine");
-  breeding = { generation: 0, done: 0, total: 0, eta: null, etaAt: 0, farm: true, stopping: false, retiring: [] };
+  breeding = { generation: 0, done: 0, total: 0, eta: null, etaAt: 0, farm: true, stopping: false, retiring: [], seeds: null, said: "" };
+  // The pool is what a generation changes: the bank shows it.
+  if (bankFilter !== "pool") selectBank("pool");
   renderTeach(); // a refit armed now waits for the generation, and says so
   renderEvolveBtn();
   renderNextStep();
@@ -6201,6 +6300,15 @@ $("evolve-stop").onclick = () => stopBreeding();
 // A `refine_progress` or `refine_child`: where the generation is.
 function breedingFrom(m) {
   if (!breeding) return;
+  // The generation's own seeds, best first (job `i` walks from `seeds[i]`):
+  // `refine_jobs`' parents, which its progress carries. Every `ratings`
+  // posted from here describes the next generation, not this one. An older
+  // worker posts none, and then the last `ratings.seeds` posted before the
+  // generation opened stands in (`next_seeds` and `refine_jobs` share one
+  // rule); it can be stale where a fill ran between them (`fill_step` posts
+  // no ratings), which is why the worker now says.
+  if (Array.isArray(m.seeds)) breeding.seeds = m.seeds.slice();
+  else if (!breeding.seeds) breeding.seeds = ((views && views.ratings && views.ratings.seeds) || []).slice();
   if (m.generation) breeding.generation = m.generation;
   if (m.total != null) breeding.total = m.total;
   if (m.done != null) breeding.done = m.done;
@@ -6223,8 +6331,10 @@ function stopBreeding() {
 }
 
 // EVOLVE POOL is its own progress bar while it breeds: an amber fill for the
-// jobs absorbed, "breeding 3/10", and a stop beside it. At rest it is the
-// button it always was.
+// jobs absorbed, and a stop beside it. It narrates each walk as it comes back,
+// from the engine's own outcome for it (`refine_child`'s `child` and `reason`,
+// `RefineOutcome`): "walk 3 of 10 · joined the pool", "· rated below the
+// pool". At rest it is the button it always was.
 function renderEvolveBtn() {
   const btn = $("evolve-btn");
   const stop = $("evolve-stop");
@@ -6248,41 +6358,86 @@ function renderEvolveBtn() {
       ? "stopping…"
       : b.done >= b.total
         ? "placing in the pool…"
-        : `breeding ${b.done}/${b.total}`;
+        : b.done > 0
+          ? walkLabel(b.done, b.total)
+          : `breeding ${b.done}/${b.total}`;
+  // What the last walk came back as, while the next is awaited.
+  const said = b.total && !b.stopping && b.done > 0 && b.done < b.total ? b.said : "";
   const pct = b.total ? Math.round((100 * b.done) / b.total) : 0;
-  btn.innerHTML = `<span class="eb-fill" style="width:${pct}%"></span><span class="eb-text">${label}</span>`;
-  btn.setAttribute("aria-label", `EVOLVE POOL: ${label}`);
+  btn.innerHTML = `<span class="eb-fill" style="width:${pct}%"></span><span class="eb-text">${label}</span>` +
+    (said ? `<span class="eb-said">${esc(said)}</span>` : "");
+  btn.setAttribute("aria-label", `EVOLVE POOL: ${label}${said ? `, ${said}` : ""}`);
 }
 
-// ---------- what a generation may replace ----------
-// Hovering (or focusing) EVOLVE POOL marks the rows a generation could
-// replace, so a save can come first. At rest: the unsaved rows the model
-// likes least, as many as a generation has walks — a generation retires the
-// lowest unsaved members at its end, and a child only displaces a member
-// below it, so nothing outside these can go. While one runs: the rows its end
-// would retire if it ended now (the engine's own `refine_retiring`).
-const GEN_WALKS = 10; // `refine_seeds`, until a generation has said its size
+// ---------- what a generation does: its seeds, and what it may replace ----------
+// Pointing at (or focusing) EVOLVE POOL marks, in the bank, the sounds a
+// generation breeds from and the ones it may replace, so a save can come
+// first. Every mark is the engine's own list (ADR-012), never worked out here:
+// - at rest, a generation opened now: `ratings.seeds` (`Engine::next_seeds`,
+//   the rule `refine_jobs` takes its parents by) and `ratings.may_replace`
+//   (`Engine::may_replace`: nothing outside it can leave at its end), said
+//   "may be replaced";
+// - while one runs, that generation: the seeds it opened with
+//   (`breeding.seeds`, posted with its progress: `refine_jobs`' parents), and
+//   what its end would replace if it ended now (`refine_child`'s `retiring`,
+//   `Engine::retiring`), said "will be replaced": stopped now or run out, its
+//   end replaces them. That list grows by one with each child admitted
+//   (`admit_refined` defers the eviction) and loses none, so it is empty until
+//   the first child lands, and a child still to come can add a sound not on
+//   it: it is not the whole of what may go (words.js `markWord`);
+// - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed),
+//   and what its child would replace if the pool takes it. With no
+//   generation open `absorb_from` evicts at once (`evict_to_size`, the seed
+//   protected) the lowest of `eviction_order`, which passes over the seed in
+//   flight (`evolving`); `may_replace` ranks the same way, so its first
+//   `pool + 1 − pool_target` (one at size, none while the pool fills) are
+//   those.
+// The rail carries the mark (amber, the model's choice: solid for a seed,
+// dashed for what may go) and the word sits on the row's second line, over
+// the stars, so the name never moves.
 let mayGoShown = false;
 let mayGo = new Set();
+let mayKind = "may"; // which word the dashed rail's rows carry (`markWord`)
+let seedMarks = new Set();
 // Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
 // takes its focus away while the pointer is still on it.
 const mayGoBy = { hover: false, focus: false };
-function mayGoIds() {
-  if (breeding && breeding.retiring && breeding.retiring.length) return breeding.retiring;
-  if (!views || !views.styles || !views.ranked) return [];
-  const n = (breeding && breeding.total) || GEN_WALKS;
-  return views.ranked
-    .filter((r) => !r.pinned && !cutIds.has(r.id))
-    .sort((a, b) => a.mean - b.mean)
-    .slice(0, n)
-    .map((r) => r.id);
+function evolveMarks() {
+  const r = views && views.ratings;
+  if (breeding) return { seeds: breeding.seeds || [], may: breeding.retiring || [], kind: "will" };
+  if (evolvingFrom) {
+    const owed = status ? Math.max(0, (status.pool || 0) + 1 - (status.pool_target || Infinity)) : 0;
+    const may = ((r && r.may_replace) || []).filter((id) => id !== evolvingFrom.id).slice(0, owed);
+    return { seeds: [evolvingFrom.id], may, kind: "may" };
+  }
+  return { seeds: (r && r.seeds) || [], may: (r && r.may_replace) || [], kind: "may" };
 }
 function markMayGo(on) {
   mayGoShown = on;
-  mayGo = new Set(on ? mayGoIds() : []);
-  for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) {
-    el.classList.toggle("may-go", mayGo.has(Number(el.dataset.id)));
-  }
+  const m = on ? evolveMarks() : { seeds: [], may: [], kind: "may" };
+  seedMarks = new Set(m.seeds);
+  mayGo = new Set(m.may.filter((id) => !seedMarks.has(id)));
+  mayKind = m.kind;
+  for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) paintMarks(el, Number(el.dataset.id));
+}
+/** A reply that can move what the running generation will replace (a save, a
+ *  preset or a kept edit: `eviction_order` passes over saved sounds, and a
+ *  new member moves the lowest) carries `retiring` while one is open; only
+ *  `refine_child` did, so a sound saved mid-run kept "will be replaced"
+ *  while the one that would go instead was unmarked. The caller repaints
+ *  (`applyViews` and the `pinned` case do). */
+function takeRetiring(m) {
+  if (breeding && Array.isArray(m.retiring)) breeding.retiring = m.retiring;
+}
+/** The word a row carries while EVOLVE POOL is pointed at, or "". */
+function flagWord(id) {
+  return seedMarks.has(id) ? markWord("seed") : mayGo.has(id) ? markWord(mayKind) : "";
+}
+function paintMarks(el, id) {
+  el.classList.toggle("seed", seedMarks.has(id));
+  el.classList.toggle("may-go", mayGo.has(id));
+  const flag = el.querySelector(".bi-flag");
+  if (flag) flag.textContent = flagWord(id);
 }
 {
   const wrap = $("evolve-wrap");
@@ -6295,6 +6450,338 @@ function markMayGo(on) {
   wrap.addEventListener("focusin", () => set("focus", true));
   wrap.addEventListener("focusout", () => set("focus", false));
 }
+
+// ---------- a child buds from its seed ----------
+// ADR-012: this motion shows only what the engine did.
+// - A child buds out of its seed's row and lands on its own row in New: the
+//   seed is its `LineageEvent`'s `parent_id` (`record_child` in engine.rs),
+//   the child the id `refine_absorb` admitted (`refine_child`'s `child`; for
+//   ⚡, `evolved_from`'s `childId` from `refine_from_absorb`).
+// - A child the pool would not take buds beside its seed and fades
+//   (`RefineOutcome::NotAdmitted`: it rated below the weakest member it would
+//   displace, `admit_refined`). Its seed is the job's `parent_id`
+//   (`refine_child`'s `seed`). The engine dropped it, so it has no name: the
+//   bud carries the reason, and nothing else.
+// Nothing flies from a place that is not on screen: unless the seed's row is
+// in the bank's view, the child just lands, and its lineage line says where it
+// came from. With motion reduced every state still shows, without the motion:
+// the row, its lineage line and dot, the note under New, and EVOLVE POOL's
+// word for the walk. The lengths are the motion tokens (`motionMs`).
+const seeding = new Set(); // seeds whose bud is out: their rail is lit
+// Buds in flight, each with what ends it. A bud flies between two rows' places
+// as they were when it left; when the bank is drawn again those places can
+// move (the next child of a burst lands and pushes the rows down), so every
+// bud in flight lands at once rather than fly from or to the wrong row. A
+// refused child's chip only fades where it was placed, beside its seed, so it
+// is left to finish: its reason stays readable through a burst.
+const flights = new Map(); // Animation -> end(), for buds that travel
+function landFlights() {
+  for (const [anim, end] of [...flights]) {
+    anim.onfinish = anim.oncancel = null;
+    anim.cancel();
+    end();
+  }
+}
+function flown(anim, end, { travels = true } = {}) {
+  let ended = false;
+  const done = () => {
+    if (ended) return;
+    ended = true;
+    flights.delete(anim);
+    end();
+  };
+  if (travels) flights.set(anim, done);
+  anim.onfinish = done;
+  anim.oncancel = done;
+}
+function bankRowEl(id) {
+  return document.querySelector(`#bank-list .bank-item[data-id="${id}"]`);
+}
+function inBankView(el) {
+  const a = $("bank-list").getBoundingClientRect();
+  const b = el.getBoundingClientRect();
+  return b.height > 0 && b.top >= a.top - 1 && b.bottom <= a.bottom + 1;
+}
+/** Whether a bud will fly to this child's row: if so, the row is drawn
+ *  waiting for it (its name arrives with the bud). */
+function budStart(childId) {
+  if (!motionMs("--d-move") || bankFilter !== "pool" || !$("bank-list").offsetParent) return false;
+  budding.add(childId);
+  return true;
+}
+function budChip(text, refused, at) {
+  const chip = document.createElement("div");
+  chip.className = `bud${refused ? " refused" : ""}`;
+  chip.setAttribute("aria-hidden", "true");
+  chip.textContent = text;
+  chip.style.left = `${at.left}px`;
+  chip.style.top = `${at.top}px`;
+  document.body.appendChild(chip);
+  return chip;
+}
+function seedLit(seedId, on) {
+  if (on) seeding.add(seedId);
+  else seeding.delete(seedId);
+  bankRowEl(seedId)?.classList.toggle("seeding", on);
+}
+function budFrom(seedId, childId) {
+  const land = () => {
+    budding.delete(childId);
+    const row = bankRowEl(childId);
+    if (row) {
+      row.classList.remove("budding");
+      row.classList.add("landed");
+    }
+  };
+  const seedRow = seedId != null ? bankRowEl(seedId) : null;
+  const kidRow = bankRowEl(childId);
+  if (!budding.has(childId) || !seedRow || !kidRow || !inBankView(seedRow) || !inBankView(kidRow)) return land();
+  const from = seedRow.querySelector(".bi-name").getBoundingClientRect();
+  const to = kidRow.querySelector(".bi-name").getBoundingClientRect();
+  const chip = budChip(kidRow.querySelector(".bi-name").textContent, false, from);
+  // Out of the seed, beside it; then to the child's place in New.
+  const grow = motionMs("--d-move");
+  const hold = motionMs("--d-state");
+  const fly = motionMs("--d-move");
+  const total = grow + hold + fly;
+  const side = Math.min(48, from.width / 2);
+  const ease = tok("--e-settle");
+  seedLit(seedId, true);
+  const anim = chip.animate([
+    { transform: "translate(0, 0) scale(0.3)", opacity: 0, easing: ease },
+    { transform: `translate(${side}px, 0) scale(1)`, opacity: 1, offset: grow / total },
+    { transform: `translate(${side}px, 0) scale(1)`, opacity: 1, offset: (grow + hold) / total, easing: ease },
+    { transform: `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(1)`, opacity: 1 },
+  ], { duration: total, fill: "forwards" });
+  const end = () => {
+    chip.remove();
+    seedLit(seedId, false);
+    land();
+  };
+  flown(anim, end);
+}
+function fadeBeside(seedId, said) {
+  if (!said || !motionMs("--d-move") || bankFilter !== "pool") return;
+  const seedRow = seedId != null ? bankRowEl(seedId) : null;
+  if (!seedRow || !inBankView(seedRow)) return;
+  const from = seedRow.querySelector(".bi-name").getBoundingClientRect();
+  const chip = budChip(said, true, from);
+  // Out of the seed and beside it, long enough to read; then gone.
+  const grow = motionMs("--d-move");
+  const hold = 3 * motionMs("--d-move");
+  const fade = motionMs("--d-move");
+  const total = grow + hold + fade;
+  const side = Math.min(48, from.width / 2);
+  seedLit(seedId, true);
+  const anim = chip.animate([
+    { transform: "translate(0, 0) scale(0.3)", opacity: 0, easing: tok("--e-settle") },
+    { transform: `translate(${side}px, 0) scale(1)`, opacity: 1, filter: "blur(0)", offset: grow / total },
+    { transform: `translate(${side}px, 0) scale(1)`, opacity: 1, filter: "blur(0)", offset: (grow + hold) / total },
+    { transform: `translate(${side}px, 0) scale(0.9)`, opacity: 0, filter: "blur(3px)" },
+  ], { duration: total, fill: "forwards" });
+  const end = () => {
+    chip.remove();
+    seedLit(seedId, false);
+  };
+  flown(anim, end, { travels: false }); // placed beside its seed, it stays
+}
+
+/** One more of generation `gen` bred and not in New. */
+function countBelow(gen, n) {
+  if (!(n > 0)) return;
+  bredBelow = bredBelow.gen === gen ? { gen, n: bredBelow.n + n } : { gen, n };
+}
+
+// ---------- Compare: a child beside its seed ----------
+// ADR-012. Opened from a bred sound's lineage line in the bank:
+// - the figure is the child walking out of its seed: the seed's phrase as an
+//   outline and the child's growing out of it, from their renders. The walk
+//   keeps no steps (a `LineageEvent` holds the seed, the child and the diff),
+//   so only the two ends are the engine's; the frames between are a tween of
+//   the two shapes, not the walk's path;
+// - what changed is the event's `diff`;
+// - the ratings are its `parent_utility` and `child_utility`, what the model
+//   rated each when it bred them, as the bank's percentages;
+// - both play while both exist. A replaced seed's tree is dropped
+//   (`refine_finish`), so it is only a name, with nothing to play.
+let compareId = null;
+let compareRaf = 0;
+function openCompare(id, anchor) {
+  const ev = lineageOf(id);
+  if (!ev || !rowOf(id)) return;
+  compareId = id;
+  const box = $("compare");
+  box.classList.remove("hidden");
+  renderCompare();
+  placeCompare(anchor || bankRowEl(id));
+  // The phrases the figure is drawn from, asked for as a ▶ would.
+  for (const want of [id, ev.parent_id]) {
+    if (rowOf(want) && !renders.has(want) && !renderFailures.has(want)) send({ type: "render", id: want });
+  }
+  drawCompare(true);
+  box.focus({ preventScroll: true });
+}
+function closeCompare() {
+  if (compareId == null) return;
+  compareId = null;
+  compareDrawn = "";
+  cancelAnimationFrame(compareRaf);
+  $("compare").classList.add("hidden");
+  // Back to the bank, its one tab stop, where the keys that opened it work.
+  if ($("compare").contains(document.activeElement)) $("bank-list").focus({ preventScroll: true });
+}
+/** Beside the bank, level with the row it was opened from. */
+function placeCompare(row) {
+  const box = $("compare");
+  const bank = document.querySelector(".bank").getBoundingClientRect();
+  const r = (row || $("bank-list")).getBoundingClientRect();
+  const gap = parseFloat(tok("--s3")) || 0;
+  const top = Math.max(gap, Math.min(r.top, window.innerHeight - box.offsetHeight - gap));
+  box.style.left = `${bank.right + gap}px`;
+  box.style.top = `${top}px`;
+}
+let compareDrawn = "";
+function renderCompare() {
+  if (compareId == null) return;
+  const ev = lineageOf(compareId);
+  const kid = rowOf(compareId);
+  if (!ev || !kid) return closeCompare();
+  const seedName = lineageName(ev.parent_id);
+  const seedAlive = !!rowOf(ev.parent_id);
+  // Drawn again only when what it says has changed (a rename, the seed
+  // replaced): the bank redraws often, and a ▶ under the pointer must stay.
+  const said = `${compareId}|${kid.name}|${seedName}|${seedAlive}`;
+  if (said === compareDrawn) return;
+  compareDrawn = said;
+  $("compare-title").textContent = `${kid.name} · what changed`;
+  $("compare-say").textContent = grownFrom(seedName, ev.generation);
+  // Every change the event records, one a line (the list scrolls past ten):
+  // a 40-step walk can change two dozen sites, and a cut list would hide them.
+  const parts = diffParts(ev.diff);
+  $("compare-diff").innerHTML = parts.map((t) => `<li>${esc(t)}</li>`).join("") ||
+    `<li>${esc(humanizeDiff(ev.diff))}</li>`;
+  // The walk can step down: a child rated below its seed is exploring, by the
+  // EVOLUTION strip's own rule.
+  const exploring = ev.child_utility - ev.parent_utility < -0.05;
+  $("compare-rated").innerHTML = esc(bredRatings(seedName, sq(ev.parent_utility), kid.name, sq(ev.child_utility))) +
+    (exploring ? ` <span class="lin-explore" title="Breeding samples your taste rather than only climbing it: some steps go down so it doesn’t get stuck.">exploring</span>` : "");
+  const playBox = $("compare-play");
+  const hear = (id, name) =>
+    `<button class="hw-btn small play cmp-hear${hearingNow(`bank:${id}`) ? " playing" : ""}" type="button" data-hear="bank:${id}" data-id="${id}" aria-label="Hear ${esc(name)}">▶ ${esc(name)}</button>`;
+  playBox.innerHTML = (seedAlive
+    ? hear(ev.parent_id, seedName)
+    : `<span class="cmp-gone mono" title="Replaced: only its name is kept">${esc(seedName)} · replaced</span>`) +
+    hear(compareId, kid.name);
+  for (const b of playBox.querySelectorAll(".cmp-hear")) {
+    // A transport, as a bank row's ▶ is (and lit with it: one key).
+    b.onclick = () => {
+      const id = Number(b.dataset.id);
+      const key = `bank:${id}`;
+      if (hearingNow(key)) return void stopAudition();
+      const btn = () => document.querySelector(`#compare-play .cmp-hear[data-id="${id}"]`) || b;
+      awaitRender(id, () => play(id, btn(), key));
+    };
+  }
+}
+/** The figure: the seed's outline, and the child growing out of it. */
+function drawCompare(animate) {
+  cancelAnimationFrame(compareRaf);
+  if (compareId == null) return;
+  const ev = lineageOf(compareId);
+  if (!ev) return;
+  const canvas = $("compare-fig");
+  const kid = renders.get(compareId);
+  const seed = rowOf(ev.parent_id) ? renders.get(ev.parent_id) : null;
+  const seedWaits = rowOf(ev.parent_id) && !seed && !renderFailures.has(ev.parent_id);
+  const ms = motionMs("--d-move") * 3;
+  const t0 = performance.now();
+  const frame = (now) => {
+    const k = !animate || !ms ? 1 : Math.min(1, (now - t0) / ms);
+    paintCompare(canvas, seed && seed.buffer, kid && kid.buffer, kid ? (seed ? k : 1) : 0, !kid || seedWaits);
+    if (k < 1 && kid && seed) compareRaf = requestAnimationFrame(frame);
+  };
+  frame(t0);
+  canvas.setAttribute("aria-label", `${rowOf(compareId)?.name || "The child"} grown from ${lineageName(ev.parent_id)}`);
+}
+function envelope(buffer, w) {
+  const data = buffer.getChannelData(0);
+  const step = Math.max(1, Math.floor(data.length / w));
+  const env = new Float32Array(w);
+  for (let x = 0; x < w; x++) {
+    let peak = 0;
+    for (let i = x * step; i < (x + 1) * step && i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    env[x] = Math.min(1, peak);
+  }
+  return env;
+}
+function paintCompare(canvas, seedBuf, kidBuf, k, waiting) {
+  const ctx = scopeCtx(canvas);
+  const { width: w, height: h } = canvas;
+  if (!w) return;
+  const dpr = window.devicePixelRatio || 1;
+  const mid = h / 2;
+  const amp = mid * 0.9;
+  ctx.clearRect(0, 0, w, h);
+  drawGraticule(ctx, w, h, inkAlpha(INK.green, 0.07));
+  if (waiting) {
+    ctx.fillStyle = INK.amberDim;
+    ctx.font = canvasFont(dpr);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("rendering…", w / 2, mid);
+    ctx.textBaseline = "alphabetic";
+    if (!kidBuf) return;
+  }
+  const s = seedBuf ? envelope(seedBuf, w) : null;
+  const c = kidBuf ? envelope(kidBuf, w) : null;
+  // The child, k of the way out of its seed's shape into its own.
+  if (c) {
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const v = s ? s[x] + (c[x] - s[x]) * k : c[x];
+      if (x === 0) ctx.moveTo(x, mid - v * amp);
+      else ctx.lineTo(x, mid - v * amp);
+    }
+    for (let x = w - 1; x >= 0; x--) {
+      const v = s ? s[x] + (c[x] - s[x]) * k : c[x];
+      ctx.lineTo(x, mid + v * amp);
+    }
+    ctx.closePath();
+    ctx.fillStyle = inkAlpha(INK.green, 0.18 + 0.5 * k);
+    ctx.shadowColor = inkAlpha(INK.green, 0.6);
+    ctx.shadowBlur = 6 * dpr;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  // The seed's outline, dashed: where the walk started.
+  if (s) {
+    ctx.setLineDash([3 * dpr, 3 * dpr]);
+    ctx.strokeStyle = inkAlpha(INK.silk, 0.6);
+    ctx.lineWidth = 1 * dpr;
+    for (const sign of [-1, 1]) {
+      ctx.beginPath();
+      for (let x = 0; x < w; x++) {
+        const y = mid + sign * s[x] * amp;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+}
+/** A phrase the figure is drawn from has landed (or never will). */
+function compareRenderArrived(id) {
+  if (compareId == null) return;
+  const ev = lineageOf(compareId);
+  if (ev && (id === compareId || id === ev.parent_id)) drawCompare(true);
+}
+$("compare-x").onclick = () => closeCompare();
+document.addEventListener("pointerdown", (e) => {
+  if (compareId == null) return;
+  if (e.target.closest("#compare, .bi-from")) return;
+  closeCompare();
+}, true);
 
 // ---------- patch bank ----------
 let bankScrollTo = null;
@@ -6440,22 +6927,27 @@ function renderBank() {
   }
 
   const fitted = !!(views && views.styles);
+  landFlights(); // the rows move: every bud in flight lands now
   const frag = document.createDocumentFragment();
   rows.forEach((r, i) => {
     if (fresh.length && i === 0) {
-      frag.appendChild(bankGroup(bornGen ? `new · gen ${bornGen}` : "new",
-        "Bred in the latest generation, in the order they were bred"));
+      frag.appendChild(bankGroup(bornGen ? `new · generation ${bornGen}` : "new",
+        "Bred in the latest generation, in the order they were bred", { count: fresh.length, cls: "new" }));
     }
     if (fresh.length && i === fresh.length) {
+      // The New group's generation bred more than it holds: said under it.
+      if (bredBelow.gen === bornGen && bredBelow.n > 0) frag.appendChild(bankBelow(belowNote(bredBelow.n)));
       frag.appendChild(bankGroup(fitted ? "ranked by the model" : "the rest",
-        fitted ? "The rest of the pool, the sounds it rates highest first" : ""));
+        fitted ? "The rest of the pool, the sounds it rates highest first" : "", { count: rows.length - fresh.length }));
     }
     frag.appendChild(bankRow(r, fitted));
   });
+  if (bankFilter === "pool") appendReplaced(frag);
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
   syncBankCursor();
+  if (compareId != null) renderCompare(); // its seed may have been replaced
   // Scrolled to the row asked for, by id, and not to whichever row is live
   // now: opening from the TASTE map asks before the bench has moved, so the
   // render that saw the request used to scroll to the patch being left and
@@ -6472,18 +6964,77 @@ function renderBank() {
   }
 }
 
-function bankGroup(text, title) {
+function bankGroup(text, title, { count = null, cls = "" } = {}) {
   const h = document.createElement("div");
-  h.className = "bank-group";
+  h.className = `bank-group${cls ? ` ${cls}` : ""}`;
   h.setAttribute("role", "presentation");
-  h.textContent = text;
+  const label = document.createElement("span");
+  label.className = "bg-label";
+  label.textContent = text;
+  h.appendChild(label);
+  if (count != null) {
+    const n = document.createElement("span");
+    n.className = "bg-n";
+    n.textContent = String(count);
+    h.appendChild(n);
+  }
   if (title) h.title = title;
   return h;
+}
+
+/** A line under a bank group: what it does not hold, and why. */
+function bankBelow(text) {
+  const el = document.createElement("div");
+  el.className = "bank-below mono";
+  el.setAttribute("role", "presentation");
+  el.textContent = text;
+  return el;
+}
+
+// What the latest generation replaced, at the foot of the pool: names only.
+// `refine_finish` drops a replaced sound's tree, so there is nothing to play
+// or bring back (RFC-006, Open 1), and none is offered. Shut until opened.
+function appendReplaced(frag) {
+  const rep = replacedLast;
+  if (!rep || !rep.names.length) return;
+  const head = document.createElement("div");
+  head.className = "bank-group replaced";
+  head.setAttribute("role", "presentation");
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "bg-fold";
+  btn.tabIndex = -1; // the list is one tab stop, as a row's buttons are
+  btn.setAttribute("aria-expanded", String(replacedOpen));
+  btn.innerHTML = `<span class="bg-label">replaced · generation ${rep.gen}</span><span class="bg-n">${rep.names.length} ${replacedOpen ? "▾" : "▸"}</span>`;
+  btn.onclick = () => {
+    replacedOpen = !replacedOpen;
+    renderBank();
+    // Opened, its names come into view under it.
+    if (replacedOpen) document.querySelector("#bank-list .replaced-names")?.scrollIntoView({ block: "nearest" });
+  };
+  head.appendChild(btn);
+  frag.appendChild(head);
+  if (!replacedOpen) return;
+  frag.appendChild(bankBelow("Rated lowest when it ended. Only their names are kept."));
+  const names = document.createElement("div");
+  names.className = "replaced-names";
+  names.setAttribute("role", "presentation");
+  for (const name of rep.names) {
+    const n = document.createElement("span");
+    n.textContent = name;
+    names.appendChild(n);
+  }
+  frag.appendChild(names);
 }
 
 function bankRow(r, fitted) {
   const el = document.createElement("div");
   el.dataset.id = String(r.id);
+  // A bred sound's lineage: the seed it grew from and what changed
+  // (`LineageEvent`, from `lineage()`).
+  const lin = lineageOf(r.id);
+  const isNew = lastBorn.has(r.id);
+  const flag = flagWord(r.id);
   el.className = "bank-item"
     + (r.id === wb.subjectId ? " live" : "")
     // The keyboard cursor is state, so it is carried by *id* and re-applied
@@ -6493,9 +7044,13 @@ function bankRow(r, fitted) {
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
     + (r.pinned ? " saved" : "")
-    + (lastBorn.has(r.id) ? " fresh" : "")
-    + (landedNow.has(r.id) ? " landed" : "")
-    + (mayGo.has(r.id) ? " may-go" : "")
+    + (isNew ? " fresh" : "")
+    + (landedNow.has(r.id) && !budding.has(r.id) ? " landed" : "")
+    + (budding.has(r.id) ? " budding" : "")
+    + (seedMarks.has(r.id) ? " seed" : "")
+    + (seeding.has(r.id) ? " seeding" : "")
+    + (mayGo.has(r.id) && !seedMarks.has(r.id) ? " may-go" : "")
+    + (lin ? " bred" : "")
     // Its bench open is on its way (see `openOnBench`).
     + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
@@ -6512,8 +7067,12 @@ function bankRow(r, fitted) {
   // them. The trade is that a screen reader gets no path to the buttons, so
   // the row's own label has to carry the state they encode.
   el.tabIndex = -1;
+  const seedName = lin ? lineageName(lin.parent_id) : "";
   const said = [
     r.name,
+    isNew ? "new" : "",
+    unheard.has(r.id) ? "not heard yet" : "",
+    lin ? `bred from ${seedName}` : "",
     sig,
     r.pinned ? "saved" : "",
     stars ? `${stars} of 5 stars` : "unrated",
@@ -6522,19 +7081,30 @@ function bankRow(r, fitted) {
   // setAttribute takes a string, not markup — no escaping here, and escaping
   // would put a literal `&amp;` into what a screen reader says.
   el.setAttribute("aria-label", said.join(", "));
+  // The marks sit left of the name, in the mark column every row has, so the
+  // name is in the same place, at the same width, with or without them: the
+  // origin glyph, or NEW in its place for the latest generation's children
+  // (always ⚡, bred); and the unheard dot in the gap after it.
   el.innerHTML = `
     <div class="bi-top">
-      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>${
+      <span class="bi-mark">${
         // "Gen 3: 5 new patches in the bank" sent the player to a column of
         // ⚡ rows where the only thing marking the five was a glow on a glyph.
-        lastBorn.has(r.id) ? `<span class="bi-new" title="Bred in the latest generation">new</span>` : ""
-      }
+        isNew
+          ? `<span class="bi-new" title="Bred in the latest generation">new</span>`
+          : `<span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>`
+      }${unheard.has(r.id) ? `<span class="bi-dot" title="Not heard yet" aria-hidden="true"></span>` : ""}</span>
       <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} · ` : ""}Double-click to rename">${esc(r.name)}</span>
       <span class="bi-pct mono" title="${fitted ? `Its guess: ${guessLabel(frac)}` : "No guess yet: teach it a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "·"}</span>
       <span class="bi-id">#${r.id}</span>
-    </div>
+    </div>${
+      lin
+        ? `<div class="bi-sub"><span class="bi-mark" aria-hidden="true"></span><button class="bi-from" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${esc(fromLine(seedName, lineageChanges(lin.diff)))}</button></div>`
+        : ""
+    }
     <div class="bi-row">
       <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">▶</button>
+      <span class="bi-flag" aria-hidden="true">${flag}</span>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">★</button>`)
@@ -6583,6 +7153,8 @@ function bankRow(r, fitted) {
     send({ type: "set_pinned", id: r.id, pinned: !r.pinned });
   };
   el.querySelector(".bi-kill").onclick = () => cutRow(r);
+  const from = el.querySelector(".bi-from");
+  if (from) from.onclick = () => openCompare(r.id);
   wireRename(el.querySelector(".bi-name"), r);
   el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
   return el;
@@ -6719,7 +7291,7 @@ function renderPresetBank(list) {
     el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
     el.innerHTML = `
       <div class="bi-top">
-        <span class="bi-origin preset" title="▤ hand-made preset">▤</span>
+        <span class="bi-mark"><span class="bi-origin preset" title="▤ hand-made preset">▤</span></span>
         <span class="bi-name">${esc(p.name)}</span>
         ${inBank ? `<span class="pb-in" title="Already in your pool">in pool</span>` : ""}
       </div>
@@ -6989,6 +7561,16 @@ $("bank-list").addEventListener("keydown", (e) => {
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere
     rateRow(Number(e.key));
+  } else if (e.key.toLowerCase() === "c" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Compare the row under the cursor with its seed: the lineage line is a
+    // button out of the tab order, as the row's others are. `c` is not a
+    // note (z and x are the octave; c is free in the note layout). A sound
+    // with no seed in the lineage has nothing to compare.
+    const id = kbdRowId ?? bankRows[0].id;
+    if (!lineageOf(id)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openCompare(id);
   }
 });
 
@@ -7560,6 +8142,9 @@ function playBench() {
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
+    // A child on the bench as it was bred, heard: its unheard dot goes. An
+    // edit of it is another sound.
+    if (!wb.dirty) heard(wb.subjectId);
     return;
   }
   // A refusal of the press (Space reaches here with ▶ disabled): it jumps the
@@ -13514,6 +14099,7 @@ function startEvolveFrom(id) {
   // Said in the job slot (and on the button), not a toast: a toast carries
   // the result of a gesture, and this one's result comes when the walk lands.
   evolvingFrom = { id, name: nameOf(id), stoppable: false };
+  if (mayGoShown) markMayGo(true); // its seed, and what its child would replace
   lampOn("refine_from");
   renderEvolveFrom();
   renderEvolveBtn(); // EVOLVE POOL waits for ⚡
@@ -19227,8 +19813,7 @@ const SITE_NAMES = {
   rsize: "reverb size", rdamp: "reverb damp", rmix: "reverb mix",
 };
 
-const STRUCT_SITES = new Set(["op", "src", "mod"]);
-const SKIP_SITES = new Set(["leaf", "uid"]);
+// STRUCT_SITES and SKIP_SITES come from words.js, with `changeParts`.
 
 function humanizeDiff(diff) {
   if (!diff || diff.length === 0) return "no visible change";
@@ -19264,6 +19849,40 @@ function humanizeDiff(diff) {
   struct(added, "+");
   struct(removed, "−");
   return parts.join(", ") || `${diff.length} sites rewritten`;
+}
+
+// A bred sound's lineage, by child id: its `LineageEvent` (`lineage()`), the
+// one record of which seed it grew from and what changed. Only breeding
+// (`kind` "refine"); an edit kept as new keeps its ✎.
+let lineageIndex = { from: null, map: new Map() };
+function lineageOf(id) {
+  const list = (views && views.lineage) || [];
+  if (lineageIndex.from !== list) {
+    const map = new Map();
+    for (const ev of list) if (ev.kind === "refine") map.set(ev.child_id, ev);
+    lineageIndex = { from: list, map };
+  }
+  return lineageIndex.map.get(id) || null;
+}
+
+// What changed from a seed to its child, each change in `humanizeDiff`'s
+// words: the modules counted, not read entry by entry (words.js
+// `changeParts`, which says why), then the knobs in their own units.
+function diffParts(diff) {
+  return changeParts(diff, (d, site) => {
+    const name = SITE_NAMES[site] || site;
+    const latent = (v) => /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
+    return latent(d.before) && latent(d.after)
+      ? `${name} ${knobUnit(d.addr, Number(d.before))} → ${knobUnit(d.addr, Number(d.after))}`
+      : `${name} ${d.before} → ${d.after}`;
+  });
+}
+
+/** The lineage line's "what changed": the first three changes, and a count. */
+function lineageChanges(diff) {
+  const parts = diffParts(diff);
+  if (parts.length === 0) return "";
+  return parts.length > 3 ? `${parts.slice(0, 3).join(", ")}, +${parts.length - 3} more` : parts.join(", ");
 }
 
 // ---------- profile ----------
@@ -21142,6 +21761,10 @@ bootMidi();
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
     bornGen = saved.ui.bornGen | 0;
+    for (const id of saved.ui.unheard || []) if (Number.isFinite(id)) unheard.add(id);
+    if (saved.ui.below && Number.isFinite(saved.ui.below.n)) bredBelow = { gen: saved.ui.below.gen | 0, n: saved.ui.below.n | 0 };
+    const rep = saved.ui.replaced;
+    if (rep && Array.isArray(rep.names)) replacedLast = { gen: rep.gen | 0, names: rep.names.filter((s) => typeof s === "string") };
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
     restoreBookmarks(saved.ui.marks);

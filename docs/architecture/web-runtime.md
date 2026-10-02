@@ -102,20 +102,40 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
 - **On `refine_child` and `pinned`**, which change the pool or its pins and
   so the seeds and what may be replaced.
 
-Main keeps the latest as `views.ratings` and draws nothing from it yet
-(Plan-005 draws picks as directions and moves the glows per pick from it).
-`views.ranked` and `views.map` still change only when views are posted. A pick
-in EVOLVE reaches the worker when its undo window closes, so its ratings
-arrive then, not at the click.
+Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
+`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`); nothing
+else is drawn from it yet (Plan-005 draws picks as directions and moves the
+glows per pick from it). `views.ranked` and `views.map` still change only
+when views are posted. A pick in EVOLVE reaches the worker when its undo
+window closes, so its ratings arrive then, not at the click.
 
 **`seeds` and `may_replace` describe a generation opened now.** At rest that
 is the next press of EVOLVE POOL, and they are what to mark. While a
 generation is open or a ⚡ walk is out, a press would wait its turn (see
 [The worker's lanes](#the-workers-lanes)), so they describe one that has not
 started. What the running generation will replace is `refine_child`'s
-`retiring`; its seeds are the last `seeds` posted before it opened, and
-each child's seed comes with it in the lineage `refine_child` carries. Read
-`ratings.may_replace` and `ratings.seeds` only at rest.
+`retiring` (said *will be replaced*: it only grows, one per child admitted).
+A save, a preset or a kept edit joining the pool can change it too
+(`eviction_order` passes over saved sounds, and a new member moves the
+lowest), so while a generation is open the `pinned`, `preset_loaded` and
+`committed` replies carry `retiring` as well (`openRetiring` in
+`worker.js`), and main repaints the marks from it.
+Its seeds come with its progress: every `refine_progress` carries `seeds`,
+`refine_jobs`' parents in job order (job `i` walks from `seeds[i]`). Main
+used to take the last `ratings.seeds` posted before the generation opened,
+which `next_seeds` and `refine_jobs` share a rule with, but with no boot
+crew a generation can open between fill batches, and `fill_step` posts no
+ratings, so that copy could be stale. Each walk's seed also comes with it as
+`refine_child`'s `seed` (the job's `parent_id`), which for a child it
+admitted is also its lineage event's parent. Read `ratings.may_replace` and
+`ratings.seeds` only at rest.
+
+While a ⚡ walk is out (no generation open), the bank marks its seed and the
+first `pool + 1 − pool_target` of `ratings.may_replace` (one with the pool at
+size): ⚡'s child is trimmed against at once when it is absorbed
+(`evict_to_size` with the seed protected), lowest first by
+`eviction_order`, which passes over a seed in flight, and `may_replace` ranks
+the same way.
 
 ## The breed job
 
@@ -131,11 +151,21 @@ turn (`genStep`), so the pool is the serial path's whichever worker finished
 first.
 
 - **Children as they land.** Each absorbed job is posted as `refine_child`
-  with the ranked rows and `refine_retiring`; the bank shows the child at
-  once in a "new · gen N" group at the top of the pool, without re-sorting
-  the ranked rows. Nothing is retired until the finish.
-- **Progress.** `refine_progress` carries the jobs absorbed, the total and an
-  estimate (`eta`, ms) from this session's own walk times.
+  with the ranked rows, the lineage, `refine_retiring`, the engine's reason
+  when it bred nothing (`last_refine_reason`) and the job's seed; the bank
+  shows the child at once in a "new · generation N" group at the top of the
+  pool, without re-sorting the ranked rows, with its seed and what changed
+  from the lineage, and EVOLVE POOL says what the walk came back as. Where
+  the seed's row is in view, the child buds from it into its row, and a
+  child the engine refused (`not_admitted`) buds beside it and fades
+  (`budFrom`, `fadeBeside`). A bud flies between two rows' places as they
+  were when it left, so when the bank is drawn again (the next child of a
+  burst) every bud in flight lands at once (`landFlights`). Nothing is
+  retired until the finish; then the
+  bank lists what was replaced by name (the engine drops the trees).
+- **Progress.** `refine_progress` carries the jobs absorbed, the total, an
+  estimate (`eta`, ms) from this session's own walk times, and the
+  generation's `seeds`.
 - **Judged at the start.** Admission and the finish's retirements rank
   under the posterior the generation opened with (`judge` in `engine.rs`),
   not the one picks made meanwhile have reweighted, so which children are

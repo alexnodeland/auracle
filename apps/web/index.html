@@ -589,10 +589,12 @@
             </div>
           </div>
           <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
-               beside it. Hovering it marks the rows a generation may replace
-               (the wrapper hears the pointer while the button is disabled). -->
+               beside it, and it says what each walk came back as. Pointing at
+               it marks, in the bank, the seeds a generation breeds from and
+               the sounds it may replace (the wrapper hears the pointer while
+               the button is disabled). -->
           <span class="evolve-wrap" id="evolve-wrap">
-            <button class="hw-btn small" id="evolve-btn" title="Breed new sounds toward your taste. The rows it may replace are marked while you hover: save one to keep it.">evolve pool</button>
+            <button class="hw-btn small" id="evolve-btn" title="Breed a generation from the seeds it marks">evolve pool</button>
             <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, the lowest unsaved sounds are replaced to bring the pool back to its size, and that can be a child bred early.">stop</button>
           </span>
         </div>
@@ -741,6 +743,21 @@
 <!-- structural-edit context menu -->
 <div class="ctx-menu hidden" id="ctx-menu"></div>
 
+<!-- Compare: a bred sound beside its seed, opened from its lineage line in
+     the bank (the seed's outline, the child growing out of it, what changed,
+     what the model rated each when it bred them, and both to play) -->
+<div class="compare hidden" id="compare" role="dialog" aria-modal="false" aria-labelledby="compare-title" tabindex="-1">
+  <div class="cmp-head">
+    <span class="cmp-title" id="compare-title"></span>
+    <button class="cmp-x" id="compare-x" type="button" aria-label="Close" title="Close · Esc">×</button>
+  </div>
+  <canvas class="cmp-fig" id="compare-fig" role="img"></canvas>
+  <p class="cmp-say" id="compare-say"></p>
+  <ul class="cmp-diff mono" id="compare-diff"></ul>
+  <p class="cmp-rated voice" id="compare-rated"></p>
+  <div class="cmp-play" id="compare-play"></div>
+</div>
+
 <!-- transient confirmations; persistent conditions go to #alarm -->
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 <div class="alarm hidden" id="alarm" role="alert"></div>
@@ -829,7 +846,7 @@
         <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller’s first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>Space</kbd> hear the sound you’re playing · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
+        <p><kbd>Space</kbd> hear the sound you’re playing · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> hear A or B · <kbd>←</kbd>/<kbd>→</kbd> pick · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
         <div class="help-h">the rack canvas</div>
         <p><kbd>Home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>

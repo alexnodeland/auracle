@@ -16,6 +16,14 @@ import {
   leanSentence,
   onApple,
   platformKeys,
+  walkSaid,
+  walkLabel,
+  belowNote,
+  fromLine,
+  grownFrom,
+  bredRatings,
+  changeParts,
+  markWord,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -167,6 +175,34 @@ test("lists take the serial comma", () => {
   assert.equal(series(["a", "b", "c"]), "a, b, and c");
 });
 
+test("EVOLVE POOL narrates each walk from the engine's reason, and only a refused child is rated below the pool", () => {
+  assert.equal(walkLabel(3, 10), "walk 3 of 10");
+  assert.equal(walkSaid(41, null), "joined the pool");
+  assert.equal(walkSaid(0, "not_admitted"), "rated below the pool");
+  assert.equal(walkSaid(0, "duplicate"), "already in the pool");
+  assert.equal(walkSaid(0, "no_move"), "came back unchanged");
+  assert.equal(walkSaid(0, "outside_support"), "couldn’t start");
+  assert.equal(walkSaid(0, "stale"), "");
+  for (const r of ["not_admitted", "duplicate", "no_move", "outside_support"]) {
+    // "keep" is PERFORM's Keep pad, and nothing else (voice.md's word table).
+    assert.ok(!/\b(keep|kept)\b/.test(walkSaid(0, r)), walkSaid(0, r));
+    voiced(walkSaid(0, r));
+  }
+});
+
+test("the bank's lineage lines name the seed, what changed, and both ratings with their words", () => {
+  assert.equal(fromLine("Soft Pad", "+reverb, cutoff 1.2 kHz → 3.4 kHz"), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz");
+  assert.equal(fromLine("Soft Pad", ""), "from Soft Pad");
+  assert.equal(grownFrom("Soft Pad", 3), "Grown from Soft Pad in generation 3.");
+  assert.equal(belowNote(1), "1 more was bred and rated below the pool.");
+  assert.equal(belowNote(3), "3 more were bred and rated below the pool.");
+  const r = bredRatings("Soft Pad", 0.7, "Warm Drone 2", 0.62);
+  assert.equal(r, "when it bred them, it rated Soft Pad 70% · fairly sure and Warm Drone 2 62% · leaning");
+  // A percentage never stands alone (voice.md, the model's voice).
+  assert.ok(!/\d%(?! ·)/.test(r), r);
+  for (const s of [fromLine("Soft Pad", "+reverb"), grownFrom("Soft Pad", 1), belowNote(2), r]) voiced(s);
+});
+
 test("a module's lean on the spec card reads as a sentence", () => {
   const s = leanSentence("analog sustain", 0.6, 0.62, 0.2);
   assert.equal(s, "In analog sustain (60% of your pool), you lean toward it (θ +0.62 ± 0.20).");
@@ -205,4 +241,58 @@ test("a key chord is written in the platform's own words", () => {
   assert.equal(onApple({ platform: "Linux x86_64" }), false);
   assert.equal(onApple({ userAgentData: { platform: "macOS" }, platform: "" }), true);
   assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
+});
+
+test("what changed counts the modules: a tree re-laid by an insertion says only what it gained and lost", () => {
+  // A seed mix(filter(vco), pluck) and a child with a delay inserted above:
+  // `tree_diff` is positional, so the addresses shift. Before: filter, mix,
+  // delay, pluck. After: delay, delay, mix. Net: delay +1, filter −1,
+  // pluck −1, mix 0. Read entry by entry it said "filter → delay, mix →
+  // delay, −delay, −pluck, +mix".
+  const diff = [
+    { addr: "r#op", before: "filter", after: "delay" },
+    { addr: "r/0#op", before: "mix", after: "delay" },
+    { addr: "r/0/0#op", before: "delay", after: null },
+    { addr: "r/1#src", before: "pluck", after: null },
+    { addr: "r/0/1#op", before: null, after: "mix" },
+  ];
+  assert.deepEqual(changeParts(diff), ["filter → delay", "−pluck"]);
+});
+
+test("what changed: a moved module is not said, a swap is, and counts carry ×n", () => {
+  // Moved: gone in one place, new in another.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: "delay", after: null },
+    { addr: "r/1/0#op", before: null, after: "delay" },
+  ]), []);
+  // Gains before losses, whatever order the diff lists them in.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: "delay", after: null },
+    { addr: "r/1#op", before: null, after: "chorus" },
+  ]), ["+chorus", "−delay"]);
+  // A plain swap.
+  assert.deepEqual(changeParts([{ addr: "r#op", before: "filter", after: "delay" }]), ["filter → delay"]);
+  // Two of one kind gained, one lost; the empty slot is not a module.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#op", before: null, after: "chorus" },
+    { addr: "r/1#op", before: null, after: "chorus" },
+    { addr: "r/2#mod", before: "lfo", after: "no mod" },
+    { addr: "r/3#mod", before: "none", after: null },
+  ]), ["+chorus ×2", "−lfo"]);
+  // Knobs follow the modules, worded by the caller; a removed module's knobs
+  // and the grammar's bookkeeping are not changes of their own.
+  assert.deepEqual(changeParts([
+    { addr: "r/0#cut", before: "0.41", after: "0.62" },
+    { addr: "r/1#op", before: null, after: "delay" },
+    { addr: "r/1#time", before: null, after: "0.30" },
+    { addr: "r/1#leaf", before: "a", after: "b" },
+  ], (d, site) => `${site}: ${d.before} → ${d.after}`), ["+delay", "cut: 0.41 → 0.62"]);
+});
+
+test("a bank row's mark says what pointing at EVOLVE POOL means for it", () => {
+  assert.equal(markWord("seed"), "seed");
+  assert.equal(markWord("may"), "may be replaced");
+  assert.equal(markWord("will"), "will be replaced");
+  assert.equal(markWord("other"), "");
+  for (const k of ["seed", "may", "will"]) voiced(markWord(k));
 });

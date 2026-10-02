@@ -1179,6 +1179,14 @@ function refineRetiring() {
   }
 }
 
+/** What the open generation's end will replace now, for a reply that can
+ *  change it (a save, a preset or a kept edit joining the pool: each moves
+ *  the pool's lowest unsaved members); undefined with none open, so main
+ *  keeps its own. */
+function openRetiring() {
+  return gen ? refineRetiring() : undefined;
+}
+
 /** Milliseconds this generation still owes, from this session's walk times,
  *  or null before any walk has finished. */
 function genEta(g) {
@@ -1206,6 +1214,10 @@ function genProgress(g) {
     eta: genEta(g),
     farm: g.farmed,
     workers: g.farmed ? farmCrew() : 0,
+    // The generation's seeds, best first (`refine_jobs`' parents: job `i`
+    // walks from `seeds[i]`), so main marks this generation's and not the
+    // next one's, whatever ratings it last heard.
+    seeds: g.parents,
   });
 }
 
@@ -1416,6 +1428,10 @@ function genLanded(g, child) {
     index: g.next - 1,
     child: child > 0 ? child : 0,
     reason,
+    // The job's parent (`WalkJob.parent_id`): the seed this walk started
+    // from. An admitted child's lineage event names it too; a refused one's
+    // is recorded nowhere else, and the bank fades it beside this seed.
+    seed: g.parents[g.next - 1],
     done: g.next,
     total: g.total,
     ranked: JSON.parse(engine.ranked()),
@@ -2377,6 +2393,7 @@ async function dispatch(m) {
         outcome: m.outcome || "none",
         views: tasteViews(),
         status: status(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2622,8 +2639,11 @@ async function dispatch(m) {
         ok,
         budget,
         ranked: JSON.parse(engine.ranked()),
-        // A save changes what a generation may replace.
+        // A save changes what a generation may replace, and while one is
+        // open, what its end will: a saved sound leaves `retiring` and the
+        // next lowest unsaved one takes its place (`openRetiring`).
         ratings: engineRatings(),
+        retiring: openRetiring(),
       });
       break;
     }
@@ -2654,7 +2674,7 @@ async function dispatch(m) {
       post({
         type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
         prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
-        views: tasteViews(), status: status(),
+        views: tasteViews(), status: status(), retiring: openRetiring(),
       });
       // A preset clicked open: main answers `preset_loaded` with the bench
       // open (`edit_begin`), a round trip in which the engine is free to

@@ -1,7 +1,7 @@
 // ⚡ evolve from this, and what the bank and the toasts say about its child
 // (RFC-006, "Found along the way").
 //
-// A generation's children go into the bank's New group ("new · gen N", each
+// A generation's children go into the bank's New group ("new · generation N", each
 // row tagged NEW) as they land. A ⚡ child never did: it was bred, the engine
 // stamped it with a generation of its own, and the bank listed it among the
 // ranked rows with nothing to say it was new. It joins the group now, as a
@@ -97,8 +97,8 @@ test("a ⚡ child joins the bank's New group, as a generation's children do", { 
   if (await page.locator('.bf[data-f="pool"]').getAttribute("class").then((c) => !/\bactive\b/.test(c))) {
     await page.locator('.bf[data-f="pool"]').click();
   }
-  const head = page.locator("#bank-list .bank-group").first();
-  await expect(head).toContainText(`new · gen ${landed.status.generation}`, { timeout: 10_000 });
+  const head = page.locator("#bank-list .bank-group.new .bg-label");
+  await expect(head).toHaveText(`new · generation ${landed.status.generation}`, { timeout: 10_000 });
   const row = page.locator(`#bank-list .bank-item[data-id="${landed.childId}"]`);
   await expect(row).toHaveClass(/\bfresh\b/);
   await expect(row.locator(".bi-new")).toHaveText("new");

@@ -150,6 +150,134 @@ export function evolveRefusal(reason, name) {
   }
 }
 
+// ---- a generation as it runs, and the lineage it leaves in the bank ----
+
+/** What one walk came back as, for EVOLVE POOL's narration ("walk 3 of 10 ·
+ *  joined the pool"): `child` is the id the engine admitted (`refine_child`'s
+ *  `child`, 0 for none) and `reason` the engine's `RefineOutcome` when there
+ *  is none. Only `not_admitted` is a child refused: `duplicate` landed on a
+ *  sound the pool holds, `no_move` bred nothing, `outside_support` never
+ *  started. "" for a reason with nothing to say. */
+export function walkSaid(child, reason) {
+  if (child > 0) return "joined the pool";
+  switch (reason) {
+    case "not_admitted":
+      return "rated below the pool";
+    case "duplicate":
+      return "already in the pool";
+    case "no_move":
+      return "came back unchanged";
+    case "outside_support":
+      return "couldn’t start";
+    default:
+      return "";
+  }
+}
+
+/** EVOLVE POOL once a walk has come back: "walk 3 of 10" (the jobs are
+ *  absorbed in order, so the third to come back is the third walk). */
+export function walkLabel(done, total) {
+  return `walk ${done} of ${total}`;
+}
+
+/** Under the bank's New group: the children of its generation that are not
+ *  in it, refused when they landed or replaced when it ended. */
+export function belowNote(n) {
+  return `${n} more ${n === 1 ? "was" : "were"} bred and rated below the pool.`;
+}
+
+/** A bred sound's line on its bank row: its seed (`LineageEvent.parent_id`,
+ *  by the name it has or last had) and what changed (`LineageEvent.diff`, in
+ *  words), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz". */
+export function fromLine(seedName, changes) {
+  return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
+}
+
+/** Compare's sentence under its figure. */
+export function grownFrom(seedName, generation) {
+  return `Grown from ${seedName} in generation ${generation}.`;
+}
+
+/** What the model rated a seed and its child when it bred them
+ *  (`LineageEvent`'s `parent_utility` and `child_utility`, as the bank's
+ *  percentages), in its own voice and with the word for how sure each reads. */
+export function bredRatings(seedName, seedP, childName, childP) {
+  return `when it bred them, it rated ${seedName} ${guessLabel(seedP)} and ${childName} ${guessLabel(childP)}`;
+}
+
+/** The word on a bank row while EVOLVE POOL is pointed at:
+ *  - `seed`: a generation breeds from it (`ratings.seeds`, or the running
+ *    generation's own);
+ *  - `may`: a generation opened now may replace it (`ratings.may_replace`; no
+ *    sound outside the list can go at its end), or ⚡'s child would, if the
+ *    pool takes it;
+ *  - `will`: the running generation's end will replace it, stopped now or
+ *    run out (`refine_child`'s `retiring`: the lowest unsaved members, as
+ *    many as its children put the pool over size, under the posterior it
+ *    opened with, so a child taken in adds one and takes none away). Each
+ *    child still to come adds the next lowest, so it is not the whole of
+ *    what may go: "will", not "may".
+ *  The longest fits the stars' place on the narrowest bank (200 px). */
+export function markWord(kind) {
+  return kind === "seed" ? "seed" : kind === "may" ? "may be replaced" : kind === "will" ? "will be replaced" : "";
+}
+
+// ---- what changed from a seed to its child ----
+
+/** The sites of a module, as `tree_diff` names them: its kind (`op`, `src`,
+ *  `mod`), whose value is the module's name, or the empty slot's. */
+export const STRUCT_SITES = new Set(["op", "src", "mod"]);
+/** Grammar bookkeeping a player never sees (a leaf's kind flips whenever a
+ *  module is swapped, which says it better). */
+export const SKIP_SITES = new Set(["leaf", "uid"]);
+
+/** What changed from a seed to its child (a `LineageEvent`'s `diff`), each
+ *  change a phrase, the modules first and then the knobs (`knob(d, site)`
+ *  words one).
+ *
+ *  `tree_diff` is positional: a module inserted above others shifts their
+ *  addresses, so one change to what the patch holds can show as several
+ *  swaps, removals and additions, and a module that only moved shows as gone
+ *  in one place and new in another. So the modules are counted, not read
+ *  entry by entry: every module site nets its old name −1 and its new name
+ *  +1. A swap `X → Y` is said only where it accounts for a lost X and a
+ *  gained Y (walked in the diff's order, one of each consumed per swap);
+ *  what is left is said as `+name` (all the gains) then `−name` (all the
+ *  losses), `×n` for more than one. A
+ *  module that moved nets to nothing and is not said. */
+export function changeParts(diff, knob = (d, site) => `${site} ${d.before} → ${d.after}`) {
+  // "no mod" / "none" are the empty slot, not a module.
+  const empty = (v) => v == null || /^(no\b|none$)/.test(v);
+  const net = new Map(); // module name -> gained (+) or lost (−), first seen first
+  const bump = (name, n) => net.set(name, (net.get(name) || 0) + n);
+  const swaps = [];
+  const knobs = [];
+  for (const d of diff || []) {
+    const site = d.addr.split("#").pop();
+    if (SKIP_SITES.has(site)) continue;
+    if (STRUCT_SITES.has(site)) {
+      if (!empty(d.before)) bump(d.before, -1);
+      if (!empty(d.after)) bump(d.after, 1);
+      if (!empty(d.before) && !empty(d.after) && d.before !== d.after) swaps.push([d.before, d.after]);
+      continue;
+    }
+    if (d.before == null || d.after == null) continue; // a knob of a module added or removed
+    knobs.push(knob(d, site));
+  }
+  const mods = [];
+  for (const [x, y] of swaps) {
+    if (net.get(x) < 0 && net.get(y) > 0) {
+      mods.push(`${x} → ${y}`);
+      bump(x, 1);
+      bump(y, -1);
+    }
+  }
+  // What it gained, then what it lost, each in the order first seen.
+  for (const [name, n] of net) if (n > 0) mods.push(`+${name}${n > 1 ? ` ×${n}` : ""}`);
+  for (const [name, n] of net) if (n < 0) mods.push(`−${name}${n < -1 ? ` ×${-n}` : ""}`);
+  return [...mods, ...knobs];
+}
+
 /** "a", "a and b", "a, b, and c" (the serial comma, always). */
 export function series(parts) {
   if (parts.length <= 1) return parts.join("");
