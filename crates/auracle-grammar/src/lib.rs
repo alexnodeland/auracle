@@ -1079,10 +1079,9 @@ mod tests {
     fn everything_a_hand_can_reach_has_finite_prior() {
         use mutate::{ModKind, NodeKind, StructOp};
         // With AUDIO IN on. Nothing else's mass depends on its weight, so for
-        // every other kind this is the default grammar; and the app places no
-        // AUDIO IN until live capture works, which is when the default turns
-        // it on (`AUDIO_IN_WEIGHT`, Plan-007 task 4). Until then a placed one
-        // scores −∞ under the default, which
+        // every other kind this is the default grammar; and AUDIO IN is the
+        // term the default turns on (`AUDIO_IN_WEIGHT`, Plan-007 task 4).
+        // Until then a placed one scores −∞ under the default, which
         // `audio_in_is_rare_and_the_prior_never_picks_an_input` pins.
         let prior = PatchGrammarPrior::default().with_audio_in();
         let finite = |what: &str, t: &PatchTree| {

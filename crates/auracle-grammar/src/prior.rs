@@ -224,11 +224,8 @@ impl Default for PatchGrammarPrior {
             // out of φ.
             //
             // `AudioIn` is last, and **off**: [`AUDIO_IN_WEIGHT`] is 0 until
-            // the app can capture a live input (Plan-007 task 4). Until then a
-            // drawn listener would be heard through the reference clip in a
-            // duel or the bank and as silence from the keys and PERFORM, on a
-            // plate the player cannot use. At 0 the source table is exactly
-            // the one it was before the term existed, so every pool a seed
+            // it is turned on (Plan-007 task 4). At 0 the source table is
+            // exactly the one it was before the term existed, so every pool a seed
             // deals is unchanged. [`PatchGrammarPrior::with_audio_in`] is the
             // prior it is turned on to.
             source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005, AUDIO_IN_WEIGHT],
@@ -317,26 +314,24 @@ impl Default for PatchGrammarPrior {
     }
 }
 
-/// AUDIO IN's source weight in the shipped prior: **0 until live capture
-/// works** (Plan-007 task 4).
+/// AUDIO IN's source weight in the shipped prior: **0 until it is turned on**
+/// (Plan-007 task 4).
 ///
-/// Before the app can capture an input, a listener in the pool is a sound the
-/// player hears two ways: through the reference clip in a duel or a bank
-/// render, and as silence from the keys and PERFORM, which have no input to
-/// read. So the prior draws none. The term is otherwise whole (it compiles,
-/// renders with the audition clip, scores, and walks keep its input), and
-/// [`PatchGrammarPrior::with_audio_in`] is the prior with it on.
-///
-/// Turning it on is setting this to [`AUDIO_IN_ENABLED_WEIGHT`] when task 4
-/// lands. That setting is the one the paired `make revalidate` in Plan-007
-/// measured, so if nothing else has changed, it does not owe a new run. It
-/// does move what a seed deals, so it owes `make perform-wirings` and a
-/// re-pinned boot probe (`crates/auracle-wasm/tests/boot_agrees.rs`).
+/// The term is whole (it compiles, renders with the audition clip, scores, and
+/// walks keep its input), the app captures a live input, plays it through the
+/// patch and measures with the captured clip, and
+/// [`PatchGrammarPrior::with_audio_in`] is the prior with it on. Turning it on
+/// is the maintainer's call: setting this to [`AUDIO_IN_ENABLED_WEIGHT`]. That
+/// setting is the one the paired `make revalidate` in Plan-007 measured, so if
+/// nothing else has changed, it does not owe a new run. It does move what a
+/// seed deals, so it owes `make perform-wirings` and a re-pinned boot probe
+/// (`crates/auracle-wasm/tests/boot_agrees.rs`).
 ///
 /// At 0 the grammar gives a tree containing an AUDIO IN `log p = −∞`, which
-/// is Silence's argument for never using 0: such a patch cannot be walked.
-/// That is safe only while nothing can put one in a session, and nothing in
-/// the app can yet (the node has no palette entry).
+/// is Silence's argument for never using 0: such a patch cannot be walked. The
+/// app's module rail places one, so a player can have one in a session; ⚡
+/// evolve from it is refused (`RefineOutcome::OutsideSupport`), and the app
+/// says the reason is AUDIO IN rather than a knob.
 pub const AUDIO_IN_WEIGHT: f64 = 0.0;
 
 /// AUDIO IN's weight once it is on: Silence's 0.5%, so a drawn tree reads an
