@@ -1230,7 +1230,7 @@ impl PatchGrammarPrior {
                     uid: Uid::NEW,
                     input: 0,
                     gain: rng.gen(),
-                    channel: InputChannel::from_index(rng.gen_range(0..InputChannel::ALL.len())),
+                    channel: InputChannel::from_index(gen_index(rng, InputChannel::ALL.len())),
                 },
             }
         } else {

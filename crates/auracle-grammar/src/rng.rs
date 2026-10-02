@@ -73,4 +73,64 @@ mod tests {
         let drawn: Vec<usize> = (0..12).map(|_| gen_index(&mut rng, 6)).collect();
         assert_eq!(drawn, [3, 3, 2, 0, 2, 4, 5, 0, 5, 3, 2, 3]);
     }
+
+    /// No draw in this crate reads the stream by the target's width: every
+    /// `gen_range` is over literals (an `i32` or an `f64`) or a `u64`, and an
+    /// index goes through [`gen_index`].
+    ///
+    /// A native test cannot see the other kind (on a 64-bit host it is
+    /// [`gen_index`] word for word, which is the point of the function), and
+    /// `boot_probe` only sees one in its first draws and only when the word
+    /// it misreads changes the tree. So this reads the source: a
+    /// `gen_range(0..ALL.len())` added for a new categorical fails here, on
+    /// the machine it was written on, rather than as a pool the browser
+    /// deals differently.
+    #[test]
+    fn no_draw_in_the_crate_depends_on_the_targets_width() {
+        let literal = |s: &str| s.trim().trim_start_matches('-').parse::<f64>().is_ok();
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+        let mut offenders = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("the crate's src") {
+            let path = entry.expect("a src entry").path();
+            // This module states the rule and tests against the plain draw.
+            if path.extension().is_none_or(|e| e != "rs") || path.ends_with("rng.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("a source file");
+            for (n, line) in text.lines().enumerate() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for (at, _) in line.match_indices("gen_range(") {
+                    // The argument, to its matching parenthesis.
+                    let rest = &line[at + "gen_range(".len()..];
+                    let mut depth = 1;
+                    let end = rest
+                        .char_indices()
+                        .find(|&(_, c)| {
+                            depth += match c {
+                                '(' => 1,
+                                ')' => -1,
+                                _ => 0,
+                            };
+                            depth == 0
+                        })
+                        .map_or(rest.len(), |(i, _)| i);
+                    let arg = &rest[..end];
+                    let fine = arg.trim_end().ends_with("as u64")
+                        || arg.split_once("..").is_some_and(|(lo, hi)| {
+                            literal(lo) && literal(hi.trim_start_matches('='))
+                        });
+                    if !fine {
+                        offenders.push(format!("{}:{}: {}", path.display(), n + 1, line.trim()));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "a draw whose width depends on the target (use gen_index):\n{}",
+            offenders.join("\n")
+        );
+    }
 }
