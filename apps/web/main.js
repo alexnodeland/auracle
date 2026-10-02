@@ -613,6 +613,16 @@ function announceRepair() {
   if (r.terms) bits.push(`${r.terms} sound${r.terms > 1 ? "s" : ""}`);
   if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste`);
   if (r.dropped) bits.push(`${r.dropped} unreadable pick${r.dropped > 1 ? "s" : ""} dropped`);
+  // A sound held back is not mended, so it gets its own sentence: its only
+  // source was a recording that couldn't be read (Plan-007 task 6).
+  if (r.held) {
+    note(
+      r.held > 1
+        ? `${r.held} sounds are held back: their recordings couldn't be read.`
+        : "One sound is held back: its recording couldn't be read.",
+      { urgent: true },
+    );
+  }
   if (!bits.length) return;
   // `urgent`, because `toastPump` drops anything that went stale in the queue
   // behind the boot's own chatter, and a notice that saved evidence changed is
