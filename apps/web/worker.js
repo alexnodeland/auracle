@@ -1131,7 +1131,9 @@ async function measure(m) {
 // Here, with no crew, it renders the first `GUESS_FLOOR` candidates, one per
 // turn with the player answered between them, as PERFORM's measurement does,
 // and stops rendering once `GUESS_BUDGET_MS` of rendering is spent, ranking
-// what it has (`rendered` of `planned` says how much). A crew renders them
+// what it has (`rendered` of `planned` says how much). The budget counts
+// render time only, checked after each render, so it can run over by one
+// render. A crew renders them
 // all with `farm_render` and `memo_absorb` (task 7 raises one for it; the
 // plan's `cache` keys the farm's store). A `later` job: it gives way to work
 // the player asks for and resumes where it stopped, since every render it
@@ -1145,25 +1147,33 @@ async function guessRun(m) {
   const failed = m.failed || (m.failed = []);
   const reply = (data) => post({ type: "guess", token: m.token ?? null, tree: engine.edit_tree_json(), data });
   m.spent = m.spent || 0;
-  for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
-    const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
-    if (plan.reason) {
-      reply(plan);
-      return;
-    }
-    if (!plan.jobs.length) break;
-    for (const job of plan.jobs) {
-      const t = performance.now();
-      if (!engine.memo_render(job.tree)) failed.push(job.key);
-      m.spent += performance.now() - t;
-      if (await breathe(laneOf(m))) {
-        lanes[LATER].unshift(m);
+  try {
+    for (let round = 0; round < 6 && m.spent < GUESS_BUDGET_MS; round++) {
+      const plan = JSON.parse(engine.guess_plan(at, JSON.stringify(failed), GUESS_FLOOR));
+      if (plan.reason) {
+        reply(plan);
         return;
       }
-      if (m.spent >= GUESS_BUDGET_MS) break;
+      if (!plan.jobs.length) break;
+      for (const job of plan.jobs) {
+        const t = performance.now();
+        if (!engine.memo_render(job.tree)) failed.push(job.key);
+        m.spent += performance.now() - t;
+        if (await breathe(laneOf(m))) {
+          lanes[LATER].unshift(m);
+          return;
+        }
+        if (m.spent >= GUESS_BUDGET_MS) break;
+      }
     }
+    reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
+  } catch (err) {
+    // Answered, as `measure` answers: the page holds a guess open until its
+    // reply lands. A trap still poisons the engine, through `dispatch`.
+    const message = String((err && err.message) || err);
+    post({ type: "guess", token: m.token ?? null, data: null, error: message });
+    if (isFatal(err, message)) throw err;
   }
-  reply(JSON.parse(engine.guess_rank(at, JSON.stringify(failed), GUESS_FLOOR)));
 }
 
 // ---------- a generation: the breed job ----------
