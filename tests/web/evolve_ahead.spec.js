@@ -169,6 +169,21 @@ test("a patch cut while its pair waits ahead is never put up", async ({ page }) 
 const tableKey = async (page) => [...(await cardIds(page))].sort((x, y) => x - y).join();
 const key = (p) => [...p].sort((x, y) => x - y).join();
 
+// Which pair a deal returns depends on the pool when it is dealt, and the
+// pool is still filling while these tests deal, so it depends on the
+// machine's speed: the same deal came back [3,6] on one CI run, [3,12] on
+// another and [3,7], the pair just put on the table, on a third. An answer
+// main may not put up (`aheadUsable`: the pair on the table, the pair just
+// put away, the pick held in its undo window) is dealt again, one deal per
+// refused answer, by design. So "the pair dealt next" is the first answer
+// main may put up: the order holds, and a refused answer is skipped.
+/** Index of the first pair in `pairs`, from `from`, whose key is none of
+ *  `refused`; -1 if there is none yet. */
+const firstUsable = (pairs, refused, from = 0) => {
+  for (let i = from; i < pairs.length; i++) if (!refused.includes(key(pairs[i]))) return i;
+  return -1;
+};
+
 test("pairs go up in the order they were dealt when a pick lands while the next deal is out", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
@@ -182,6 +197,7 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
   expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
   await expect.poll(() => page.evaluate(() => window.__gate.closed)).toBe(true);
   // Picked again while that deal is out: the cards wait for it.
+  const answered = await tableKey(page);
   await page.locator("#choose-b").click();
   await expect(page.locator("#choose-a")).toBeDisabled();
   await page.waitForTimeout(1_500);
@@ -191,17 +207,26 @@ test("pairs go up in the order they were dealt when a pick lands while the next 
     page.evaluate((m) => window.__deals.slice(m).filter(([k, , p]) => k === "got" && p).map(([, , p]) => p), mark);
   const first = await dealt();
   console.log(`dealt after the pick: ${JSON.stringify(first)}; on the table: ${await tableKey(page)}`);
-  // The first pair dealt after the pick is the one on the table…
-  expect(await tableKey(page)).toBe(key(first[0]));
-  // …and nothing was dealt for the table on top of the deal already out.
-  const sentForTable = await page.evaluate((m) => window.__deals.slice(m).filter(([k, a]) => k === "sent" && !a).length, mark);
-  expect(sentForTable, "a second deal was asked for while one was out").toBe(0);
+  // The first pair dealt after the pick that may go up is the one on the
+  // table (the pair just answered may not)…
+  const up = firstUsable(first, [answered]);
+  expect(up, "no answer main may put up").toBeGreaterThanOrEqual(0);
+  expect(await tableKey(page)).toBe(key(first[up]));
+  // …and nothing was dealt for the table on top of the deal already out:
+  // none before its answer landed, and one for each answer refused.
+  const since = await page.evaluate((m) => window.__deals.slice(m), mark);
+  const firstGot = since.findIndex(([k, , p]) => k === "got" && p);
+  const forTable = (from, to) => since.slice(from, to).filter(([k, a]) => k === "sent" && !a).length;
+  expect(forTable(0, firstGot), "a second deal was asked for while one was out").toBe(0);
+  expect(forTable(0), "a deal for the table that no refused answer asked for").toBe(up);
 
   // The next pick puts up the pair dealt after that one, at once.
-  await expect.poll(async () => (await dealt()).length, { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+  const refused = [key(first[up]), answered];
+  await expect.poll(async () => firstUsable(await dealt(), refused, up + 1), { timeout: 60_000 }).toBeGreaterThan(up);
   await page.waitForTimeout(2_000);
+  const next = (await dealt())[firstUsable(await dealt(), refused, up + 1)];
   expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
-  expect(await tableKey(page)).toBe(key((await dealt())[1]));
+  expect(await tableKey(page)).toBe(key(next));
   expect(errs).toEqual([]);
 });
 
@@ -222,11 +247,13 @@ test("a pick taken back while the next deal is out leaves that pair waiting as t
   await expect(page.locator("#choose-a")).toBeEnabled();
   expect(await tableKey(page)).toBe(before);
   await page.evaluate(() => window.__openGate());
-  // The deal that was out is the next pair, sounds and all: the next pick
-  // puts it up at once, without a deal.
-  await expect.poll(() => page.evaluate((m) => window.__deals.slice(m).some(([k, , p]) => k === "got" && p), mark), { timeout: 60_000 }).toBe(true);
+  // The deal that was out is the next pair, sounds and all (or, if it came
+  // back as the pair on the table, the answer main dealt again for it): the
+  // next pick puts it up at once, without a deal.
+  const got = () => page.evaluate((m) => window.__deals.slice(m).filter(([k, , p]) => k === "got" && p).map(([, , p]) => p), mark);
+  await expect.poll(async () => firstUsable(await got(), [before]), { timeout: 60_000 }).toBeGreaterThanOrEqual(0);
   await page.waitForTimeout(3_000);
-  const next = await page.evaluate((m) => window.__deals.slice(m).find(([k, , p]) => k === "got" && p)[2], mark);
+  const next = (await got())[firstUsable(await got(), [before])];
   const pickMark = await page.evaluate(() => window.__deals.length);
   expect(await pickAndTime(page, "#choose-a")).toBeLessThan(300);
   expect(await tableKey(page)).toBe(key(next));
