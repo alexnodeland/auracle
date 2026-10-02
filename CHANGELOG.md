@@ -30,7 +30,7 @@ changelog that edits its own past is not a record.
   because it is grown from the sound you're playing. Taken, it fills with
   green and goes into the name; passed, it folds back into it. With reduced
   motion on, nothing moves.
-- **Stage mode.** <kbd>⇧F</kbd> puts the sound you're playing on the whole
+- **Stage mode.** In PERFORM, <kbd>⇧F</kbd> puts the sound you're playing on the whole
   screen, drawn from what you hear, for a gig or a stream. The keys and
   Space play as everywhere, and <kbd>⇧F</kbd> or <kbd>Esc</kbd> leaves.
 - **The mod wheel and pressure follow MOTION and BRIGHT** wherever you put

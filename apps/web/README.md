@@ -17,7 +17,7 @@ the bank head walks through what a generation is and what evolving costs.
   by its own measured response (every preset's six ship measured), a Wander
   dial (still → ideas → drift → roam), pads to Keep, go Back, grow an Offer
   into a second slot and Peek, Blend or Take it, velocity →
-  timbre, and stage mode (⇧F). MIDI controllers auto-map onto the deck's
+  timbre, and stage mode (⇧F, in PERFORM). MIDI controllers auto-map onto the deck's
   first eight controls.
 - **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at
   true positions, mod wires pulsing at their modulator's rate), editable and

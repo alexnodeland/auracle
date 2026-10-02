@@ -2976,6 +2976,7 @@ export function createPerform(host) {
     const rootEl = el("div", "st-stage");
     rootEl.tabIndex = -1;
     rootEl.setAttribute("role", "dialog");
+    rootEl.setAttribute("aria-modal", "true");
     rootEl.setAttribute("aria-label", `Stage mode: ${host.label()}`);
     const cv = el("canvas", "st-canvas");
     cv.setAttribute("aria-hidden", "true");
@@ -3004,10 +3005,41 @@ export function createPerform(host) {
     rootEl.addEventListener("click", (e) => {
       if (!e.target.closest("button")) host.play?.();
     });
+    const back = document.activeElement;
+    // Everything behind the stage is out of reach while it is on: Tab cannot
+    // land on a hidden control there for Space to press (`inert`), and Tab
+    // inside goes between the stage and its × (the keydown below). The
+    // toasts and the alarm are the exception: a refusal or an alarm said now
+    // shows over the stage (style.css), and can be read and pressed.
+    const behind = [...document.body.children].filter((e) => !e.inert && e.id !== "toasts" && e.id !== "alarm");
+    behind.forEach((e) => (e.inert = true));
     document.body.append(rootEl);
     document.documentElement.classList.add("st-on");
-    stageOn = { root: rootEl, cv, name, ticks, raf: 0, entered: false, back: document.activeElement };
+    stageOn = { root: rootEl, cv, name, ticks, hint, leave, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
     rootEl.focus({ preventScroll: true });
+    // A refusal is said in a toast, which stage mode would hide: urgent ones
+    // are lifted above it (style.css), and said in the stage's own line too,
+    // for a few seconds. A receipt is not news on stage, and stays hidden.
+    stageOn.watch = new MutationObserver((list) => {
+      const st = stageOn;
+      if (!st) return;
+      for (const m of list) {
+        for (const n of m.addedNodes) {
+          if (!(n instanceof Element) || !n.classList.contains("urgent")) continue;
+          const text = n.querySelector(".toast-msg")?.textContent || "";
+          if (!text) continue;
+          st.hint.textContent = text;
+          st.hint.classList.add("said");
+          clearTimeout(st.hintTimer);
+          st.hintTimer = setTimeout(() => {
+            st.hint.textContent = st.hintText;
+            st.hint.classList.remove("said");
+          }, 5000);
+        }
+      }
+    });
+    const toasts = document.getElementById("toasts");
+    if (toasts) stageOn.watch.observe(toasts, { childList: true });
     try {
       const fs = document.documentElement.requestFullscreen?.();
       if (fs && fs.then) fs.then(() => stageOn && (stageOn.entered = true)).catch(() => {});
@@ -3021,7 +3053,10 @@ export function createPerform(host) {
     if (!s) return;
     stageOn = null;
     cancelAnimationFrame(s.raf);
+    clearTimeout(s.hintTimer);
+    s.watch?.disconnect();
     s.root.remove();
+    s.behind.forEach((e) => (e.inert = false));
     document.documentElement.classList.remove("st-on");
     if (document.fullscreenElement) document.exitFullscreen?.().catch?.(() => {});
     if (s.back && s.back.isConnected) s.back.focus?.({ preventScroll: true });
@@ -3029,8 +3064,12 @@ export function createPerform(host) {
   document.addEventListener("fullscreenchange", () => {
     if (stageOn && stageOn.entered && !document.fullscreenElement) closeStage();
   });
-  // ⇧F, in front of the note keys (F is a note, and Shift plays it harder):
-  // only Shift and F, nothing else held, and never while typing. Esc leaves.
+  // ⇧F opens stage mode in PERFORM only, as the mock has it, and leaves it
+  // from anywhere. In PERFORM it takes the place of F's accent (the note keys
+  // play harder with Shift); everywhere else ⇧F is the accented F it always
+  // was (ADR-009's status note). Matched on the key's character, as the
+  // keymap is, so a Dvorak or Colemak F is F. Only Shift and F, nothing else
+  // held, and never while typing. Esc leaves; Tab stays on the stage.
   const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
   window.addEventListener(
     "keydown",
@@ -3041,7 +3080,14 @@ export function createPerform(host) {
         closeStage();
         return;
       }
-      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === "KeyF" && !typing(e.target)) {
+      if (stageOn && e.key === "Tab") {
+        e.preventDefault();
+        e.stopPropagation();
+        (document.activeElement === stageOn.leave ? stageOn.root : stageOn.leave).focus({ preventScroll: true });
+        return;
+      }
+      const shiftF = e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "F" && !typing(e.target);
+      if (shiftF && (stageOn || state.visible)) {
         e.preventDefault();
         e.stopPropagation();
         if (!e.repeat) (stageOn ? closeStage : openStage)();
@@ -3085,8 +3131,13 @@ export function createPerform(host) {
   // (lows at the base); the faces integration replaces this function's body
   // with the vessel, drawn from the sound's face and lit by what sounds.
   let stageBuf = null;
+  let stageLoudAt = 0; // when the stage last drew a sound
   function stageDraw(g, st) {
     const { W, H, dpr } = st;
+    // The fade halves what is left each few frames but, in 8-bit alpha,
+    // never reaches nothing: a second and a half after the last sound the
+    // canvas is cleared outright, so silence is truly empty.
+    if (performance.now() - stageLoudAt > 1500) g.clearRect(0, 0, W * dpr, H * dpr);
     // Phosphor: what was drawn fades rather than vanishing. Under reduced
     // motion, each frame is only what sounds now.
     if (st.still) g.clearRect(0, 0, W * dpr, H * dpr);
@@ -3129,6 +3180,7 @@ export function createPerform(host) {
       half.push(v);
     }
     if (loud < 0.02) return;
+    stageLoudAt = performance.now();
     g.save();
     g.beginPath();
     for (let b = 0; b < ST_BANDS; b++) {

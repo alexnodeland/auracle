@@ -417,8 +417,8 @@ app asks the engine again.
 
 ## Stage mode
 
-<kbd>⇧F</kbd>, or **STAGE ⇧F** in the header, puts the sound you’re playing
-on the whole screen, for a gig or a stream: its name, and what you hear,
+In PERFORM, <kbd>⇧F</kbd>, or **STAGE ⇧F** in the header, puts the sound
+you’re playing on the whole screen, for a gig or a stream: its name, and what you hear,
 drawn as its spectrum, mirrored about the middle with the lows at the base
 and 100 Hz, 1 kHz and 10 kHz marked beside it. What is drawn is the output,
 so nothing moves while nothing sounds, and what you play fades like
@@ -426,7 +426,14 @@ phosphor.
 
 Everything still plays: the keys, a MIDI keyboard, and <kbd>Space</kbd> for
 the phrase (a tap does the same on a touch screen). <kbd>⇧F</kbd> again, or
-<kbd>Esc</kbd>, or **×** in the corner leaves. F on its own is still a note.
+<kbd>Esc</kbd>, or **×** in the corner leaves, and the keyboard is back where
+it was. <kbd>Tab</kbd> stays on the stage: nothing behind it can be reached
+until you leave. A refusal said while it is on (*Nothing to undo here*) shows
+over the stage, and in its line at the bottom for a few seconds.
+
+In PERFORM, <kbd>⇧F</kbd> takes the place of F’s accent (Shift with a note key
+plays it harder). F on its own is still a note, and in every other view
+<kbd>⇧F</kbd> is the accented F it always was.
 
 ## Nothing opens a dialog
 

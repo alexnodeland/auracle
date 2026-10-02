@@ -3042,7 +3042,9 @@ function note(text, opts = {}) {
   // contract (they may hold the toast) without putting it on screen.
   if (boothQuiet && !opts.urgent) return document.createElement("div");
   const el = document.createElement("div");
-  el.className = `toast${opts.kind ? " " + opts.kind : ""}`;
+  // A refusal is marked, so stage mode (perform.js) can lift it above the
+  // stage and say it there.
+  el.className = `toast${opts.kind ? " " + opts.kind : ""}${opts.urgent ? " urgent" : ""}`;
   const msg = document.createElement("span");
   msg.className = "toast-msg";
   msg.textContent = text;

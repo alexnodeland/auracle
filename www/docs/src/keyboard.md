@@ -18,6 +18,7 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 | | |
 |---|---|
 | <kbd>a</kbd> <kbd>w</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>d</kbd> <kbd>f</kbd> <kbd>t</kbd> <kbd>g</kbd> <kbd>y</kbd> <kbd>h</kbd> <kbd>u</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>o</kbd> <kbd>l</kbd> <kbd>p</kbd> <kbd>;</kbd> <kbd>'</kbd> | Play notes |
+| <kbd>Shift</kbd> and a note key | The note, harder: an accent. In PERFORM, <kbd>⇧F</kbd> is stage mode instead (below) |
 | <kbd>z</kbd> / <kbd>x</kbd> | Octave down / up |
 
 ```admonish note
@@ -41,7 +42,6 @@ are stepping through them with the arrow keys.
 | <kbd>m</kbd> | Save the sound you’re on |
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
-| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. <kbd>F</kbd> on its own is still a note |
 | <kbd>?</kbd> | The key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
 
@@ -127,6 +127,10 @@ The search finds a module by sound as well as by name: *grit*, *vowel*,
 | Drag a module by its face | Move it (in freeform); <kbd>Shift</kbd> to ignore the grid |
 
 ## In PERFORM
+
+| | |
+|---|---|
+| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and in every other view <kbd>⇧F</kbd> is the accented F |
 
 A focused control (reach it with <kbd>Tab</kbd>):
 

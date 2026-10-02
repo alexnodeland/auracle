@@ -212,8 +212,8 @@ or bypass goes there instead of vanishing, and stays across a reload.
 
 ### Stage mode
 
-<kbd>⇧F</kbd>: the sound you’re playing on the whole screen, drawn from what
-you hear. See [stage mode](./views/perform.md#stage-mode).
+<kbd>⇧F</kbd> in PERFORM: the sound you’re playing on the whole screen,
+drawn from what you hear. See [stage mode](./views/perform.md#stage-mode).
 
 ### Standardizer
 

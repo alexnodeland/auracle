@@ -479,7 +479,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **THROB** | The palette's control from steady to throbbing: pulsing and tremolo | Wobble (a preset's name), Pulse (a wave shape) |
 | **SWAY** | The palette's control from fixed to swaying: slow sweeps and breathing | Drift (WANDER's zone and walk), Breath (reads as AIR) |
 | **HEFT** | The palette's control from slight to heavy: dense, held weight | weight (the family's name) |
-| **stage mode** | ⇧F: the sound you're playing on the whole screen | fullscreen, performance mode |
+| **stage mode** | ⇧F in PERFORM: the sound you're playing on the whole screen | fullscreen, performance mode |
 | **set aside** | Modules unplugged or deleted, waiting to go back | HELD |
 | **59% · leaning** | A prediction: a percentage and a word | MODEL'S GUESS 0.59 |
 | **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |
