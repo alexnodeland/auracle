@@ -3911,6 +3911,7 @@ const PERFORM_CONTROLS = [
   { name: "Space", low: "close", high: "far" },
 ];
 
+let outTap = null; // stage mode's analyser on the master (see `outAnalyser`)
 async function bootPerform() {
   const { createPerform } = await import(`./perform.js?v=${BUILD}`);
   perform = createPerform({
@@ -3922,6 +3923,20 @@ async function bootPerform() {
     setPanel: (p) => {
       perf.panel = p;
       scheduleSave();
+    },
+    // Stage mode's tap: Space's ▶, for a screen with no Space.
+    play: () => toggleAudition(),
+    // What comes out of the speakers, for stage mode to draw: the live
+    // voices and every phrase played (auditions skip the voices' own
+    // analysers), after the master gain. Made on first use.
+    outAnalyser: () => {
+      if (!outTap) {
+        outTap = audioCtx.createAnalyser();
+        outTap.fftSize = 2048;
+        outTap.smoothingTimeConstant = 0.6;
+        master.connect(outTap);
+      }
+      return outTap;
     },
     send,
     live: () => live,

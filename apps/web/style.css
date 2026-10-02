@@ -5308,6 +5308,30 @@ html.handheld .handheld-gate {
   .pf-offer[data-moment="taken"] { background: var(--phos-a-24); }
 }
 
+/* Stage mode (⇧F): the sound under your hands, the whole screen. */
+html.st-on { overflow: hidden; }
+.st-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: var(--bezel);
+  outline: none;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.st-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.st-hud { position: absolute; left: var(--s6); bottom: var(--s6); display: grid; gap: var(--s2); pointer-events: none; }
+.st-name { font-family: var(--font-silk); font-size: var(--t-title); font-weight: 500; letter-spacing: 0.145em; text-transform: uppercase; color: var(--silk); }
+.st-cat { font-size: var(--t-value); color: var(--silk-dim); }
+.st-hint { position: absolute; left: 50%; bottom: var(--s6); transform: translateX(-50%); font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; pointer-events: none; }
+.st-leave { position: absolute; right: var(--s5); top: var(--s5); }
+.st-tick { position: absolute; transform: translateY(-50%); font-size: var(--t-value); color: var(--silk-dim); pointer-events: none; }
+@media (max-width: 700px) {
+  .st-hud { left: var(--s4); bottom: var(--s5); }
+  .st-hint { bottom: calc(var(--s7) + var(--s5)); white-space: normal; text-align: center; width: calc(100% - 2 * var(--s4)); }
+  .st-leave { right: var(--s3); top: var(--s3); }
+}
+
 /* ===================== MIDI panel ===================== */
 button.midi-ind { background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font: inherit; color: inherit; padding: 1px var(--s1); }
 button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairline); }

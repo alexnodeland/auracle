@@ -21,7 +21,7 @@
 
 // The palette's words (names, end words, what each does), with this module's
 // own build stamp so a new build fetches both together.
-const { PALETTE, FAMILIES, onThisSound, panelCount } = await import(`./words.js${new URL(import.meta.url).search}`);
+const { PALETTE, FAMILIES, onThisSound, panelCount, platformKeys } = await import(`./words.js${new URL(import.meta.url).search}`);
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
@@ -2950,9 +2950,180 @@ export function createPerform(host) {
     setPanel(a);
   }
 
+  // ---------- stage mode ----------
+  // ⇧F: the sound under your hands, the whole screen, for a gig or a stream.
+  // What it draws is what you hear and nothing else: the output after the
+  // master gain (`host.outAnalyser`: LivePoly's voices in the AudioWorklet,
+  // and any phrase Space plays), as its spectrum mirrored about the centre
+  // with the lows at the base, left to fade like phosphor. Nothing
+  // moves without sound. The face (Plan-005 task 3) is not drawn: the app
+  // does not compute it yet. Space plays and the keys play, as everywhere;
+  // ⇧F or Esc leaves. Not a modal: it asks nothing.
+  const stageBtn = el("button", "pf-stage-btn util-btn", "stage ⇧F");
+  stageBtn.type = "button";
+  stageBtn.title = platformKeys("Stage mode · ⇧F");
+  stageBtn.textContent = platformKeys("stage ⇧F");
+  stageBtn.onclick = () => openStage();
   const actions = el("div", "pf-actions");
-  actions.append(arrangeBtn);
+  actions.append(arrangeBtn, stageBtn);
   head.insertBefore(actions, scope);
+  let stageOn = null; // {root, cv, name, raf, entered, back, bins, trail}
+  // The bands drawn: 40 from 40 Hz to 16 kHz, spaced evenly in pitch.
+  const ST_BANDS = 40;
+  const ST_LO = 40;
+  const ST_HI = 16000;
+  const stHz = (b) => ST_LO * Math.pow(ST_HI / ST_LO, b / (ST_BANDS - 1));
+  function openStage() {
+    if (stageOn) return;
+    const rootEl = el("div", "st-stage");
+    rootEl.tabIndex = -1;
+    rootEl.setAttribute("role", "dialog");
+    rootEl.setAttribute("aria-label", `Stage mode: ${host.label()}`);
+    const cv = el("canvas", "st-canvas");
+    cv.setAttribute("aria-hidden", "true");
+    const hud = el("div", "st-hud");
+    const name = el("div", "st-name", host.label());
+    const where = el("div", "st-cat mono", "PERFORM · in hand");
+    hud.append(name, where);
+    const hint = el("div", "st-hint mono", platformKeys("A to L play · Space plays the sound · ⇧F or Esc leaves"));
+    const leave = el("button", "st-leave util-btn", "×");
+    leave.type = "button";
+    leave.setAttribute("aria-label", platformKeys("Leave stage mode (⇧F or Esc)"));
+    leave.title = platformKeys("Leave · ⇧F");
+    leave.onclick = (e) => {
+      e.stopPropagation();
+      closeStage();
+    };
+    const said = el("div", "sr-only", platformKeys(`Stage mode, ${host.label()}. ⇧F or Escape leaves.`));
+    said.setAttribute("role", "status");
+    const ticks = ["100 Hz", "1 kHz", "10 kHz"].map((t) => el("div", "st-tick mono", t));
+    ticks.forEach((t) => t.setAttribute("aria-hidden", "true"));
+    rootEl.append(cv, ...ticks, hud, hint, leave, said);
+    // A tap plays the sound, as Space does: on a touch screen there is no
+    // Space.
+    rootEl.addEventListener("click", (e) => {
+      if (!e.target.closest("button")) host.play?.();
+    });
+    document.body.append(rootEl);
+    document.documentElement.classList.add("st-on");
+    stageOn = { root: rootEl, cv, name, ticks, raf: 0, entered: false, back: document.activeElement };
+    rootEl.focus({ preventScroll: true });
+    try {
+      const fs = document.documentElement.requestFullscreen?.();
+      if (fs && fs.then) fs.then(() => stageOn && (stageOn.entered = true)).catch(() => {});
+    } catch {
+      /* full screen is a courtesy: the stage covers the window either way */
+    }
+    stageOn.raf = requestAnimationFrame(stageFrame);
+  }
+  function closeStage() {
+    const s = stageOn;
+    if (!s) return;
+    stageOn = null;
+    cancelAnimationFrame(s.raf);
+    s.root.remove();
+    document.documentElement.classList.remove("st-on");
+    if (document.fullscreenElement) document.exitFullscreen?.().catch?.(() => {});
+    if (s.back && s.back.isConnected) s.back.focus?.({ preventScroll: true });
+  }
+  document.addEventListener("fullscreenchange", () => {
+    if (stageOn && stageOn.entered && !document.fullscreenElement) closeStage();
+  });
+  // ⇧F, in front of the note keys (F is a note, and Shift plays it harder):
+  // only Shift and F, nothing else held, and never while typing. Esc leaves.
+  const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (stageOn && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeStage();
+        return;
+      }
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === "KeyF" && !typing(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) (stageOn ? closeStage : openStage)();
+      }
+    },
+    true,
+  );
+  let stageBuf = null;
+  function stageFrame() {
+    const s = stageOn;
+    if (!s) return;
+    s.raf = requestAnimationFrame(stageFrame);
+    const dpr = window.devicePixelRatio || 1;
+    const W = s.root.clientWidth;
+    const H = s.root.clientHeight;
+    if (s.cv.width !== Math.round(W * dpr) || s.cv.height !== Math.round(H * dpr)) {
+      s.cv.width = Math.round(W * dpr);
+      s.cv.height = Math.round(H * dpr);
+    }
+    if (s.name.textContent !== host.label()) s.name.textContent = host.label();
+    const g = s.cv.getContext("2d");
+    const still = stillMotion();
+    // Phosphor: what was drawn fades rather than vanishing. Under reduced
+    // motion, each frame is only what sounds now.
+    if (still) g.clearRect(0, 0, s.cv.width, s.cv.height);
+    else {
+      g.save();
+      g.globalCompositeOperation = "destination-out";
+      g.globalAlpha = 0.16;
+      g.fillRect(0, 0, s.cv.width, s.cv.height);
+      g.restore();
+    }
+    const h = Math.min(H * 0.74, W * 1.1) * dpr;
+    const w = h * 0.6;
+    const cx = (W * dpr) / 2;
+    const base = (H * dpr) / 2 + h / 2;
+    // The frequency axis, beside the shape: where 100 Hz, 1 kHz and 10 kHz
+    // sit, so a lit band can be read. Words on the page, not on the canvas,
+    // which holds only what sounds.
+    s.ticks.forEach((t, j) => {
+      const hz = [100, 1000, 10000][j];
+      t.style.top = `${((base - (Math.log(hz / ST_LO) / Math.log(ST_HI / ST_LO)) * h) / dpr).toFixed(1)}px`;
+      t.style.right = `${((W * dpr - (cx - w / 2)) / dpr + 16).toFixed(1)}px`;
+    });
+    const an = host.outAnalyser ? host.outAnalyser() : host.live()?.analyser;
+    if (!an) return;
+    if (!stageBuf || stageBuf.length !== an.frequencyBinCount) stageBuf = new Float32Array(an.frequencyBinCount);
+    an.getFloatFrequencyData(stageBuf);
+    const nyq = an.context.sampleRate / 2;
+    const half = [];
+    let loud = 0;
+    for (let b = 0; b < ST_BANDS; b++) {
+      const f0 = b ? (stHz(b - 1) + stHz(b)) / 2 : stHz(0);
+      const f1 = b < ST_BANDS - 1 ? (stHz(b) + stHz(b + 1)) / 2 : stHz(b);
+      const i0 = Math.max(0, Math.floor((f0 / nyq) * stageBuf.length));
+      const i1 = Math.min(stageBuf.length - 1, Math.max(i0, Math.ceil((f1 / nyq) * stageBuf.length)));
+      let db = -Infinity;
+      for (let i = i0; i <= i1; i++) db = Math.max(db, stageBuf[i]);
+      // −100 dBFS is nothing; −30 and above is the full width.
+      const v = clamp((db + 100) / 70, 0, 1);
+      loud = Math.max(loud, v);
+      half.push(v);
+    }
+    if (loud < 0.02) return;
+    g.save();
+    g.beginPath();
+    for (let b = 0; b < ST_BANDS; b++) {
+      const y = base - (b / (ST_BANDS - 1)) * h;
+      const x = cx + (half[b] * w) / 2;
+      if (b) g.lineTo(x, y);
+      else g.moveTo(cx, base), g.lineTo(x, y);
+    }
+    for (let b = ST_BANDS - 1; b >= 0; b--) g.lineTo(cx - (half[b] * w) / 2, base - (b / (ST_BANDS - 1)) * h);
+    g.closePath();
+    g.strokeStyle = host.ink.green;
+    g.lineWidth = 2 * dpr;
+    g.shadowColor = host.ink.green;
+    g.shadowBlur = 18 * dpr * loud;
+    g.globalAlpha = 0.9;
+    g.stroke();
+    g.restore();
+  }
 
   // ---------- first steps ----------
   // For someone who walks up to it cold — no staff, no manual. Three moves
@@ -3439,6 +3610,9 @@ export function createPerform(host) {
     panel: () => state.panel.slice(),
     setPanel,
     openPalette,
+    stage: () => !!stageOn,
+    openStage,
+    closeStage,
     // Re-draw every control (after "Show measurements" changes).
     repaint() {
       knobs.forEach(paintKnob);
