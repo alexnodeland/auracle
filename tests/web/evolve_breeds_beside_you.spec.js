@@ -264,7 +264,11 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   await expect(page.locator("#gen-count")).toHaveText("1");
   await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred (a new sound: it’s|\d+ new sounds: they’re) at the top of the bank ▸$/);
 
-  await page.locator("#evolve-stop").click();
+  // Stopped, unless its walks have already ended it (on a fast farm the last
+  // ones land in a burst, and STOP goes with the generation): either way it
+  // ends as generation 1.
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
   await expect(page.locator("#gen-count")).toHaveText("1");
   await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred/);
