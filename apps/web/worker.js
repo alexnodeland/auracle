@@ -1182,6 +1182,10 @@ function genProgress(g) {
     eta: genEta(g),
     farm: g.farmed,
     workers: g.farmed ? farmCrew() : 0,
+    // The generation's seeds, best first (`refine_jobs`' parents: job `i`
+    // walks from `seeds[i]`), so main marks this generation's and not the
+    // next one's, whatever ratings it last heard.
+    seeds: g.parents,
   });
 }
 

@@ -6282,11 +6282,15 @@ $("evolve-stop").onclick = () => stopBreeding();
 // A `refine_progress` or `refine_child`: where the generation is.
 function breedingFrom(m) {
   if (!breeding) return;
-  // The generation's own seeds: the last `ratings.seeds` posted before it
-  // opened, which is what `views.ratings` holds at its first message (the
-  // worker opens it, then posts its progress). After this, every `ratings`
-  // describes the next generation, not this one.
-  if (!breeding.seeds) breeding.seeds = ((views && views.ratings && views.ratings.seeds) || []).slice();
+  // The generation's own seeds, best first (job `i` walks from `seeds[i]`):
+  // `refine_jobs`' parents, which its progress carries. Every `ratings`
+  // posted from here describes the next generation, not this one. An older
+  // worker posts none, and then the last `ratings.seeds` posted before the
+  // generation opened stands in (`next_seeds` and `refine_jobs` share one
+  // rule); it can be stale where a fill ran between them (`fill_step` posts
+  // no ratings), which is why the worker now says.
+  if (Array.isArray(m.seeds)) breeding.seeds = m.seeds.slice();
+  else if (!breeding.seeds) breeding.seeds = ((views && views.ratings && views.ratings.seeds) || []).slice();
   if (m.generation) breeding.generation = m.generation;
   if (m.total != null) breeding.total = m.total;
   if (m.done != null) breeding.done = m.done;
