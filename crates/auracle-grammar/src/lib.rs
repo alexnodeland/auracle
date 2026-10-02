@@ -48,6 +48,7 @@ pub mod presets;
 pub mod prior;
 pub mod rng;
 pub mod steps;
+pub mod take;
 pub mod term;
 
 pub use compile::{
@@ -61,6 +62,7 @@ pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
+pub use take::{SavedTake, Take, TakeError, MAX_TAKE_RATE, TAKE_FORMAT, TAKE_SECONDS};
 pub use term::{AudioNode, InputChannel, ModNode, PatchTree, Uid, INPUT_SLOTS};
 
 #[cfg(test)]
