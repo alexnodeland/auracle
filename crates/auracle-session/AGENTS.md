@@ -12,7 +12,7 @@ loop (observe, refit). Rules shared by all crates are in
 | `engine.rs` | `Engine`: pool, fills, duel choice (`next_duel_full`), `fit_posterior`, refinement (`refine_jobs` → `refine_absorb` → `refine_finish`, and the serial `refine`, `refine_seed`, `refine_from`), PERFORM's `offer`/`drift`, persistence |
 | `walk.rs` | A generation's walks as data: `WalkContext`, `WalkJob`, `WalkResult`, and `run_walk`, the walk as a pure function the farm runs ([ADR-007](../../docs/decisions/007-generations-breed-in-parallel.md)) |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
-| `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`) |
+| `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`); the palette's eighteen directions (`PALETTE`, whose first six are the panel's `CONTROLS`), wired on request (`Engine::wire_named`) |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
 | `belief.rs` | The belief after each pick (`Engine::belief`): the ranked numbers and lenses under the reweighted posterior, the next generation's seeds (`next_seeds`) and what it may replace (`may_replace`), as the worker posts them |
 | `calib.rs` | Prequential calibration: forecasts scored on random (check) duels |

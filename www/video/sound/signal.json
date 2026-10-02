@@ -15,7 +15,7 @@
     { "name": "main_b", "bars": 8 },
     { "name": "breakdown", "bars": 4 },
     { "name": "finale", "bars": 8 },
-    { "name": "sting", "bars": 2 }
+    { "name": "end", "bars": 2 }
   ],
   "tracks": [
     {
@@ -189,8 +189,7 @@
           [2, 1.5, 0.5, "F5", 0.55], [2, 3.5, 0.5, "A5", 0.45],
           [3, 1.5, 0.5, "E5", 0.55], [3, 3.5, 0.5, "C6", 0.45],
           [4, 1.5, 0.5, "D5", 0.55], [4, 3.5, 0.5, "A5", 0.42]
-        ],
-        "sting": [[1, 1, 0.5, "D6", 0.8], [1, 1, 0.5, "A6", 0.7]]
+        ]
       },
       "fader": [["intro", 1, 1, -8], ["intro", 3, 1, 0]]
     },
@@ -222,44 +221,6 @@
         { "type": "pulse", "section": "main_b", "roots": ["C4"], "step": 1, "offset": 0.5, "gate": 0.3, "vel": 0.62 },
         { "type": "pulse", "section": "finale", "bars": [1, 7], "roots": ["C4"], "step": 1, "offset": 0.5, "gate": 0.3, "vel": 0.64 }
       ]
-    },
-    {
-      "name": "riser",
-      "preset": "Static Ocean",
-      "_why": "White noise through a resonant bandpass into a large reverb. The bandpass cutoff is swept from 0.35 to 0.9 over two bars (centroid 0.6 to 10 kHz, measured), the LFO depth zeroed so the sweep is clean, attack shortened so it swells over the first bar and release shortened so it stops on the downbeat.",
-      "voices": 2,
-      "gain_db": -17.0,
-      "params": { "amp#attack": 0.75, "amp#release": 0.45, "node/0#mdepth": 0.0 },
-      "notes": {
-        "build": [[7, 1, 8, "C4", 0.9]]
-      },
-      "automation": [
-        { "param": "node/0#cut", "points": [
-          ["build", 7, 1, 0.35], ["build", 8, 4.9, 0.9] ] }
-      ]
-    },
-    {
-      "name": "boom",
-      "preset": "Deadfall",
-      "_why": "The logo hit's floor: D1 and D2 sines with a slow one-octave pitch drop (the bend again, 150 ms) and decay/release knobs raised to ring for about four seconds.",
-      "voices": 2,
-      "gain_db": 2.0,
-      "trim_db": -8.0,
-      "params": { "amp#decay": 0.8, "amp#release": 0.8 },
-      "pitch_drop": { "semis": 12, "tau_ms": 150, "pre_ms": 12 },
-      "notes": { "sting": [[1, 1, 4, "D3", 0.9], [1, 1, 4, "D4", 0.75]] }
-    },
-    {
-      "name": "boom_body",
-      "preset": "First Bass",
-      "_why": "The boom's sines are below what a laptop speaker reproduces; the same D2 on the bass preset (saw harmonics through the ladder), sustain off and decay/release raised, with the same pitch drop, is the part of the hit small speakers can carry.",
-      "voices": 2,
-      "transpose": 12,
-      "gain_db": 0.0,
-      "trim_db": -4.0,
-      "params": { "amp#sustain": 0.0, "amp#decay": 0.78, "amp#release": 0.78 },
-      "pitch_drop": { "semis": 12, "tau_ms": 150, "pre_ms": 12 },
-      "notes": { "sting": [[1, 1, 4, "D2", 0.8]] }
     }
   ]
 }

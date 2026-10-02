@@ -52,6 +52,14 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
 **The wiring this session measures** (logged by every shot; rehearsed on
 build 06fee64, whose per-consumer random streams dealt a new session):
 
+Cast from the films' shortlist since Plan-006 task 7 (`gen_shots.py`):
+Slow Weather where Glass Pad played, Morph Pad for the honest controls,
+Wobble Board where Tine played and Ceiling where Acid Line did. Their
+session wiring is to be logged at the next rehearsal; as they ship, Slow
+Weather turns Bright, Snap, Motion and Body both ways (Space toward close,
+Grit a search control), and Morph Pad turns Space toward far only, with
+Grit a search control. The Glass Pad wiring below is the last rehearsal's.
+
 - Plain, Glass Pad: Bright both ways (cutoff), Snap only toward bloom
   (*turns toward bloom only*), Motion only toward restless (*turns toward
   restless only*), Space only toward far (*turns toward far only*). Body and
@@ -97,7 +105,7 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
 
 ## 0. `open` — the cold open (shot `vp-open`, 4 bars, no words)
 
-- **Set-up:** plain · Glass Pad.
+- **Set-up:** plain · Slow Weather.
 - **Actions:**
   - one chord a bar from the film's first frame: Fmaj7, G/F, Em7, Am7 (the
     bed's own changes, F Lydian);
@@ -119,7 +127,7 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
 - *PERFORM is where you play the sound. Its controls are named for what you
   hear, and nothing in it ever stops the music.*
 
-## 2. `play` — **01 · Play it** · *How do you play it?* (shot `vp-play`, Tine)
+## 2. `play` — **01 · Play it** · *How do you play it?* (shot `vp-play`, Wobble Board)
 
 - **Actions:**
   - on the words: a white-key run (A to L) and a black-key run (W to P);
@@ -138,7 +146,7 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
 
 ## 3. `named` — **02 · Named for what you hear** · *How do you make it brighter while you play?* (shot `vp-named`)
 
-- **Set-up:** plain · Glass Pad, with Fmaj7 held until `named5`.
+- **Set-up:** plain · Slow Weather, with Fmaj7 held until `named5`.
 - **Actions:**
   - the camera pans along the deck as the six names are said;
   - Bright is ridden up (the swell), then down with the hood in frame;
@@ -162,7 +170,7 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
 
 ## 4. `honest` — **03 · Honest controls** · *What if this patch can't do that?* (shot `vp-honest`)
 
-- **Set-up:** plain · Glass Pad.
+- **Set-up:** plain · Morph Pad.
 - **Actions:**
   - a short chord, then Space dragged toward close, where it stops at the
     centre (the pointer bumps against the stop), then turned up (toward far),
@@ -283,7 +291,7 @@ pattern, so Sync is heard.
   *the tempo follows the clock* · *midi ○: another tab has it*.
 - The learn callout points at the panel row, where the mapping stays.
 
-## 10. `together` — **all of it at once** · *Putting it together.* (shot `vp-together`, taught, Acid Line at 84)
+## 10. `together` — **all of it at once** · *Putting it together.* (shot `vp-together`, taught, Ceiling at 84)
 
 - **Actions:** HOLD and ARP (up·dn, 1/16) are set off camera. Then:
   - C on the beat's first downbeat, as the card clears: the arpeggio;

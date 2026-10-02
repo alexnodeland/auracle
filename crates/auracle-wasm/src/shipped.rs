@@ -4,9 +4,12 @@
 //! written by the `preset_wirings` example, `make perform-wirings`), so a
 //! preset's named controls work the moment it lands instead of after the
 //! eleven-odd seconds of renders a first measurement costs in the browser. A
-//! shipped wiring is a starting point, not the last word: it was taken under a
-//! standardizer fitted natively, not this session's, and the app re-measures
-//! it in the background as it does any stale wiring.
+//! shipped wiring is a starting point, not the last word: it was taken under
+//! the standardizer of the pool [`SEED`] deals, not this session's (a session's
+//! seed is its own), and the app re-measures it in the background as it does
+//! any stale wiring. [`SEED`] deals that pool natively and in the browser's
+//! wasm alike (`tests/boot_agrees.rs`): the shipped measurement is the one a
+//! wasm engine booted from it would take.
 //!
 //! What can go stale without anyone noticing is the file itself, and a stale
 //! file wires a control to the wrong knobs until the re-check lands — and then
@@ -36,6 +39,7 @@
 use auracle_features::{cache_namespace, featurize_memo, AudioFeatures, PhraseSpec};
 use auracle_grammar::PatchTree;
 use auracle_session::perform;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::WasmEngine;
 
@@ -137,6 +141,14 @@ pub fn preset_z(e: &WasmEngine, tree_json: &str) -> Option<Vec<f64>> {
     Some(perform::standardized_audio(&cf.features, std))
 }
 
+/// The session engine inside `e`, for the measurement examples that ask what
+/// the bindings do not say (a Jacobian, the memo's render count), under the
+/// engine the shipped wirings are measured on. Native only.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn session(e: &WasmEngine) -> &auracle_session::Engine {
+    &e.engine
+}
+
 /// Run `job` over `items` on up to `threads` threads, results in item order.
 #[cfg(not(target_arch = "wasm32"))]
 fn par_map<T: Sync, U: Send>(items: &[T], threads: usize, job: impl Fn(&T) -> U + Sync) -> Vec<U> {
@@ -201,6 +213,143 @@ pub fn boot(threads: usize) -> WasmEngine {
     }
     e.restandardize_if_untaught();
     e
+}
+
+/// Draws of the fill stream [`boot_probe`] digests.
+const PROBE_DRAWS: u32 = 400;
+/// Of those, how many it lists one by one, so a disagreement names the first
+/// draw that parts and not only that something did.
+const PROBE_LISTED: usize = 12;
+/// The pool the probe fills: a handful of renders, not [`POOL`].
+const PROBE_POOL: usize = 8;
+/// Duels the probe deals from that pool.
+const PROBE_DUELS: usize = 6;
+
+/// A tree's digest, uids aside (they are minted per process).
+fn tree_digest(tree_json: &str) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(tree_json).unwrap_or_default();
+    strip_uids(&mut v);
+    fnv(v.to_string().as_bytes())
+}
+
+/// What a seed deals, in a form two targets can compare: the digest of every
+/// tree of the fill stream's first [`PROBE_DRAWS`] draws (a pure function of
+/// the seed, no render), a small pool filled from [`SEED`] (which draws it
+/// consumed, which trees it kept, the audio standardizer's spreads) and the
+/// first duels dealt from that pool.
+///
+/// The page's engine runs as wasm and the diagnostics and wirings run
+/// natively, and a seed has to mean the same pool on both. This is the one
+/// function both targets run: `tests/boot_agrees.rs` pins its native output
+/// to `tests/boot_probe.json`, and `tests/web/boot_agrees.spec.js` runs it in
+/// the built wasm and compares what it returns with the same file, in
+/// JavaScript ([`boot_probe_difference`] is the native half of that
+/// comparison and stays out of the page's wasm). A disagreement in the draws is the stream itself reading
+/// differently (a draw whose width depends on the target: see
+/// [`auracle_grammar::rng`]); in the pool only, the renders or the features.
+#[wasm_bindgen]
+pub fn boot_probe() -> String {
+    let mut e = WasmEngine::new(SEED, PROBE_POOL);
+    let _ = e.fill_draw(0); // starts the stream, takes nothing from it
+    let draws: Vec<String> = (0..PROBE_DRAWS)
+        .map(|i| tree_digest(&e.draw_json(i)))
+        .collect();
+    while e.fill_step(2) > 0 {}
+    e.restandardize_if_untaught();
+    let mut ids: Vec<u64> = serde_json::from_str::<Vec<serde_json::Value>>(&e.ranked())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| r["id"].as_u64())
+        .collect();
+    ids.sort_unstable();
+    let kept: Vec<String> = ids
+        .iter()
+        .map(|&id| tree_digest(&e.tree_json_of(id as u32)))
+        .collect();
+    // The duel stream's first deals: another consumer of randomness, with
+    // index draws of its own (ADR-001: each consumer has a stream).
+    let duels: Vec<serde_json::Value> = (0..PROBE_DUELS)
+        .map(|_| serde_json::from_str(&e.next_duel()).unwrap_or_default())
+        .collect();
+    serde_json::json!({
+        "seed": SEED,
+        "draws": &draws[..PROBE_LISTED],
+        "draws_digest": fnv(draws.concat().as_bytes()),
+        "duels": duels,
+        "pool": {
+            "size": PROBE_POOL,
+            "draws_consumed": e.fill_cursor(),
+            "kept": kept,
+            "spread": serde_json::from_str::<serde_json::Value>(&e.phi_scale()).unwrap_or_default(),
+        },
+    })
+    .to_string()
+}
+
+/// Where `now` first differs from `was`, as a path and both values: numbers
+/// within [`TOLERANCE`] of their size, everything else exactly. Native only:
+/// the spec makes the same comparison in JavaScript.
+#[cfg(not(target_arch = "wasm32"))]
+fn first_difference(
+    was: &serde_json::Value,
+    now: &serde_json::Value,
+    path: &str,
+) -> Option<String> {
+    use serde_json::Value;
+    let differs = || Some(format!("{path}: pinned {was}, now {now}"));
+    match (was, now) {
+        (Value::Number(a), Value::Number(b)) => {
+            let (a, b) = (a.as_f64()?, b.as_f64()?);
+            let scale = a.abs().max(b.abs()).max(1.0);
+            ((a - b).abs() > TOLERANCE * scale).then(differs).flatten()
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            if a.len() != b.len() {
+                return Some(format!(
+                    "{path}: {} entries pinned, {} now",
+                    a.len(),
+                    b.len()
+                ));
+            }
+            a.iter()
+                .zip(b)
+                .enumerate()
+                .find_map(|(i, (x, y))| first_difference(x, y, &format!("{path}[{i}]")))
+        }
+        (Value::Object(a), Value::Object(b)) => {
+            if a.keys().ne(b.keys()) {
+                let only = |from: &serde_json::Map<String, Value>,
+                            not: &serde_json::Map<String, Value>| {
+                    from.keys()
+                        .filter(|k| !not.contains_key(*k))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                };
+                return Some(format!(
+                    "{path}: keys only in the pinned probe {:?}, only now {:?}",
+                    only(a, b),
+                    only(b, a)
+                ));
+            }
+            a.iter()
+                .find_map(|(k, x)| first_difference(x, &b[k], &format!("{path}.{k}")))
+        }
+        _ => (was != now).then(differs).flatten(),
+    }
+}
+
+/// Where [`boot_probe`], run here and now, first differs from `pinned` (the
+/// JSON `tests/boot_probe.json` holds); `""` if it agrees. Numbers agree
+/// within [`TOLERANCE`], everything else exactly. Native only.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn boot_probe_difference(pinned: &str) -> String {
+    let (Ok(was), Ok(now)) = (
+        serde_json::from_str::<serde_json::Value>(pinned),
+        serde_json::from_str::<serde_json::Value>(&boot_probe()),
+    ) else {
+        return "the pinned probe is not JSON".into();
+    };
+    first_difference(&was, &now, "probe").unwrap_or_default()
 }
 
 /// Render `trees` into `e`'s memo on `threads` threads, so the serial calls

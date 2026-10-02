@@ -108,6 +108,10 @@
 //   move {sel, ox?, oy?, ms?}           glide the pointer onto an element (hover), ms long
 //   drop {file, sel?, ms?}              a file (a path in the film's folder, e.g. fixtures/x.svg)
 //                                       dragged over the window for ms, then dropped on sel
+//   drop {download, sel?, ms?}          the same with a file this shot exported: the last
+//                                       download whose name matches the regex `download`
+//                                       (waited for, up to 30 s), so a picture exported on
+//                                       camera is the one dropped back
 //   midi {…}                            MIDI in, through the app's ?film port (main.js):
 //     {device: "name"}                  plug a device in (the MIDI panel names it)
 //     {note: 60 | [60, 64], vel?, ms?, ch?}   notes on, and off ms later (vel 1–127)
@@ -554,8 +558,21 @@ async function step(page, s, ctx = {}) {
       // A file from the film's folder, held over the window (the app shows
       // its drop veil) and let go on `sel`: the same dragenter, dragover and
       // drop a file from the desktop fires.
-      const file = path.resolve(fdir, s.file);
-      const b64 = fs.readFileSync(file).toString("base64");
+      let file, b64;
+      if (s.download) {
+        const re = new RegExp(s.download, "i");
+        const t0 = Date.now();
+        let x;
+        while (!(x = [...(ctx.downloads || [])].reverse().find((d) => re.test(d.name)))) {
+          if (Date.now() - t0 > 30_000) throw new Error(`drop: no download in this shot matches /${s.download}/`);
+          await sleep(100);
+        }
+        file = x.name;
+        b64 = fs.readFileSync(await x.d.path()).toString("base64");
+      } else {
+        file = path.resolve(fdir, s.file);
+        b64 = fs.readFileSync(file).toString("base64");
+      }
       const target = s.sel ? await page.locator(s.sel).first().elementHandle() : null;
       return page.evaluate(async ([b64, name, type, el, ms]) => {
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -699,7 +716,7 @@ async function shoot(browser, port, shot) {
     captureStop = { k: downloads.length, t: +now().toFixed(3) };
     await page.evaluate(() => window.__film?.rec?.(false));
   };
-  const actx = { rects, clock, now, errors, logs, snap, stopCapture };
+  const actx = { rects, clock, now, errors, logs, snap, stopCapture, downloads };
 
   // The shot's end: a number, "@stamp+s", or the beat's end (through any
   // cut) plus 0.8 s.

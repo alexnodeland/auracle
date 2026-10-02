@@ -282,6 +282,17 @@ the worker reports in its `ready` (`cache_namespace`: the stimulus,
 longer matches (a refit, or a new build whose DSP or featurizer measures
 differently) is played at once and re-measured.
 
+A `perform_wire` request may carry `controls`, indices into the engine's
+palette of eighteen (`perform::PALETTE`), and the worker passes them to every
+binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without
+them the engine wires the six. The page sends none yet, so every wiring it
+measures, caches and ships is the six's. The palette's panel (Plan-005 task 5)
+will ask for the controls placed on it. Each wiring in the reply carries its
+palette `index`, and the panel must name a control back by it (an aimed
+offer's `control`, a graft's `k`), not by its position, which follows the
+order asked; and `wireKey` must then hold the set asked for as well as the
+patch.
+
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when
 the page is hidden or left (`flushWirings` on `pagehide` and
@@ -300,8 +311,10 @@ same `wireKey`. The player's own cache is asked first, then the file. A first
 measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
 fetch cannot hold a patch on *listening…*; a file that lands later still
 serves the presets opened after it. A shipped
-wiring is always re-measured in the background (it was taken under a native
-standardizer, not the session's). A stale file wires controls to the wrong
+wiring is always re-measured in the background (it was taken under the
+standardizer of the shipped seed's pool, not the session's, whose seed is its
+own; the shipped seed deals the same pool natively and in wasm, pinned by
+`boot_agrees`, so the file is what a wasm engine booted from it would measure). A stale file wires controls to the wrong
 knobs until that re-check lands, and the re-check then re-centres them, so
 `make test` guards it two ways. `shipped_preset_wirings_are_current` compares
 fingerprints of each preset and of the measurement's named inputs (phrase,

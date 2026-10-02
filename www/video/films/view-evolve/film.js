@@ -127,7 +127,7 @@ export async function build(stage) {
         cam: hold([[0, ...WARM], [T("point4", 0.8), ...METER]]),
         callouts: [
           { at: "point1:nine", until: "point2", mark: "grid", side: "left", dx: -60, dy: -120, text: "one of each family, then filled" },
-          { at: T("point2:Play", 0.2), until: "point2:closest", mark: "padplay", side: "bottom", dx: -40, dy: 60, text: "▶ hear it" },
+          { at: T("point2:Play", 0.2), until: "point2:closest", mark: "castplay", side: "bottom", dx: -40, dy: 60, text: "▶ hear it" },
           { at: "point3:beats", until: T("point4", -0.9), mark: "go", side: "bottom", dy: 80, text: "3 picks × 6 passed = 18" },
           { at: "point4:eighteen", mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "eighteen picks in", color: "b" },
         ],

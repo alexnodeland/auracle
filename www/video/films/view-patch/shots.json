@@ -21,8 +21,9 @@
       "beat": "cold",
       "pre": 0.5,
       "dur": 21.28,
+      "cast": ["Ceiling"],
       "setup": [
-        {"op": "preset", "name": "Acid Line"},
+        {"op": "preset", "name": "Ceiling"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -47,7 +48,7 @@
       "marks": {"rack": "#rack-scroll", "vco": "#rack-svg g.mod-group[data-key='node/0']", "filter": "#rack-svg g.mod-group[data-key='node']", "env": "#rack-svg g.mod-group[data-key='node/m']", "amp": "#rack-svg g.mod-group[data-key='amp']", "cut": "#rack-svg [data-addr='node#cut']", "res": "#rack-svg [data-addr='node#res']"},
       "actions": [
         {"at": 0.9, "snap": "beat", "op": "hold", "keys": ["f", "h", "k", ";"], "ms": 260},
-        {"at": 2.6, "op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, -0.0484], [0.5, 0.38]], "ms": 6000},
+        {"at": 2.6, "op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, -0.4275], [0.5, 0.2971]], "ms": 6000},
         {"at": 9.5, "op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\")?.getAttribute('aria-valuetext')"},
         {"at": 10.9, "snap": "bar", "op": "click", "sel": "#hold-btn"}
       ]
@@ -56,6 +57,7 @@
       "id": "vp-read",
       "beat": "read",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -89,6 +91,7 @@
       "id": "vp-hear",
       "beat": "hear",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -122,6 +125,7 @@
       "id": "vp-change",
       "beat": "change",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "clips": [["change2-0.6", "@ready2-0.2"], ["change3-1.1", "@ready3-0.2"], ["change4-0.6", "@ready4-0.2"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
@@ -159,6 +163,7 @@
       "id": "vp-add",
       "beat": "add",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -195,6 +200,7 @@
       "id": "vp-move",
       "beat": "move",
       "pre": 3.4,
+      "uncast": {"Ask The Dice": "move2 describes its sample and hold, quantizer and slew"},
       "setup": [
         {"op": "preset", "name": "Ask The Dice"},
         {"op": "view", "v": "play"},
@@ -220,6 +226,7 @@
       "id": "vp-steps",
       "beat": "steps",
       "pre": 3.4,
+      "uncast": {"Loom": "steps1 to steps3 show a step sequencer on a filter: Loom is the one preset with one"},
       "setup": [
         {"op": "preset", "name": "Loom"},
         {"op": "view", "v": "play"},
@@ -251,6 +258,7 @@
       "id": "vp-lock",
       "beat": "lock",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "clips": [["lock3:and-0.3", "@benched-0.6"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
@@ -297,6 +305,7 @@
       "id": "vp-keep",
       "beat": "keep",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -336,6 +345,7 @@
       "id": "vp-take",
       "beat": "take",
       "pre": 3.4,
+      "uncast": {"Glass Pad": "the film's one patch (title2), whose circuit read3 to read5 and hear5 describe"},
       "clips": [["take2:opens-0.5", "@opened-0.3"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
@@ -374,9 +384,9 @@
         {"at": "take1:picture-0.5", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": "#image-btn"}, {"op": "select", "sel": "#ix-fmt", "value": "svg"}, {"op": "mark", "name": "panel", "sel": "#image-panel"}, {"op": "mark", "name": "note", "sel": "#image-panel .sp-note"}]},
         {"at": "take2:inside", "op": "click", "sel": "#ix-go"},
         {"at": "take2:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
-        {"at": "take2:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
-        {"at": "take2:Drop+0.2", "op": "until", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].some(g => g.dataset.kind === 'modenv')", "ms": 90000, "stamp": "opened"},
-        {"at": "take2:opens", "op": "seq", "steps": [{"op": "mark", "name": "subject2", "sel": "#rack-subject"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}]},
+        {"at": "take2:Drop", "op": "drop", "download": "\\.svg$", "ms": 1300},
+        {"at": "take2:Drop+0.2", "op": "until", "js": "/Opening it|Opened the patch file/.test(document.getElementById('toasts').textContent)", "ms": 90000, "stamp": "opened"},
+        {"at": "take2:opens", "op": "seq", "steps": [{"op": "mark", "name": "subject2", "sel": "#rack-subject"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "opened", "js": "document.getElementById('toasts').innerText"}]},
         {"at": "take2:play+0.1", "snap": "beat", "op": "hold", "keys": ["a"], "ms": 330},
         {"at": "take2:play+0.8", "snap": "beat", "op": "hold", "keys": ["a"], "ms": 330},
         {"at": "take2:play+1.5", "snap": "beat", "op": "hold", "keys": ["g"], "ms": 330},
@@ -390,8 +400,9 @@
       "beat": "together",
       "pre": 3.4,
       "dur": 38.485,
+      "cast": ["Ceiling"],
       "setup": [
-        {"op": "preset", "name": "Acid Line"},
+        {"op": "preset", "name": "Ceiling"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         {"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -415,7 +426,7 @@
       "marks": {"rack": "#rack-scroll", "cut": "#rack-svg [data-addr='node#cut']", "res": "#rack-svg [data-addr='node#res']", "filter": "#rack-svg g.mod-group[data-key='node']", "q": "#nb-q", "dist": ".nb-item[data-kind='distortion']", "green": "#rack-svg .jack[data-childkey='node']", "tick": "#improve-check", "commit": "#rack-commit"},
       "actions": [
         {"at": 3.32, "snap": "bar", "op": "hold", "keys": ["g", "h", "k", ";"], "ms": 260},
-        {"at": "together2:Shape", "op": "seq", "steps": [{"op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, 0.0544], [0.5, 0.1915]], "ms": 2600}, {"op": "wait", "ms": 250}, {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900}]},
+        {"at": "together2:Shape", "op": "seq", "steps": [{"op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, -0.2536], [0.5, -0.0217]], "ms": 2600}, {"op": "wait", "ms": 250}, {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900}]},
         {"at": "together3:Add-0.3", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": "/", "ms": 60}, {"op": "wait", "ms": 150}, {"op": "type", "text": "grit", "ms": 85}, {"op": "wait", "ms": 350}, {"op": "mark", "name": "dist", "sel": ".nb-item[data-kind='distortion']"}, {"op": "click", "sel": ".nb-item[data-kind='distortion']"}, {"op": "wait", "ms": 350}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 400}, {"op": "wait", "ms": 300}, {"op": "log", "name": "grit", "js": "document.getElementById('nb-status').textContent"}, {"op": "log", "name": "shaped", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\")?.getAttribute('aria-valuetext') + ' | ' + document.querySelector(\"#rack-svg [data-addr='node#res']\")?.getAttribute('aria-valuetext')"}, {"op": "click", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type"}, {"op": "until", "sel": "#rack-svg g.mod-group[data-kind='distortion']", "ms": 30000, "stamp": "grit"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "distplate", "sel": "#rack-svg g.mod-group[data-kind='distortion']"}, {"op": "mark", "name": "filter2", "sel": "#rack-svg g.mod-group[data-kind='filter']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}]},
         {"at": "together4:Lock-0.5", "op": "seq", "steps": [{"op": "until", "js": "!document.getElementById('belief').classList.contains('stale') && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000}, {"op": "move", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock", "ms": 400}, {"op": "click", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock"}, {"op": "mark", "name": "square", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock"}]},
         {"at": "together4:commit-0.2", "op": "click", "sel": "#improve-check"},

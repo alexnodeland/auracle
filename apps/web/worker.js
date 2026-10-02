@@ -1079,11 +1079,16 @@ self.addEventListener("unhandledrejection", (ev) => {
 // is in the memo, so it resumes where it stopped. What it has learned about
 // renders that do not vet rides on the message, because the memo keeps only
 // successes and would otherwise ask for those again.
+//
+// `m.controls`, when given, is which palette controls to wire (indices into
+// `perform::PALETTE`, whose first six are today's panel); without it the
+// engine wires the six, as it always has. The page sends none yet.
 async function measure(m) {
   const ov = JSON.stringify(m.overrides || []);
+  const ctl = Array.isArray(m.controls) ? JSON.stringify(m.controls) : undefined;
   if (typeof engine.perform_wire_plan !== "function") {
     // A binary without the plan (see this file's header): the one call.
-    performReply(m, "perform_wired", "data", true, () => JSON.parse(engine.perform_wire(m.tree, ov)));
+    performReply(m, "perform_wired", "data", true, () => JSON.parse(engine.perform_wire(m.tree, ov, ctl)));
     return;
   }
   const failed = m.failed || (m.failed = []);
@@ -1092,7 +1097,7 @@ async function measure(m) {
     // only guards against a memo evicting under it, in which case the finish
     // below renders whatever is missing itself.
     for (let round = 0; round < 6; round++) {
-      const need = JSON.parse(engine.perform_wire_plan(m.tree, ov, JSON.stringify(failed)));
+      const need = JSON.parse(engine.perform_wire_plan(m.tree, ov, JSON.stringify(failed), ctl));
       if (!need.length) break;
       for (const job of need) {
         if (!engine.memo_render(job.tree)) failed.push(job.key);
@@ -1112,7 +1117,7 @@ async function measure(m) {
     return;
   }
   performReply(m, "perform_wired", "data", false, () =>
-    JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed))));
+    JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed), ctl)));
 }
 
 // ---------- a generation: the breed job ----------

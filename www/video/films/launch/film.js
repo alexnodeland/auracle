@@ -123,7 +123,6 @@ function sceneOpen({ stage, beat, line }) {
 
       // The knobs the hand turns, one after another.
       const hand = [knobs[27], knobs[33], knobs[70]];
-      hand.forEach((_, i) => stage.sfx("blip", b.t0 + pull1 - 0.6 + i * 1.05, -6));
 
       return (tl) => {
         const u = ramp(tl, pull0, pull1, E.io4);
@@ -219,8 +218,6 @@ function sceneTitle({ stage, beat, line }) {
       desc.style.color = ink("--silk-dim");
       desc.textContent = "a synthesizer that searches for your sound";
 
-      stage.sfx("whoosh", b.t0 - 0.9, -3);
-      stage.sfx("logo_sting", b.t0 + 1.9 - 0.05, -5);
       // Final lockup geometry (measured once, at the final tracking).
       wm.style.letterSpacing = "0.095em";
       const wmW = wm.getBoundingClientRect().width;
@@ -314,13 +311,6 @@ function sceneDuel({ stage, beat, line }) {
       count.style.color = ink("--phos-b-dim");
       count.style.letterSpacing = "0.14em";
       const ptr = pointer(svg);
-      {
-        const L1 = l1.t0 - b.t0;
-        const d1 = l1.t1 - l1.t0;
-        for (const c of [L1 + 0.25, L1 + d1 * 0.42, L1 + d1 * 0.78]) stage.sfx("blip", b.t0 + c, -2);
-        const spb = 60 / stage.tl.grid.bpm;
-        for (let k = 0; k < 11; k++) stage.sfx("blip", l2.t0 - 0.1 + k * spb, -12);
-      }
       const v1 = voiceLine(over, "It plays you two patches. You pick the one you like better.");
       const v2 = voiceLine(over, "Every pick teaches it _your taste_,");
       return (tl, t) => {
@@ -447,7 +437,6 @@ function sceneGrow({ stage, beat, line }) {
       const v1 = voiceLine(over, "and it grows new patches _toward it_.", { y: 900 });
       const v2 = voiceLine(over, "Not samples. *Real modular circuits*, built and wired from scratch.", { y: 900 });
       const r = rng(9);
-      stage.sfx("whoosh", b.t0 - 0.35, -8);
       return (tl, t) => {
         const T = b.t1 - b.t0;
         const L2 = l2.t0 - b.t0;
@@ -531,16 +520,6 @@ function scenePerform({ stage, beat, line }) {
         voiceLine(over, "Press _Offer_, and a new version grows from the sound in your hands.", { y: 1030, size: 46 }),
         voiceLine(over, "Blend into it. Take it, or pass. Either way, _it learns_.", { y: 1030, size: 46 }),
       ];
-      {
-        const at0 = (id, k = "t0") => stage.line(id)[k];
-        stage.sfx("whoosh", bp.t0 - 0.4, -4);
-        stage.sfx("blip", at0("play2") + 0.3, -4);
-        stage.sfx("blip", at0("play3") + 0.3, -4);
-        stage.sfx("blip", at0("offer1") + 0.35, -2);
-        stage.sfx("offer_shimmer", at0("offer1") + 0.5, -2);
-        stage.sfx("blip", at0("offer2") + 0.05, -4);
-        stage.sfx("blip", at0("offer2") + 1.55, -2);
-      }
       const plus = textBlock(over, { x: 1640, y: 90, w: 300, cls: "mono", size: 24, align: "right", ax: 1, ay: 0.5 });
       plus.style.color = ink("--phos-b");
       return (tl, t) => {
@@ -683,7 +662,6 @@ function sceneDepth({ stage, beat, line }) {
         const wsk = el("line", { x1: rx0 + fx * rs, x2: rx0 + fx * rs, y1: ry0 + rs - (fy - wv) * rs, y2: ry0 + rs - (fy + wv) * rs, stroke: ink("--phos-b-dim"), "stroke-width": 2, opacity: 0 }, rel);
         return { c, wsk };
       });
-      stage.sfx("whoosh", b.t0 - 0.4, -6);
       const relLbl = textBlock(fc, { x: rx0 + rs + 30, y: ry0 + 40, w: 520, cls: "mono", size: 22, align: "left" });
       relLbl.innerHTML = `<span style="color:${ink("--phos-b-dim")}">TRUST</span><br><span style="color:${ink("--silk-dim")}">what it said would happen,<br>against what did.<br>on the line = honest.</span>`;
       return (tl, t) => {
@@ -770,7 +748,6 @@ function sceneClose({ stage, beat, line }) {
         const tr = scope(svg, { x: x + 20, y: y + 46, w: 320, h: 110, width: 2.5, points: 220, wave: voiceWave({ f: 1.2 + (i % 5) * 0.5, bright: 0.2 + ((i * 37) % 10) / 12, seed: 60 + i }) });
         return { d, lbl, tr };
       });
-      stage.sfx("whoosh", b.t0 - 0.4, -6);
       const v1 = voiceLine(over, "Every note in this film *is Auracle*.", { y: 850, size: 60 });
       const v2 = voiceLine(over, "Free, open source, and running in your browser.", { y: 850, size: 60 });
       const pills = ["free", "open source · MIT", "Rust → WebAssembly", "nothing to install"].map((s, i) => {
@@ -833,8 +810,9 @@ function sceneEnd({ stage, beat, line }) {
       M.cx = left + markPx / 2;
       const mk = mark(svg, { cx: M.cx, cy: M.cy, size: markPx });
       place(lock, { x: left + markPx + gap, y: M.cy, ay: 0.5 });
-      // No sting here: the score's own sting section lands its hit on this
-      // downbeat.
+      // The lockup lands on the downbeat of the score's last section, where
+      // the finale rings out. There is no hit (ADR-014: no cues); on N3,
+      // Reach follows the last word.
       const say = textBlock(over, { x: 960, y: 610, w: 1400, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5 });
       const sp = words(say, "Play it *today*.");
       const url = el("div", { class: "pill a" }, over, "auracle.alexnodeland.com  ▸");

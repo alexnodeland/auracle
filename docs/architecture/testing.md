@@ -28,6 +28,7 @@ this table.
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
+| Native and wasm agree | `cargo test -p auracle-wasm --profile test-fast --test boot_agrees`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` specs run in the *Slow suite* ([CI tiers](#ci-tiers)) |
@@ -73,9 +74,9 @@ runners). Rust tests over a minute, named in the `Makefile` as
 | --- | --- |
 | `auracle-session tests::refinement_improves_pool` (the search floor, a runner of its own) | 331 s |
 | `auracle-session perform::tests::an_aimed_offer_moves_the_way_it_was_turned` | 184 s |
-| `auracle-session perform::tests::a_planned_measurement_is_the_measurement` | 183 s |
+| `auracle-session perform::tests::a_planned_measurement_is_the_measurement` | 183 s (before its palette case, which adds a third measurement; it now fits its standardizer once rather than six times, which more than pays for it) |
 | `auracle-session tests::a_walk_is_a_function_of_its_job` | 127 s |
-| `auracle-session perform::tests::named_controls_move_the_sound_they_name` | 100 s |
+| `auracle-session perform::tests::named_controls_move_the_sound_they_name` | 100 s (before it held the palette's twelve too; its four presets now run in parallel, 34 s on a 16-core M3 Max) |
 | `auracle-wasm tests::evolve_from_this_on_the_farm_is_evolve_from_this` | 83 s |
 | `auracle-session tests::closed_loop_learns_synthetic_taste` | 76 s |
 | `auracle-session tests::closed_loop_learns_motion_rate` | 72 s |
@@ -120,6 +121,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | Spec | Pins |
 | --- | --- |
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface and the `belief` call `worker.js` calls |
+| `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |

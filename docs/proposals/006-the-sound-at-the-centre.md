@@ -421,3 +421,20 @@ Each is decided as its task in Plan-005 comes up.
    ([Plan-005, Measured (task 9a)](../plans/005-the-sound-at-the-centre.md#measured-task-9a)).
 4. **The palette's twelve new directions:** how each is defined in φ, and how
    often each is reachable.
+   *Answered (2026-10-01):* each of the twelve is its own direction over φ's
+   coordinates, not a blend of the six, because five pairs of the prototype's
+   blends were one direction (|cos| ≥ 0.9: Air and Bright, Softness and Snap,
+   Wobble and Motion, Distance and Space, Warmth and Air). No pair of the
+   eighteen reaches 0.9, by angle or across the sounds. Wired alone, each
+   reaches between 47% (Throb) and 94% (Distance) of the 62 presets, and a
+   median preset is reached by 12 of the eighteen against 3 of the six.
+   Measuring all eighteen doubles a measurement's renders (median 25 to 49),
+   so the panel verifies only the controls placed on it. The definitions,
+   tables and cost are in the reference
+   ([The palette](../../www/reference/src/search/perform.md#the-palette-eighteen-directions))
+   and [Plan-005](../plans/005-the-sound-at-the-centre.md#measured-task-9c).
+   *Names approved (2026-10-01):* the maintainer approved Round
+   (hard · round) for Softness, Throb (steady · throbbing) for Wobble, Sway
+   (fixed · swaying) for Drift, and Heft (slight · heavy) as the twelfth,
+   in Weight. Their rows in `www/brand/voice.md`'s word table come with the
+   palette's panel, when the app first shows them.

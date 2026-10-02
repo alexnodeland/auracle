@@ -77,7 +77,6 @@ function sceneHook({ stage, beat, line }) {
       const tDescribe = wordTime(l2, "describe");
       const tChoose = wordTime(l2, "choose");
       const tWhy = wordTime(l1, "like,");
-      stage.sfx("blip", tWhy, -4);
       return (tl, t) => {
         const inU = ramp(t, b.t0 - 0.2, b.t0 + 0.9, E.out4);
         A.div.style.opacity = B.div.style.opacity = inU;
@@ -204,7 +203,6 @@ function sceneEvidence({ stage, beat, line }) {
         voiceLine(over, "With every answer, that cloud of possible tastes _draws tighter_.", { size: 48 }),
       ];
       const pickT = [L[0].t0 + (L[0].t1 - L[0].t0) * 0.7, L[1].t0 + 1.4, L[1].t0 + 2.0, L[1].t0 + 2.5, L[2].t0 + 0.6, L[2].t0 + 1.4];
-      pickT.forEach((pt) => stage.sfx("blip", pt, -8));
       return (tl, t) => {
         const inU = ramp(t, b.t0, b.t0 + 0.8, E.out3);
         fa.update(inU, PHI_A);
@@ -330,7 +328,6 @@ function sceneForecast({ stage, beat, line }) {
       const v2 = voiceLine(over, "The TRUST view shows how honest those forecasts have been, even when the answer is: _no better than a coin flip, yet_.", { size: 46 });
       const tWrites = wordTime(l1, "writes");
       const tChecks = wordTime(l1, "checks");
-      stage.sfx("blip", tChecks, -4);
       return (tl, t) => {
         const cards = fade(t, b.t0 - 0.2, b.t0 + 0.5, l2.t0 - 0.2, l2.t0 + 0.3);
         A.div.style.opacity = B.div.style.opacity = cards;
@@ -474,8 +471,6 @@ function scenePlaying({ stage, beat, line }) {
       const v1 = voiceLine(over, "And when you play, it keeps listening. An offer you _hear_, then take or pass, counts just like a duel.", { size: 46 });
       const tOffer = wordTime(l1, "an offer");
       const tTake = wordTime(l1, "take");
-      stage.sfx("offer_shimmer", tOffer, -4);
-      stage.sfx("blip", tTake, -4);
       return (tl, t) => {
         const grow = ramp(t, tOffer, tOffer + 1.2);
         const taken = ramp(t, tTake + 0.3, tTake + 0.6);
@@ -515,7 +510,6 @@ function sceneOutro({ stage, beat, line }) {
       const v1 = voiceLine(over, "Your taste, _learned in the open_. And it never leaves your browser.", { y: 620, size: 56 });
       const fine = place(el("div", { class: "mono" }, over, "the model and your picks stay on your machine"), { x: 960, y: 720, ax: 0.5 });
       Object.assign(fine.style, { fontSize: "22px", color: ink("--silk-mute"), letterSpacing: "0.06em" });
-      stage.sfx("logo_sting", b.t0 - 0.1, -2);
       return (tl, t) => {
         const u = ramp(t, b.t0 - 0.2, b.t0 + 0.7, E.out4);
         mk.update({ tile: u, outer: u, inner: ramp(t, b.t0 - 0.3, b.t0 + 0.4), core: E.outBack(ramp(t, b.t0 - 0.3, b.t0 + 0.2, E.lin)) });
