@@ -493,6 +493,14 @@ pub const PALETTE: [NamedControl; 18] = [
     DISTANCE, HAZE, BITE, LOFI,
 ];
 
+/// Where `control` sits in the [`PALETTE`] (the same name and the same
+/// direction), or `None` for a direction the palette does not hold.
+pub fn palette_index(control: &NamedControl) -> Option<usize> {
+    PALETTE
+        .iter()
+        .position(|c| c.name == control.name && c.axis == control.axis)
+}
+
 /// The [`PALETTE`] entries `set` names, in its order: indices out of range
 /// and repeats are dropped, so every control is wired once.
 pub fn palette_controls(set: &[usize]) -> Vec<NamedControl> {
@@ -518,6 +526,8 @@ pub struct Jacobian {
     /// The patch's own standardized audio φ.
     pub z: Vec<f64>,
     /// One column per knob: `∂z/∂p`, per unit of normalized knob travel.
+    /// Empty from a measurement that wired no control
+    /// ([`Engine::wire_named`] with none), whose nudges were never rendered.
     pub cols: Vec<Vec<f64>>,
 }
 
@@ -526,6 +536,14 @@ pub struct Jacobian {
 pub struct Wiring {
     /// The control's name.
     pub name: String,
+    /// The control's index in [`PALETTE`]: how the page names it back to the
+    /// engine (an aimed offer's `control`, a graft's `k`). A measurement's
+    /// wirings come in the order they were asked for, so a wiring's position
+    /// is this index only when the six were asked for in order. `None` for a
+    /// direction the palette does not hold (one being tried out), and on a
+    /// wiring read back from JSON that predates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
     /// Low-end word.
     pub low: String,
     /// High-end word.
@@ -829,7 +847,7 @@ pub fn jacobian(
     memo: &RenderMemo,
     std: &Standardizer,
 ) -> Option<Jacobian> {
-    jacobian_by(tree, spec.sample_rate, &mut |t| {
+    jacobian_by(tree, spec.sample_rate, true, &mut |t| {
         rendered(t, spec, memo, std)
     })
     .ok()
@@ -839,10 +857,14 @@ pub fn jacobian(
 /// [`jacobian`] through a lookup. `Err(())` means some render is still
 /// [`Look::Pending`] — every one of them has been asked for by then, the
 /// patch's own and each knob's nudge alike, since none depends on another's
-/// result. `Ok(None)` is a patch that does not vet, as before.
+/// result. `Ok(None)` is a patch that does not vet, as before. Without
+/// `nudge`, only the patch itself is looked at and `cols` is empty: what a
+/// measurement that wires no control needs (the knobs and `z`), without the
+/// nudges' renders.
 pub(crate) fn jacobian_by(
     tree: &PatchTree,
     sample_rate: f64,
+    nudge: bool,
     look: &mut dyn FnMut(&PatchTree) -> Look,
 ) -> Result<Option<Jacobian>, ()> {
     // A patch that does not vet has no Jacobian, and its nudges are never
@@ -854,7 +876,7 @@ pub(crate) fn jacobian_by(
     let mut pending = matches!(base, Look::Pending);
     let knobs = live_knobs(tree, sample_rate);
     let mut nudged = Vec::with_capacity(knobs.len());
-    for (addr, v) in &knobs {
+    for (addr, v) in knobs.iter().filter(|_| nudge) {
         let h = if *v < 0.5 {
             JACOBIAN_STEP
         } else {
@@ -1038,6 +1060,7 @@ fn wire_over(control: &NamedControl, jac: &Jacobian, semantic: f64, all: &[usize
     let n = jac.cols.len();
     let mut out = Wiring {
         name: control.name.into(),
+        index: palette_index(control),
         low: control.low.into(),
         high: control.high.into(),
         knobs: Vec::new(),
@@ -1347,8 +1370,10 @@ impl Engine {
     /// picks them from the [`PALETTE`]), wired and separated in their order.
     /// The whole measurement, renders included: the Jacobian's `n + 1` are the
     /// same whatever is wired, and each reachable control adds its own
-    /// verification renders (the arithmetic alone is [`wire_set`]). The six of
-    /// [`CONTROLS`] give exactly what `wire_controls_known` gives.
+    /// verification renders (the arithmetic alone is [`wire_set`]). With no
+    /// controls it renders only the patch itself, for its knobs and `z`, and
+    /// wires nothing. The six of [`CONTROLS`] give exactly what
+    /// `wire_controls_known` gives.
     pub fn wire_named(
         &self,
         tree: &PatchTree,
@@ -1364,7 +1389,7 @@ impl Engine {
                 rendered(t, spec, memo, std)
             }
         };
-        let jac = jacobian_by(tree, spec.sample_rate, &mut look).ok()??;
+        let jac = jacobian_by(tree, spec.sample_rate, !controls.is_empty(), &mut look).ok()??;
         let mut wiring = wire_set(&jac, controls, SEMANTIC_RIDGE);
         verify_by(tree, &jac, &mut wiring, &mut look);
         Some((jac, wiring))
@@ -1421,7 +1446,8 @@ impl Engine {
                 }
             }
         };
-        if let Ok(Some(jac)) = jacobian_by(tree, spec.sample_rate, &mut look) {
+        if let Ok(Some(jac)) = jacobian_by(tree, spec.sample_rate, !controls.is_empty(), &mut look)
+        {
             let mut wiring = wire_set(&jac, controls, SEMANTIC_RIDGE);
             verify_by(tree, &jac, &mut wiring, &mut look);
         }

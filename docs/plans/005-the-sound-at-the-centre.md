@@ -204,11 +204,13 @@ Decisions:
   needs its row in `www/brand/voice.md` before the palette's panel shows it.
 - The engine wires the six unless the worker names others (`controls` on
   `perform_wire`), so the app is unchanged. The palette's panel (task 5)
-  sends the controls placed on it: verifying at most eight keeps a
-  measurement near today's, and the other controls' wirings come from the
-  same Jacobian by prediction, without renders.
+  sends the controls placed on it, and names each one back by the wiring's
+  `index`, not its position in the reply. It keys its wiring cache by the
+  set as well as the patch. Verifying at most eight keeps a measurement near
+  today's, and the other controls' wirings come from the same Jacobian by
+  prediction, without renders.
 - `apps/web/perform-wirings.json` keeps the six. With the twelve it would be
-  2.2 times the size (380 KB), for controls the panel does not show yet.
+  2.3 times the size (392 KB), for controls the panel does not show yet.
 
 ## Done when
 

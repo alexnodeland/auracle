@@ -441,9 +441,21 @@ Jacobian, the ridge solve onto at most four knobs, the purity and reach gate,
 separation, and verification on real renders (`Engine::wire_named`; the
 arithmetic alone, unverified and without a render, is `wire_set`). The first
 six entries are `CONTROLS`, at the same indices, so an index names the same
-control in either list (`perform_offer`’s `control`, `perform_graft`’s `k`).
-The app still asks for the six (`perform_wire` without `controls`); the
-palette’s panel is Plan-005 task 5.
+control in either list. The app still asks for the six (`perform_wire`
+without `controls`); the palette’s panel is Plan-005 task 5.
+
+**How a control is named across the boundary.** `perform_wire`’s `controls` is
+a JSON array of palette indices, read entry by entry: a non-negative whole
+number is an index, and an index out of range, a repeat, or anything else in
+the array (a negative, a fraction, a string) is dropped on its own. What is
+not an array at all means the six. An array with nothing valid in it wires
+nothing and renders only the patch itself. The reply’s `wiring` follows the
+order asked, and each entry carries its palette `index` (`Wiring::index`)
+beside its `name`. The page names a control back to the engine by that
+`index` (`perform_offer`’s `control`, `perform_graft`’s `k`), never by the
+entry’s position: asked for `[16, 6]`, the first entry is Bite with `index`
+16, and a position of 0 would aim along Bright. Only for the six asked in
+order are position and index the same.
 
 ### The directions
 
@@ -594,8 +606,8 @@ needs all eighteen. To keep within today’s budget:
    retried at half travel.
 
 The shipped preset wirings stay the six’s. With the twelve’s wirings beside
-them, `apps/web/perform-wirings.json` would weigh 380,084 bytes instead of
-169,451 (2.2 times), fetched by every visitor for controls the panel does not
+them, `apps/web/perform-wirings.json` would weigh 391,740 bytes instead of
+173,171 (2.3 times), fetched by every visitor for controls the panel does not
 show yet.
 
 ### Names
@@ -854,7 +866,11 @@ re-normalizing it.
   measures all eighteen directions, and the app still wires and shows the six:
   placing controls on the panel is Plan-005 task 5. The twelve have no
   [grafts](#the-measurements-and-what-reproduces-them) yet, so a search control
-  among them asks for an aimed offer only.
+  among them asks for an aimed offer only. The page’s wiring cache is keyed
+  by the patch alone (`wireKey` in `perform.js`), which is right while every
+  measurement is of the six; once the panel asks for other controls, the key
+  must hold the set asked for too, or a wiring of one set is played for
+  another.
 - **The directions are fixed, not personal.** The eighteen are the same for
   every player. A control along a fitted style $\theta_k$ is [a different and
   more interesting

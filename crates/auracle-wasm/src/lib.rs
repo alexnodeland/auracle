@@ -583,16 +583,30 @@ fn key_set(json: &str) -> std::collections::HashSet<String> {
 }
 
 /// The named controls a PERFORM measurement wires: the palette entries a
-/// JSON array of indices names (out of range and repeats dropped,
-/// `auracle_session::perform::palette_controls`), or the six of `CONTROLS`
-/// when there is no array, which is what the panel has always been measured
-/// with.
+/// JSON array of indices names, or the six of `CONTROLS` when there is no
+/// array, which is what the panel has always been measured with. The array
+/// is read entry by entry: each non-negative whole number is an index (an
+/// out-of-range one or a repeat is dropped,
+/// `auracle_session::perform::palette_controls`), and anything else in it
+/// (a negative, a fraction, a string) is dropped on its own rather than
+/// turning the whole request into the six. An array with nothing valid in it
+/// wires nothing.
 fn palette_set(json: Option<&str>) -> Vec<auracle_session::perform::NamedControl> {
-    use auracle_session::perform::{palette_controls, CONTROLS};
-    match json.and_then(|j| serde_json::from_str::<Vec<usize>>(j).ok()) {
-        Some(set) => palette_controls(&set),
-        None => CONTROLS.to_vec(),
-    }
+    use auracle_session::perform::{palette_controls, CONTROLS, PALETTE};
+    let Some(serde_json::Value::Array(items)) =
+        json.and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+    else {
+        return CONTROLS.to_vec();
+    };
+    let index = |v: &serde_json::Value| -> Option<usize> {
+        if let Some(k) = v.as_u64() {
+            return usize::try_from(k).ok();
+        }
+        // `6.0` is the index 6; `1.5`, `-1` and `1e21` are not indices.
+        let f = v.as_f64()?;
+        (f >= 0.0 && f.fract() == 0.0 && f < PALETTE.len() as f64).then_some(f as usize)
+    };
+    palette_controls(&items.iter().filter_map(index).collect::<Vec<_>>())
 }
 
 #[wasm_bindgen]
@@ -1258,10 +1272,16 @@ impl WasmEngine {
     /// render per continuous knob, through the memo.
     ///
     /// `controls` is which to wire: a JSON array of indices into the
-    /// palette's eighteen (`auracle_session::perform::PALETTE`), and `wiring`
-    /// then holds one entry per valid index, in that order, each named. Left
-    /// out (`undefined` from JS), it is the six of `CONTROLS`, exactly as
-    /// before the palette, which is what today's panel asks for.
+    /// palette's eighteen (`auracle_session::perform::PALETTE`), read entry
+    /// by entry (`palette_set`). `wiring` then holds one entry per valid
+    /// index, in the order asked, each carrying its `name` and its palette
+    /// `index`. **Name a control back by its `index`, never by its position
+    /// in `wiring`**: asked for `[16, 6]`, the first wiring is Bite (index
+    /// 16), and position 0 is Bright to `perform_offer` and `perform_graft`.
+    /// An array with no valid index wires nothing and renders only the patch
+    /// itself (for `addrs`, `values` and `z`). Left out (`undefined` from
+    /// JS), it is the six of `CONTROLS` in order, so each position is its
+    /// index, exactly as before the palette: what today's panel asks for.
     pub fn perform_wire(
         &self,
         tree_json: &str,
@@ -1394,9 +1414,11 @@ impl WasmEngine {
     }
 
     /// The performed state (`tree` plus `overrides`) with the module that
-    /// gives named control `k` something to turn grafted onto its output
+    /// gives named control `k` (a palette index, a wiring's `index`) something
+    /// to turn grafted onto its output
     /// ([`auracle_session::perform::graft_for`]): `{tree}`, or `{reason:
-    /// "no_graft"}` when there is none to give, or `null` if the tree does
+    /// "no_graft"}` when there is none to give (as for all of the palette's
+    /// twelve so far), or `null` if the tree does
     /// not parse. Renders nothing; the page commits the tree and re-measures.
     pub fn perform_graft(&self, tree_json: &str, overrides_json: &str, k: u32) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
@@ -2812,51 +2834,103 @@ mod tests {
 
     /// PERFORM's measurement wires the six it always has unless the worker
     /// names palette controls, and then exactly those, in the order named,
-    /// each under its own name: an index out of range or named twice is
-    /// dropped, and naming the six is the same as naming none (the panel's
-    /// request, unchanged). The plan and its finish take the same set, and a
+    /// each with its name and its palette `index`, which is how the page
+    /// names it back (a position is not: asked for Bite then Warmth, position
+    /// 0 is Bite, and 0 is Bright to an offer). The request is read entry by
+    /// entry: an index out of range, a repeat, a negative, a fraction or a
+    /// string is dropped alone, and naming the six is the same as naming none
+    /// (the panel's request, unchanged). Naming nothing wires nothing and
+    /// renders no nudge. The plan and its finish take the same set, and a
     /// finish whose renders are all in the memo is the one-call answer.
     #[test]
     fn perform_wire_measures_the_palette_controls_asked_for() {
         use auracle_session::perform::{CONTROLS, PALETTE};
         let mut engine = WasmEngine::new(3, 6);
         while engine.fill_step(3) > 0 {}
-        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
-            .as_u64()
-            .unwrap() as u32;
-        assert!(engine.edit_begin(id));
-        let tree = engine.edit_tree_json();
-        let names = |reply: &str| -> Vec<String> {
+        let ranked = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap();
+        let id_of = |k: usize| ranked[k]["id"].as_u64().unwrap() as u32;
+        let (id, other) = (id_of(0), id_of(1));
+        // `(name, index)` of each wiring, in reply order.
+        let wired = |reply: &str| -> Vec<(String, Option<usize>)> {
             let v: serde_json::Value = serde_json::from_str(reply).unwrap();
             v["wiring"]
                 .as_array()
                 .expect("a wiring")
                 .iter()
-                .map(|w| w["name"].as_str().unwrap().to_string())
+                .map(|w| {
+                    let index = w["index"].as_u64().map(|k| k as usize);
+                    (w["name"].as_str().unwrap().to_string(), index)
+                })
                 .collect()
         };
+        let palette = |ks: &[usize]| -> Vec<(String, Option<usize>)> {
+            ks.iter()
+                .map(|&k| (PALETTE[k].name.to_string(), Some(k)))
+                .collect()
+        };
+
+        // Naming nothing: the patch's knobs and z, no wiring, and none of the
+        // nudges a Jacobian renders (the pool's member is already in the memo).
+        let lone = engine.tree_json_of(other);
+        let misses = || {
+            serde_json::from_str::<serde_json::Value>(&engine.memo_stats()).unwrap()["misses"]
+                .as_u64()
+                .unwrap()
+        };
+        let before = misses();
+        assert_eq!(
+            engine.perform_wire_plan(&lone, "[]", "[]", Some("[]".into())),
+            "[]"
+        );
+        let empty: serde_json::Value =
+            serde_json::from_str(&engine.perform_wire(&lone, "[]", Some("[]".into()))).unwrap();
+        assert_eq!(misses(), before, "naming nothing rendered");
+        assert_eq!(empty["wiring"], serde_json::json!([]));
+        assert!(empty["addrs"].as_array().is_some_and(|a| !a.is_empty()) && empty["z"].is_array());
+        assert_ne!(
+            engine.perform_wire_plan(&lone, "[]", "[]", Some("[6]".into())),
+            "[]",
+            "naming one control owes the Jacobian's nudges"
+        );
+
+        assert!(engine.edit_begin(id));
+        let tree = engine.edit_tree_json();
         let six = engine.perform_wire(&tree, "[]", None);
-        let want: Vec<&str> = CONTROLS.iter().map(|c| c.name).collect();
-        assert_eq!(names(&six), want);
+        assert_eq!(wired(&six), palette(&[0, 1, 2, 3, 4, 5]));
+        assert!(CONTROLS.iter().zip(&PALETTE).all(|(a, b)| a.name == b.name));
         assert_eq!(
             engine.perform_wire(&tree, "[]", Some("[0,1,2,3,4,5]".into())),
             six,
             "naming the six is the panel's request"
         );
-        assert_eq!(
-            engine.perform_wire(&tree, "[]", Some("not json".into())),
-            six,
-            "an unreadable set is the six"
-        );
-        let ask = "[16, 6, 99, 16, 0]";
-        let asked = engine.perform_wire(&tree, "[]", Some(ask.into()));
-        assert_eq!(
-            names(&asked),
-            [PALETTE[16].name, PALETTE[6].name, PALETTE[0].name]
-        );
+        for not_a_set in ["not json", "{\"0\": 6}", "6"] {
+            assert_eq!(
+                engine.perform_wire(&tree, "[]", Some(not_a_set.into())),
+                six,
+                "{not_a_set}: what is not an array is the six"
+            );
+        }
+        // A request in an order that is not the palette's.
+        let asked = engine.perform_wire(&tree, "[]", Some("[16, 6, 99, 16, 0]".into()));
+        assert_eq!(wired(&asked), palette(&[16, 6, 0]));
+        assert_ne!(wired(&asked)[0].1, Some(0), "position 0 is not index 0");
+        for (ask, want) in [
+            ("[6, -1]", vec![6]),
+            ("[6, 1.5]", vec![6]),
+            ("[6.0]", vec![6]),
+            ("[\"6\", 7]", vec![7]),
+            ("[1e21]", vec![]),
+            ("[]", vec![]),
+        ] {
+            let reply = engine.perform_wire(&tree, "[]", Some(ask.into()));
+            assert_eq!(wired(&reply), palette(&want), "{ask}");
+        }
         let all = format!("{:?}", (0..PALETTE.len()).collect::<Vec<_>>());
         let full = engine.perform_wire(&tree, "[]", Some(all.clone()));
-        assert_eq!(names(&full).len(), PALETTE.len());
+        assert_eq!(
+            wired(&full),
+            palette(&(0..PALETTE.len()).collect::<Vec<_>>())
+        );
         assert_eq!(
             engine.perform_wire_plan(&tree, "[]", "[]", Some(all.clone())),
             "[]",
