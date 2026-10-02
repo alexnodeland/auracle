@@ -6,6 +6,10 @@
 //   make wasm
 //   node crates/auracle-wasm/examples/pick_belief.mjs [picks] [breed]
 //
+// Beside the ratings, it times what the calibration reply carries after
+// every pick (`calibration`, and since Plan-005 task 6 `forecasts` and
+// `model_facts`, which LEARNING draws).
+//
 // `picks` defaults to 30. `breed` = 1 then opens a generation, walks all but
 // its last job here (`farm_walk`, one at a time: a minute or two) so it stays
 // open with the pool over size, and times ten more picks. The boot fills the
@@ -49,7 +53,7 @@ const pad = (x, w, d = 2) => x.toFixed(d).padStart(w);
 const byK = new Map();
 const fits = new Map();
 const file = (m, k, v) => (m.has(k) ? m.get(k).push(v) : m.set(k, [v]));
-console.log("pick  K  ess   record  belief  ranked    map  styles   (ms; bytes: belief, ranked, map)");
+console.log("pick  K  ess   record  belief  ranked    map  styles   calib  fcasts  facts   (ms; bytes: belief, ranked, map, forecasts)");
 for (let pick = 1; pick <= picks; pick++) {
   const [a, b] = JSON.parse(e.next_duel());
   const p = e.duel_pred(a, b);
@@ -59,21 +63,24 @@ for (let pick = 1; pick <= picks; pick++) {
   const [rk, rkb] = ms(() => e.ranked().length);
   const [mp, mpb] = ms(() => e.taste_map().length);
   const [st] = ms(() => e.styles().length);
+  const [cb] = ms(() => e.calibration().length);
+  const [fc, fcb] = ms(() => e.forecasts().length);
+  const [fa] = ms(() => e.model_facts().length);
   const ess = JSON.parse(e.status()).ess;
   const k = lenses();
-  console.log(`${String(pick).padStart(4)} ${String(k).padStart(2)} ${pad(ess, 4, 0)}  ${pad(rec, 6)}  ${pad(bl, 6)}  ${pad(rk, 6)}  ${pad(mp, 5)}  ${pad(st, 6)}   ${blb} ${rkb} ${mpb}`);
-  if (k > 0) file(byK, k, [rec, bl, rk, mp, st]);
+  console.log(`${String(pick).padStart(4)} ${String(k).padStart(2)} ${pad(ess, 4, 0)}  ${pad(rec, 6)}  ${pad(bl, 6)}  ${pad(rk, 6)}  ${pad(mp, 5)}  ${pad(st, 6)}  ${pad(cb, 5)}  ${pad(fc, 6)}  ${pad(fa, 5)}   ${blb} ${rkb} ${mpb} ${fcb}`);
+  if (k > 0) file(byK, k, [rec, bl, rk, mp, st, cb, fc, fa]);
   if (pick % 6 === 0) {
     const [fit] = ms(() => (e.fit(), 0));
     file(fits, lenses(), fit); // under the K it fitted
     console.log(`      refit ${fit.toFixed(0)} ms (K ${lenses()})`);
   }
 }
-console.log("\nmedians (ms)\n  K  picks  record  belief  ranked    map  styles   refit");
+console.log("\nmedians (ms)\n  K  picks  record  belief  ranked    map  styles   calib  fcasts  facts   refit");
 for (const [k, rows] of byK) {
-  const [rec, bl, rk, mp, st] = [0, 1, 2, 3, 4].map((i) => median(rows.map((r) => r[i])));
+  const [rec, bl, rk, mp, st, cb, fc, fa] = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => median(rows.map((r) => r[i])));
   const fit = fits.has(k) ? median(fits.get(k)) : NaN;
-  console.log(`  ${k}  ${String(rows.length).padStart(5)}  ${pad(rec, 6)}  ${pad(bl, 6)}  ${pad(rk, 6)}  ${pad(mp, 5, 1)}  ${pad(st, 6)}  ${pad(fit, 6, 0)}`);
+  console.log(`  ${k}  ${String(rows.length).padStart(5)}  ${pad(rec, 6)}  ${pad(bl, 6)}  ${pad(rk, 6)}  ${pad(mp, 5, 1)}  ${pad(st, 6)}  ${pad(cb, 5)}  ${pad(fc, 6)}  ${pad(fa, 5)}  ${pad(fit, 6, 0)}`);
 }
 
 if (breed) {

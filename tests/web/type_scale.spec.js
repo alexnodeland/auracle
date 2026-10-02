@@ -8,8 +8,8 @@
 //   lone glyph (▶, ★, ✓), which is sized to the button it sits in.
 // - A canvas draws its text at the canvas floor, 12 px, or larger: TA20 found
 //   the 10 px the scopes and TASTE used too small for their job. The duel
-//   scopes' "0 dBFS" and a graded TRUST are drawn and read, and TRUST's last
-//   line keeps 16 px clear of the canvas's bottom edge.
+//   scopes' "0 dBFS" and LEARNING's forecast strip are drawn and read, and the
+//   strip's labels keep their descenders inside the canvas.
 // - The menu bar is as tall as `--menubar-h`, which what opens under it (the
 //   alarm) is placed by, in one row and in two.
 // - Under prefers-reduced-motion all three durations on the scale are 0, so a
@@ -66,12 +66,6 @@ async function openView(page, view) {
   await settled(page);
 }
 
-async function openTasteTab(page, tab) {
-  await page.locator(`.tab[data-tab="${tab}"]`).click();
-  await expect(page.locator(`.tab[data-tab="${tab}"]`)).toHaveAttribute("aria-selected", "true");
-  await settled(page);
-}
-
 /** Visible text under the floor: each element that holds its own words, or
  *  whose ::before or ::after prints some, outside the rack's SVG, whose
  *  computed size is under `floor` px. */
@@ -100,14 +94,13 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   test.setTimeout(240_000);
   const errs = await boot(page);
   const under = {};
-  for (const view of ["perform", "play", "evolve", "taste"]) {
+  for (const view of ["perform", "play", "evolve", "taste", "learning"]) {
     await openView(page, view);
     under[view] = await page.evaluate(UNDER(11));
   }
-  for (const tab of ["styles", "dir", "trust"]) {
-    await openTasteTab(page, tab);
-    under[`taste ${tab}`] = await page.evaluate(UNDER(11));
-  }
+  // LEARNING with the maths open.
+  await page.locator("#md-math-btn").click();
+  under["learning, the maths"] = await page.evaluate(UNDER(11));
   // A bookmark on the minimap: its number is text in a page, at the floor,
   // inside its pip.
   await openView(page, "play");
@@ -132,7 +125,7 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   expect(errs).toEqual([]);
 });
 
-test("a canvas draws its text at the canvas floor, 12 px, or larger, and TRUST's last line clears the edge", async ({ page }) => {
+test("a canvas draws its text at the canvas floor, 12 px, or larger, and the forecast strip's labels stay inside it", async ({ page }) => {
   test.setTimeout(240_000);
   const errs = await boot(page);
   const drawn = (canvas, text) => page.waitForFunction(
@@ -142,30 +135,24 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and TRUST's
   // EVOLVE's scopes label full scale once a pair's sound is in.
   await openView(page, "evolve");
   await drawn(["scope-a", "scope-b"], "0 dBFS");
-  // TASTE's four tabs, and TRUST with a grade to draw, handed over as the
-  // worker hands one.
+  // TASTE's map, and LEARNING with forecasts to draw, handed over as the
+  // worker hands them.
   await openView(page, "taste");
-  for (const tab of ["map", "styles", "dir"]) await openTasteTab(page, tab);
+  await openView(page, "learning");
   await page.evaluate(() => {
     const calib = {
-      n: 34, brier: 0.214, skill: 0.12, check_n: 9, check_skill: 0.05,
-      bins: [
-        { predicted: 0.15, observed: 0.2, n: 4 }, { predicted: 0.35, observed: 0.3, n: 7 },
-        { predicted: 0.55, observed: 0.6, n: 9 }, { predicted: 0.75, observed: 0.7, n: 8 },
-        { predicted: 0.9, observed: 0.95, n: 6 },
-      ],
+      n: 34, brier: 0.214, skill: 0.12, check_n: 9, check_skill: 0.05, bins: [],
       by_provenance: [{ provenance: "duel", n: 24, skill: 0.1 }, { provenance: "heard_edit", n: 10, skill: 0.2 }],
     };
-    window.__pwWorker.dispatchEvent(new MessageEvent("message", { data: { type: "calibration", calib } }));
+    const forecasts = [0.62, 0.3, 0.71, 0.55].map((p_a, i) => ({ p_a, chose_a: i % 2 === 0, random_check: false, provenance: "duel" }));
+    window.__pwWorker.dispatchEvent(new MessageEvent("message", { data: { type: "calibration", calib, forecasts } }));
   });
-  await openTasteTab(page, "trust");
-  await drawn(["taste-crt"], "dots inside their whisker");
+  await drawn(["md-strip-cv"], "100%");
   const texts = await page.evaluate(() => window.__pwCanvasText);
-  expect(texts.some((t) => t.canvas === "taste-crt" && t.text.startsWith("perfectly honest")), "TRUST drew its grade").toBe(true);
   const small = texts.filter((t) => !(t.css >= 12)).map((t) => `${t.canvas}: ${t.text} at ${t.css}px`);
   expect(small, "canvas text under 12 px").toEqual([]);
-  const last = texts.filter((t) => t.canvas === "taste-crt" && t.text.startsWith("dots inside their whisker")).pop();
-  expect(last.y, `TRUST's last line, at ${last.y} of ${last.h}, keeps 16 px off the bottom`).toBeLessThanOrEqual(last.h - 16 * last.dpr);
+  const last = texts.filter((t) => t.canvas === "md-strip-cv").pop();
+  expect(last.y, `the strip's labels, at ${last.y} of ${last.h}, keep their descenders inside it`).toBeLessThanOrEqual(last.h - 4 * last.dpr);
   expect(errs).toEqual([]);
 });
 

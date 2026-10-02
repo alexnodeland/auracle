@@ -116,14 +116,17 @@ small session can fill without every bucket being noise). Each bucket reports:
 | `observed` | Observed frequency of “A won”: the evidence |
 | `n` | How many forecasts landed here |
 
-Plotted, the diagonal is the claim and the dots are the reality. This is the
-display that makes calibration *legible*: a single number cannot distinguish
-“overconfident at the top end” from “underconfident in the middle”, and the
-shape of the failure is what says what to do about it.
+Plotted, the diagonal is the claim and the dots are the reality: a single
+number cannot distinguish “overconfident at the top end” from “underconfident
+in the middle”, and the shape of the failure is what says what to do about it.
 
-The app draws a whisker per bucket for how much a bucket that size could wobble
-by chance, so a dot off the diagonal with a whisker crossing it is not yet
-evidence of anything.
+The app does not plot it. LEARNING draws every forecast instead
+(`WasmEngine::forecasts`, the list these scores are taken over), each as the
+probability it gave the sound picked, with the hits out of all of them and
+the mean confidence of its guesses (`expected`, the mean of
+$\max(p, 1 - p)$) beside the share it got right (`was`). Expected above was
+is overconfidence, the diagram’s top-end failure, in two numbers. The buckets
+stay in `calibration()` and in LEARNING’s copy as JSON.
 
 ## By provenance
 

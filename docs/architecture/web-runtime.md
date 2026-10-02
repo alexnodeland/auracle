@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-01
+last_updated: 2026-10-02
 related_adrs: [1, 2, 7, 12]
 ---
 
@@ -104,11 +104,57 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
   so the seeds and what may be replaced.
 
 Main keeps the latest as `views.ratings`. Pointing at EVOLVE POOL marks its
-`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`); nothing
-else is drawn from it yet (Plan-005 draws picks as directions and moves the
-glows per pick from it). `views.ranked` and `views.map` still change only
-when views are posted. A pick in EVOLVE reaches the worker when its undo
-window closes, so its ratings arrive then, not at the click.
+`seeds` and `may_replace` in the bank (`evolveMarks` in `main.js`), and TASTE
+draws from it (`taste.js`, Plan-005 task 6): the `status` that answers `record_duel` draws an
+arrow from the sound passed to the sound picked (its `vote` and `choseA`), and
+every halo on the map moves to the ratings it carries, in one tween; a views
+post settles every halo and every place at once. LEARNING's arrow (which way
+liking rises on the map) turns with the same ratings. `views.ranked` and
+`views.map` still change only when views are posted, so the bank's numbers
+follow the last refit. A pick in EVOLVE reaches the worker when its undo
+window closes, so its ratings arrive then, not at the click; picks made while
+TASTE is hidden are drawn in turn when it opens.
+
+## Taste over time, kept by the page
+
+The engine keeps no history of its ratings, its map or its θ, so the page
+keeps what it was sent (`taste-geom.js`: `recordEntry`, `attachStyles`,
+`entryView`). One entry per change: each `status` with `ratings` (a pick, a
+star, a cut, a PERFORM answer), and each views post with a new map (a refit,
+or a generation when the engine's generation count moved), with the engine's
+pick count (not TAUGHT, which also counts picks inside their undo window), the
+observation count, whether a fit existed and the pick's
+two sounds. Maps are kept once and referenced. After each `status` with
+`ratings`, main asks for `styles` (a `later`-lane request, 0.6 to 12 ms by the
+lenses) and the reply is kept with the entry whose observation count it
+names; every surface's `views.styles` takes it too, so LEARNING's bars move
+per pick. The history is bounded to the last 200 entries and saved with the
+session as `ui.taste` (`{v: 1, maps, entries, names}`), JS-owned like the rest
+of `ui`; a reset drops it, and `readHistory` drops one this build cannot read.
+A refit's, a generation's or an opened file's moment keeps the styles of the
+views post that brought it (`setStyles`); the worker answers a `styles`
+request a fit has overtaken, or one queued behind a burst that finds no new
+observation, with none, so θ is never credited to the wrong moment. TASTE's
+track draws from the history, and LEARNING's REPLAY steps through its
+`styles`, crediting each step to what it was. `ratings.direction`
+(`Belief::direction`, `auracle_session::liking_direction`) is which way liking
+rises on the last map drawn, fitted by the engine; LEARNING only draws it. A
+`status` for a PERFORM answer the engine didn't take carries `recorded: false`
+and no ratings, and keeps no moment.
+Every views post also carries `features` (`WasmEngine::pool_features`: each
+pool member's z), which LEARNING shades its small map by while a weight is
+pointed at.
+
+## The forecasts and the math's numbers
+
+The `calibration` reply main asks for after every `status` carries, beside the
+summary, every forecast it scores (`forecasts`, `WasmEngine::forecasts`: each
+pair's `p_a`, the answer, whether it was a fair test, and its provenance) and
+the numbers LEARNING's math states (`facts`, `WasmEngine::model_facts`: φ's
+audio and structural halves, the draws the model holds, its styles, their cap
+and the observations per style). Every views post carries `facts` too, since a
+fit changes how many styles it was allowed. The forecasts persist in the
+engine; main keeps the latest of each and draws them only in LEARNING.
 
 **`seeds` and `may_replace` describe a generation opened now.** At rest that
 is the next press of EVOLVE POOL, and they are what to mark. While a

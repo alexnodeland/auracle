@@ -2064,8 +2064,13 @@ impl WasmEngine {
     /// ```json
     /// {"ranked":[{"id":12,"mean":0.84,"std":0.31,"style":1}, …],
     ///  "seeds":[12,7,31, …],
-    ///  "may_replace":[40,3, …]}
+    ///  "may_replace":[40,3, …],
+    ///  "direction":{"gx":0.031,"gy":-0.012,"r2":0.42}}
     /// ```
+    ///
+    /// `direction` is which way liking rises across the last map drawn
+    /// (`auracle_session::liking_direction`, in map units), what LEARNING
+    /// draws as its arrow; `null` before a fit or a map.
     ///
     /// `ranked` is [`WasmEngine::ranked`]'s rows and order with the numbers
     /// only, plus `style`, the lens the map colors the member by. Each number
@@ -2138,6 +2143,75 @@ impl WasmEngine {
     /// check duels, which is the only selection-bias-free number here.
     pub fn calibration(&self) -> String {
         serde_json::to_string(&self.engine.calibration()).unwrap()
+    }
+
+    /// Every forecast [`Self::calibration`] scores, oldest first, as JSON:
+    ///
+    /// ```json
+    /// [{"p_a":0.62,"chose_a":true,"random_check":false,"provenance":"duel"}, …]
+    /// ```
+    ///
+    /// Each is the posterior's `P(A wins)` taken before the answer joined
+    /// the log, so LEARNING draws the model's forecasts one by one (the chance
+    /// it gave the sound you picked, `p_a` or `1 − p_a`) rather than only
+    /// their summary. None exist before the first fit: there is no posterior
+    /// to forecast with. They persist with the session.
+    pub fn forecasts(&self) -> String {
+        serde_json::to_string(&self.engine.forecasts).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Every pool member's standardized features, as JSON:
+    ///
+    /// ```json
+    /// {"names":["centroid_mean:p2", …],"rows":[{"id":12,"z":[0.41,-1.2, …]}, …]}
+    /// ```
+    ///
+    /// `z` is the candidate's φ through the current standardizer
+    /// (`Candidate::phi_std`), in `names` order: the coordinates θ is a
+    /// weight on. LEARNING shades the map by one of them while a weight is
+    /// pointed at. Members not yet featurized, or everything before a
+    /// standardizer exists, are left out. 40 × 44 numbers: cheap enough to
+    /// ride every views post.
+    pub fn pool_features(&self) -> String {
+        let rows: Vec<serde_json::Value> = self
+            .engine
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .map(|c| serde_json::json!({ "id": c.id, "z": c.phi_std }))
+            .collect();
+        serde_json::json!({ "names": Features::phi_names(), "rows": rows }).to_string()
+    }
+
+    /// The numbers LEARNING's math states, read from the engine rather than
+    /// written twice:
+    ///
+    /// ```json
+    /// {"audio":18,"structural":26,"draws":500,"styles":2,"styles_max":5,
+    ///  "obs_per_style":20}
+    /// ```
+    ///
+    /// `audio` and `structural` are the lengths of φ's two halves
+    /// (`AudioFeatures::NAMES`, `StructFeatures::NAMES`). `draws` is how many
+    /// posterior draws the model holds now, or the most a fit keeps
+    /// (`auracle_taste::model::KEEP`) before the first fit. `styles` is the
+    /// lenses the current fit was allowed (0 before it), `styles_max` the cap
+    /// (`SessionConfig::k_styles`), and a fit over `n` observations is
+    /// allowed `1 + n / obs_per_style` of them ([`auracle_session::OBS_PER_STYLE`]).
+    pub fn model_facts(&self) -> String {
+        let (draws, styles) = match &self.engine.posterior {
+            Some(p) => (p.samples.len(), p.k_styles()),
+            None => (auracle_taste::model::KEEP, 0),
+        };
+        serde_json::json!({
+            "audio": auracle_features::AudioFeatures::NAMES.len(),
+            "structural": auracle_features::StructFeatures::NAMES.len(),
+            "draws": draws,
+            "styles": styles,
+            "styles_max": self.engine.cfg.k_styles,
+            "obs_per_style": auracle_session::OBS_PER_STYLE,
+        })
+        .to_string()
     }
 
     /// The 2D taste map (pool + history ghosts) as JSON, or `null` when
@@ -3389,6 +3463,82 @@ mod tests {
             "a stored row's key must begin with the namespace it was measured in"
         );
         assert_eq!(farm_key("{", &phrase), "", "an unparsable tree is a miss");
+    }
+
+    /// LEARNING's math reads its numbers from `model_facts`, and its
+    /// forecast strip from `forecasts`: the facts are φ's two halves, the
+    /// draws the posterior holds and the lenses it was allowed; each forecast
+    /// is the `duel_pred` taken before the pick it scores, and none exists
+    /// before the first fit.
+    #[test]
+    fn model_facts_and_forecasts_are_the_engines() {
+        let mut engine = WasmEngine::new(5, 8);
+        while engine.fill_step(4) > 0 {}
+        let facts: serde_json::Value = serde_json::from_str(&engine.model_facts()).unwrap();
+        let names = Features::phi_names();
+        let audio = names.iter().filter(|n| n.contains(':')).count();
+        assert_eq!(facts["audio"], serde_json::json!(audio), "{facts}");
+        assert_eq!(facts["audio"], serde_json::json!(18), "{facts}");
+        assert_eq!(
+            facts["structural"],
+            serde_json::json!(names.len() - audio),
+            "{facts}"
+        );
+        assert_eq!(facts["structural"], serde_json::json!(26), "{facts}");
+        assert_eq!(
+            facts["draws"],
+            serde_json::json!(auracle_taste::model::KEEP),
+            "{facts}"
+        );
+        assert_eq!(
+            facts["styles"],
+            serde_json::json!(0),
+            "no fit, no lens: {facts}"
+        );
+        assert_eq!(facts["styles_max"], serde_json::json!(5), "{facts}");
+        assert_eq!(facts["obs_per_style"], serde_json::json!(20), "{facts}");
+        assert_eq!(engine.forecasts(), "[]");
+
+        let mut taught = taught_wasm(0x1EA);
+        let facts: serde_json::Value = serde_json::from_str(&taught.model_facts()).unwrap();
+        let p = taught.engine.posterior.as_ref().unwrap();
+        assert_eq!(
+            facts["draws"],
+            serde_json::json!(p.samples.len()),
+            "{facts}"
+        );
+        assert_eq!(facts["draws"], serde_json::json!(500), "{facts}");
+        assert_eq!(facts["styles"], serde_json::json!(p.k_styles()), "{facts}");
+        let before: Vec<serde_json::Value> = serde_json::from_str(&taught.forecasts()).unwrap();
+        let [a, b]: [u64; 2] = serde_json::from_str::<Option<[u64; 2]>>(&taught.next_duel())
+            .unwrap()
+            .expect("a duel");
+        let pred = taught.duel_pred(a as u32, b as u32);
+        assert!(taught.record_duel(a as u32, b as u32, false));
+        let after: Vec<serde_json::Value> = serde_json::from_str(&taught.forecasts()).unwrap();
+        assert_eq!(after.len(), before.len() + 1);
+        let last = after.last().unwrap();
+        assert_eq!(last["p_a"].as_f64().unwrap(), pred, "{last}");
+        assert_eq!(last["chose_a"], serde_json::json!(false));
+        assert_eq!(last["provenance"], serde_json::json!("duel"));
+
+        // The pool's z, one row per featurized member, in φ's order: exactly
+        // the coordinates θ weighs.
+        let f: serde_json::Value = serde_json::from_str(&taught.pool_features()).unwrap();
+        assert_eq!(f["names"].as_array().unwrap().len(), names.len());
+        let rows = f["rows"].as_array().unwrap();
+        let pool: Vec<_> = taught
+            .engine
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .collect();
+        assert_eq!(rows.len(), pool.len());
+        for (row, c) in rows.iter().zip(&pool) {
+            assert_eq!(row["id"], serde_json::json!(c.id));
+            let z: Vec<f64> = serde_json::from_value(row["z"].clone()).unwrap();
+            assert_eq!(z, c.phi_std, "z is the member's standardized φ");
+        }
     }
 
     /// The bench's cable probe names the cables PATCH draws, keyed as the rack

@@ -51,9 +51,10 @@ radio, sequenced by signal quality rather than by effort.
 
 1. **Duel stream and workbench: shipped.** The core loop is A/B pairs in
    **EVOLVE**; candidates land on the workbench in **PATCH**, where stars, free
-   play, hand edits, locks, and downloads happen. **TASTE** is the model
-   reporting on itself: the map, the styles, their coefficients with credible
-   intervals, and the calibration diagram.
+   play, hand edits, locks, and downloads happen. **TASTE** and **LEARNING**
+   are the model reporting on itself: the map, with each pick drawn as the
+   direction it taught; the styles and their coefficients with credible
+   intervals; and its forecasts, scored.
 2. **Population grid: open.** See a generation at once, rate/cull/breed; keeps
    evosynth v1’s “generations” mental model for users who want to steer. This
    is where keep/kill triage would get its surface.

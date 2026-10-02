@@ -919,6 +919,12 @@ function tasteViews() {
     // so the seeds and the may-be-replaced marks are current after a refit, a
     // generation or an import, as well as after a pick.
     ratings: engineRatings(),
+    // The numbers LEARNING's math states (`modelFacts`): a fit changes
+    // how many styles it was allowed.
+    facts: modelFacts(),
+    // Every pool member's standardized φ (`poolFeatures`): LEARNING shades the
+    // map by one coordinate while its weight is pointed at.
+    features: poolFeatures(),
     // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
     // shipped in `styles`; this is what θ is *worth* — adding one filter is a
     // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
@@ -981,6 +987,47 @@ function postLiveTree(edited, why, makeup) {
 function engineRatings() {
   try {
     return JSON.parse(engine.belief());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every forecast the calibration scores, oldest first
+// (`WasmEngine::forecasts`): the model's P(A wins), taken before the answer.
+// `null` from a binary without the call.
+// The observation count the last `styles` answer was taken at, so requests
+// queued behind a burst of picks coalesce. A fit or an import forgets it.
+let lastStylesObs = -1;
+// The observation count at the last fit: a `styles` request for a pick a fit
+// has run after would credit the refit's θ to the pick, so it is answered
+// with none (the refit's own θ comes with its views).
+let obsAtFit = -1;
+
+function engineForecasts() {
+  try {
+    return JSON.parse(engine.forecasts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// The numbers LEARNING's math states (`WasmEngine::model_facts`): φ's two
+// halves, the draws the model holds, its styles and their cap. Posted with
+// the calibration and with every views post (a fit changes the styles).
+function modelFacts() {
+  try {
+    return JSON.parse(engine.model_facts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every pool member's z, in φ's order (`WasmEngine::pool_features`): the
+// coordinates θ weighs. Rides every views post; `null` from a binary
+// without the call.
+function poolFeatures() {
+  try {
+    return JSON.parse(engine.pool_features());
   } catch (_) {
     return null;
   }
@@ -1805,6 +1852,8 @@ function laneOf(m) {
       return m.bg ? LATER : SOON;
     case "perform_drift":
     case "fit":
+    // The styles' θ after a pick, for LEARNING's bars: work nobody waits on.
+    case "styles":
     case "cable_levels":
     case "guess":
       return LATER;
@@ -2280,6 +2329,8 @@ async function dispatch(m) {
           beginLongOp();
           try {
             engine.fit();
+            lastStylesObs = -1;
+            obsAtFit = status().observations;
             post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
@@ -2358,9 +2409,34 @@ async function dispatch(m) {
       try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
     }
+    // The styles (θ with its spread, shares, exemplars) under the posterior as
+    // it stands, asked for after every pick: a pick reweights the draws, so
+    // θ's mean moves with it, and LEARNING's bars and its replay follow.
+    // `observations` says which pick it is after. 0.6 to 12 ms in wasm by the
+    // lenses (Plan-005, Measured (task 6)), so it waits in `later`. Always
+    // answered: `null` before the first fit.
+    case "styles": {
+      // Requests queued behind a burst of picks coalesce: one that finds the
+      // engine where the last answer left it (no observation since) is
+      // answered with no styles, at no cost. Every request is still answered.
+      const observations = status().observations;
+      if (observations === lastStylesObs || observations <= obsAtFit) {
+        post({ type: "styles", styles: null, observations, same: observations === lastStylesObs });
+        break;
+      }
+      let styles = null;
+      try {
+        styles = JSON.parse(engine.styles());
+      } catch (_) { /* older engine */ }
+      lastStylesObs = observations;
+      post({ type: "styles", styles, observations });
+      break;
+    }
     case "calibration": {
       try {
-        post({ type: "calibration", calib: JSON.parse(engine.calibration()) });
+        // With the summary, every forecast it scores (LEARNING's strip) and
+        // the numbers LEARNING's math states (`modelFacts`).
+        post({ type: "calibration", calib: JSON.parse(engine.calibration()), forecasts: engineForecasts(), facts: modelFacts() });
       } catch (_) { /* older engine: the UI falls back to its own tally */ }
       break;
     }
@@ -2457,6 +2533,8 @@ async function dispatch(m) {
       beginLongOp();
       try {
         engine.fit();
+        lastStylesObs = -1;
+        obsAtFit = status().observations;
         post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
       } finally {
         endLongOp();
@@ -2671,11 +2749,17 @@ async function dispatch(m) {
     // An offer answered in PERFORM: a heard comparison, recorded as a duel
     // tagged `perform_offer`. The status follows so the picks counter and the
     // refit pacing see it like any other vote.
-    case "perform_record":
+    case "perform_record": {
+      let took = false;
       performReply(m, "perform_recorded", "recorded", true, () =>
-        engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
-      post({ type: "status", status: status(), ratings: engineRatings() });
+        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took)));
+      // `recorded` false when the engine took nothing (the two the same, no
+      // standardizer yet, a vet that failed): nothing moved, so no ratings,
+      // and TASTE keeps no moment for it.
+      const recorded = took !== false;
+      post({ type: "status", status: status(), recorded, ratings: recorded ? engineRatings() : null });
       break;
+    }
     // A search control's offer carries the control and the way it was turned
     // (aimed, and its reply says how far it `moved`); the Offer button's and
     // Wander's carry neither, and are not aimed.
@@ -2957,6 +3041,8 @@ async function dispatch(m) {
     }
     case "import": {
       const ok = engine.import_profile(m.json);
+      lastStylesObs = -1;
+      obsAtFit = -1;
       post({ type: "imported", ok, status: status() });
       break;
     }

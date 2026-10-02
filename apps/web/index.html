@@ -80,6 +80,7 @@
       <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules, and knobs">patch</button>
       <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
+      <button class="viewtab" data-view="learning" role="tab" aria-selected="false" aria-controls="view-learning" title="How it learns your taste">learning</button>
     </nav>
     <div class="menubar-right">
       <!-- The film of the view you are in (main.js, pointFilmChip). The first
@@ -643,26 +644,83 @@
         </div>
       </section>
 
-      <!-- ------------- TASTE: the model's mind ------------- -->
+      <!-- ------------- TASTE: the sound among all sounds -------------
+           The map (taste.js): every sound in the pool where the engine's map
+           puts it, the model's liking an amber halo behind it. A pick draws
+           an arrow from the sound passed to the sound picked. -->
       <section id="view-taste" class="view hidden" role="tabpanel" aria-label="Taste">
-        <div class="stage-toolbar">
-          <span class="panel-label amber">taste</span>
-          <div class="tabs" role="tablist" aria-label="Taste views">
-            <button class="tab active" data-tab="map" role="tab" aria-selected="true">map</button>
-            <button class="tab" data-tab="styles" role="tab" aria-selected="false">styles</button>
-            <button class="tab" data-tab="dir" role="tab" aria-selected="false">directions</button>
-            <button class="tab" data-tab="trust" role="tab" aria-selected="false">trust</button>
+        <div class="ts">
+          <header class="ts-head">
+            <span class="lv-eyebrow">taste</span>
+            <h1 class="lv-title">What it has learned</h1>
+            <p class="lv-sub" id="taste-sub"></p>
+          </header>
+          <div class="ts-well" id="taste-well">
+            <canvas class="ts-map" id="taste-crt" tabindex="0" role="application" aria-roledescription="map" aria-label="Taste map: every sound in the pool, placed by how it sounds. Arrow keys move between sounds, and Enter opens one."></canvas>
+            <!-- Right after the map, so Tab goes from a sound to its card. -->
+            <div class="ts-plate" id="taste-plate" role="group" aria-hidden="true"></div>
+            <!-- SOUND shows the sounds as they are; TASTE colors them by
+                 what the model thinks you'd like (prototype v2). -->
+            <button type="button" class="ts-tog" id="taste-tog" aria-pressed="false"><span class="led" aria-hidden="true"></span><span class="ts-seg" data-seg="sound">sound</span><span class="ts-sep" aria-hidden="true">/</span><span class="ts-seg" data-seg="taste">taste</span></button>
+            <div class="ts-legend" id="taste-legend" aria-hidden="true"><span class="tl-halo"><i class="sm"></i><i class="lg"></i></span><span class="tl-words"></span></div>
+            <p class="sr-only" id="taste-live" aria-live="polite"></p>
+            <!-- Taste over time: every moment the page kept of what the
+                 engine posted, from when this session began keeping them. -->
+            <div class="ts-time" id="taste-time" role="group" aria-label="Taste over time">
+              <button type="button" class="ts-tplay" id="taste-tplay">▶</button>
+              <div class="ts-track" id="taste-track" role="slider" tabindex="0" aria-valuemin="0"><canvas id="taste-track-cv"></canvas></div>
+              <span class="ts-tlabel" id="taste-tlabel" aria-hidden="true"></span>
+            </div>
           </div>
-          <p class="caption" id="taste-caption"></p>
+          <p class="ts-foot" id="taste-foot"></p>
         </div>
-        <div class="style-chips hidden" id="style-chips"></div>
-        <div class="crt-wrap">
-          <canvas class="crt" id="taste-crt" tabindex="0" role="application" aria-label="Taste map: arrow keys step between sounds, and Enter opens one"></canvas>
-          <div class="map-legend hidden" id="map-legend" aria-hidden="true">
-            <span class="ml-ramp-wrap">less <i class="ml-ramp"></i> would like</span>
-            <span class="ml-ring"><i class="sm"></i> sure · <i class="lg"></i> unsure</span>
+      </section>
+
+      <!-- ------------- LEARNING: the model room -------------
+           What it weighs, which way liking rises on the map, its forecasts,
+           the data as JSON, and the math (taste.js). -->
+      <section id="view-learning" class="view hidden" role="tabpanel" aria-label="Learning">
+        <div class="md">
+          <header class="md-head">
+            <span class="lv-eyebrow">learning</span>
+            <h1 class="lv-title">How it learns</h1>
+            <p class="lv-sub" id="md-sub"></p>
+          </header>
+          <div class="md-body">
+            <section class="md-panel md-weighs" aria-labelledby="md-weighs-h">
+              <div class="md-ph"><h2 class="md-cap" id="md-weighs-h">what it weighs</h2><span class="md-replay-at" id="md-replay-at"></span><button type="button" class="util-btn md-replay" id="md-replay" aria-keyshortcuts="R" disabled><span class="lbl">replay</span><kbd>R</kbd></button></div>
+              <p class="sr-only" id="md-replay-live" aria-live="polite"></p>
+              <div class="md-chips hidden" id="md-chips" role="radiogroup" aria-label="Styles"></div>
+              <p class="md-none hidden" id="md-weights-none"></p>
+              <div class="md-bars" id="md-bars" role="list"></div>
+              <button type="button" class="md-more hidden" id="md-more" aria-expanded="false"><span class="lbl"></span></button>
+              <div class="md-scale hidden" id="md-scale" aria-hidden="true"><span>likes less</span><span>0</span><span>likes more</span></div>
+            </section>
+            <div class="md-right">
+              <section class="md-panel md-mapp" aria-labelledby="md-map-h">
+                <div class="md-ph"><h2 class="md-cap" id="md-map-h">where liking rises</h2><span class="md-maplegend" id="md-maplegend"></span></div>
+                <div class="md-map"><canvas id="md-map-cv" role="img" aria-label="The pool on the map."></canvas></div>
+              </section>
+              <section class="md-panel md-fcp" aria-labelledby="md-fc-h">
+                <div class="md-ph"><h2 class="md-cap" id="md-fc-h">its forecasts</h2></div>
+                <div class="md-fc" id="md-fc" aria-live="polite"></div>
+                <div class="md-strip"><canvas id="md-strip-cv" role="img" aria-label="No forecasts yet."></canvas></div>
+                <p class="md-skill" id="md-skill"></p>
+                <p class="md-skill" id="md-kinds"></p>
+              </section>
+              <div class="md-foot">
+                <div class="md-footrow">
+                  <button type="button" class="util-btn md-copy" id="md-copy"><span class="lbl">copy as JSON</span></button>
+                  <button type="button" class="md-disclose" id="md-math-btn" aria-expanded="false" aria-controls="md-math">the math</button>
+                </div>
+                <div class="md-math" id="md-math" hidden>
+                  <code>P(A over B) = σ(u(A) − u(B)),  u = max over styles of w · φ</code>
+                  <div id="md-math-lines"></div>
+                </div>
+                <textarea class="md-json" id="md-json" readonly hidden aria-label="Your taste, as JSON"></textarea>
+              </div>
+            </div>
           </div>
-          <div class="crt-empty hidden" id="crt-empty"></div>
         </div>
       </section>
 
@@ -866,7 +924,7 @@
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). Watch TASTE learn your styles, and name them. The bank’s <b>?</b> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The bank’s <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
         a bred sound that joins it replaces the unsaved one the model rates <i>lowest</i>.
         <b>presets</b> is the hand-made library that came with the instrument.
