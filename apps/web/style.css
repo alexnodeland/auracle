@@ -5012,7 +5012,9 @@ html.handheld .handheld-gate {
 .pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
 .pf-knob.held .pf-k-sub { color: var(--phos-b); }
 /* Listening: not measured yet (no wiring, or a control a Take carried over
-   with nothing to turn). Neutral and quiet, never the amber of "can't". */
+   with nothing to turn). The ring stays neutral and quiet, never the dashed
+   amber of "can't"; only its waiting sign (.pf-k-wait) is amber, and only
+   while a measurement is out. */
 .pf-knob.pending .pf-k-half { stroke-width: 1; opacity: 0.6; }
 .pf-knob.pending .pf-k-name, .pf-knob.pending .pf-k-sub { color: var(--silk-dim); }
 .pf-touch {
@@ -5297,7 +5299,7 @@ html.handheld .handheld-gate {
   font-family: var(--font-silk);
   font-size: var(--t-body);
 }
-.pf-offer-fill {
+.pf-ghost-fill {
   position: absolute;
   inset: 0;
   background: var(--phos-a-24);

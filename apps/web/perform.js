@@ -1681,7 +1681,7 @@ export function createPerform(host) {
     moment("taken");
     const gh = ghost("taken");
     if (!gh) return;
-    const fill = el("span", "pf-offer-fill");
+    const fill = el("span", "pf-ghost-fill");
     gh.g.append(fill);
     // The green rises from the base, then the whole of B goes into the name.
     fill.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], { duration: gh.ms, easing: easeOf("--e-settle"), fill: "forwards" });
@@ -1801,6 +1801,9 @@ export function createPerform(host) {
     state.offerWhy = o.why;
     presentOffer(o.src, o.at, true);
     state.offer.heardMs = o.heardMs || 0;
+    // Heard as far as it had been: TAKE says so again (it was painted with
+    // the offer, before this was known).
+    paintPads();
   }
 
   // Blend back to *home*: at once for the sound and the control's value (B
@@ -2844,6 +2847,8 @@ export function createPerform(host) {
     pal.style.top = `${Math.round(r.top)}px`;
   }
   window.addEventListener("resize", placePalette);
+  // PERFORM's view scrolls on a short screen: the palette stays over the deck.
+  root.addEventListener("scroll", placePalette, { passive: true });
   // Esc puts it away wherever focus is, before anything else takes the key.
   document.addEventListener(
     "keydown",

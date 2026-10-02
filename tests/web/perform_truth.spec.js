@@ -9,9 +9,10 @@
 //   drawn on the closed side), with a stop at 12 o'clock, and its caption says
 //   what the player can do ("turns toward far only"), not where the app
 //   guessed the sound sits.
-// - A control not measured yet is "listening…": no amber, no strike-through on
-//   the XY pad, and a turn of it springs back without grafting a module or
-//   growing an offer.
+// - A control not measured yet is "listening…": never the search look (its
+//   ring stays neutral; only its waiting sign is amber, while a measurement is
+//   out), no strike-through on the XY pad, and a turn of it springs back
+//   without grafting a module or growing an offer.
 // - Choosing an XY axis gives the note keys back.
 // - A search control springs back whenever it is let go, and says while it is
 //   turned what letting go would do.

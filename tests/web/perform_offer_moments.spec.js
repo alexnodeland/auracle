@@ -24,7 +24,7 @@ const INIT = `(() => {
   const seen = (window.__anims = []);
   Element.prototype.animate = function (frames, opts) {
     const cls = String(this.className || "");
-    if (/pf-offer/.test(cls)) {
+    if (/pf-(offer|ghost)/.test(cls)) {
       const r = this.getBoundingClientRect();
       seen.push({ cls, moment: this.dataset ? this.dataset.moment || "" : "", frames: JSON.parse(JSON.stringify(frames)), at: { left: r.left, top: r.top, width: r.width, height: r.height } });
     }
@@ -115,7 +115,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "taken");
   const after = (await anims(page)).slice(n0);
-  const fill = after.find((a) => /pf-offer-fill/.test(a.cls));
+  const fill = after.find((a) => /pf-ghost-fill/.test(a.cls));
   expect(fill, "B fills").toBeTruthy();
   expect(fill.frames.map((f) => f.transform)).toEqual(["scaleY(0)", "scaleY(1)"]);
   const taken = after.find((a) => /ghost/.test(a.cls) && a.moment === "taken");
