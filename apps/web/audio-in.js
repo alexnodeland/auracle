@@ -569,9 +569,10 @@ export function createAudioIn(host) {
     for (let i = 0; i < s.buf.length; i++) sum += s.buf[i] * s.buf[i];
     const rms = Math.sqrt(sum / s.buf.length);
     s.db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
-    // The face, only while there is something to draw (and someone to see
-    // it: the meter loop runs only while an input is open).
-    if (s.db > METER_FLOOR_DB && document.querySelector("#rack-svg .ain-face-live")) {
+    // The face, only while there is something to draw, a square to draw it
+    // in, and a bank to draw it against (the meter loop runs only while an
+    // input is open).
+    if (s.db > METER_FLOOR_DB && host.faceStats && host.faceStats() && document.querySelector("#rack-svg .ain-face-live")) {
       const { db } = s.meter.measure(s.buf, ctx.sampleRate);
       for (let b = 0; b < FACE_BANDS; b++) s.face.ltas[b] = s.faceLive ? s.face.ltas[b] * 0.6 + db[b] * 0.4 : db[b];
       s.faceLive = true;

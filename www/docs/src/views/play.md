@@ -138,7 +138,7 @@ at a ceiling has no room to grow, and a hand-built patch past one is refused.
 
 **The rack.** The patch itself. See [reading and editing the rack](../rack.md).
 An **AUDIO IN** module carries a row of its own under its settings: the input
-it reads, your input’s level, **MONITOR** and **NEW CLIP**. See [playing
+it reads, your input’s level and its [face](../faces.md), **MONITOR** and **NEW CLIP**. See [playing
 through Auracle](../playing-through.md).
 
 Each green cable carries light by the level the engine measured on it, and a
