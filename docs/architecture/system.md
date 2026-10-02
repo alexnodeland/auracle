@@ -32,7 +32,10 @@ Two loops share one pool of patches.
    with the output stage and limiter every patch shares.
 3. **Render and vet.** `auracle-features` plays the voice through the standard
    phrase (`phrase.rs`), refuses silent, broken or runaway renders (`vet.rs`),
-   and normalizes loudness to `TARGET_LUFS` (`loudness.rs`).
+   and normalizes loudness to `TARGET_LUFS` (`loudness.rs`). A patch with an
+   AUDIO IN (`PatchTree::listens`) is compiled with `compile_with_input` and
+   reads the phrase's audition clip on the render's own clock (`clip.rs`,
+   `render.rs`); its render key carries the clip.
 4. **Measure.** φ is φ_audio (perceptual descriptors of the render) plus
    φ_struct (render-free descriptors of the tree), `pipeline.rs`. φ is all the
    model sees.
@@ -77,7 +80,7 @@ Two loops share one pool of patches.
 | --- | --- | --- |
 | `PatchTree` | grammar | The genome: a typed term. Audio and Mod sorts are separate types. |
 | Trace address | grammar | `node/0#cut`: the one name every knob, lock, edit and proposal uses |
-| `PhraseSpec` | features | The audition phrase: notes, timing, seed |
+| `PhraseSpec` | features | The audition phrase: notes, timing, seed, and the audition clip an AUDIO IN reads |
 | φ | features | The feature vector, `phi_names()` in order |
 | `Observation` | taste | One piece of feedback, with raw φ |
 | `TastePosterior` | taste | Weighted MCMC draws of θ per lens |

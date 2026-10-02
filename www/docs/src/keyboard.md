@@ -92,6 +92,7 @@ with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 | <kbd>Enter</kbd> | Open the sound |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate it |
 | <kbd>m</kbd> | Save it |
+| <kbd>c</kbd> | Compare a bred sound with its seed |
 
 In **PRESETS** the cursor keys work the same, <kbd>Home</kbd> and
 <kbd>End</kbd> jump to the first and last row, <kbd>Enter</kbd> opens the

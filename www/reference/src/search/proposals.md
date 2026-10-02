@@ -98,7 +98,10 @@ mid-session.
 `n_vco`, `n_supersaw`, `n_noise`, `n_wavetable`, `n_pluck`, and `n_formant`
 directly; processor and modulation tilts read their family coordinates.
 `Silence` takes no tilt: how often a hole appears should come from a player
-unplugging a socket, not from a fitted coefficient.
+unplugging a socket, not from a fitted coefficient. Nor does `AudioIn`, for
+the same reason: whether a patch listens is a player’s choice. The mixer’s
+tilt stays the mean of the original seven, so adding the input moved no
+session’s mixer weight.
 
 ### The `n_mix` reconstruction
 

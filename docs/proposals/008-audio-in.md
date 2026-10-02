@@ -160,6 +160,10 @@ where needed. Accepted on that instruction.
    (`quiver-dsp`) and npm (`@quiver-dsp/wasm`) from the `v0.4.0` tag, and
    Auracle depends on it from crates.io.
 2. **The reference signal:** what neutral phrase measures a patch before its
-   input is heard.
+   input is heard. *Built (2026-10-01):* a plucked figure in A minor
+   pentatonic, A2 to E4, with a noise pick on every note and a quiet tail:
+   pitched, with transients and broadband content, so what a patch does to an
+   input is measured. The reference's *Audition clips* page says why each
+   property is there.
 3. **Latency** in the browser's worklet path, measured on the machines the films
    use.

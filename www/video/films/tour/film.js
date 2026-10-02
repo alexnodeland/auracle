@@ -10,7 +10,8 @@
 // (cards.js).
 //
 // Every shot is one seeded session (shots.json `init`) with the three-pick
-// warm start answered — the first bass, pad and texture card on the grid —
+// warm start answered — the card on the films' shortlist, then the first
+// bass and pad card on the grid —
 // which is exactly what the first-visit beat does on camera. So PICKS reads
 // 18, My patches holds those three, and TASTE has a first map, as it will for
 // someone who has just picked three.
@@ -26,7 +27,7 @@
 //   camera sounds at once (renders are lazy).
 // - bank: clicking a row opens it and switches to PATCH (the app's own
 //   behaviour), so the bank beat plays out in PATCH. The row played and
-//   opened is the pad the warm start saved. Space stops its phrase as the row
+//   opened is the card on the shortlist the warm start saved. Space stops its phrase as the row
 //   is clicked; the row opens as it is clicked, and its chords wait for it to
 //   land (no cut).
 // - dock: HOLD latches the chord before ARP opens its drawer (a HOLD click
@@ -37,7 +38,7 @@
 //   counters are measured again as they are named: the slot sits beside them.
 // - first: a fresh session whose set-up stops at the nine cards; the ▶ on
 //   camera is the real first press. "teach it" can take seconds before
-//   its result shows, so the beat cuts from the press to the "18 preferences
+//   its result shows, so the beat cuts from the press to the "Your three taught it 18
 //   learned… Your three are saved." toast (the shot's `clips`; no cut when it
 //   is quick), by when PERFORM is on the first pick, its controls live (its
 //   wiring came with it): one is turned under the figure on "ready to play".

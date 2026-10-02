@@ -15,8 +15,8 @@ use crate::steps::step_count;
 
 use crate::term::{
     quant_root_index, quant_scale_index, rect_mode_index, AudioNode, DriveMode, FilterKind,
-    ModNode, ModOp, NoiseColor, PatchTree, TableShape, Waveform, QUANT_ROOTS, QUANT_SCALES,
-    RECT_MODES,
+    InputChannel, ModNode, ModOp, NoiseColor, PatchTree, TableShape, Waveform, INPUT_SLOTS,
+    QUANT_ROOTS, QUANT_SCALES, RECT_MODES,
 };
 
 /// What kind of control a knob is.
@@ -166,6 +166,17 @@ pub fn table_options() -> Vec<String> {
 /// Display names for the distortion-mode categorical, in index order.
 pub fn drive_mode_options() -> Vec<String> {
     DriveMode::ALL.iter().map(|m| m.label().into()).collect()
+}
+
+/// Display names for an AUDIO IN's input slots, in index order: `1` to
+/// [`INPUT_SLOTS`], counted from one as a desk numbers its inputs.
+pub fn input_options() -> Vec<String> {
+    (1..=INPUT_SLOTS).map(|i| i.to_string()).collect()
+}
+
+/// Display names for an AUDIO IN's channel categorical, in index order.
+pub fn channel_options() -> Vec<String> {
+    InputChannel::ALL.iter().map(|c| c.label().into()).collect()
 }
 
 fn knob_c(key: &str, site: &str, label: &str, value: f64) -> Knob {
@@ -628,6 +639,30 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             out.modules
                 .push(module("silence", "empty", Vec::new(), leaf_src))
         }
+        // The input is a slot in the player's list of inputs, shown as its
+        // number; which device that is, the app says beside it. The kind is
+        // `audio_in`, the spelling `NodeKind::AudioIn` has on the wire.
+        AudioNode::AudioIn {
+            input,
+            gain,
+            channel,
+            ..
+        } => out.modules.push(module(
+            "audio_in",
+            "audio in",
+            vec![
+                knob_e(key, "input", "input", *input as usize, input_options()),
+                knob_c(key, "gain", "gain", *gain),
+                knob_e(
+                    key,
+                    "channel",
+                    "channel",
+                    channel.index(),
+                    channel_options(),
+                ),
+            ],
+            leaf_src,
+        )),
         AudioNode::Wavetable {
             table,
             octave,

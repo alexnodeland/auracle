@@ -47,17 +47,18 @@ probabilistic choices at path-keyed addresses:
 | Site | Address | Distribution |
 |---|---|---|
 | source-vs-processor | `<p>#leaf` | $\mathrm{Bernoulli}(\text{source\_prob})$, forced at max depth |
-| source kind | `<p>#src` | $\mathrm{Categorical}(w_{\text{src}})$, 7 kinds |
+| source kind | `<p>#src` | $\mathrm{Categorical}(w_{\text{src}})$, 8 kinds |
 | processor kind | `<p>#op` | $\mathrm{Categorical}(w_{\text{op}})$, 20 kinds |
 | modulation kind | `<p>/m#mod` | $\mathrm{Categorical}(w_{\text{mod}})$, 9 kinds |
 | CV-processor kind | `<p>/m#modop` | Uniform over `ModOp::ALL` |
 | CV-combiner kind | `<p>/m#pairop` | Uniform over `PairOp::ALL` |
-| discrete params | `<p>#wave`, `#oct`, `#color`, `#fkind`, `#table`, `#dmode` | Uniform categoricals |
+| discrete params | `<p>#wave`, `#oct`, `#color`, `#fkind`, `#table`, `#dmode`, `#channel` | Uniform categoricals |
+| input slot | `<p>#input` | `PlayerInput`: draws slot 0, scores every slot alike (see [AUDIO IN](#audio-in-the-players-input)) |
 | continuous params | `<p>#cut`, `#res`, `#det`, … | $\mathrm{Uniform}(0,1)$ |
 
 The amplitude envelope is fixed at `amp#attack` … `amp#release`.
 
-The three categorical orders (7 sources, 20 processors, 9 modulation kinds) are
+The three categorical orders (8 sources, 20 processors, 9 modulation kinds) are
 the **persisted wire format**, because the codec writes the chosen index into
 the trace. They are append-only.
 
@@ -130,18 +131,18 @@ slot that must be filled is filled.
 
 A modulation slot hangs off every module with somewhere to send it. The
 exceptions are the ones without: `Noise`, whose only site is a color switch,
-and `Mix` / `RingMod`, whose two inputs are both audio and whose single knob is
-the blend. Having two audio children is **not** itself an exception: the four
+`AudioIn`, whose only continuous knob is a level, and `Mix` / `RingMod`, whose
+two inputs are both audio and whose single knob is the blend. Having two audio children is **not** itself an exception: the four
 sidechained productions (comp, duck, gate, and vocoder) take two subterms and
 carry a slot as well.
 
 ## The modules
 
-Forty-three modules: **7 sources**, **20 processors**, **16 modulators**.
+Forty-four modules: **8 sources**, **20 processors**, **16 modulators**.
 
 ```text
 sources     Vco  Supersaw  NoiseGenerator  Wavetable  KarplusStrong  FormantOsc
-            Silence
+            Silence  AudioInput
 processors  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush
             Phaser  RingMod  Flanger  Tremolo  Vibrato  Eq  Granular  Shift
             Comp  Duck  Gate  Vocoder
@@ -158,6 +159,42 @@ Six processors are **binary**:
 
 A compressor’s sidechain is not an audio input, and the type system makes
 wiring it as one impossible.
+
+### AUDIO IN: the player’s input
+
+`AudioIn` is a source whose signal comes from outside the patch: one of the
+host’s inputs, read through quiver’s `AudioInput`
+([ADR-015](https://github.com/alexnodeland/auracle/blob/main/docs/decisions/015-audio-in.md)).
+It is source index 7, with three knobs:
+
+| Knob | Site | Range |
+|---|---|---|
+| input | `#input` | A slot, `0..INPUT_SLOTS` (8), shown as 1 to 8. Which device a slot means is the host’s to say |
+| gain | `#gain` | $\mathrm{Uniform}(0,1)$, mapped to −24 to +12 dB (`INPUT_GAIN_DB_MIN`, `INPUT_GAIN_DB_MAX`), unity at 2/3 |
+| channel | `#channel` | left, right, or both summed |
+
+What it is for comes from where it is patched: into a filter or a delay it is
+processed, into a ducker’s key or a vocoder’s modulator it shapes another
+sound. It is measured with the session’s [audition
+clip](../audition/clips.md), never with the live input.
+
+**The input belongs to the player.** `#input` is a real trace site, so the
+rack, a knob edit, a lock and the lineage diff all address it, but the grammar
+never chooses it. Its distribution, `PlayerInput`, samples slot 0 and gives
+every slot the same (unnormalized) mass, so a node the prior draws reads the
+first input, and a player’s choice of slot 3 is exactly as probable, and as
+evolvable, as slot 0. A refinement walk locks every `#input` its seed holds
+([locks](../search/locks.md)): it may change the gain, the channel and
+everything the signal goes through, and never the input or the node itself.
+
+Its prior weight is **0 for now** (`AUDIO_IN_WEIGHT`): until the app can
+capture a live input, a drawn one would be heard through the reference clip in
+a duel and as silence from the keys, so the prior draws none and its source
+table is the one it had before the term. It is turned on at `Silence`’s 0.5%
+(`AUDIO_IN_ENABLED_WEIGHT`, `PatchGrammarPrior::with_audio_in`), with no taste
+tilt: whether a patch listens is a choice a player makes by patching an input
+in. At 0 a tree holding one has $\log p = -\infty$ and cannot be walked,
+which is safe only because nothing can place one yet.
 
 ## What is not in the grammar
 

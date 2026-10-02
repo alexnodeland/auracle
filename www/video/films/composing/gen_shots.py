@@ -8,8 +8,17 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
 from shotgen import *  # noqa: E402,F403
 BPM84 = {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"}
 BLUR = {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}
-# A bass, a pad and a moving texture: the first card of each on the grid.
-PICKS = ("bass", "pad", "texture")
+# Cast from the films' shortlist (shotgen.CAST). The palette is Held Under
+# (bass), Slow Weather (pad) and Rotor (a moving texture) where it was First
+# Bass, Glass Pad and Loom; Ceiling plays the arpeggio where Acid Line did,
+# and Steps goes on Held Under's filter. MIDI clock keeps Loom: its line is
+# about the sequencers a clock starts, and Loom is the one preset with one.
+# The picture dropped in `share` is the one the shot just exported.
+BASS, PAD, TEXTURE = CAST["bass"], CAST["pad"], CAST["texture"]
+# A low part, a pad and a moving texture: the warm start's card on the
+# shortlist first (it is what the bench holds after the warm start, and what
+# the outro plays), then the first pad and texture card on the grid.
+PICKS = ("cast", "pad", "texture")
 def row(name):
     return f".bank-item.preset-item:has(.bi-name:text-is('{name}')) .bi-name"
 spec = {
@@ -19,9 +28,9 @@ spec = {
         {
             "id": "co-intro", "beat": "intro", "pre": 1.5,
             "setup": [
-                {"op": "preset", "name": "Loom"},
-                {"op": "preset", "name": "Glass Pad"},
-                {"op": "preset", "name": "First Bass"},
+                {"op": "preset", "name": TEXTURE},
+                {"op": "preset", "name": PAD},
+                {"op": "preset", "name": BASS},
                 {"op": "view", "v": "play"},
                 {"op": "wait", "ms": 1500},
                 QUIET,
@@ -32,9 +41,9 @@ spec = {
                 {"at": 1.6, "op": "hold", "keys": ["a"], "ms": 500},
                 {"at": 2.3, "op": "hold", "keys": ["g"], "ms": 400},
                 {"at": "intro1:bass", "op": "hold", "keys": ["a"], "ms": 900},
-                {"at": "intro1:pad-0.25", "op": "click", "sel": row("Glass Pad")},
+                {"at": "intro1:pad-0.25", "op": "click", "sel": row(PAD)},
                 {"at": "intro1:pad+0.35", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
-                {"at": "intro1:texture-0.25", "op": "click", "sel": row("Loom")},
+                {"at": "intro1:texture-0.25", "op": "click", "sel": row(TEXTURE)},
                 {"at": "intro1:texture+0.4", "op": "hold", "keys": ["a", "g"], "ms": "end"},
             ],
         },
@@ -43,12 +52,13 @@ spec = {
             "setup": [
                 {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
                 FILLED,
+                CAST_DEALT,
                 QUIET,
             ],
             "clips": [["direction3", "@taught+0.9"]],
             "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go"},
             "actions": [
-                {"at": "direction1:shows", "op": "click", "sel": pick("bass", " + .wi-play")},
+                {"at": "direction1:shows", "op": "click", "sel": pick("cast", " + .wi-play")},
                 {"at": "direction2:Pick", "op": "seq", "steps": [
                     {"op": "click", "sel": pick(PICKS[0])}, {"op": "wait", "ms": 250},
                     {"op": "click", "sel": pick(PICKS[1])}, {"op": "wait", "ms": 250},
@@ -102,31 +112,31 @@ spec = {
         {
             "id": "co-steps", "beat": "steps", "pre": 0.5,
             "setup": [
-                {"op": "preset", "name": "Sub & Sparkle"},
+                {"op": "preset", "name": BASS},
                 {"op": "view", "v": "play"},
                 BPM84,
                 {"op": "wait", "ms": 1500},
                 QUIET,
             ],
-            "marks": {"slot": "#rack-svg .jack[data-modkey='node/1']", "filter": "#rack-svg g.mod-group[data-key='node/1']", "sync": "#sync-btn"},
+            "marks": {"slot": "#rack-svg .jack[data-modkey='node/0']", "filter": "#rack-svg g.mod-group[data-key='node/0']", "sync": "#sync-btn"},
             "actions": [
                 {"at": 0.2, "op": "hold", "keys": ["a"], "until": "steps4:restarts-0.3"},
                 {"at": "steps1:Steps", "op": "seq", "steps": [
                     {"op": "click", "sel": ".nb-item[data-kind='steps']"},
                     {"op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"},
                 ]},
-                {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1'] circle:last-of-type"},
+                {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/0'] circle:last-of-type"},
                 {"at": "steps2:draw", "op": "seq", "steps": [
-                    {"op": "until", "sel": "#rack-svg [data-addr='node/1/m#s0']", "ms": 20000},
-                    {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s0']", "dy": -30, "ms": 300},
+                    {"op": "until", "sel": "#rack-svg [data-addr='node/0/m#s0']", "ms": 20000},
+                    {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s0']", "dy": -30, "ms": 300},
                     {"op": "wait", "ms": 60},
-                    {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s1']", "dy": 25, "ms": 300},
+                    {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 25, "ms": 300},
                     {"op": "wait", "ms": 60},
-                    {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s2']", "dy": -40, "ms": 300},
+                    {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -40, "ms": 300},
                     {"op": "wait", "ms": 60},
-                    {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s3']", "dy": 10, "ms": 300},
+                    {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s3']", "dy": 10, "ms": 300},
                 ]},
-                {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/1/m']"},
+                {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/0/m']"},
                 {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},
                 {"at": "steps3:Sync+0.5", "op": "mark", "name": "bpm", "sel": "#bpm"},
                 {"at": "steps3:Sync+0.5", "op": "mark", "name": "drawer", "sel": "#arp-ctl"},
@@ -136,7 +146,7 @@ spec = {
         {
             "id": "co-arp", "beat": "arp", "pre": 0.5,
             "setup": [
-                {"op": "preset", "name": "Acid Line"},
+                {"op": "preset", "name": CAST["acid"]},
                 {"op": "view", "v": "play"},
                 BPM84,
                 {"op": "click", "sel": "#arp-btn"},
@@ -157,6 +167,7 @@ spec = {
         },
         {
             "id": "co-clock", "beat": "clock", "pre": 0.5,
+            "uncast": {"Loom": "clock2 is the sequencers a MIDI start brings in: Loom is the one preset with a step sequencer"},
             "setup": [
                 {"op": "midi", "device": "Sequencer"},
                 {"op": "preset", "name": "Loom"},
@@ -178,28 +189,28 @@ spec = {
         },
         {
             "id": "co-scenes", "beat": "scenes", "pre": 0.5,
-            # Saved in the order First Bass, Loom, Glass Pad (My Patches lists
-            # them so), Glass Pad last, on the bench: [ steps back to Loom,
-            # then to First Bass. A step lands when the engine has opened the
+            # Saved in the order Held Under, Rotor, Slow Weather (My Patches
+            # lists them so), Slow Weather last, on the bench: [ steps back to
+            # Rotor, then to Held Under. A step lands when the engine has opened the
             # patch (seconds on a busy machine), so the second waits for the
             # first rather than stepping from the same row twice.
             "setup": [
-                {"op": "preset", "name": "First Bass"},
+                {"op": "preset", "name": BASS},
                 {"op": "click", "sel": ".bf[data-f='pool']"},
                 {"op": "click", "sel": ".bank-item.live .bi-save"},
                 {"op": "wait", "ms": 800},
-                {"op": "preset", "name": "Loom"},
+                {"op": "preset", "name": TEXTURE},
                 {"op": "click", "sel": ".bf[data-f='pool']"},
                 {"op": "click", "sel": ".bank-item.live .bi-save"},
                 {"op": "wait", "ms": 800},
-                {"op": "preset", "name": "Glass Pad"},
+                {"op": "preset", "name": PAD},
                 {"op": "click", "sel": ".bf[data-f='pool']"},
                 {"op": "click", "sel": ".bank-item.live .bi-save"},
                 {"op": "wait", "ms": 800},
                 {"op": "click", "sel": ".bf[data-f='mine']"},
                 {"op": "log", "name": "mine", "js": "[...document.querySelectorAll('#bank-list .bank-item .bi-name')].map((e) => e.textContent).join(' | ')"},
                 {"op": "view", "v": "perform"},
-                {"op": "measured", "name": "Glass Pad"},
+                {"op": "measured", "name": PAD},
                 WIRING,
                 QUIET,
             ],
@@ -212,7 +223,7 @@ spec = {
                 {"at": "scenes2:step-0.3", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
                 {"at": "scenes2:step", "op": "key", "key": "[", "ms": 120},
                 {"at": "scenes2:step+0.2", "op": "seq", "steps": [
-                    {"op": "until", "js": "/^Loom/.test(document.querySelector('.pf-name').textContent)", "ms": 30000, "stamp": "loom"},
+                    {"op": "until", "js": "/^%s/.test(document.querySelector('.pf-name').textContent)" % TEXTURE, "ms": 30000, "stamp": "texture"},
                     {"op": "wait", "until": "scenes3:carry"},
                     {"op": "key", "key": "[", "ms": 120},
                 ]},
@@ -222,7 +233,7 @@ spec = {
         {
             "id": "co-record", "beat": "record", "pre": 0.5,
             "setup": [
-                {"op": "preset", "name": "Glass Pad"},
+                {"op": "preset", "name": PAD},
                 {"op": "view", "v": "play"},
                 {"op": "wait", "ms": 1500},
                 QUIET,
@@ -240,7 +251,7 @@ spec = {
         {
             "id": "co-share", "beat": "share", "pre": 0.5,
             "setup": [
-                {"op": "preset", "name": "Glass Pad"},
+                {"op": "preset", "name": PAD},
                 {"op": "view", "v": "play"},
                 {"op": "wait", "ms": 1500},
                 QUIET,
@@ -264,9 +275,13 @@ spec = {
                 ]},
                 {"at": "share2:inside", "op": "click", "sel": "#ix-go"},
                 {"at": "share3:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
-                {"at": "share3:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
+                # The picture exported at share2, dropped back: it opens as
+                # the same patch (share3), which the app says is already here.
+                {"at": "share3:Drop", "op": "drop", "download": "\\.svg$", "ms": 1300},
                 {"at": "share3:same", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
                 {"at": "share3:same", "op": "mark", "name": "subject", "sel": "#rack-subject"},
+                {"at": "share3:Drop+0.2", "op": "until", "js": "/Opening it|Opened the patch file/.test(document.getElementById('toasts').textContent)", "ms": 30000, "stamp": "opened"},
+                {"at": "@opened", "op": "log", "name": "opened", "js": "document.getElementById('toasts').innerText + ' | ' + document.getElementById('rack-subject').textContent"},
             ],
         },
         {

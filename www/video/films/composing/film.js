@@ -10,29 +10,30 @@
 // Where this departs from storyboard.md, because the app does otherwise:
 // - Every shot is one seeded session (shots.json `init`), so the warm start
 //   deals the same nine cards in every shot (which nine moves whenever the
-//   app draws one more random number at boot). The film picks the first bass,
-//   pad and texture card on the grid (the deal always holds one of each):
-//   a bass, a pad, a moving texture. The warm start also saves its three
-//   picks, so the keep beat's save is 4 of 10.
+//   app draws one more random number at boot). The film plays and picks the
+//   card on the films' shortlist first (it is what the bench then holds),
+//   then the first pad and texture card on the grid (the deal always holds
+//   one of each). The warm start also saves its three picks, so the keep
+//   beat's save is 4 of 10.
 // - direction: "teach it" takes seconds and then switches to PERFORM, so the
 //   beat cuts from the press to when it has taught, then votes.
 // - evolve: the generation runs on camera; the beat cuts from the press to
 //   the bred generation (no generation is run off camera first).
-// - steps: a mod socket is keyed by its owner (`.jack[data-modkey='node/1']`
-//   on Sub & Sparkle's high-pass), not by the slot's path.
+// - steps: a mod socket is keyed by its owner (`.jack[data-modkey='node/0']`
+//   on Held Under's low-pass), not by the slot's path.
 // - clock: the clock runs at the bed's 84 BPM (not 96), with Start on the bar
 //   line nearest "start", so the arpeggio and the steps land on the music.
 // - parts (scenes): not taught, so My Patches holds just the three saved
-//   (First Bass, Loom, Glass Pad), and Glass Pad, the last, is played: `[`
-//   steps back to Loom, then to First Bass. A step lands once the engine has
+//   (Held Under, Rotor, Slow Weather), and Slow Weather, the last, is
+//   played: `[` steps back to Rotor, then to Held Under. A step lands once the engine has
 //   opened the patch (seconds on a busy machine), so the second `[` waits
 //   for the first to land.
 // - record: ● rec is not pressed on camera (the shot's capture is the same
 //   recorder). The part is played, then the capture itself is stopped
 //   (`rec`), so the take's real "saved … take" toast is the result shown.
 // - share: both exports are real clicks now (their downloads are not the
-//   shot's sound); the drop is a fixture picture of First Bass, so the rack
-//   visibly changes to the dropped patch.
+//   shot's sound); the picture just exported is dropped back, so it opens
+//   as the same patch, as share3 says.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {

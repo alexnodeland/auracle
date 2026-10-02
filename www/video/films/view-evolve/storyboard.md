@@ -132,7 +132,8 @@ blur, and a skip that is clicked on camera is followed by one.
 - **Set-up (own):** a fresh session with the warm start up and the pool
   full. Nothing is taught.
 - **Actions:**
-  - `point2:Play`: ▶ on the first pad card (its phrase is heard);
+  - `point2:Play`: ▶ on the card on the films' shortlist (Ceiling, in this
+    deal; its phrase is heard);
   - `point2:closest`: the two pads and the texture;
   - `point3:passed+0.2`: **teach it**.
 - **Cut** (`clips`): from `point4` to `@learned-0.3`. The teach switches to

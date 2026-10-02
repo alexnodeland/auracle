@@ -52,7 +52,7 @@ end.
 
 ## 1. `intro` — shot `pl-intro` (intro1)
 
-- **Set-up:** plain · preset **Glass Pad** · view perform · measured.
+- **Set-up:** plain · preset **Slow Weather** · view perform · measured.
 - **Actions:** `at 0.3` hold C (`a d g`) 1400 ms; `intro1:chords` hold Am
   (`h k ;`) 1000 ms, then F (`f h k`) 1000 ms; `intro1:lines` the line
   `a s d g h`, 220 ms each; `intro1:swells` hold C `ms: "end"` and drag Bright
@@ -62,7 +62,7 @@ end.
 
 ## 2. `keys` — shot `pl-keys` (keys1–4)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Marks:** `keybed: #piano`, `oct: #oct-label`, `midi: #midi-ind`.
 - **Actions:**
   - `keys1:rows` → the line `a s d f g` (230 ms each), then C (`a d g`) 700 ms.
@@ -85,7 +85,7 @@ end.
 
 ## 3. `touch` — shot `pl-touch` (touch1–2)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Marks:** `touch: .pf-touch`, `sel: #pf-touch-sel`, `hood: .pf-hood`.
 - **Actions:** `touch1:touch` → `move` over `#pf-touch-sel` (it already reads
   "bright — soft dark, hard bright", the default); `touch2:soft` → ⚑1 a soft
@@ -100,7 +100,7 @@ end.
 
 ## 4. `controls` — shot `pl-controls` (controls1–4)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Marks:** `deck: .pf-deck`, `bright: .pf-knob[data-i='0']`,
   `body: .pf-knob[data-i='3']`, `hood: .pf-hood`.
 - **Actions:** `at 0.2` hold Am (`h k ;`) `ms: "end"` (a pad chord under the
@@ -117,7 +117,7 @@ end.
 
 ## 5. `xy` — shot `pl-xy` (xy1)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Actions:** `at 0.1` hold C `ms: "end"`; `xy1:XY` → `path .pf-xy-field`
   through `[0.5,0.5] [0.85,0.3] [0.8,0.8] [0.2,0.75] [0.3,0.2] [0.6,0.45]`
   over 3600 ms.
@@ -127,7 +127,7 @@ end.
 
 ## 6. `wander` — shot `pl-wander` (wander1–4; music `loop_b`)
 
-- **Set-up:** **taught** · Glass Pad · view perform · measured · re-checked ·
+- **Set-up:** **taught** · Slow Weather · view perform · measured · re-checked ·
   `wait 9000` (a spare offer grows ahead).
 - **Marks:** `wander: .pf-knob[data-i='7']`, `status: .pf-status`,
   `offer: .pf-offer`, `hood: .pf-hood`, `freeze: .pf-pad:has-text('Freeze')`.
@@ -151,7 +151,7 @@ end.
 
 ## 7. `offer` — shot `pl-offer` (offer1–4)
 
-- **Set-up:** **taught** · Glass Pad · view perform · measured · `wait 9000`
+- **Set-up:** **taught** · Slow Weather · view perform · measured · `wait 9000`
   (a spare offer grows in the background after about six steady seconds, so
   Offer hands it over at once, as in `p-offer`).
 - **Marks:** `offer-pad: .pf-pad.primary`, `offer: .pf-offer`,
@@ -168,7 +168,7 @@ end.
 
 ## 8. `keep` — shot `pl-keep` (keep1–2)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Actions:** `at 0.1` hold G (`g j l`) `ms: "end"`. `keep1:Keep` → click
   Keep. `keep1:home+0.2` → drag Body `dy −60` (700 ms), then Grit `dy −50`
   (700 ms): the sound wanders out. `keep2:glides` → click Back (a 1.2 s glide
@@ -180,7 +180,7 @@ end.
 
 ## 9. `dock` — shot `pl-dock` (dock1–4)
 
-- **Set-up:** plain · preset **Acid Line** · view perform · measured ·
+- **Set-up:** plain · preset **Ceiling** · view perform · measured ·
   `eval` set the tempo to the bed's 84 BPM:
   `const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))`.
 - **Marks:** `hold: #hold-btn`, `uni: #uni-btn`, `glide: #glide`,
@@ -205,7 +205,7 @@ end.
 
 ## 10. `midi` — shot `pl-midi` (midi1–2)
 
-- **Set-up:** plain · Glass Pad · view perform · measured.
+- **Set-up:** plain · Slow Weather · view perform · measured.
 - **Marks:** `ind: #midi-ind`, `panel: #midi-panel`.
 - **Actions:** `at 0.2` hold C `ms: "end"`; `midi1:controller` → click
   `#midi-ind`, `mark panel`; `midi1:Learn` → click
@@ -236,7 +236,7 @@ end.
 
 ## 12. `outro` — shot `pl-outro` (outro1)
 
-- **Set-up:** taught · Glass Pad · view perform · measured · `wait 9000`.
+- **Set-up:** taught · Slow Weather · view perform · measured · `wait 9000`.
 - **Actions:** a four-chord loop C–Am–F–G (each held one bar of the 84 BPM bed,
   2.86 s); `outro1:Nothing` → click Offer; `outro1:phrase` → drag Blend
   `dy −90`. No dialog appears at any point, which is the claim.

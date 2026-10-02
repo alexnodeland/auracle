@@ -9,10 +9,11 @@
 // worker only folds the results in, in job order:
 //
 // - EVOLVE POOL completes, and each child lands at the top of the bank, in a
-//   "new · gen N" group, in job order, as it is absorbed — the ranked rows
-//   below it do not move. The button is its own progress bar, and the job
-//   slot counts the generation with an estimate; the wordmark's E is lit
-//   exactly while the slot shows.
+//   "new · generation N" group, in job order, as it is absorbed — the ranked
+//   rows below it do not move. The button is its own progress bar, naming
+//   each walk as it comes back ("walk 3 of 10"), and the job slot counts the
+//   generation with an estimate; the wordmark's E is lit exactly while the
+//   slot shows.
 // - A pick mid-generation deals its next pair within a second.
 // - PERFORM is answered during a generation: a newly opened patch is measured
 //   (its controls wired) before the generation ends, and a pressed Offer
@@ -160,10 +161,10 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   await expect(page.locator("#job-slot")).toBeVisible();
   await expect(page.locator("#job-text")).toHaveText(/^⚡ breeding( \d+\/10.*|…)$/);
   await expect(page.locator("#wm-lamp")).toHaveClass(/\bthinking\b/);
-  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^breeding \d+\/10$/, { timeout: 30_000 });
+  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout: 30_000 });
   await expect(page.locator("#evolve-stop")).toBeVisible();
 
-  // The first child lands at the top, under "new · gen N", and the ranked
+  // The first child lands at the top, under "new · generation N", and the ranked
   // rows below it keep their order. (No pick is pending here: a vote
   // reweights the model, and would move rows for a reason of its own.)
   let firstChild = null;
@@ -172,7 +173,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
     firstChild = (log.find((e) => e.type === "refine_child" && e.child > 0) || {}).child || null;
     return firstChild;
   }, { timeout: 300_000 }).toBeTruthy();
-  await expect(page.locator("#bank-list .bank-group").first()).toHaveText(/^new · gen \d+$/);
+  await expect(page.locator("#bank-list .bank-group.new .bg-label")).toHaveText(/^new · generation \d+$/);
   const mid = await bankIds(page);
   expect(mid[0], "the first child is not the bank's first row").toBe(firstChild);
   const rest = mid.filter((id) => before.includes(id));
@@ -234,7 +235,7 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   const pageErrors = await taught(page);
   await expect(page.locator("#gen-count")).toHaveText("0");
   await page.locator("#evolve-btn").click();
-  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^breeding \d+\/10$/, { timeout: 30_000 });
+  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout: 30_000 });
   await expect(page.locator("#nextstep")).toHaveText("Breeding: keep playing ▸");
 
   // A pick while the first generation breeds. Its status comes back when its
@@ -263,7 +264,11 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   await expect(page.locator("#gen-count")).toHaveText("1");
   await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred (a new sound: it’s|\d+ new sounds: they’re) at the top of the bank ▸$/);
 
-  await page.locator("#evolve-stop").click();
+  // Stopped, unless its walks have already ended it (on a fast farm the last
+  // ones land in a burst, and STOP goes with the generation): either way it
+  // ends as generation 1.
+  const stop = page.locator("#evolve-stop");
+  if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
   await expect(page.locator("#gen-count")).toHaveText("1");
   await expect(page.locator("#nextstep")).toHaveText(/^Generation 1 bred/);
@@ -275,13 +280,16 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   const pageErrors = await taught(page);
   const mark = await toastMark(page);
   await page.locator("#evolve-btn").click();
-  // Hovering EVOLVE POOL marks what the generation may replace.
-  await page.locator("#evolve-wrap").hover();
-  await expect.poll(() => page.locator("#bank-list .bank-item.may-go").count(), { timeout: 5_000 }).toBeGreaterThan(0);
-  await page.mouse.move(5, 5);
   // Two jobs absorbed, then stop from the job slot.
   await expect.poll(() => count(page, "refine_child"), { timeout: 400_000 }).toBeGreaterThanOrEqual(2);
   const landed = (await logOf(page)).filter((e) => e.type === "refine_child");
+  // Hovering EVOLVE POOL marks what the generation would replace if it ended
+  // now: one more with each child it admits (the engine's `retiring`).
+  if (landed.some((e) => e.child > 0)) {
+    await page.locator("#evolve-wrap").hover();
+    await expect.poll(() => page.locator("#bank-list .bank-item.may-go").count(), { timeout: 5_000 }).toBeGreaterThan(0);
+    await page.mouse.move(5, 5);
+  }
   await expect(page.locator("#job-stop")).toBeVisible();
   await page.locator("#job-stop").click();
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 30_000 });
@@ -315,7 +323,7 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   await page.locator("#evolve-btn").click();
-  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^breeding \d+\/10$/, { timeout: 30_000 });
+  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout: 30_000 });
   // A preset PERFORM has not measured, opened mid-generation.
   await page.locator('.bf[data-f="preset"]').click();
   const wired0 = await count(page, "perform_wired");

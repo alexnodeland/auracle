@@ -23,7 +23,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
-from shotgen import INIT, FILLED, QUIET, CATS, REDEAL, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, CATS, CAST_DEALT, REDEAL, pick, dump  # noqa: E402
 
 OUT = os.path.join(HERE, "shots.json")
 TB = {b["id"]: b for b in json.load(open(os.path.join(HERE, "timeline.json")))["beats"]}
@@ -53,7 +53,10 @@ TAG_JS = (
 )
 TAG = {"op": "log", "name": "picks", "js": TAG_JS}
 CARD = [f".warm-item[data-ve-pick='{i}']" for i in (1, 2, 3)]
-PAD_PLAY = f"{CARD[0]} + .wi-play"
+# The card played is the one on the films' shortlist (shotgen.pick("cast"):
+# Ceiling, in this deal), so what the warm start sounds like on camera is
+# cast; the three picks stay the moving pad's.
+CAST_PLAY = pick("cast", " + .wi-play")
 
 BLUR = {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}
 LOG_DEAL = {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent).join(', ')"}
@@ -250,15 +253,15 @@ shots.append({
 point_marks = {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "sub": "#warmstart .warm-sub"}
 shots.append({
     "id": "ve-point", "beat": "point", "pre": PRE, "own_setup": True,
-    "setup": WARM + [LOG_DEAL, TAG, {"op": "wait", "ms": 1000}, QUIET],
-    "marks": {**point_marks, "pad": CARD[0], "padplay": PAD_PLAY},
+    "setup": WARM + [CAST_DEALT, LOG_DEAL, TAG, {"op": "wait", "ms": 1000}, QUIET],
+    "marks": {**point_marks, "pad": CARD[0], "castplay": CAST_PLAY},
     # The cut lands once PICKS reads 18: "teach it" switches to PERFORM
     # first (stamp taught) and the eighteen picks land a few seconds later
     # (the rehearsal of 28 September read "picks 0 · Loading those in…" at
     # taught+0.8, under "eighteen answers").
     "clips": [["point4", "@learned-0.3"]],
     "actions": [
-        {"at": "point2:Play", "op": "click", "sel": PAD_PLAY},
+        {"at": "point2:Play", "op": "click", "sel": CAST_PLAY},
         {"at": "point2:closest", "op": "seq", "steps": [
             {"op": "click", "sel": CARD[0]}, {"op": "wait", "ms": 300},
             {"op": "click", "sel": CARD[1]}, {"op": "wait", "ms": 300},

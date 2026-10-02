@@ -90,8 +90,9 @@ can’t be opened by the browser too; close that program and plug it in again.
 
 ## Evolution does nothing
 
-While a generation breeds, **EVOLVE POOL** is its own progress bar
-(**BREEDING 3/10**), and when it ends, a toast says what happened.
+While a generation breeds, **EVOLVE POOL** is its own progress bar, saying
+what each walk came back as (**WALK 3 OF 10** *rated below the pool*), and
+when it ends, a toast says what happened.
 
 **Before the model has anything to aim at,** the toast says *Nothing to breed
 toward yet. Make a few picks first, then evolve.* Make a few picks in EVOLVE,

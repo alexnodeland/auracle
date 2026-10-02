@@ -14,15 +14,24 @@ diffs like a hand-written one:
 - FILLED waits for a pool of 40; QUIET for the toasts to clear; WIRING logs
   how PERFORM wired this patch (controls move with the session, so pick them
   by what they do, not by name).
-- pick() finds a warm-start card by index, by name, or as the first card of a
-  category; taught() answers the warm start, re-deals the duel (REDEAL) and
-  optionally votes.
+- pick() finds a warm-start card by index, by name, as the first card of a
+  category, or as the first one on the shortlist ("cast"); taught() answers
+  the warm start, re-deals the duel (REDEAL) and optionally votes.
+- CAST is the preset each role plays, from the films' shortlist, and dump()
+  refuses a shot that plays one off it without a reason (§ the cast, below).
 - DEALS (in INIT) keeps every pair the engine deals, in order, in
   `window.__deals`; REDEAL skips until the pair on the table is the fifth one
   dealt (REDEAL_AT), each skip once the pair behind the table has been dealt,
   so the pair on the table is the same in every take.
 """
 import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sound_defaults  # noqa: E402
+
 # The pairs the engine deals ahead (main.js requestAhead), watched passively:
 # an extra "message" listener on each worker, so the app's own handlers see the
 # same messages in the same order. REDEAL waits on it. It draws nothing from
@@ -46,17 +55,118 @@ CATS = {
     "texture": ["Noise Wash", "Dub Echo", "Static Ocean", "Rotor", "Long Room", "Handheld", "Jet Wash",
                 "Cloud Chamber", "Vox Machina", "Glass Rain", "One Way", "Loom", "Long Way Down"],
 }
+
+# ---- the cast ----------------------------------------------------------------
+# A film casts what it plays (RFC-007 part 2, ADR-014): every preset a shot
+# loads, opens from the bank or plays from the warm start is on the
+# shortlist in www/brand/sound.json (`cast.shortlist`, through
+# sound_defaults.SHORTLIST): sixteen presets measured quiet of noise, round
+# and low in roughness. Bells, tines and plucks are excluded by name. An
+# offer a shot grows is cast by what it grows from: it is grown from a
+# shortlisted preset, and the shot logs what grew (B's own description).
+# Sounds the session deals (the pool, a duel, the warm start's other cards)
+# are not a shot's choice; they are logged, not cast. Later the sonic floor
+# (RFC-005) decides those too.
+#
+# CAST is the preset each role plays, chosen from the shortlist by what the
+# shots need of it, and checked against the wiring each preset ships with
+# (apps/web/perform-wirings.json): the named controls a shot's gestures pick
+# by what they do must reach this patch that way. A session re-measures its
+# wiring, so the rehearsal's WIRING log is the final word.
+#
+# dump() refuses a shot that plays an off-list preset, unless the shot lists
+# it in "uncast" with the reason (a line names that preset or describes its
+# circuit, so it can only change with the script). It writes what each shot
+# plays as the shot's "cast", and prints the exceptions every time it runs.
+SHORTLIST = [n for names in sound_defaults.SHORTLIST["roles"].values() for n in names]
+_WIRINGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "apps", "web", "perform-wirings.json")
+with open(_WIRINGS, encoding="utf-8") as _f:
+    _SHIPPED = {p["name"]: p["data"] for p in json.load(_f)["presets"]}
+# Mirrors apps/web/perform.js's HALF_OPEN: a half its renders did not confirm is closed.
+_HALF_OPEN = 0.075
+
+
+def shipped_wiring(name):
+    """How each named control reaches `name` as it ships: {"Bright": "both" | "up" | "down" | "search", …},
+    the classes the shots pick controls by (WIRING logs the same for a session)."""
+    out = {}
+    for w in _SHIPPED[name]["wiring"]:
+        if w["search"]:
+            out[w["name"]] = "search"
+            continue
+        lo = w["down"] is None or w["down"] >= _HALF_OPEN
+        hi = w["up"] is None or w["up"] >= _HALF_OPEN
+        out[w["name"]] = "both" if lo and hi else "up" if hi else "down" if lo else "search"
+    return out
+
+
+def cast(name, **needs):
+    """`name`, if it is on the shortlist and reaches each named control as
+    `needs` says (Space="up": Space turns toward far only); else stop."""
+    if name not in SHORTLIST:
+        raise ValueError(f"shotgen.cast: {name!r} is not on the shortlist (www/brand/sound.json cast.shortlist)")
+    wired = shipped_wiring(name)
+    wrong = {k: wired.get(k) for k, v in needs.items() if wired.get(k) != v}
+    if wrong:
+        raise ValueError(f"shotgen.cast: {name} ships wired {wrong}, not {needs} (apps/web/perform-wirings.json)")
+    return name
+
+
+CAST = {
+    # Chords and swells (Glass Pad's part until now). It has Glass Pad's
+    # layout: a supersaw into a filter an LFO sweeps, with the same knob
+    # addresses inside it (node/0#cut, node/0/m#rate…). Its filter is a band
+    # pass where Glass Pad's is a low pass, and a reverb holds it where Glass
+    # Pad has a chorus. Bright, Snap, Motion and Body ship turning both ways
+    # (Grit is a search control, Space turns toward close), so a gesture
+    # picked by what it does finds one.
+    "pad": cast("Slow Weather", Bright="both", Motion="both"),
+    # The honest controls: a pad where Space turns toward far only and Grit
+    # cannot reach (it asks for a variant), as the lines say.
+    "pad_far": cast("Morph Pad", Space="up", Grit="search"),
+    # Runs, accents and touch (Tine's part): a quick attack and a vibrato,
+    # with Bright for the touch row.
+    "lead": cast("Wobble Board", Bright="both"),
+    # A filter swept under an arpeggio (Acid Line's part): a ladder filter at
+    # the root over a saw an octave down, Acid Line's circuit, with the same
+    # node#cut, node#res and node#mdepth.
+    "acid": cast("Ceiling", Bright="both"),
+    # The bass: the shortlist's only one.
+    "bass": cast("Held Under", Bright="both"),
+    # A moving texture: a square through a filter that a random source moves
+    # about once a second.
+    "texture": cast("Rotor"),
+}
+
+
 def pick(p, then=""):
-    """A warm-start card: by index, by name, or the first card of a category."""
+    """A warm-start card: by index, by name, the first card of a category, or
+    "cast", the first card on the grid that is on the shortlist. A card to
+    pick (no `then`) is one not picked yet, so a later pick by category can
+    never click the cast card again and un-pick it."""
     if isinstance(p, int):
         return ".warm-item >> nth=%d" % p
-    names = CATS.get(p, [p])
-    return ", ".join(".warm-item:has(.wi-name:text-is('%s'))%s" % (n, then) for n in names)
+    names = SHORTLIST if p == "cast" else CATS.get(p, [p])
+    card = ".warm-item:not(.picked)" if not then else ".warm-item"
+    return ", ".join("%s:has(.wi-name:text-is('%s'))%s" % (card, n, then) for n in names)
+
+
+# Before a shot plays or picks the warm start's card on the shortlist: the
+# deal, logged, and a clear stop when it holds none (the deal moves whenever
+# the app draws one more random number at boot).
+CAST_DEALT = {"op": "log", "name": "cast card", "js": (
+    "(() => { const cast = " + json.dumps(SHORTLIST) + ";"
+    " const deal = [...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent.trim());"
+    " const c = deal.find((n) => cast.includes(n));"
+    " if (!c) throw new Error('shotgen: the warm start dealt no card on the shortlist: ' + deal.join(', '));"
+    " return c + ' (deal: ' + deal.join(', ') + ')'; })()")}
+
+
 def taught(votes=0, picks=(0, 4, 7), redeal=True):
     s = [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         FILLED,
-    ] + [{"op": "click", "sel": pick(p)} for p in picks] + [
+    ] + ([CAST_DEALT] if "cast" in picks else []) + [{"op": "click", "sel": pick(p)} for p in picks] + [
         {"op": "click", "sel": "#warm-go"},
         {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
     ]
@@ -123,7 +233,80 @@ return out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') 
 })()""" % REDEAL_AT}
 def perform(name):
     return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, WIRING]
+_BY_NAME = re.compile(r"(?:text-is|has-text)\('([^']+)'\)")
+WARM_CARD = "a warm-start card the session dealt"
+SAVED_ROW = "a bank row the session saved"
+
+
+def plays(steps):
+    """The presets a list of steps loads (`preset`, `measured`), opens from
+    the bank by name (`text-is` or `has-text`), opens by dropping a fixture
+    file named for one (fixtures/First_Bass.svg), or plays from the warm
+    start (a card's ▶). A selector naming several (whichever the session
+    dealt or saved) is "the shortlist" when every name is on it, else
+    WARM_CARD or SAVED_ROW. A drop of the shot's own export (`download`)
+    reopens a patch the shot already plays, so it adds nothing."""
+    out = []
+
+    def walk(x):
+        if isinstance(x, list):
+            for y in x:
+                walk(y)
+            return
+        if not isinstance(x, dict):
+            return
+        op, sel = x.get("op"), x.get("sel")
+        if op in ("preset", "measured") and x.get("name"):
+            out.append(x["name"])
+        if op == "drop" and isinstance(x.get("file"), str):
+            stem = os.path.splitext(os.path.basename(x["file"]))[0].replace("_", " ")
+            out.append(stem if stem in _SHIPPED else f"a dropped file ({x['file']})")
+        if op in ("click", "press", "dblclick") and isinstance(sel, str):
+            names = [n for n in _BY_NAME.findall(sel) if n in _SHIPPED]
+            cast_only = bool(names) and all(n in SHORTLIST for n in names)
+            if "bank-item" in sel and names:
+                out.append(names[0] if len(names) == 1 else "the shortlist" if cast_only else SAVED_ROW)
+            elif "warm-item" in sel and "wi-play" in sel:
+                out.append("the shortlist" if cast_only else WARM_CARD)
+        for y in x.values():
+            walk(y)
+
+    walk(steps)
+    return list(dict.fromkeys(out))
+
+
+def casting(spec):
+    """Each shot's cast, written into it, and the exceptions; stop on a shot
+    that plays an off-list preset it does not list in "uncast" with a reason."""
+    bad, excused = [], []
+    for sh in [{"id": "(film set-up)", "setup": spec["setup"], "uncast": spec.get("uncast", {})}] + spec["shots"]:
+        heard = plays([sh.get("setup", []), sh.get("actions", [])])
+        uncast = sh.get("uncast", {})
+        for n in heard:
+            if n in SHORTLIST or n == "the shortlist":
+                continue
+            if n in uncast and uncast[n].strip():
+                excused.append(f"{sh['id']}: {n} ({uncast[n]})")
+            else:
+                bad.append(f"{sh['id']}: {n}")
+        for n in uncast:
+            if n not in heard:
+                bad.append(f"{sh['id']}: lists {n!r} in uncast, but does not play it")
+        if sh["id"] != "(film set-up)":
+            on = [n for n in heard if n in SHORTLIST or n == "the shortlist"]
+            if on:
+                sh["cast"] = on
+            else:
+                sh.pop("cast", None)
+    if bad:
+        raise SystemExit("shotgen: off the shortlist (www/brand/sound.json cast.shortlist), with no reason in the shot's "
+                         "\"uncast\":\n  " + "\n  ".join(bad))
+    for e in excused:
+        print("  uncast " + e)
+
+
 def dump(spec, path):
+    casting(spec)
     # One step per line: readable diffs, and the file stays close to the hand-written films.
     def one(x):
         return json.dumps(x, ensure_ascii=False)

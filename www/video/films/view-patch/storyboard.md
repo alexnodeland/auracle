@@ -83,7 +83,7 @@ PATCH chips `.nb-chip[data-kind]`; catalogue `.nb-item[data-kind]`, its search
 
 ---
 
-## 0. `cold` — shot `vp-cold` (no words, 4 bars) · Acid Line
+## 0. `cold` — shot `vp-cold` (no words, 4 bars) · Ceiling
 
 - **Set-up:** tempo 84 · HOLD on, then ARP (1/16, up·down), the drawer folded.
 - **Actions:** Fmaj7 struck on beat 2 of bar 1 and latched: the acid line
@@ -237,13 +237,14 @@ chapter 01's card.
   run to its child (so the lineage has both kinds of entry).
 - **Actions:** ⋯ → *Export this patch* (a `.auracle.json`); ⋯ → *Export as
   image…*, SVG, export (its note: the patch rides inside). take2: the panel
-  closed; `fixtures/First_Bass.svg` (a real picture export) dropped on the
-  window: First Bass opens; a bass figure on the beat. take3: EVOLVE, the
+  closed; the picture just exported dropped back on the window (footage.mjs
+  `drop {download}`): the app says the patch is already in the pool and opens
+  it; a figure on the beat. take3: EVOLVE, the
   lineage.
 - **Callouts:** "a .auracle.json file"; "a picture: PNG or SVG"; "the patch
   rides inside the picture"; "what changed, in words" (amber).
 
-## 11. `together` — shot `vp-together` (together1–4) · Acid Line
+## 11. `together` — shot `vp-together` (together1–4) · Ceiling
 
 - **Actions:** Am7 latched on the downbeat (arp up, 1/16, 84). together2: the
   cutoff opened and brought part of the way back, then the resonance nudged.

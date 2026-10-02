@@ -29,6 +29,7 @@ pub mod belief;
 pub mod calib;
 pub mod engine;
 pub mod farm;
+pub mod guess;
 pub mod map;
 pub mod migrate;
 pub mod naming;
@@ -39,12 +40,17 @@ pub mod walk;
 pub use belief::{Belief, BeliefRow};
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
-    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
-    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
-    RefineOutcome, RenderPolicy, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
-    MIN_SESSION_OBS,
+    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, ClipChange, ClipStatus,
+    Contribution, DuelChoice, EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent,
+    Origin, Profile, RefineKeep, RefineOutcome, RenderPolicy, SessionConfig, SessionState,
+    EVENTS_CAP, EVENT_PHI_KEEP, MIN_SESSION_OBS,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
+pub use guess::{
+    guess_candidates, guess_is_current, guessable_insert, guessable_source, Guess, GuessCandidate,
+    GuessMemory, GuessPlan, GuessRanking, GuessRefusal, GuessSkip, GuessWhy, GUESS_BUDGET_MS,
+    GUESS_FLOOR, GUESS_TAKEN_KEEP,
+};
 pub use map::{MapPoint, TasteMap};
 pub use naming::{claim_name, NameScale};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
@@ -3312,6 +3318,43 @@ mod tests {
         );
     }
 
+    /// A check shown and answered before the first fit is used up by its
+    /// answer, though there was no forecast to score. It used to stay
+    /// pending, and the next answer on the same pair (after the fit, on a
+    /// pair the model had chosen, or the same question put back up) was
+    /// scored as that old check.
+    #[test]
+    fn a_check_answered_before_the_first_fit_is_not_scored_again() {
+        let mut rng = StdRng::seed_from_u64(0xC4EC);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 8,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let first = engine.deal_duel_except(&mut rng, &[]).unwrap();
+        assert!(first.random_check, "with no fit every pair is a check");
+        let (ia, ib) = (engine.pool[first.a].id, engine.pool[first.b].id);
+        assert!(engine.duel_shown(ia, ib));
+        engine.record_duel(first.a, first.b, true);
+        for _ in 0..8 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let before = engine.calibration().check_n;
+        // The same pair answered again, not dealt as a check this time.
+        engine.record_duel(first.a, first.b, false);
+        assert_eq!(
+            engine.calibration().check_n,
+            before,
+            "an answer before the fit left its check pending for a later answer"
+        );
+    }
+
     /// something: its standardized vectors are inverted back to raw values,
     /// re-projected by name, and the votes survive the feature-set change
     /// that motivated the whole exercise.
@@ -3834,6 +3877,67 @@ mod tests {
         );
     }
 
+    /// **A farm on a stale clip still builds the serial pool.** The farm
+    /// measures with the clip its phrase carries, and after a capture (or a
+    /// restore that installed a clip) it can be a phrase behind. Every draw
+    /// that listens then comes back measured, or vetted out, under the old
+    /// clip. Absorption measures those draws here, so the pool is the one the
+    /// serial fold builds with the session's own clip. Without that, the
+    /// pool admits the old clip's φ under a key that names it.
+    #[test]
+    fn a_farm_on_a_stale_clip_still_builds_the_serial_pool() {
+        const SEED: u64 = 0x5EED_A0D1;
+        // AUDIO IN as the likeliest source, so a six-patch pool holds
+        // listeners.
+        let mut prior = PatchGrammarPrior::default();
+        prior.source_weights[auracle_grammar::prior::N_SOURCES - 1] = 2.0;
+        let cfg = || SessionConfig {
+            pool_size: 6,
+            ..fast()
+        };
+        let mut serial = Engine::new(prior.clone(), cfg());
+        serial.begin_session();
+        serial.set_fill_seed(SEED);
+        serial.fill_pool(&mut StdRng::seed_from_u64(0xDEAD));
+        assert!(
+            serial.pool.iter().filter(|c| c.tree.listens()).count() >= 2,
+            "the pool holds too few listeners to test"
+        );
+
+        let mut farm = Engine::new(prior, cfg());
+        farm.begin_session();
+        farm.set_fill_seed(SEED);
+        let stale = auracle_features::PhraseSpec {
+            clip: Some(sweep_clip(&farm.cfg.phrase)),
+            ..farm.cfg.phrase.clone()
+        };
+        loop {
+            let wave = farm.fill_draw(3);
+            if wave.is_empty() {
+                break;
+            }
+            for d in wave {
+                let pre = if d.dup {
+                    None
+                } else {
+                    PreFeaturized::render(d.tree, &stale, false).ok()
+                };
+                farm.absorb_prior(d.index, pre);
+            }
+        }
+        assert_eq!(
+            pool_signature(&serial),
+            pool_signature(&farm),
+            "a farm a clip behind built another pool"
+        );
+        let keys = |e: &Engine| e.pool.iter().map(|c| c.key.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            keys(&serial),
+            keys(&farm),
+            "a listener kept the old clip's key"
+        );
+    }
+
     /// The wire is `f32`, and that has to be invisible.
     ///
     /// A farm result's audition crosses as `Float32Array` and is rebuilt on
@@ -3971,5 +4075,157 @@ mod tests {
         let vx: f64 = xs.iter().map(|x| (x - mx) * (x - mx)).sum();
         let vy: f64 = ys.iter().map(|y| (y - my) * (y - my)).sum();
         cov / (vx.sqrt() * vy.sqrt() + 1e-12)
+    }
+
+    // ---- audition clips (Plan-007 task 3) ----
+
+    /// A patch that listens: the input through a lowpass.
+    fn listening_patch() -> auracle_grammar::PatchTree {
+        use auracle_grammar::term::{AmpEnv, AudioNode, FilterKind, InputChannel, ModNode};
+        auracle_grammar::PatchTree {
+            amp: AmpEnv {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: auracle_grammar::Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: auracle_grammar::Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+                modulation: ModNode::None,
+            },
+        }
+    }
+
+    /// A captured clip: a falling sweep, the phrase's length.
+    fn sweep_clip(spec: &auracle_features::PhraseSpec) -> auracle_features::AuditionClip {
+        let x: Vec<f32> = (0..spec.total_samples())
+            .map(|i| {
+                let t = i as f64 / spec.sample_rate;
+                let hz = 1200.0 * (-t / 2.5).exp() + 80.0;
+                (0.4 * (std::f64::consts::TAU * hz * t).sin()) as f32
+            })
+            .collect();
+        auracle_features::AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
+    }
+
+    /// An engine with one patch that listens and one that does not.
+    fn listening_engine() -> (Engine, u64, u64) {
+        let cfg = SessionConfig {
+            pool_size: 4,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        // A fill gives the session its standardizer; then room for two more,
+        // so neither insert evicts anything.
+        engine.begin_session();
+        engine.fill_pool(&mut StdRng::seed_from_u64(0xC11F));
+        engine.cfg.pool_size += 2;
+        let listens = engine
+            .insert_preset(listening_patch(), "listens")
+            .expect("a listening patch vets on the reference");
+        let deaf = engine
+            .insert_preset(auracle_grammar::presets()[0].1.clone(), "deaf")
+            .expect("a preset vets");
+        (engine, listens, deaf)
+    }
+
+    /// Setting a clip measures again the members that listen, and only them:
+    /// the listener's key and φ move, the other's do not.
+    #[test]
+    fn a_new_clip_remeasures_only_the_patches_that_listen() {
+        let (mut engine, listens, deaf) = listening_engine();
+        // What a measurement wrote on a member: its key and its raw φ.
+        let at = |e: &Engine, id: u64| {
+            let c = &e.pool[e.find(id).unwrap()];
+            (c.key.clone(), c.features.phi())
+        };
+        let (before_l, before_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_eq!(
+            engine.audition_clip_status().source,
+            auracle_features::ClipSource::Reference
+        );
+        let clip = sweep_clip(&engine.cfg.phrase);
+        let change = engine.set_audition_clip(Some(clip.clone()));
+        assert_eq!(change.remeasured, vec![listens]);
+        assert!(change.unmeasured.is_empty());
+        let (after_l, after_d) = (at(&engine, listens), at(&engine, deaf));
+        assert_ne!(
+            before_l.0, after_l.0,
+            "the listener's key names the new clip"
+        );
+        assert_ne!(before_l.1, after_l.1, "and its φ was measured with it");
+        assert_eq!(
+            before_d, after_d,
+            "a patch that does not listen is untouched"
+        );
+        let status = engine.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Captured);
+        assert_eq!(status.id, clip.id());
+        // Setting the same clip again changes nothing.
+        assert_eq!(engine.set_audition_clip(Some(clip)), ClipChange::default());
+    }
+
+    /// The clip is saved with the session and restored before the bank is
+    /// measured, so a reload measures a listening patch exactly as before.
+    #[test]
+    fn a_clip_is_saved_with_the_session_and_restored() {
+        let (mut engine, listens, _) = listening_engine();
+        let clip = sweep_clip(&engine.cfg.phrase);
+        engine.set_audition_clip(Some(clip.clone()));
+        let phi = engine.pool[engine.find(listens).unwrap()].features.phi();
+        let saved = serde_json::to_string(&engine.export_state()).unwrap();
+        // The bound, in the file: 16-bit samples, five seconds of mono.
+        let state: SessionState = serde_json::from_str(&saved).unwrap();
+        let data = state.audition_clip.as_ref().unwrap()["data"]
+            .as_str()
+            .unwrap()
+            .len();
+        assert_eq!(data, (clip.frames() * 2).div_ceil(3) * 4);
+        assert!(
+            clip.seconds() <= auracle_features::MAX_CLIP_SECONDS,
+            "a clip is never longer than the bound"
+        );
+        let mut back = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        back.cfg.phrase.clip = None;
+        back.import_state(state);
+        let status = back.audition_clip_status();
+        assert_eq!(status.id, clip.id());
+        assert_eq!(status.unreadable, None);
+        assert_eq!(back.pool[back.find(listens).unwrap()].features.phi(), phi);
+    }
+
+    /// A clip the session file holds but that cannot be read costs the
+    /// session its clip and nothing else: the bank and the log come back, the
+    /// patches that listen are measured with the reference, and the status
+    /// says why.
+    #[test]
+    fn an_unreadable_clip_restores_as_the_reference_and_says_so() {
+        let (mut engine, listens, _) = listening_engine();
+        engine.set_audition_clip(Some(sweep_clip(&engine.cfg.phrase)));
+        let mut state = engine.export_state();
+        state.audition_clip.as_mut().unwrap()["channels"] = 7.into();
+        let text = serde_json::to_string(&state).unwrap();
+        let state: SessionState = serde_json::from_str(&text).expect("the session still parses");
+        let mut back = Engine::new(PatchGrammarPrior::default(), fast());
+        assert_eq!(back.import_state(state), engine.pool.len());
+        let status = back.audition_clip_status();
+        assert_eq!(status.source, auracle_features::ClipSource::Reference);
+        assert!(status.unreadable.is_some(), "the fallback is reported");
+        let c = &back.pool[back.find(listens).unwrap()];
+        assert_eq!(
+            c.key,
+            auracle_features::render_key(&c.tree, &auracle_features::PhraseSpec::default()),
+            "measured with the reference"
+        );
     }
 }

@@ -1,6 +1,6 @@
 ---
 title: "Films: from script to the site"
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 related_adrs: [3, 4, 14]
 ---
 
@@ -39,7 +39,6 @@ script.json ──► voice.sh ──► timeline.json, arrangement.json, voice/
                               └─ takes.py    each take's errors, paint rate and sound
 score:   fit_score.py --film (a film on N3: its bed and marks, written to the timeline), or
          fit_score.py sound/study.json (Study, stretched) → the engine plays it (examples/score.rs) → music/
-cues:    render.mjs --cues (the picture's sound cues; the mix counts them and lays none)
 mix:     mix.py voice + bed + marks + app sound, to the ladder, −16 LUFS, captions (.vtt), ladder.json
 render:  render.mjs → part-*.mkv + picture.ffconcat (frames, in parallel)
 encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -preview.mp4, .jpg, .webp
@@ -54,13 +53,17 @@ marks and the N3 bed into `www/video/sound/` and the mix's defaults into
 is stale, when `sound.json` disagrees with the record scores' notes, and when
 a number is a film tool's level default (the bed's, the duck's, the app's
 gain) or a pipeline's fallback for one.
-`mix.py` mixes to the ladder and lays no cues. A film on the N3 bed is laid
-out to the grammar (`timeline.py`: each demo after its line, the marks 1.75 s
-from the voice) and scored to its timeline (`fit_score.py --film`: the held
-drone, the cycle's ties, the sighs in the narration's gaps), and mixed on
-stems. The films move to it as they are re-voiced
-([Plan-006](../plans/006-the-sound-of-the-films.md)); until then each is
-mixed exactly as it was, bar the cues (sound.json `before_the_grammar`).
+`mix.py` mixes to the ladder. There are no cues: the stage has no sound of
+its own, and the marks are the only sound beside the voice, the bed and the
+app.
+
+A film on the N3 bed is laid out to the grammar (`timeline.py`: each demo
+after its line, the marks 1.75 s from the voice) and scored to its timeline
+(`fit_score.py --film`: the held drone, the cycle's ties, the sighs in the
+narration's gaps), and mixed on stems. The films move to it as they are
+re-voiced ([Plan-006](../plans/006-the-sound-of-the-films.md)); until then
+each is mixed as it was before ADR-014, without its cues (sound.json
+`before_the_grammar`).
 
 ## Walkthrough shots
 
@@ -76,6 +79,20 @@ duel after the fill (`shotgen.REDEAL`): it skips until the pair on the table is
 the fifth one the engine has dealt, each skip once the pair behind the table
 has been dealt, so the duel does not depend on how far the fill had got when
 the first pairs were dealt.
+
+Every walkthrough is **cast**, or says why not
+([RFC-007](../proposals/007-the-sound-of-the-films.md) part 2): what a shot
+loads, opens, drops or plays from the warm start is a preset from the
+shortlist in `www/brand/sound.json` (`shotgen.CAST`, `pick("cast")`), and an
+offer it grows is grown from one and logged. A generated shot that must
+keep another preset says why in its `"uncast"`: its line names the preset or
+describes its circuit, so it changes only with the script. `shotgen.dump`
+refuses anything else. The four walkthroughs written by hand are not cast,
+and `tools/test_shotgen.py` lists why: launch's three footage shots are seen,
+not heard, until launch moves to N3; `circuit` and `perform` are replaced by
+the view films; `zzprobe` is a rehearsal probe. The test (in `make
+dev-check`) holds every committed `shots.json` to this. What the session deals (the pool, a duel, the warm
+start's other cards) is logged, not cast, until the sonic floor (RFC-005).
 
 ## Readiness
 

@@ -3,7 +3,7 @@
 // Run: node --test apps/web/tests
 import test from "node:test";
 import assert from "node:assert/strict";
-import { soundingOf, foldHidden, rebase } from "../perform.js";
+import { soundingOf, foldHidden, rebase, wireKeyOf } from "../perform.js";
 
 // A wiring that turns `addr` by `g` at a full turn, both halves open.
 const wiring = (name, addr, g) => ({ name, knobs: [[addr, g]], search: false, purity: 1, reach: 1, position: 0, up: 1, down: 1 });
@@ -56,4 +56,24 @@ test("a re-check with new gains moves the bases, not the sound", () => {
   const bases = new Map([["f#cut", 0.5]]);
   const moved = rebase(bases, before, [0.5], after, [0.5]);
   near(soundingOf(moved.get("f#cut"), "f#cut", after, [0.5]), soundingOf(0.5, "f#cut", before, [0.5]));
+});
+
+test("a wiring's key: the patch, then the clip for a sound that listens, then the set", () => {
+  const listening = JSON.stringify({ kind: "Vca", uid: 7, input: { kind: "AudioIn", uid: 9 } });
+  const base = JSON.stringify({ kind: "Vca", input: { kind: "AudioIn" } }); // uids dropped
+  // A custom set, asked in palette order whatever the panel's order.
+  assert.equal(wireKeyOf(listening, [16, 0, 1, 2, 3, 4, 5], "c1"), `${base}|clip:c1#controls=0,1,2,3,4,5,16`);
+  // The six on a listening tree: the patch and its clip, nothing more.
+  assert.equal(wireKeyOf(listening, [0, 1, 2, 3, 4, 5], "c1"), `${base}|clip:c1`);
+  assert.equal(wireKeyOf(listening, undefined, "c1"), `${base}|clip:c1`);
+  // Every set of one patch starts with its six's key and `#controls=`
+  // (what `borrowWiring` looks for), and two sets never share a key.
+  const six = wireKeyOf(listening, null, "c1");
+  assert.ok(wireKeyOf(listening, [6, 0], "c1").startsWith(`${six}#controls=`));
+  assert.notEqual(wireKeyOf(listening, [6], "c1"), wireKeyOf(listening, [7], "c1"));
+  // A sound that doesn't listen carries no clip; a key already composed is itself.
+  const quiet = JSON.stringify({ kind: "Vco", uid: 1 });
+  assert.equal(wireKeyOf(quiet, [16], "c1"), `${JSON.stringify({ kind: "Vco" })}#controls=16`);
+  const composed = wireKeyOf(listening, [16], "c1");
+  assert.equal(wireKeyOf(composed, undefined, "c1"), composed);
 });

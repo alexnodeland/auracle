@@ -21,8 +21,8 @@ use thiserror::Error;
 
 use crate::genome::PARAM_MAX;
 use crate::term::{
-    AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree, TableShape,
-    Uid, Waveform,
+    AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
+    TableShape, Uid, Waveform,
 };
 
 /// Hard ceilings on hand-built patches (protects the realtime voice and the
@@ -137,13 +137,17 @@ pub enum NodeKind {
     /// palette grew in this order; the enum is serialized by name, so its
     /// order is not a wire format.
     Silence,
+    /// AUDIO IN: the player's own signal as a source
+    /// ([`AudioNode::AudioIn`]). `audio_in` on the wire, which is also the
+    /// rack's kind for it.
+    AudioIn,
 }
 
 impl NodeKind {
     /// Every buildable kind, in declaration order — the palette as one table,
     /// so a sweep over "everything a hand can place" cannot skip the newest
     /// production.
-    pub const ALL: [NodeKind; 27] = [
+    pub const ALL: [NodeKind; 28] = [
         NodeKind::Vco,
         NodeKind::Supersaw,
         NodeKind::Noise,
@@ -171,6 +175,7 @@ impl NodeKind {
         NodeKind::Gate,
         NodeKind::Vocoder,
         NodeKind::Silence,
+        NodeKind::AudioIn,
     ];
 
     /// Is this a source (leaf) kind?
@@ -184,6 +189,7 @@ impl NodeKind {
                 | NodeKind::Pluck
                 | NodeKind::Formant
                 | NodeKind::Silence
+                | NodeKind::AudioIn
         )
     }
 }
@@ -225,7 +231,8 @@ const _: () = {
             | NodeKind::Duck
             | NodeKind::Gate
             | NodeKind::Vocoder
-            | NodeKind::Silence => {}
+            | NodeKind::Silence
+            | NodeKind::AudioIn => {}
         }
     }
     let mut i = 0;
@@ -827,6 +834,14 @@ pub(crate) fn default_fragment(kind: NodeKind) -> AudioNode {
         // Nothing to default: a hole has no parameters. The one kind here that
         // is *meant* to be inaudible the instant it lands, which is the point.
         NodeKind::Silence => AudioNode::Silence { uid: Uid::NEW },
+        // The first input, at unity, both channels summed: what a player
+        // plugging in expects to hear before turning anything.
+        NodeKind::AudioIn => AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: 0,
+            gain: crate::compile::INPUT_GAIN_UNITY,
+            channel: InputChannel::Both,
+        },
     }
 }
 
@@ -870,7 +885,8 @@ fn primary_input(n: AudioNode) -> Option<AudioNode> {
         | AudioNode::Wavetable { .. }
         | AudioNode::Pluck { .. }
         | AudioNode::Formant { .. }
-        | AudioNode::Silence { .. } => None,
+        | AudioNode::Silence { .. }
+        | AudioNode::AudioIn { .. } => None,
         // For a ring modulator the carrier is the primary input, exactly as
         // `a` is for a mix — the modulator is the branch that gets dropped.
         AudioNode::Mix { a, .. } | AudioNode::RingMod { a, .. } => Some(*a),
@@ -1222,6 +1238,14 @@ fn mod_slot_mut(n: &mut AudioNode) -> Result<&mut ModNode, StructError> {
         | AudioNode::Duck { modulation, .. }
         | AudioNode::Gate { modulation, .. }
         | AudioNode::Vocoder { modulation, .. } => Ok(modulation),
+        // The three sources without a slot, named so the refusal gives the
+        // right reason: noise has only a color, an empty socket has nothing,
+        // and an audio in's one continuous knob is a level.
+        AudioNode::Noise { .. } | AudioNode::Silence { .. } | AudioNode::AudioIn { .. } => {
+            Err(StructError::Invalid(
+                "noise, audio in and an empty socket have no modulation slot".into(),
+            ))
+        }
         _ => Err(StructError::Invalid(
             "mixers and ring modulators have no modulation slot".into(),
         )),
@@ -1542,7 +1566,8 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
         | AudioNode::Wavetable { .. }
         | AudioNode::Pluck { .. }
         | AudioNode::Formant { .. }
-        | AudioNode::Silence { .. } => Err(StructError::Invalid(
+        | AudioNode::Silence { .. }
+        | AudioNode::AudioIn { .. } => Err(StructError::Invalid(
             "a source has no input to splice into".into(),
         )),
     }

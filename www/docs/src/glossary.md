@@ -28,7 +28,9 @@ no room to grow.
 ### Child, NEW
 
 A sound a generation bred. The children of the latest generation lead the
-**POOL** tab under **NEW · GEN 3**, each tagged **NEW**.
+**POOL** tab under **NEW · GENERATION 3**, each tagged **NEW**, with a green
+dot until you hear it. Under a child’s name, the bank says which seed it grew
+from and what changed; click that line to compare the two.
 
 ### Control
 
@@ -190,7 +192,9 @@ EVOLVE’s line says *● learning from your last 6 picks…* until it lands, th
 ### Replaced
 
 What happens to the pool’s lowest-rated unsaved sounds when a generation ends,
-or when a preset joins the pool. The toast names them.
+or when a preset joins the pool. The toast names them, and **REPLACED ·
+GENERATION 3** at the foot of the pool lists what the latest generation
+replaced. Only their names are kept.
 
 ### Search control
 
@@ -202,8 +206,9 @@ SPACE turned up), or an offer grows in B, aimed the way you turned it. See
 
 ### Seed
 
-The sound a child grew from. (A random number generator’s seed is always
-called a random seed.)
+The sound a child grew from. A generation breeds from the ten the model
+rates highest; hover **EVOLVE POOL** and the bank marks them **SEED**. (A
+random number generator’s seed is always called a random seed.)
 
 ### Set aside
 

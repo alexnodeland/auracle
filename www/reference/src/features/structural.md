@@ -35,8 +35,8 @@ coordinates](./audio.md) to give $\varphi \in \R^{44}$.
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
 and the auto-namer both want “two filters”, not “two subtractive stages”), but
-`NAMES` and `to_vec` collapse **forty-three productions into nineteen family
-counts**.
+`NAMES` and `to_vec` collapse **forty-four productions into nineteen family
+counts**, and one of them, `AudioIn`, into none (see [below](#audio-in-counted-and-not-a-column)).
 
 Two reasons.
 
@@ -121,6 +121,20 @@ tree with no holes and slack for one with them: near-exact almost always,
 which is a worse thing to carry than an exact dependency: an exact one is
 unmistakable in a VIF sweep, and a near-exact one is a large number that looks
 like a judgment call.
+
+### Audio in: counted, and not a column
+
+`AudioIn` is a source leaf too, and it has its raw counter, `n_audio_in`, so
+`size` is still the sum of the counts and the identity above, written over the
+raw counts, still holds. But it is **not a column of $\varphi$**: RFC-008 keeps
+$\varphi$’s shape, and at its prior weight (0 until live capture works, 0.5%
+after) the column would be zero in nearly every row. Leaving it out brings no dependency back, because the identity was
+never reachable from the retained columns: it needs `n_mix`, which is dropped,
+and each binary count separately, which the families hide. The shape
+coordinates count it with no help (`chain_balance` and `frac_sidechained` read
+arity from the tree, where it is a leaf), and what an input patch does to a
+signal reaches the model through $\varphi_{\text{audio}}$, measured on the
+[audition clip](../audition/clips.md).
 
 The identity holds exactly, for every tree. It became a *general* statement
 only when the four sidechained productions (comp, duck, gate, and vocoder)

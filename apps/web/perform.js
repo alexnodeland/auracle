@@ -61,6 +61,24 @@ const setKey = (set) => {
   const s = setOf(set || PANEL_DEFAULT).join(",");
   return s === SIX_KEY ? "" : s;
 };
+// The key a measured wiring is kept under (`wireKey` in `createPerform`):
+// the patch as it is (uids dropped, so a re-minted tree is the same patch),
+// then the audition clip for a sound with an AUDIO IN (`|clip:`), then the
+// set measured unless it is the six (`#controls=`). The clip goes on the
+// patch's part, before the set, so `${patch}#controls=` still prefixes every
+// set of one patch (`borrowWiring`) and a set is never clipped off. A key
+// that is not a tree (one already composed) is itself.
+export function wireKeyOf(json, set, clip) {
+  let base;
+  try {
+    base = JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+  } catch {
+    return json;
+  }
+  if (clip && base.includes('"AudioIn"')) base = `${base}|clip:${clip}`;
+  const sk = setKey(set);
+  return sk ? `${base}#controls=${sk}` : base;
+}
 // A palette index from a wiring entry: its `index`, or for a wiring kept
 // before the engine sent one, the palette entry of the same name.
 const indexOf = (w) => (w && Number.isInteger(w.index) ? w.index : w ? PALETTE.findIndex((c) => c.name === w.name) : -1);
@@ -1255,18 +1273,14 @@ export function createPerform(host) {
   // for another: the key is the patch's, then `#controls=` and the set, and
   // for the six it is the patch's alone, as it was before the palette (the
   // shipped file and every cache already hold the six under that key).
+  //
+  // A sound with an AUDIO IN is measured with the session's audition clip
+  // (Plan-007), so under another clip the same patch measures differently:
+  // its key carries the clip, on the patch's part, before the set
+  // (`wireKeyOf`). Only for a sound that listens, so a new clip leaves every
+  // other wiring where it was.
   function wireKey(json, set) {
-    let base;
-    try {
-      base = JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
-    } catch {
-      return json;
-    }
-    // Merging with #97 (which clips the key): the clip applies to `base`,
-    // here, before `#controls=` and the set are added, so the set is never
-    // clipped off and two sets of one patch never share a key.
-    const sk = setKey(set);
-    return sk ? `${base}#controls=${sk}` : base;
+    return wireKeyOf(json, set, host.clipTag ? host.clipTag() : null);
   }
   const wireCache = (() => {
     try {
