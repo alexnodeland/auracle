@@ -47,8 +47,10 @@ the face.
   lines. Preset rows draw theirs as you scroll to them, since a preset you
   haven’t heard may need a render first.
 - **[EVOLVE](./views/evolve.md)**, beside each card’s name.
-- **[PATCH](./views/play.md)**, beside the sound’s name in the header, and on
-  **A** and **B** in the teach strip under the rack.
+- **[PATCH](./views/play.md)**, beside the sound’s name in the header, on
+  **A** and **B** in the teach strip under the rack, and beside the model’s
+  guess for the next module: the patch as it is, and the patch with that
+  module, from the render the guess made of it.
 - **[PERFORM](./views/perform.md)**, beside the sound in your hands, and
   beside **B** once an offer has grown. B grows out of the face, and goes
   back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen,

@@ -367,6 +367,10 @@ pub struct Guess {
     pub p: f64,
     /// Why, when some part of the gain leans your way; `None` when none does.
     pub why: Option<GuessWhy>,
+    /// [`GuessCandidate::key`]: the memo row of the patch with it, as
+    /// rendered for the guess, which holds that render's face (the app draws
+    /// it on the guess's plate).
+    pub key: String,
 }
 
 /// The guesses for a patch, best first.
@@ -753,6 +757,7 @@ impl Engine {
                     kind: c.kind,
                     family: c.family,
                     socket: c.socket,
+                    key: c.key,
                 },
             ));
         }

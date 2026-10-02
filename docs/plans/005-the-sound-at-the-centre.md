@@ -279,7 +279,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
        from that render or kept beside its row, the guess
        plate gets the candidate's face, labelled as the patch with this
        module, beside the patch's own. patch.js calls `host.guessFace(g,
-       at, layer)` for it; main.js does not provide it yet;
+       at, layer)` for it, and main.js draws both faces there (task 3:
+       `Guess::key` names the candidate's memo row, `face_of_key` reads its
+       face, labelled *as it is* and *with it*);
      - the specimen's "in 39% of similar presets" counted presets; the
        engine's guess is ranked by the posterior, so the line is the
        model's reason and forecast, and says *it may not help* when the lower

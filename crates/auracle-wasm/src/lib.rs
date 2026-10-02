@@ -1327,6 +1327,20 @@ impl WasmEngine {
         }
     }
 
+    /// The face of the memo row `key` (a render key), or empty: what the
+    /// model's guess rendered for each of its candidates (`Guess::key`), the
+    /// patch with that module, as rendered. Never renders.
+    pub fn face_of_key(&self, key: &str) -> Vec<u8> {
+        if let Some(face) = self.engine.memo().get(key).and_then(|c| c.face) {
+            return face.bytes().to_vec();
+        }
+        self.engine
+            .memo()
+            .get_audio(key)
+            .map(|a| self.remember_face(key, &a).bytes().to_vec())
+            .unwrap_or_default()
+    }
+
     /// `"<cache_namespace>/<render_key>"` of pool member `id` (as
     /// [`farm_key`] names a tree's), the key a face is stored under; empty
     /// for an id not in the pool.

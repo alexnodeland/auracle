@@ -206,6 +206,10 @@ export function cardLine(origin, seedName, changes) {
   }[origin] || "";
 }
 
+/** Under the two faces beside PATCH's guess plate: the patch as it is, and
+ *  the patch with the guessed module, as rendered for the guess. */
+export const GUESS_FACES = ["as it is", "with it"];
+
 /** Why a card has no face (`noplay`, `few`, `coming`), in the dialog's
  *  readout. */
 export function cardNoFace(why) {

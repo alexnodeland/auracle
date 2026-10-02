@@ -86,7 +86,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "guess_plan", "guess_rank", "guess_skip", "guess_take", "guess_patch_as", "edit_cable_levels",
       "held_sounds", "readmit_held",
       "own_sound_set", "own_sound", "own_sound_clear", "own_presets_set", "refine_toward_jobs",
-      "face_of", "face_key", "face_of_tree", "preset_tree_json",
+      "face_of", "face_key", "face_of_tree", "preset_tree_json", "face_of_key",
     ];
     const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
     return {

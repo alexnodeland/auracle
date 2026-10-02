@@ -6215,6 +6215,10 @@ body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: no
   fill: var(--phos-b-dim);
 }
 .guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Beside the guess plate: the patch's face, and its face with the guess, as
+   rendered (Plan-005 task 3). The words under them are the rack's value tier. */
+.rack-guess .gp-face { pointer-events: none; }
+.rack-guess .gp-face-word { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--silk-dim); text-anchor: middle; pointer-events: none; }
 .guess-plate text { pointer-events: none; }
 .gp-skip { cursor: pointer; outline: none; }
 .gp-skip .gp-skip-hit { fill: transparent; stroke: transparent; }

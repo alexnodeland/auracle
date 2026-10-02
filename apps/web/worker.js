@@ -1220,6 +1220,7 @@ function faceKeep(key, bytes) {
 function faceKeyOf(q) {
   try {
     if (q.id != null) return engine.face_key(q.id) || null;
+    if (q.memo) return faceNs ? `${faceNs}/${q.memo}` : null;
     return glue.farm_key(q.tree, engine.phrase_json()) || null;
   } catch (_) {
     return null;
@@ -1230,7 +1231,7 @@ function faceKeyOf(q) {
 // is a face not had, unless it poisoned the engine.
 function faceNow(q, render = false) {
   try {
-    const b = q.id != null ? engine.face_of(q.id, render) : engine.face_of_tree(q.tree, render);
+    const b = q.id != null ? engine.face_of(q.id, render) : q.memo ? engine.face_of_key(q.memo) : engine.face_of_tree(q.tree, render);
     return b && b.length ? new Uint8Array(b) : null;
   } catch (err) {
     if (isFatal(err, String((err && err.message) || err))) throw err;
@@ -1245,8 +1246,10 @@ async function faces(m) {
     ...(m.ids || []).map((id) => ({ id })),
     ...(m.trees || []).map((t) => ({
       ref: t.ref,
+      // A memo row by its render key (a guess's candidate, rendered for it).
+      memo: t.memo || null,
       // A preset by its index: its tree, without inserting it.
-      tree: t.preset != null ? engine.preset_tree_json(t.preset) : t.tree,
+      tree: t.memo ? null : t.preset != null ? engine.preset_tree_json(t.preset) : t.tree,
     })),
   ];
   const items = [];

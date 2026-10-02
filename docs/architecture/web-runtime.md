@@ -274,7 +274,10 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   store (`auracle-faces`), stamped with the namespace as the render cache is
   (`faceStoreOpen`): a build whose renders differ never reads another's.
 - **`faces`** (now lane; main → worker): `{ids, trees: [{ref, tree} | {ref,
-  preset}], render}`. Answered at once from memory alone, with `{type:
+  preset} | {ref, memo}], render}`. A `memo` is a render key already in the
+  engine's memo: PATCH's guess names the render of each candidate
+  (`Guess::key`), and its face is read with `face_of_key`, which never
+  renders (a row evicted since is `failed`). Answered at once from memory alone, with `{type:
   "faces", items: [{id | ref, key, face}], pending, failed}`. The pending
   are looked up in `later` (**`face_lookup`**: the memo through `face_of` and
   `face_of_tree`, a resident audition, the store), each posted as a `faces`

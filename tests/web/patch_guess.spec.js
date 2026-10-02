@@ -82,6 +82,29 @@ test("the model's guess is drawn at its socket with its reason and forecast, and
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
+test("beside the guess, the patch's face and its face with the guess, each as rendered", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(420_000);
+  const errors = await boot(page, { warmed: false });
+  await warmStartAndFit(page);
+  await openPreset(page, "Sub & Sparkle");
+  const top = (await drawnGuess(page)).data.guesses[0];
+  // The candidate's face is the memo row the guess rendered for it (its
+  // `key`), not an estimate; the patch's is the bench's own render.
+  expect(top.key, "the ranking names the candidate's render").toMatch(/^[0-9a-f]{32}$/);
+  const faces = page.locator("#rack-svg .rack-guess image.gp-face");
+  await expect(faces).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.locator("#rack-svg .rack-guess .gp-face-word")).toHaveText(["as it is", "with it"]);
+  // Each word sits under its own face, and the two words don't touch.
+  const boxes = await page.locator("#rack-svg .rack-guess .gp-face-word").evaluateAll((ts) =>
+    ts.map((t) => { const r = t.getBoundingClientRect(); return { l: r.left, r: r.right }; }));
+  expect(boxes[0].r, "the words stand apart").toBeLessThan(boxes[1].l);
+  expect(await faces.nth(1).getAttribute("data-face")).toBe(`g${top.key}`);
+  const [a, b] = await Promise.all([faces.nth(0).getAttribute("href"), faces.nth(1).getAttribute("href")]);
+  expect(a).toMatch(/^data:image\/png;base64,/);
+  expect(b, "the module changes the face").not.toBe(a);
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
 test("nothing is guessed before the warm start", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page, { warmed: true });

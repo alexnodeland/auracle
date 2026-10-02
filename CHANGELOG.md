@@ -104,7 +104,8 @@ changelog that edits its own past is not a record.
 ### Added: every sound has a face
 
 - **A face beside every sound's name**: on the bank's rows, EVOLVE's cards,
-  PATCH's header and its teach strip, PERFORM's sound in hand and its offer,
+  PATCH's header and its teach strip (and, beside the model's guess, the
+  patch as it is and with the guessed module, from the guess's own render), PERFORM's sound in hand and its offer,
   and the warm start's cards. A face is the sound's spectrum from its own
   render, stood upright (the lows at the base) and compared with the rest of
   your bank: wide where this sound has more than your bank's sounds, narrow

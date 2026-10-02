@@ -355,6 +355,7 @@ function faceTarget(t) {
   if (!t) return "";
   if (t.id != null) return `i${t.id}`;
   if (t.preset != null) return `p${t.preset}`;
+  if (t.memo) return `g${t.memo}`;
   if (t.tree) {
     const ref = treeRef(t.tree);
     if (lruGet(faceTreeByRef, ref) === undefined) lruSet(faceTreeByRef, ref, t.tree);
@@ -398,6 +399,63 @@ function faceImage(face, w, h, opts = {}) {
   drawVessel(ctx, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: h >= 20, ...opts });
   return c.toDataURL("image/png");
 }
+/** PATCH's guess plate (patch.js `drawGuess`, its `host.guessFace`): beside
+ *  the plate, the patch as it is and the patch with the guessed module, each
+ *  its face, as the mock's estimated vessel stands at OUT. Neither is an
+ *  estimate (ADR-012): the guess rendered every candidate it ranks
+ *  (`Guess::key`, `GuessCandidate::key`: a memo row, its face with it), and
+ *  the patch's is the bench's latest render. Drawn into the plate's layer in
+ *  the rack's own units; until a face lands its place is empty, and the
+ *  plate is drawn again when it does. */
+let guessFaceWaiting = false;
+function guessFace(g, at, layer) {
+  if (!g || !g.key || !layer) return;
+  const [w, h] = FACE_SIZE.pair;
+  const x0 = at.x + at.w + 12;
+  const y0 = at.y;
+  const asIs = faceTarget(benchTreeJson ? { tree: benchTreeJson } : wb.subjectId != null ? { id: wb.subjectId } : null);
+  const both = [[asIs, words.GUESS_FACES[0]], [faceTarget({ memo: g.key }), words.GUESS_FACES[1]]];
+  // Each face stands over its word, in a column as wide as the wider word
+  // (measured: the mono value tier is wider than the face), so the two
+  // words never run into each other.
+  const labels = both.map(([, label]) => {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("class", "gp-face-word");
+    t.textContent = label;
+    return t;
+  });
+  layer.append(...labels);
+  let col = w;
+  for (const t of labels) {
+    try { col = Math.max(col, t.getComputedTextLength()); } catch (_) { /* not laid out */ }
+  }
+  col = Math.ceil(col);
+  both.forEach(([target], i) => {
+    const t = labels[i];
+    const key = target && faceKeyOfTarget(target);
+    const face = key && lruGet(faceByKey, key);
+    if (!face || !faceStats) {
+      t.remove();
+      if (!target) return;
+      if (!face) wantFace(target);
+      guessFaceWaiting = true;
+      return;
+    }
+    const cx = x0 + i * (col + 10) + col / 2;
+    const img = document.createElementNS(SVG_NS, "image");
+    img.setAttribute("class", "gp-face");
+    img.setAttribute("x", String(cx - w / 2));
+    img.setAttribute("y", String(y0));
+    img.setAttribute("width", String(w));
+    img.setAttribute("height", String(h));
+    img.setAttribute("href", faceImage(face, w, h));
+    img.dataset.face = target;
+    t.setAttribute("x", String(cx));
+    t.setAttribute("y", String(y0 + h + 12));
+    layer.insertBefore(img, t);
+  });
+}
+
 /** TASTE's map: a sound's mark is its face (taste.js `drawMark`, through
  *  `host.drawFace`), as the mock draws it. Its height keeps the map's size
  *  for the model's doubt (`size`, twice taste-geom's `mapDotRadius`) over a
@@ -444,6 +502,7 @@ function sendFaceAsks() {
     faceAsked.add(t);
     if (t.startsWith("i")) ids.push(Number(t.slice(1)));
     else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
+    else if (t.startsWith("g")) trees.push({ ref: t, memo: t.slice(1) });
     else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
   }
   faceWanted.clear();
@@ -501,6 +560,11 @@ function facesChanged() {
     paintFaces();
     // TASTE's map draws faces too: a frame with the ones that landed.
     if (currentView === "taste" && taste) taste.draw();
+    // PATCH's guess plate was waiting on one of its two faces.
+    if (guessFaceWaiting && patchView) {
+      guessFaceWaiting = false;
+      patchView.cameraMoved();
+    }
     // A card waiting on its face. Only the card: the rack's readout builds the
     // rack to measure it, and this runs on every bank render.
     if (imageState.scope === "card") imageSync();
@@ -1591,6 +1655,8 @@ let auditionClip = null;
 // measured level, a patch from nothing, and the module sheet on touch. It
 // reaches the rack, the bench lane and the worker through this host only.
 const patchView = createPatch({
+  // The guess plate's two faces: the patch as it is, and with the guess.
+  guessFace,
   words: PATCH_WORDS,
   send: (msg) => send(msg),
   visible: () => currentView === "play",

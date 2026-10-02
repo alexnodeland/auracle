@@ -86,6 +86,13 @@ kind of module stays away from that place for this patch, and the next guess
 shows. Undoing a guess you added counts as skipping it. The module rail marks
 the guessed module with an amber dot beside its name.
 
+Beside the guessed module stand two [faces](../faces.md): *as it is*, the
+patch's own, and *with it*, the patch with the guessed module added. The
+second isn't an estimate: to rank its guesses the engine rendered the patch
+with each candidate module, and this is that render's face. Until a face
+arrives its place stays empty; an empty patch has no sound, so it has no
+*as it is*.
+
 - It ranks by how sure it is the module helps, not by the percentage, so its
   first guess can be one it isn't sure of. Then the line ends *it may not help*.
 - Before the warm start it has nothing to guess from, and shows nothing.
