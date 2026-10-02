@@ -864,9 +864,9 @@ re-normalizing it.
 
 - **An aimed offer is aimed at a direction, not at a sound.** A search
   control’s offer tilts the target along $\hat e$ (above); it does not aim at a
-  reference sound, which is
-  [target-directed search](../design/directions.md#2-target-directed-search-make-it-sound-like-this)
-  and is not built. Nor is the aim itself tuned per patch or per player:
+  reference sound. Breeding a generation toward a recording is
+  [a sound of your own](../features/own-sound.md#breeding-toward-it), which
+  the engine has and PERFORM's offers do not use. Nor is the aim itself tuned per patch or per player:
   repeated turns the same way do not ask harder, and Wander’s offers are not
   aimed at the last control turned (RFC-002’s open questions).
 - **The palette is measured, not yet played.** The engine defines and
