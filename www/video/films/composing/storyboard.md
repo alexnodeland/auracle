@@ -5,9 +5,11 @@ A walkthrough over the real instrument, one recorded shot per beat
 316 words at speed 0.9. The story is one piece being written: a bass, a pad
 and a moving texture, found, kept, put on the tempo, recorded and carried away.
 
-**The palette used throughout:** a bass (**First Bass**), a pad
-(**Glass Pad**) and a texture (**Sub & Sparkle** with a Steps lane added in
-beat 5, or **Loom**, which already has one). Set the app's tempo to the
+**The palette used throughout,** cast from the films' shortlist
+(`shotgen.CAST`): a bass (**Held Under**, with a Steps lane added in beat
+5), a pad (**Slow Weather**) and a moving texture (**Rotor**); **Ceiling**
+plays the arpeggio, and **Loom** (the one preset with a step sequencer)
+the MIDI clock. Set the app's tempo to the
 bed's **84 BPM** in every shot that uses tempo, so the arpeggiator and the
 sequencers sit in time with the score:
 `eval: const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))`.
@@ -38,9 +40,9 @@ pads as in the playing film.
 ## 1. `intro` — shot `co-intro` (intro1–2)
 
 - **Set-up:** plain · `view play`.
-- **Actions:** `intro1:bass` → `preset First Bass`, then `hold ["a"]` 1200 ms;
-  `intro1:pad` → `preset Glass Pad`, hold C (`a d g`) 1400 ms;
-  `intro1:texture` → `preset Loom`, hold `["a", "g"]` `ms: "end"`.
+- **Actions:** `intro1:bass` → `preset Held Under`, then `hold ["a"]` 1200 ms;
+  `intro1:pad` → `preset Slow Weather`, hold C (`a d g`) 1400 ms;
+  `intro1:texture` → `preset Rotor`, hold `["a", "g"]` `ms: "end"`.
 - **Camera:** 1.0, the rack; each preset change re-fits the rack.
 - **Chapter:** `01 · a palette`.
 - **Callouts:** on each preset word, the subject name `#rack-subject`.
@@ -96,17 +98,17 @@ pads as in the playing film.
 
 ## 5. `steps` — shot `co-steps` (steps1–4; music `loop_b`)
 
-- **Set-up:** plain · `preset Sub & Sparkle` · `view play` · tempo 84 (eval).
-  Its high-pass filter (`node/1`) has an empty modulation slot, so the
+- **Set-up:** plain · `preset Held Under` · `view play` · tempo 84 (eval).
+  Its low-pass filter (`node/0`) has an empty modulation slot, so the
   placement is a plain fill.
 - **Marks:** `steps: .nb-item[data-kind='steps']`,
-  `slot: #rack-svg .jack[data-modkey='node/1/m']`, `sync: #sync-btn`,
+  `slot: #rack-svg .jack[data-modkey='node/0/m']`, `sync: #sync-btn`,
   `bpm: #bpm`.
 - **Actions:** `at 0.2` hold `["a"]` until 0.3 s before `steps4:restarts`
   (compute `ms` from the timeline). `steps1:Steps` →
   `click .nb-item[data-kind='steps']` (mod sockets light); `steps1:filter` →
-  `click #rack-svg .jack[data-modkey='node/1/m']` (placed; one undo step).
-  `steps2:draw` → drag four bars: `[data-addr='node/1/m#s0']` `dy −30`,
+  `click #rack-svg .jack[data-modkey='node/0/m']` (placed; one undo step).
+  `steps2:draw` → drag four bars: `[data-addr='node/0/m#s0']` `dy −30`,
   `#s1` `dy +25`, `#s2` `dy −40`, `#s3` `dy +10`, 300 ms each, 0.35 s apart.
   `steps3:Sync` → `click #sync-btn` (the tempo drawer opens beside it).
   `steps4:restarts` → press it again: `hold ["a"]` `ms: "end"` (with sync
@@ -121,7 +123,7 @@ pads as in the playing film.
 
 ## 6. `arp` — shot `co-arp` (arp1–2)
 
-- **Set-up:** plain · `preset Acid Line` · `view play` · tempo 84 (eval) ·
+- **Set-up:** plain · `preset Ceiling` · `view play` · tempo 84 (eval) ·
   `click #arp-btn` · eval `#arp-div` to `4` (1/16) and dispatch `change`.
 - **Marks:** `arp: #arp-btn`, `drawer: #arp-ctl`, `hold: #hold-btn`,
   `cut: #rack-svg [data-addr='node#cut']`.
@@ -149,10 +151,10 @@ pads as in the playing film.
 
 ## 8. `scenes` — shot `co-scenes` (scenes1–3)
 
-- **Set-up:** taught · for each of **First Bass**, **Glass Pad**, **Loom**:
+- **Set-up:** taught · for each of **Held Under**, **Rotor**, **Slow Weather**:
   `preset <name>`, `click .bank-item.live .bi-save` (three saved patches) ·
-  `click .bf[data-f='mine']` · `click .bank-item:has-text('Glass Pad')` ·
-  `view perform` · `measured Glass Pad`.
+  `click .bf[data-f='mine']` · `click .bank-item:has-text('Slow Weather')` ·
+  `view perform` · `measured Slow Weather`.
 - **Actions:** `at 0.2` hold C (`a d g`) `ms: "end"`. `scenes1:Keep` →
   click Keep; `scenes1:home` → drag Bright `dy −60` (700 ms);
   `scenes1:glides` → click Back. Then `eval document.activeElement.blur()`
@@ -167,7 +169,7 @@ pads as in the playing film.
 
 ## 9. `record` — shot `co-record` (record1–2) ⚑3
 
-- **Set-up:** plain · `preset Glass Pad` · `view play`.
+- **Set-up:** plain · `preset Slow Weather` · `view play`.
 - **Actions (once ⚑3 is fixed):** `record1:record` → `click #rec-btn` (it
   reads *◼ stop* and lights); `record1:play` → C–Am–F–G, one bar each;
   `record1:stop` → `click #rec-btn`; `record2:downloads` →
@@ -177,7 +179,7 @@ pads as in the playing film.
 
 ## 10. `share` — shot `co-share` (share1–3)
 
-- **Set-up:** plain · `preset Glass Pad` · `view play`.
+- **Set-up:** plain · `preset Slow Weather` · `view play`.
 - **Actions:** `share1:export` → `click #ovf-btn`, `move #patch-export-btn`
   (hover only, ⚑4); `share2:picture` → `click #image-btn` (the export panel
   opens), eval `#ix-fmt` to `svg` + `change`, `move #ix-go` (hover only);
