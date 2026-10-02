@@ -97,6 +97,15 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.inPtr = 0;
     this.inViewB = null;
     this.inPtrB = 0;
+    // CAPTURE's recordings (takes.js): an instrument of its own, one voice of
+    // the patch with its key held and the capture's record gate raised, fed
+    // the input each quantum whether or not it is monitored, and never heard.
+    // Built and read back in the port handler; process() only feeds and
+    // renders it.
+    this.taker = null;
+    this.takeKey = null;
+    this.inViewT = null;
+    this.inPtrT = 0;
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -219,6 +228,45 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         }
         break;
       }
+      case "take_start": {
+        if (!this.ready) {
+          this.port.postMessage({ type: "take_error", key: m.key, error: "not ready" });
+          break;
+        }
+        if (this.taker) { this.taker.free(); this.taker = null; }
+        try {
+          const t = new LivePoly(m.tree, sampleRate, 1);
+          t.set_leveler(false);
+          t.note_on(60, 1.0);
+          if (!t.set_record(m.key, true)) {
+            t.free();
+            this.port.postMessage({ type: "take_error", key: m.key, error: "no capture there" });
+            break;
+          }
+          this.taker = t;
+          this.takeKey = m.key;
+          this.inViewT = null;
+          this.port.postMessage({ type: "take_started", key: m.key });
+        } catch (err) {
+          this.port.postMessage({ type: "take_error", key: m.key, error: String(err) });
+        }
+        break;
+      }
+      case "take_stop": {
+        if (!this.taker) {
+          this.port.postMessage({ type: "take_error", key: m.key, error: "not recording" });
+          break;
+        }
+        const t = this.taker;
+        const key = this.takeKey;
+        this.taker = null;
+        this.takeKey = null;
+        t.set_record(key, false);
+        const take = t.take_json(key);
+        t.free();
+        this.port.postMessage({ type: "take_done", key, take });
+        break;
+      }
       case "touch":
         if (this.poly) this.poly.set_touch(m.sites, m.depth);
         break;
@@ -294,10 +342,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
   // pointer moved, and that is checked every quantum.
   writeInput(p, inp, n, b) {
     const ptr = p.input_ptr();
-    let view = b ? this.inViewB : this.inView;
-    if (!view || (b ? this.inPtrB : this.inPtr) !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
+    let view = b === "t" ? this.inViewT : b ? this.inViewB : this.inView;
+    const was = b === "t" ? this.inPtrT : b ? this.inPtrB : this.inPtr;
+    if (!view || was !== ptr || view.length < n * 2 || view.buffer !== wasm.memory.buffer) {
       view = new Float32Array(wasm.memory.buffer, ptr, p.input_capacity() * 2);
-      if (b) { this.inViewB = view; this.inPtrB = ptr; }
+      if (b === "t") { this.inViewT = view; this.inPtrT = ptr; }
+      else if (b) { this.inViewB = view; this.inPtrB = ptr; }
       else { this.inView = view; this.inPtr = ptr; }
     }
     const l = inp[0];
@@ -347,9 +397,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       const n = L.length;
       // The input first: the voices read it as they render this quantum.
       const inp = inputs[0];
-      if (this.monitor && inp && inp.length > 0 && inp[0].length === n) {
+      const hasInput = inp && inp.length > 0 && inp[0].length === n;
+      if (this.monitor && hasInput) {
         this.writeInput(this.poly, inp, n, false);
         if (this.polyB) this.writeInput(this.polyB, inp, n, true);
+      }
+      // A recording runs on its own instrument, heard by no one: fed the
+      // input and rendered, its output dropped.
+      if (this.taker) {
+        if (hasInput) this.writeInput(this.taker, inp, n, "t");
+        this.taker.process_ptr(n);
       }
       // Zero-allocation render: the synth fills a persistent wasm buffer;
       // we view its memory directly. The cached view is rebuilt only when
@@ -633,6 +690,14 @@ export async function initLiveAudio(audioCtx, build, dest) {
     // that listens is held open so it sounds with no key down.
     monitor(on) {
       node.port.postMessage({ type: "monitor", on: !!on });
+    },
+    // CAPTURE: record into the capture at `key` of `tree` (JSON), on an
+    // instrument of its own; stop replies `take_done` with the recording.
+    takeStart(tree, key) {
+      node.port.postMessage({ type: "take_start", tree, key });
+    },
+    takeStop(key) {
+      node.port.postMessage({ type: "take_stop", key });
     },
     setVolume(v) {
       // A step assignment zippers audibly while notes sound; a 10ms time

@@ -88,6 +88,7 @@ export function createAudioIn(host) {
   const opening = new Set();       // device ids with a getUserMedia out
   const unplugged = new Set();     // device ids that went away while in use
   let want = [];                   // the bench's AUDIO INs: [{key, addr, slot}]
+  let lent = [];                   // inputs lent for a recording (takes.js): [slot]
   let voiceId = null;              // the device the voices read
   let voiceSrc = null;             // its source, connected to the worklet's input
   let monitor = false;             // the player's switch (never saved)
@@ -313,7 +314,7 @@ export function createAudioIn(host) {
   function reconcile() {
     const need = new Set();
     if (perm === "granted") {
-      for (const w of want) {
+      for (const w of [...want, ...lent.map((slot) => ({ slot }))]) {
         const e = entry(w.slot);
         if (!e) continue;
         if (unplugged.has(e.id)) continue;
@@ -327,7 +328,10 @@ export function createAudioIn(host) {
       if (!streams.has(id)) open(id);
       else streams.get(id).heldUntil = 0;
     }
-    const first = want.length ? entry(want[0].slot) : null;
+    // The voices read the bench's first AUDIO IN; with none, an input lent
+    // for a recording is connected instead (the voices do not read it, the
+    // recording does).
+    const first = want.length ? entry(want[0].slot) : lent.length ? entry(lent[0]) : null;
     voiceId = first && streams.has(first.id) ? first.id : null;
     connectVoices();
     maybeArm();
@@ -348,7 +352,7 @@ export function createAudioIn(host) {
     opening.delete(id);
     if (!stream) return paint();
     // The bench moved on while the browser answered.
-    const still = want.some((w) => entry(w.slot)?.id === id);
+    const still = want.some((w) => entry(w.slot)?.id === id) || lent.some((slot) => entry(slot)?.id === id);
     if (!still || streams.has(id)) {
       stream.getTracks().forEach((t) => t.stop());
       return;
@@ -804,8 +808,34 @@ export function createAudioIn(host) {
     host.showMenu(x, y, { title: W.INPUT_MENU.title, sub: W.INPUT_MENU.sub }, rows);
   }
 
+  /** Open input `slot` for a recording (a sound kept safe, which the bench
+   *  does not read), and connect it to the worklet if the bench reads no
+   *  input. Called inside the player's gesture (RECORD AGAIN), so with no
+   *  answer from the browser yet it asks, as adding AUDIO IN does. Returns
+   *  the release. */
+  function lend(slot) {
+    lent.push(slot | 0);
+    // RECORD AGAIN is the player's gesture: with no answer from the browser
+    // yet, it may ask, as adding AUDIO IN does.
+    if (perm === "unknown") {
+      queryPermission().then(() => (perm === "prompt" ? ask() : refresh()));
+    } else if (perm === "prompt") {
+      ask();
+    }
+    reconcile();
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const at = lent.indexOf(slot | 0);
+      if (at >= 0) lent.splice(at, 1);
+      reconcile();
+    };
+  }
+
   return {
     added,
+    lend,
     follow,
     drawLane,
     clip,

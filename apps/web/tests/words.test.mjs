@@ -82,6 +82,14 @@ import {
   guessLine,
   guessRefusal,
   levelWord,
+  TAKE_SILK,
+  TAKE_TIPS,
+  TAKE_SAID,
+  takeLine,
+  takeRolling,
+  takeAgain,
+  takeLanded,
+  takeReadmitted,
 } from "../words.js";
 
 // Every sentence here is copy: held to the voice's mechanics.
@@ -637,4 +645,22 @@ test("a cable's measured level reads in decibels, or nothing at the probe's floo
   assert.equal(levelWord(3.6), "4 dB");
   assert.equal(levelWord(-120), "nothing");
   assert.equal(levelWord(null), "nothing");
+});
+
+test("CAPTURE says how long its recording is, and what recording did, in the voice", () => {
+  assert.equal(takeLine(0), "no recording yet");
+  assert.equal(takeLine(2.36), "recording · 2.4 s");
+  assert.equal(takeLanded(3.2), "Recorded 3.2 s into CAPTURE.");
+  for (const s of Object.values(TAKE_SILK)) {
+    voiced(s);
+    assert.ok(s.split(" ").length <= 3 && s === s.toLowerCase(), s);
+  }
+  for (const s of Object.values(TAKE_TIPS)) {
+    voiced(s);
+    assert.ok(s.split(/\s+/).length <= 8, s);
+  }
+  for (const s of [...Object.values(TAKE_SAID), takeRolling(4), takeAgain("Mic Loop", 4), takeReadmitted("Mic Loop")]) {
+    voiced(s);
+    assert.ok(s.split(/[.…] /).length <= 2, s);
+  }
 });

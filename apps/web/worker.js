@@ -3662,7 +3662,8 @@ async function dispatch(m) {
     }
     case "readmit_held": {
       const reply = JSON.parse(engine.readmit_held(m.id >>> 0, m.take || ""));
-      post({ type: "readmitted", ...reply, status: status() });
+      // Back in the pool, it is ranked and mapped: the views go with it.
+      post({ type: "readmitted", ...reply, status: status(), ...(reply.ok ? { views: tasteViews() } : {}) });
       if (reply.ok) post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
       break;
     }

@@ -872,6 +872,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-from:hover { color: var(--silk); }
 /* The bank's groups: the latest generation's children lead the pool under
    their own heading, and the rest keep their ranked order under theirs. */
+/* The pool's sounds kept safe for a recording (takes.js): each name, the
+   engine's sentence for it, and RECORD AGAIN, lit while it records. */
+.kept-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s1) var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--hairline);
+}
+.kept-name { font-size: var(--t-body); color: var(--silk); }
+.kept-note { grid-column: 1 / -1; font-size: var(--t-label); color: var(--silk-dim); }
+.kept-rec { grid-row: 1; grid-column: 2; }
+.kept-rec.on { color: var(--phos-a); border-color: var(--phos-a); }
 .bank-group {
   display: flex;
   justify-content: space-between;
@@ -1591,6 +1604,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #rack-svg.silk-floor[data-illegible~="label"] .ain-note,
 #rack-svg.silk-floor[data-illegible~="label"] .ain-btn-text,
 #rack-svg.silk-floor[data-illegible~="label"] .ain-dev-text { visibility: hidden; }
+/* CAPTURE's lane (takes.js): RECORD, lit while it records, and the length of
+   the recording the capture holds. */
+.take-line { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); pointer-events: none; }
+#rack-svg.silk-floor[data-illegible~="label"] .take-line { visibility: hidden; }
 /* An enum chip's text is its readout — the option it is set to, and the part
    of the chip that changes — so it is set at the readout size and leaves with
    the readouts under the silkscreen floor, rather than a step below them,

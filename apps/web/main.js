@@ -144,6 +144,9 @@ const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
 // AUDIO IN: the permission, the inputs, monitoring and the clip
 // (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
 const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
+// CAPTURE's RECORD and the sounds kept safe for a recording (takes.js,
+// Plan-007 task 6).
+const { createTakes, TAKE_LANE_H } = await import(`./takes.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -289,6 +292,17 @@ const audioIn = createAudioIn({
   // own color.
   faceStats: () => faceStats,
   faceColor: () => tok("--phos-a"),
+});
+const takes = createTakes({
+  live: () => live,
+  note: (text, opts) => note(text, opts),
+  send: (msg) => send(msg),
+  ensureAudio: () => ensureAudio(),
+  lend: (slot) => audioIn.lend(slot),
+  renderBank: () => renderBank(),
+  benchTree: () => wb.tree,
+  nodeAt: (key) => nodeAtKey(key),
+  setTake: (key, take, text) => setRackTake(key, take, text),
 });
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
@@ -1799,6 +1813,8 @@ worker.onmessage = (e) => {
       // message queue, so everything below is serviced while it runs.
       dropBootVeil();
       applyStatus(m.status);
+      // Sounds kept safe for a recording are listed in the pool's tab.
+      if (pendingRepair && pendingRepair.held) send({ type: "held_sounds" });
       announceRepair();
       // The preset library is static and tiny, and its size shows on the chip
       // before you press it. Fetching only on first press would leave that
@@ -1935,6 +1951,20 @@ worker.onmessage = (e) => {
     // `ok` is there only then). A clip the engine took measured the pool's
     // listeners again, so their ratings moved, and it is saved with the
     // session from now on.
+    // The sounds a restore kept safe for a recording, and the answer to one
+    // recorded again (takes.js).
+    case "held_sounds": {
+      takes.setHeld(m.held);
+      break;
+    }
+    case "readmitted": {
+      if (m.views) applyViews(m.views);
+      if (m.status) applyStatus(m.status);
+      takes.readmitted(m);
+      if (m.ok) scheduleSave();
+      renderBank();
+      break;
+    }
     case "audition_clip": {
       if (m.clip && typeof m.clip.id === "string") auditionClip = m.clip.id;
       if (m.views) applyViews(m.views);
@@ -5076,6 +5106,7 @@ async function bootLiveAudio() {
     if (m.type === "patch_error") note(`The live patch didn’t compile: ${m.error}`);
     if (m.type === "b_error") note(`The offer in B couldn’t be played: ${m.error}`);
     if (m.type === "param_miss") healParamMiss(m.addr);
+    if (m.type === "take_done" || m.type === "take_error") takes.onWorklet(m);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
     }
@@ -7653,6 +7684,7 @@ function renderBank() {
     frag.appendChild(bankRow(r, fitted));
   });
   if (bankFilter === "pool") appendReplaced(frag);
+  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }));
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
@@ -8736,6 +8768,15 @@ function setRackKnob(addr, value) {
   renderRack();
 }
 
+/** Put a recording into the CAPTURE at `key` on the bench (takes.js): a
+ *  structural edit like any other, one undo step, said when it lands. */
+function setRackTake(key, take, text) {
+  sendStruct({ op: "set_take", key, take }, {
+    text,
+    opts: { undo: () => doUndo(), undoLabel: "take it out" },
+  });
+}
+
 function sendEdit(addr, value, isIndex, id) {
   if (!wb.dirty && !editPending) {
     editPending = true;
@@ -8966,8 +9007,11 @@ function moduleBox(mod, isEmpty) {
   const perRow = PLATE_COLS[step];
   const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
   // AUDIO IN's lane (audio-in.js `drawLane`): its input, meter, MONITOR and
-  // NEW CLIP, under its three settings.
-  const lane = hasStepLane(mod) ? STEP_LANE_H : mod.kind === "audio_in" ? INPUT_LANE_H : 0;
+  // NEW CLIP, under its three settings; CAPTURE's (takes.js): RECORD and the
+  // length of its recording.
+  const lane = hasStepLane(mod) ? STEP_LANE_H
+    : mod.kind === "audio_in" ? INPUT_LANE_H
+    : mod.kind === "capture" ? TAKE_LANE_H : 0;
   return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
 }
 
@@ -10322,6 +10366,7 @@ function renderRack(rebuild = false) {
   // Which inputs the bench's AUDIO INs read: opened, closed and fed to the
   // voices from here, on every redraw, value-only ones included.
   audioIn.follow(hasRack ? wb.rack : null);
+  takes.paint();
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -11304,6 +11349,9 @@ function buildRack(svg, rack, opts) {
     // it; a picture of another patch leaves the space plain.
     if (!compact && !isEmpty && m.kind === "audio_in" && interactive) {
       audioIn.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2, true);
+    }
+    if (!compact && !isEmpty && m.kind === "capture" && interactive) {
+      takes.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2);
     }
   }
 
@@ -15376,6 +15424,42 @@ const MODULES = [
       `<path class="gl" d="M6.5 7 L7.6 4.2 L8.7 9.4 L9.8 2.8 L10.9 11 L12 5 L13.1 9 L14.2 3.8 L15.3 10.2 L16.4 5.8 L17.5 8.2 L19 7"/>`,
     // Unity gain (`INPUT_GAIN_UNITY`, 24/36), the first input, both channels.
     frag: () => ({ AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } }),
+  },
+  {
+    // Plan-007 task 5, a player kind: the prior never draws it. Its played
+    // branch (`input`) follows the pitch and gate of what it listens to
+    // (`listen`, an AUDIO IN by default, so placing one asks for an input).
+    // Live, one voice tracks and the keys' voices follow it (LivePoly's
+    // lead). No `phi` column: φ counts it for display only.
+    kind: "track", tag: "Track", name: "track", sort: "combine", group: "dynamics",
+    ins: 2, inNames: ["play", "listen"], modTarget: null, phi: null, fields: ["input", "listen"],
+    tags: ["pitch", "tracker", "follow", "sing", "hum", "voice", "guitar", "input", "yin"],
+    blurb: "Plays its first chain from the pitch and the notes of what it listens to: sing or play into an AUDIO IN and the patch follows you.",
+    heard: "what the chain it plays does, at the pitches of the clip’s notes.",
+    glyph:
+      `<path class="gl-ghost" d="M1 10 q1.2 -5 2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0 t2.4 0"/>` +
+      `<path class="gl" d="M1 11.5 H5 V7.5 H10 V4 H15 V7.5 H19"/>`,
+    frag: () => ({
+      Track: {
+        band: "mid", sensitivity: 0.5, dynamics: 0.5, input: SEED_VCO(),
+        listen: { AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } },
+      },
+    }),
+  },
+  {
+    // Plan-007 task 6, a player kind. Its output is its recording, never its
+    // input: placed, it is silent until RECORD on its plate records what is
+    // patched into it (takes.js).
+    kind: "capture", tag: "Capture", name: "capture", sort: "proc", group: "space",
+    ins: 1, modTarget: null, phi: null,
+    tags: ["record", "sample", "loop", "resample", "take", "looper", "phrase", "input"],
+    blurb: "Records what is patched into it, up to four seconds, and plays the recording from the keys: once, while held, or round and round.",
+    heard: "its recording, played at the keys’ pitch. Until you record, it is silent.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1 7 q1.4 -4 2.8 0 t2.8 0 t2.8 0"/>` +
+      `<path class="gl-mark" d="M12 3 V11 M14 4.5 L18 7 L14 9.5 Z"/>`,
+    frag: () => ({ Capture: { play: "once", input: SEED_VCO(), take: null } }),
   },
 
   // ---- shape: the nonlinearities ----
@@ -22179,6 +22263,8 @@ window.__aur = {
   audioIn: () => audioIn.state(),
   // PATCH's guess, cable levels and new patch, as patch.js holds them.
   patch: () => patchView.state(),
+  // CAPTURE's recording under way, and the sounds kept safe (takes.js).
+  takes: () => takes.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
   marks: () =>
     performance.getEntriesByType("mark")
