@@ -758,15 +758,21 @@ export function createAudioIn(host) {
     }
   }
 
+  /** The rack's AUDIO IN lanes, not the leaving rack's copies (a
+   *  `.rack-exit` fading out after a move, whose plates have lost their keys). */
+  function rackLanes() {
+    return [...document.querySelectorAll("#rack-svg .ain-lane")].filter((l) => !l.closest(".rack-exit"));
+  }
+
   function paint() {
-    for (const lane of document.querySelectorAll("#rack-svg .ain-lane")) paintLane(lane);
+    for (const lane of rackLanes()) paintLane(lane);
     // A lane drawn new, or one whose input closed, shows the level and face
     // as they are now (the meter loop runs only while an input is open).
     paintMeters();
   }
 
   function paintMeters() {
-    for (const lane of document.querySelectorAll("#rack-svg .ain-lane")) {
+    for (const lane of rackLanes()) {
       const e = entry(Number(lane.dataset.slot) || 0);
       const s = e ? streams.get(e.id) : null;
       const fill = lane.querySelector(".ain-meter-fill");

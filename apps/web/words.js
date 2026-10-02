@@ -272,6 +272,7 @@ export const TAKE_TIPS = Object.freeze({
 export const TAKE_SAID = Object.freeze({
   empty: "Nothing was recorded. Play into the capture’s input while RECORD is lit, then try again.",
   unnamed: "That sound",
+  moved: "Recording stopped: you moved to another sound.",
 });
 
 /** A CAPTURE's line: how long its take is. */

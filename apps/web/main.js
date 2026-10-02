@@ -303,6 +303,7 @@ const takes = createTakes({
   benchTree: () => wb.tree,
   nodeAt: (key) => nodeAtKey(key),
   setTake: (key, take, text) => setRackTake(key, take, text),
+  benchId: () => wb.subjectId,
 });
 // The id an open is waiting on, until its bench reply lands. The first
 // arrival must not bench a pool patch on top of an open already on its way —
@@ -2372,6 +2373,9 @@ worker.onmessage = (e) => {
           benchBeforeAudition = null;
           setDuelSelection(null);
         }
+        // Any other way a different sound reached the bench (a file, an
+        // undo of an open): a recording for the one it replaced stops.
+        if (m.subject !== wb.subjectId) takes.benchMoved(m.subject);
         wb.subjectId = m.subject;
         benchPending = null;
         // Whatever was done to the last patch while this one was on its way
@@ -8062,6 +8066,7 @@ function renderPresetBank(list) {
         // It used to open when it landed, and this one was then refused.
         benchSeq += 1;
         presetClicks.set(p.index, benchSeq);
+        takes.benchMoved(null); // a preset on its way: the bench is moving on
         openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
@@ -8680,6 +8685,7 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  takes.benchMoved(id); // a recording for the sound being left stops here
   benchPendingTick = ++openTick;
   openAskedAt = performance.now();
   openAsk = { id, at: openAskedAt, auto };
@@ -14781,11 +14787,12 @@ function attachEnumSweep(el, txt, knob) {
 // input line, MONITOR, NEW CLIP and ALLOW INPUT; CAPTURE's RECORD) carry
 // `data-stop` (named for which button it is, so a rebuild puts the focus
 // back on it): the arrows reach them after the knobs, and Enter or Space is
-// their own. One hidden in its current state is passed over.
+// their own. One hidden in its current state is passed over, as is anything
+// on the leaving rack's copy (`.rack-exit`) while it fades.
 // (Declarations, not consts: a rebuild's focus restore can run before the
 // module's evaluation reaches here.)
 function shownControl(el) {
-  return !el.closest(".hidden");
+  return !el.closest(".hidden, .rack-exit");
 }
 function rackControls() {
   return [...$("rack-svg").querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);

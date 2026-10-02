@@ -216,6 +216,47 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   expect(errors).toEqual([]);
 });
 
+test("a recording stops when you move to another sound, and its take lands on neither", async ({ page }, info) => {
+  const errors = await boot(page, { granted: true });
+  // Two sounds with a CAPTURE at the same key: A holds 0.1 s, B 0.2 s.
+  const capture = (n) => ({ amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(n) } } });
+  await openFile(page, { name: "Loop A", tree: capture(4000) }, info.outputDir);
+  await expect(page.locator("#rack-subject")).toContainText("Loop A", { timeout: 60_000 });
+  await openFile(page, { name: "Loop B", tree: capture(8000) }, info.outputDir);
+  await expect(page.locator("#rack-subject")).toContainText("Loop B", { timeout: 60_000 });
+  const lane = page.locator("#rack-svg .take-lane").first();
+  const line = lane.locator(".take-line");
+  await expect(line).toHaveText("take · 0.2 s");
+  await page.locator('.bf[data-f="pool"]').click();
+  const open = async (name) => {
+    await page.locator("#bank-list .bank-item", { hasText: name }).first().locator(".bi-name").click();
+    await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
+  };
+
+  // Recording on A, then B opened before STOP.
+  await open("Loop A");
+  await expect(line).toHaveText("take · 0.1 s", { timeout: 30_000 });
+  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await lane.locator(".take-rec").click();
+  await expect(line).toHaveText("recording…");
+  await page.waitForTimeout(1200);
+  await open("Loop B");
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 10_000 })
+    .toContain("Recording stopped: you moved to another sound.");
+  // B is as it was: its own take, RECORD not lit, and no take lands on it.
+  await expect(line).toHaveText("take · 0.2 s", { timeout: 30_000 });
+  await expect(lane.locator(".take-rec")).not.toHaveClass(/\bon\b/);
+  await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
+  await page.waitForTimeout(1500);
+  await expect(line).toHaveText("take · 0.2 s");
+  const toasts = await page.evaluate(() => window.__pwToasts.join("\n"));
+  expect(toasts).not.toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  // …and A keeps its old take.
+  await open("Loop A");
+  await expect(line).toHaveText("take · 0.1 s", { timeout: 30_000 });
+  expect(errors).toEqual([]);
+});
+
 test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
   test.setTimeout(300_000);
   const errors = await boot(page, { granted: true });

@@ -16,6 +16,10 @@
 //   structural edit: one undo step, rendered and vetted. For a sound kept
 //   safe it is `readmit_held`, which puts the take where the unreadable one
 //   was and brings the sound back into the pool.
+// - **A take lands on the sound it was recorded for.** RECORD remembers the
+//   sound on the bench (`benchId`); moving to another sound stops the
+//   recording and drops it, and says so, rather than land the take on
+//   whichever sound is on the bench at STOP (`benchMoved`).
 // - **Input.** A recording reads the input its patch's AUDIO IN reads. On the
 //   bench that input is already open (the bench reads it); for a sound kept
 //   safe, audio-in.js lends it for the recording (`lend`).
@@ -31,8 +35,9 @@ export const TAKE_LANE_H = 30;
 
 export function createTakes(host) {
   // host: live(), note(text, opts), send(msg), setTake(key, take, text),
-  // lend(slot) → release, ensureAudio(), renderBank(), benchTree(), nodeAt(key)
-  let rolling = null;   // {key, held: entry|null, timer, release}
+  // lend(slot) → release, ensureAudio(), renderBank(), benchTree(), nodeAt(key),
+  // benchId() → the sound on the bench
+  let rolling = null;   // {key, held: entry|null, bench, moved, timer, release}
   let held = [];        // the sounds a restore kept safe: {id, name, auto_name, note, capture, tree}
 
   // ---- recording ----
@@ -63,7 +68,7 @@ export function createTakes(host) {
         if (slot != null) release = host.lend(slot);
       } catch (_) { /* a tree that does not parse records nothing below */ }
     }
-    rolling = { key, held: heldEntry || null, release, timer: null };
+    rolling = { key, held: heldEntry || null, bench: heldEntry ? null : host.benchId(), moved: false, release, timer: null };
     live.takeStart(treeJson, key);
     // The take's own limit stops the recording; the control stops a moment
     // after it, so the whole take is read back.
@@ -79,6 +84,19 @@ export function createTakes(host) {
     clearTimeout(rolling.timer);
     const live = host.live();
     if (live) live.takeStop(rolling.key);
+  }
+
+  /** The player moved to another sound (`id`, or null for one still on its
+   *  way): a recording for the sound they left stops, and its take is
+   *  dropped rather than landed on this one. A recording for a sound kept
+   *  safe is not about the bench, and goes on. */
+  function benchMoved(id) {
+    if (!rolling || rolling.held || rolling.moved) return;
+    if (id != null && id === rolling.bench) return;
+    rolling.moved = true;
+    host.note(W.TAKE_SAID.moved, { urgent: true, replace: "take" });
+    stop();
+    paint();
   }
 
   /** The worklet's reply: the recording, or why there is none. */
@@ -101,10 +119,21 @@ export function createTakes(host) {
       host.send({ type: "readmit_held", id: r.held.id, take: JSON.stringify(take) });
       return;
     }
+    // Recorded for a sound the player has left: dropped, never landed on the
+    // sound on the bench now (said when they moved, or here if the move
+    // reached the bench without passing `benchMoved`).
+    if (r.moved) return;
+    if (host.benchId() !== r.bench) {
+      host.note(W.TAKE_SAID.moved, { urgent: true, replace: "take" });
+      return;
+    }
     host.setTake(r.key, take, W.takeLanded(seconds));
   }
 
   // ---- the CAPTURE lane ----
+  /** The rack's lanes of class `cls`, not the leaving rack's copies (a
+   *  `.rack-exit` fading out after a move, whose plates have lost their keys). */
+  const lanes = (cls) => [...document.querySelectorAll(`#rack-svg ${cls}`)].filter((l) => !l.closest(".rack-exit"));
   const el = (tag, attrs, cls) => {
     const e = document.createElementNS(SVG_NS, tag);
     for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
@@ -159,7 +188,7 @@ export function createTakes(host) {
 
   function paintLane(lane) {
     const key = lane.dataset.key;
-    const mine = !!rolling && !rolling.held && rolling.key === key;
+    const mine = !!rolling && !rolling.held && !rolling.moved && rolling.key === key;
     const btn = lane.querySelector(".take-rec");
     if (btn) {
       btn.classList.toggle("on", mine);
@@ -174,7 +203,7 @@ export function createTakes(host) {
   }
 
   function paint() {
-    for (const lane of document.querySelectorAll("#rack-svg .take-lane")) paintLane(lane);
+    for (const lane of lanes(".take-lane")) paintLane(lane);
     for (const b of document.querySelectorAll("#bank-list .kept-rec")) {
       const mine = !!rolling && rolling.held && String(rolling.held.id) === b.dataset.id;
       b.classList.toggle("on", mine);
@@ -240,6 +269,7 @@ export function createTakes(host) {
     drawLane,
     paint,
     onWorklet,
+    benchMoved,
     setHeld,
     readmitted,
     appendKept,
