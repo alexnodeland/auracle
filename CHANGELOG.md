@@ -15,7 +15,8 @@ changelog that edits its own past is not a record.
   **?** beside it, or hold it on a touch screen). The instrument renders your
   sound twice, the control at its center and turned, measures both the way
   the model hears them, and draws the measurement that control listens to:
-  BRIGHT and the tone controls the spectrum, SNAP the attack, SPACE the tail,
+  BRIGHT and the tone controls the sound's face and how each band moved,
+  SNAP the attack, SPACE the tail,
   MOTION the held note moving at its own pace, GRIT the harmonics. A sentence
   gives the numbers (*Turned to bright, its center moves from 359 Hz to
   2.5 kHz. Here it turns filter cutoff.*). Every placed control is a tap

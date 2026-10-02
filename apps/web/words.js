@@ -897,7 +897,7 @@ export const EXPLAIN_UI = {
   next: "Next",
   done: "Done",
   cutoff: "Filter cutoff",
-  shape: (name) => `${name}: its spectrum, low at the base`,
+  shape: (name, face = false) => (face ? `${name}’s face, low at the base` : `${name}: its spectrum, low at the base`),
 };
 
 /** A figure's title: "Bright · what it does" (set in capitals by CSS). */
@@ -941,9 +941,9 @@ function saysOf(c, st, made, turned) {
  *  it says what was measured, and is read on its own). `turned` is whether a
  *  turned render is drawn beside the made one; without it, the sound as it
  *  is is the whole figure. */
-export function explainAlt(c, sound, kind, turned = true) {
+export function explainAlt(c, sound, kind, turned = true, face = false) {
   const what = {
-    bands: "its spectrum, low at the base",
+    bands: face ? "its face, low at the base, beside how much each band moved" : "its spectrum, low at the base",
     onset: "the first note’s first 400 ms",
     level: "its level over the phrase",
     motion: "a held note over time",
@@ -959,7 +959,7 @@ export function explainAlt(c, sound, kind, turned = true) {
 export const LESSON_TITLE = "Learn · what a filter does";
 export const LESSON_BUTTON = "Learn: what a filter does";
 export const LESSON_LENGTH = "1 min";
-export function lessonSteps(name, bright) {
+export function lessonSteps(name, bright, face = false) {
   let third;
   if (!bright) third = "BRIGHT listens for where the energy sits, whatever moves it.";
   else if (bright.pending) third = `BRIGHT listens for where the energy sits; on ${name} it is still listening.`;
@@ -969,7 +969,9 @@ export function lessonSteps(name, bright) {
   return [
     {
       h: "A sound has a shape",
-      p: [`This is ${name}, its spectrum stood up: low frequencies at the base, high ones at the top.`, "Where the shape is wide, more of the sound is in that band; where it is narrow, less."],
+      p: face
+        ? [`This is ${name}’s face: its spectrum stood up, low frequencies at the base, high ones at the top.`, "Where the face is wide, the sound has more there than most of your sounds; where it is narrow, less."]
+        : [`This is ${name}, its spectrum stood up: low frequencies at the base, high ones at the top.`, "Where the shape is wide, more of the sound is in that band; where it is narrow, less."],
       try: "Play it, and watch the bright line: that is what you hear, now.",
     },
     {
@@ -995,15 +997,15 @@ export function lessonSteps(name, bright) {
  *  `error`, or `after` for its `placement`); `filtered`, whether it was the
  *  filtered render. */
 export function lessonTrouble(name, reason, filtered) {
-  if (reason === "after") return `${name} has no room for another module, so this filter goes after it, at one cutoff for every note.`;
+  if (reason === "after") return `${name} has no room for one more module, so this filter goes after it, at one cutoff for every note.`;
   if (!filtered) {
     if (reason === "silent") return `${name} is silent on the phrase, so the lesson has nothing to show.`;
     if (reason === "no_tree") return `${name} couldn’t be read, so the lesson has nothing to show.`;
-    return `${name} fails the instrument’s safety check, so the lesson can’t play it.`;
+    return `${name} doesn’t pass the vet, so the lesson can’t play it.`;
   }
   if (reason === "silent") return `Through the filter at this cutoff, ${name} is silent: drag the cutoff up.`;
   if (reason === "no_tree") return `${name} couldn’t be read, so the filter can’t go on it.`;
-  return `Through the filter at this cutoff, ${name} fails the instrument’s safety check, so it isn’t played: try another cutoff.`;
+  return `Through the filter at this cutoff, ${name} doesn’t pass the vet, so it isn’t played: try another cutoff.`;
 }
 
 /** The lesson's cutoff, in the knob's own unit, on the held note. */

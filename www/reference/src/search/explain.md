@@ -71,9 +71,18 @@ shape against shape. The constants are in `auracle-features`'s `explain.rs`.
 | `bright`, `loud` | The held note's spectral centroid (Hz, magnitude-weighted as φ's) and frame level (dB re its loudest frame), frame by frame at a 512-sample hop from its onset to its gate closing | MOTION, THROB, SWAY |
 | `facts` | φ's own coordinates of the render in their units (`Facts`) | the sentence |
 
-`bands` uses the band layout of a sound's face, so a figure's shape and a
-face line up band for band; it is the spectrum before the face's whitening
-against the bank, which is why the lesson calls it "its spectrum".
+`bands` is a face's band layout (`BANDS`, `LO_HZ`, `HI_HZ` and `FLOOR_DB`
+are `face.rs`'s `FACE_*`, one definition, and `band_edges_hz` is face.rs's),
+so a figure's spectrum and the sound's face line up band for band: the
+portrait carries the render's own face too (`Portrait::face`,
+`Face::of_f64`), which `a_sine_lands_in_its_band` holds to the bands within
+a face's 0.5 dB step. The page draws the face (vessel.js `drawVessel`,
+whitened against the bank's faces) for BRIGHT, BODY, WARMTH and AIR and the
+lesson's shape, the as-made one dashed by its outline; with under four faces
+in the bank there is nothing to whiten against, and it draws the spectrum
+itself, which the lesson then calls "its spectrum". `response_bands` keeps
+its own band weighting, since an impulse response's transform is not a
+face's frame length.
 
 `Facts` reads φ's raw audio coordinates back into units a sentence can say:
 `centroid_mean`, `rolloff_mean` and `zcr_mean` from φ's log axis to Hz;
@@ -137,8 +146,8 @@ latest cutoff waiting for it.
 - **A patch with no room** for one more module (the grammar's size ceilings:
   16 of 150 pool draws of the shipped seed, none of the 62 presets) gets the
   same filter after the whole voice instead (`placement: "after"`):
-  `lowpass_apply` runs quiver's `Svf` over the rendered phrase, vetted and
-  normalized again. Nothing keytracks it there, so its corner is the held
+  `lowpass_apply` runs quiver's `Svf` over the phrase's raw render, which is
+  then vetted and normalized as `featurize` does every render. Nothing keytracks it there, so its corner is the held
   note's on every note, and the lesson says so.
   `a_patch_with_no_room_gets_the_filter_after_it` pins it. Measured by
   `explain_lesson` on those draws at a cutoff of 0.5: 133 rendered inside,
@@ -202,10 +211,8 @@ prototype. The app's controls are not effects, so the engine was followed:
   BRIGHT; the app's adds the grammar's lowpass to a copy, so "BRIGHT turns a
   filter like this one, on any sound" became a sentence from this sound's
   wiring, and "Done puts BRIGHT back" became "Done leaves it as it was".
-- **The shape is its spectrum, not yet its face**: the face (Plan-005 task 3)
-  is whitened against the bank. When faces land, the figure's and the lesson's
-  shape take the render's face (`drawVessel`), marked `faces:` in
-  explain.js.
+- **The shape is the face from four faces up.** With fewer in the bank
+  there is nothing to whiten against, and the spectrum stands in.
 - **The keys play the sound without the lesson's filter**: the lesson's sound
   is the filtered phrase, looped; the live voices are not given the filter.
 - **A palette control's preview** (the specimen's `macroAnswer`, a recipe over

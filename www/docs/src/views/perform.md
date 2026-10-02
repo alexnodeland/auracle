@@ -221,7 +221,7 @@ control listens to:
 
 | Control | The figure |
 |---|---|
-| **BRIGHT**, **BODY**, **WARMTH**, **AIR** | The sound's spectrum stood up, low at the base, beside how much each band rose or fell (±24 dB), with a dotted line at what the control listens to: the center for BRIGHT, where the top rolls off for AIR, 250 Hz for the weight |
+| **BRIGHT**, **BODY**, **WARMTH**, **AIR** | The sound's [face](../faces.md), low at the base (its spectrum stood up while your bank holds under four faces), beside how much each band rose or fell (±24 dB), with a dotted line at what the control listens to: the center for BRIGHT, where the top rolls off for AIR, 250 Hz for the weight |
 | **SNAP**, **ROUND** | The first note's first 400 ms, with a tick where each reaches 90% of its peak |
 | **SPACE**, **DISTANCE**, **HAZE**, **PUNCH**, **THUMP**, **HEFT** | The phrase's level over its five seconds, with the notes above it; for the space controls, the last 300 ms shaded |
 | **MOTION**, **THROB**, **SWAY** | The held note's brightness or its level over time, whichever the turn moved more, running at its own pace |
@@ -258,8 +258,11 @@ a minute that uses the sound in your hands as its example. It has three steps;
 <kbd>Enter</kbd> or **NEXT** moves on, and <kbd>Space</kbd> plays the step's
 sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
 
-1. **A sound has a shape.** The sound's spectrum stood up, low at the base.
-   Play it, and a bright line shows what you hear as it plays.
+1. **A sound has a shape.** The sound's [face](../faces.md), low at the base:
+   wide where it has more than most of your sounds, narrow where it has less
+   (with under four faces in your bank, its spectrum stood up instead). Play
+   it, and a bright line shows what you hear as it plays, against the same
+   bank.
 2. **A filter lets some through.** A lowpass filter from the instrument's own
    modules is put on the sound, and you drag its **cutoff** along the graph
    (or use the arrow keys, and <kbd>Home</kbd> and <kbd>End</kbd> for its
@@ -275,7 +278,8 @@ sound wherever focus is in the lesson (NEXT and DONE take <kbd>Enter</kbd>).
    A sound with no room for one more module (about one pool sound in ten;
    none of the presets) gets the filter after it instead, at one cutoff for
    every note, and the lesson says so. If the filtered sound doesn't render
-   at a cutoff (it goes silent, or fails the instrument's safety check), the
+   at a cutoff (it goes silent, or doesn't pass the
+   [vet](../glossary.md#vetting)), the
    lesson says that too, draws no curve for it, and plays nothing under
    **THROUGH IT**; another cutoff may. If the sound itself doesn't render,
    the lesson says why and has nothing to play.

@@ -460,7 +460,7 @@ test("the lesson says why a render failed, draws nothing for it, and never plays
   await page.locator(".xp.on .xp-learn").click();
   await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
   await page.locator(".xl.on .xl-next").click();
-  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Through the filter at this cutoff, Reese fails the instrument’s safety check, so it isn’t played: try another cutoff.", { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Through the filter at this cutoff, Reese doesn’t pass the vet, so it isn’t played: try another cutoff.", { timeout: 60_000 });
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
   await page.keyboard.press(" ");
   await page.waitForTimeout(800);
@@ -475,7 +475,7 @@ test("the lesson says why a render failed, draws nothing for it, and never plays
     window.__xinject = (d) => (d.cutoff == null ? d : { ...d, data: { ...d.data, placement: "after" } });
   });
   await page.keyboard.press("ArrowLeft");
-  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese has no room for another module, so this filter goes after it, at one cutoff for every note.", { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese has no room for one more module, so this filter goes after it, at one cutoff for every note.", { timeout: 60_000 });
   await expect(page.locator(".xl.on .xl-play")).toBeEnabled();
   await page.keyboard.press("Escape");
   // The sound itself failing: said, nothing to play, and nothing more asked.
@@ -540,5 +540,26 @@ test("a long press on a touch screen opens the answer, and a turn does not", asy
   await page.waitForTimeout(900);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Motion · what it does");
+  expect(errs).toEqual([]);
+});
+
+test("with a bank of faces, BRIGHT's figure and the lesson draw the sound's face", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Reese");
+  // Four faces drawn in the bank: there is a mean and a spread to draw against.
+  await page.waitForFunction(() => document.querySelectorAll(".face-slot img.face").length >= 4, null, { timeout: 120_000 });
+  await askAbout(page, 0);
+  await expect(page.locator(".xp.on .xp-fig")).toHaveAttribute("aria-label", /its face, low at the base/);
+  // The portrait carries the render's own face, beside its bands.
+  const face = await page.evaluate(() => {
+    const r = window.__xgot.filter((m) => m.type === "explain" && m.k === 0).pop();
+    return r.made.portrait.face;
+  });
+  expect(typeof face).toBe("string");
+  expect(face.length).toBeGreaterThan(100);
+  await page.locator(".xp.on .xp-learn").click();
+  await expect(page.locator(".xl.on .xl-body p").first()).toHaveText(/^This is Reese’s face: /, { timeout: 60_000 });
+  await expect(page.locator(".xl.on .xl-shape")).toHaveAttribute("aria-label", "Reese’s face, low at the base");
   expect(errs).toEqual([]);
 });

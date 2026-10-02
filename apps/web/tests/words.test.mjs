@@ -562,7 +562,9 @@ test("the lesson on filters is about the sound in hand, and says what BRIGHT doe
     voiced(said);
     assert.ok(said.includes("Reese"), said);
   }
-  assert.ok(lessonTrouble("Reese", "after", true).includes("no room for another module"));
+  assert.ok(lessonTrouble("Reese", "after", true).includes("no room for one more module"));
+  assert.ok(lessonSteps("Reese", null, true)[0].p[0].startsWith("This is Reese’s face"));
+  assert.ok(!lessonTrouble("Reese", "vet", true).includes("safety"));
 });
 
 test("AUDIO IN says which input it reads, or why it has none, in the voice", () => {

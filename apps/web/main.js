@@ -4819,6 +4819,9 @@ async function bootPerform() {
     tasteRev: () => status.observations,
     audio: { ctx: audioCtx, out: master },
     analyser: outAnalyser,
+    // The bank's faces' mean and spread: a figure's and the lesson's face is
+    // drawn against them, as every face is.
+    faceStats: () => faceStats,
     stopAudition: () => stopAudition(),
     // The ? chip is chrome: not on film, not at a kiosk.
     chrome: () => !new URLSearchParams(location.search).has("film") && !booth?.on,

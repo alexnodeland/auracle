@@ -365,9 +365,10 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
       - the specimen's lesson drags BRIGHT; the app's puts the grammar's
         lowpass on a copy, so step three says what BRIGHT turns on this
         sound, from its wiring, and Done leaves the sound as it was;
-      - the shape is the render's spectrum, not yet its face (task 3 whitens
-        it against the bank); `faces:` in explain.js marks where the face
-        goes, and the copy says "its spectrum" until it does;
+      - the shape is the render's face (task 3, merged): `Portrait::face`,
+        drawn with `drawVessel` against the bank, the band constants shared
+        with `face.rs`; with under four faces in the bank the raw spectrum
+        stands in, and the copy says "its spectrum";
       - the keys play the sound in hand without the lesson's filter; the
         lesson's sound is the filtered phrase, looped and swapped in place;
       - a palette control's preview as a recipe over the six (the
@@ -384,7 +385,7 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
         ceilings: 16 of 150 pool draws of the shipped seed (none of the 62
         presets), measured with `explain_lesson` at a cutoff of 0.5 (133
         inside, 16 with no room, 1 silent). Those sounds now get the same
-        filter after the voice (`lowpass_apply` over the rendered phrase, its
+        filter after the voice (`lowpass_apply` over the raw render, then vetted, its
         corner the held note's on every note), and the lesson says so; a
         render that still fails is said in words, drawn and played as
         nothing;
@@ -393,8 +394,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
         *listening…* stays PERFORM's);
       - the maintainer approved **cutoff**, **lowpass**, **lesson** and
         **figure**/**answer** as words, with rows in voice.md;
-      - left for faces (#102): sharing the band constants with `face.rs`
-        and drawing the face at the `faces:` marker.
+      - after faces (#102) merged, the portrait's bands are `face.rs`'s and
+        the figures and the lesson draw the face.
 11. **A sound of your own.**
     - φ is computed from a decoded file (`auracle-features`, a wasm binding).
     - The sound takes its place on the map, and its nearest sounds are shown.

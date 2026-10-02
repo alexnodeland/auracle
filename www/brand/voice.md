@@ -464,7 +464,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
 | **listening…** | PERFORM measuring a sound's controls | measuring… (that is a figure's) |
-| **measuring…** | A figure whose renders are on their way: the engine rendering and measuring the sound in hand for a control's answer | listening… (that is PERFORM's), loading… |
+| **measuring…** | Renders on their way for an answer or the lesson: a figure, or the lesson's shape, while the engine renders and measures the sound in hand | listening… (that is PERFORM's), loading… |
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |

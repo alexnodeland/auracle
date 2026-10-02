@@ -33,11 +33,13 @@
 // controls (`explainOf`: what to render; `hear`: the sweep by ear). This
 // module draws, and asks. Its sentences are words.js's, unit-tested.
 
-// The portrait's bands (auracle_features::explain): keep in step.
-const NB = 40;
-const LO_HZ = 35;
-const HI_HZ = 14000;
-const FLOOR_DB = -60;
+// A face's bands, the portrait's too (`auracle_features::explain` takes them
+// from `face.rs`): one definition, faces.js's, with this module's own build
+// stamp so a new build fetches both together.
+const STAMP = new URL(import.meta.url).search;
+const faces = await import(`./faces.js${STAMP}`);
+const { drawVessel, traceVessel } = await import(`./vessel.js${STAMP}`);
+const { FACE_BANDS: NB, FACE_LO_HZ: LO_HZ, FACE_HI_HZ: HI_HZ, FACE_FLOOR_DB: FLOOR_DB, decodeFace, whiten, smooth, vesselPoints } = faces;
 // The figure's drawing box, in CSS pixels; the canvas is drawn at the
 // device's pixel ratio.
 const W = 320;
@@ -60,6 +62,11 @@ const FOLLOW_MS = 300;
 const WATCH_MS = 400;
 // Replies kept, by what they were asked about.
 const CACHE_MAX = 24;
+// The one request out is given up on after this long (a worker that never
+// answers, or a queue far behind it), so an answer or a lesson can ask again;
+// a reply that lands later is still kept. Renders take a fraction of a
+// second each; a pressed offer ahead of them in `soon` can take tens.
+const REQUEST_MS = 30_000;
 
 export function createExplain(host) {
   const { words, tok, canvasFont, motionMs, INK, inkAlpha } = host;
@@ -156,10 +163,9 @@ export function createExplain(host) {
   }
 
   // A spectrum stood up, as the face stands one (low at the base): each
-  // band's level from the floor to 0 dB is its half-width. `faces:` once
-  // faces land (Plan-005 task 3, vessel.js `drawVessel`), the sound's face
-  // is the face of its render whitened against the bank; this is the same
-  // render's spectrum before whitening, so its copy says "its spectrum".
+  // band's level from the floor to 0 dB is its half-width. What the figure
+  // and the lesson draw only until the bank holds four faces to whiten a
+  // face against (`faceDrawn`); then the face itself.
   function shapePath(ctx, bands, b, upto = NB) {
     const half = (d) => ((clamp(d, FLOOR_DB, 0) - FLOOR_DB) / -FLOOR_DB) * (b.w / 2);
     const y = (i) => b.y + b.h - (i / (NB - 1)) * b.h;
@@ -175,6 +181,42 @@ export function createExplain(host) {
     ctx.closePath();
   }
   const bandY = (b, i) => b.y + b.h - (clamp(i, 0, NB - 1) / (NB - 1)) * b.h;
+
+  // The render's face (`Portrait::face`, the engine's bytes as base64),
+  // decoded once per portrait, and drawn against the bank as every face is
+  // (vessel.js `drawVessel`, the bank's `faceStats`). Null where there is no
+  // bank to whiten against yet (under four faces): the raw spectrum stands
+  // in, and the words say "its spectrum".
+  function faceOf(p) {
+    if (!p || !p.face) return null;
+    if (p.decoded === undefined) {
+      try {
+        p.decoded = decodeFace(Uint8Array.from(atob(p.face), (ch) => ch.charCodeAt(0)));
+      } catch {
+        p.decoded = null;
+      }
+    }
+    return p.decoded;
+  }
+  const stats = () => (host.faceStats ? host.faceStats() : null);
+  const faceDrawn = (...ps) => !!stats() && ps.every((p) => faceOf(p));
+  // The face's outline only, for a dashed "as made".
+  function faceOutline(ctx, p, b) {
+    traceVessel(ctx, vesselPoints(smooth(whiten(faceOf(p).ltas, stats()), 1), b));
+  }
+  // A face lit, drawn up to band `upto` from the base (a reveal along the
+  // measured axis, never a shape between two renders).
+  function faceLit(ctx, p, b, { upto = NB, glow = 8, slices = true } = {}) {
+    ctx.save();
+    if (upto < NB) {
+      const y = bandY(b, upto - 0.5);
+      ctx.beginPath();
+      ctx.rect(0, y, ctx.canvas.width, b.y + b.h - y + 2);
+      ctx.clip();
+    }
+    drawVessel(ctx, faceOf(p), stats(), { box: b, color: INK.green, slices, glow });
+    ctx.restore();
+  }
 
   // ---------- the figures ----------
   // Each returns {paint(k, t), dur, loop}: `k` is how much of the turned
@@ -193,17 +235,28 @@ export function createExplain(host) {
     // The line it listens to: BRIGHT the spectrum's center, AIR where the
     // top rolls off, the weight controls 250 Hz (φ's bass_fraction).
     const markHz = c.name === "Bright" ? f.centroid_hz : c.name === "Air" ? f.rolloff_hz : 250;
+    const asFace = faceDrawn(made, turned || made);
     const paint = (k) => {
       ctx.clearRect(0, 0, W, H);
-      shapePath(ctx, made.bands, L);
-      baseLine(ctx, turned, 1.2);
-      if (turned) {
-        const upto = Math.round(NB * k);
-        if (upto >= 2) {
-          shapePath(ctx, turned.bands, L, upto);
-          ctx.fillStyle = inkAlpha(INK.green, 0.12);
-          ctx.fill();
-          litLine(ctx, 1.2);
+      if (asFace) {
+        // faces: the sound's face, as made (dashed) and turned (lit).
+        if (turned) {
+          faceOutline(ctx, made, L);
+          madeLine(ctx);
+          const upto = Math.round(NB * k);
+          if (upto >= 2) faceLit(ctx, turned, L, { upto });
+        } else faceLit(ctx, made, L);
+      } else {
+        shapePath(ctx, made.bands, L);
+        baseLine(ctx, turned, 1.2);
+        if (turned) {
+          const upto = Math.round(NB * k);
+          if (upto >= 2) {
+            shapePath(ctx, turned.bands, L, upto);
+            ctx.fillStyle = inkAlpha(INK.green, 0.12);
+            ctx.fill();
+            litLine(ctx, 1.2);
+          }
         }
       }
       for (const hz of [100, 1000, 10000]) {
@@ -239,7 +292,7 @@ export function createExplain(host) {
       text(ctx, "0", zx, H - 8, "center");
       text(ctx, "+24 dB", R.x + R.w, H - 8, "right");
     };
-    return { paint, dur: spectralDur(), loop: false };
+    return { paint, dur: spectralDur(), loop: false, face: asFace };
   }
 
   // SNAP, ROUND: the first note's first 400 ms in φ's attack windows
@@ -565,8 +618,9 @@ export function createExplain(host) {
   // answer opens. Moving, or lifting early, is an ordinary touch. The ring
   // waits a moment, so a tap or the start of a turn never shows it.
   const RING_DELAY_MS = 140;
-  // A move this far is a turn, not a hold: PERFORM's knob counts 3 px of
-  // travel as moved, and its long press then does nothing.
+  // A move this far up or down is a turn, not a hold: PERFORM's knob counts
+  // 3 px of vertical travel as moved (`bindDrag`), and its long press then
+  // does nothing; a sideways slide turns nothing, and the hold stands.
   const HOLD_SLOP_PX = 3;
   const ring = el("div", "xp-ring");
   ring.setAttribute("aria-hidden", "true");
@@ -603,7 +657,7 @@ export function createExplain(host) {
   document.addEventListener(
     "pointermove",
     (e) => {
-      if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP_PX) endHold();
+      if (hold && e.pointerId === hold.id && Math.abs(e.clientY - hold.y) > HOLD_SLOP_PX) endHold();
     },
     true,
   );
@@ -637,6 +691,7 @@ export function createExplain(host) {
   sayEl.setAttribute("role", "status");
   sayEl.setAttribute("aria-live", "polite");
   let returnTo = null;
+  let returnKey = false;
   let watchT = 0;
   let followT = 0;
   // Beside or below what was asked, never over it, with a caret pointing back
@@ -685,17 +740,28 @@ export function createExplain(host) {
   // The wiring's words are part of it too: a measurement that lands with
   // the control nothing turns changes no knob, but changes what is said.
   const keyOf = (st) => JSON.stringify([st.index, st.tree, st.made, st.turned, st.pending, st.search, st.knobs, st.only]);
+  let busy = 0; // the token of the one request out, or 0
+  let busyT = 0;
   function request(st, key) {
-    if (out.size) return;
+    if (busy) return;
     token += 1;
     out.set(token, key);
+    busy = token;
+    clearTimeout(busyT);
+    busyT = setTimeout(() => {
+      busy = 0;
+      if (shown && pop.classList.contains("on")) render();
+    }, REQUEST_MS);
     host.send({ type: "explain", token, tree: st.tree, made: st.made, turned: st.turned, k: st.index });
   }
 
   function ask(t) {
     const i = Number(t.dataset.i);
     if (!Number.isInteger(i) || !perf()) return;
-    if (!pop.classList.contains("on")) returnTo = document.activeElement;
+    if (!pop.classList.contains("on")) {
+      returnTo = document.activeElement;
+      returnKey = !!keyFocus && keyFocus === returnTo?.closest?.("[data-ask]");
+    }
     shown = { i, el: t };
     if (!render()) return;
     pop.classList.add("on");
@@ -713,7 +779,12 @@ export function createExplain(host) {
     const was = pop.classList.contains("on");
     pop.classList.remove("on");
     shown = null;
-    if (was && returnTo && document.contains(returnTo)) returnTo.focus?.({ preventScroll: true });
+    if (was && returnTo && document.contains(returnTo)) {
+      returnTo.focus?.({ preventScroll: true });
+      // Focus given back is the keyboard's only if it was the keyboard's
+      // before: a control a mouse turned does not become ?'s by an Esc.
+      keyFocus = returnKey ? returnTo.closest?.("[data-ask]") || null : null;
+    }
     returnTo = null;
   }
   // A press anywhere else puts it away; turning the control it explains
@@ -769,10 +840,10 @@ export function createExplain(host) {
     const ctx = sizeCanvas(cv, W, H);
     cv.style.aspectRatio = `${W} / ${H}`;
     cv.setAttribute("role", "img");
-    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, !!(made && turnedP && !st.search)));
     let fig;
     if (made) fig = FIGURES[kind](ctx, c, made, st.search ? null : turnedP);
     else fig = waitingFigure(ctx, failed ? "" : UI.measuring);
+    cv.setAttribute("aria-label", explainAlt(c, host.label(), kind, !!(made && turnedP && !st.search), !!fig.face));
     if (made) {
       cv.title = UI.again;
       cv.addEventListener("click", () => run(fig));
@@ -917,6 +988,8 @@ export function createExplain(host) {
       want: null,
       dead: false,
       returnTo: document.activeElement,
+      // Whether the focus to give back was the keyboard's (see `keyFocus`).
+      returnKey: !!keyFocus && keyFocus === document.activeElement?.closest?.("[data-ask]"),
     });
     lesson.classList.add("on");
     // A refusal or an alarm said during the lesson stays in sight above it.
@@ -934,6 +1007,7 @@ export function createExplain(host) {
     lesson.classList.remove("on");
     document.documentElement.classList.remove("xl-on");
     L.returnTo?.focus?.({ preventScroll: true });
+    keyFocus = L.returnKey ? L.returnTo?.closest?.("[data-ask]") || null : null;
   }
   // One request out at a time; the latest cutoff waits for it.
   function askLesson(cutoff) {
@@ -945,11 +1019,22 @@ export function createExplain(host) {
     }
     L.asked = what;
     L.token += 1;
+    const sent = L.token;
+    clearTimeout(L.askT);
+    L.askT = setTimeout(() => {
+      if (L.token !== sent || L.asked == null || !lesson.classList.contains("on")) return;
+      // Given up on: ask again for what is wanted now.
+      L.asked = null;
+      const w = L.want != null ? L.want : what;
+      L.want = null;
+      askLesson(w === "plain" ? null : w);
+    }, REQUEST_MS);
     host.send({ type: "explain_lesson", token: L.token, tree: L.tree, overrides: L.overrides, cutoff });
   }
   function lessonReply(m) {
     if (m.token !== L.token || !lesson.classList.contains("on")) return;
     L.asked = null;
+    clearTimeout(L.askT);
     const buffer = m.buffer && m.buffer.length ? host.audio.ctx.createBuffer(1, m.buffer.length, m.sampleRate) : null;
     if (buffer) buffer.copyToChannel(m.buffer, 0);
     const data = m.data || { error: m.error || "vet" };
@@ -967,7 +1052,19 @@ export function createExplain(host) {
       L.want = null;
       askLesson(w === "plain" ? null : w);
     } else if (L.step === 1 && !L.filtered) askLesson(L.cutoff);
+    // The words follow what is drawn: once the sound's own render lands,
+    // "its face" where a face is drawn, "its spectrum" where it is not.
+    if (m.cutoff == null) sayShape();
     paintLesson();
+  }
+  function sayShape() {
+    const plainP = L.plain && !L.plain.error ? L.plain.data.portrait : null;
+    const face = faceDrawn(plainP);
+    const s = lessonSteps(L.name, L.bright, face)[L.step];
+    lesson.querySelectorAll(".xl-p").forEach((n, i) => {
+      if (s.p && s.p[i] != null && n.textContent !== s.p[i]) n.textContent = s.p[i];
+    });
+    shapeCv?.setAttribute("aria-label", UI.shape(L.name, face));
   }
   // The lesson's sound: the step's render, looped, from where the last one
   // was, so a new cutoff is heard in place. Through the app's master, and
@@ -1059,14 +1156,24 @@ export function createExplain(host) {
       if (!L.plain) text(ctx, UI.measuring, VW / 2, VH / 2, "center", INK.amber);
       return;
     }
-    if (filt) {
-      shapePath(ctx, plain.bands, b);
-      madeLine(ctx);
-      shapePath(ctx, filt.bands, b);
-    } else shapePath(ctx, plain.bands, b);
-    ctx.fillStyle = inkAlpha(INK.green, 0.14);
-    ctx.fill();
-    litLine(ctx, 1.8);
+    if (faceDrawn(plain, filt || plain)) {
+      // faces: the sound's face; on the filter's step the unfiltered face
+      // dashed behind the filtered one.
+      if (filt) {
+        faceOutline(ctx, plain, b);
+        madeLine(ctx);
+        faceLit(ctx, filt, b, { glow: 16 });
+      } else faceLit(ctx, plain, b, { glow: 16 });
+    } else {
+      if (filt) {
+        shapePath(ctx, plain.bands, b);
+        madeLine(ctx);
+        shapePath(ctx, filt.bands, b);
+      } else shapePath(ctx, plain.bands, b);
+      ctx.fillStyle = inkAlpha(INK.green, 0.14);
+      ctx.fill();
+      litLine(ctx, 1.8);
+    }
     if (filt) {
       // The cutoff on the shape: above it is what the filter takes away.
       const hz = L.filtered.data.cutoff_hz;
@@ -1083,8 +1190,12 @@ export function createExplain(host) {
     // right edge while the lesson plays.
     const live = L.playing ? liveBands() : null;
     if (live) {
-      const half = (d) => ((clamp(d, FLOOR_DB, 0) - FLOOR_DB) / -FLOOR_DB) * (b.w / 2);
-      polyline(ctx, live.map((d, i) => [b.x + b.w / 2 + half(d), bandY(b, i)]));
+      // Against the bank, as the face is, where the face is drawn.
+      if (faceDrawn(plain)) traceVessel(ctx, vesselPoints(smooth(whiten(live, stats()), 1), b));
+      else {
+        const half = (d) => ((clamp(d, FLOOR_DB, 0) - FLOOR_DB) / -FLOOR_DB) * (b.w / 2);
+        polyline(ctx, live.map((d, i) => [b.x + b.w / 2 + half(d), bandY(b, i)]));
+      }
       ctx.strokeStyle = INK.silk;
       ctx.lineWidth = 1.4;
       ctx.stroke();
@@ -1154,6 +1265,9 @@ export function createExplain(host) {
       else if (L.step === 1 && L.filtered && L.filtered.error) t = lessonTrouble(L.name, L.filtered.error, true);
       else if (L.step === 1 && L.filtered && L.filtered.data.placement === "after") t = lessonTrouble(L.name, "after", true);
       if (why.textContent !== t) why.textContent = t;
+      // Red for a render that failed (ADR-009: red is failure); the filter
+      // placed after a full patch is news, in plain silk.
+      why.classList.toggle("fail", !!t && !(L.step === 1 && L.filtered && !L.filtered.error && !(L.plain && L.plain.error)));
     }
     const pl = lesson.querySelector(".xl-play");
     if (pl) {
@@ -1168,17 +1282,18 @@ export function createExplain(host) {
     askLesson(L.cutoff);
   }
   function renderLesson() {
-    const steps = lessonSteps(L.name, L.bright);
+    const plainP = L.plain && !L.plain.error ? L.plain.data.portrait : null;
+    const steps = lessonSteps(L.name, L.bright, faceDrawn(plainP));
     const s = steps[L.step];
     shapeCv = el("canvas", "xl-shape");
     shapeCv.setAttribute("role", "img");
-    shapeCv.setAttribute("aria-label", UI.shape(L.name));
+    shapeCv.setAttribute("aria-label", UI.shape(L.name, faceDrawn(plainP)));
     filterCv = null;
     const body = el("div", "xl-body");
     const h = el("h2", "xl-h", s.h);
     h.id = "xl-title";
     body.append(h);
-    for (const t of s.p || []) body.append(el("p", null, t));
+    for (const t of s.p || []) body.append(el("p", "xl-p", t));
     if (L.step === 1) {
       filterCv = el("canvas", "xl-filter");
       filterCv.tabIndex = 0;
@@ -1309,6 +1424,10 @@ export function createExplain(host) {
     const key = out.get(m.token);
     if (key == null) return;
     out.delete(m.token);
+    if (busy === m.token) {
+      busy = 0;
+      clearTimeout(busyT);
+    }
     cache.set(key, m.error ? { error: m.error } : { made: m.made, turned: m.turned || null });
     while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
     if (!shown || !pop.classList.contains("on")) return;
