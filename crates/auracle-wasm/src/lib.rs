@@ -43,8 +43,9 @@ mod live;
 pub use live::LivePoly;
 // PERFORM's shipped preset wirings: what they were measured from. The generator
 // and its currency test use it natively (its `boot` and `warm` are native only);
-// the page's wasm carries only `boot_probe`, the cross-target determinism check
-// (`tests/web/boot_agrees.spec.js`).
+// the page's wasm carries only `boot_probe` (and what it needs): a test-only
+// export no script calls, which `tests/web/boot_agrees.spec.js` runs under Node
+// to check that the browser's engine deals what the native one does.
 pub mod shipped;
 
 use std::cell::RefCell;

@@ -28,12 +28,46 @@ const { pathToFileURL } = require("url");
 
 const PKG = path.resolve(__dirname, "../../apps/web/pkg");
 const PINNED = path.resolve(__dirname, "../../crates/auracle-wasm/tests/boot_probe.json");
+// How far a number may sit from the pinned one, relative to its size (absolute
+// below 1): `shipped::TOLERANCE`, which the native half uses.
+const TOLERANCE = 1e-6;
+
+// Where `now` first differs from `was`, as a path and both values: numbers
+// within TOLERANCE, everything else exactly. "" if they agree. The native
+// half does the same in Rust (`shipped::boot_probe_difference`); it is not in
+// the page's wasm, so the comparison is made here.
+function firstDifference(was, now, at) {
+  const differs = () => `${at}: pinned ${JSON.stringify(was)}, now ${JSON.stringify(now)}`;
+  if (typeof was === "number" && typeof now === "number") {
+    const scale = Math.max(Math.abs(was), Math.abs(now), 1);
+    return Math.abs(was - now) > TOLERANCE * scale ? differs() : "";
+  }
+  if (Array.isArray(was) && Array.isArray(now)) {
+    if (was.length !== now.length) return `${at}: ${was.length} entries pinned, ${now.length} now`;
+    for (let i = 0; i < was.length; i++) {
+      const d = firstDifference(was[i], now[i], `${at}[${i}]`);
+      if (d) return d;
+    }
+    return "";
+  }
+  if (was && now && typeof was === "object" && typeof now === "object" && !Array.isArray(was) && !Array.isArray(now)) {
+    const [a, b] = [Object.keys(was).sort(), Object.keys(now).sort()];
+    if (a.join() !== b.join()) return `${at}: keys pinned [${a}], now [${b}]`;
+    for (const k of a) {
+      const d = firstDifference(was[k], now[k], `${at}.${k}`);
+      if (d) return d;
+    }
+    return "";
+  }
+  return was === now ? "" : differs();
+}
 
 test("the shipped seed deals the pinned pool in the built wasm, as it does natively", async () => {
   const wasm = path.join(PKG, "auracle_wasm_bg.wasm");
   expect(fs.existsSync(wasm), `no built engine at ${wasm} — run \`make wasm\` first`).toBe(true);
   const engine = await import(pathToFileURL(path.join(PKG, "auracle_wasm.js")).href);
   engine.initSync({ module: fs.readFileSync(wasm) });
-  const difference = engine.boot_probe_difference(fs.readFileSync(PINNED, "utf8"));
+  const pinned = JSON.parse(fs.readFileSync(PINNED, "utf8"));
+  const difference = firstDifference(pinned, JSON.parse(engine.boot_probe()), "probe");
   expect(difference, "the wasm engine deals a different pool than the native one").toBe("");
 });

@@ -242,8 +242,9 @@ fn tree_digest(tree_json: &str) -> String {
 /// natively, and a seed has to mean the same pool on both. This is the one
 /// function both targets run: `tests/boot_agrees.rs` pins its native output
 /// to `tests/boot_probe.json`, and `tests/web/boot_agrees.spec.js` runs it in
-/// the built wasm and asks [`boot_probe_difference`] whether it agrees with
-/// the same file. A disagreement in the draws is the stream itself reading
+/// the built wasm and compares what it returns with the same file, in
+/// JavaScript ([`boot_probe_difference`] is the native half of that
+/// comparison and stays out of the page's wasm). A disagreement in the draws is the stream itself reading
 /// differently (a draw whose width depends on the target: see
 /// [`auracle_grammar::rng`]); in the pool only, the renders or the features.
 #[wasm_bindgen]
@@ -286,7 +287,9 @@ pub fn boot_probe() -> String {
 }
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
-/// within [`TOLERANCE`] of their size, everything else exactly.
+/// within [`TOLERANCE`] of their size, everything else exactly. Native only:
+/// the spec makes the same comparison in JavaScript.
+#[cfg(not(target_arch = "wasm32"))]
 fn first_difference(
     was: &serde_json::Value,
     now: &serde_json::Value,
@@ -337,8 +340,8 @@ fn first_difference(
 
 /// Where [`boot_probe`], run here and now, first differs from `pinned` (the
 /// JSON `tests/boot_probe.json` holds); `""` if it agrees. Numbers agree
-/// within [`TOLERANCE`], everything else exactly.
-#[wasm_bindgen]
+/// within [`TOLERANCE`], everything else exactly. Native only.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn boot_probe_difference(pinned: &str) -> String {
     let (Ok(was), Ok(now)) = (
         serde_json::from_str::<serde_json::Value>(pinned),
