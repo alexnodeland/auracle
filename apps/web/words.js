@@ -193,6 +193,24 @@ export function fromLine(seedName, changes) {
   return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
 }
 
+/** The line under a sound's name on its card (Plan-005 task 3): where it
+ *  came from. A bred sound's is its bank row's (`fromLine`, from its
+ *  `LineageEvent`); any other's is its origin, as the bank's glyph says it. */
+export function cardLine(origin, seedName, changes) {
+  if (seedName) return fromLine(seedName, changes);
+  return {
+    prior: "grown fresh, with no taste in it yet",
+    refined: "bred toward your taste",
+    edited: "your edit, kept as new",
+    preset: "a hand-made preset",
+  }[origin] || "";
+}
+
+/** The download dialog's readout for a card: its size and format. */
+export function cardDims(w, h, fmt) {
+  return `${w} × ${h} px · the sound's card · ${fmt}`;
+}
+
 /** Compare's sentence under its figure. */
 export function grownFrom(seedName, generation) {
   return `Grown from ${seedName} in generation ${generation}.`;

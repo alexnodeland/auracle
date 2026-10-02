@@ -127,7 +127,7 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims,
 } = await import(`./words.js?v=${BUILD}`);
 // A sound's face against the bank, as markup (faces.js, tests/faces.test.mjs).
 const { decodeFace, bankStats, faceSvg } = await import(`./faces.js?v=${BUILD}`);
@@ -289,7 +289,7 @@ const FACE_SIZE = {
   hand: [32, 48],  // PERFORM, the sound in hand
   offer: [16, 26], // PERFORM's B
   warm: [24, 40],  // the warm start's cards
-  share: [208, 312], // the share card (drawn into its SVG, not a slot)
+  share: [156, 260], // the sound's card (drawn into its SVG, not a slot)
 };
 const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
 const faceKeyById = new Map();  // pool id -> key
@@ -401,6 +401,7 @@ function facesChanged() {
     facePaintQueued = false;
     faceRestat();
     paintFaces();
+    imageSync(); // a card waiting on its face
   });
 }
 /** The bank's mean and spread, over the faces of the rows the bank shows
@@ -21059,9 +21060,180 @@ function imageDims() {
   };
 }
 
+// ---------- the sound's card (Plan-005 task 3) ----------
+// A picture to share a sound by: its face, its name and where it came from,
+// built on the export above, so it carries its fonts, rasterizes the same way
+// and holds the patch (drop the card on Auracle and the sound opens). Laid
+// out in a 600 × 315 frame, the size a link preview asks for at 2× (1200 ×
+// 630). The face is the one the header shows: the bench's latest render,
+// against the bank.
+const CARD_W = 600;
+const CARD_H = 315;
+
+/** What the card shows, or null with no sound open. `face` is null until
+ *  it has landed (asked for here). */
+function cardSubject() {
+  const id = wb.subjectId;
+  if (id == null || !wb.rack || !wb.rack.modules || !wb.rack.modules.length) return null;
+  const target = faceTarget(benchTreeJson ? { tree: benchTreeJson } : { id });
+  const key = faceKeyOfTarget(target);
+  const face = (key && faceByKey.get(key)) || null;
+  if (!face) wantFace(target);
+  const lin = lineageOf(id);
+  return {
+    name: `${benchName(id)}${wb.dirty ? dirtySuffix() : ""}`,
+    line: cardLine(rowOf(id)?.origin, lin ? lineageName(lin.parent_id) : "", lin ? lineageChanges(lin.diff) : ""),
+    face,
+  };
+}
+
+/** `str` as lines of `text` no wider than `maxW`, at most `maxLines` (the
+ *  last ellipsized only if the words run out of lines). Measured on the
+ *  live stage, in the card's own units. */
+function svgLines(text, str, maxW, maxLines, lead) {
+  const words = str.split(/\s+/).filter(Boolean);
+  const x = text.getAttribute("x");
+  const lines = [];
+  let line = "";
+  text.textContent = "";
+  const probe = document.createElementNS(SVG_NS, "tspan");
+  text.appendChild(probe);
+  const fits = (s) => {
+    probe.textContent = s;
+    return probe.getComputedTextLength() <= maxW;
+  };
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (!line || fits(next)) line = next;
+    else {
+      lines.push(line);
+      line = w;
+    }
+  }
+  if (line) lines.push(line);
+  probe.remove();
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && !fits(`${last}…`)) last = last.replace(/\s*\S+$/, "");
+    lines[maxLines - 1] = `${last}…`;
+  }
+  lines.forEach((l, i) => {
+    const t = document.createElementNS(SVG_NS, "tspan");
+    t.setAttribute("x", x);
+    if (i) t.setAttribute("dy", String(lead));
+    t.textContent = l;
+    text.appendChild(t);
+  });
+  return lines.length;
+}
+
+/** The card as a standalone SVG, `{svg, w, h}` in card units. */
+async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
+  const stage = document.createElement("div");
+  stage.className = "export-stage";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  stage.appendChild(svg);
+  document.body.appendChild(stage);
+  const px = (name) => parseFloat(tok(name)) || 0;
+  try {
+    svg.setAttribute("viewBox", `0 0 ${CARD_W} ${CARD_H}`);
+    const add = (tag, attrs, parent = svg) => {
+      const e = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      parent.appendChild(e);
+      return e;
+    };
+    if (!transparent) {
+      const defs = add("defs", {});
+      const grad = add("linearGradient", { id: "cardBg", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      add("stop", { offset: 0, "stop-color": tok("--rack-bed-hi") }, grad);
+      add("stop", { offset: 1, "stop-color": tok("--rack-bed-lo") }, grad);
+      add("rect", { x: 0, y: 0, width: CARD_W, height: CARD_H, fill: "url(#cardBg)" });
+    }
+    const m = px("--s4");
+    add("rect", { x: m + 0.5, y: m + 0.5, width: CARD_W - 2 * m - 1, height: CARD_H - 2 * m - 1, rx: px("--r3"), fill: "none", stroke: tok("--hairline") });
+    // The face: `faceSvg`'s markup, nested, with its paint written on (a
+    // file carries no stylesheet): the sound's green, as `.face-l` and
+    // `.face-o` paint it in the app.
+    const [fw, fh] = FACE_SIZE.share;
+    const fx = px("--s7");
+    const fy = (CARD_H - fh) / 2;
+    const holder = add("g", { transform: `translate(${fx} ${fy})` });
+    if (sub.face && faceStats) holder.innerHTML = faceSvg(sub.face, faceStats, { w: fw, h: fh, line: 2 });
+    for (const p of holder.querySelectorAll(".face-l")) p.setAttribute("fill", tok("--phos-a"));
+    for (const p of holder.querySelectorAll(".face-o")) {
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", tok("--phos-a"));
+      p.setAttribute("stroke-linejoin", "round");
+    }
+    // The words: the name at the display size (the title's if it will not
+    // fit on one line, then over two lines), the line under it, the mark.
+    const tx = fx + fw + px("--s7");
+    const tw = CARD_W - tx - px("--s7");
+    const name = add("text", { x: tx, y: 0, "font-family": tok("--font-silk"), "font-weight": 500, fill: tok("--silk") });
+    let size = px("--t-display");
+    name.setAttribute("font-size", tok("--t-display"));
+    name.textContent = sub.name;
+    let nameLines = 1;
+    if (name.getComputedTextLength() > tw) {
+      size = px("--t-title");
+      name.setAttribute("font-size", tok("--t-title"));
+      nameLines = svgLines(name, sub.name, tw, 2, size * 1.2);
+    }
+    const top = CARD_H / 2 - ((nameLines - 1) * size * 1.2) / 2 - px("--s4");
+    name.setAttribute("y", String(top));
+    const lineSize = px("--t-body");
+    const line = add("text", {
+      x: tx,
+      y: top + (nameLines - 1) * size * 1.2 + px("--s6"),
+      "font-family": tok("--font-mono"),
+      "font-size": tok("--t-body"),
+      fill: tok("--silk-dim"),
+    });
+    if (sub.line) svgLines(line, sub.line, tw, 3, lineSize * 1.4);
+    add("text", {
+      x: tx,
+      y: CARD_H - px("--s7"),
+      "font-family": tok("--font-silk"),
+      "font-size": tok("--t-label"),
+      "font-weight": 600,
+      "letter-spacing": "0.3em",
+      fill: tok("--silk-dim"),
+    }).textContent = "AURACLE";
+    svg.remove();
+  } finally {
+    stage.remove();
+  }
+  svg.setAttribute("xmlns", SVG_NS);
+  const style = document.createElementNS(SVG_NS, "style");
+  style.textContent = await exportFontCss();
+  svg.insertBefore(style, svg.firstChild);
+  if (sidecar) {
+    const md = document.createElementNS(SVG_NS, "metadata");
+    md.setAttribute("id", "auracle-patch");
+    md.textContent = JSON.stringify(sidecar);
+    svg.insertBefore(md, svg.firstChild);
+  }
+  return { svg, w: CARD_W, h: CARD_H };
+}
+
 function imageSync() {
   const panel = $("image-panel");
   if (!panel || panel.classList.contains("hidden")) return;
+  if (imageState.scope === "card") {
+    $("ix-scope").value = "card";
+    const sub = cardSubject();
+    const dims = $("ix-dims");
+    dims.classList.remove("busy");
+    dims.textContent = !sub
+      ? "no sound open"
+      : sub.face && faceStats
+        ? cardDims(CARD_W * imageState.scale, CARD_H * imageState.scale, imageState.fmt.toUpperCase())
+        : "its face is on its way";
+    $("ix-go").disabled = !(sub && sub.face && faceStats);
+    return;
+  }
   const sel = selModule();
   const opt = panel.querySelector('#ix-scope option[value="sel"]');
   if (opt) {
@@ -21082,6 +21254,7 @@ function imageSync() {
 }
 
 async function runImageExport() {
+  if (imageState.scope === "card") return runCardExport();
   const body = patchSidecar();
   const rack = exportRack(imageState.scope === "sel");
   if (!body || !rack || !rack.modules.length) return note("Open a sound first: there’s no patch to draw.");
@@ -21110,6 +21283,33 @@ async function runImageExport() {
       const text = serializeSvg(svg, w, h, 1);
       const px = { w: Math.round(w * imageState.scale), h: Math.round(h * imageState.scale) };
       const blob = await rasterize(text, px.w, px.h);
+      const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
+      saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
+    }
+    note(`Downloaded ${stem}. The patch is inside the picture.`);
+  } catch (err) {
+    note(`That picture couldn’t be made: ${err.message || err}`, { urgent: true });
+  } finally {
+    imageSync();
+  }
+}
+
+async function runCardExport() {
+  const body = patchSidecar();
+  const sub = cardSubject();
+  if (!body || !sub) return note("Open a sound first: there’s no patch to draw.");
+  const go = $("ix-go");
+  const dims = $("ix-dims");
+  go.disabled = true;
+  dims.classList.add("busy");
+  dims.textContent = "rendering…";
+  try {
+    const { svg, w, h } = await buildCardSvg(sub, { transparent: imageState.bg === "transparent", sidecar: body });
+    const stem = `${patchFileStem(body)}-card`;
+    if (imageState.fmt === "svg") {
+      saveBlob(new Blob([serializeSvg(svg, w, h, imageState.scale)], { type: "image/svg+xml" }), `${stem}.svg`);
+    } else {
+      const blob = await rasterize(serializeSvg(svg, w, h, 1), w * imageState.scale, h * imageState.scale);
       const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
       saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
     }

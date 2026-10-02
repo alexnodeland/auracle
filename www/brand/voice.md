@@ -468,6 +468,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What ⌥ shows: the model's ratings over everything | lens |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
+| **card** | The picture of a sound you download to share: its face, its name and where it came from | poster, thumbnail, share image |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |
 | **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
