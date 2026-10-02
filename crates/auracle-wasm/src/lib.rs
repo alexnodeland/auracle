@@ -312,30 +312,6 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
-/// Every audio cable of `tree_json`, measured on one render of
-/// `phrase_json` ([`auracle_features::probe_cables`]): `{"cables":[{"from":
-/// "node/0","to":"node","from_uid":7,"to_uid":3,"rms_db":-4.1,"peak_db":
-/// 2.0}],"samples":n}`, in the rack's cable order, levels in dB re 1 V (the
-/// live meter's scale), a cable that carries nothing at
-/// [`auracle_features::PROBE_FLOOR_DB`]. `null` when either argument does not
-/// parse or the tree does not compile.
-///
-/// Stateless, like [`farm_render`], so a farm worker can run it; the engine
-/// worker asks [`WasmEngine::edit_cable_levels`] for the patch in hand. It
-/// costs one render of the phrase (`examples/cable_cost.mjs`), so it is asked
-/// once a structural edit has settled, not per knob step and never per
-/// quantum: while notes sound, `LivePoly`'s meter reads the cables live.
-#[wasm_bindgen]
-pub fn cable_levels(tree_json: &str, phrase_json: &str) -> String {
-    let (Ok(tree), Ok(spec)) = (
-        serde_json::from_str::<PatchTree>(tree_json),
-        serde_json::from_str::<PhraseSpec>(phrase_json),
-    ) else {
-        return "null".into();
-    };
-    cable_levels_json(&tree, &spec)
-}
-
 /// `{"reason": code}`: why a guess has nothing to say.
 fn refusal(code: &str) -> String {
     #[derive(Serialize)]
@@ -345,6 +321,9 @@ fn refusal(code: &str) -> String {
     serde_json::to_string(&Refusal { reason: code }).unwrap_or_default()
 }
 
+/// Every audio cable of `tree`, measured on one render of `spec`
+/// ([`auracle_features::probe_cables`]), as [`WasmEngine::edit_cable_levels`]
+/// replies; `null` when the tree does not compile.
 fn cable_levels_json(tree: &PatchTree, spec: &PhraseSpec) -> String {
     auracle_features::cable_levels(tree, spec)
         .ok()
@@ -2498,10 +2477,16 @@ impl WasmEngine {
         err
     }
 
-    /// The cables of the patch in hand, measured: [`cable_levels`] for the
-    /// bench's tree under this engine's phrase, `null` with nothing open.
-    /// The cables are those [`Self::edit_describe`] draws, keyed the same way.
-    /// One render; it changes nothing on the bench.
+    /// The cables of the patch in hand, measured on one render of this
+    /// engine's phrase ([`auracle_features::probe_cables`]): `{"cables":
+    /// [{"from":"node/0","to":"node","from_uid":7,"to_uid":3,"rms_db":-4.1,
+    /// "peak_db":2.0}],"samples":n}`, `null` with nothing open. The cables are
+    /// those [`Self::edit_describe`] draws, in its order and keyed the same
+    /// way; levels are in dB re 1 V, the live meter's scale, and a cable that
+    /// carries nothing reads [`auracle_features::PROBE_FLOOR_DB`]. One render
+    /// (`examples/cable_cost.mjs`), so it is asked once an edit has settled,
+    /// never per knob step or per quantum: while notes sound, `LivePoly`'s
+    /// meter reads the cables live. It changes nothing on the bench.
     pub fn edit_cable_levels(&self) -> String {
         match &self.bench_tree {
             Some(t) => cable_levels_json(t, &self.engine.cfg.phrase),
@@ -2863,7 +2848,7 @@ mod tests {
     /// The bench's cable probe names the cables PATCH draws, keyed as the rack
     /// keys them (`data-from`/`data-to`, and the uids of `midOf`), measures
     /// each, and leaves the bench as it found it: the same buffer, bit for
-    /// bit, and the same tree. The stateless export says the same.
+    /// bit, and the same tree.
     #[test]
     fn the_bench_probe_names_the_cables_patch_draws() {
         let mut engine = WasmEngine::new(3, 6);
@@ -2925,12 +2910,15 @@ mod tests {
             .collect();
         assert!(!drawn.is_empty());
         assert_eq!(probed, drawn, "the probe's cables are not the rack's");
+        let direct: PatchTree = serde_json::from_str(&tree).unwrap();
         assert_eq!(
-            cable_levels(&tree, &engine.phrase_json()),
+            serde_json::to_string(
+                &auracle_features::cable_levels(&direct, &engine.engine.cfg.phrase).unwrap()
+            )
+            .unwrap(),
             engine.edit_cable_levels(),
-            "the export and the bench disagree"
+            "the binding and the probe disagree"
         );
-        assert_eq!(cable_levels("{", &engine.phrase_json()), "null");
     }
 
     /// The menu bar's TAUGHT tooltip splits the count by kind from

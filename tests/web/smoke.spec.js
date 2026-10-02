@@ -62,8 +62,7 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // ratings each pick's reply carries (Plan-005); its seeds are the next jobs'
 // parents. `edit_known_makeup` is the makeup an undo or a redo reaches the
 // voices at before its render. The `guess_*` four are the model's guess
-// (Plan-005 task 9d), and `edit_cable_levels` with the stateless
-// `cable_levels` the cable probe (9e).
+// (Plan-005 task 9d), and `edit_cable_levels` the cable probe (9e).
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -80,13 +79,11 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       farm_walk: typeof mod.farm_walk,
       cache_namespace: typeof mod.cache_namespace,
       farm_render: typeof mod.farm_render,
-      cable_levels: typeof mod.cable_levels,
       missing: methods.filter((k) => typeof proto[k] !== "function"),
     };
   });
   expect(got.farm_walk).toBe("function");
   expect(got.cache_namespace).toBe("function");
   expect(got.farm_render).toBe("function");
-  expect(got.cable_levels).toBe("function");
   expect(got.missing, "WasmEngine methods worker.js calls are missing").toEqual([]);
 });

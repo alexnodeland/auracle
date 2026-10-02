@@ -137,8 +137,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      ([Measured (task 9d)](#measured-task-9d)). The page draws nothing yet
      (task 7).
    - (e) A cable-level probe. *Done (2026-10-01):* `probe_cables` in
-     `auracle-features`, `cable_levels` and `edit_cable_levels` in wasm, the
-     worker's `cable_levels` ([Measured (task 9e)](#measured-task-9e)).
+     `auracle-features`, `edit_cable_levels` in wasm, the worker's
+     `cable_levels` ([Measured (task 9e)](#measured-task-9e)).
    - (f) Keeping a generation's replaced trees until the next one (Open 1).
      Done only if the maintainer decides to keep them.
 10. **Explain anything.** Each control gets a figure, and the first lesson
@@ -260,8 +260,8 @@ measures from the average sound with the patch's own structure.
 `crates/auracle-features/examples/cable_probe.rs` over the 62 presets: a probed
 render took a median 0.99 times a plain one (162 against 165 ms of CPU), and
 all 62 rendered bit-identically with and without the probe.
-`crates/auracle-wasm/examples/cable_cost.mjs`: a median 206 ms per probe in
-wasm under node, against 238 ms for a render with φ. One render, so the probe
+`crates/auracle-wasm/examples/cable_cost.mjs`: a median 160 to 206 ms per probe in
+wasm under node over two runs, against 183 to 238 ms for a render with φ. One render, so the probe
 runs once an edit settles, in the `later` lane, not per block; the live meter
 covers sounding notes.
 

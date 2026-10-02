@@ -1,9 +1,10 @@
 // What the cable probe costs in the browser's speed class (Plan-005 task 9e):
-// `cable_levels` (one render of the phrase, every audio cable read after
-// every tick) beside `farm_render` without audio (one render of the phrase,
-// then φ), for every preset, in this thread's CPU time. Run by node, whose V8
-// is the engine Chrome runs; single-threaded, as the engine worker is. The
-// native twin, which also times a plain render, is
+// `edit_cable_levels` (one render of the phrase, every audio cable read after
+// every tick) on each preset in hand, beside `farm_render` without audio (one
+// render of the phrase, then φ), in this thread's CPU time. Run by node, whose
+// V8 is the engine Chrome runs; single-threaded, as the engine worker is. The
+// native twin, which also times a plain render and checks the probed render
+// bit for bit, is
 // `cargo run --release -p auracle-features --example cable_probe`.
 //
 //   make wasm
@@ -22,7 +23,7 @@ const cpuNow = () => {
 const median = (xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
 
 // A small pool, so a preset can be loaded (an insert needs the standardizer
-// a filled pool fits) and its tree read back.
+// a filled pool fits) and opened.
 const e = new mod.WasmEngine(20260928n, 6);
 while (e.fill_step(3) > 0) {}
 e.restandardize_if_untaught();
@@ -34,11 +35,11 @@ const probe = [];
 const featurize = [];
 for (let i = 0; i < presets.length; i++) {
   const id = Number(e.load_preset(i));
-  if (id <= 0) continue;
-  const tree = e.tree_json_of(id);
-  mod.cable_levels(tree, phrase); // warm
+  if (id <= 0 || !e.edit_begin(id)) continue;
+  const tree = e.edit_tree_json();
+  e.edit_cable_levels(); // warm
   let c = cpuNow();
-  const out = JSON.parse(mod.cable_levels(tree, phrase));
+  const out = JSON.parse(e.edit_cable_levels());
   const p = cpuNow() - c;
   c = cpuNow();
   const job = mod.farm_render(tree, phrase, false);

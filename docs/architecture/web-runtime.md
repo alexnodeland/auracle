@@ -149,7 +149,7 @@ it drops a stale pre-placement audition.
   hand, measured on one render of the phrase (`edit_cable_levels`), keyed as
   the rack draws them (`from`, `to`, and both uids), in the live meter's dB
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
-  (a median 206 ms in wasm), so it is asked once an edit settles; while notes
+  (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live.
 
 ## The breed job

@@ -133,8 +133,8 @@ both read in the same scale, dB re 1 V of the raw port value (quiver's
   reaches the page as quiver's level windows fill. It needs no recompile and
   costs nothing when off.
 - **The cable probe,** for a patch at rest (`auracle_features::probe_cables`,
-  `cable_levels` and `WasmEngine::edit_cable_levels` in wasm, the worker's
-  `cable_levels` message). It renders the
+  `WasmEngine::edit_cable_levels` in wasm, the worker's `cable_levels`
+  message). It renders the
   [audition phrase](../audition/phrase.md) once and reads every audio cable
   after every tick of the main voice, through the routing slot its tap
   resolves to, keeping each cable's RMS and peak over the whole phrase, gaps
@@ -158,7 +158,7 @@ featurizer.
 Its cost is one render of the phrase. Natively, a probed render took a median
 0.99 times a plain one over the 62 presets (162 ms against 165 ms of CPU, on
 a shared machine, so the reads are lost in the noise); in wasm under node it
-took a median 206 ms, against 238 ms for a render with φ
+took a median 160 to 206 ms over two runs, against 183 to 238 ms for a render with φ
 (`crates/auracle-wasm/examples/cable_cost.mjs`). That is not a per-block
 cost, so the probe runs once a structural edit has settled, in the worker's
 `later` lane, and the live meter covers the patch while notes sound.
