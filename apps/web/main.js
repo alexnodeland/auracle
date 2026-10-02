@@ -337,7 +337,8 @@ const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
 // and an <img> of a drawing already made costs nothing to put back.
 let faceSendQueued = false;
 let facePaintQueued = false;
-let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, result}
+let faceOfLast = null; // PERFORM's last `faceOf`: {json, epoch, landed, result}
+let faceLanded = 0; // bumped when any face lands, so a missing one is looked for again
 
 /** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
 function treeRef(json) {
@@ -393,6 +394,36 @@ function faceImage(face, w, h, opts = {}) {
   drawVessel(ctx, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: h >= 20, ...opts });
   return c.toDataURL("image/png");
 }
+/** TASTE's map: a sound's mark is its face (taste.js `drawMark`, through
+ *  `host.drawFace`), as the mock draws it. Its height keeps the map's size
+ *  for the model's doubt (`size`, twice taste-geom's `mapDotRadius`) over a
+ *  floor that keeps it a face, so a less sure sound is a bigger face; it
+ *  stays inside the ring around the sound you're playing (`r + 6`). Drawn
+ *  once per bank and size into a small canvas, then copied each frame. False
+ *  until the face has landed (asked for here), and the map draws its dot. */
+const faceMapCache = new Map(); // "key|epoch|h" -> canvas
+function drawMapFace(ctx, id, x, y, size) {
+  const key = faceKeyById.get(id);
+  const face = key && lruGet(faceByKey, key);
+  if (!face) wantFace(`i${id}`);
+  if (!face || !faceStats) return false;
+  const h = Math.round(10 + size);
+  const w = Math.max(6, Math.round(h * 0.6));
+  const ck = `${key}|${faceEpoch}|${h}`;
+  let c = lruGet(faceMapCache, ck);
+  if (!c) {
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    c = document.createElement("canvas");
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVessel(g, face, faceStats, { box: vesselBox(w, h), color: tok("--phos-a"), slices: true });
+    lruSet(faceMapCache, ck, c);
+  }
+  ctx.drawImage(c, x - w / 2, y - h / 2, w, h);
+  return true;
+}
 function wantFace(target) {
   if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
   faceWanted.add(target);
@@ -419,6 +450,7 @@ function sendFaceAsks() {
 /** The worker's answer: faces it had, renders still to come, and targets it
  *  has none for. */
 function facesLanded(m) {
+  if ((m.items || []).length) faceLanded++;
   for (const it of m.items || []) {
     const face = decodeFace(it.face);
     if (!face) continue;
@@ -436,11 +468,16 @@ function facesLanded(m) {
     faceNone.add(target);
   }
   // Dropped by the worker as their slots left the view: asked again when
-  // they come back into it.
+  // they come back into it, or now, if one came back while the drop was on
+  // its way.
   for (const c of m.cancelled || []) {
     const target = c.id != null ? `i${c.id}` : c.ref;
     faceAsked.delete(target);
     faceLazy.delete(target);
+    if (faceSlotInView(target)) {
+      faceLazy.add(target);
+      wantFace(target);
+    }
   }
   facesChanged();
 }
@@ -458,6 +495,8 @@ function facesChanged() {
     facePaintQueued = false;
     faceRestat();
     paintFaces();
+    // TASTE's map draws faces too: a frame with the ones that landed.
+    if (currentView === "taste" && taste) taste.draw();
     // A card waiting on its face. Only the card: the rack's readout builds the
     // rack to measure it, and this runs on every bank render.
     if (imageState.scope === "card") imageSync();
@@ -563,10 +602,12 @@ let faceDropQueued = null;
  *  what is still waiting when one leaves it: a face's render costs half a
  *  second, and a list scrolled through is not a list looked at. */
 function faceWhenSeen(root) {
-  // A list rebuilt drops its old slots: stop watching them, and drop what
-  // they were waiting on (the new slots ask again as they are seen).
+  // A list rebuilt (a ▶, a rating, a load: any bank render) drops its old
+  // slots: stop watching them. What they were waiting on is not dropped
+  // here: the new slots are watched at once, and the first sighting of each
+  // lets go of what is out of view and keeps what is still in it. (Dropping
+  // everything here cancelled the faces of rows still on screen.)
   if (faceSeer) faceSeer.disconnect();
-  faceLazyDrop();
   if (!faceSeer) {
     faceSeer = new IntersectionObserver((seen) => {
       for (const e of seen) {
@@ -597,6 +638,17 @@ function faceDrop(target) {
     });
   }
   faceDropQueued.add(target);
+}
+/** Is a slot for `target` in the bank's visible rows? */
+function faceSlotInView(target) {
+  const list = $("bank-list");
+  if (!list || !target) return false;
+  const box = list.getBoundingClientRect();
+  for (const el of list.querySelectorAll(`.face-slot[data-face="${target}"]`)) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > box.top && r.top < box.bottom && r.width) return true;
+  }
+  return false;
 }
 /** Let go of every lazy face still waiting (the presets are out of sight). */
 function faceLazyDrop() {
@@ -4455,13 +4507,13 @@ async function bootPerform() {
     // bank it was given for, the same object until either changes.
     faceOf: (json) => {
       const k = faceOfLast;
-      if (k && k.json === json && k.epoch === faceEpoch && k.result) return k.result;
+      if (k && k.json === json && k.epoch === faceEpoch && k.landed === faceLanded) return k.result;
       const target = json ? faceTarget({ tree: json }) : "";
       const key = target && faceKeyOfTarget(target);
       const face = key && faceByKey.get(key);
       if (!face && target) wantFace(target);
       const result = face && faceStats ? { face, stats: faceStats, color: tok("--phos-a") } : null;
-      faceOfLast = { json, epoch: faceEpoch, result };
+      faceOfLast = { json, epoch: faceEpoch, landed: faceLanded, result };
       return result;
     },
     locks: () => [...lockedAddrs()],
@@ -19458,6 +19510,8 @@ function activeStyles() {
 }
 
 taste = createTaste({
+  // Each sound on the map is drawn as its face (Plan-005 task 3).
+  drawFace: drawMapFace,
   geom,
   words,
   INK,

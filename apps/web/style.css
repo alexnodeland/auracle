@@ -1183,8 +1183,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .patch-head {
   display: grid;
   /* The subject's column is wider by its face (20 px and the 8 px gap), so
-     the name keeps the width it had before faces. */
-  grid-template-columns: clamp(208px, calc(26% + 28px), 348px) minmax(0, 1fr) auto;
+     the name keeps the width it had before faces; 26% of a stage 28 px
+     narrower (the bank is wider by the faces' column) is 7 px less again. */
+  grid-template-columns: clamp(208px, calc(26% + 35px), 348px) minmax(0, 1fr) auto;
   grid-template-areas: "subject callout evolve" "tools tools tools";
   align-items: center;
   column-gap: var(--s4);

@@ -218,7 +218,8 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      liking rises, the forecasts scored, copy as JSON, and the math, whose
      numbers come from `WasmEngine::model_facts`; the forecasts from
      `WasmEngine::forecasts`. Both ride the calibration reply. The map's mark
-     is one function (`drawMark`, `host.drawFace`), the faces' slot (task 3).
+     is one function (`drawMark`, `host.drawFace`), and draws each sound's
+     face (task 3), sized by the model's doubt.
      Then, to match Vision II exactly: the taste-over-time track and its
      replay, SOUND / TASTE, a weight's shading of the small map
      (`WasmEngine::pool_features`), the weights moving per pick (a `styles`

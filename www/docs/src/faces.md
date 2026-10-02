@@ -55,6 +55,8 @@ the face.
   and what you play is drawn over it.
 - **[The warm start](./getting-started/first-session.md#2-pick-the-three-youd-reach-for)**,
   on each of the nine cards.
+- **[TASTE](./views/taste.md)**: each sound on the map is its face, sized by
+  how unsure the model is about it.
 
 A face sits in space its place always keeps, so a name never moves when the
 face arrives. Where a name could be cut short (the bank, PATCH’s header, A

@@ -15,6 +15,8 @@
 // - The sound's card downloads with its face, its name and its patch.
 // - A face is a pure function of the render: the same session reloaded (its
 //   faces now from the worker's store) draws every row the same.
+// - A preset row's face, on its way when the bank redraws (a play, a load),
+//   still lands, without a scroll.
 // - A face's render never goes ahead of a refit: with sixty of them queued
 //   (a list of presets scrolled through), a refit is answered at once.
 //
@@ -307,5 +309,31 @@ test("a refit is answered promptly while sixty face renders wait", async ({ page
   });
   expect(t.facesBefore, `${t.facesBefore} faces landed before the fit's answer`).toBeLessThan(40);
   expect(t.ms, `the fit took ${Math.round(t.ms)} ms`).toBeLessThan(6000);
+  expect(errors).toEqual([]);
+});
+
+test("a preset's face still lands after the bank redraws while it was on its way", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await boot(page);
+  await booted(page);
+  await bankDrawn(page);
+  // PRESETS asks for the faces of the rows in view, each a render; a play at
+  // once redraws the bank (the preset joins the pool) while they are pending.
+  await page.locator('.bf[data-f="preset"]').click();
+  await expect(page.locator("#bank-list .preset-item").first()).toBeVisible();
+  await page.locator("#bank-list .preset-item .bi-hear").first().click();
+  // Every row in view gets its face, without a scroll.
+  const inView = () => page.evaluate(() => {
+    const list = document.getElementById("bank-list").getBoundingClientRect();
+    const rows = [...document.querySelectorAll("#bank-list .preset-item")].filter((r) => {
+      const b = r.getBoundingClientRect();
+      return b.top >= list.top && b.bottom <= list.bottom;
+    });
+    return { rows: rows.length, faces: rows.filter((r) => r.querySelector(".face-slot img.face")).length };
+  });
+  await expect.poll(async () => {
+    const v = await inView();
+    return v.rows > 3 && v.faces === v.rows;
+  }, { timeout: 120_000 }).toBe(true);
   expect(errors).toEqual([]);
 });

@@ -276,8 +276,14 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   face (`host.faceOf(tree)`: the face and the bank) with `drawVessel` at full
   height, with its glow and reflection, on a still layer drawn again only
   when the face, the bank or the size changes; what sounds is drawn over it
-  on a second canvas (`st-trail`), in the face's bands (`liveBands`) against
-  the same bank, fading like phosphor and cleared in silence.
+  on a second canvas (`st-trail`), measured as a face is (`createLiveMeter`:
+  the analyser's time-domain samples through the face's Hann frame and band
+  weights, in buffers made once) against the same bank, fading like phosphor
+  and cleared in silence.
+- **TASTE's map** draws each sound as its face (`host.drawFace`, main's
+  `drawMapFace`), sized by the model's doubt, from a small canvas drawn once
+  per bank and size; a dot until the face lands, and the map is redrawn as
+  faces do.
 
 ## The breed job
 
