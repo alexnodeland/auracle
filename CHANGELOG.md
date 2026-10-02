@@ -12,7 +12,8 @@ changelog that edits its own past is not a record.
 
 - **AUDIO IN brings your own signal into a patch**: a microphone, or a
   guitar or a line out through an interface. It is under SOURCES in the
-  module rail; put a filter, a delay or a follower after it. The browser asks
+  module rail; put a filter or a delay after it, or let a follower in the next
+  module's mod slot move with your playing. The browser asks
   for an input only when you add one, and what it hears stays in the browser.
   Refuse, and the module stays in the patch, silent, with ASK AGAIN.
 - **MONITOR plays your input through the sound with no key down.** It starts
