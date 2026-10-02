@@ -481,6 +481,73 @@ pub struct CompiledVoice {
     pub taps: HashMap<String, (String, PortId)>,
 }
 
+/// A gate that stays high for at most [`TAKE_SECONDS`] after it rises: a
+/// CAPTURE's record gate goes through one, so no press records more than a
+/// take may hold at the voice's rate. Low until the gate falls and rises
+/// again. Allocates nothing.
+pub struct RecordWindow {
+    sample_rate: f64,
+    /// Samples left in this press; 0 once spent.
+    left: usize,
+    held: bool,
+    spec: quiver::port::PortSpec,
+}
+
+impl RecordWindow {
+    /// A window for a voice at `sample_rate`.
+    pub fn new(sample_rate: f64) -> Self {
+        use quiver::port::{PortDef, PortSpec, SignalKind};
+        Self {
+            sample_rate,
+            left: 0,
+            held: false,
+            spec: PortSpec {
+                inputs: vec![PortDef::new(0, "in", SignalKind::Gate)],
+                outputs: vec![PortDef::new(10, "out", SignalKind::Gate)],
+            },
+        }
+    }
+
+    /// Samples one press may record.
+    pub fn max_samples(&self) -> usize {
+        (TAKE_SECONDS * self.sample_rate).floor() as usize
+    }
+}
+
+impl GraphModule for RecordWindow {
+    fn port_spec(&self) -> &quiver::port::PortSpec {
+        &self.spec
+    }
+
+    fn tick(&mut self, inputs: &quiver::port::PortValues, outputs: &mut quiver::port::PortValues) {
+        let high = inputs.get_or(0, 0.0) > 2.5;
+        if high && !self.held {
+            self.left = self.max_samples();
+        }
+        self.held = high;
+        let open = high && self.left > 0;
+        if open {
+            self.left -= 1;
+        }
+        outputs.set(10, if open { GATE_TRUE } else { GATE_FALSE });
+    }
+
+    fn reset(&mut self) {
+        self.left = 0;
+        self.held = false;
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: f64) {
+        if sample_rate > 0.0 && sample_rate.is_finite() {
+            self.sample_rate = sample_rate;
+        }
+    }
+
+    fn type_id(&self) -> &'static str {
+        "auracle_record_window"
+    }
+}
+
 /// The three signals a TRACK plays its branch with, held outside the patch:
 /// what a follower voice ([`compile_follower`]) reads in place of a tracker of
 /// its own. Written by [`CompiledVoice::lead`].
@@ -513,8 +580,11 @@ impl CompiledVoice {
     }
 
     /// The take the CAPTURE at `key` holds right now: what it was compiled
-    /// with, or what it has recorded since. `None` when there is no CAPTURE
-    /// there, or (never expected) its state cannot be read as a take.
+    /// with, or what it has recorded since. `None` only when there is no
+    /// CAPTURE there: a take it was compiled with passed the bound, and a
+    /// recording stops at [`TAKE_SECONDS`] at this voice's rate (the record
+    /// gate goes through [`RecordWindow`]), even into a buffer a longer,
+    /// higher-rate take enlarged, so its state always reads as a take.
     ///
     /// Reads the module's own saved state, which is the take's saved form, so
     /// what comes back is bit for bit what it recorded. Allocates; not for the
@@ -3128,7 +3198,15 @@ impl Compiler {
                     format!("{key}:rec"),
                     ExternalInput::gate(Arc::clone(&record)),
                 );
-                self.patch.connect(gate.out("out"), cap.in_("record"))?;
+                // At most `TAKE_SECONDS` of recording per press, at this
+                // rate: the buffer can be longer than that (a higher-rate
+                // take loaded into it grows it), and a longer recording would
+                // be a take its own loader refuses.
+                let window = self
+                    .patch
+                    .add(format!("{key}:recwin"), RecordWindow::new(self.sr()));
+                self.patch.connect(gate.out("out"), window.in_("in"))?;
+                self.patch.connect(window.out("out"), cap.in_("record"))?;
                 self.records.insert(key.to_string(), record);
                 // Pitched by whoever plays this branch: C4 (0 V) plays the
                 // take at the speed it was recorded.

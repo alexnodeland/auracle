@@ -2677,6 +2677,33 @@ mod tests {
         assert_eq!(p.take("node"), Some(take), "playing moved the take");
     }
 
+    /// **A recording never outgrows a take.** A 4 s take recorded at 96 kHz,
+    /// loaded into a capture compiled at 48 kHz, grows its buffer to 8 s at
+    /// that rate; a 6 s press of the record gate then records 4 s, the bound
+    /// at 48 kHz, and the take reads back.
+    #[test]
+    fn a_long_recording_into_an_enlarged_buffer_stops_at_the_bound() {
+        let hi = 96_000.0;
+        let long = Take::from_samples(&tone((TAKE_SECONDS * hi) as usize, 330.0), hi).unwrap();
+        let sr = 48_000.0;
+        let n = (6.0 * sr) as usize;
+        let x: Vec<f32> = (0..n)
+            .map(|i| 0.2 + 0.1 * ((i % 97) as f32 / 97.0))
+            .collect();
+        let stream = stream_of(&x);
+        let tree = patch(captured(term::CaptureMode::Once, long));
+        let mut v = compile_with_input(&tree, sr, Some(&stream)).unwrap();
+        v.records["node"].set(5.0);
+        for _ in 0..n {
+            v.patch.tick();
+            stream.advance();
+        }
+        let take = v.take("node").expect("the recording reads back as a take");
+        assert_eq!(take.len(), (TAKE_SECONDS * sr) as usize);
+        assert_eq!(take.sample_rate(), Some(sr));
+        assert!(take.seconds() <= TAKE_SECONDS);
+    }
+
     /// The three ways a note plays a take: once to its end however short the
     /// note, held until the note ends, and round and round while held.
     #[test]
