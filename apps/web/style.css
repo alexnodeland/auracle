@@ -5127,8 +5127,15 @@ html.handheld .handheld-gate {
 .face-slot .face { display: block; pointer-events: none; }
 /* PATCH's teach strip: the face, then the name. */
 .pd-side .face-slot { margin-right: var(--s1); }
-/* Beside a name that sits on its baseline (an EVOLVE card's), centered. */
-.duel-name > .face-slot { align-self: center; }
+/* An EVOLVE card's face, before its name; the name keeps the head's free
+   space, so the badge and the flip stay at the right. */
+.panel-head > .face-slot + .duel-name { margin-right: auto; }
+/* At 1000 to 1080 px the bank is wider by the faces' column (228 px, not
+   200); PERFORM's side padding gives the 28 px back, so its eight captions
+   keep the width they had (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .stage > .view.perform { padding-left: var(--s2); padding-right: var(--s2); } /* (0,3,0): over PERFORM's own padding, set further down */
+}
 /* A warm-start card: the face left of its two lines, in a column the card
    always has. */
 .warm-cell .warm-item { padding-left: calc(var(--s3) + var(--s5) + var(--s2)); }

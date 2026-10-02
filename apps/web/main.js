@@ -5700,8 +5700,9 @@ function loadSide(side, id) {
 // bank. The s-expression is engine truth, not a label — it lives under the
 // ⇄ circuit flip, where an expert can still find it.
 function paintDuelName(side, id) {
+  setFaceSlot($(`face-${side}`), "pair", { id });
   $(`name-${side}`).innerHTML =
-    `${faceSlot("pair", { id })}${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
+    `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
 }
 
 // A side whose buffer is on its way. The scopes used to sit as empty

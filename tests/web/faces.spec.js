@@ -100,8 +100,8 @@ test("a face appears on every row, card and chip once its render lands", async (
   await bankDrawn(page);
   // EVOLVE's two cards.
   await page.locator('.viewtab[data-view="evolve"]').click();
-  await expect(page.locator("#name-a .face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
-  await expect(page.locator("#name-b .face-slot img.face")).toHaveCount(1);
+  await expect(page.locator("#face-a.face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator("#face-b.face-slot img.face")).toHaveCount(1);
   // PATCH: the header and the teach strip's A and B.
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
   await expect(page.locator("#subject-face img.face")).toHaveCount(1, { timeout: 60_000 });
