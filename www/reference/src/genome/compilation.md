@@ -77,7 +77,8 @@ fn makes_dc(node: &AudioNode) -> bool {
 Two productions generate a DC offset (the ladder filter and tube-mode
 distortion), and it propagates up through anything downstream of them. An
 `AudioIn` always pays for the blocker: a host input can carry an offset of its
-own.
+own, and so does a `Capture`, whose take was recorded from one. A `Track` pays
+for it only if the branch it plays does.
 
 Without the blocker, a tube-drive patch measures 1–8% DC as a fraction of RMS.
 That is nowhere near the [vet gate’s](../audition/vetting.md) 0.6 limit, which

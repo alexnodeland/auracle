@@ -48,11 +48,12 @@ pub mod presets;
 pub mod prior;
 pub mod rng;
 pub mod steps;
+pub mod take;
 pub mod term;
 
 pub use compile::{
-    compile, compile_with_input, CompiledVoice, ParamHandle, ParamMap, COMPILE_MAX_NESTING,
-    INPUT_GAIN_UNITY,
+    compile, compile_follower, compile_with_input, CompiledVoice, ParamHandle, ParamMap, TrackFeed,
+    COMPILE_MAX_NESTING, INPUT_GAIN_UNITY, TRACK_SENSITIVITY_DEFAULT,
 };
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
@@ -61,7 +62,10 @@ pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
-pub use term::{AudioNode, InputChannel, ModNode, PatchTree, Uid, INPUT_SLOTS};
+pub use take::{SavedTake, Take, TakeError, MAX_TAKE_RATE, TAKE_FORMAT, TAKE_SECONDS};
+pub use term::{
+    AudioNode, CaptureMode, InputChannel, ModNode, PatchTree, PitchBand, Uid, INPUT_SLOTS,
+};
 
 #[cfg(test)]
 mod tests {
@@ -2122,5 +2126,638 @@ mod tests {
             level(&right, Some(&stream()), None) < 1e-6,
             "the right channel of this input is silent"
         );
+    }
+
+    // ---- TRACK and CAPTURE (Plan-007 tasks 5 and 6) ----
+
+    /// A held amp, so what is heard is what the branch makes.
+    fn held_amp() -> term::AmpEnv {
+        term::AmpEnv {
+            attack: 0.0,
+            decay: 0.3,
+            sustain: PARAM_MAX,
+            release: 0.05,
+        }
+    }
+
+    fn sine_vco() -> term::AudioNode {
+        term::AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: term::Waveform::Sine,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.0,
+            modulation: term::ModNode::None,
+        }
+    }
+
+    fn audio_in(slot: u8) -> term::AudioNode {
+        term::AudioNode::AudioIn {
+            uid: Uid::NEW,
+            input: slot,
+            gain: INPUT_GAIN_UNITY,
+            channel: term::InputChannel::Both,
+        }
+    }
+
+    /// A sine VCO played by whatever comes in on `slot`.
+    fn tracked(band: term::PitchBand, dynamics: f64) -> term::AudioNode {
+        term::AudioNode::Track {
+            uid: Uid::NEW,
+            band,
+            sensitivity: TRACK_SENSITIVITY_DEFAULT,
+            dynamics,
+            input: Box::new(sine_vco()),
+            listen: Box::new(audio_in(0)),
+        }
+    }
+
+    fn captured(play: term::CaptureMode, take: Take) -> term::AudioNode {
+        term::AudioNode::Capture {
+            uid: Uid::NEW,
+            play,
+            input: Box::new(audio_in(0)),
+            take,
+        }
+    }
+
+    fn patch(root: term::AudioNode) -> PatchTree {
+        PatchTree {
+            amp: held_amp(),
+            root,
+        }
+    }
+
+    /// A tone that never sits on zero (so a bit-exact comparison cannot be
+    /// fooled by the sign of a zero), `n` samples at `SR`.
+    fn tone(n: usize, hz: f64) -> Vec<f32> {
+        (0..n)
+            .map(|i| (0.3 + 0.5 * (i as f64 * hz * std::f64::consts::TAU / SR).sin()) as f32)
+            .collect()
+    }
+
+    /// A host-clock stream holding `x` (mono, both channels), as a render
+    /// binds one.
+    fn stream_of(x: &[f32]) -> std::sync::Arc<quiver::prelude::AudioInputStream> {
+        let s = std::sync::Arc::new(quiver::prelude::AudioInputStream::with_host_clock(
+            2,
+            x.len(),
+        ));
+        s.write(&[x, x]);
+        s
+    }
+
+    /// Frequency of a signal from its rising zero crossings, interpolated, over
+    /// `x` (Hz at `SR`). `None` with fewer than two crossings.
+    fn frequency(x: &[f64]) -> Option<f64> {
+        let mean = x.iter().sum::<f64>() / x.len() as f64;
+        let mut first = None;
+        let mut last = None;
+        let mut n = 0usize;
+        for i in 1..x.len() {
+            let (a, b) = (x[i - 1] - mean, x[i] - mean);
+            if a < 0.0 && b >= 0.0 {
+                let t = (i - 1) as f64 + a / (a - b);
+                if first.is_none() {
+                    first = Some(t);
+                } else {
+                    n += 1;
+                }
+                last = Some(t);
+            }
+        }
+        match (first, last) {
+            (Some(f), Some(l)) if n > 0 => Some(SR * n as f64 / (l - f)),
+            _ => None,
+        }
+    }
+
+    /// The rack draws a TRACK as a two-input plate (the branch it plays at
+    /// `/0`, the one it follows at `/1`) and a CAPTURE as a one-input plate,
+    /// each knob a trace site a knob edit writes, and neither with a
+    /// modulation slot.
+    #[test]
+    fn track_and_capture_are_plates_with_their_knobs() {
+        use describe::KnobKind;
+        let tree = patch(term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(tracked(term::PitchBand::High, 0.3)),
+            b: Box::new(captured(term::CaptureMode::Loop, Take::empty())),
+        });
+        let rack = describe::describe(&tree);
+        let plate = |key: &str| {
+            rack.modules
+                .iter()
+                .find(|m| m.key == key)
+                .unwrap_or_else(|| panic!("no plate at {key}"))
+                .clone()
+        };
+        let trace = tree.to_trace();
+        let track = plate("node/0");
+        assert_eq!(
+            (track.kind.as_str(), track.title.as_str()),
+            ("track", "track")
+        );
+        let labels: Vec<&str> = track.knobs.iter().map(|k| k.label.as_str()).collect();
+        assert_eq!(labels, ["band", "sensitivity", "dynamics"]);
+        let addrs: Vec<&str> = track.knobs.iter().map(|k| k.addr.as_str()).collect();
+        assert_eq!(addrs, ["node/0#band", "node/0#tsens", "node/0#tdyn"]);
+        match &track.knobs[0].kind {
+            KnobKind::Enum { options } => {
+                assert_eq!(options, &["low", "mid", "high"]);
+                assert_eq!(track.knobs[0].value, 2.0);
+            }
+            k => panic!("band is a selector, not {k:?}"),
+        }
+        assert_eq!(track.structural_addrs, ["node/0#leaf", "node/0#op"]);
+        for w in ["node/0/0", "node/0/1"] {
+            assert!(
+                rack.wires.iter().any(|x| x.from == w && x.to == "node/0"),
+                "no wire from {w}"
+            );
+        }
+        let capture = plate("node/1");
+        assert_eq!(
+            (capture.kind.as_str(), capture.title.as_str()),
+            ("capture", "capture")
+        );
+        assert_eq!(capture.knobs.len(), 1);
+        assert_eq!(capture.knobs[0].label, "play");
+        match &capture.knobs[0].kind {
+            KnobKind::Enum { options } => assert_eq!(options, &["once", "hold", "loop"]),
+            k => panic!("play is a selector, not {k:?}"),
+        }
+        assert_eq!(capture.structural_addrs, ["node/1#leaf", "node/1#op"]);
+        assert!(rack
+            .wires
+            .iter()
+            .any(|x| x.from == "node/1/0" && x.to == "node/1"));
+        // Every knob is a trace site, and a knob edit writes it.
+        for k in track.knobs.iter().chain(&capture.knobs) {
+            let (key, site) = edit::split_addr(&k.addr);
+            assert!(
+                trace.choices.contains_key(&fugue::addr!(key, site)),
+                "{} is not a trace site",
+                k.addr
+            );
+        }
+        let set = set_param(&tree, "node/1#play", ParamValue::Index(1)).unwrap();
+        assert!(matches!(
+            node_at(&set.root, "node/1"),
+            Some(term::AudioNode::Capture {
+                play: term::CaptureMode::Hold,
+                ..
+            })
+        ));
+        // Neither takes a modulator, and each says so in its own words.
+        for key in ["node/0", "node/1"] {
+            let refused = mutate::apply_struct_op(
+                &tree,
+                &mutate::StructOp::SetMod {
+                    key: key.into(),
+                    kind: mutate::ModKind::Lfo,
+                },
+            );
+            assert!(
+                matches!(&refused, Err(StructError::Invalid(why)) if why.contains("track and capture")),
+                "{refused:?}"
+            );
+        }
+    }
+
+    /// **The prior never draws a player kind, and its draws are what they
+    /// were.** Neither sampler draws a TRACK or a CAPTURE over thousands of
+    /// trees, and the two still agree with each other; that the draws are bit
+    /// for bit unchanged is `prior`'s `op_kind_samples_what_the_old_table_sampled`
+    /// and the pinned boot probe (`auracle-wasm/tests/boot_agrees.rs`).
+    #[test]
+    fn the_prior_never_draws_a_player_kind() {
+        fn holds(n: &term::AudioNode) -> bool {
+            matches!(
+                n,
+                term::AudioNode::Track { .. } | term::AudioNode::Capture { .. }
+            ) || n.children().into_iter().any(holds)
+        }
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x7EAC);
+        for _ in 0..3_000 {
+            let (t, _) = draw(&prior, &mut rng);
+            assert!(!holds(&t.root), "the model drew {}", t.to_sexpr());
+            let t = prior.sample_with_rng(&mut rng);
+            assert!(!holds(&t.root), "the RNG sampler drew {}", t.to_sexpr());
+        }
+    }
+
+    /// **A player's patch stays inside the prior's support.** A TRACK or a
+    /// CAPTURE scores finite (so `EvolutionChain::init_from` accepts it and a
+    /// walk can start from it), at every band and play mode, the codec
+    /// round-trips it with the site count `site_count` claims, and the
+    /// program replays the same choices. Swapping a drawn kind for a player
+    /// kind costs the same prior mass wherever it sits.
+    #[test]
+    fn player_kinds_round_trip_and_score_finite() {
+        // These trees listen through an AUDIO IN, which the shipped prior
+        // scores at −∞ until live capture works; with it on, what is left to
+        // score is the player kinds themselves.
+        let prior = PatchGrammarPrior::default().with_audio_in();
+        let mut trees = Vec::new();
+        for band in term::PitchBand::ALL {
+            trees.push(patch(tracked(band, 0.5)));
+        }
+        for play in term::CaptureMode::ALL {
+            trees.push(patch(captured(play, Take::empty())));
+        }
+        for t in &trees {
+            let trace = t.to_trace();
+            assert_eq!(trace.choices.len(), t.site_count());
+            assert_eq!(&PatchTree::from_trace(&trace).unwrap(), t);
+            let (replayed, scored) = run(
+                ScoreGivenTrace {
+                    base: trace,
+                    trace: Trace::default(),
+                },
+                prior.model(),
+            );
+            assert_eq!(&replayed, t, "the program replays another tree");
+            assert!(scored.log_prior.is_finite(), "{}", t.to_sexpr());
+        }
+        // The `#op` term is the same constant wherever the kind sits, so it
+        // cancels from every ratio a walk takes.
+        let filter_over = |inner: term::AudioNode| {
+            patch(term::AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: term::FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(inner),
+                modulation: term::ModNode::None,
+            })
+        };
+        let top = log_prior(&prior, &patch(tracked(term::PitchBand::Mid, 0.5)));
+        let under = log_prior(&prior, &filter_over(tracked(term::PitchBand::Mid, 0.5)));
+        let filter_alone =
+            log_prior(&prior, &filter_over(sine_vco())) - log_prior(&prior, &patch(sine_vco()));
+        assert!((under - top - filter_alone).abs() < 1e-9);
+    }
+
+    /// **A take is carried, never lost, wherever a term is rebuilt.** The codec
+    /// cannot carry a take (it is not a choice), so a decoded CAPTURE is empty;
+    /// `inherit_uids` brings it back, and so a knob edit, a domain repair and
+    /// the take's own saved form all keep the recording.
+    #[test]
+    fn a_take_survives_every_rebuild() {
+        let take = Take::from_samples(&tone(2_000, 330.0), SR).unwrap();
+        let tree = patch(term::AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: term::FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(captured(term::CaptureMode::Once, take.clone())),
+            modulation: term::ModNode::None,
+        });
+        let take_at = |t: &PatchTree| match node_at(&t.root, "node/0") {
+            Some(term::AudioNode::Capture { take, .. }) => take.clone(),
+            n => panic!("no capture at node/0: {n:?}"),
+        };
+        let mut decoded = PatchTree::from_trace(&tree.to_trace()).unwrap();
+        assert!(take_at(&decoded).is_empty(), "the trace carries no take");
+        decoded.inherit_uids(&tree);
+        assert_eq!(take_at(&decoded), take);
+        let turned = set_param(&tree, "node/0#play", ParamValue::Index(2)).unwrap();
+        assert_eq!(take_at(&turned), take, "a knob edit dropped the take");
+        let mut mended = tree.clone();
+        if let term::AudioNode::Filter { cutoff, .. } = &mut mended.root {
+            *cutoff = 1.5;
+        }
+        assert_eq!(mended.clamp_domains(), 1);
+        assert_eq!(take_at(&mended), take, "a repair dropped the take");
+        let text = serde_json::to_string(&tree).unwrap();
+        let back: PatchTree = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, tree);
+        assert_eq!(back.lost_takes(), 0);
+        // A take is filled only where it is empty: a newer one stays.
+        let newer = Take::from_samples(&tone(500, 220.0), SR).unwrap();
+        let mut kept = tree.clone();
+        if let term::AudioNode::Filter { input, .. } = &mut kept.root {
+            if let term::AudioNode::Capture { take, .. } = input.as_mut() {
+                *take = newer.clone();
+            }
+        }
+        kept.inherit_uids(&tree);
+        assert_eq!(take_at(&kept), newer);
+    }
+
+    /// A corrupt take in a saved sound costs the sound its take and nothing
+    /// else: the patch loads, the capture is empty, and the term says why.
+    #[test]
+    fn a_corrupt_take_loads_the_patch_with_the_take_empty() {
+        let take = Take::from_samples(&tone(1_000, 330.0), SR).unwrap();
+        let tree = patch(captured(term::CaptureMode::Hold, take));
+        let mut v = serde_json::to_value(&tree).unwrap();
+        v["root"]["Capture"]["take"]["length"] = 999.into();
+        let back: PatchTree = serde_json::from_value(v).expect("the patch still loads");
+        assert_eq!(back.lost_takes(), 1);
+        match &back.root {
+            term::AudioNode::Capture { take, play, .. } => {
+                assert!(take.is_empty());
+                assert_eq!(*play, term::CaptureMode::Hold);
+            }
+            n => panic!("{n:?}"),
+        }
+        // Saved again, it holds no take (and no garbage).
+        assert!(!serde_json::to_string(&back).unwrap().contains("\"take\""));
+        assert!(compile(&back, SR).is_ok());
+    }
+
+    /// `SetTake` installs a recording on a CAPTURE, clears it with an empty
+    /// one, and refuses anywhere else and an unreadable take.
+    #[test]
+    fn set_take_installs_and_refuses() {
+        use mutate::StructOp;
+        let tree = patch(term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(captured(term::CaptureMode::Once, Take::empty())),
+            b: Box::new(sine_vco()),
+        });
+        let take = Take::from_samples(&tone(800, 440.0), SR).unwrap();
+        let op = |key: &str, take: Take| StructOp::SetTake {
+            key: key.into(),
+            take,
+        };
+        // Through its JSON, as the panel would send it.
+        let json = serde_json::to_string(&op("node/0", take.clone())).unwrap();
+        let parsed: StructOp = serde_json::from_str(&json).unwrap();
+        let set = mutate::apply_struct_op(&tree, &parsed).unwrap();
+        assert!(set.has_takes());
+        let cleared = mutate::apply_struct_op(&set, &op("node/0", Take::empty())).unwrap();
+        assert!(!cleared.has_takes());
+        assert!(mutate::apply_struct_op(&tree, &op("node/1", take.clone())).is_err());
+        let unreadable: Take = serde_json::from_str("{\"format\":\"nope\"}").unwrap();
+        assert!(mutate::apply_struct_op(&set, &op("node/0", unreadable.clone())).is_err());
+        // So is a fragment carrying one, by either splice.
+        let fragment = captured(term::CaptureMode::Hold, unreadable);
+        for op in [
+            StructOp::ReplaceTree {
+                key: "node/1".into(),
+                node: fragment.clone(),
+            },
+            StructOp::InsertTree {
+                key: "node/1".into(),
+                node: fragment.clone(),
+            },
+        ] {
+            let refused = mutate::apply_struct_op(&tree, &op);
+            assert!(
+                matches!(&refused, Err(StructError::Invalid(why)) if why.contains("couldn’t be read")),
+                "{refused:?}"
+            );
+        }
+    }
+
+    /// The sites a walk holds: every AUDIO IN's input and every player
+    /// kind's `#op`.
+    #[test]
+    fn player_sites_name_inputs_and_player_kinds() {
+        let tree = patch(term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(tracked(term::PitchBand::Mid, 0.5)),
+            b: Box::new(captured(term::CaptureMode::Once, Take::empty())),
+        });
+        assert_eq!(
+            tree.player_sites(),
+            ["node/0#op", "node/0/1#input", "node/1#op", "node/1/0#input"]
+        );
+        assert_eq!(tree.input_sites(), ["node/0/1#input", "node/1/0#input"]);
+    }
+
+    /// **TRACK plays its branch from the input.** A sine VCO under a TRACK,
+    /// fed a 220 Hz tone with no key held: the tracker's pitch reads the tone,
+    /// the VCO sings it, and the tracked gate opens the voice the way a key
+    /// does. With the input silent and no key, the voice stays shut. A VCO
+    /// beside the TRACK is still played by the keys.
+    #[test]
+    fn track_plays_its_branch_from_the_input() {
+        use quiver::prelude::AudioInputStream;
+        use std::sync::Arc;
+        let n = (SR * 0.8) as usize;
+        let run_voice = |tree: &PatchTree, input: &[f32], key: Option<f64>| {
+            let stream: Arc<AudioInputStream> = stream_of(input);
+            let mut v = compile_with_input(tree, SR, Some(&stream)).expect("compiles");
+            if let Some(pitch) = key {
+                v.pitch.set(pitch);
+                v.gate.set(5.0);
+            }
+            let track = v.patch.get_node_id_by_name("node:track");
+            let side = v.taps.get("node/1").cloned();
+            let side = side
+                .and_then(|(name, port)| v.patch.get_node_id_by_name(&name).map(|id| (id, port)));
+            let (mut out, mut voct, mut beside) = (Vec::new(), 0.0, Vec::new());
+            for _ in 0..n {
+                let (l, _) = v.patch.tick();
+                stream.advance();
+                out.push(l);
+                if let Some(id) = track {
+                    voct = v.patch.get_output_value(id, 10).unwrap_or(0.0);
+                }
+                if let Some((id, port)) = side {
+                    beside.push(v.patch.get_output_value(id, port).unwrap_or(0.0));
+                }
+            }
+            (out, voct, beside)
+        };
+        let sung = tone(n, 220.0);
+        let tree = patch(tracked(term::PitchBand::Mid, 0.0));
+        let (out, voct, _) = run_voice(&tree, &sung, None);
+        let cents = 1200.0 * (voct - (220.0f64 / 261.625_565_300_598_6).log2());
+        assert!(
+            cents.abs() < 5.0,
+            "the tracker reads the tone {cents:.1} cents off"
+        );
+        let tail = &out[out.len() / 2..];
+        let peak = tail.iter().fold(0.0f64, |m, s| m.max(s.abs()));
+        assert!(
+            peak > 0.05,
+            "the tracked gate did not open the voice ({peak})"
+        );
+        let hz = frequency(tail).expect("the voice sings");
+        assert!(
+            (1200.0 * (hz / 220.0).log2()).abs() < 5.0,
+            "the branch sings {hz:.2} Hz for a 220 Hz input"
+        );
+        let (quiet, _, _) = run_voice(&tree, &vec![0.0; n], None);
+        assert!(
+            quiet.iter().all(|s| s.abs() < 1e-9),
+            "with no input and no key, the voice stays shut"
+        );
+        // Beside the TRACK, the keys still play: C5 is 523 Hz.
+        let both = patch(term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
+            b: Box::new(sine_vco()),
+        });
+        let (_, _, beside) = run_voice(&both, &sung, Some(1.0));
+        let hz = frequency(&beside[beside.len() / 2..]).expect("the keyed VCO plays");
+        assert!(
+            (1200.0 * (hz / 523.251_130_601_197_3).log2()).abs() < 5.0,
+            "the VCO beside the TRACK plays {hz:.2} Hz, not the key's C5"
+        );
+    }
+
+    /// The dynamics knob is live and does what it says: at 0 the input's level
+    /// is ignored, all the way up a quiet input plays the branch quieter.
+    #[test]
+    fn track_dynamics_follow_the_input_level() {
+        use std::sync::Arc;
+        let n = (SR * 0.6) as usize;
+        let level = |dynamics: f64, amplitude: f32| {
+            let quiet: Vec<f32> = tone(n, 220.0)
+                .iter()
+                .map(|s| (s - 0.3) * amplitude)
+                .collect();
+            let stream = stream_of(&quiet);
+            let tree = patch(tracked(term::PitchBand::Mid, dynamics));
+            let mut v = compile_with_input(&tree, SR, Some(&Arc::clone(&stream))).unwrap();
+            let mut peak = 0.0f64;
+            for i in 0..n {
+                let (l, _) = v.patch.tick();
+                stream.advance();
+                if i > n / 2 {
+                    peak = peak.max(l.abs());
+                }
+            }
+            peak
+        };
+        let flat = level(0.0, 0.4);
+        let followed = level(PARAM_MAX, 0.4);
+        assert!(flat > 0.05);
+        assert!(
+            followed < flat * 0.6,
+            "a quiet input with dynamics up should play quieter ({followed} vs {flat})"
+        );
+    }
+
+    /// **CAPTURE records and plays back bit for bit.** Recorded through the
+    /// record gate from an AUDIO IN, the take is exactly what reached the
+    /// capture's input; saved and loaded with the patch it is the same take;
+    /// and a note plays it back sample for sample. A render that never raises
+    /// the gate leaves the take as it was.
+    #[test]
+    fn capture_records_and_plays_back_bit_exactly() {
+        let n = 3_000;
+        let x = tone(n, 330.0);
+        let stream = stream_of(&x);
+        let empty = patch(captured(term::CaptureMode::Once, Take::empty()));
+        let mut v = compile_with_input(&empty, SR, Some(&stream)).unwrap();
+        let (name, port) = v.taps["node/0"].clone();
+        let input = v.patch.get_node_id_by_name(&name).unwrap();
+        let record = v.records["node"].clone();
+        let (from, to) = (400, 2_400);
+        let mut heard = Vec::new();
+        for i in 0..n {
+            record.set(if (from..to).contains(&i) { 5.0 } else { 0.0 });
+            v.patch.tick();
+            stream.advance();
+            if (from..to).contains(&i) {
+                heard.push(v.patch.get_output_value(input, port).unwrap() as f32);
+            }
+        }
+        let take = v.take("node").expect("a capture at the root");
+        let bits = |s: &[f32]| s.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+        assert_eq!(take.len(), to - from);
+        assert_eq!(
+            bits(take.samples()),
+            bits(&heard),
+            "the take is not what was heard"
+        );
+        assert_eq!(take.sample_rate(), Some(SR));
+        // Saved with the sound, and back.
+        let full = patch(captured(term::CaptureMode::Once, take.clone()));
+        let back: PatchTree = serde_json::from_str(&serde_json::to_string(&full).unwrap()).unwrap();
+        assert_eq!(back, full);
+        // A note plays it, sample for sample, at the speed it was recorded.
+        let mut p = compile(&back, SR).unwrap();
+        let (name, port) = p.taps["node"].clone();
+        let out = p.patch.get_node_id_by_name(&name).unwrap();
+        p.gate.set(5.0);
+        let mut played = Vec::new();
+        for _ in 0..take.len() {
+            p.patch.tick();
+            played.push(p.patch.get_output_value(out, port).unwrap());
+        }
+        let expected: Vec<f64> = take.samples().iter().map(|s| *s as f64).collect();
+        assert_eq!(played, expected, "playback is not the take");
+        assert_eq!(p.take("node"), Some(take), "playing moved the take");
+    }
+
+    /// **A recording never outgrows a take.** A 4 s take recorded at 96 kHz,
+    /// loaded into a capture compiled at 48 kHz, grows its buffer to 8 s at
+    /// that rate; a 6 s press of the record gate then records 4 s, the bound
+    /// at 48 kHz, and the take reads back.
+    #[test]
+    fn a_long_recording_into_an_enlarged_buffer_stops_at_the_bound() {
+        let hi = 96_000.0;
+        let long = Take::from_samples(&tone((TAKE_SECONDS * hi) as usize, 330.0), hi).unwrap();
+        let sr = 48_000.0;
+        let n = (6.0 * sr) as usize;
+        let x: Vec<f32> = (0..n)
+            .map(|i| 0.2 + 0.1 * ((i % 97) as f32 / 97.0))
+            .collect();
+        let stream = stream_of(&x);
+        let tree = patch(captured(term::CaptureMode::Once, long));
+        let mut v = compile_with_input(&tree, sr, Some(&stream)).unwrap();
+        v.records["node"].set(5.0);
+        for _ in 0..n {
+            v.patch.tick();
+            stream.advance();
+        }
+        let take = v.take("node").expect("the recording reads back as a take");
+        assert_eq!(take.len(), (TAKE_SECONDS * sr) as usize);
+        assert_eq!(take.sample_rate(), Some(sr));
+        assert!(take.seconds() <= TAKE_SECONDS);
+    }
+
+    /// The three ways a note plays a take: once to its end however short the
+    /// note, held until the note ends, and round and round while held.
+    #[test]
+    fn capture_plays_once_hold_and_loop() {
+        let take = Take::from_samples(&tone(1_000, 440.0), SR).unwrap();
+        let heard = |play: term::CaptureMode| {
+            let mut p = compile(&patch(captured(play, take.clone())), SR).unwrap();
+            let (name, port) = p.taps["node"].clone();
+            let out = p.patch.get_node_id_by_name(&name).unwrap();
+            let mut sounding = Vec::new();
+            for i in 0..3_000 {
+                // A 300-sample note.
+                p.gate.set(if i < 300 { 5.0 } else { 0.0 });
+                p.patch.tick();
+                sounding.push(p.patch.get_output_value(out, port).unwrap() != 0.0);
+            }
+            sounding
+        };
+        let once = heard(term::CaptureMode::Once);
+        assert!(
+            once[999] && !once[1_000],
+            "once plays the whole take, then stops"
+        );
+        let hold = heard(term::CaptureMode::Hold);
+        assert!(hold[299] && !hold[300], "hold stops when the note does");
+        let mut long =
+            compile(&patch(captured(term::CaptureMode::Loop, take.clone())), SR).unwrap();
+        let (name, port) = long.taps["node"].clone();
+        let out = long.patch.get_node_id_by_name(&name).unwrap();
+        long.gate.set(5.0);
+        let mut last = 0.0;
+        for _ in 0..2_500 {
+            long.patch.tick();
+            last = long.patch.get_output_value(out, port).unwrap();
+        }
+        assert_ne!(last, 0.0, "loop is still playing past the take's end");
+        assert!(take.len() < 2_500);
     }
 }

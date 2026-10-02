@@ -114,6 +114,10 @@ pub fn node_family(kind: NodeKind) -> &'static str {
         | NodeKind::Vibrato => "mod_fx",
         NodeKind::Reverb => "reverb",
         NodeKind::Comp | NodeKind::Duck | NodeKind::Gate => "dynamics",
+        // Counted (`n_track`, `n_capture`) and no column, like AUDIO IN; a
+        // guess never offers either (`guessable_insert`).
+        NodeKind::Track => "track",
+        NodeKind::Capture => "capture",
     }
 }
 
@@ -131,6 +135,8 @@ pub fn guessable_source(kind: NodeKind) -> bool {
         | NodeKind::Formant => true,
         // It asks for a device and a permission, and a guess must not.
         NodeKind::AudioIn => false,
+        // Processors, which are never placed in a socket.
+        NodeKind::Track | NodeKind::Capture => false,
         NodeKind::Silence
         | NodeKind::Mix
         | NodeKind::Filter
@@ -157,9 +163,9 @@ pub fn guessable_source(kind: NodeKind) -> bool {
 
 /// Whether a guess may insert `kind` into a wire. Exhaustive, with no
 /// catch-all, so a new processor kind does not compile until someone
-/// decides. Every processor today may be guessed. A module whose default
-/// brings AUDIO IN (TRACK's `/1` asks for a device) or whose empty default
-/// silences the chain it lands on (an empty CAPTURE take) must say no.
+/// decides. Every processor the prior draws may be guessed. The two player
+/// kinds say no: TRACK's default `/1` is an AUDIO IN, which asks for a
+/// device, and an empty CAPTURE take silences the chain it lands on.
 /// Sources are never inserted.
 pub fn guessable_insert(kind: NodeKind) -> bool {
     match kind {
@@ -191,6 +197,9 @@ pub fn guessable_insert(kind: NodeKind) -> bool {
         | NodeKind::Formant
         | NodeKind::Silence
         | NodeKind::AudioIn => false,
+        // TRACK's default `/1` is an AUDIO IN, which asks for a device; an
+        // empty CAPTURE silences the chain it lands on.
+        NodeKind::Track | NodeKind::Capture => false,
     }
 }
 

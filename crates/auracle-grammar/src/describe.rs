@@ -14,9 +14,9 @@ use crate::prior::STEPS_SITES;
 use crate::steps::step_count;
 
 use crate::term::{
-    quant_root_index, quant_scale_index, rect_mode_index, AudioNode, DriveMode, FilterKind,
-    InputChannel, ModNode, ModOp, NoiseColor, PatchTree, TableShape, Waveform, INPUT_SLOTS,
-    QUANT_ROOTS, QUANT_SCALES, RECT_MODES,
+    quant_root_index, quant_scale_index, rect_mode_index, AudioNode, CaptureMode, DriveMode,
+    FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PatchTree, PitchBand, TableShape,
+    Waveform, INPUT_SLOTS, QUANT_ROOTS, QUANT_SCALES, RECT_MODES,
 };
 
 /// What kind of control a knob is.
@@ -177,6 +177,16 @@ pub fn input_options() -> Vec<String> {
 /// Display names for an AUDIO IN's channel categorical, in index order.
 pub fn channel_options() -> Vec<String> {
     InputChannel::ALL.iter().map(|c| c.label().into()).collect()
+}
+
+/// Display names for a TRACK's pitch band, in index order.
+pub fn band_options() -> Vec<String> {
+    PitchBand::ALL.iter().map(|b| b.label().into()).collect()
+}
+
+/// Display names for how a CAPTURE plays its take, in index order.
+pub fn play_options() -> Vec<String> {
+    CaptureMode::ALL.iter().map(|m| m.label().into()).collect()
 }
 
 fn knob_c(key: &str, site: &str, label: &str, value: f64) -> Knob {
@@ -1188,6 +1198,50 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             modulator,
             modulation,
         ),
+        // The played branch is `/0` and the one it follows `/1`, drawn as the
+        // other two-input modules are. Sensitivity reads the way it turns: up
+        // opens the gate on a quieter input.
+        AudioNode::Track {
+            band,
+            sensitivity,
+            dynamics,
+            input,
+            listen,
+            ..
+        } => push_binary(
+            out,
+            module(
+                "track",
+                "track",
+                vec![
+                    knob_e(key, "band", "band", band.index(), band_options()),
+                    knob_c(key, "tsens", "sensitivity", *sensitivity),
+                    knob_c(key, "tdyn", "dynamics", *dynamics),
+                ],
+                leaf_op,
+            ),
+            input,
+            listen,
+        ),
+        // One knob: how a note plays the take. The take itself is content,
+        // not a knob, so it has no dial here. No modulation slot, so the
+        // plate, its one input wire and the branch it records, and nothing
+        // else.
+        AudioNode::Capture { play, input, .. } => {
+            out.modules.push(module(
+                "capture",
+                "capture",
+                vec![knob_e(key, "play", "play", play.index(), play_options())],
+                leaf_op,
+            ));
+            let child = format!("{key}/0");
+            out.wires.push(Wire {
+                from: child.clone(),
+                to: key.into(),
+                kind: "audio".into(),
+            });
+            describe_node(input, &child, column + 1, out);
+        }
     }
 }
 

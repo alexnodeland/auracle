@@ -50,8 +50,8 @@ pedal. The right of the keybed shows the MIDI state (*midi ●* with a device
 connected); click it for the mapping panel.
 
 A controller with knobs works too, with nothing to set up. The first eight
-knobs you turn take [PERFORM](./views/perform.md)’s eight controls, in the
-order you turn them, and the panel’s **LEARN** remaps any of them. Channel
+knobs you turn take the first eight controls on
+[PERFORM](./views/perform.md)’s deck, in the order you turn them, and the panel’s **LEARN** remaps any of them. Channel
 pressure brightens the sound, the mod wheel drives MOTION, and incoming MIDI
 clock sets the tempo. The mapping is remembered for each device.
 

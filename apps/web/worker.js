@@ -2245,7 +2245,10 @@ async function dispatch(m) {
           // ever appears when it is true.
           try {
             const rep = JSON.parse(engine.repair_report());
-            if (rep.terms || rep.cells || rep.dropped) post({ type: "repaired", repair: rep });
+            // Which sounds are kept for a recording that couldn't be read, so
+            // main says so once per set rather than on every boot.
+            if (rep.held) rep.heldIds = JSON.parse(engine.held_sounds()).map((h) => h.id);
+            if (rep.terms || rep.cells || rep.dropped || rep.held) post({ type: "repaired", repair: rep });
           } catch (_) { /* an engine without the report is an engine with nothing to report */ }
         }
 
@@ -2994,6 +2997,20 @@ async function dispatch(m) {
         ? engine.set_audition_clip(m.samples, m.channels | 0, +m.sampleRate)
         : engine.clear_audition_clip();
       post({ type: "audition_clip", ...JSON.parse(reply) });
+      break;
+    }
+    // Sounds the last restore held back: a capture's recording couldn't be
+    // read and it was the sound's only source, so they are kept out of the
+    // pool and saved unchanged (Plan-007 task 6). The capture plate (task 4)
+    // lists them and sends a new recording; until then nothing asks.
+    case "held_sounds": {
+      post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
+      break;
+    }
+    case "readmit_held": {
+      const reply = JSON.parse(engine.readmit_held(m.id >>> 0, m.take || ""));
+      post({ type: "readmitted", ...reply, status: status() });
+      if (reply.ok) post({ type: "held_sounds", held: JSON.parse(engine.held_sounds()) });
       break;
     }
     case "export": {

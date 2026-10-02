@@ -2321,6 +2321,12 @@ mod tests {
                     walk(input, name, out);
                     walk(other, name, out);
                 }
+                // No slot of their own; their branches can hold one.
+                AudioNode::Track { input, listen, .. } => {
+                    walk(input, name, out);
+                    walk(listen, name, out);
+                }
+                AudioNode::Capture { input, .. } => walk(input, name, out),
                 // The two oscillators' slots reach *pitch* rather than a
                 // timbre parameter, but a rate is a rate: an LFO too slow to
                 // complete a cycle inside a note is as inaudible on pitch as
@@ -2664,6 +2670,15 @@ mod tests {
                     self.note_mod(modulation);
                     self.walk(carrier);
                     self.walk(modulator);
+                }
+                AudioNode::Track { input, listen, .. } => {
+                    self.nodes.insert("track");
+                    self.walk(input);
+                    self.walk(listen);
+                }
+                AudioNode::Capture { input, .. } => {
+                    self.nodes.insert("capture");
+                    self.walk(input);
                 }
             }
         }
