@@ -56,7 +56,8 @@ served within a lane (`laneOf` in `worker.js`):
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
-  offers, Wander's drift, booth pre-warms).
+  offers, Wander's drift, booth pre-warms, the model's guess, the cable
+  probe).
 
 Queueing cannot help a request that arrives while a long call is *running*,
 so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
@@ -116,6 +117,40 @@ started. What the running generation will replace is `refine_child`'s
 `retiring`; its seeds are the last `seeds` posted before it opened, and
 each child's seed comes with it in the lineage `refine_child` carries. Read
 `ratings.may_replace` and `ratings.seeds` only at rest.
+
+## The model's guess and the cable probe
+
+Two Plan-005 task 9 surfaces the page does not call yet (PATCH's task 7 draws
+them). Both are about the patch in hand, and each reply carries the tree it
+was computed for (`edit_tree_json`), so a page that has moved on drops it, as
+it drops a stale pre-placement audition.
+
+- **`guess`** (`later`, holds the floor; `{token, at?}`): the module the model
+  guesses the player would add next
+  ([reference](../../www/reference/src/search/guess.md)). `guessRun` asks the
+  engine what it owes (`guess_plan`: the patch first if unmeasured, then the
+  output's candidates in render order), renders the first `GUESS_FLOOR` (8)
+  with `memo_render`, one per turn, breathing between them as PERFORM's
+  measurement does, stops rendering once `GUESS_BUDGET_MS` (3 s) of rendering
+  is spent, and posts `guess` with `{token, tree, data}`: the ranking
+  (`guess_rank`), or `{reason}` (`no_taste` before the first fit, `full` at
+  the grammar's ceiling, `no_patch` with nothing open). It gives way to work
+  the player asks for and resumes from the memo. `at`, a module's key, ranks
+  that deeper socket instead of the output's. Rendering the candidates on a
+  crew (`farm_render`, then `memo_absorb`; each job's `cache` is its key in
+  the farm's store) is not wired yet.
+- **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
+  edit with the same replies, remembered so that a later edit back to the
+  tree before it (⌘Z) counts as a skip.
+- **`guess_skip`** (`now`; `{token, guess}`): keeps that guess's family away
+  from its socket for this patch, and answers `guess_skipped` with `{token,
+  ok}`. Skips and takes are logged, never evidence.
+- **`cable_levels`** (`later`; `{token}`): every audio cable of the patch in
+  hand, measured on one render of the phrase (`edit_cable_levels`), keyed as
+  the rack draws them (`from`, `to`, and both uids), in the live meter's dB
+  scale; posted as `cable_levels` with `{token, tree, levels}`. One render
+  (a median 206 ms in wasm), so it is asked once an edit settles; while notes
+  sound, the worklet's meter reads the cables live.
 
 ## The breed job
 

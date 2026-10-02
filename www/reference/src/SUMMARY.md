@@ -42,6 +42,7 @@
 - [Locks as conditional refinement](./search/locks.md)
 - [Refinement](./search/refinement.md)
 - [Performance controls](./search/perform.md)
+- [The model's guess](./search/guess.md)
 - [Acquisition](./search/acquisition.md)
 
 # Systems

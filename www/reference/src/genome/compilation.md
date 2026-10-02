@@ -119,6 +119,50 @@ genome at the same address. Both, always; see
 Structural changes do require a recompile, and so do the handful of parameters
 that feed compile-time decisions.
 
+## Taps, and the level on each cable
+
+Compilation also records each term node's **tap**: the quiver port its audio
+leaves by (`CompiledVoice::taps`, keyed by the node's trace key). A term is a
+tree, so each module's output feeds exactly one parent, and its tap carries
+exactly what the cable from that module carries. Two readers use them, and
+both read in the same scale, dB re 1 V of the raw port value (quiver's
+`calculate_rms_db`), so PATCH maps a level to light one way:
+
+- **The live meter.** While notes sound, `LivePoly::set_meter` subscribes to
+  every tap, read on one voice, the newest one sounding, and each tap's RMS
+  reaches the page as quiver's level windows fill. It needs no recompile and
+  costs nothing when off.
+- **The cable probe,** for a patch at rest (`auracle_features::probe_cables`,
+  `cable_levels` and `WasmEngine::edit_cable_levels` in wasm, the worker's
+  `cable_levels` message). It renders the
+  [audition phrase](../audition/phrase.md) once and reads every audio cable
+  after every tick of the main voice, through the routing slot its tap
+  resolves to, keeping each cable's RMS and peak over the whole phrase, gaps
+  included. A cable that carries nothing reads `PROBE_FLOOR_DB` (−120 dB).
+
+The probe's cables are the rack's: one per audio wire of `describe`, in its
+order, with the `from` and `to` module keys PATCH draws a cable by and both
+modules' uids, which PATCH's cable identity is made of. Modulation cables are
+not measured, because the compiler taps audio nodes only, and PATCH draws a
+modulation cable by its rate. Chord voices are not measured either: the
+levels are the voice that plays every note of the phrase, as the live meter's
+are one voice.
+
+The probe writes nothing: it reads each port's last value and leaves the
+patch alone, so a render it watches is the plain render, bit for bit. All 62
+presets render identically with and without it
+(`crates/auracle-features/examples/cable_probe.rs`), and the test suite holds
+every fourth preset to that. It is not φ, and nothing it reads reaches the
+featurizer.
+
+Its cost is one render of the phrase. Natively, a probed render took a median
+0.99 times a plain one over the 62 presets (162 ms against 165 ms of CPU, on
+a shared machine, so the reads are lost in the noise); in wasm under node it
+took a median 206 ms, against 238 ms for a render with φ
+(`crates/auracle-wasm/examples/cable_cost.mjs`). That is not a per-block
+cost, so the probe runs once a structural edit has settled, in the worker's
+`later` lane, and the live meter covers the patch while notes sound.
+
 ## One compiler, two callers
 
 - **The search** compiles a term to render and measure it.

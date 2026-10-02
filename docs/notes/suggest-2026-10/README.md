@@ -7,6 +7,13 @@ task 9(d) asks for before any code. It is a design for the maintainer to
 decide on. Nothing in the engine changed: two measurement examples were added,
 and every design below is built from machinery that exists today.
 
+*Status (2026-10-01): decided (section 9) and built, as the model's guess:
+`crates/auracle-session/src/guess.rs`, its wasm bindings and the worker's
+`guess` message; the reference's
+[The model's guess](../../../www/reference/src/search/guess.md) describes it.
+The tables below stay as measured, on quiver-dsp 0.3.3; Plan-005's
+"Measured (task 9d)" has the built guess's cost on 0.4.0.*
+
 Measured on 2026-10-01 at `7b43ef2`, with quiver-dsp 0.3.3 (the workspace
 `Cargo.toml`, and `QUIVER_DSP_VERSION` in `auracle-features/src/cache.rs`), on
 an Apple M3 Max (12 performance and 4 efficiency cores) that other jobs were
