@@ -38,6 +38,8 @@ import {
   joinedLabel,
   movedMost,
   dotsLegend,
+  replayAt,
+  stepMoved,
   PALETTE,
   FAMILIES,
   onThisSound,
@@ -318,6 +320,22 @@ test("the track and the replay say which moment they show", () => {
   assert.equal(movedMost("grit", -0.123), "That pick moved grit most (−0.12).");
   assert.equal(dotsLegend("grit"), "dots: grit");
   for (const t of [trackLabel(7, true), LOOKING_BACK, movedMost("grit", 0.1), dotsLegend("body")]) voiced(t);
+});
+
+test("REPLAY credits each step to what it was", () => {
+  assert.equal(replayAt("pick", 21), "after 21 picks");
+  assert.equal(replayAt("map", 24), "refit · after 24 picks");
+  assert.equal(replayAt("file", 60), "opened file · after 60 picks");
+  assert.equal(stepMoved("pick", true, "grit", 0.034), "That pick moved grit most (+0.03).");
+  assert.equal(stepMoved("map", true, "grit", 0.23), "The refit moved grit most (+0.23).");
+  assert.equal(stepMoved("map", false, "grit", 0.23), "The refit moved grit most (+0.23).");
+  assert.equal(stepMoved("pick", false, "body", -0.2), "Since the moment before, body moved most (−0.20).");
+  assert.equal(stepMoved("star", true, "body", 0.1), "That star moved body most (+0.10).");
+  for (const k of ["pick", "map", "gen", "file", "star", "cut"]) {
+    voiced(replayAt(k, 3));
+    voiced(stepMoved(k, true, "grit", 0.1));
+    voiced(stepMoved(k, false, "grit", 0.1));
+  }
 });
 
 test("the palette is the engine's eighteen, in its order, each in the house voice", () => {

@@ -2548,6 +2548,8 @@ worker.onmessage = (e) => {
     case "imported": {
       if (m.ok) {
         applyStatus(m.status);
+        // The next map TASTE keeps is this file's: a boundary on its track.
+        if (taste) taste.markFile();
         send({ type: "taste_views" });
         // An import clears the fitted model (the engine refits from the log),
         // and nothing asked for a fit: TASTE sat on "nothing predicted yet"

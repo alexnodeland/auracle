@@ -995,6 +995,14 @@ function engineRatings() {
 // Every forecast the calibration scores, oldest first
 // (`WasmEngine::forecasts`): the model's P(A wins), taken before the answer.
 // `null` from a binary without the call.
+// The observation count the last `styles` answer was taken at, so requests
+// queued behind a burst of picks coalesce. A fit or an import forgets it.
+let lastStylesObs = -1;
+// The observation count at the last fit: a `styles` request for a pick a fit
+// has run after would credit the refit's θ to the pick, so it is answered
+// with none (the refit's own θ comes with its views).
+let obsAtFit = -1;
+
 function engineForecasts() {
   try {
     return JSON.parse(engine.forecasts());
@@ -2259,6 +2267,8 @@ async function dispatch(m) {
           beginLongOp();
           try {
             engine.fit();
+            lastStylesObs = -1;
+            obsAtFit = status().observations;
             post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
@@ -2344,11 +2354,20 @@ async function dispatch(m) {
     // lenses (Plan-005, Measured (task 6)), so it waits in `later`. Always
     // answered: `null` before the first fit.
     case "styles": {
+      // Requests queued behind a burst of picks coalesce: one that finds the
+      // engine where the last answer left it (no observation since) is
+      // answered with no styles, at no cost. Every request is still answered.
+      const observations = status().observations;
+      if (observations === lastStylesObs || observations <= obsAtFit) {
+        post({ type: "styles", styles: null, observations, same: observations === lastStylesObs });
+        break;
+      }
       let styles = null;
       try {
         styles = JSON.parse(engine.styles());
       } catch (_) { /* older engine */ }
-      post({ type: "styles", styles, observations: status().observations });
+      lastStylesObs = observations;
+      post({ type: "styles", styles, observations });
       break;
     }
     case "calibration": {
@@ -2452,6 +2471,8 @@ async function dispatch(m) {
       beginLongOp();
       try {
         engine.fit();
+        lastStylesObs = -1;
+        obsAtFit = status().observations;
         post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
       } finally {
         endLongOp();
@@ -2640,11 +2661,17 @@ async function dispatch(m) {
     // An offer answered in PERFORM: a heard comparison, recorded as a duel
     // tagged `perform_offer`. The status follows so the picks counter and the
     // refit pacing see it like any other vote.
-    case "perform_record":
+    case "perform_record": {
+      let took = false;
       performReply(m, "perform_recorded", "recorded", true, () =>
-        engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
-      post({ type: "status", status: status(), ratings: engineRatings() });
+        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took)));
+      // `recorded` false when the engine took nothing (the two the same, no
+      // standardizer yet, a vet that failed): nothing moved, so no ratings,
+      // and TASTE keeps no moment for it.
+      const recorded = took !== false;
+      post({ type: "status", status: status(), recorded, ratings: recorded ? engineRatings() : null });
       break;
+    }
     // A search control's offer carries the control and the way it was turned
     // (aimed, and its reply says how far it `moved`); the Offer button's and
     // Wander's carry neither, and are not aimed.
@@ -2926,6 +2953,8 @@ async function dispatch(m) {
     }
     case "import": {
       const ok = engine.import_profile(m.json);
+      lastStylesObs = -1;
+      obsAtFit = -1;
       post({ type: "imported", ok, status: status() });
       break;
     }

@@ -19,7 +19,8 @@ import {
   haloOf,
   mapFrame,
   mapLayout,
-  likingGradient,
+  directionOnScreen,
+  setStyles,
   arrowLength,
   turnBetween,
   scoredForecasts,
@@ -233,21 +234,12 @@ test("layout: every sound keeps its order along both axes, and no two sit on eac
   assert.ok(kept / pairs > 0.9, `${kept} of ${pairs} pairs keep their x order`);
 });
 
-test("direction: least squares finds the way liking rises, and how much it explains", () => {
-  // Liking rises exactly to the right: the gradient points right, all explained.
-  const right = [];
-  for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) right.push({ x: x * 10, y: y * 10, like: 0.2 + x * 0.1 });
-  const g = likingGradient(right);
-  assert.ok(g.gx > 0 && Math.abs(g.gy) < 1e-9);
-  assert.ok(Math.abs(g.r2 - 1) < 1e-9);
-  // No spread in liking (no fit yet): no direction at all.
-  assert.equal(likingGradient(right.map((p) => ({ ...p, like: 0.5 }))), null);
-  // Too few, or all on one line: none.
-  assert.equal(likingGradient(right.slice(0, 2)), null);
-  assert.equal(likingGradient([0, 1, 2, 3].map((i) => ({ x: i, y: 0, like: i / 4 }))), null);
-  // Noise explains little.
-  const noisy = right.map((p, i) => ({ ...p, like: 0.5 + (i % 2 ? 0.3 : -0.3) }));
-  assert.ok(likingGradient(noisy).r2 < 0.2);
+test("direction: the engine's fit, drawn on a stretched map, and the arrow's length", () => {
+  // The fit is the engine's (`liking_direction`); the page divides each axis's
+  // slope by the stretch it draws that axis at.
+  const g = directionOnScreen({ gx: 0.2, gy: -0.1, r2: 0.4 }, 50, 10);
+  assert.ok(Math.abs(g.gx - 0.004) < 1e-12 && Math.abs(g.gy + 0.01) < 1e-12 && g.r2 === 0.4);
+  assert.equal(directionOnScreen(null, 1, 1), null);
   // The arrow: longer as liking changes more across the map, never past the room.
   assert.equal(arrowLength(null, 400, 100), 0);
   assert.equal(arrowLength({ gx: 0.01, gy: 0 }, 400, 100), 100);
@@ -310,6 +302,16 @@ test("history: each moment as posted, its map kept once, and read back exactly",
   // Anything this build cannot read is no history, not a broken one.
   assert.deepEqual(readHistory({ v: 99, maps: [], entries: [] }), newHistory());
   assert.deepEqual(readHistory({ v: 1, maps: [], entries: [{ m: 3, r: [] }] }), newHistory());
+  // A bad moment or a bad map is dropped, and the rest read: never thrown on.
+  const saved = JSON.parse(JSON.stringify(h));
+  saved.entries[0].s = [{ share: "x" }];
+  saved.entries.push({ kind: "pick", m: 0, r: [[1, "a", 2]] }, null, { kind: "pick", m: 0, r: [], pick: [1] });
+  saved.maps.push({ points: [[1, 2]] });
+  saved.entries.push({ kind: "map", m: saved.maps.length - 1, r: [] });
+  const read = readHistory(saved);
+  assert.equal(read.entries.length, h.entries.length - 1, "only the well-formed moments");
+  assert.equal(read.maps.length, h.maps.length);
+  assert.deepEqual(entryView(read, 0), entryView(h, 1));
   assert.deepEqual(readHistory(null), newHistory());
 });
 
@@ -324,6 +326,13 @@ test("history: the styles posted after a pick join that pick's moment", () => {
   const v = entryView(h, 0);
   assert.deepEqual(v.styles, [{ share: 0.6, theta: [{ name: "a:p2", mean: 0.1235, std: 0.2 }, { name: "n_vco", mean: -0.3, std: 0.1 }] }]);
   assert.equal(entryView(h, 1).styles, null);
+  // A refit's moment keeps the refit's styles; a pick's reply for the same
+  // observation count goes to the pick, never to the refit.
+  recordEntry(h, { kind: "map", n: 20, obs: 20, gen: 0, fit: true, map: mapOf([1, 2], 3), ratings: ratingsOf(ids, 0.2) });
+  setStyles(h, h.entries[2], styles);
+  const late = [{ share: 1, theta: [{ name: "a:p2", mean: 0.5, std: 0.1 }, { name: "n_vco", mean: 0, std: 0.1 }] }];
+  assert.equal(attachStyles(h, 20, late), h.entries[1]);
+  assert.equal(entryView(h, 2).styles[0].theta[0].mean, 0.1235);
 });
 
 test("history: bounded to the newest moments, with the maps they use", () => {
@@ -333,6 +342,7 @@ test("history: bounded to the newest moments, with the maps they use", () => {
   }
   assert.equal(h.entries.length, HISTORY_MAX);
   assert.equal(h.entries[0].n, 30, "the oldest went first");
+  assert.equal(h.dropped, 30, "and how many went is counted, so a moment looked at keeps its place");
   assert.equal(h.maps.length, HISTORY_MAX, "maps no moment uses are dropped");
   for (let i = 0; i < h.entries.length; i++) assert.equal(entryView(h, i).map.points[0].x, h.entries[i].n);
 });

@@ -290,39 +290,15 @@ export function mapLayout(points, box, minD, iterations = 90) {
 }
 
 // ---------- LEARNING: which way liking rises on the map ----------
+// The fit itself is the engine's (`auracle_session::liking_direction`, posted
+// as `ratings.direction`, in map units). The page only draws it.
 
-const finitePoint = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.like);
-
-/** Least squares of liking on the map's two axes, over points
- *  `[{x, y, like}]` in whatever coordinates they are drawn in: the direction
- *  liking rises (`gx`, `gy`, liking per unit of x and of y), how much of
- *  liking's spread across the map that plane explains (`r2`, 0–1), and the
- *  points' centre (`cx`, `cy`). `null` with fewer than three points, none
- *  spread over both axes, or every liking the same. The arrow summarizes the engine's ratings on the
- *  engine's map; it is not a quantity the engine computes. */
-export function likingGradient(points) {
-  const ps = (points || []).filter(finitePoint);
-  const n = ps.length;
-  if (n < 3) return null;
-  let sx = 0, sy = 0, sl = 0;
-  for (const p of ps) { sx += p.x; sy += p.y; sl += p.like; }
-  const mx = sx / n, my = sy / n, ml = sl / n;
-  let cxx = 0, cyy = 0, cxy = 0, cxl = 0, cyl = 0, sst = 0;
-  for (const p of ps) {
-    const dx = p.x - mx, dy = p.y - my, dl = p.like - ml;
-    cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; cxl += dx * dl; cyl += dy * dl; sst += dl * dl;
-  }
-  const det = cxx * cyy - cxy * cxy;
-  // No spread in liking (no fit yet: every rating 0) is no direction at all.
-  if (!(sst > 1e-12) || !(det > 1e-9 * Math.max(1e-12, cxx * cyy))) return null;
-  const gx = (cyy * cxl - cxy * cyl) / det;
-  const gy = (cxx * cyl - cxy * cxl) / det;
-  let sse = 0;
-  for (const p of ps) {
-    const fit = ml + gx * (p.x - mx) + gy * (p.y - my);
-    sse += (p.like - fit) ** 2;
-  }
-  return { gx, gy, r2: sst > 1e-12 ? Math.max(0, 1 - sse / sst) : 0, cx: mx, cy: my };
+/** The engine's direction (liking per map unit) on a drawn map: each axis
+ *  scaled by `sx`, `sy` px per map unit. A gradient divides where the
+ *  coordinates multiply. */
+export function directionOnScreen(d, sx, sy) {
+  if (!d || !Number.isFinite(d.gx) || !Number.isFinite(d.gy)) return null;
+  return { gx: d.gx / Math.max(1e-12, sx), gy: d.gy / Math.max(1e-12, sy), r2: d.r2 };
 }
 
 /** The arrow's length in px for a gradient `g` (liking per px) over a map
@@ -386,12 +362,33 @@ export function newHistory() {
 }
 
 /** A saved history if it is one this build can read, else an empty one. */
+const num = (x) => typeof x === "number" && Number.isFinite(x);
+const triple = (t) => Array.isArray(t) && t.length === 3 && t.every(num);
+const goodMap = (m) => m && Array.isArray(m.points) && m.points.every(triple);
+const goodStyles = (s) => s === undefined || s === null ||
+  (Array.isArray(s) && s.every((x) => x && num(x.share) && Array.isArray(x.m) && Array.isArray(x.d) &&
+    x.m.length === x.d.length && x.m.every(num) && x.d.every(num)));
+
+/** A saved history if it is one this build can read, else an empty one. A
+ *  map or a moment that is not well formed is dropped, not thrown on: the
+ *  rest is kept. */
 export function readHistory(saved) {
-  const ok = saved && saved.v === HISTORY_VERSION && Array.isArray(saved.maps) && Array.isArray(saved.entries) &&
-    saved.maps.every((m) => m && Array.isArray(m.points)) &&
-    saved.entries.every((e) => e && Number.isInteger(e.m) && e.m >= 0 && e.m < saved.maps.length && Array.isArray(e.r));
-  if (!ok) return newHistory();
-  return { v: HISTORY_VERSION, maps: saved.maps, entries: saved.entries, names: Array.isArray(saved.names) ? saved.names : null };
+  if (!saved || saved.v !== HISTORY_VERSION || !Array.isArray(saved.maps) || !Array.isArray(saved.entries)) return newHistory();
+  const h = { v: HISTORY_VERSION, maps: [], entries: [], names: Array.isArray(saved.names) ? saved.names : null };
+  const at = new Map();
+  saved.maps.forEach((m, i) => {
+    if (!goodMap(m)) return;
+    at.set(i, h.maps.length);
+    h.maps.push({ points: m.points, explained: Array.isArray(m.explained) && m.explained.every(num) ? m.explained : [0, 0] });
+  });
+  for (const e of saved.entries) {
+    const ok = e && typeof e.kind === "string" && Number.isInteger(e.m) && at.has(e.m) &&
+      Array.isArray(e.r) && e.r.every(triple) &&
+      (e.pick === null || e.pick === undefined || (Array.isArray(e.pick) && e.pick.length === 2 && e.pick.every(num))) &&
+      goodStyles(e.s) && num(e.n ?? 0) && num(e.obs ?? 0);
+    if (ok) h.entries.push({ ...e, m: at.get(e.m) });
+  }
+  return h;
 }
 
 /** Keep one change. `e`: `{kind, n, obs, gen, fit, map: {points, explained},
@@ -429,6 +426,9 @@ export function recordEntry(h, e, max = HISTORY_MAX) {
   };
   h.entries.push(entry);
   if (h.entries.length > max) {
+    // How many went from the front, so a moment being looked at keeps its
+    // place (`dropped` counts them, and is not saved).
+    h.dropped = (h.dropped || 0) + (h.entries.length - max);
     h.entries.splice(0, h.entries.length - max);
     const used = [...new Set(h.entries.map((x) => x.m))].sort((a, b) => a - b);
     const at = new Map(used.map((old, i) => [old, i]));
@@ -445,9 +445,19 @@ export function attachStyles(h, obs, styles) {
   if (!Array.isArray(styles) || !styles.length) return null;
   let entry = null;
   for (let i = h.entries.length - 1; i >= 0; i--) {
-    if (h.entries[i].obs === obs) { entry = h.entries[i]; break; }
+    if (h.entries[i].obs === obs && h.entries[i].kind !== "map" && h.entries[i].kind !== "gen" && h.entries[i].kind !== "file") {
+      entry = h.entries[i];
+      break;
+    }
   }
-  if (!entry) return null;
+  return entry ? setStyles(h, entry, styles) : null;
+}
+
+/** The styles that were in force at a moment, kept with it: a pick's from
+ *  the reply after it, a refit's, a generation's or an opened file's from
+ *  the views post that brought its map. */
+export function setStyles(h, entry, styles) {
+  if (!entry || !Array.isArray(styles) || !styles.length) return null;
   const names = styles[0].theta.map((t) => t.name);
   if (!h.names) h.names = names;
   if (JSON.stringify(h.names) !== JSON.stringify(names)) entry.names = names;

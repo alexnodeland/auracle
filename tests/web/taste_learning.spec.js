@@ -49,7 +49,10 @@ const INIT = `(() => {
       if (d.ratings) window.__pwRatings = d.ratings;
       if (d.type === "status" && d.vote && d.vote.kind === "duel" && d.recorded) window.__pwPick = d;
       if (d.type === "status" && d.ratings) (window.__pwStatusLog = window.__pwStatusLog || []).push(d);
-      if (d.type === "styles" && d.styles) (window.__pwStylesLog = window.__pwStylesLog || []).push(d);
+      if (d.type === "styles") (window.__pwStylesLog = window.__pwStylesLog || []).push(d);
+      const th = (window.__pwThetaLog = window.__pwThetaLog || []);
+      if (d.views && d.views.styles) th.push(d.views.styles);
+      if (d.type === "styles" && d.styles) th.push(d.styles);
     });
     return w;
   }
@@ -395,15 +398,23 @@ test("a style is named on its chip, and the chip's ▶ pressed straight after st
 /** Picks in EVOLVE, each taken by the engine (its `status`) and followed by
  *  its styles. */
 async function picks(page, n) {
-  const before = await page.evaluate(() => ({ s: (window.__pwStatusLog || []).length, t: (window.__pwStylesLog || []).length }));
+  const before = await page.evaluate(() => (window.__pwStatusLog || []).length);
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
   await openView(page, "evolve");
   for (let i = 0; i < n; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    const taught = Number(await page.locator("#duel-count").textContent());
     await page.locator(i % 2 ? "#choose-b" : "#choose-a").click();
-    await page.waitForTimeout(400);
+    // A pick counts the moment it is made: TAUGHT moves at once.
+    await expect(page.locator("#duel-count")).toHaveText(String(taught + 1));
   }
-  await page.waitForFunction((b) => (window.__pwStatusLog || []).length >= b.s + 3 && (window.__pwStylesLog || []).length >= b.t + 3, before, { timeout: 60_000 });
+  // Every pick taken by the engine, and a styles reply that has seen the last.
+  await page.waitForFunction((b) => {
+    const log = window.__pwStatusLog || [];
+    if (log.length < b + 3) return false;
+    const obs = log[log.length - 1].status.observations;
+    return (window.__pwStylesLog || []).some((x) => x.observations >= obs);
+  }, before, { timeout: 60_000 });
 }
 
 /** The means a pick's reply posted, by sound. */
@@ -562,35 +573,85 @@ test("the weights move to the styles posted after each pick, and REPLAY steps th
   await openView(page, "learning");
   // Now: the styles the last pick's reply brought, not the fit's.
   const k = await shownK(page);
-  const last = await page.evaluate((k) => window.__pwStylesLog[window.__pwStylesLog.length - 1].styles[k].theta, k);
+  const last = await page.evaluate((k) => window.__pwStylesLog.filter((x) => x.styles).pop().styles[k].theta, k);
   const now = await barsShown(page);
   expect(Object.keys(now).length).toBe(44);
   expectBars(now, last, 0.006, "now");
 
-  // REPLAY (R): each kept pick in turn, the bars as its styles reply had them.
+  // REPLAY (R): each step shows θ as the worker posted it at a kept moment,
+  // in the order it was posted. The label and the bars are read together.
+  const posted = await page.evaluate((k) => window.__pwThetaLog.map((st) => (st[k] ? st[k].theta : null)), k);
   await page.keyboard.press("r");
   await expect(page.locator("#md-replay")).toHaveClass(/\bon\b/);
-  const seen = new Set();
-  for (let i = 0; i < 3; i++) {
-    await expect(page.locator("#md-replay-at")).toHaveText(/^after \d+ picks$/, { timeout: 5_000 });
-    const label = await page.locator("#md-replay-at").textContent();
-    const shown = await barsShown(page);
-    const picksAt = Number(/after (\d+) picks/.exec(label)[1]);
-    if (!seen.has(picksAt)) {
-      seen.add(picksAt);
-      const theta = await page.evaluate(([k, p]) => {
-        const r = window.__pwStylesLog.find((x) => x.observations === p);
-        return r ? r.styles[k].theta : null;
-      }, [k, picksAt]);
-      expect(theta, `a styles reply after ${picksAt} picks`).not.toBeNull();
-      expectBars(shown, theta, 0.011, label);
-    }
-    await page.waitForFunction((l) => document.getElementById("md-replay-at").textContent !== l, label, { timeout: 5_000 }).catch(() => {});
+  let lastAt = -1, steps = 0, label = null;
+  while (true) {
+    const step = await page.evaluate((prev) => new Promise((done) => {
+      const read = () => ({
+        on: document.getElementById("md-replay").classList.contains("on"),
+        label: document.getElementById("md-replay-at").textContent,
+        bars: Object.fromEntries([...document.querySelectorAll("#md-bars .md-row")].map((r) => [
+          r.querySelector(".md-tech").textContent, Number(r.querySelector(".md-val").textContent.replace("−", "-")),
+        ])),
+      });
+      const t0 = performance.now();
+      const tick = () => {
+        const r = read();
+        if (!r.on || (r.label && r.label !== prev) || performance.now() - t0 > 5000) done(r);
+        else requestAnimationFrame(tick);
+      };
+      tick();
+    }), label);
+    if (!step.on) break;
+    label = step.label;
+    // Which posted θ this step is: the first, after the last step's, within
+    // the display's rounding.
+    const at = posted.findIndex((th, j) => j > lastAt && th &&
+      Object.entries(byName(th)).every(([name, v]) => Math.abs(step.bars[name] - v) < 0.011));
+    expect(at, `${label}: the bars are a θ the worker posted, after the last step's`).toBeGreaterThan(lastAt);
+    lastAt = at;
+    steps += 1;
   }
-  expect(seen.size, "REPLAY showed more than one pick").toBeGreaterThan(1);
+  expect(steps, "REPLAY showed more than one moment").toBeGreaterThan(1);
   // It ends on now.
   await expect(page.locator("#md-replay")).not.toHaveClass(/\bon\b/, { timeout: 10_000 });
   await expect(page.locator("#md-replay-at")).toHaveText("");
   expectBars(await barsShown(page), last, 0.006, "back to now");
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("a REPLAY step across a refit is the refit's, with no pick's ghost or light", async ({ page }) => {
+  test.setTimeout(300_000);
+  const pageErrors = await boot(page);
+  const fits = await page.evaluate(() => window.__pwCounts.fitted || 0);
+  // Six picks: the sixth refits.
+  await picks(page, 6);
+  await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(fits);
+  await openView(page, "learning");
+  // The refit may have grown a second style, which no earlier moment had:
+  // replay the first, which every refit keeps at its index.
+  await page.locator('.md-chip[data-k="0"] .md-chip-pick').click();
+  await expect(page.locator("#md-replay")).toBeEnabled();
+  await page.keyboard.press("r");
+  await expect(page.locator("#md-replay")).toHaveClass(/\bon\b/);
+  // Caught on the refit's step: its label names it, and nothing credits a pick.
+  const step = await page.evaluate(() => new Promise((done) => {
+    const t0 = performance.now();
+    const tick = () => {
+      const label = document.getElementById("md-replay-at").textContent;
+      if (label.startsWith("refit · ")) {
+        done({
+          label,
+          ghosts: document.querySelectorAll("#md-bars .md-ghost.on").length,
+          lit: document.querySelectorAll("#md-bars .md-row.moved").length,
+        });
+      } else if (performance.now() - t0 > 15000) done(null);
+      else requestAnimationFrame(tick);
+    };
+    tick();
+  }));
+  expect(step, "REPLAY reached the refit's moment").not.toBeNull();
+  expect(step.label).toMatch(/^refit · after \d+ picks$/);
+  expect(step.ghosts, "no pick's ghost on a refit's step").toBe(0);
+  expect(step.lit, "no weight lit as a pick's on a refit's step").toBe(0);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

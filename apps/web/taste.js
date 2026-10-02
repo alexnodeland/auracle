@@ -144,13 +144,26 @@ export function createTaste(host) {
     const r = v.ratings && Array.isArray(v.ratings.ranked)
       ? v.ratings.ranked.map((x) => ({ id: x.id, mean: x.mean, std: x.std }))
       : v.map.points.filter((p) => p.id != null).map((p) => ({ id: p.id, mean: p.utility, std: p.utility_std }));
+    const droppedBefore = history.dropped || 0;
     const entry = geom.recordEntry(history, {
       kind, pick, obs: obs ?? host.observations(), n: host.picks(), gen: host.generation(),
       fit: !!v.styles, map: v.map, ratings: r,
     });
+    // At the bound the oldest moments go from the front: a moment being
+    // looked at, and the replay's place, move with what they show.
+    const dropped = (history.dropped || 0) - droppedBefore;
+    if (dropped > 0) {
+      if (scrub != null) {
+        scrub = Math.max(0, scrub - dropped);
+        scrubView = geom.entryView(history, scrub);
+      }
+      if (replayT) replayI = Math.max(0, replayI - dropped);
+    }
     host.scheduleSave();
     return entry;
   }
+  // A taste file was opened: the next map is its moment, a boundary.
+  let fileNext = false;
 
   // =====================================================================
   // TASTE: the map
@@ -413,6 +426,13 @@ export function createTaste(host) {
     const id = active;
     const like = likeTarget.get(id);
     const name = host.nameOf(id) || "";
+    // Focus inside the card: its words follow, its buttons stay put.
+    if (plate.dataset.id === String(id) && plate.contains(document.activeElement)) {
+      const gs = plate.querySelector(".ts-pl-like");
+      if (gs) gs.textContent = fitted() && like != null ? words.plateGuess(like) : words.TASTE_LABELS.noGuess;
+      return;
+    }
+    plate.dataset.id = String(id);
     plate.replaceChildren();
     const nm = document.createElement("div");
     nm.className = "ts-pl-name";
@@ -524,8 +544,13 @@ export function createTaste(host) {
     if (!cv.matches(":focus-visible")) return;
     if (active == null) setActive(host.subjectId() ?? poolPoints()[0]?.id ?? null, true);
   });
-  cv.addEventListener("blur", () => {
-    if (activeKbd) setActive(null);
+  // The card stays while focus moves into it, so its ▶ PLAY and OPEN can be
+  // reached with Tab; it closes when focus leaves both.
+  cv.addEventListener("blur", (e) => {
+    if (activeKbd && !plate.contains(e.relatedTarget)) setActive(null);
+  });
+  plate.addEventListener("focusout", (e) => {
+    if (activeKbd && !plate.contains(e.relatedTarget) && e.relatedTarget !== cv) setActive(null);
   });
 
   function syncTasteText() {
@@ -563,6 +588,7 @@ export function createTaste(host) {
   const tplay = $("taste-tplay");
   const TPAD = 12;
   let replayT = 0;
+  let replayI = 0;
   tplay.setAttribute("aria-label", words.TASTE_LABELS.trackPlay);
   tplay.title = words.TASTE_LABELS.trackPlay;
   track.setAttribute("aria-label", words.TASTE_LABELS.track);
@@ -583,8 +609,10 @@ export function createTaste(host) {
     const fwd = i > from;
     scrub = next;
     scrubView = next == null ? null : geom.entryView(history, next);
-    // The step's own pick, as it was posted with that moment.
-    const step = geom.entryView(history, fwd ? i : from);
+    // The step's own pick, as it was posted with that moment: only for a
+    // step of one moment, not a jump (Home, End, a fast drag), which would
+    // credit one pick with everything in between.
+    const step = Math.abs(i - from) === 1 ? geom.entryView(history, fwd ? i : from) : null;
     strokes = step && step.pick
       ? [{ a: fwd ? step.pick.a : step.pick.b, b: fwd ? step.pick.b : step.pick.a, t0: performance.now() }]
       : [];
@@ -592,6 +620,9 @@ export function createTaste(host) {
       seenMap = mapOf();
       seenFitted = fitted();
       seenRatings = host.views()?.ratings || null;
+      // Picks that came while looking back were drawn on the track, not as
+      // arrivals.
+      arrivals = [];
     }
     adopt({ move: true });
     syncTasteText();
@@ -614,16 +645,16 @@ export function createTaste(host) {
     if (replayT) { stopReplay(); return; }
     const n = history.entries.length;
     if (n < 2) return;
-    let i = 0;
+    replayI = 0;
     setScrub(0);
     tplay.classList.add("on");
     tplay.setAttribute("aria-label", words.TASTE_LABELS.trackStop);
     tplay.title = words.TASTE_LABELS.trackStop;
     const stepMs = Math.max(180, Math.min(520, 4200 / n));
     replayT = setInterval(() => {
-      i += 1;
-      setScrub(i);
-      if (i >= n - 1) stopReplay();
+      replayI += 1;
+      setScrub(replayI);
+      if (replayI >= history.entries.length - 1) stopReplay();
     }, stepMs);
   }
   tplay.addEventListener("click", replay);
@@ -690,7 +721,11 @@ export function createTaste(host) {
       const e = es[i];
       const past = i <= at;
       if (e.kind === "gen") continue; // its diamond, below
-      if (e.kind === "map") {
+      if (e.kind === "file") {
+        // A taste file opened here: what comes after is another taste.
+        ctx.fillStyle = inkAlpha(INK.silk, past ? 0.85 : 0.35);
+        ctx.fillRect(X(i) - 1, 2, 2, h - 4);
+      } else if (e.kind === "map") {
         ctx.fillStyle = inkAlpha(INK.amber, past ? 0.3 : 0.12);
         ctx.fillRect(X(i) - 0.5, 6, 1, h - 12);
       } else if (e.kind === "star" || e.kind === "cut" || e.kind === "keep") {
@@ -727,7 +762,9 @@ export function createTaste(host) {
     ctx.lineWidth = 2;
     ctx.strokeStyle = tok("--bezel");
     ctx.stroke();
-    const label = words.trackLabel(es[at].n, scrub == null);
+    // Now says the count the title says (TAUGHT's picks, which counts a pick
+    // the moment it is made); a past moment says the engine's count then.
+    const label = scrub == null ? words.trackLabel(host.taught().picks, true) : words.trackLabel(es[at].n, false);
     tlabel.textContent = label;
     track.setAttribute("aria-valuemax", String(last));
     track.setAttribute("aria-valuenow", String(at));
@@ -971,7 +1008,7 @@ export function createTaste(host) {
       if (!history.entries[i].s) continue;
       const v = geom.entryView(history, i);
       const st = v.styles && v.styles[s.k];
-      if (st) out.push({ n: v.n, theta: st.theta });
+      if (st) out.push({ n: v.n, kind: v.kind, obs: history.entries[i].obs, theta: st.theta });
     }
     return out;
   }
@@ -980,6 +1017,13 @@ export function createTaste(host) {
     replayBtn.disabled = !can && !barReplay;
     replayBtn.title = can ? words.TASTE_LABELS.replayTitle : words.TASTE_LABELS.noReplayTitle;
   }
+  // A step is credited to what it was: a pick only when both moments are
+  // picks and one observation apart (`obs`); a refit, a generation, an
+  // opened file, a star or a cut by name; anything wider as the change since
+  // the moment before. Only a single pick's step draws its ghost and lights
+  // the weight it moved most.
+  const PICKS = new Set(["pick", "offer"]);
+  let liveAt = 0;
   function replayStep() {
     const r = barReplay;
     const cur = r.list[r.i];
@@ -992,10 +1036,18 @@ export function createTaste(host) {
         if (Math.abs(dd) > Math.abs(d)) { d = dd; moved = t.name; }
       }
     }
+    const single = !!prev && cur.obs === prev.obs + 1;
+    const pickStep = single && PICKS.has(cur.kind) && PICKS.has(prev.kind);
     const s = chosenStyle();
-    renderBars({ ...s, theta: cur.theta, prev: prev ? prev.theta : null, moved });
-    $("md-replay-at").textContent = words.pickWords(cur.n);
-    $("md-replay-live").textContent = moved ? words.movedMost(host.niceName(moved), d) : "";
+    renderBars({ ...s, theta: cur.theta, prev: pickStep ? prev.theta : null, moved: pickStep ? moved : null });
+    $("md-replay-at").textContent = words.replayAt(cur.kind, cur.n);
+    // Said at most about once a second: a screen reader cannot keep up with
+    // a step every few hundred ms.
+    const now = performance.now();
+    if (moved && now - liveAt >= 1000) {
+      liveAt = now;
+      $("md-replay-live").textContent = words.stepMoved(cur.kind, PICKS.has(cur.kind) ? pickStep : single, host.niceName(moved), d);
+    }
   }
   function replayBars() {
     if (barReplay) { stopBarReplay(); return; }
@@ -1030,20 +1082,23 @@ export function createTaste(host) {
   }
   /** The direction now: least squares of the engine's ratings
    *  (`WasmEngine::belief`) on the engine's map (`taste_map`), as drawn. */
-  function gradientNow(pos) {
-    const r = ratingsNow();
-    const pts = [];
-    for (const [id, q] of pos) {
-      const row = r.get(id);
-      if (row) pts.push({ x: q.x, y: q.y, like: geom.liking(row.mean) });
-    }
-    return geom.likingGradient(pts);
+  /** The direction now, as the engine fitted it (`Belief::direction`,
+   *  `auracle_session::liking_direction`: liking on the map's two axes, with
+   *  r²), on the small map as drawn: each axis is stretched to the panel, so
+   *  the gradient is divided by the stretch. */
+  function gradientNow() {
+    const d = host.views()?.ratings?.direction;
+    const pts = poolPoints();
+    if (!d || pts.length < 2) return null;
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const sx = (MW - 2 * MPAD) / Math.max(1e-9, Math.max(...xs) - Math.min(...xs));
+    const sy = (MH - 2 * MPAD) / Math.max(1e-9, Math.max(...ys) - Math.min(...ys));
+    return geom.directionOnScreen(d, sx, sy);
   }
   function retarget() {
     // A new heading: the arrow turns to it from where it was drawn, and the
     // old heading stays a moment as a dashed ghost.
-    const pos = miniPositions();
-    const g = gradientNow(pos);
+    const g = gradientNow();
     const same = g && gNow && Math.abs(g.gx - gNow.gx) < 1e-12 && Math.abs(g.gy - gNow.gy) < 1e-12;
     if (same) return;
     const dur = motionMs("--d-move");
@@ -1181,26 +1236,34 @@ export function createTaste(host) {
   function scored() {
     return geom.scoredForecasts(host.engine().forecasts);
   }
+  let fcKey = "";
   function renderForecasts() {
     const fc = $("md-fc");
     const list = scored();
     const sc = geom.forecastScore(list);
-    fc.replaceChildren();
-    const big = document.createElement("div");
-    big.className = "md-big";
-    const note = document.createElement("p");
-    note.className = "md-fcnote";
-    if (!sc) {
-      big.classList.add("hidden");
-      note.textContent = words.noForecasts(fitted());
-    } else {
-      big.textContent = String(sc.hits);
-      const of = document.createElement("span");
-      of.textContent = ` / ${sc.n}`;
-      big.append(of);
-      note.textContent = words.forecastNote(sc);
+    const key = JSON.stringify([sc, fitted()]);
+    const same = key === fcKey;
+    fcKey = key;
+    // Rebuilt only when what it says changed: it is a live region, and a
+    // rebuild is read out again.
+    if (!same) {
+      fc.replaceChildren();
+      const big = document.createElement("div");
+      big.className = "md-big";
+      const note = document.createElement("p");
+      note.className = "md-fcnote";
+      if (!sc) {
+        big.classList.add("hidden");
+        note.textContent = words.noForecasts(fitted());
+      } else {
+        big.textContent = String(sc.hits);
+        const of = document.createElement("span");
+        of.textContent = ` / ${sc.n}`;
+        big.append(of);
+        note.textContent = words.forecastNote(sc);
+      }
+      fc.append(big, note);
     }
-    fc.append(big, note);
     $("md-skill").textContent = host.skillText();
     $("md-kinds").textContent = host.kindsText();
     if (list.length > seenForecasts && seenForecasts > 0 && visible === "learning") {
@@ -1351,8 +1414,12 @@ export function createTaste(host) {
       // each new map is a moment: a generation's when the engine's
       // generation count moved, a redraw's otherwise.
       const last = history.entries[history.entries.length - 1];
-      if (!last) record("start");
-      else record(host.generation() > last.gen ? "gen" : "map");
+      const kind = !last ? "start" : fileNext ? "file" : host.generation() > last.gen ? "gen" : "map";
+      fileNext = false;
+      // The styles in force with this map (a refit's, a generation's, an
+      // opened file's), so REPLAY credits its change to it, not to a pick.
+      const entry = record(kind);
+      if (entry && entry.kind === kind && host.views()?.styles) geom.setStyles(history, entry, host.views().styles);
       recordedMap = liveMap;
     }
     if (visible === "taste" && scrub != null) {
@@ -1444,7 +1511,7 @@ export function createTaste(host) {
       }
       if (visible === "learning" && was !== "learning") {
         resizeLearning();
-        gNow = gradientNow(miniPositions());
+        gNow = gradientNow();
         swing = null;
         ghost = null;
         seenForecasts = scored().length;
@@ -1495,6 +1562,11 @@ export function createTaste(host) {
         renderMath();
         kick();
       }
+    },
+    /** A taste file was opened: the next map kept is its moment, marked on
+     *  the track as a boundary. */
+    markFile() {
+      fileNext = true;
     },
     /** What the page kept, to save with the session (JS-owned, versioned). */
     history: () => history,

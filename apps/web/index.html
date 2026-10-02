@@ -657,11 +657,12 @@
           </header>
           <div class="ts-well" id="taste-well">
             <canvas class="ts-map" id="taste-crt" tabindex="0" role="application" aria-roledescription="map" aria-label="Taste map: every sound in the pool, placed by how it sounds. Arrow keys move between sounds, and Enter opens one."></canvas>
+            <!-- Right after the map, so Tab goes from a sound to its card. -->
+            <div class="ts-plate" id="taste-plate" role="group" aria-hidden="true"></div>
             <!-- SOUND shows the sounds as they are; TASTE colors them by
                  what the model thinks you'd like (prototype v2). -->
             <button type="button" class="ts-tog" id="taste-tog" aria-pressed="false"><span class="led" aria-hidden="true"></span><span class="ts-seg" data-seg="sound">sound</span><span class="ts-sep" aria-hidden="true">/</span><span class="ts-seg" data-seg="taste">taste</span></button>
             <div class="ts-legend" id="taste-legend" aria-hidden="true"><span class="tl-halo"><i class="sm"></i><i class="lg"></i></span><span class="tl-words"></span></div>
-            <div class="ts-plate" id="taste-plate" role="group" aria-hidden="true"></div>
             <p class="sr-only" id="taste-live" aria-live="polite"></p>
             <!-- Taste over time: every moment the page kept of what the
                  engine posted, from when this session began keeping them. -->

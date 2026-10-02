@@ -36,7 +36,7 @@ the bank head walks through what a generation is and what evolving costs.
   passed to the sound picked, and every halo moves to the ratings the pick's
   reply carries (`WasmEngine::belief`); a refit settles them all at once.
 - **LEARNING** — the model room (`taste.js`): the chosen style's weights
-  with their credible intervals (nameable style chips, exemplar audition),
+  with ±1σ whiskers (nameable style chips, exemplar audition),
   the direction liking rises on the map, every forecast scored with Brier
   skill (a running hit-rate is not a proper scoring rule and is pinned near
   50% by an acquisition function that serves near-ties on purpose), copy as

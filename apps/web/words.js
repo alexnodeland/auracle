@@ -438,6 +438,29 @@ export function movedMost(word, d) {
   return `That pick moved ${word} most (${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(2)}).`;
 }
 
+// What a kept moment was, by its kind (taste-geom's history).
+const MOMENT = { map: "refit", gen: "generation", file: "opened file", star: "a star", cut: "a cut", keep: "a cut" };
+
+/** REPLAY's label for a step: which moment, and the picks it came after
+ *  ("refit · after 24 picks"; a pick's is "after 21 picks"). */
+export function replayAt(kind, n) {
+  return MOMENT[kind] ? `${MOMENT[kind]} · ${pickWords(n)}` : pickWords(n);
+}
+
+/** What a REPLAY step moved most, credited to what it was: a single pick, a
+ *  refit, a generation, an opened file, a star or a cut; or, when moments
+ *  between were not kept, the change since the one before. */
+export function stepMoved(kind, single, word, d) {
+  const by = `${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(2)}`;
+  if (kind === "map") return `The refit moved ${word} most (${by}).`;
+  if (kind === "gen") return `The generation moved ${word} most (${by}).`;
+  if (kind === "file") return `The opened file moved ${word} most (${by}).`;
+  if (!single) return `Since the moment before, ${word} moved most (${by}).`;
+  if (kind === "star") return `That star moved ${word} most (${by}).`;
+  if (kind === "cut" || kind === "keep") return `That cut moved ${word} most (${by}).`;
+  return movedMost(word, d);
+}
+
 /** The small map's legend while a weight is pointed at. */
 export function dotsLegend(word) {
   return `dots: ${word}`;
