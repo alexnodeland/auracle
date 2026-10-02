@@ -450,8 +450,10 @@ test("the guess's refusals: nothing before the warm start, words for the rest", 
   assert.equal(guessRefusal({ reason: "no_patch" }), null);
   assert.equal(guessRefusal({ reason: "full" }), "no guess: nothing more fits, so a module has to come out first");
   assert.equal(guessRefusal({ reason: "unmeasured" }), "no guess yet: it hasn’t heard this patch");
-  assert.equal(guessRefusal({ guesses: [], skipped: 3 }), "no guess left here: every module that fits was skipped");
-  assert.equal(guessRefusal({ guesses: [], skipped: 0 }), "no guess: none of the modules that fit here passed the safety check");
+  assert.equal(guessRefusal({ guesses: [], skipped: 3, rendered: 4, planned: 4 }), "no guess left here: every module that fits was skipped");
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 6, planned: 6 }), "no guess: none of the modules that fit here passed the safety check");
+  // Time ran out before anything was heard: not a verdict on the modules.
+  assert.equal(guessRefusal({ guesses: [], skipped: 0, rendered: 0, planned: 6 }), "no guess yet: it has not heard the modules that fit here");
   assert.equal(guessRefusal({ guesses: [{}], skipped: 0 }), null);
   for (const r of ["full", "unmeasured"]) voiced(guessRefusal({ reason: r }));
 });

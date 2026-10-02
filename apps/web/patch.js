@@ -50,6 +50,12 @@ export function createPatch(host) {
   // thread, so they are asked for once the bench has settled (nothing in the
   // lane, nothing opening, no knob held), never per knob step, and only while
   // PATCH is in sight; a view that comes back asks for what it missed.
+  // Arriving is not settling. After PATCH comes into view, or a sound opens,
+  // the player often clicks on (another sound, straight away), and a render
+  // started then is one that click waits behind: on a slow machine the open
+  // took over a second and was announced (`OPEN_SAID_MS`, "Opened …"). So
+  // after an arrival the bench must be quiet for longer first.
+  const ARRIVE_MS = 1200;
   function scheduleSettle(ms = 450) {
     if (settleTimer) clearTimeout(settleTimer);
     settleTimer = setTimeout(onSettle, ms);
@@ -181,7 +187,7 @@ export function createPatch(host) {
   // `guess_rank`'s ranking for the patch in hand, best first by the lower
   // bound of the gain. Only the top guess is drawn; a skip shows the next one
   // the engine ranks (`guess_skip`, then `guess` again).
-  const guess = { want: false, out: null, again: false, data: null, epoch: -1, skipping: false };
+  const guess = { want: false, out: null, again: false, data: null, epoch: -1, skipping: false, retries: 0 };
 
   function askGuess() {
     if (guess.out) {
@@ -216,6 +222,16 @@ export function createPatch(host) {
     guess.data = m.data || null;
     guess.epoch = epoch;
     guess.skipping = false;
+    // A ranking that came back with nothing in it because its time ran out
+    // before any candidate was heard (a crew still starting, a slow machine)
+    // is not an answer: what it did render is in the engine's memo, so
+    // asking again, at most twice for one structure, goes on from there.
+    const d = guess.data;
+    if (d && Array.isArray(d.guesses) && !d.guesses.length && d.rendered < d.planned && guess.retries < 2) {
+      guess.retries += 1;
+      guess.want = true;
+      scheduleSettle();
+    }
     drawGuess();
   }
   const topGuess = () =>
@@ -948,6 +964,7 @@ export function createPatch(host) {
       guess.data = null;
       guess.skipping = false;
       guess.want = true;
+      guess.retries = 0;
       // The rack was rebuilt for this reply before it reached here (main
       // draws, then calls this), with the last structure's levels and guess:
       // a cable whose key survived the edit (`node>amp`) was lit by a level
@@ -968,7 +985,7 @@ export function createPatch(host) {
       if (svg && frame) drawMarks(svg, frame);
     }
     syncSheet();
-    scheduleSettle();
+    scheduleSettle(m.subject !== undefined ? ARRIVE_MS : 450);
   }
 
   /** The rack was built again (`buildRack` replaced every element). */
@@ -1038,7 +1055,7 @@ export function createPatch(host) {
 
   function shown() {
     renderTools();
-    scheduleSettle(0);
+    scheduleSettle(ARRIVE_MS);
   }
   function hidden() {
     closeSheet();

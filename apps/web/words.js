@@ -567,6 +567,7 @@ export function guessRefusal(data) {
       break;
   }
   if (Array.isArray(data.guesses) && data.guesses.length === 0) {
+    if (data.rendered < data.planned) return "no guess yet: it has not heard the modules that fit here";
     return data.skipped > 0
       ? "no guess left here: every module that fits was skipped"
       : "no guess: none of the modules that fit here passed the safety check";

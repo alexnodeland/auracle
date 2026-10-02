@@ -170,7 +170,9 @@ cost, so the probe runs once an edit has settled, in the worker's
 
 PATCH (`apps/web/patch.js`) asks for the probe once the bench has settled
 after an open or an edit (nothing in the edit lane, nothing opening, no knob
-held, about half a second after the last reply), and only while PATCH is in
+held, about half a second after an edit's reply and a little over a second
+after an open or PATCH coming into view, so the next click is not kept
+waiting behind a render), and only while PATCH is in
 sight; a knob turned during a drag asks once, after the drag. A reply measured
 on a tree the bench has since left is dropped and asked again. With the
 levels in hand, each audio cable at rest:

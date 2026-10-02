@@ -235,8 +235,10 @@ it drops a stale pre-placement audition.
   scale; posted as `cable_levels` with `{token, tree, levels}`. One render
   (a median 160 to 206 ms in wasm), so it is asked once an edit settles; while notes
   sound, the worklet's meter reads the cables live. PATCH asks once the bench
-  has settled (`benchSettled`, no knob held, about 450 ms after the last
-  reply) and only while PATCH is shown, with at most one probe at the
+  has settled (`benchSettled`, no knob held, about 450 ms after an edit's
+  reply, and 1.2 s after an open or PATCH coming into view, `ARRIVE_MS`, so
+  a click on another sound is not left waiting behind a render) and only
+  while PATCH is shown, with at most one probe at the
   engine (one asked meanwhile waits for its answer, then measures the tree
   on screen), keys each level by the cable's `from>to`, and drops a reply whose `tree` is not the bench's
   (`benchTreeJson`), asking again. At rest a cable's light is its measured
