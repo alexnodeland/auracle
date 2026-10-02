@@ -10,7 +10,7 @@
 //! [`StructFeatures`] keeps a raw counter per kind — the Styles tab and the
 //! auto-namer both want "two filters", not "two subtractive stages" — but
 //! [`StructFeatures::NAMES`] and [`StructFeatures::to_vec`] collapse the
-//! forty-four productions into nineteen family counts plus seven term-level
+//! forty-six productions into nineteen family counts plus seven term-level
 //! numbers — five about modulation and the amp envelope, two about how the
 //! term is arranged. Two reasons, and the second is the load-bearing one:
 //!
@@ -147,6 +147,14 @@
 //! What the model hears of an input patch it hears through φ_audio: the patch
 //! is rendered with the session's audition clip, so what its effects do to a
 //! signal is measured like any other sound.
+//!
+//! TRACK and CAPTURE (Plan-007 tasks 5 and 6) are counted the same way, for
+//! the same reasons and one more: the prior never draws either (they are
+//! player kinds), so a column would be zero in every drawn row. Each has a
+//! raw counter, `n_track` and `n_capture`, and no column. The shape numbers
+//! see them through `AudioNode::children` like any other node: a TRACK is a
+//! binary node (the branch it plays, the one it follows), a CAPTURE a unary
+//! one over the branch it records.
 //!
 //! # The families, and why each one is one column
 //!
@@ -392,6 +400,13 @@ pub struct StructFeatures {
     /// row written before the field existed came from a term without one.
     #[serde(default)]
     pub n_audio_in: f64,
+    /// Number of TRACKs. **Not a φ coordinate**; see the module doc's *Audio
+    /// in* section. Kept for display, and so every arm bumps one counter.
+    #[serde(default)]
+    pub n_track: f64,
+    /// Number of CAPTUREs. **Not a φ coordinate**, as [`Self::n_track`].
+    #[serde(default)]
+    pub n_capture: f64,
     /// Number of Mix nodes. **Not a φ coordinate** — see the module doc's
     /// exact identity. Kept for display.
     pub n_mix: f64,
@@ -1145,6 +1160,17 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
             walk(carrier, f, t, d + 1);
             walk(modulator, f, t, d + 1);
             return;
+        }
+        // Two branches and no slot.
+        AudioNode::Track { input, listen, .. } => {
+            f.n_track += 1.0;
+            walk(input, f, t, d + 1);
+            walk(listen, f, t, d + 1);
+            return;
+        }
+        AudioNode::Capture { input, .. } => {
+            f.n_capture += 1.0;
+            (Some(input), None)
         }
     };
     if let Some(m) = modulation {

@@ -563,6 +563,13 @@ const FIGURE: [Pluck; 14] = [
     },
 ];
 
+/// The reference figure's notes as `(onset in seconds, MIDI note)`, in order:
+/// what a patch that tracks the reference should play.
+#[cfg(test)]
+pub(crate) fn reference_notes() -> impl Iterator<Item = (f64, u8)> {
+    FIGURE.iter().map(|p| (p.at, p.note))
+}
+
 /// Partials per note, at most: up to 32, and never above 45% of the sample
 /// rate, so the stack is bandlimited at any rate.
 const REFERENCE_PARTIALS: usize = 32;

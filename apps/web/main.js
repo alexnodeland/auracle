@@ -613,6 +613,23 @@ function announceRepair() {
   if (r.terms) bits.push(`${r.terms} sound${r.terms > 1 ? "s" : ""}`);
   if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste`);
   if (r.dropped) bits.push(`${r.dropped} unreadable pick${r.dropped > 1 ? "s" : ""} dropped`);
+  // A sound whose only source was a recording that couldn't be read is kept,
+  // not mended, so it gets its own sentence (Plan-007 task 6). Once for each
+  // set of such sounds, not on every boot: the set is remembered here.
+  if (r.held) {
+    const set = (r.heldIds || []).slice().sort((a, b) => a - b).join(",");
+    let seen = null;
+    try { seen = localStorage.getItem("auracle-held-noted"); } catch (_) {}
+    if (seen !== set) {
+      try { localStorage.setItem("auracle-held-noted", set); } catch (_) {}
+      note(
+        r.held > 1
+          ? `${r.held} sounds’ recordings couldn’t be read. They’re kept safe until you record them again.`
+          : "One sound’s recording couldn’t be read. It’s kept safe until you record it again.",
+        { urgent: true },
+      );
+    }
+  }
   if (!bits.length) return;
   // `urgent`, because `toastPump` drops anything that went stale in the queue
   // behind the boot's own chatter, and a notice that saved evidence changed is
@@ -3132,7 +3149,9 @@ function note(text, opts = {}) {
   // contract (they may hold the toast) without putting it on screen.
   if (boothQuiet && !opts.urgent) return document.createElement("div");
   const el = document.createElement("div");
-  el.className = `toast${opts.kind ? " " + opts.kind : ""}`;
+  // A refusal is marked, so stage mode (perform.js) can lift it above the
+  // stage and say it there.
+  el.className = `toast${opts.kind ? " " + opts.kind : ""}${opts.urgent ? " urgent" : ""}`;
   const msg = document.createElement("span");
   msg.className = "toast-msg";
   msg.textContent = text;
@@ -4006,7 +4025,9 @@ function healParamMiss(addr) {
 }
 
 // ---------- PERFORM ----------
-// The named controls, in the engine's order (auracle_session::perform::CONTROLS).
+// The six named controls, in the engine's order (auracle_session::perform::CONTROLS):
+// what MIDI and booth mode name before PERFORM is built. Once it is, they
+// ask it for the panel (perform.js, words.js `PALETTE`).
 const PERFORM_CONTROLS = [
   { name: "Bright", low: "dark", high: "bright" },
   { name: "Snap", low: "bloom", high: "snap" },
@@ -4016,12 +4037,33 @@ const PERFORM_CONTROLS = [
   { name: "Space", low: "close", high: "far" },
 ];
 
+let outTap = null; // stage mode's analyser on the master (see `outAnalyser`)
 async function bootPerform() {
   const { createPerform } = await import(`./perform.js?v=${BUILD}`);
   perform = createPerform({
     root: $("view-perform"),
-    controls: PERFORM_CONTROLS,
     ink: INK,
+    // Which palette controls sit on PERFORM, in order: the player's, saved
+    // with the session as part of `perf` (perform.js validates it).
+    panel: () => perf.panel,
+    setPanel: (p) => {
+      perf.panel = p;
+      scheduleSave();
+    },
+    // Stage mode's tap: Space's ▶, for a screen with no Space.
+    play: () => toggleAudition(),
+    // What comes out of the speakers, for stage mode to draw: the live
+    // voices and every phrase played (auditions skip the voices' own
+    // analysers), after the master gain. Made on first use.
+    outAnalyser: () => {
+      if (!outTap) {
+        outTap = audioCtx.createAnalyser();
+        outTap.fftSize = 2048;
+        outTap.smoothingTimeConstant = 0.6;
+        master.connect(outTap);
+      }
+      return outTap;
+    },
     send,
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
@@ -4299,7 +4341,7 @@ async function bootBooth() {
     quiet: (on) => {
       boothQuiet = !!on;
     },
-    controlName: (k) => (PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
+    controlName: (k) => (perform ? perform.controlName(k) : PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
     // Attract's opens are the app's, not the visitor's (see openOnBench): a
     // load in flight is registered like a click, so a visitor who opens
     // something else meanwhile keeps it.
@@ -5194,7 +5236,7 @@ async function bootMidi() {
     transportStart: () => live && live.transportStart && live.transportStart(),
     transportBeats: (b) => live && live.transportBeats && live.transportBeats(b),
     perform: () => perform,
-    controlNames: () => [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"],
+    controlNames: () => (perform ? perform.controlNames() : [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"]),
     setBpm: (bpm) => {
       perf.bpm = Math.max(30, Math.min(300, bpm));
       $("bpm").value = String(Math.round(perf.bpm));

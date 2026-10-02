@@ -128,8 +128,8 @@ test("Wander answers a second and a half after it is let go, and says what it is
 });
 
 // A tap on Wander freezes it (#80 named the pad FREEZE and the state
-// *frozen*); its tooltip and HOW THIS WORKS said a tap would "hold" it.
-test("Wander's tooltip and HOW THIS WORKS say a tap freezes it", async ({ page }) => {
+// *frozen*); its tooltip and how it works said a tap would "hold" it.
+test("Wander's tooltip and how it works say a tap freezes it", async ({ page }) => {
   const errs = await boot(page);
   await page.locator('.viewtab[data-view="perform"]').click();
   const wander = page.locator('.pf-knob[data-i="7"]');

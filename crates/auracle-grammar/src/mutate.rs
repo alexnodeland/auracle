@@ -20,9 +20,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::genome::PARAM_MAX;
+use crate::take::Take;
 use crate::term::{
-    AudioNode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Uid, Waveform,
+    AudioNode, CaptureMode, DriveMode, FilterKind, InputChannel, ModNode, ModOp, NoiseColor,
+    PairOp, PatchTree, PitchBand, TableShape, Uid, Waveform,
 };
 
 /// Hard ceilings on hand-built patches (protects the realtime voice and the
@@ -141,13 +142,20 @@ pub enum NodeKind {
     /// ([`AudioNode::AudioIn`]). `audio_in` on the wire, which is also the
     /// rack's kind for it.
     AudioIn,
+    /// TRACK: an input plays the branch below it ([`AudioNode::Track`]). A
+    /// two-input processor: an Insert seats the chain as the played branch.
+    Track,
+    /// CAPTURE: records the branch below it and plays the take
+    /// ([`AudioNode::Capture`]). A processor whose input is what it records,
+    /// so an Insert turns the chain into the recording's source.
+    Capture,
 }
 
 impl NodeKind {
     /// Every buildable kind, in declaration order — the palette as one table,
     /// so a sweep over "everything a hand can place" cannot skip the newest
     /// production.
-    pub const ALL: [NodeKind; 28] = [
+    pub const ALL: [NodeKind; 30] = [
         NodeKind::Vco,
         NodeKind::Supersaw,
         NodeKind::Noise,
@@ -176,6 +184,8 @@ impl NodeKind {
         NodeKind::Vocoder,
         NodeKind::Silence,
         NodeKind::AudioIn,
+        NodeKind::Track,
+        NodeKind::Capture,
     ];
 
     /// Is this a source (leaf) kind?
@@ -232,7 +242,9 @@ const _: () = {
             | NodeKind::Gate
             | NodeKind::Vocoder
             | NodeKind::Silence
-            | NodeKind::AudioIn => {}
+            | NodeKind::AudioIn
+            | NodeKind::Track
+            | NodeKind::Capture => {}
         }
     }
     let mut i = 0;
@@ -494,6 +506,17 @@ pub enum StructOp {
         key: String,
         /// The modulation term.
         m: ModNode,
+    },
+    /// Give the CAPTURE at `key` a take: what the host recorded (the saved
+    /// form [`crate::CompiledVoice::take`] reads back), or `null` to clear it.
+    ///
+    /// The one way a take enters a sound besides a load. A take that could
+    /// not be read is refused, never installed as silence.
+    SetTake {
+        /// Node key.
+        key: String,
+        /// The take, in its saved form.
+        take: Take,
     },
 }
 
@@ -842,6 +865,27 @@ pub(crate) fn default_fragment(kind: NodeKind) -> AudioNode {
             gain: crate::compile::INPUT_GAIN_UNITY,
             channel: InputChannel::Both,
         },
+        // Listening to the first input, in the band a voice or a guitar sits
+        // in, at quiver's own gate threshold, with the input's level halfway
+        // into the sound: a player who plugs in and sings hears the branch
+        // follow them at once.
+        NodeKind::Track => AudioNode::Track {
+            uid: Uid::NEW,
+            band: PitchBand::Mid,
+            sensitivity: crate::compile::TRACK_SENSITIVITY_DEFAULT,
+            dynamics: 0.5,
+            input: socket(),
+            listen: Box::new(default_fragment(NodeKind::AudioIn)),
+        },
+        // Nothing recorded yet, so it plays silence until the player records,
+        // as an unplugged socket does; the vet says so rather than refusing
+        // the edit. Each note plays the take through once.
+        NodeKind::Capture => AudioNode::Capture {
+            uid: Uid::NEW,
+            play: CaptureMode::Once,
+            input: socket(),
+            take: Take::empty(),
+        },
     }
 }
 
@@ -897,6 +941,11 @@ fn primary_input(n: AudioNode) -> Option<AudioNode> {
         | AudioNode::Duck { input, .. }
         | AudioNode::Gate { input, .. } => Some(*input),
         AudioNode::Vocoder { carrier, .. } => Some(*carrier),
+        // The played branch is the one you hear.
+        AudioNode::Track { input, .. } => Some(*input),
+        // The chain a capture records, which is what an Insert seated there
+        // and what a Delete gives back.
+        AudioNode::Capture { input, .. } => Some(*input),
         AudioNode::Shift { input, .. }
         | AudioNode::Filter { input, .. }
         | AudioNode::Fold { input, .. }
@@ -953,12 +1002,18 @@ fn child_mut(n: &mut AudioNode, i: usize) -> Option<&mut AudioNode> {
             carrier: input,
             modulator: other,
             ..
+        }
+        | AudioNode::Track {
+            input,
+            listen: other,
+            ..
         } => match i {
             0 => Some(input),
             1 => Some(other),
             _ => None,
         },
         AudioNode::Shift { input, .. }
+        | AudioNode::Capture { input, .. }
         | AudioNode::Filter { input, .. }
         | AudioNode::Fold { input, .. }
         | AudioNode::Delay { input, .. }
@@ -1143,6 +1198,13 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             };
             std::mem::swap(a, b);
         }
+        // A fragment the panel sent with a recording that couldn't be read is
+        // refused, as `SetTake` refuses one, not installed silently empty.
+        StructOp::ReplaceTree { node, .. } | StructOp::InsertTree { node, .. }
+            if node.has_lost_take() =>
+        {
+            return Err(lost_take());
+        }
         StructOp::ReplaceTree { key, node } => {
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
@@ -1168,8 +1230,30 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             // slot of a grafted subtree, so this is the early, explicit copy.)
             *mod_slot_mut(slot)? = m.clone().normalized();
         }
+        StructOp::SetTake { key, take } => {
+            if take.unreadable().is_some() {
+                return Err(StructError::Invalid(
+                    "that recording couldn’t be read, so the capture keeps its take".into(),
+                ));
+            }
+            let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let slot = node_at_mut(&mut out.root, &path)
+                .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let AudioNode::Capture { take: held, .. } = slot else {
+                return Err(StructError::Invalid(
+                    "only a capture holds a recording".into(),
+                ));
+            };
+            *held = take.clone();
+        }
     }
     finish(out)
+}
+
+/// The refusal for a fragment carrying a recording that couldn't be read:
+/// installed, it would play silence where the player sent a take.
+fn lost_take() -> StructError {
+    StructError::Invalid("that recording couldn’t be read, so nothing changed".into())
 }
 
 /// The two audio children of a binary node, `(/0, /1)`, or `None` for
@@ -1197,6 +1281,11 @@ fn binary_children_mut(n: &mut AudioNode) -> Option<(&mut AudioNode, &mut AudioN
         | AudioNode::Vocoder {
             carrier: input,
             modulator: other,
+            ..
+        }
+        | AudioNode::Track {
+            input,
+            listen: other,
             ..
         } => Some((input, other)),
         _ => None,
@@ -1246,6 +1335,11 @@ fn mod_slot_mut(n: &mut AudioNode) -> Result<&mut ModNode, StructError> {
                 "noise, audio in and an empty socket have no modulation slot".into(),
             ))
         }
+        // The two kinds that play from the player's input: their knobs are
+        // how they listen and play, not a sound for a modulator to move.
+        AudioNode::Track { .. } | AudioNode::Capture { .. } => Err(StructError::Invalid(
+            "track and capture have no modulation slot".into(),
+        )),
         _ => Err(StructError::Invalid(
             "mixers and ring modulators have no modulation slot".into(),
         )),
@@ -1558,6 +1652,26 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             density,
             mod_depth,
             modulation,
+            input: Box::new(old),
+        }),
+        AudioNode::Track {
+            band,
+            sensitivity,
+            dynamics,
+            listen,
+            ..
+        } => Ok(AudioNode::Track {
+            uid: Uid::NEW,
+            band,
+            sensitivity,
+            dynamics,
+            listen,
+            input: Box::new(old),
+        }),
+        AudioNode::Capture { play, take, .. } => Ok(AudioNode::Capture {
+            uid: Uid::NEW,
+            play,
+            take,
             input: Box::new(old),
         }),
         AudioNode::Vco { .. }

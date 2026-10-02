@@ -131,7 +131,10 @@ write, ask which belief it serves.
   | **air** | The very top, above the notes |
   | **snap** | A fast, sharp attack |
   | **round** | A soft attack, few harmonics |
+  | **heft** | Dense, held weight: the opposite of a light pluck |
   | **motion** | Movement over time |
+  | **throb** | Pulsing and tremolo: movement at 2 to 8 Hz |
+  | **sway** | Slow sweeps and breathing: movement at 0.5 to 2 Hz |
   | **grit** | Roughness, distortion |
   | **space** | Room and distance: reverb, delay |
   | **wide / close** | Stereo spread; how near it sits |
@@ -471,6 +474,12 @@ banned-words check in `make dev-check` reads the list after it.
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |
 | **the palette** | The set of controls you place on PERFORM | "module palette" (say "the 42 modules") |
+| **place**, **hide** | Put a control from the palette on PERFORM's panel; take it off (it stays in the palette) | add, remove, delete |
+| **ROUND** | The palette's control from hard to round: a soft attack and few harmonics | Softness, soft (the low end is *hard*) |
+| **THROB** | The palette's control from steady to throbbing: pulsing and tremolo | Wobble (a preset's name), Pulse (a wave shape) |
+| **SWAY** | The palette's control from fixed to swaying: slow sweeps and breathing | Drift (WANDER's zone and walk), Breath (reads as AIR) |
+| **HEFT** | The palette's control from slight to heavy: dense, held weight | weight (the family's name) |
+| **stage mode** | ⇧F in PERFORM: the sound you're playing on the whole screen | fullscreen, performance mode |
 | **set aside** | Modules unplugged or deleted, waiting to go back | HELD |
 | **59% · leaning** | A prediction: a percentage and a word | MODEL'S GUESS 0.59 |
 | **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |

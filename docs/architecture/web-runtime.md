@@ -343,13 +343,22 @@ differently) is played at once and re-measured.
 A `perform_wire` request may carry `controls`, indices into the engine's
 palette of eighteen (`perform::PALETTE`), and the worker passes them to every
 binding of the measurement (`perform_wire_plan`, `perform_wire_known`); without
-them the engine wires the six. The page sends none yet, so every wiring it
-measures, caches and ships is the six's. The palette's panel (Plan-005 task 5)
-will ask for the controls placed on it. Each wiring in the reply carries its
-palette `index`, and the panel must name a control back by it (an aimed
-offer's `control`, a graft's `k`), not by its position, which follows the
-order asked; and `wireKey` must then hold the set asked for as well as the
-patch.
+them the engine wires the six. The page asks for the controls on the player's
+panel (`state.panel`, at most eight, saved as `perf.panel` with the session):
+nothing for the six, so their request, key and shipped file are what they
+were, and otherwise the panel's set in palette order (`setOf`), so the answer
+depends on the set and not on the order the panel shows it in. Each wiring in
+the reply carries its palette `index`, and the page lays it on the panel by
+that index (`alignWiring`) and names a control back by it (an aimed offer's
+`control`, a graft's `k`, `indexAt`), never by its position. `wireKey` holds
+the set as well as the patch (`#controls=` and the set, empty for the six),
+and for a sound with an AUDIO IN the audition clip, on the patch's part
+before the set (`wireKeyOf`: `patch|clip:<id>#controls=<set>`). A
+placed control is measured lazily, on the sound in hand and only in sight
+(`measurePanel`), borrowing what other sets of that patch measured
+(`borrowWiring`) meanwhile; a measurement of a set the panel has since left is
+cached and not played. Changing the panel rebuilds the deck (`setPanel`), never
+under a held pointer (`panelLater`).
 
 The cache persists across reloads (`auracle-perform-wirings` in
 localStorage). It is written 1.5 s after a measurement lands, and at once when

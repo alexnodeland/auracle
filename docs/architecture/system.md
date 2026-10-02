@@ -118,7 +118,10 @@ dealt: it is dealt at `playable`, while the pool is still filling.
 A new module is a change in every layer. In order:
 
 1. **Term**: add the node to `term.rs` (right sort, knobs with domains).
-2. **Prior**: give it production weight and knob priors in `prior.rs`.
+2. **Prior**: give it production weight and knob priors in `prior.rs`. A
+   kind only a player places (TRACK, CAPTURE) gets no weight: it is a
+   player kind, appended after the drawn kinds, which `OpKind` scores and
+   never samples, and which walks hold (`PatchTree::player_sites`).
 3. **Compile**: build the quiver module in `compile.rs`. Mind the stack: large
    modules built by value are why the wasm stack is 8 MB.
 4. **Describe**: plate title and knob labels in `describe.rs`. Labels are copy:

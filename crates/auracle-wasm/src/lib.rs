@@ -61,8 +61,8 @@ use auracle_grammar::{
 };
 use auracle_session::{
     run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, GuessMemory, GuessSkip,
-    Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig, SessionState, WalkContext,
-    WalkJob, WalkResult,
+    Origin, PreFeaturized, Profile, ReadmitError, RenderPolicy, SessionConfig, SessionState,
+    WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -453,6 +453,47 @@ fn clip_note(status: &ClipStatus) -> &'static str {
         }
         (ClipSource::Reference, true) => {
             "The saved input clip didn't load, so the model hears sounds with an input through the built-in phrase. Capture your input again to replace it."
+        }
+    }
+}
+
+/// One sound the last restore held back, as [`WasmEngine::held_sounds`]
+/// lists it. Ids are `u32` at the boundary.
+#[derive(Serialize)]
+struct HeldView {
+    id: u32,
+    /// The player's name for it, if it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// The name it was shown under, if it had a generated one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_name: Option<String>,
+    note: &'static str,
+}
+
+/// The sentence for a held sound.
+const HELD_NOTE: &str = "Its recording couldn’t be read. It’s kept safe until you record it again.";
+
+/// [`WasmEngine::readmit_held`]'s reply.
+#[derive(Serialize)]
+struct ReadmitReply {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'static str>,
+}
+
+/// The sentence for a held sound that did not come back.
+fn readmit_note(e: &ReadmitError) -> &'static str {
+    match e {
+        ReadmitError::NotHeld => "That sound isn’t waiting for a recording, so nothing changed.",
+        ReadmitError::NoTake => "That recording couldn’t be read, so the sound is still kept safe.",
+        ReadmitError::NothingToReplace => {
+            "That sound has no lost recording to replace, so nothing changed."
+        }
+        ReadmitError::DoesNotVet(_) => {
+            "With that recording it still makes no usable sound, so it’s still kept safe."
         }
     }
 }
@@ -3101,9 +3142,61 @@ impl WasmEngine {
     /// domain gate. Non-zero means the profile *was* being fitted on values
     /// that were not measurements, and the player is entitled to be told so
     /// rather than have it quietly corrected under them.
+    ///
+    /// `held` counts apart from the repairs: sounds whose only source was a
+    /// CAPTURE take that couldn't be read, kept out of the pool and in the
+    /// save ([`Self::held_sounds`]).
     pub fn repair_report(&self) -> String {
         let (terms, cells, dropped) = self.engine.repair_report();
-        format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped}}}"#)
+        let held = self.engine.held().len();
+        format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped},"held":{held}}}"#)
+        // voice: name
+    }
+
+    /// The sounds the last restore held back, as JSON
+    /// `[{"id":3,"name":"…","note":"Its recording couldn’t be read. …"}]`:
+    /// each one's only source was a CAPTURE whose take couldn't be read. They
+    /// are not in the bank's pool (never dealt, ranked or bred) and are saved
+    /// with the session unchanged. The capture plate (Plan-007 task 4) lists
+    /// them and opens one to record it again, then calls
+    /// [`Self::readmit_held`].
+    pub fn held_sounds(&self) -> String {
+        let held: Vec<HeldView> = self
+            .engine
+            .held()
+            .iter()
+            .map(|e| HeldView {
+                id: e.id as u32,
+                name: e.name.clone(),
+                auto_name: e.auto_name.clone(),
+                note: HELD_NOTE,
+            })
+            .collect();
+        serde_json::to_string(&held).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Bring held sound `id` back with a new recording: `take_json` is a take's
+    /// saved form, quiver's `Capture` state (`{"format":"f32le-base64",
+    /// "sample_rate":…,"length":…,"data":…}`). The sound is measured as a new
+    /// one and joins the pool. Replies as JSON: `{"ok":true,"id":3}`, or
+    /// `{"ok":false,"error":"…"}` with the sentence to show, the sound still
+    /// held.
+    pub fn readmit_held(&mut self, id: u32, take_json: &str) -> String {
+        let take: auracle_grammar::Take =
+            serde_json::from_str(take_json).unwrap_or_else(|_| auracle_grammar::Take::empty());
+        let reply = match self.engine.readmit_held(id as u64, take) {
+            Ok(id) => ReadmitReply {
+                ok: true,
+                id: Some(id as u32),
+                error: None,
+            },
+            Err(e) => ReadmitReply {
+                ok: false,
+                id: None,
+                error: Some(readmit_note(&e)),
+            },
+        };
+        serde_json::to_string(&reply).unwrap_or_default()
     }
 
     // ------------------------------------------------------------------
@@ -5341,5 +5434,128 @@ mod tests {
         }
         // The one the sockets are priced through most often.
         assert!(map.contains_key("n_filter"));
+    }
+
+    /// **A take reaches a sound through the edit the app already sends.** A
+    /// CAPTURE placed on the bench plays nothing yet and fails the vet as
+    /// silent, as an unplugged socket does; a recording arriving as a
+    /// `set_take` structural edit (the saved form quiver's `Capture` writes)
+    /// makes it a sound that vets, saved in the bench's term; an unreadable
+    /// one is refused in words and changes nothing. No new binding: the web
+    /// task's capture flow rides `edit_structure`.
+    #[test]
+    fn a_take_arrives_on_the_bench_through_a_structural_edit() {
+        let mut engine = WasmEngine::new(0xCA9, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"replace","key":"node","kind":"capture"}"#),
+            ""
+        );
+        assert!(
+            engine.edit_vet_silent(),
+            "an empty capture played something"
+        );
+        let sr = auracle_features::PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..(1.5 * sr) as usize)
+            .map(|i| (0.5 * (i as f64 * 220.0 * std::f64::consts::TAU / sr).sin()) as f32)
+            .collect();
+        let take =
+            serde_json::to_string(&auracle_grammar::Take::from_samples(&x, sr).unwrap()).unwrap();
+        let set = format!(r#"{{"op":"set_take","key":"node","take":{take}}}"#);
+        assert_eq!(engine.edit_structure(&set), "");
+        assert!(engine.edit_vet_ok(), "a capture with a take failed the vet");
+        let bench: auracle_grammar::PatchTree =
+            serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        assert!(bench.has_takes(), "the take is not in the bench's term");
+        let refused =
+            engine.edit_structure(r#"{"op":"set_take","key":"node","take":{"format":"x"}}"#);
+        assert!(!refused.is_empty(), "an unreadable take was taken");
+        assert!(engine.edit_vet_ok(), "a refused take changed the bench");
+    }
+
+    /// **A held sound, through the boundary the worker uses.** A session whose
+    /// bank holds a sound that is only a CAPTURE with an unreadable take
+    /// restores without it in the pool, reports it as held (apart from the
+    /// repairs) and lists it with its sentence; a readable take brings it back
+    /// into the pool, and a bad one is refused in words and changes nothing.
+    #[test]
+    fn a_held_sound_is_listed_and_readmitted_through_the_worker_surface() {
+        use auracle_grammar::term::{AmpEnv, AudioNode, CaptureMode, InputChannel};
+        let mut engine = WasmEngine::new(0x4E1D, 6);
+        while engine.fill_step(3) > 0 {}
+        let sr = PhraseSpec::default().sample_rate;
+        let x: Vec<f32> = (0..sr as usize)
+            .map(|i| (0.5 * (i as f64 * 196.0 * std::f64::consts::TAU / sr).sin()) as f32)
+            .collect();
+        let take = auracle_grammar::Take::from_samples(&x, sr).unwrap();
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.02,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Capture {
+                uid: auracle_grammar::Uid::NEW,
+                play: CaptureMode::Once,
+                input: Box::new(AudioNode::AudioIn {
+                    uid: auracle_grammar::Uid::NEW,
+                    input: 0,
+                    gain: auracle_grammar::INPUT_GAIN_UNITY,
+                    channel: InputChannel::Both,
+                }),
+                take: take.clone(),
+            },
+        };
+        let mut state: serde_json::Value = serde_json::from_str(&engine.export_session()).unwrap();
+        let bank = state["bank"].as_array_mut().unwrap();
+        let mut held = bank[0].clone();
+        held["id"] = 9_999.into();
+        held["name"] = "Held One".into();
+        held["tree"] = serde_json::to_value(&tree).unwrap();
+        held["tree"]["root"]["Capture"]["take"]["length"] = 3.into();
+        bank.push(held);
+        let restored = engine.import_session(&state.to_string());
+        let listed: serde_json::Value = serde_json::from_str(&engine.held_sounds()).unwrap();
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+        assert_eq!(listed[0]["id"], 9_999);
+        assert_eq!(listed[0]["name"], "Held One");
+        assert!(listed[0]["note"]
+            .as_str()
+            .unwrap()
+            .contains("couldn’t be read"));
+        let report: serde_json::Value = serde_json::from_str(&engine.repair_report()).unwrap();
+        assert_eq!(report["held"], 1);
+        assert_eq!(
+            report["terms"], 0,
+            "a held sound is not counted as repaired"
+        );
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        assert!(
+            ranked.iter().all(|r| r["id"] != 9_999),
+            "a held sound was ranked"
+        );
+        assert_eq!(ranked.len(), restored);
+        // A take that can't be read is refused in words.
+        let refused: serde_json::Value =
+            serde_json::from_str(&engine.readmit_held(9_999, r#"{"format":"x"}"#)).unwrap();
+        assert_eq!(refused["ok"], false);
+        assert!(!refused["error"].as_str().unwrap().is_empty());
+        // A readable one brings it back.
+        let good = serde_json::to_string(&take).unwrap();
+        let back: serde_json::Value =
+            serde_json::from_str(&engine.readmit_held(9_999, &good)).unwrap();
+        assert_eq!(back["ok"], true);
+        assert_eq!(back["id"], 9_999);
+        assert_eq!(engine.held_sounds(), "[]");
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        assert!(
+            ranked.iter().any(|r| r["id"] == 9_999),
+            "the readmitted sound is not in the bank"
+        );
     }
 }

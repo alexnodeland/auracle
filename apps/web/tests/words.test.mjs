@@ -16,6 +16,10 @@ import {
   leanSentence,
   onApple,
   platformKeys,
+  PALETTE,
+  FAMILIES,
+  onThisSound,
+  panelCount,
   walkSaid,
   walkLabel,
   belowNote,
@@ -241,6 +245,39 @@ test("a key chord is written in the platform's own words", () => {
   assert.equal(onApple({ platform: "Linux x86_64" }), false);
   assert.equal(onApple({ userAgentData: { platform: "macOS" }, platform: "" }), true);
   assert.equal(onApple({ userAgentData: { platform: "Windows" }, platform: "Win32" }), false);
+});
+
+test("the palette is the engine's eighteen, in its order, each in the house voice", () => {
+  // `auracle_session::perform::PALETTE`: the six first, at the same indices,
+  // then the twelve in family order.
+  assert.deepEqual(
+    PALETTE.map((c) => c.name),
+    ["Bright", "Snap", "Motion", "Body", "Grit", "Space", "Warmth", "Air", "Thump", "Heft", "Punch", "Round", "Throb", "Sway", "Distance", "Haze", "Bite", "Lo-fi"],
+  );
+  // The approved end words (voice.md's word table).
+  const ends = Object.fromEntries(PALETTE.map((c) => [c.name, `${c.low} · ${c.high}`]));
+  assert.equal(ends.Round, "hard · round");
+  assert.equal(ends.Throb, "steady · throbbing");
+  assert.equal(ends.Sway, "fixed · swaying");
+  assert.equal(ends.Heft, "slight · heavy");
+  // Six families of three.
+  for (const f of FAMILIES) assert.equal(PALETTE.filter((c) => c.family === f).length, 3, f);
+  for (const c of PALETTE) {
+    assert.equal(c.aim.length, 2, c.name);
+    for (const s of [c.hear, c.how]) {
+      voiced(s);
+      assert.match(s, /^[A-Z].*\.$/, `a sentence: ${s}`);
+    }
+  }
+});
+
+test("what a control does on this sound is said from its wiring", () => {
+  assert.equal(onThisSound("Bite", { knobs: ["filter resonance", "env decay"] }), "On this sound it turns filter resonance and env decay.");
+  assert.equal(onThisSound("Space", { knobs: ["amp release"], only: "far" }), "On this sound it turns amp release. It turns toward far only.");
+  assert.equal(onThisSound("Grit", { search: true }), "Nothing here turns Grit: turn it past the notch, and it asks for an offer instead.");
+  assert.equal(onThisSound("Heft", { pending: true }), "Heft hasn’t been measured on this sound yet. It turns once it has.");
+  for (const s of [onThisSound("A", {}), onThisSound("A", { search: true }), onThisSound("A", { pending: true })]) voiced(s);
+  assert.equal(panelCount(6, 8), "6 of 8 on the panel");
 });
 
 test("what changed counts the modules: a tree re-laid by an insertion says only what it gained and lost", () => {
