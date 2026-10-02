@@ -6441,6 +6441,27 @@ function paintMarks(el, id) {
 // the row, its lineage line and dot, the note under New, and EVOLVE POOL's
 // word for the walk. The lengths are the motion tokens (`motionMs`).
 const seeding = new Set(); // seeds whose bud is out: their rail is lit
+// Buds in flight, each with what ends it. A bud flies between two rows' places
+// as they were when it left; when the bank is drawn again those places can
+// move (the next child of a burst lands and pushes the rows down), so every
+// bud in flight lands at once rather than fly from or to the wrong row.
+const flights = new Map(); // Animation -> end()
+function landFlights() {
+  for (const [anim, end] of [...flights]) {
+    anim.onfinish = anim.oncancel = null;
+    anim.cancel();
+    end();
+  }
+}
+function flown(anim, end) {
+  const done = () => {
+    if (!flights.delete(anim)) return;
+    end();
+  };
+  flights.set(anim, done);
+  anim.onfinish = done;
+  anim.oncancel = done;
+}
 function bankRowEl(id) {
   return document.querySelector(`#bank-list .bank-item[data-id="${id}"]`);
 }
@@ -6505,8 +6526,7 @@ function budFrom(seedId, childId) {
     seedLit(seedId, false);
     land();
   };
-  anim.onfinish = end;
-  anim.oncancel = end;
+  flown(anim, end);
 }
 function fadeBeside(seedId, said) {
   if (!said || !motionMs("--d-move") || bankFilter !== "pool") return;
@@ -6531,8 +6551,7 @@ function fadeBeside(seedId, said) {
     chip.remove();
     seedLit(seedId, false);
   };
-  anim.onfinish = end;
-  anim.oncancel = end;
+  flown(anim, end);
 }
 
 /** One more of generation `gen` bred and not in New. */
@@ -6876,6 +6895,7 @@ function renderBank() {
   }
 
   const fitted = !!(views && views.styles);
+  landFlights(); // the rows move: every bud in flight lands now
   const frag = document.createDocumentFragment();
   rows.forEach((r, i) => {
     if (fresh.length && i === 0) {
