@@ -79,6 +79,8 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   // A new structure is unlit until it is measured: no estimate is drawn.
   await slowWorker(page, { cable_levels: 4000 });
   await page.locator("#patch-new-btn").click();
+  // The empty socket is on the rack before a source is put in it.
+  await expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout: 30_000 });
   await page.locator('#nb-groups .nb-item[data-kind="supersaw"]').click();
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="supersaw"]').length), { timeout: 30_000 }).toBe(1);

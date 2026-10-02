@@ -138,11 +138,21 @@ async function replied(page, type, after, match = {}, timeout = 60_000) {
  *  land in between, and is not this one. */
 async function guessAfter(page, after, timeout = 90_000) {
   const find = (t) => {
-    const ask = window.__pwPosted.find((p) => p.type === "guess" && p.t > t);
+    const ask = window.__pwPosted.find((p) => p.type === "guess" && p.t >= t);
     if (!ask) return null;
     return window.__pwReplies.find((r) => r.type === "guess" && r.token === ask.token && r.data) || null;
   };
-  await expect.poll(() => page.evaluate(find, after), { timeout }).not.toBeNull();
+  try {
+    await expect.poll(() => page.evaluate(find, after), { timeout }).not.toBeNull();
+  } catch (err) {
+    // Say what the page asked for and heard since, which is the whole story.
+    const seen = await page.evaluate((t) => ({
+      posted: window.__pwPosted.filter((p) => p.t > t - 2000 && /guess/.test(p.type)).map((p) => `${Math.round(p.t)} ${p.type} ${p.token}`),
+      heard: window.__pwReplies.filter((r) => r.t > t - 2000 && /guess/.test(r.type)).map((r) => `${Math.round(r.t)} ${r.type} ${r.token} ${r.error || (r.data ? r.data.reason || (r.data.guesses || []).length : "")}`),
+      patch: window.__aur.patch().guess,
+    }), after);
+    throw new Error(`no guess asked after ${Math.round(after)} was answered: ${JSON.stringify(seen)}\n${err.message}`);
+  }
   return page.evaluate(find, after);
 }
 
