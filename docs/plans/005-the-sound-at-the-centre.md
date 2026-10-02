@@ -209,6 +209,40 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
     - φ is computed from a decoded file (`auracle-features`, a wasm binding).
     - The sound takes its place on the map, and its nearest sounds are shown.
     - Breeding toward it uses walks tilted toward its φ, as aimed offers are.
+    - *Progress (2026-10-02): the engine and the worker are built; the card is
+      not.* `featurize_file` measures a decoded file as a render is measured
+      (trim, resample, the same normalization and `audio_features`). By
+      measurement (`file_phi`), a recording measures 5 of φ's 44 coordinates,
+      its spectral balance; the rest are masked (`FILE_MASKED` and every
+      structural one). Its nearest pool members and presets are ranked over
+      those five, it is placed on TASTE's map by the map's own projection
+      (`TasteMap::own`), and `refine_toward_jobs` breeds a generation toward
+      it on the taste's target times a floored Gaussian likelihood of the
+      recording (`OWN_GAMMA` 4, `OWN_FLOOR` 25). The session saves it as its
+      five coordinates, by name, never the audio. Bindings: `own_sound_set`,
+      `own_sound`, `own_sound_clear`, `own_presets_set`,
+      `refine_toward_jobs`; the worker answers `own_sound_set`, `own_sound`,
+      `own_sound_clear` and `refine` with `toward: true`, and main sends none
+      yet. The measurements, and where the engine and the prototype differ,
+      are in the reference
+      ([A sound of your own](../../www/reference/src/features/own-sound.md)).
+      Breeding needs a fitted taste, as EVOLVE POOL does; Hold it is audio
+      in (RFC-008).
+    - *Decided for the card (maintainer, 2026-10-02):*
+      - **Before the first fit**, Breed toward it adds the nearest presets
+        (`own_nearest_presets`, then `load_preset`), as the prototype does.
+        That is true, since it is adding presets, and needs no taste. After
+        the first fit it is the tilted generation (`refine` with
+        `toward: true`).
+      - **Playback:** the page keeps the decoded audio in IndexedDB, so the
+        recording plays after a reload and sits in the bank as the
+        prototype shows. It stays out of duels; the engine keeps only its
+        measurement.
+      - **Hold it** plays the recording through the named controls once
+        audio in is live: the UI stream's work, with Plan-007.
+      - **Buds** show the children growing from their parents, the pool
+        members nearest the sound, and leaning toward the recording, never
+        out of the dropped face (ADR-012).
 12. **Found along the way** (RFC-006), each a small change with its check:
     - the guide's "crossover";
     - the `not_admitted` text;

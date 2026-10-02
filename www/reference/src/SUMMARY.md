@@ -28,6 +28,7 @@
 - [Perceptual descriptors (φ_audio)](./features/audio.md)
 - [Structural descriptors (φ_struct)](./features/structural.md)
 - [Standardization](./features/standardization.md)
+- [A sound of your own](./features/own-sound.md)
 
 # The taste model
 
