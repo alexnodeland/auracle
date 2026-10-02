@@ -136,16 +136,24 @@ measured with audition clips, from quiver to the PATCH plate.
      captures again. One clip for every input (a clip per input stays open);
    - the farm's phrase re-sent after a capture and after a restore that
      installs a clip; *done* (`farmResendPhrase`);
-   - **held sounds** (task 6), owed (the second web PR): a bank surface for the sounds a restore
-     kept aside because a CAPTURE's recording couldn't be read
-     (`held_sounds`), which opens one on the bench to record it again and
-     sends the take (`readmit_held`); both are wired in `worker.js` with
-     nothing asking yet, and the restore's note says so once per set;
-   - **TRACK live**, owed (the second web PR): a key let go while the input still sounds holds its
-     voice open (the tracker's gate is summed into the amp's), so voices can
-     stack while the player plays keys over a sung line, each a copy of the
-     tracked note. The audition render's chord voices are followers that
-     stop with their key; `LivePoly` has no follower yet;
+   - **held sounds** (task 6); *done* (the second web PR): the pool's tab
+     lists them at its foot under *kept safe*, each with the engine's
+     sentence and RECORD AGAIN, which records the sound from its saved term
+     (`held_sounds` now carries it and the capture's key,
+     `PatchTree::lost_take_key`) on an instrument of its own, lending the
+     input it reads, and sends the take to `readmit_held`. It does not open
+     the sound on the bench: a held sound is not in the pool, and the bench
+     opens pool sounds;
+   - **TRACK live** (task 5); *done* (the second web PR): one tracked voice.
+     A patch with a TRACK builds its open voice as the lead and the keys'
+     voices as followers (`compile_follower`), fed the lead's tracked
+     signals frame by frame (`CompiledVoice::read_tracks`); the lead is
+     opened by its tracker's gate, not held like a key, so keys over a sung
+     line stop with their keys instead of stacking;
+   - **the rail and the plates for TRACK and CAPTURE**; *done*: TRACK in
+     DYNAMICS (its default listen branch an AUDIO IN, so placing it asks for
+     an input), CAPTURE in SPACE with RECORD and its recording's length on
+     its plate (`takes.js`);
    - **AUDIO IN in the prior.** *Decided* (2026-10-02): not turned on. It
      is a player kind like TRACK and CAPTURE (task 2): never drawn, scored
      finite, so a player's listening patch is bred and no draw moved (no
@@ -188,12 +196,11 @@ measured with audition clips, from quiver to the PATCH plate.
      the chain it plays and the input chain it follows stay;
    - rendered on the reference clip, it plays the figure's notes (thirteen of
      fourteen within 1.4 cents; one over a ringing note, 17 cents).
-   - Open: live, `LivePoly` ran a voice only while a key was held. Task 4's
-     open voice (`LivePoly::set_open`) now holds one open while the input is
-     monitored, which is what a tracked patch needs to sound from the input
-     alone; it has not been measured with a TRACK yet. Still open: a tracker
-     holding the gate defeats the stolen-voice regate, and the node bank
-     entry and the plate (the second web PR).
+   - Live: *done* (task 4's second web PR). The open voice tracks, and the
+     keys' voices follow it and stop with their keys, so their amps keep
+     their own gates and a stolen voice re-gates as any key's does. Measured
+     in the browser (`audio_in_takes.spec.js`) and natively
+     (`a_tracked_patch_has_one_tracked_voice_and_the_keys_do_not_stack`).
 6. **Capture** (record and play back) in quiver and the grammar. A captured
    buffer is saved with the sound. quiver's half is done (`Capture`, 0.4.0,
    which saves its take with the patch). *Done* (engine):
@@ -220,8 +227,9 @@ measured with audition clips, from quiver to the PATCH plate.
      back with a readable take, measured as a new sound;
    - a recording stops at `TAKE_SECONDS` at the voice's rate
      (`RecordWindow`), so it always reads back as a take.
-   - Open: `LivePoly`'s record and read-back bindings and the record control,
-     and showing held sounds in the bank (task 4).
+   - Live: *done* (task 4's second web PR): `LivePoly::set_record` and
+     `take_json`, RECORD on the plate (an instrument of its own in the
+     worklet, the take sent as `set_take`), and the held sounds in the bank.
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
    is *done* (*Audition clips*, with the AUDIO IN term on the grammar page),

@@ -112,13 +112,68 @@ built-in plucked phrase.
 The [reference](../reference/audition/clips.html) has how the clip is made,
 stored, and measured.
 
+## Play it with your voice: TRACK
+
+**track**, under **DYNAMICS** in the module rail, plays a chain from the pitch
+and the notes of what it listens to: sing, whistle, or play a line into an
+input, and the chain follows you.
+
+1. Click **track**, then click a lit socket after the chain you want to play.
+   The chain goes into TRACK’s first socket, and an AUDIO IN into its second
+   (**listen**). Placing it asks for an input, as AUDIO IN does.
+2. Put on headphones and press **MONITOR** on the AUDIO IN.
+3. Sing or play into the input. The chain plays your notes.
+
+| Knob | What it does |
+|---|---|
+| **BAND** | Where it listens for a pitch: low (40–500 Hz), mid (70–1000 Hz), or high (140–2000 Hz) |
+| **SENSITIVITY** | How quiet a note can be and still play |
+| **DYNAMICS** | How far your playing’s level shapes the chain |
+
+There is one input and one pitch in it, so every note a chord plays inside
+TRACK’s chain is the note you sing. Keys still play over it: each key sounds
+the tracked note through the rest of the patch, and stops when you let it go.
+
+```admonish info collapsible=true title="How it works: one tracked voice"
+The open voice is the one that tracks. It is not held like a key: the tracker
+opens it when it hears a note and lets it go when you stop. Every key’s voice
+follows it, playing the note it tracks frame by frame, and stops with its key.
+Without that, each key’s voice tracked the input itself and stayed open while
+you sang, so the keys you played piled up.
+```
+
+## Record into it: CAPTURE
+
+**capture**, under **SPACE**, records what is patched into it, up to four
+seconds, and plays the recording from the keys.
+
+1. Click **capture**, then click a lit socket after the chain you want to
+   record. Until you record, it is silent.
+2. Patch an AUDIO IN into it to record your input, or leave the chain that was
+   there to record that.
+3. Press **RECORD** on the module and play. Press **STOP** to end it; it stops
+   by itself at four seconds.
+
+The recording goes into the sound as an edit: one undo step, and the module
+says how long it is (*recording · 2.4 s*). **PLAY** sets how a key plays it:
+once to its end, while the key is held, or round and round. Recording doesn’t
+need MONITOR, and it doesn’t interrupt what the keys are playing. The
+recording is saved with the sound.
+
+**Kept safe.** If a saved sound’s recording can’t be read when Auracle opens,
+and the recording was all it played, the sound is kept out of the pool and
+listed at the foot of **POOL** under **KEPT SAFE**. Press **RECORD AGAIN** on
+it and play into the input it reads: it gets the new recording and joins the
+pool again.
+
 ## Breeding it
 
 A sound with AUDIO IN breeds like any other. ⚡ EVOLVE FROM THIS and a
 generation walk it through the clip, and every child keeps its AUDIO IN on
 the input you set, while its gain, its channel, and everything around it can
 change. No generation adds AUDIO IN to a sound by itself: an input is in a
-sound only because you patched it in.
+sound only because you patched it in. A TRACK or a CAPTURE stays where you put
+it too, and a CAPTURE keeps its recording.
 
 ## What it doesn’t do yet
 

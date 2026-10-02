@@ -802,6 +802,28 @@ the voices' input in the worklet, and the clip in the engine.
   phrase in `farmSetup`. `farm.js` keeps its open render store when the
   namespace is unchanged (the namespace never sees the clip).
 
+### TRACK and CAPTURE
+
+- **One tracked voice.** A patch with a TRACK builds its open voice as the
+  lead (it tracks the input; its tracker's gate opens it) and every key's
+  voice as a follower (`compile_follower`). The lead renders its quantum
+  first and copies its tracked signals per frame (`read_tracks`); each
+  follower sets its feeds from that copy before each of its frames.
+- **Recording** (`takes.js`). RECORD posts `take_start {tree, key}` to the
+  worklet, which builds an instrument of its own in its port handler (one
+  voice, its key held, `set_record(key, true)`), writes the input into it
+  each quantum whether or not MONITOR is on, renders it and drops its output.
+  `take_stop {key}` (STOP, or `TAKE_SECONDS` and a quarter of a second) drops
+  the gate, reads `take_json(key)` and replies `take_done {key, take}` (or
+  `take_error`). On the bench the take goes out as `edit_structure` with
+  `set_take`, through the bench lane.
+- **Kept safe.** After a restore that held sounds back, main asks
+  `held_sounds` (each with its term and the key of the capture to record
+  again) and lists them at the foot of the pool. RECORD AGAIN records from
+  the saved term, lending the input it reads (`audioIn.lend`, which may ask
+  for one), and sends `readmit_held {id, take}`; the reply `readmitted`
+  carries the views when the sound is back.
+
 ## The job slot
 
 Long work has one home, in the menu bar beside GENERATIONS: "⚡ breeding

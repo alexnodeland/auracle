@@ -232,6 +232,14 @@ Three consequences worth knowing:
   phrase the dyad’s second voice is a *follower*: it plays the note the main
   voice’s tracker hears from its first frame, and its amp keeps its own key’s
   gate, so it stops with the dyad.
+- **Live, one voice tracks.** The instrument (`LivePoly`) builds a patch with a
+  TRACK with one tracked voice, its open voice, and every key’s voice is a
+  follower of it, as the phrase’s chord voices are: so a key let go stops with
+  its key instead of staying open while the input sounds. The tracked voice is
+  not held like a key; its tracker’s gate opens it, so while the input is
+  monitored it sounds when the input does. It renders its quantum first and
+  copies its tracked signals frame by frame (`CompiledVoice::read_tracks`) for
+  the followers to read before each of their frames.
 - **Before the first tracked note**, `/0` plays C4 (the tracker’s 0 V), and
   between notes it holds the last note it tracked.
 - **The tracker hears what is there.** Where one note still rings under the
@@ -289,7 +297,13 @@ take has enlarged, so what a capture records always reads back as a take.
 Recording is the host’s. A compiled voice has a record gate per capture and
 reads the take back from quiver’s state, and `StructOp::SetTake` puts it in the
 term. Nothing in the engine raises the gate, so a measurement render never
-records and a capture measures the same every time.
+records and a capture measures the same every time. In the app, RECORD on the
+CAPTURE’s plate builds an instrument of its own in the worklet (one voice of
+the patch, its key held at C4), raises the gate there
+(`LivePoly::set_record`) while the input is written into it, and on STOP (or
+at `TAKE_SECONDS`) reads the take back (`LivePoly::take_json`) and sends it as
+`set_take`, an edit like any other. A sound kept safe is recorded the same way
+from its saved term, and the take goes to `readmit_held`.
 
 ### Player kinds: scored and never drawn
 

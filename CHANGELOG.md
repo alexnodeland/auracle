@@ -33,6 +33,19 @@ changelog that edits its own past is not a record.
 - On a touch screen, a long press on a control now opens its answer, whose
   **HEAR IT** plays the sweep the long press used to.
 
+### Added: TRACK and CAPTURE, to play and record with your input
+
+- **TRACK plays a chain from your voice or your instrument.** Sing or play
+  into an AUDIO IN and the chain in TRACK’s first socket follows your notes.
+  One voice tracks, and keys played over it stop when you let them go, where
+  they used to pile up while you sang.
+- **CAPTURE records what is patched into it,** up to four seconds, and plays
+  the recording from the keys. Press RECORD on the module, play, and press
+  STOP; the recording goes into the sound as one undo step and is saved
+  with it.
+- **A sound whose recording couldn’t be read is kept safe** at the foot of the
+  pool, under KEPT SAFE. RECORD AGAIN records it and brings it back.
+
 ### Added: play through Auracle with AUDIO IN
 
 - **AUDIO IN brings your own signal into a patch**: a microphone, or a
