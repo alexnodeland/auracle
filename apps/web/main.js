@@ -5809,9 +5809,9 @@ $("rec-btn").onclick = () => {
   $("rec-btn").classList.toggle("lit", recording);
   $("rec-btn").textContent = recording ? "◼ stop" : "● rec";
   live.rec(recording);
-  // One slot for the take's toasts, so "saved" replaces "recording" the moment
+  // One slot for the recording's toasts, so "saved" replaces "recording" the moment
   // you stop, rather than waiting out its window (2–3 s late on camera).
-  if (recording) note("Recording. Play something, then stop to download the take.", { replace: "rec" });
+  if (recording) note("Recording. Play something, then stop to download the recording.", { replace: "rec" });
 };
 
 // The film pipeline (www/video/tools/footage.mjs) records a walkthrough's
@@ -5891,7 +5891,7 @@ function downloadWav(samples, sampleRate, { quiet = false, name = null } = {}) {
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
-  if (!quiet) note(`Downloaded a ${(nFrames / sampleRate).toFixed(1)} s take.`, { replace: "rec" });
+  if (!quiet) note(`Downloaded a ${(nFrames / sampleRate).toFixed(1)} s recording.`, { replace: "rec" });
 }
 
 // ---------- Web MIDI ----------
