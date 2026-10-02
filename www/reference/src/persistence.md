@@ -8,7 +8,7 @@ saying so is what makes migration tractable.</p>
 | Object | Contains |
 |---|---|
 | `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts, and the [audition clip](./audition/clips.md#stored-with-the-session) |
-| `BankEntry` | A patch’s **tree**, id, origin, name, pinned flag. Renders and features are **re-derived** on import |
+| `BankEntry` | A patch’s **tree** (with any [CAPTURE take](./genome/grammar.md#capture-a-recorded-take-as-a-source) in it), id, origin, name, pinned flag. Renders and features are **re-derived** on import |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
 | `TastePosterior` | A snapshot. Recomputable from the log |
