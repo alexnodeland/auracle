@@ -136,6 +136,13 @@ with no live user in it, and it can be run the day a corpus exists.
 
 ## 2. Target-directed search: “make it sound like this”
 
+*Partly built (Plan-005 task 11):* [a sound of your
+own](../features/own-sound.md). The engine measures a recording, names its
+nearest sounds and breeds a generation toward it, on the taste's target times
+a likelihood of the recording rather than on a distance alone. Measured, a
+recording keeps five coordinates of φ, not the twelve guessed below. What
+follows is the direction as it was written.
+
 Every path through this system learns a utility. But the
 [Boltzmann target](../search/target.md) consumes $u$ as a black box:
 

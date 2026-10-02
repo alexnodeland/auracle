@@ -67,7 +67,9 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 // the model's guess (Plan-005 task 9d), with `guess_patch_as` the key a new
 // patch files its guesses under (task 7), and `edit_cable_levels` the cable
 // probe (9e). `held_sounds` and `readmit_held` are the sounds a restore held
-// back for an unreadable take (Plan-007 task 6).
+// back for an unreadable take (Plan-007 task 6). The `own_*` methods and
+// `refine_toward_jobs` are a sound of your own (Plan-005 task 11): a
+// decoded file measured, and a generation bred toward it.
 test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
   expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
   await page.goto("/pkg/build.json");
@@ -81,6 +83,7 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
       "audition_clip", "set_audition_clip", "clear_audition_clip",
       "guess_plan", "guess_rank", "guess_skip", "guess_take", "guess_patch_as", "edit_cable_levels",
       "held_sounds", "readmit_held",
+      "own_sound_set", "own_sound", "own_sound_clear", "own_presets_set", "refine_toward_jobs",
     ];
     const live = ["input_ptr", "input_capacity", "write_input", "clear_input"];
     return {
