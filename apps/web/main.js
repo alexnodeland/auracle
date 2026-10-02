@@ -613,15 +613,20 @@ function announceRepair() {
   if (r.terms) bits.push(`${r.terms} sound${r.terms > 1 ? "s" : ""}`);
   if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste`);
   if (r.dropped) bits.push(`${r.dropped} unreadable pick${r.dropped > 1 ? "s" : ""} dropped`);
-  // A sound held back is not mended, so it gets its own sentence: its only
-  // source was a recording that couldn't be read (Plan-007 task 6).
+  // A sound whose only source was a recording that couldn't be read is kept,
+  // not mended, so it gets its own sentence (Plan-007 task 6). Once for each
+  // set of such sounds, not on every boot: the set is remembered here.
   if (r.held) {
-    note(
-      r.held > 1
-        ? `${r.held} sounds are held back: their recordings couldn't be read.`
-        : "One sound is held back: its recording couldn't be read.",
-      { urgent: true },
-    );
+    const set = (r.heldIds || []).slice().sort((a, b) => a - b).join(",");
+    if (localStorage.getItem("auracle-held-noted") !== set) {
+      localStorage.setItem("auracle-held-noted", set);
+      note(
+        r.held > 1
+          ? `${r.held} sounds’ recordings couldn’t be read. They’re kept safe until you record them again.`
+          : "One sound’s recording couldn’t be read. It’s kept safe until you record it again.",
+        { urgent: true },
+      );
+    }
   }
   if (!bits.length) return;
   // `urgent`, because `toastPump` drops anything that went stale in the queue

@@ -2095,6 +2095,9 @@ async function dispatch(m) {
           // ever appears when it is true.
           try {
             const rep = JSON.parse(engine.repair_report());
+            // Which sounds are kept for a recording that couldn't be read, so
+            // main says so once per set rather than on every boot.
+            if (rep.held) rep.heldIds = JSON.parse(engine.held_sounds()).map((h) => h.id);
             if (rep.terms || rep.cells || rep.dropped || rep.held) post({ type: "repaired", repair: rep });
           } catch (_) { /* an engine without the report is an engine with nothing to report */ }
         }
