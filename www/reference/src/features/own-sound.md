@@ -24,7 +24,10 @@ preset is the truth: a file of that patch should land where the patch does. A
 coordinate counts as measured by a file when, on every stimulus, its
 correlation with the phrase value across the presets is at least `SURVIVES_R`
 $= 0.9$ and its root-mean-square difference is at most `SURVIVES_RMSE` $= 0.5$σ
-of the presets' spread (two presets drawn at random differ by about 1.4σ).
+of the presets' spread on the phrase (two presets drawn at random differ by
+about 1.4σ). Every σ in this table is that one: the presets' spread, not a
+session's. Run it with `cargo run -p auracle-features --example file_phi
+--release`; it also prints each coordinate's bias.
 
 | Coordinate | melody r / rmse | drone r / rmse | stabs r / rmse | Measured |
 | --- | --- | --- | --- | --- |
@@ -43,6 +46,18 @@ of the presets' spread (two presets drawn at random differ by about 1.4σ).
 
 62 presets on the phrase; 62, 56 and 62 measured as files (six presets fade
 below the trim before half a second of drone has passed).
+
+The measured coordinates are not unbiased. A file reads a little brighter than
+its preset does on the phrase: `zcr_mean` by +0.35σ on the melody and +0.30σ
+on the drone, `centroid_mean` and `rolloff_mean` by +0.09 to +0.17σ. Within the
+bar, so they are measured; but a recording sits a shade brighter among the
+sounds than the patch that made it would, and its nearest sounds lean that way.
+
+A one-shot shorter than the half second a file must hold does not measure them
+all: with a single G4 of 0.25 s added to the stimuli, `zcr_mean` (0.55σ) and
+`bass_fraction` (0.62σ) miss the bar, and they still miss at 0.5 s (0.54σ,
+0.61σ). One short note at one pitch says too little about weight and
+brightness, which is why `FILE_MIN_SECONDS` stays at 0.5 s.
 
 What a file measures is its **spectral balance**: how bright it is
 (`centroid_mean`, `rolloff_mean`, `zcr_mean`), how noisy (`flatness_mean`) and
@@ -95,6 +110,26 @@ and measures it as [`featurize`](../audition/loudness.md) measures a render:
 Measuring a render's φ is unchanged by any of this: no coordinate, constant or
 step of `featurize` moved.
 
+### What the page sends
+
+The page decodes the file, mixes it to mono, cuts it to 120 s and resamples
+anything above 48 kHz down to 48 kHz before it posts it. The engine measures at
+most the first 30 s of sound, and the samples are copied into the engine's
+memory, which wasm never gives back: two minutes grow it by about 42 MB at
+48 kHz and 108 MB at 192 kHz. The analysis is one call the worker cannot
+interrupt; for 30 s of sound it takes 0.16 s at 44.1 kHz, 0.31 s at 48, 0.52 s
+at 96 and 0.94 s at 192 (`auracle-wasm`'s `examples/own_cost.mjs`, wasm under
+node on an M3 Max), most of it resampling.
+
+What each refusal asks of the card:
+
+- `too_long`: more than 120 s reached the engine. Cut it and send it again.
+- `too_short`: under half a second of sound once trimmed. Nothing to retry; the
+  card says the sound is too short to place.
+- `silent`, `non_finite`, `bad_rate`: nothing in it can be measured.
+- After any refusal the sound brought before is still the session's: the card
+  asks `own_sound` to redraw it.
+
 ## Missing coordinates
 
 What a masked coordinate becomes depends on what reads the sound, and none of
@@ -107,7 +142,7 @@ it claims to know the coordinate's value:
 - **The tilt has no factor for them**, which is the same as integrating them
   out (below).
 - **Anything linear reads them at the mean**, where they add exactly nothing.
-  The map's projection is one such reading (below). A utility $	heta^	op z$
+  The map's projection is one such reading (below). A utility $\theta^\top z$
   would be another, and the observation log already puts a coordinate an old
   vote lacks at the standardizer's mean for the same reason: zero
   contribution, exactly "no evidence". Nothing reads the sound's utility
@@ -186,10 +221,11 @@ Read as Bayes, this is the taste's own target times a Gaussian likelihood
 $\mathcal N\big(z^*_O;\, z_O(x),\, \tau^2 I\big)$ with $\tau^2 = 1/(\beta\gamma)$:
 the patches you would like, weighted by how well each explains the recording as
 a measurement of its sound. A masked coordinate has no factor, which is that
-likelihood integrated over it. At $\gamma = 4$, $\tau \approx 0.35$σ, about the
-error a recording makes on the coordinates it measures (up to 0.43σ in the
-table above), so the walk trusts the file about as far as the file can be
-trusted.
+likelihood integrated over it. At $\gamma = 4$, $\tau \approx 0.35$σ of the
+session's spread. That is the same size as the error a recording makes on the
+coordinates it measures (0.03 to 0.43σ in the table above), but those are σ of
+the presets' spread, a different scale, so it is a choice of size made with
+the census below, not a calibration of the file's error.
 
 The floor is the likelihood of a contaminated measurement: the recording is the
 patch's sound with noise $\tau$, or a sound this grammar does not make, and then
@@ -213,15 +249,19 @@ tilted target the engine would. A generation without a target walks exactly as
 before; at $\gamma = 0$ the tilted walk is the untilted one, bit for bit.
 
 Children are admitted by the bar every generation's are: a child must please
-the taste more than the member it would displace. So there is no breeding toward
-a sound before the first fit, as there is no EVOLVE POOL.
+the taste more than the member it would displace. So the engine breeds toward a
+sound only after the first fit, as EVOLVE POOL does; before it, Breed toward it
+adds the nearest presets (below).
 
 ### Measured
 
 `examples/own_census.rs`: three sessions (a pool of 48 and a taste taught by a
 synthetic listener over 60 duels), six target presets recorded on the melody,
 five walks of 40 steps a target, every arm from the same job seeds, so the arms
-are paired. Distances are in σ over the five measured coordinates, mean ±
+are paired walk by walk. `cargo run -p auracle-session --example own_census
+--release` reproduces these tables (its defaults are `3 6 1,2,4,8 5`), and its
+`placement error` lines the placement table above. Distances are in σ of the
+session's spread over the five measured coordinates, mean ±
 standard error over 90 walks: to the recording's $z^*$ at the walk's start and
 end, and at the end to the preset itself (its phrase φ on the same
 coordinates), which is the truth the recording stands in for. $\Delta\E[u]$ is
@@ -249,7 +289,8 @@ which says whether the pull works from farther away:
 | γ = 8 | 2.18 ± 0.15 | 0.86 ± 0.09 | −1.32 ± 0.16 | 89% | −0.30 ± 0.25 | 0.94 ± 0.09 |
 
 Tilted walks end nearer than untilted ones from the same jobs by 2.03 ± 0.16σ
-from the nearest parents and 1.50 ± 0.15σ from the taste's (paired, γ = 4).
+from the nearest parents and 1.50 ± 0.15σ from the taste's (paired by walk,
+γ = 4).
 Untilted, a walk from the nearest parents wanders off the sound as it climbs the
 taste; tilted, it stays near and still pleases the taste more than its parent.
 From farther away the pull costs taste (−0.56 at γ = 4), which is the trade the
@@ -259,37 +300,42 @@ the recording and the preset: at 8 the floor leaves the farther walks unguided.
 Of the 90 γ = 4 children from the nearest parents, absorbed into their
 generations as the app would, 86 were admitted and 4 were not.
 
-## What is not done
+## What is not done, and what the card will do
 
-- **The card.** Dropping a file, the face, the nearest sounds leaning in, Hold
-  it and Breed toward it are the app's half, still to be built. The worker
-  answers `own_sound_set`, `own_sound`, `own_sound_clear` and `refine` with
-  `toward: true`; nothing sends them yet.
-- **Holding it.** The prototype's Hold it plays the recording through the
-  named controls. That is audio in (RFC-008), not a sound of your own.
-- **Where the children grow from.** The prototype's children bud out of the
-  dropped face. The engine's grow from their parents, the pool members nearest
-  the sound, and lean toward the recording; a figure of it has to show that
+The card is the app's half, still to be built: the worker answers
+`own_sound_set`, `own_sound`, `own_sound_clear` and `refine` with
+`toward: true`, and nothing sends them yet. Where the prototype shows what the
+engine does not do, the maintainer decided the card's behavior (Plan-005 task
+11):
+
+- **In the bank, never in a pair.** The prototype lists the recording among
+  the presets and plays it from there, and so will the card: the page keeps the
+  decoded audio in IndexedDB, so it plays after a reload too. In the engine the
+  sound has no tree, so it is never dealt in a pair, held as a patch or bred
+  from; the session keeps only its measured coordinates, by name, because an
+  autosave holding half a minute of samples would be megabytes the engine
+  never reads.
+- **Before the first fit, Breed toward it adds the nearest presets**, as the
+  prototype does: `own_nearest_presets` names them and `load_preset` adds them,
+  with no taste needed. After the first fit it breeds the tilted generation
+  above.
+- **The children grow from their parents**, the pool members nearest the
+  sound, leaning toward the recording; the prototype's buds from the dropped
+  face would show a fact the engine does not record
   ([ADR-012](https://github.com/alexnodeland/auracle/blob/main/docs/decisions/012-motion-shows-what-the-engine-does.md)).
-- **It is not a patch in the bank.** The prototype lists the recording among
-  the presets and plays it from there. A sound of your own has no tree: it is
-  never dealt in a pair, held as a patch or saved as one.
+- **Hold it** plays the recording through the named controls once audio in is
+  live (Plan-007), the UI stream's work.
 - **Nearest, and the map, are of other sounds.** The prototype ranks presets
   by its 40-band face and places the recording on a map of the 62 presets.
   The engine ranks pool members and presets, separately, over the five
   coordinates, and places it on TASTE's map of the pool and what you have
-  heard. The face itself is the page's to draw from the decoded file, as
-  for any render.
-- **Playing it after a reload.** The prototype keeps the decoded buffer. The
-  engine keeps only the measurement, so after a reload the card can name and
-  place the sound, and play it only if the page kept the file itself.
-- **Breeding before the first fit.** The prototype adds the nearest presets to
-  the pool at any time. The engine breeds only with a taste, as EVOLVE POOL
-  does; adding the nearest presets is `load_preset`, which the app can do
-  without the engine knowing why.
+  heard. The face itself is the page's to draw from the decoded file, as for
+  any render.
+
+Not done in the engine:
+
 - **More of φ.** Five coordinates are what a recording measures under today's
   φ. A recording's movement, attack and tail would need coordinates defined
   without the phrase's notes, which is a change to φ and owes a revalidation.
-- **The audio.** The session keeps the sound's measured coordinates, by name,
-  and its name, never the samples: an autosave is the player's, and half a
-  minute of audio is megabytes in it that the engine never reads again.
+  A change to φ also owes a re-measure of the mask: the gate test fails until
+  `FILE_MASKED` agrees with `file_phi` again.

@@ -44,10 +44,11 @@ use crate::walk::{WalkContext, WalkJob};
 /// With the session's β = 2, the file reads as a measurement of the patch's
 /// sound with noise `τ = 1/√(βγ)` σ on each coordinate it measures.
 ///
-/// Chosen by census (`examples/own_census.rs`, 90 walks an arm): 4 gives
-/// `τ ≈ 0.35σ`, the size of a recording's own error on the coordinates it
-/// measures (0.03 to 0.43σ in `auracle-features`' `file_phi`), so the walk
-/// trusts the file about as far as the file can be trusted. It is the
+/// Chosen by census (`examples/own_census.rs`, 90 walks an arm). 4 gives
+/// `τ ≈ 0.35σ` of the session's spread, the same size as a recording's own
+/// error on the coordinates it measures (0.03 to 0.43σ in `auracle-features`'
+/// `file_phi`); those are σ of the presets' spread, another scale, so the
+/// match is of size, not a calibration of the file's error. It is the
 /// smallest γ measured whose walks from the parents nearest the sound end
 /// nearer than they began (−0.09 ± 0.03σ; untilted, +1.94σ), and from the
 /// taste's own parents it ends nearest both the recording (0.79 ± 0.05σ) and
