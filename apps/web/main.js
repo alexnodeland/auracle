@@ -129,6 +129,8 @@ const {
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES,
 } = await import(`./words.js?v=${BUILD}`);
+// A sound's face against the bank, as markup (faces.js, tests/faces.test.mjs).
+const { decodeFace, bankStats, faceSvg } = await import(`./faces.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -265,6 +267,219 @@ let playOnSettle = false;
 let octShift = 0;
 let hold = false;
 const heldNotes = new Set(); // midi numbers currently sounding
+
+// ---------- faces (Plan-005 task 3) ----------
+// Every row, chip and card carries its sound's face: the engine's measurement
+// of the render in 40 bands × 12 slices (`auracle_features::face`, taken in
+// the featurization and filed by the worker under `"<ns>/<render key>"`),
+// drawn against the bank's mean and spread (faces.js). A face is drawn in a
+// slot its place always has, empty until the face arrives, so a name sits
+// at the same x with or without one, and never loses width to it. Nothing
+// moves on its own (ADR-012): a face is redrawn when the render it shows is
+// replaced (an edit, an offer) or when the bank's mean or spread changes (a
+// sound added, replaced or cut), and then in place, with no tween.
+//
+// Sizes in CSS px, the slot's and the drawing's (a vessel is taller than
+// wide, as the specimen draws it).
+const FACE_SIZE = {
+  row: [24, 40],   // a bank row, beside its two lines
+  pair: [28, 44],  // an EVOLVE card, beside its name
+  subject: [20, 32], // PATCH's header, beside the patch's name
+  chip: [14, 22],  // PATCH's teach strip, A and B
+  hand: [32, 48],  // PERFORM, the sound in hand
+  offer: [16, 26], // PERFORM's B
+  warm: [24, 40],  // the warm start's cards
+  share: [208, 312], // the share card (drawn into its SVG, not a slot)
+};
+const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
+const faceKeyById = new Map();  // pool id -> key
+const faceKeyByRef = new Map(); // tree ref -> key
+const faceTreeByRef = new Map(); // tree ref -> tree text, to ask with
+const faceAsked = new Set();    // targets asked and not yet answered ("i12", "r…")
+const faceNone = new Set();     // targets the engine has no face for (a tree that does not vet)
+const faceWanted = new Set();   // targets to ask for at the next send
+let faceStats = null;           // the bank's mean and spread (faces.js `bankStats`)
+let faceBankKeys = "";          // the keys those were taken over
+let faceEpoch = 0;              // bumped when they change: every face redraws
+const faceMarkupCache = new Map(); // "key|epoch|w|h" -> markup
+let faceSendQueued = false;
+let facePaintQueued = false;
+
+/** A tree's ref: a short hash of its text (FNV-1a), stable for the session. */
+function treeRef(json) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+  return `r${(h >>> 0).toString(36)}${json.length.toString(36)}`;
+}
+/** `{id}` or `{tree}` (or null) → the slot's target string, or "". */
+function faceTarget(t) {
+  if (!t) return "";
+  if (t.id != null) return `i${t.id}`;
+  if (t.preset != null) return `p${t.preset}`;
+  if (t.tree) {
+    const ref = treeRef(t.tree);
+    if (!faceTreeByRef.has(ref)) faceTreeByRef.set(ref, t.tree);
+    return ref;
+  }
+  return "";
+}
+function faceKeyOfTarget(target) {
+  return target.startsWith("i") ? faceKeyById.get(Number(target.slice(1))) : faceKeyByRef.get(target);
+}
+/** The face drawn for a target, as markup, or "" (asked for if not known). */
+function faceMarkup(target, kind, ask = true) {
+  if (!target) return "";
+  const key = faceKeyOfTarget(target);
+  const face = key && faceByKey.get(key);
+  if (!face) {
+    if (ask) wantFace(target);
+    return "";
+  }
+  if (!faceStats) return "";
+  const [w, h] = FACE_SIZE[kind];
+  const ck = `${key}|${faceEpoch}|${w}|${h}`;
+  let s = faceMarkupCache.get(ck);
+  if (s == null) {
+    s = faceSvg(face, faceStats, { w, h, layers: h >= 20, line: h >= 120 ? 2 : 1 });
+    faceMarkupCache.set(ck, s);
+  }
+  return s;
+}
+function wantFace(target) {
+  if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
+  faceWanted.add(target);
+  if (faceSendQueued) return;
+  faceSendQueued = true;
+  queueMicrotask(sendFaceAsks);
+}
+function sendFaceAsks() {
+  faceSendQueued = false;
+  if (!faceWanted.size) return;
+  const ids = [];
+  const trees = [];
+  for (const t of faceWanted) {
+    faceAsked.add(t);
+    if (t.startsWith("i")) ids.push(Number(t.slice(1)));
+    else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
+    else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
+  }
+  faceWanted.clear();
+  // A row the store has no face for (one stored before faces existed), or a
+  // preset not heard yet, is rendered for it: in the engine's background lane.
+  send({ type: "faces", ids, trees, render: true });
+}
+/** The worker's answer: faces it had, renders still to come, and targets it
+ *  has none for. */
+function facesLanded(m) {
+  for (const it of m.items || []) {
+    const face = decodeFace(it.face);
+    if (!face) continue;
+    faceByKey.set(it.key, face);
+    const target = it.id != null ? `i${it.id}` : it.ref;
+    if (it.id != null) faceKeyById.set(it.id, it.key);
+    else faceKeyByRef.set(it.ref, it.key);
+    faceAsked.delete(target);
+  }
+  for (const f of m.failed || []) {
+    const target = f.id != null ? `i${f.id}` : f.ref;
+    faceAsked.delete(target);
+    faceNone.add(target);
+  }
+  facesChanged();
+}
+/** A face request that could not be served (the engine was not up yet, or a
+ *  request threw): ask again when a slot next wants it. */
+function facesUnanswered() {
+  faceAsked.clear();
+}
+/** Re-whiten when the bank's faces changed, then redraw what changed, once a
+ *  frame however many faces landed. */
+function facesChanged() {
+  if (facePaintQueued) return;
+  facePaintQueued = true;
+  requestAnimationFrame(() => {
+    facePaintQueued = false;
+    faceRestat();
+    paintFaces();
+  });
+}
+/** The bank's mean and spread, over the faces of the rows the bank shows
+ *  (the pool, less what was cut). Taken again only when that set changed. */
+function faceRestat() {
+  const ranked = (views && views.ranked) || [];
+  const keys = [];
+  for (const r of ranked) {
+    if (cutIds.has(r.id)) continue;
+    const k = faceKeyById.get(r.id);
+    if (k && faceByKey.has(k)) keys.push(k);
+  }
+  keys.sort();
+  const sig = keys.join(",");
+  if (sig === faceBankKeys) return false;
+  faceBankKeys = sig;
+  faceStats = bankStats(keys.map((k) => faceByKey.get(k)));
+  faceEpoch++;
+  faceMarkupCache.clear();
+  return true;
+}
+/** Draw every slot whose face or bank changed since it was drawn. */
+function paintFaces(root = document) {
+  for (const el of root.querySelectorAll(".face-slot[data-face]")) paintFaceSlot(el);
+}
+function paintFaceSlot(el) {
+  const target = el.dataset.face;
+  if (!target) return;
+  const key = faceKeyOfTarget(target) || "";
+  const drawn = `${key}|${faceEpoch}|${!!faceStats}`;
+  if (el.dataset.drawn === drawn) return;
+  el.innerHTML = faceMarkup(target, el.dataset.kind, !el.hasAttribute("data-lazy"));
+  el.dataset.drawn = el.innerHTML ? drawn : "";
+}
+/** A slot's markup, for a row or card built as HTML. Always there, at its
+ *  size, with or without a face in it. `lazy`: asked for only once the slot
+ *  scrolls into view (`faceWhenSeen`), for a list of presets each of which
+ *  may cost a render. */
+function faceSlot(kind, t, { lazy = false } = {}) {
+  const target = faceTarget(t);
+  const [w, h] = FACE_SIZE[kind];
+  const inner = faceMarkup(target, kind, !lazy);
+  const key = target ? faceKeyOfTarget(target) || "" : "";
+  const drawn = inner ? ` data-drawn="${key}|${faceEpoch}|true"` : "";
+  const wait = lazy && !inner && target ? " data-lazy" : "";
+  return `<span class="face-slot face-${kind}" data-kind="${kind}"${target ? ` data-face="${target}"` : ""}${drawn}${wait} style="width:${w}px;height:${h}px" aria-hidden="true">${inner}</span>`;
+}
+let faceSeer = null;
+/** Ask for the lazy slots under `root` as they come into view. */
+function faceWhenSeen(root) {
+  if (!faceSeer) {
+    faceSeer = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        if (!e.isIntersecting) continue;
+        faceSeer.unobserve(e.target);
+        e.target.removeAttribute("data-lazy");
+        if (e.target.dataset.face) wantFace(e.target.dataset.face);
+      }
+    });
+  }
+  for (const el of root.querySelectorAll(".face-slot[data-lazy]")) faceSeer.observe(el);
+}
+/** Point a slot built once (a duel card's, PERFORM's) at a sound, or at none. */
+function setFaceSlot(el, kind, t) {
+  if (!el) return;
+  const [w, h] = FACE_SIZE[kind];
+  el.classList.add("face-slot", `face-${kind}`);
+  el.dataset.kind = kind;
+  el.setAttribute("aria-hidden", "true");
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
+  const target = faceTarget(t);
+  if (target === (el.dataset.face || "") && el.dataset.drawn) return;
+  if (target) el.dataset.face = target;
+  else delete el.dataset.face;
+  el.dataset.drawn = "";
+  el.innerHTML = "";
+  if (target) paintFaceSlot(el);
+}
 
 // Workbench state.
 const wb = {
@@ -2055,8 +2270,13 @@ worker.onmessage = (e) => {
     // now says so instead of throwing into the void; the only one that needs
     // re-asking is the preset list, because the bank shows an empty shelf
     // until it lands and nothing else would ever ask again.
+    // Faces, as the worker files them (Plan-005 task 3).
+    case "faces":
+      facesLanded(m);
+      break;
     case "not_ready": {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      if (m.request === "faces") facesUnanswered();
       break;
     }
     // The engine is up. It says what the structural ceilings are so the
@@ -2079,6 +2299,7 @@ worker.onmessage = (e) => {
     case "engine_error": {
       console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
       releaseRequest(m.request, m.id);
+      if (m.request === "faces" || m.request === "face_render") facesUnanswered();
       if (m.fatal) {
         engineCrashed(m.message);
       } else if (m.request) {
@@ -4068,6 +4289,8 @@ async function bootPerform() {
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
     label: () => liveLabelText,
+    // A face into one of PERFORM's slots: the sound in hand's, or B's.
+    face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
     locks: () => [...lockedAddrs()],
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
@@ -5330,7 +5553,9 @@ function renderPlayDuel() {
   // side to the pool is re-dealt (`applyViews`), so no name here is gone for
   // good.
   const side = (el, letter, id) => {
-    el.replaceChildren(`▶ ${letter} · `);
+    const face = document.createElement("span");
+    el.replaceChildren(`▶ ${letter} · `, face);
+    setFaceSlot(face, "chip", { id });
     if (rowOf(id)) {
       el.append(nameOf(id));
       return;
@@ -5394,7 +5619,7 @@ function loadSide(side, id) {
 // ⇄ circuit flip, where an expert can still find it.
 function paintDuelName(side, id) {
   $(`name-${side}`).innerHTML =
-    `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
+    `${faceSlot("pair", { id })}${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
 }
 
 // A side whose buffer is on its way. The scopes used to sit as empty
@@ -6988,6 +7213,7 @@ function renderBank() {
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
+  facesChanged(); // the bank's set may have changed: its mean and spread with it
   syncBankCursor();
   if (compareId != null) renderCompare(); // its seed may have been replaced
   // Scrolled to the row asked for, by id, and not to whichever row is live
@@ -7127,7 +7353,7 @@ function bankRow(r, fitted) {
   // name is in the same place, at the same width, with or without them: the
   // origin glyph, or NEW in its place for the latest generation's children
   // (always ⚡, bred); and the unheard dot in the gap after it.
-  el.innerHTML = `
+  el.innerHTML = `${faceSlot("row", { id: r.id })}
     <div class="bi-top">
       <span class="bi-mark">${
         // "Gen 3: 5 new patches in the bank" sent the player to a column of
@@ -7331,7 +7557,7 @@ function renderPresetBank(list) {
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
     el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
-    el.innerHTML = `
+    el.innerHTML = `${faceSlot("row", { preset: p.index }, { lazy: true })}
       <div class="bi-top">
         <span class="bi-mark"><span class="bi-origin preset" title="▤ hand-made preset">▤</span></span>
         <span class="bi-name">${esc(p.name)}</span>
@@ -7372,6 +7598,7 @@ function renderPresetBank(list) {
     frag.appendChild(el);
   }
   list.appendChild(frag);
+  faceWhenSeen(list);
 }
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
@@ -9774,6 +10001,7 @@ function renderSubject() {
   if (!nameEl || !metaEl) return;
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
+    setFaceSlot($("subject-face"), "subject", { id });
     nameEl.classList.add("hearing");
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
@@ -9783,6 +10011,9 @@ function renderSubject() {
   }
   nameEl.classList.remove("hearing");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  // The face of the bench's latest render: an edit's, once its render lands.
+  setFaceSlot($("subject-face"), "subject",
+    !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId });
   if (!hasRack || wb.subjectId == null) {
     nameEl.textContent = "no sound open";
     nameEl.title = "";
@@ -21162,7 +21393,7 @@ function renderWarmStart(all) {
     b.className = "warm-item";
     // The blurb, not the topology signature. `tri·cho·ladr` describes the
     // graph, which is the one thing this screen is not asking about.
-    b.innerHTML = `<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
+    b.innerHTML = `${faceSlot("warm", { preset: r.index })}<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
     b.setAttribute("aria-pressed", "false");
     const pb = document.createElement("button");
     pb.className = "wi-play";

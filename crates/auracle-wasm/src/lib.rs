@@ -2114,6 +2114,17 @@ impl WasmEngine {
         serde_json::to_string(&rows).unwrap()
     }
 
+    /// Preset `index`'s tree as JSON, or empty: what the worker asks a
+    /// preset's face by (a preset row, a warm-start card) without inserting
+    /// it into the bank.
+    pub fn preset_tree_json(&self, index: usize) -> String {
+        presets()
+            .into_iter()
+            .nth(index)
+            .and_then(|(_, tree)| serde_json::to_string(&tree).ok())
+            .unwrap_or_default()
+    }
+
     /// Load preset `index` into the bank; returns its id (existing id if the
     /// identical patch is already there), or 0 on failure.
     pub fn load_preset(&mut self, index: usize) -> u32 {

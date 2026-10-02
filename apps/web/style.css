@@ -681,8 +681,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank {
   position: relative; /* containing block for .bank-tour, which anchors to
                          the rail it describes rather than to the page */
-  width: 252px;
-  flex: 0 0 252px;
+  /* 252px of rows, and the faces' column (24px and its 4px gap): the column
+     is added, not taken from the names (Plan-005, a mark never narrows a
+     name). */
+  width: 280px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--hairline);
@@ -967,6 +970,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
    what uncertainty should look like. Absolutely positioned so it costs the row
    no height at all. */
 .bank-item { position: relative; }
+/* The face's column, left of the row's lines, on every row whether its face
+   has arrived or not: the lines start at the same x either way. */
+.bank-item { padding-left: calc(var(--s2) + var(--s5) + var(--s1)); }
+.bank-item > .face-slot {
+  position: absolute;
+  left: var(--s2);
+  top: 50%;
+  transform: translateY(-50%);
+}
 .bank-item .bi-u {
   position: absolute;
   left: 8px; right: 8px; bottom: 3px;
@@ -3405,7 +3417,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   .util-btn { padding: var(--s1) var(--s2); }
 }
 @media (max-width: 1080px) {
-  .bank { width: 200px; flex-basis: 200px; }
+  .bank { width: 228px; flex-basis: 228px; } /* 200px of rows and the faces' column */
   /* A 200px rail has room for "+15", not for "+15 arriving"; the tooltip
      keeps the sentence. */
   .bank-head .bc-word { display: none; }
@@ -5107,6 +5119,27 @@ html.handheld .handheld-gate {
 .keys-span .pc-cap { font-size: var(--t-label); color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .keys-span .perf-sel { flex: 1; min-width: 0; }
 
+/* ===================== faces ===================== */
+/* A sound's face (Plan-005 task 3): the render's spectrum against the bank's,
+   drawn by faces.js into a slot its place always has. Green: it is the sound. */
+.face-slot { display: inline-block; flex: none; vertical-align: middle; }
+.face-slot .face { display: block; overflow: visible; }
+.face .face-l { fill: var(--phos-a); stroke: none; }
+.face .face-o { fill: none; stroke: var(--phos-a); stroke-linejoin: round; }
+/* PATCH's teach strip: the face, then the name. */
+.pd-side .face-slot { margin-right: var(--s1); }
+/* Beside a name that sits on its baseline (an EVOLVE card's), centred. */
+.duel-name > .face-slot { align-self: center; }
+/* A warm-start card: the face left of its two lines, in a column the card
+   always has. */
+.warm-cell .warm-item { padding-left: calc(var(--s3) + var(--s5) + var(--s2)); }
+.warm-item > .face-slot {
+  position: absolute;
+  left: var(--s3);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 /* ===================== PERFORM ===================== */
 /* The sound under your hands: up to eight named controls from a palette of
    eighteen, Blend, a wander dial and six pads, on one faceplate. Built by
@@ -5125,6 +5158,7 @@ html.handheld .handheld-gate {
   justify-content: space-between;
   gap: var(--s4);
 }
+.pf-head .pf-title { margin-right: auto; } /* the held face sits before it */
 .pf-name {
   font-family: var(--font-silk);
   font-size: 26px; /* token-exempt: PERFORM's held name. The specimen sets it as the level's display (52px) in a layout with room for it, which PERFORM's rebuild makes (Plan-005 task 5); at 52px here it pushes how it works under the keybed */

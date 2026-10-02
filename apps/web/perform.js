@@ -330,7 +330,12 @@ export function createPerform(host) {
   scope.width = 360;
   scope.height = 72;
   scope.setAttribute("aria-hidden", "true");
-  head.append(title, scope);
+  // The faces of the sound in hand and of B (Plan-005 task 3): the engine's
+  // picture of each one's render, drawn by main.js (`host.face`) into a slot
+  // that is always there, so the names beside them never move.
+  const heldFace = el("span", "pf-face");
+  const offerFace = el("span", "pf-face");
+  head.append(heldFace, title, scope);
 
   const deck = el("div", "pf-deck");
   deck.setAttribute("role", "group");
@@ -2750,6 +2755,7 @@ export function createPerform(host) {
   // many controls reach it, re-checking it. Wander's own state is said on
   // Wander (`wanderState`).
   function renderStatus(msg) {
+    host.face?.(heldFace, "hand", state.cur ? state.cur.json : null);
     const parts = [];
     // Another patch is on its way to the player's hands. The title still
     // names what the keys play — that is true until it lands — dimmed, and
@@ -2799,7 +2805,8 @@ export function createPerform(host) {
     }
     else body.textContent = "no offer: press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
-    offerCard.append(lab, body);
+    host.face?.(offerFace, "offer", state.offer ? state.offer.json : null);
+    offerCard.append(lab, offerFace, body);
     paintPads();
   }
   // Take and Peek act on an offer; until there is one they look it.

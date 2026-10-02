@@ -1173,10 +1173,16 @@ function faceKeyOf(q) {
   }
 }
 
-// A face the engine can give without a render, or null.
+// A face the engine can give without a render, or null. A call that throws
+// is a face not had, unless it poisoned the engine.
 function faceNow(q, render = false) {
-  const b = q.id != null ? engine.face_of(q.id, render) : engine.face_of_tree(q.tree, render);
-  return b && b.length ? new Uint8Array(b) : null;
+  try {
+    const b = q.id != null ? engine.face_of(q.id, render) : engine.face_of_tree(q.tree, render);
+    return b && b.length ? new Uint8Array(b) : null;
+  } catch (err) {
+    if (isFatal(err, String((err && err.message) || err))) throw err;
+    return null;
+  }
 }
 
 // `m.ids`: pool members; `m.trees`: [{ref, tree}] (a preset, an offer, the
@@ -1184,7 +1190,11 @@ function faceNow(q, render = false) {
 async function faces(m) {
   const asks = [
     ...(m.ids || []).map((id) => ({ id })),
-    ...(m.trees || []).map((t) => ({ ref: t.ref, tree: t.tree })),
+    ...(m.trees || []).map((t) => ({
+      ref: t.ref,
+      // A preset by its index: its tree, without inserting it.
+      tree: t.preset != null ? engine.preset_tree_json(t.preset) : t.tree,
+    })),
   ];
   const items = [];
   const failed = [];
@@ -1232,7 +1242,7 @@ function faceRender(q) {
       b = faceNow(q, true);
     } catch (err) {
       post({ type: "faces", items: [], pending: [], failed: [q.id != null ? { id: q.id } : { ref: q.ref }] });
-      throw err;
+      throw err; // fatal: the engine is down, and says so once
     }
     if (b) faceKeep(q.key, b);
   }
@@ -1956,6 +1966,11 @@ function blocked(m) {
   switch (m.type) {
     case "fit":
       return walking();
+    // A face's render waits for the bank to finish arriving: half a second
+    // each, they would slow the fill (a preset's face on the warm start, a
+    // row stored before faces).
+    case "face_render":
+      return !booted;
     case "refine":
     case "refine_from":
       return walking() || bootCrewLive();
