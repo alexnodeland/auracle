@@ -1,5 +1,6 @@
 // PERFORM — the instrument as something you play rather than something you
-// edit. Six controls named for what you hear, Blend and Wander, and six pads.
+// edit. Up to eight controls named for what you hear, from a palette of
+// eighteen (the six to start), Blend and Wander, and six pads; stage mode.
 //
 // The named controls are directions in the audio half of φ (Bright is
 // +centroid +rolloff, Snap is −attack +crest, …), wired onto *this* patch's

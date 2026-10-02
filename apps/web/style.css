@@ -4882,8 +4882,9 @@ html.handheld .handheld-gate {
 .keys-span .perf-sel { flex: 1; min-width: 0; }
 
 /* ===================== PERFORM ===================== */
-/* The sound under your hands: eight fixed-name controls, a wander dial and six
-   pads, on one faceplate. Built by perform.js; nothing here opens a modal. */
+/* The sound under your hands: up to eight named controls from a palette of
+   eighteen, Blend, a wander dial and six pads, on one faceplate. Built by
+   perform.js; nothing here opens a modal. */
 .view.perform {
   align-items: center;
   justify-content: flex-start;

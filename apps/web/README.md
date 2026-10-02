@@ -11,12 +11,14 @@ sounds the model weighs and breeds from), **saved** (what you saved), and
 **presets** (the hand-made library, browsed in place). A `?` in
 the bank head walks through what a generation is and what evolving costs.
 
-- **PERFORM** — the sound under your hands: six named controls (Bright,
-  Snap, Motion, Body, Grit, Space) wired onto this patch's knobs by its own
-  measured response (every preset ships measured), a Wander dial (still →
-  ideas → drift → roam), pads to
-  Keep, go Back, grow an Offer into a second slot and Peek, Blend or Take it,
-  and velocity → timbre. MIDI controllers auto-map onto the controls.
+- **PERFORM** — the sound under your hands: up to eight named controls from
+  a palette of eighteen (Bright, Snap, Motion, Body, Grit, Space to start),
+  placed, hidden and ordered with ARRANGE and wired onto this patch's knobs
+  by its own measured response (every preset's six ship measured), a Wander
+  dial (still → ideas → drift → roam), pads to Keep, go Back, grow an Offer
+  into a second slot and Peek, Blend or Take it once heard, velocity →
+  timbre, and stage mode (⇧F). MIDI controllers auto-map onto the deck's
+  first eight controls.
 - **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at
   true positions, mod wires pulsing at their modulator's rate), editable and
   lockable, playable from the keyboard while you turn knobs. The rack **scales
