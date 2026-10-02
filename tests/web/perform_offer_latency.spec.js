@@ -24,10 +24,24 @@
 // patch (`retire`), and the walk that was running is dropped at its next step
 // instead of finishing for nothing.
 //
+// The spare must be the only work in the engine's `later` lane, or it waits
+// for work it is not about. Opening Glass Pad from its shipped wiring asks for
+// a background re-check of it (a measurement, about thirty renders), and once
+// that lands the page grows a spare of its own. Both are `later` work asked
+// for before the spec's spare, and the re-check keeps its place at the front
+// of the lane while `soon` work goes between its renders. On a CI runner the
+// re-check alone is about 50 s, and the spec's spare, posted behind it, did
+// not begin within the 30 s the spec gave it. So the spec first waits until
+// the page's own PERFORM requests are answered, its spare included, then
+// measures a step on a quiet engine, and only then asks for its spare. Those
+// waits are engine growth, bounded by `offerBudget` (perform_budget.js); the
+// pick and Keep bounds stay on the measured step.
+//
 // The spec reaches the worker by wrapping `Worker` before `main.js` runs, as
 // perform_next.spec.js does.
 const { test, expect } = require("@playwright/test");
 const patchPage = require("./patch_page.js");
+const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -39,7 +53,7 @@ const INIT = `(() => {
       window.__worker = w;
       const post = w.postMessage.bind(w);
       w.postMessage = (m, ...rest) => {
-        if (m && /^perform_/.test(m.type)) sent.push({ at: performance.now(), type: m.type, req: m.req, tree: m.tree });
+        if (m && /^perform_/.test(m.type)) sent.push({ at: performance.now(), type: m.type, req: m.req, tree: m.tree, bg: !!m.bg });
         return post(m, ...rest);
       };
       w.addEventListener("message", (e) => {
@@ -57,6 +71,7 @@ const INIT = `(() => {
 async function boot(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -92,6 +107,17 @@ const post = (page, m) =>
     return at;
   }, m);
 
+/** Every PERFORM request the page itself has made (ids under the spec's) is
+ *  answered, and one of them was a spare (an offer asked as `bg`): after its
+ *  spare the page asks the engine for nothing more until the patch or the
+ *  knobs move. */
+const pageQuiet = () => {
+  const reply = { perform_wire: "perform_wired", perform_offer: "perform_offered", perform_drift: "perform_drifted" };
+  const asked = window.__sent.filter((s) => reply[s.type] && s.req < 8_000_000);
+  const answered = (s) => window.__got.some((g) => g.type === reply[s.type] && g.req === s.req);
+  return asked.every(answered) && asked.some((s) => s.type === "perform_offer" && s.bg);
+};
+
 /** The worker's reply of `type` to request `req` (resolves when it lands). */
 const reply = async (page, type, req, timeout) => {
   await page.waitForFunction(([t, r]) => window.__got.some((g) => g.type === t && g.req === r), [type, req], { timeout });
@@ -103,25 +129,35 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   const tree = await page.evaluate(() => window.__sent.find((s) => s.type === "perform_wire" && s.tree).tree);
+  // Three waits on engine growth below: the offer to answer, the page's own
+  // work, and the spare's start.
+  const OFFER_MS = await budget.offerBudget(page, { waits: 3 });
 
   // An offer to answer, grown before the spare (a short walk).
   const OFFER = 9_000_001;
   const SPARE = 9_000_002;
   const PICK = 9_000_003;
   await post(page, { type: "perform_offer", req: OFFER, tree, overrides: [], locks: [], steps: 6 });
-  const grown = await reply(page, "perform_offered", OFFER, 120_000);
+  const grown = await reply(page, "perform_offered", OFFER, OFFER_MS);
   expect(grown.offer && grown.offer.tree, "an offer to answer grew").toBeTruthy();
+
+  // The page's own `later` work, ahead of any spare the spec asks for: the
+  // re-check of the shipped wiring, then the page's spare.
+  const quietAt = Date.now();
+  await page.waitForFunction(pageQuiet, null, { timeout: OFFER_MS });
+  console.log(`the page's re-check and spare were done ${Date.now() - quietAt} ms after the offer grew`);
 
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
 
-  // What a step costs here, now: an offer of one step is the home patch (in
-  // the memo) and one proposal, so one render. The worst of three.
+  // What a step costs here, now, on a quiet engine: an offer of one step is
+  // the home patch (in the memo) and one proposal, so one render. The worst
+  // of three (a proposal already in the memo is answered in milliseconds).
   let step = 0;
   for (let i = 0; i < 3; i++) {
     const req = 9_000_010 + i;
     const at = await post(page, { type: "perform_offer", req, tree, overrides: [], locks: [], steps: 1 });
-    step = Math.max(step, (await reply(page, "perform_offered", req, 120_000)).at - at);
+    step = Math.max(step, (await reply(page, "perform_offered", req, OFFER_MS)).at - at);
   }
   // A request waits for the step in progress; a pick is one trip to the worker.
   const PICK_MS = Math.max(2_000, 2 * step);
@@ -133,7 +169,12 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
   // The spare: far longer than the checks below, asked as the page asks for
   // one nobody has claimed (`bg`).
   const spareAt = await post(page, { type: "perform_offer", req: SPARE, tree, overrides: [], locks: [], steps: 400, bg: true });
-  await page.waitForFunction((at) => window.__got.some((g) => g.type === "busy" && g.at > at), spareAt, { timeout: 30_000 });
+  // Begun: the worker announces a walk as long work (`busy`). Nothing of the
+  // page's is ahead of it now, but a face render or the guess may be, so the
+  // bound is the budget's, not a step's.
+  await page.waitForFunction((at) => window.__got.some((g) => g.type === "busy" && g.at > at), spareAt, { timeout: OFFER_MS });
+  const begun = await page.evaluate((at) => window.__got.find((g) => g.type === "busy" && g.at > at).at, spareAt);
+  console.log(`the spare began ${(begun - spareAt).toFixed(0)} ms after it was asked for`);
   await page.waitForTimeout(1_500);
   expect(await page.evaluate((r) => window.__got.some((g) => g.type === "perform_offered" && g.req === r), SPARE), "the spare is still growing").toBe(false);
 
