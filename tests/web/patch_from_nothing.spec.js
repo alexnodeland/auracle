@@ -85,3 +85,25 @@ test("a new patch starts empty, a module comes out with an undo, and the patch c
   await expect(page.locator("#patch-new-btn")).toBeVisible();
   expect(errors, errors.join("\n")).toEqual([]);
 });
+
+test("Esc on a plate button in a new patch backs out to its plate and keeps the new patch", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await page.locator("#patch-new-btn").click();
+  await expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout: 30_000 });
+  await place(page, "capture");
+  await expect.poll(() => kinds(page), { timeout: 30_000 }).toContain("capture");
+  // The keyboard on CAPTURE's RECORD (a plate button, on the rack's walk),
+  // then Esc: it backs out to the plate, as it does from a knob, and the new
+  // patch stays (Esc ends a new patch only when nothing else wants it).
+  const rec = page.locator('#rack-svg [data-stop="take-rec"]');
+  await expect(rec).toBeVisible({ timeout: 30_000 });
+  await rec.focus();
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-kind"))).toBe("capture");
+  await page.waitForTimeout(500);
+  await expect(page.locator("#rack-subject")).toHaveText("New patch");
+  expect(await kinds(page)).toContain("capture");
+  expect(errors, errors.join("\n")).toEqual([]);
+});

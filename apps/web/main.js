@@ -1751,12 +1751,12 @@ const patchView = createPatch({
   removeModule: (key, x, y) => (key.endsWith("/m") ? unplugMod(key.slice(0, -2)) : deleteModule(key, x, y)),
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
   // Esc has another job first: something floating, a module in hand, a cable
-  // half made, or a rack knob it backs out of.
+  // half made, or a rack knob or plate button (`data-stop`) it backs out of.
   escBusy: () =>
     !!(armed || connectPick || wire || compareId != null) ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
-    !!document.activeElement?.closest?.("#rack-svg [data-addr]"),
+    !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"),
 });
 
 worker.onmessage = (e) => {
