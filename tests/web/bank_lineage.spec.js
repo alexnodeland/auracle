@@ -35,14 +35,40 @@ const init = `(() => {
   const log = (window.__pwLog = []);
   // The engine's facts as main.js last heard them: the ranked rows, the
   // lineage, the ratings and the status, whichever message carried them.
-  const state = (window.__pwState = { ranked: null, lineage: null, ratings: null, status: null, views: null });
+  const state = (window.__pwState = { ranked: null, lineage: null, ratings: null, status: null, views: null, genSeeds: null });
+  // The bank's marks as each walk of a generation leaves them, read the moment
+  // main.js has handled the walk's \`refine_child\`, however fast the walks
+  // land: by a listener added after main.js's \`onmessage\` (at the first
+  // message, by which time main.js has set it), so it runs after it.
+  const marks = (window.__pwMarks = []);
+  const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
+  const after = (e) => {
+    const d = e.data;
+    if (!d || d.type !== "refine_child" || d.pwFake) return;
+    marks.push({
+      index: d.index,
+      child: d.child,
+      retiring: d.retiring || [],
+      breeding: !!document.querySelector("#evolve-btn.breeding"),
+      rows: ids("[data-id]"),
+      seed: ids(".seed"),
+      may: ids(".may-go"),
+    });
+  };
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     w.__pwUrl = String(url);
     workers.push(w);
     w.addEventListener("message", (e) => {
+      if (!w.__pwAfter) {
+        w.__pwAfter = true;
+        w.addEventListener("message", after);
+      }
       const d = e.data;
       if (!d || typeof d.type !== "string" || d.pwFake) return;
+      // A generation's seeds: the last \`ratings.seeds\` posted before it
+      // opened, which is what its first \`refine_progress\` finds.
+      if (d.type === "refine_progress" && !state.genSeeds && state.ratings) state.genSeeds = state.ratings.seeds.slice();
       last[d.type] = d;
       counts[d.type] = (counts[d.type] || 0) + 1;
       if (d.views) {
@@ -403,38 +429,39 @@ test("a generation's children land in New with their seed and what changed, and 
   const names = new Map(before.ranked.map((r) => [r.id, r.name]));
   // At rest, pointing at EVOLVE POOL marks the engine's own lists for the
   // generation it would open: `ratings.seeds` and `ratings.may_replace`.
-  const atRest = await rowIds(page);
+  // (Each read is of the ratings main.js holds now: a pick's may still land.)
   await page.locator("#evolve-wrap").hover();
-  await expect.poll(() => marked(page, "seed")).toEqual(sorted(before.ratings.seeds.filter((id) => atRest.includes(id))));
-  await expect.poll(() => marked(page, "may-go")).toEqual(
-    sorted(before.ratings.may_replace.filter((id) => atRest.includes(id) && !before.ratings.seeds.includes(id))),
-  );
-  await page.locator("#evolve-btn").click();
-  await page.mouse.move(5, 5);
-
-  // The first child lands: pointing at EVOLVE POOL now marks this
-  // generation's own seeds (each walk's `seed` is one of them, in job order),
-  // and what its end would replace if it ended now (`retiring`).
-  await expect.poll(() => page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child").length), { timeout: 400_000 }).toBeGreaterThan(0);
-  await page.locator("#evolve-wrap").hover();
-  const seeds = before.ratings.seeds;
-  const shown = await rowIds(page);
-  await expect.poll(() => marked(page, "seed")).toEqual(sorted(seeds.filter((id) => shown.includes(id))));
-  // What its end would replace now: the last walk's `retiring` (read with the
-  // marks, as more walks may land meanwhile).
   await expect.poll(async () => {
-    const retiring = (await page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child").pop())).retiring;
-    const want = sorted(retiring.filter((id) => shown.includes(id) && !seeds.includes(id)));
-    return JSON.stringify(await marked(page, "may-go")) === JSON.stringify(want) && want.length > 0;
+    const r = (await state(page)).ratings;
+    const shown = await rowIds(page);
+    const want = { seed: sorted(r.seeds.filter((id) => shown.includes(id))), may: sorted(r.may_replace.filter((id) => shown.includes(id) && !r.seeds.includes(id))) };
+    return JSON.stringify({ seed: await marked(page, "seed"), may: await marked(page, "may-go") }) === JSON.stringify(want);
   }, { timeout: 30_000 }).toBe(true);
-  await page.mouse.move(5, 5);
+  // Pressed, with the pointer left on it: the marks stay up through the
+  // generation, and each walk's are read as it lands (`__pwMarks`).
+  await page.locator("#evolve-btn").click();
 
   // Three walks back, then stop: the generation ends with what it bred.
   await expect.poll(() => page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child").length), { timeout: 400_000 }).toBeGreaterThanOrEqual(3);
   await page.locator("#evolve-stop").click();
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
+  // The generation's own seeds: each walk's `seed` is one of them, in job
+  // order (`next_seeds` and `refine_jobs` share one rule).
+  const seeds = (await state(page)).genSeeds;
+  expect(seeds && seeds.length, "no seeds were posted before the generation opened").toBe(10);
   const kids = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child"));
   for (const k of kids) expect(k.seed, `walk ${k.index} came from a seed the generation did not take`).toBe(seeds[k.index]);
+  // While it ran, EVOLVE POOL marked this generation's seeds, not the next
+  // one's (`ratings.seeds` moves as its children land), and what its end
+  // would replace if it ended there (that walk's `retiring`).
+  const during = await page.evaluate(() => window.__pwMarks.filter((s) => s.breeding));
+  expect(during.length, "no walk landed while the generation ran").toBeGreaterThan(0);
+  for (const s of during) {
+    expect(s.seed, `seeds marked after walk ${s.index}`).toEqual(sorted(seeds.filter((id) => s.rows.includes(id))));
+    expect(s.may, `may be replaced after walk ${s.index}`).toEqual(sorted(s.retiring.filter((id) => s.rows.includes(id) && !seeds.includes(id))));
+  }
+  if (during.some((s) => s.child > 0)) expect(during.some((s) => s.may.length > 0), "a child was taken in and nothing was marked as may be replaced").toBe(true);
+  await page.mouse.move(5, 5);
   const refined = await page.evaluate(() => window.__pwLast.refined);
   const after = await state(page);
   const kept = refined.born.filter((id) => !refined.retired.includes(id));
