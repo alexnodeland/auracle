@@ -1200,8 +1200,9 @@ async function measure(m) {
 // same.
 //
 // The engine now begins an offer or a drift as a job (`perform_offer_begin`,
-// `perform_drift_begin`) that this thread advances one step, one render, at a
-// time (`perform_job_step`), answering the player between steps (`breathe`) as
+// `perform_drift_begin`) that this thread advances one step (one proposal: at
+// most one render) at a time
+// (`perform_job_step`), answering the player between steps (`breathe`) as
 // `measure` does between renders. It holds the floor, so two do not take twice
 // as long each. A spare nobody is waiting for (`later`) gives the floor up the
 // moment long work the player asked for is waiting, and goes back to the front
@@ -2135,7 +2136,10 @@ self.onmessage = (e) => {
     if (i >= 0) {
       const [q] = lanes[LATER].splice(i, 1);
       q.bg = false;
-      lanes[SOON].push(q);
+      // A walk that had given way (it holds its job) was asked for before
+      // anything now waiting in `soon`: it goes first, not behind it.
+      if (q.job != null) lanes[SOON].unshift(q);
+      else lanes[SOON].push(q);
     }
     if (runnable()) schedulePump();
     return;
@@ -2160,8 +2164,16 @@ self.onmessage = (e) => {
     }
     for (const lane of [SOON, LATER]) {
       for (const q of lanes[lane].filter((q) => mine(q) && q.type !== "perform_wire")) {
-        // A walk paused part-way (see `walkRun`) still holds its job.
-        if (q.job != null) engine.perform_job_drop(q.job);
+        // A walk paused part-way (see `walkRun`) still holds its job. A
+        // poisoned engine throws here, and the requests behind this one
+        // must still be answered.
+        if (q.job != null) {
+          try {
+            engine.perform_job_drop(q.job);
+          } catch (_) {
+            /* reported by the next request that reaches the engine */
+          }
+        }
         if (q.type === "perform_offer") {
           post({ type: "perform_offered", req: q.req, offer: null, error: "retired" });
         } else if (q.type === "perform_drift") {
