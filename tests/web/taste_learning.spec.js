@@ -467,6 +467,9 @@ test("the track replays what the engine posted at each pick, and is still there 
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
   await openView(page, "taste");
   await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
+  // Its end is now, with the picks the engine has: a load adds no moment
+  // that counts them wrong.
+  await expect(page.locator("#taste-tlabel")).toHaveText(`now · after ${n + 1} picks`);
   await scrubTo(page, `after ${n} picks`);
   for (let i = 0; i < ids.length; i++) {
     expect((await plateOf(page, pos[ids[i]])).like, "the same moment after a reload").toBe(before[i]);
