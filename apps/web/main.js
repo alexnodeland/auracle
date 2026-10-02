@@ -618,8 +618,10 @@ function announceRepair() {
   // set of such sounds, not on every boot: the set is remembered here.
   if (r.held) {
     const set = (r.heldIds || []).slice().sort((a, b) => a - b).join(",");
-    if (localStorage.getItem("auracle-held-noted") !== set) {
-      localStorage.setItem("auracle-held-noted", set);
+    let seen = null;
+    try { seen = localStorage.getItem("auracle-held-noted"); } catch (_) {}
+    if (seen !== set) {
+      try { localStorage.setItem("auracle-held-noted", set); } catch (_) {}
       note(
         r.held > 1
           ? `${r.held} sounds’ recordings couldn’t be read. They’re kept safe until you record them again.`
