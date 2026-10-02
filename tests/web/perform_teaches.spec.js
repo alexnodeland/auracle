@@ -9,8 +9,19 @@
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
 const { test, expect } = require("@playwright/test");
+
+// How long an offer takes to grow is the renders it is made of (about twenty
+// phrase renders), so it is a real wait whose length is the machine's: 3 s on
+// a laptop and a minute and more on a loaded CI runner, where the first spare
+// took 62 s. Waiting for one is waiting for the engine, not for a bug, so the
+// bound is the runner's. What must not wait for an offer, the pick that
+// answers one and the Keep, is held to its own tight bounds below and in
+// perform_offer_latency.spec.js.
+const OFFER_MS = process.env.CI ? 240_000 : 90_000;
+
 test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(240_000);
+  // Four offers grown on demand, each OFFER_MS at the worst.
+  test.setTimeout(process.env.CI ? 900_000 : 240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -28,7 +39,7 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   await page.keyboard.down("a");
   const grow = async () => {
     await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
-    await page.waitForSelector(".pf-offer.ready", { timeout: 90000 });
+    await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
   };
   const peek = async (ms) => {
     const b = await page.locator(".pf-pad", { hasText: "Peek" }).boundingBox();
@@ -41,7 +52,7 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   // from then, so it is read before the next offer is waited for).
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
   await expect(page.locator("#toasts")).toContainText("Passed on B. That counts as a pick for what you had.", { timeout: 10_000 });
-  await page.waitForSelector(".pf-offer.ready", { timeout: 90000 });
+  await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
   // It counts once its seven-second undo window has run out.
   await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
   const p1 = await picks();
