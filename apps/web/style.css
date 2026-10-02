@@ -1191,6 +1191,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   column-gap: var(--s4);
   row-gap: var(--s2);
 }
+/* At 1080 px and under, faces cost the callout its last words: the bank is
+   28 px wider and the subject column 35, so at 1000 px "Breed a generation ▸"
+   showed as "Breed a gener…", and the first-step callouts and "see what it
+   learned" lost their ▸ (measured: a 309 px cell, 344 before faces). The
+   gaps and the chip's own padding give 28 px of it back, so the name keeps
+   its width (text_fits.spec.js). */
+@media (max-width: 1080px) {
+  .patch-head { column-gap: var(--s2); }
+  .patch-head .nextstep { padding-inline: var(--s2); }
+  .patch-head .callout-row .seg-new { padding-left: var(--s2); }
+}
 .patch-head .subject-block { grid-area: subject; }
 .patch-head .callout-row { grid-area: callout; }
 .patch-head .evolve-slot { grid-area: evolve; margin-left: 0; }

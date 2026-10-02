@@ -82,7 +82,7 @@ test("the model's guess is drawn at its socket with its reason and forecast, and
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
-test("beside the guess, the patch's face and its face with the guess, each as rendered, and only the guess's on a patch from nothing", { tag: "@slow" }, async ({ page }) => {
+test("beside the guess, the patch's face and its face with the guess, each as rendered, gone after a knob turns, and only the guess's on a patch from nothing", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
   const errors = await boot(page, { warmed: false });
   await warmStartAndFit(page);
@@ -102,6 +102,21 @@ test("beside the guess, the patch's face and its face with the guess, each as re
   // Both drawn pictures. Not compared: a module at its defaults can move
   // no band by the face's half-decibel step, and the two are then the same.
   for (const f of [faces.nth(0), faces.nth(1)]) expect(await f.getAttribute("href")).toMatch(/^data:image\/png;base64,/);
+
+  // A knob turned: a knob is not ranked again, so the guess stays, but its
+  // faces describe the tree it was ranked on, which the bench has left. They
+  // go, and stay gone after the edit has settled.
+  const plates = page.locator("#rack-svg .guess-plate");
+  const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
+  const box = await knob.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
+  await page.mouse.up();
+  await expect(faces).toHaveCount(0, { timeout: 15_000 });
+  await page.waitForTimeout(1500);
+  await expect(faces).toHaveCount(0);
+  await expect(plates).toHaveCount(1);
 
   // A patch from nothing has no sound, so no face as it is: only the guess's.
   const t0 = await now(page);

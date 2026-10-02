@@ -404,17 +404,25 @@ function faceImage(face, w, h, opts = {}) {
  *  its face, as the mock's estimated vessel stands at OUT. Neither is an
  *  estimate (ADR-012): the guess rendered every candidate it ranks
  *  (`Guess::key`, `GuessCandidate::key`: a memo row, its face with it), and
- *  the patch's is the bench's latest render. Drawn into the plate's layer in
- *  the rack's own units; until a face lands its place is empty, and the
- *  plate is drawn again when it does. */
+ *  the patch's is the face of `tree`, the tree the guess was ranked on (the
+ *  reply's). Drawn into the plate's layer (`g.gp-faces`) in the rack's own
+ *  units; until a face lands its place is empty, and the plate is drawn
+ *  again when it does. */
 let guessFaceWaiting = false;
-function guessFace(g, at, layer) {
+function guessFace(g, at, layer, tree) {
   if (!g || !g.key || !layer) return;
+  // Both faces are of the tree the guess was ranked on: once the bench has
+  // left it (a knob turned; a knob is not ranked again), "as it is" would be
+  // another patch's and "with it" an edit of the old one. None until the
+  // next ranking.
+  if (!tree || tree !== benchTreeJson) return;
   const [w, h] = FACE_SIZE.pair;
   const x0 = at.x + at.w + 12;
   const y0 = at.y;
-  const asIs = faceTarget(benchTreeJson ? { tree: benchTreeJson } : wb.subjectId != null ? { id: wb.subjectId } : null);
-  const both = [[asIs, words.GUESS_FACES[0]], [faceTarget({ memo: g.key }), words.GUESS_FACES[1]]];
+  const both = [[faceTarget({ tree }), words.GUESS_FACES[0]], [faceTarget({ memo: g.key }), words.GUESS_FACES[1]]];
+  const pair = document.createElementNS(SVG_NS, "g");
+  pair.setAttribute("class", "gp-faces");
+  layer.append(pair);
   // Each face stands over its word, in a column as wide as the wider word
   // (measured: the mono value tier is wider than the face), so the two
   // words never run into each other.
@@ -424,7 +432,7 @@ function guessFace(g, at, layer) {
     t.textContent = label;
     return t;
   });
-  layer.append(...labels);
+  pair.append(...labels);
   let col = w;
   for (const t of labels) {
     try { col = Math.max(col, t.getComputedTextLength()); } catch (_) { /* not laid out */ }
@@ -455,7 +463,7 @@ function guessFace(g, at, layer) {
     img.dataset.face = target;
     t.setAttribute("x", String(cx));
     t.setAttribute("y", String(y0 + h + 12));
-    layer.insertBefore(img, t);
+    pair.insertBefore(img, t);
   });
 }
 

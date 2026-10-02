@@ -91,7 +91,10 @@ patch's own, and *with it*, the patch with the guessed module added. The
 second isn't an estimate: to rank its guesses the engine rendered the patch
 with each candidate module, and this is that render's face. Until a face
 arrives its place stays empty; an empty patch has no sound, so it has no
-*as it is*.
+*as it is*. Both describe the patch as it was when the guess was made, so
+turning a knob takes them away: a knob doesn't change the guess, and the
+faces come back when the next one is made (after you add, remove or skip a
+module, or open another sound).
 
 - It ranks by how sure it is the module helps, not by the percentage, so its
   first guess can be one it isn't sure of. Then the line ends *it may not help*.

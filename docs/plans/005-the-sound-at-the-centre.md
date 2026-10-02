@@ -109,7 +109,9 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      - beside PATCH's guess plate, the patch's face (*as it is*) and the
        face of the render the guess made with its module (*with it*,
        `Guess::key`, `face_of_key`): the specimen's estimated vessel, measured;
-       a patch from nothing has only the second. They sit right of the
+       a patch from nothing has only the second. Both are of the tree the
+       guess was ranked on (the reply's `tree`): a knob turn is not ranked
+       again, so they go until the next ranking. They sit right of the
        plate wherever it is placed, and are not kept in view as the plate is;
      - the share card is a scope of *Download as a picture…*, 600 × 315 (1200
        × 630 at 2×), with the patch inside; without a face (an edit the vet
