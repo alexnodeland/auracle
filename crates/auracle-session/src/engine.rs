@@ -1016,6 +1016,11 @@ pub const EVENT_PHI_KEEP: usize = 256;
 /// The fewest observations a τ session must hold before the next reload opens
 /// another. See [`Engine::begin_session`].
 pub const MIN_SESSION_OBS: usize = 5;
+/// Observations per style lens a fit may use: a fit over `n` observations is
+/// allowed `1 + n / OBS_PER_STYLE` lenses, up to [`SessionConfig::k_styles`].
+/// See [`Engine::fit_posterior`]. Named because the app says it (LEARNING's
+/// math reads it through `WasmEngine::model_facts`).
+pub const OBS_PER_STYLE: usize = 20;
 
 /// What the last refinement did — a child, or the reason there was none.
 ///
@@ -1771,7 +1776,9 @@ impl Engine {
         // Style capacity grows with evidence: one lens per ~20 observations,
         // capped by config. Idle lenses collapse to ~0 share on their own,
         // so K is an upper bound the data may or may not use.
-        let k = (1 + self.log.len() / 20).min(self.cfg.k_styles).max(1);
+        let k = (1 + self.log.len() / OBS_PER_STYLE)
+            .min(self.cfg.k_styles)
+            .max(1);
         let mut taste_cfg = TasteConfig::mixture(d, k);
         taste_cfg.recency_half_life = self.cfg.recency_half_life;
         // The brightness cluster shares a latent mean per style. Resolved by

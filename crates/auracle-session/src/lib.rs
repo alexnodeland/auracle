@@ -42,7 +42,7 @@ pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
     EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
     RefineOutcome, RenderPolicy, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
-    MIN_SESSION_OBS,
+    MIN_SESSION_OBS, OBS_PER_STYLE,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};

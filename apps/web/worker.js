@@ -900,6 +900,9 @@ function tasteViews() {
     // so the seeds and the may-be-replaced marks are current after a refit, a
     // generation or an import, as well as after a pick.
     ratings: engineRatings(),
+    // The numbers LEARNING's math states (`modelFacts`): a fit changes
+    // how many styles it was allowed.
+    facts: modelFacts(),
     // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
     // shipped in `styles`; this is what θ is *worth* — adding one filter is a
     // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
@@ -962,6 +965,28 @@ function postLiveTree(edited, why, makeup) {
 function engineRatings() {
   try {
     return JSON.parse(engine.belief());
+  } catch (_) {
+    return null;
+  }
+}
+
+// Every forecast the calibration scores, oldest first
+// (`WasmEngine::forecasts`): the model's P(A wins), taken before the answer.
+// `null` from a binary without the call.
+function engineForecasts() {
+  try {
+    return JSON.parse(engine.forecasts());
+  } catch (_) {
+    return null;
+  }
+}
+
+// The numbers LEARNING's math states (`WasmEngine::model_facts`): φ's two
+// halves, the draws the model holds, its styles and their cap. Posted with
+// the calibration and with every views post (a fit changes the styles).
+function modelFacts() {
+  try {
+    return JSON.parse(engine.model_facts());
   } catch (_) {
     return null;
   }
@@ -2199,7 +2224,9 @@ async function dispatch(m) {
     }
     case "calibration": {
       try {
-        post({ type: "calibration", calib: JSON.parse(engine.calibration()) });
+        // With the summary, every forecast it scores (LEARNING's strip) and
+        // the numbers LEARNING's math states (`modelFacts`).
+        post({ type: "calibration", calib: JSON.parse(engine.calibration()), forecasts: engineForecasts(), facts: modelFacts() });
       } catch (_) { /* older engine: the UI falls back to its own tally */ }
       break;
     }
