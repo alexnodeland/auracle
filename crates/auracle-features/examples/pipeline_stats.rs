@@ -47,13 +47,15 @@ type Counter = fn(&StructFeatures) -> f64;
 /// The per-kind counters, in the order the report prints them. Named here
 /// rather than derived from φ, because φ collapses several of these into
 /// families and this report is exactly the place you want them apart.
-const KINDS: [(&str, Counter); 42] = [
+const KINDS: [(&str, Counter); 44] = [
     ("vco", |f| f.n_vco),
     ("supersaw", |f| f.n_supersaw),
     ("noise", |f| f.n_noise),
     ("wavetable", |f| f.n_wavetable),
     ("pluck", |f| f.n_pluck),
     ("formant", |f| f.n_formant),
+    ("silence", |f| f.n_silence),
+    ("audio in", |f| f.n_audio_in),
     ("mix", |f| f.n_mix),
     ("filter", |f| f.n_filter),
     ("fold", |f| f.n_fold),
@@ -94,7 +96,16 @@ const KINDS: [(&str, Counter); 42] = [
 
 /// Sources and ops, split out so each can be reported as a share of its own
 /// categorical rather than of all nodes.
-const SOURCE_KINDS: [&str; 6] = ["vco", "supersaw", "noise", "wavetable", "pluck", "formant"];
+const SOURCE_KINDS: [&str; 8] = [
+    "vco",
+    "supersaw",
+    "noise",
+    "wavetable",
+    "pluck",
+    "formant",
+    "silence",
+    "audio in",
+];
 const OP_KINDS: [&str; 20] = [
     "mix",
     "filter",

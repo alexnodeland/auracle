@@ -8,7 +8,8 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
 
 | File | Holds |
 | --- | --- |
-| `phrase.rs` | `PhraseSpec`: the standard audition phrase and its seed |
+| `phrase.rs` | `PhraseSpec`: the standard audition phrase, its seed, and its audition clip |
+| `clip.rs` | `AuditionClip`: what an AUDIO IN is measured with (a capture, or the built-in `reference`), its bounded saved form |
 | `render.rs` | Headless render of a compiled voice under the phrase |
 | `vet.rs` | The vetting gate: silence, DC, blow-ups and other unplayable renders are refused |
 | `loudness.rs` | BS.1770-style loudness, normalization to `TARGET_LUFS` (−18) |

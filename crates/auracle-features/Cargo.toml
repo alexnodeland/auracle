@@ -12,6 +12,9 @@ repository.workspace = true
 quiver-dsp.workspace = true
 auracle-grammar.workspace = true
 rustfft = "6"
+# The reference audition clip is synthesized with libm's sine and exp (pure
+# Rust), so the native build and the wasm build compute the same samples.
+libm = "0.2"
 serde.workspace = true
 # Cache keys are hashed over canonical JSON of the term + spec; `float_roundtrip`
 # (set workspace-wide) is what makes that encoding exact and stable.

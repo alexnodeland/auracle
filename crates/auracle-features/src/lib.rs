@@ -20,6 +20,10 @@
 //!   to a fixed target before audition *and* feature extraction — otherwise
 //!   "louder" poisons the preference data.
 //!
+//! - **Audition clips** ([`clip`]): an AUDIO IN is measured with the
+//!   stimulus's clip, a capture of the player's input or the built-in
+//!   reference, read on the render's own clock, so a patch that listens is
+//!   as repeatable as one that does not.
 //! - **Memoization** ([`cache`]): because `(term, spec) → φ` is pure, a
 //!   featurization the engine has already performed is replayed rather than
 //!   re-rendered. A hit is indistinguishable from a miss by construction —
@@ -33,6 +37,7 @@
 
 pub mod audio;
 pub mod cache;
+pub mod clip;
 pub mod loudness;
 pub mod phrase;
 pub mod pipeline;
@@ -44,6 +49,9 @@ pub use audio::{audio_features, AudioFeatures};
 pub use cache::{
     cache_namespace, canonical_tree_json, featurize_memo, render_key, CachedFeatures, MemoStats,
     RenderMemo, DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP, QUIVER_DSP_VERSION, RENDER_EPOCH,
+};
+pub use clip::{
+    reference, AuditionClip, ClipError, ClipSource, SavedClip, CLIP_FORMAT, MAX_CLIP_SECONDS,
 };
 pub use loudness::{integrated_lufs, normalize_to, MAX_GAIN_DB, PEAK_CEILING};
 pub use phrase::PhraseSpec;
