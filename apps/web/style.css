@@ -4901,7 +4901,7 @@ html.handheld .handheld-gate {
 }
 .pf-name {
   font-family: var(--font-silk);
-  font-size: 26px; /* token-exempt: PERFORM's held name. The specimen sets it as the level's display (52px) in a layout with room for it, which PERFORM's rebuild makes (Plan-005 task 5); at 52px here it pushes HOW THIS WORKS under the keybed */
+  font-size: 26px; /* token-exempt: PERFORM's held name. The specimen sets it as the level's display (52px) in a layout with room for it, which PERFORM's rebuild makes (Plan-005 task 5); at 52px here it pushes how it works under the keybed */
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--silk);

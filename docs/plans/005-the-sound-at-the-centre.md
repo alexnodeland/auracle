@@ -114,7 +114,11 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
      sound's name; the palette's preview of
      an unplaced control needs the unverified wiring exposed (the reference's
      PERFORM page, "What is not done"); the prototype's well-and-panel layout
-     waits for the shell (task 2).
+     waits for the shell (task 2). Where the prototype and the engine
+     disagree, the engine's words stand: Body is "thin · full" (the
+     prototype says "thin · heavy"). Stage mode lights no note bands, unlike
+     the prototype: no note timings reach `perform.js`. ⇧F opens stage mode
+     in PERFORM only (ADR-009's note).
 6. **TASTE and LEARNING.**
    - A pick draws as an arrow from the sound passed to the sound kept, and
      every glow moves together.

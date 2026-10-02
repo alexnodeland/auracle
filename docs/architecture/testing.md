@@ -101,9 +101,10 @@ measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
 (54 s), `perform_teaches.spec.js` (54 s), and three that wait on PERFORM's
 engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
-control (two measurements, 25 s on a 16-core M3 Max) and both tests in
-`perform_offer_moments.spec.js` (offers grown, heard and answered: 19 and
-11 s there). Twenty tests, ~19 min in one
+control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
+index and its marks (a measurement each: 13 to 16 and 13 to 15 s there),
+and both tests in `perform_offer_moments.spec.js` (offers grown, heard and
+answered: 17 to 19 and 31 s there). Twenty-two tests, ~20 min in one
 worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
@@ -138,12 +139,12 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_open_early.spec.js` | With the engine's messages held: a Keep while a patch is still opening is refused and says why; the preset clicked last is the one opened; an open that cannot complete puts the voices back on the rack |
 | `perform_instant.spec.js` | With the shipped file blocked, the player's cache: a revisit wired ≤ 0.5 s, ≤ 1.5 s after a reload (from the cache, not measured again), and a preset opened before wired from the click with every message to the engine held; a preset opened, or a patch measured, just before a reload is remembered after it (both caches are written as the page is left); a spare offer lands at once; a kept wiring stamped by a build before the render namespace (a new quiver) plays at once, is re-measured, and is replaced |
 | `perform_next.spec.js` | A spare grows while B holds an offer, so NEXT is as fast as Offer; the pad reads NEXT · passes on B; a heard pass has UNDO (B back, nothing recorded) and counts after its window; an unheard pass says it was not counted |
-| `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and HOW THIS WORKS say a tap freezes it |
+| `perform_wander.spec.js` | Wander's first move ~1.5 s after it is let go in a new zone; its own drag is not a touch; zone ticks; the *ideas* zone; its caption carries its state and counts down; the status line keeps to the patch; its tooltip and how it works say a tap freezes it |
 | `perform_recentre.spec.js` | A re-centre glides home with a fading ghost; a background re-check with the same knobs leaves a turned control where it is; a MIDI pot on Blend is let go when Blend comes home and takes it again from home |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
 | `perform_palette.spec.js` | The palette places, hides and orders up to eight controls, and the panel comes back after a reload; a placed control is measured with the panel's set (asked in palette order), keyed by that set, and says *listening…* until it is; each knob wears its own control's wiring and an aimed offer names its control by palette index on a panel in another order; HOW IT WORKS lists every placed control and opens on the one last touched; a row's mark never moves its name |
 | `perform_offer_moments.spec.js` | B grows from the sound's name, a taken B fills and goes into the name, a passed B folds back into it (each motion's keyframes against the page); an offer taken unheard becomes the sound and records no pick (no `perform_record`), and taken heard records one |
-| `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note |
+| `perform_stage.spec.js` | ⇧F enters stage mode and ⇧F or Esc leaves; Space plays in it and it draws only while sound plays; F alone is still a note; ⇧F is stage mode in PERFORM only and the accented F in PATCH; Tab stays inside it and focus comes back on leave; a refusal said in it is in sight |
 | `perform_aimed.spec.js` | A search control's offer is asked for aimed (control and way), B counts while it grows and then says how far it moved, in amber; the Offer pad's offer is not aimed |
 | `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
 | `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass; a drift's re-check is background; a stalled shipped-wirings fetch still lets a preset be measured |
