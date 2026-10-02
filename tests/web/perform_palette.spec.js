@@ -137,7 +137,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   expect(errs).toEqual([]);
 });
 
-test("a placed control is measured with the panel's set, keyed by that set, and says listening… until it is", async ({ page }) => {
+test("a placed control is measured with the panel's set, keyed by that set, and says listening… until it is", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");

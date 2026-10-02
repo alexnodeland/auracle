@@ -99,7 +99,11 @@ test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
 and the kept wiring from another build, a boot and one background
 measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
-(54 s) and `perform_teaches.spec.js` (54 s). Seventeen tests, ~19 min in one
+(54 s), `perform_teaches.spec.js` (54 s), and three that wait on PERFORM's
+engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
+control (two measurements, 25 s on a 16-core M3 Max) and both tests in
+`perform_offer_moments.spec.js` (offers grown, heard and answered: 19 and
+11 s there). Twenty tests, ~19 min in one
 worker; the other 87 took ~16.6 min when last timed (at 80), and the fast
 tier's five runners take 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
