@@ -337,12 +337,12 @@ plugin.
 
 ## 7. Explanation stops at the coefficients
 
-The TASTE view reports the [map](../../docs/views/taste.html#map), the
-[styles](../../docs/views/taste.html#styles),
-[$\theta$ with credible intervals](../../docs/views/taste.html#directions) and
-the calibration diagram. That is already more than the genre offers, and it is
-*descriptive*: it says what the model believes, not what to do about this
-patch.
+TASTE reports the [map](../../docs/views/taste.html#reading-the-map), with
+each pick drawn as the direction it taught, and LEARNING the
+[styles and $\theta$ with credible intervals](../../docs/views/learning.html#what-it-weighs)
+and the [forecasts, scored](../../docs/views/learning.html#its-forecasts).
+That is already more than the genre offers, and it is *descriptive*: it says
+what the model believes, not what to do about this patch.
 
 The next rung is **counterfactual**, and [trace
 addresses](../architecture/addresses.md) make it close to free. Enumerate the
@@ -357,7 +357,7 @@ tested.
 quantity with uncertainty, so an argmax over it is an argmax over a surrogate:
 the same move the [`RefineKeep::Best` measurement](./open-questions.md) found to
 be lower-variance rather than better. A suggestion without its interval
-overclaims in exactly the way this project’s TRUST surfaces exist to prevent.
+overclaims in exactly the way this project’s calibration surfaces exist to prevent.
 And a confidently-signed suggestion that is wrong is the failure a player
 notices and does not forgive, which argues for reporting the top few with
 intervals rather than one imperative.

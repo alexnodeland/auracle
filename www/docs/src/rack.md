@@ -118,7 +118,7 @@ the bank as it was.
 - **SKIP COMPARING** keeps the edit as new and teaches nothing.
 - **PICK THE EDIT**, ticked before you press KEEP AS NEW, skips the card once:
   it keeps the edit as new and tells the model you’d pick it, without hearing
-  the two side by side. Then it unticks itself. [TRUST](./views/taste.md#trust-is-its-confidence-honest)
+  the two side by side. Then it unticks itself. [LEARNING’s forecasts](./views/learning.md#its-forecasts)
   grades the edits you heard and the ones you asserted apart.
 
 **⚡ EVOLVE FROM THIS** on an edited sound asks the same question before it

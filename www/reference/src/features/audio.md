@@ -237,7 +237,7 @@ so regularity waits for a stimulus with a longer held span.
 
 Eighteen dimensions is a choice. The model is a mixture of *linear* experts, and
 **interpretable axes are the point**: “bright”, “noisy”, “slow attack”, and
-“long tail” are things the [DIRECTIONS tab](../../docs/views/taste.html#directions)
+“long tail” are things [LEARNING’s weights](../../docs/views/learning.html#what-it-weighs)
 can name and a person can recognize in their own taste.
 
 A 128-dimensional MFCC bank would carry more information and would be

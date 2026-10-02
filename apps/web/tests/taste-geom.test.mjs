@@ -15,6 +15,24 @@ import {
   pullMark,
   pullLabel,
   countPulls,
+  liking,
+  haloOf,
+  mapFrame,
+  mapLayout,
+  directionOnScreen,
+  setStyles,
+  arrowLength,
+  turnBetween,
+  scoredForecasts,
+  forecastScore,
+  miniLayout,
+  shadeOf,
+  HISTORY_MAX,
+  newHistory,
+  readHistory,
+  recordEntry,
+  attachStyles,
+  entryView,
 } from "../taste-geom.js";
 
 test("map: a taught pool's sd spreads its dots from smallest to largest", () => {
@@ -170,4 +188,176 @@ test("pull: a small cell draws the same mark on its own width (the node bank's 1
 test("pull: counts for a caption", () => {
   assert.deepEqual(countPulls([{ guess: true }, { guess: false }, { guess: true }]), { settled: 1, guesses: 2 });
   assert.deepEqual(countPulls([]), { settled: 0, guesses: 0 });
+});
+
+// ---------- TASTE's map and LEARNING ----------
+
+test("glow: the bank's number, and a halo that grows with it", () => {
+  assert.equal(liking(0), 0.5);
+  assert.ok(Math.abs(liking(1) - 0.7311) < 1e-4);
+  assert.equal(liking(undefined), 0.5, "no rating is an even guess");
+  const lo = haloOf(0.2, 24), mid = haloOf(0.5, 24), hi = haloOf(0.98, 24);
+  assert.ok(lo.r < mid.r && mid.r < hi.r, "liked more is wider");
+  assert.ok(lo.a0 < mid.a0 && mid.a0 < hi.a0, "…and brighter");
+  assert.ok(hi.r <= 24 * 1.95 + 1e-9 && lo.r >= 12, "between half the mark and about twice it");
+  assert.ok(hi.a0 <= 0.45 + 1e-9, "a halo never passes 0.45: an arrow's 0.9 stands out over it");
+});
+
+test("layout: every sound keeps its order along both axes, and no two sit on each other", () => {
+  // A crowded pool: most of it in a corner, as a PCA of φ often puts it.
+  const pts = [];
+  let s = 7;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 40; i++) pts.push({ id: i, x: Math.pow(rnd(), 3) * 10, y: Math.pow(rnd(), 3) * 5 });
+  const f = mapFrame(1100, 560, pts.length);
+  const pos = mapLayout(pts, f.box, f.minD);
+  assert.equal(pos.size, 40);
+  // Deterministic: the same points, the same places.
+  assert.deepEqual([...mapLayout(pts, f.box, f.minD)], [...pos]);
+  // Inside the frame.
+  for (const q of pos.values()) {
+    assert.ok(q.x >= f.box.left * 0.5 && q.x <= f.box.w - f.box.right * 0.5);
+    assert.ok(q.y >= f.box.top * 0.6 && q.y <= f.box.h - f.box.bottom * 0.6);
+  }
+  // Opened up: no two marks on top of each other.
+  let closest = Infinity;
+  const qs = [...pos.values()];
+  for (let i = 0; i < qs.length; i++) for (let j = i + 1; j < qs.length; j++) closest = Math.min(closest, Math.hypot(qs[i].x - qs[j].x, qs[i].y - qs[j].y));
+  assert.ok(closest > f.minD * 0.6, `the closest two are ${closest.toFixed(1)} px apart`);
+  // Order is mostly kept: the relaxation nudges, it does not reshuffle.
+  let kept = 0, pairs = 0;
+  for (const a of pts) for (const b of pts) {
+    if (a.x >= b.x || b.x - a.x < 1) continue;
+    pairs += 1;
+    if (pos.get(a.id).x < pos.get(b.id).x) kept += 1;
+  }
+  assert.ok(kept / pairs > 0.9, `${kept} of ${pairs} pairs keep their x order`);
+});
+
+test("direction: the engine's fit, drawn on a stretched map, and the arrow's length", () => {
+  // The fit is the engine's (`liking_direction`); the page divides each axis's
+  // slope by the stretch it draws that axis at.
+  const g = directionOnScreen({ gx: 0.2, gy: -0.1, r2: 0.4 }, 50, 10);
+  assert.ok(Math.abs(g.gx - 0.004) < 1e-12 && Math.abs(g.gy + 0.01) < 1e-12 && g.r2 === 0.4);
+  assert.equal(directionOnScreen(null, 1, 1), null);
+  // The arrow: longer as liking changes more across the map, never past the room.
+  assert.equal(arrowLength(null, 400, 100), 0);
+  assert.equal(arrowLength({ gx: 0.01, gy: 0 }, 400, 100), 100);
+  assert.ok(arrowLength({ gx: 0.0002, gy: 0 }, 400, 100) < 20);
+});
+
+test("direction: it turns the shorter way", () => {
+  assert.ok(Math.abs(turnBetween(0, Math.PI / 2, 0.5) - Math.PI / 4) < 1e-12);
+  // From just above −π to just below π is a small turn through π, not a lap.
+  const a = turnBetween(-Math.PI + 0.1, Math.PI - 0.1, 0.5);
+  assert.ok(Math.abs(Math.abs(a) - Math.PI) < 1e-9);
+});
+
+test("forecasts: the chance it gave the sound you picked, and the score", () => {
+  const fs = scoredForecasts([
+    { p_a: 0.7, chose_a: true, random_check: false, provenance: "duel" },
+    { p_a: 0.7, chose_a: false, random_check: true, provenance: "duel" },
+    { p_a: 0.4, chose_a: false, random_check: false, provenance: "perform_offer" },
+    { p_a: "x", chose_a: true },
+  ]);
+  assert.equal(fs.length, 3, "a forecast without a number is not drawn");
+  assert.ok(Math.abs(fs[0].p - 0.7) < 1e-12 && fs[0].hit);
+  assert.ok(Math.abs(fs[1].p - 0.3) < 1e-12 && !fs[1].hit && fs[1].check);
+  assert.ok(Math.abs(fs[2].p - 0.6) < 1e-12 && fs[2].hit);
+  const sc = forecastScore(fs);
+  assert.equal(sc.hits, 2);
+  assert.equal(sc.n, 3);
+  assert.ok(Math.abs(sc.expected - (0.7 + 0.7 + 0.6) / 3) < 1e-12);
+  assert.ok(Math.abs(sc.was - 2 / 3) < 1e-12);
+  assert.equal(forecastScore([]), null);
+  assert.deepEqual(scoredForecasts(null), []);
+});
+
+// ---------- taste over time ----------
+
+const mapOf = (ids, dx = 0) => ({ points: ids.map((id, i) => ({ id, x: i + dx, y: i * 2 })), explained: [0.2, 0.1] });
+const ratingsOf = (ids, m) => ids.map((id) => ({ id, mean: m + id / 100, std: 0.5 }));
+
+test("history: each moment as posted, its map kept once, and read back exactly", () => {
+  const h = newHistory();
+  const ids = [1, 2, 3];
+  const map = mapOf(ids);
+  recordEntry(h, { kind: "start", n: 0, obs: 0, gen: 0, fit: false, map, ratings: ratingsOf(ids, 0) });
+  recordEntry(h, { kind: "pick", n: 1, obs: 1, gen: 0, fit: true, map, ratings: ratingsOf(ids, 0.3), pick: { a: 1, b: 3 } });
+  assert.equal(h.maps.length, 1, "an unchanged map is kept once");
+  const v = entryView(h, 1);
+  assert.equal(v.kind, "pick");
+  assert.deepEqual(v.pick, { a: 1, b: 3 });
+  assert.equal(v.ratings.get(2).mean, 0.32);
+  assert.equal(v.map.points[2].utility, 0.33, "the map's points carry that moment's ratings");
+  // A redraw that changes nothing is not a new moment; one that does is.
+  recordEntry(h, { kind: "map", n: 1, obs: 1, gen: 0, fit: true, map, ratings: ratingsOf(ids, 0.3) });
+  assert.equal(h.entries.length, 2);
+  recordEntry(h, { kind: "gen", n: 1, obs: 1, gen: 1, fit: true, map: mapOf([1, 2, 3, 4, 5], 1), ratings: ratingsOf([1, 2, 3, 4, 5], 0.3) });
+  assert.equal(h.entries.length, 3);
+  assert.equal(h.entries[2].joined, 2, "a generation says how many sounds joined the map");
+  // Saved and read back: the same moments.
+  const back = readHistory(JSON.parse(JSON.stringify(h)));
+  assert.deepEqual(entryView(back, 1), entryView(h, 1));
+  // Anything this build cannot read is no history, not a broken one.
+  assert.deepEqual(readHistory({ v: 99, maps: [], entries: [] }), newHistory());
+  assert.deepEqual(readHistory({ v: 1, maps: [], entries: [{ m: 3, r: [] }] }), newHistory());
+  // A bad moment or a bad map is dropped, and the rest read: never thrown on.
+  const saved = JSON.parse(JSON.stringify(h));
+  saved.entries[0].s = [{ share: "x" }];
+  saved.entries.push({ kind: "pick", m: 0, r: [[1, "a", 2]] }, null, { kind: "pick", m: 0, r: [], pick: [1] });
+  saved.maps.push({ points: [[1, 2]] });
+  saved.entries.push({ kind: "map", m: saved.maps.length - 1, r: [] });
+  const read = readHistory(saved);
+  assert.equal(read.entries.length, h.entries.length - 1, "only the well-formed moments");
+  assert.equal(read.maps.length, h.maps.length);
+  assert.deepEqual(entryView(read, 0), entryView(h, 1));
+  assert.deepEqual(readHistory(null), newHistory());
+});
+
+test("history: the styles posted after a pick join that pick's moment", () => {
+  const h = newHistory();
+  const ids = [1, 2];
+  recordEntry(h, { kind: "pick", n: 19, obs: 19, gen: 0, fit: true, map: mapOf(ids), ratings: ratingsOf(ids, 0) });
+  recordEntry(h, { kind: "pick", n: 20, obs: 20, gen: 0, fit: true, map: mapOf(ids), ratings: ratingsOf(ids, 0.1) });
+  const styles = [{ share: 0.6, theta: [{ name: "a:p2", mean: 0.123456, std: 0.2 }, { name: "n_vco", mean: -0.3, std: 0.1 }] }];
+  assert.equal(attachStyles(h, 19, styles), h.entries[0], "matched by the observation count");
+  assert.equal(attachStyles(h, 7, styles), null, "a reply for no kept moment is dropped");
+  const v = entryView(h, 0);
+  assert.deepEqual(v.styles, [{ share: 0.6, theta: [{ name: "a:p2", mean: 0.1235, std: 0.2 }, { name: "n_vco", mean: -0.3, std: 0.1 }] }]);
+  assert.equal(entryView(h, 1).styles, null);
+  // A refit's moment keeps the refit's styles; a pick's reply for the same
+  // observation count goes to the pick, never to the refit.
+  recordEntry(h, { kind: "map", n: 20, obs: 20, gen: 0, fit: true, map: mapOf([1, 2], 3), ratings: ratingsOf(ids, 0.2) });
+  setStyles(h, h.entries[2], styles);
+  const late = [{ share: 1, theta: [{ name: "a:p2", mean: 0.5, std: 0.1 }, { name: "n_vco", mean: 0, std: 0.1 }] }];
+  assert.equal(attachStyles(h, 20, late), h.entries[1]);
+  assert.equal(entryView(h, 2).styles[0].theta[0].mean, 0.1235);
+});
+
+test("history: bounded to the newest moments, with the maps they use", () => {
+  const h = newHistory();
+  for (let i = 0; i < HISTORY_MAX + 30; i++) {
+    recordEntry(h, { kind: "gen", n: i, obs: i, gen: i, fit: true, map: mapOf([1, 2], i), ratings: ratingsOf([1, 2], i) });
+  }
+  assert.equal(h.entries.length, HISTORY_MAX);
+  assert.equal(h.entries[0].n, 30, "the oldest went first");
+  assert.equal(h.dropped, 30, "and how many went is counted, so a moment looked at keeps its place");
+  assert.equal(h.maps.length, HISTORY_MAX, "maps no moment uses are dropped");
+  for (let i = 0; i < h.entries.length; i++) assert.equal(entryView(h, i).map.points[0].x, h.entries[i].n);
+});
+
+test("the small map and its shading", () => {
+  const pos = miniLayout([{ id: 1, x: 0, y: 0 }, { id: 2, x: 10, y: 5 }], 200, 100, 20);
+  assert.deepEqual(pos.get(1), { x: 20, y: 20 });
+  assert.deepEqual(pos.get(2), { x: 180, y: 80 });
+  const hi = shadeOf(2, 2), lo = shadeOf(-2, 2), mid = shadeOf(0, 2);
+  assert.ok(hi.alpha > mid.alpha && mid.alpha > lo.alpha, "more of the feature, brighter");
+  assert.ok(hi.r > mid.r && mid.r === lo.r, "and larger, above the middle");
+  assert.equal(hi.alpha, 1);
+});
+
+test("the track keeps the sounds clear of it", () => {
+  const off = mapFrame(1100, 560, 40), on = mapFrame(1100, 560, 40, { track: true });
+  assert.ok(on.box.bottom > off.box.bottom);
 });

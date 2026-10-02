@@ -1,211 +1,154 @@
-# TASTE: what it learned
+# TASTE: the sound among all sounds
 
-<p class="lede">TASTE shows what the model has learned about your taste, in
-four views: where your sounds sit, what your styles are, what each one leans
-toward, and whether its guesses deserve your trust.</p>
+<p class="lede">TASTE is the map of your pool: every sound placed by how it
+sounds, with an amber glow for how much the model guesses you’d like it. Each
+pick draws as an arrow, and every glow moves with it.</p>
 
 <!-- film:view-taste --><!-- /film:view-taste -->
 
-TASTE only shows; nothing here changes the model. The four tabs are **MAP**,
-**STYLES**, **DIRECTIONS**, and **TRUST**, and each has a caption that says
-what it draws.
+TASTE only shows; nothing here changes the model. What it has learned in
+detail (the weights, which way liking rises, how its guesses have scored) is
+one level up, in [LEARNING](./learning.md).
 
-1. Make a few picks in [EVOLVE](./evolve.md). TASTE fills in once the model
+1. Make a few picks in [EVOLVE](./evolve.md). The glows light once the model
    first fits: at the sixth pick, or right after the warm start.
-2. Open **TASTE**, and pick a tab.
-3. Click a dot on the map to open that sound.
-4. Name a style: click its name in the chips, and type.
+2. Open **TASTE**.
+3. Point at a sound to see its card, and click it to open it.
 
-Before the first fit, each tab says how far away it is, counted from where you
-are. The map reads NOTHING PREDICTED YET. STYLES says *Your first style appears
-at pick 6; more split off as you teach it.* TRUST counts guesses
-instead (4 OF 20 GUESSES), because it grades the model once it has made 20.
-Each tab’s button (**3 MORE PICKS →**, **16 TO GO →**) takes you to EVOLVE to
-make them.
+The line under the title says what the map is drawn from: *From 18 picks.*,
+or before the first fit, how far away it is (*3 more picks and it fits your
+taste.*).
 
-## The style chips
-
-The chips above every tab are your styles. Each shows a name, its share of the
-pool, and **▶**, which plays the sound that style rates highest.
-
-A style is named for what it leans toward (*analog sustain*), until you name
-it. Click the name and type; the name is kept, and every place the style
-appears uses it. A refit keeps your name on the style it named, matched by what
-each style listens for.
-
-What a chip plays can change. It’s the sound in the pool that the style rates
-highest today, so as the model learns and the pool changes, a different sound
-can take its place.
-
-## MAP
-
-<figure>
-<img src="../img/taste-map.webp" alt="A dark field scattered with amber dots of varying size and brightness, style chips above, and a legend below." loading="eager" width="1440" height="900">
-<figcaption><strong>MAP.</strong> Every sound you have heard, placed by sound
-and structure. Brighter means it thinks you’d like it more; bigger means it’s
-less sure.</figcaption>
-</figure>
-
-Every sound you have heard, placed by sound and structure. The caption says how
-to read it: *Brighter: it thinks you’d like it more. Bigger: it’s less sure.
-Click a dot to open it.*
+## Reading the map
 
 | What you see | What it means |
 |---|---|
-| **Glow** | How much it guesses you’d like the sound |
-| **Size** | How unsure it is: bigger is less sure |
-| **Color** | Which style rates the sound highest |
+| **Place** | Where the sound sits among the others: close sounds usually sound alike |
+| **Amber glow** | How much it guesses you’d like the sound: brighter and wider is more |
+| **Dot size** | How unsure it is: bigger is less sure |
+| **Dashed ring** | No guess yet: before the first fit, with **TASTE** on, every glow is a dashed ring |
+| **Green ring** | The sound you’re playing |
+| **Dotted ring** | A sound on its way to you, after a click |
+
+The legend at the top right says which you are looking at: *it likes more*
+beside two glows, or *still a guess* beside a dashed ring.
+
+## SOUND and TASTE
+
+The switch at the map’s top left chooses how the sounds are shown.
+
+- **SOUND**, the default, shows the sounds as they are. Once the model has
+  fitted, their glows show too; before that, there are none.
+- **TASTE** colors the map by what the model thinks you’d like: every sound
+  is dimmed by how little it is liked, so the ones it guesses you’d reach for
+  stand out. Before the first fit it shows every glow as a dashed ring, a
+  guess.
 
 Size is the one people miss, and it’s the useful one. A big, dim dot is a
-sound the model has no guess about. A small, bright dot is one it’s sure you’d
-reach for. The legend’s two rings are the surest and least sure sizes on this
-map, and before the first fit every dot is the same middling size.
-
-Click a dot to open that sound as the one you’re playing. A dotted ring marks
-the dot while it opens, and a solid one marks the sound you’re playing.
+sound the model has no guess about. A small, bright one is a sound it’s sure
+you’d reach for. The sizes are spread over this map’s own range of doubt, and
+before the first fit every dot is the same middling size.
 
 The footer says how much a flat picture can hold:
 
-> *A flat view of 40 sounds: close dots usually sound alike (it shows 29% of
+> *A flat view of 40 sounds: close dots usually sound alike (it shows 31% of
 > how they differ).*
 
 That is often a third or less, so read a distance as a hint, not a
 measurement.
 
-```admonish info collapsible=true title="How it works: the map’s axes"
-The two axes are the two directions in which your sounds differ most (the
-principal components of what the model measures). They are computed from the
-sounds you have heard, so they turn slowly as the pool and your taste move.
-The orientation is pinned, so the map doesn’t flip between one redraw and the
-next: a place you recognize stays where you left it.
+## A sound’s card
 
-Dot sizes are spread over this map’s own range of doubt. Where the model is
-about as sure of every sound, the dots come out about the same size, rather
-than a contrast drawn from noise.
-```
+Point at a sound and its card opens beside it: the sound’s name, how much the
+model guesses you’d like it (*would like: 59% · leaning*), **▶ PLAY**, which
+plays its phrase, and **OPEN**, which opens it as the sound you’re playing.
 
-## STYLES
+Clicking a sound opens it too. A dotted ring marks it while it opens, and the
+green ring moves to it when it’s yours.
 
-<figure>
-<img src="../img/taste-styles.webp" alt="Three named styles stacked vertically, each with a share percentage and five horizontal amber bars naming what it leans toward." loading="lazy" width="1440" height="900">
-<figcaption><strong>STYLES.</strong> Each style with its share of the pool and
-the five qualities it leans on hardest. A style near 0% is idle.</figcaption>
-</figure>
+The card’s percentage is the model’s rating after your last pick. The bank’s
+rows show the rating from the last refit, so between refits the two can
+differ.
 
-Your taste as separate styles, up to five. Each shows its name, its share of
-the pool, and the five qualities it leans on hardest. They are drawn as
-[DIRECTIONS](#directions) draws them: a solid bar when the model is sure, and
-a hollow one, its label ending in **?**, while it’s still a guess.
+From the keyboard: Tab to the map, then the arrow keys move to the nearest
+sound in that direction, <kbd>Enter</kbd> opens it, and <kbd>Esc</kbd> closes
+its card. <kbd>Space</kbd> plays the sound you’re playing, as it does in
+every view.
 
-Styles exist because taste isn’t one direction. You can like dark drones and
-bright plucks, and one direction would average them into a taste for neither.
-The model rates each sound by the style that likes it most, so a pick between
-a drone and a pluck still says something.
+## Taste over time
 
-Styles appear as the evidence comes in. Early on you’ll have one, and more
-split off as the model finds what one style can’t explain. **A dim style
-claiming almost none of the pool is idle.** Your taste has fewer sides than
-the model has room for, which is common.
+Once there are two moments to move between, a track runs along the map’s
+foot. Each tick is one moment: amber for a pick (thin and dim before the
+first fit), a short silk tick below the line for a star or a cut, a faint line
+where the map was redrawn, a green diamond for a generation, with how many
+sounds joined (*+3*), and a bright full-height line where you opened a taste
+file. The label says which moment the map shows: *now · after 26 picks* at
+the right-hand end, counting your picks as the title does; an earlier moment
+counts the picks the model had taken then.
 
-## DIRECTIONS
+1. Drag along the track, or click it, to look back. The line under the title
+   reads *Looking back.*, and the map shows the glows and places as the
+   model had them then. Stepping one moment at a time draws that moment’s
+   pick as its arrow (reversed when you step back past it); a jump draws
+   none.
+2. With the track focused, <kbd>←</kbd> and <kbd>→</kbd> step one moment,
+   and <kbd>Home</kbd> and <kbd>End</kbd> go to the first and to now.
+3. **▶** at the track’s left replays every moment in turn, from the first.
 
-<figure>
-<img src="../img/taste-directions.webp" alt="Named qualities down the left, horizontal amber bars extending left and right of a center line, each with a thinner whisker." loading="lazy" width="1440" height="900">
-<figcaption><strong>DIRECTIONS.</strong> Which way each style leans on each
-quality, with how far it could be off. A bar whose whisker crosses the center
-line is a guess, and is drawn as one.</figcaption>
-</figure>
+The track shows exactly what the model posted at each moment, because the
+page keeps each reply as it arrives: the model itself keeps no history of its
+ratings. The track begins when this session began keeping it, so a session
+from before this version starts its track at its first load since. It holds
+the last 200 moments and is saved with your session; a reset clears it.
 
-What each style leans toward, quality by quality. The caption reads *Where each
-style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how
-far it could be off.*
+## A pick, drawn as what it teaches
 
-Bar length is how hard the style leans, and the thin whisker across its end is
-how far that could be off. Every bar is one of two marks:
+When you pick between two sounds, TASTE draws an arrow from the sound you
+passed to the sound you picked, and every glow on the map moves at once.
 
-- **Solid:** the whisker clears the center line. The model is sure which way
-  this style leans, however short the bar.
-- **Hollow,** a faint outline with the whisker at full strength: the whisker
-  crosses the center line, so the lean could go either way. When no style is
-  sure of a row, its label ends in **?** (*grit?*).
+Every glow moves because a pick is not only about the two sounds you heard.
+The model learns which way your taste leans, along the difference between the
+two, so its rating of every sound moves with it: the ones that differ the same
+way rise, and the ones that differ the other way fall.
 
-**Read the whiskers, not the bars.** A long hollow bar is a guess that happens
-to point somewhere, and a short solid bar is a real, small lean. Early on
-nearly every bar is hollow: the model is being honest about a few dozen picks.
-The module rail in PATCH draws its bars with the same two marks.
+- **When.** The arrow appears when the pick reaches the model, as its
+  seven-second undo window closes. Picks you made while TASTE wasn’t showing
+  are drawn in turn when you open it, up to the last six.
+- **Stars and cuts** move the glows without an arrow: they rate one sound,
+  not a direction between two.
+- **A PERFORM offer** you took or passed moves the glows too, but draws no
+  arrow: an offer never joins the pool, so it has no place on the map.
 
-The qualities have names you can hear or see in a patch: *chorus & sweeps*,
-*drive & fold*, *body*, *amp attack*, *mod density*. Where one is what a
-PERFORM control is made of, it carries that control’s word. *body* is weight
-down low, *grit* is noisiness, *space* is the tail, and *snap* is the attack’s
-peak. So the reasons the model gives and the controls you play say the same
-thing.
+The arrow stays a moment and goes. With reduced motion set on your system it
+appears whole, stays as long, and goes, and the glows step to their new
+brightness rather than easing there.
 
-```admonish info collapsible=true title="How it works: the whiskers"
-Each bar is a coefficient of the model, and its whisker is one standard
-deviation either way, drawn on the bar’s own scale. The widest whisker reaches
-the edge of the panel; one that would run past it is cut there and ends in an
-arrowhead, rather than drawn shorter than it is. What each quality measures is
-[in the reference](../../reference/features/audio.html).
-```
+## A refit settles everything
 
-## TRUST: is its confidence honest?
+Every sixth pick the model fits your taste again from everything it has
+learned. Then the map is drawn again, and every glow and every place settles
+to the new one together. The map turns rather than flips: a place you
+recognize stays near where you left it.
 
-<figure>
-<img src="../img/taste-trust.webp" alt="A reliability diagram: dots plotted against a dashed diagonal labeled perfectly honest, each with a vertical whisker and a count, above lines of scores." loading="lazy" width="1440" height="900">
-<figcaption><strong>TRUST.</strong> Its guesses against what you picked. On the
-dashed diagonal, the model is exactly as sure as it deserves to be; the
-whiskers say how little each dot stands on.</figcaption>
-</figure>
+```admonish info collapsible=true title="How it works: the map"
+Each sound’s place starts from the two directions in which your sounds differ
+most: the principal components of what the model measures, computed from the
+pool and the sounds you have heard. Their orientation is pinned from one
+redraw to the next. Each axis is then pulled about halfway toward its ranks,
+which opens the crowded middle while keeping every sound’s order along both
+axes, and marks that would sit on each other are nudged apart.
 
-TRUST is the tab that says whether to believe the other three.
-
-Before every pick, the model guesses which sound you’ll pick and how sure it
-is. Then your answer arrives. TRUST grades those guesses, all made before it
-knew your answer:
-
-- **The chart.** Across the bottom, *it said A would win this often*; up the
-  side, *A actually won this often*. The dashed diagonal, *perfectly honest*,
-  is where those agree. Each dot is a bucket of guesses, with its count (*n=7*)
-  and a whisker for how much a bucket that size could wobble by chance. *dots
-  inside their whisker are indistinguishable from honest*.
-- **The first line.** The number of guesses, the Brier score, and the skill:
-  *33 guesses · Brier 0.268 · not beating a coin flip yet (33 guesses)*, or
-  *13% sharper than chance*.
-- **The second line.** The same skill on the **fair-test picks**, the pairs
-  dealt at random, which is every pair EVOLVE and PATCH deal you: *on 24
-  fair-test picks: 13% sharper than chance, the number to trust*. Until there
-  are 20, it counts toward them.
-- **At the right,** once there is more than one kind, the skill by where the
-  answer came from: *dealt pairs*, *edits you heard*, *edits you asserted*, and
-  *offers you took or passed*.
-
-The menu bar shows the same skill: *calibrating · 4/20* until 20 guesses,
-then the number TRUST shows.
-
-**“Not beating a coin flip yet” is the right thing to see early,** once it
-has its 20 guesses. It means the grading is honest and the model hasn’t had
-enough picks to beat chance. Keep picking.
-
-```admonish info collapsible=true title="How it works: why not accuracy"
-Accuracy (how often the guess was right) would mislead here. A model that says
-51% every time and is right 51% of the time scores the same as one that says
-99% and is right 51% of the time. The Brier score is the mean squared error of
-the guesses, so it rewards being sure only when being sure is earned. Always
-saying 50% scores 0.25, and skill is measured against that: 0 is a coin flip,
-and 1 is perfect.
-
-Fair-test picks leave out the comparisons you chose yourself: a sound you kept
-as new against its original, and PERFORM’s offers. A kept edit you heard and
-one you asserted with **PICK THE EDIT** make the same claim in the log. There
-is no reason to assume they are equally reliable, so they are graded apart. [Calibration](../../reference/taste/calibration.html) in the reference
-has the math.
+The glow is the logistic of the model’s average rating of the sound, the same
+number as the percentage on its card. After a pick, that is the rating under
+the model’s draws reweighted by the pick, which the engine posts with its
+reply to the pick. The dot’s size is how far that rating could be off.
 ```
 
 ## What to try next
 
-- Rename a style to what you’d call it, and watch the name appear in PATCH.
-- Open a big, bright dot from the map: a sound the model guesses you’d like
-  but isn’t sure of.
-- [Reading what it learned](../reading-the-model.md) has the habits that keep
-  you from over-reading a bar.
+- Open a big, bright dot: a sound the model guesses you’d like but isn’t sure
+  of.
+- Make a pick in EVOLVE, then open TASTE, and watch which way the glows move.
+- [LEARNING](./learning.md) shows what it weighs to make those guesses, and
+  [Reading what it learned](../reading-the-model.md) has the habits that keep
+  you from over-reading it.

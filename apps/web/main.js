@@ -119,20 +119,24 @@ const BUILD = await (async () => {
 // The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
 // unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
 // worker exists, so no reply can arrive while it loads.
-const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
-  await import(`./taste-geom.js?v=${BUILD}`);
+const geom = await import(`./taste-geom.js?v=${BUILD}`);
+const { directionsScale, pullMark } = geom;
 // Sentences built from engine facts (a generation's outcome, a prediction's
 // word), pure and unit-tested (words.js, tests/words.test.mjs).
+const words = await import(`./words.js?v=${BUILD}`);
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES,
-} = await import(`./words.js?v=${BUILD}`);
+} = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
-const PATCH_WORDS = await import(`./words.js?v=${BUILD}`);
+const PATCH_WORDS = words;
 const { createPatch } = await import(`./patch.js?v=${BUILD}`);
+// TASTE's map and LEARNING's room (taste.js): it draws from what this side
+// holds, and is created with the TASTE and LEARNING bridge below.
+const { createTaste } = await import(`./taste.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -171,6 +175,11 @@ const farmWorkers = [];
 let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
+// Every forecast that calibration scores (`WasmEngine::forecasts`), and the
+// numbers LEARNING's math states (`WasmEngine::model_facts`), from the same
+// reply. LEARNING draws both; they persist in the engine, not here.
+let engineForecasts = null;
+let engineFacts = null;
 let duelsSinceFit = 0;
 const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
 let fitDue = false;    // armed by the sixth pick, sent once that pick is in the log
@@ -237,7 +246,9 @@ let views = null;          // {map, styles, lineage, ranked, ratings, …} from 
 // only when views are posted. While a generation runs, what it will replace is
 // `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
 // so read it at rest. Pointing at EVOLVE POOL marks both (`evolveMarks`).
-let tasteTab = "map";
+// TASTE's halos and LEARNING's arrow are drawn from it (taste.js).
+// TASTE and LEARNING, once the bridge creates them (taste.js `createTaste`).
+let taste = null;
 let currentView = "play";
 
 const starsById = new Map();
@@ -246,8 +257,8 @@ const cutIds = new Set();
 const pendingCuts = new Map();
 // Model calibration on duels: forecasts made before each vote, scored after.
 // A local Brier tally, used only for the menubar readout in the moments
-// before the engine's own (authoritative) calibration reply lands. Bins are
-// deliberately NOT kept here — see drawTrustTab.
+// before the engine's own (authoritative) calibration reply lands. Nothing
+// else is kept here: the engine holds every forecast (`WasmEngine::forecasts`).
 const calib = { n: 0, brier: 0 };
 // Implicit play signal: notes played per live patch, flushed on patch switch.
 const playCounts = new Map();
@@ -676,6 +687,9 @@ function uiState() {
     // places is what let the old bank apologise for eviction without being
     // able to prevent it.
     bank: bankFilter,
+    // What TASTE's track and LEARNING's replay show: the engine's replies as
+    // they came, kept by the page (taste-geom's history, versioned, bounded).
+    taste: taste ? taste.history() : null,
     born: [...lastBorn],
     bornGen,
     // The bank's lineage marks that the engine does not keep: which children
@@ -1573,12 +1587,22 @@ worker.onmessage = (e) => {
       voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
+    // The styles after a pick (`WasmEngine::styles`): θ under the draws the
+    // pick reweighted. Every surface reads the fresher θ; LEARNING keeps it
+    // with that pick's moment and moves its bars.
+    case "styles": {
+      if (m.styles && views) views.styles = m.styles;
+      if (taste) taste.onStyles(m);
+      break;
+    }
     case "calibration": {
       engineCalib = m.calib;
+      if (m.forecasts) engineForecasts = m.forecasts;
+      if (m.facts) engineFacts = m.facts;
       // The menubar's count was drawn on the vote's status, before this reply
-      // — one forecast behind TRUST ("7 of 20" beside "8 OF 20").
+      // — one forecast behind LEARNING's.
       renderSkill();
-      if (currentView === "taste") drawTaste();
+      if (taste) taste.onCalibration();
       break;
     }
     case "status": {
@@ -1586,11 +1610,17 @@ worker.onmessage = (e) => {
       // engine's count is the whole truth about it (see `taughtAhead`).
       if (m.vote) aheadDrop(aheadKey(m.vote));
       // The ratings a taken pick left (`WasmEngine::belief`), and the seeds
-      // and may-be-replaced they mark at rest.
+      // and may-be-replaced they mark at rest. TASTE moves every halo to
+      // them, and draws a pair's pick as its arrow.
       if (m.ratings && views) views.ratings = m.ratings;
       if (m.ratings && mayGoShown) markMayGo(true);
       applyStatus(m.status);
+      // After the status, so the moment TASTE keeps counts this pick.
+      if (taste && views) taste.onStatus(m);
       send({ type: "calibration" });
+      // The styles under the reweighted draws, for LEARNING's bars and its
+      // replay: answered in the worker's `later` lane.
+      if (m.ratings) send({ type: "styles" });
       // The engine took nothing: the patch left the pool between the gesture
       // and the end of its undo window. The UI has already acted as if the
       // vote were taken — put that back, and say so.
@@ -2588,6 +2618,8 @@ worker.onmessage = (e) => {
     case "imported": {
       if (m.ok) {
         applyStatus(m.status);
+        // The next map TASTE keeps is this file's: a boundary on its track.
+        if (taste) taste.markFile();
         send({ type: "taste_views" });
         // An import clears the fitted model (the engine refits from the log),
         // and nothing asked for a fit: TASTE sat on "nothing predicted yet"
@@ -2950,11 +2982,8 @@ function renderTeach() {
   }
 }
 
-/** "see what changed" is the map: TASTE opens on its MAP tab, whichever tab
- *  it was last left on. */
+/** "see what changed" is the map. */
 function showTasteMap() {
-  const tab = document.querySelector('.tab[data-tab="map"]');
-  if (tab && tasteTab !== "map") tab.click();
   showView("taste");
 }
 
@@ -3399,14 +3428,14 @@ function dismissToast(t, immediate) {
 // What the lane may never cover, in two kinds. STRIPS are stepped over — the
 // lane moves above them: the teaching strips (rule 2), and the bands it used
 // to park on while someone was reading or reaching for them — the taste map's
-// legend, EVOLVE's record of what each generation did, the module strip under
+// footer, EVOLVE's record of what each generation did, the module strip under
 // the rack, and HELD. COLUMNS are stepped beside — the lane moves left of
 // them: panels far taller than a toast that stand on the same bottom edge —
 // the node bank's rail, the tours on the rails, the MIDI and arp panels —
 // where stepping *over* a 460px rail would carry a toast to the top of the
 // rack. Every `.duel-controls`, not the first: B's buttons are the ones at
 // the lane's edge.
-const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#map-legend", ".lineage-strip", "#spec-dock", "#tray"];
+const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#arp-ctl"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
@@ -3512,27 +3541,27 @@ function skillLine(skill, n, tag) {
     : `${pct}% sharper than chance${tag ? ` · ${tag}` : ""}`;
 }
 
+/** The skill as the menu bar says it, and LEARNING's forecasts beside it:
+ *  one formatter, so the two never disagree. */
+function skillText() {
+  const E = engineCalib;
+  if (E && E.check_n >= SKILL_MIN_N) return skillLine(E.check_skill, E.check_n, `${E.check_n} fair-test picks`);
+  if (E && E.n >= SKILL_MIN_N) return skillLine(E.skill, E.n);
+  const n = E ? E.n : calib.n;
+  return n >= 1 ? `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}` : "";
+}
+
 function renderSkill() {
   const el = $("skill");
   if (!el) return;
   const E = engineCalib;
-  const line = skillLine;
+  el.textContent = skillText();
   if (E && E.check_n >= SKILL_MIN_N) {
-    el.textContent = line(E.check_skill, E.check_n, `${E.check_n} fair-test picks`);
-    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. TRUST in TASTE shows them.`;
-    return;
-  }
-  if (E && E.n >= SKILL_MIN_N) {
-    el.textContent = line(E.skill, E.n);
-    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). TRUST in TASTE shows them.`;
-    return;
-  }
-  const n = E ? E.n : calib.n;
-  if (n >= 1) {
-    el.textContent = `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}`;
+    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. LEARNING shows them.`;
+  } else if (E && E.n >= SKILL_MIN_N) {
+    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). LEARNING shows them.`;
+  } else if ((E ? E.n : calib.n) >= 1) {
     el.title = `It guesses each pick before you make it. After ${SKILL_MIN_N} it says how much sharper than a coin flip it has been.`;
-  } else {
-    el.textContent = "";
   }
 }
 
@@ -3768,7 +3797,7 @@ function showView(name) {
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
   try { localStorage.setItem("auracle-view", name); } catch { /* ignore */ }
-  for (const v of ["perform", "play", "evolve", "taste"]) {
+  for (const v of ["perform", "play", "evolve", "taste", "learning"]) {
     $(`view-${v}`).classList.toggle("hidden", v !== name);
   }
   if (perform) {
@@ -3787,7 +3816,8 @@ function showView(name) {
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
   pointFilmChip();
-  if (name === "taste") drawTaste();
+  // TASTE and LEARNING draw while they show, and stop when they don't.
+  if (taste) taste.setView(name);
   if (name === "evolve") {
     drawLineage();
     if (currentDuel) {
@@ -3856,7 +3886,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
   });
 }
 wireArrowNav(document.querySelector(".viewtabs"), ".viewtab", { activate: true });
-wireArrowNav(document.querySelector(".tabs"), ".tab", { activate: true });
 wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
 
 // ---------- audio helpers ----------
@@ -5635,7 +5664,7 @@ let dealRule = null;
 const DEAL_RULE = {
   random: {
     text: "◇ random pair · a fair test",
-    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and TRUST in TASTE grades them all.",
+    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and its forecasts in LEARNING are graded on them all.",
   },
   bald: {
     text: "chosen where it’s least sure",
@@ -5647,7 +5676,7 @@ const DEAL_RULE = {
   },
   check: {
     text: "◇ fair test · dealt at random",
-    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in TRUST in TASTE.",
+    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in LEARNING.",
   },
 };
 
@@ -19141,304 +19170,26 @@ function styleBadge(el, k) {
   el.innerHTML = `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>${esc(styleName(views.styles[k], k))}`;
 }
 
-function renderStyleChips() {
-  const holder = $("style-chips");
-  const show = currentView === "taste" && views && views.styles;
-  holder.classList.toggle("hidden", !show);
-  if (!show) return;
-  holder.innerHTML = "";
-  views.styles.forEach((s, k) => {
-    if (s.share < 0.02) return;
-    const color = STYLE_COLORS[k % STYLE_COLORS.length];
-    const chip = document.createElement("div");
-    chip.className = "style-chip";
-    chip.innerHTML =
-      `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
-      `<input class="sc-name" maxlength="24" value="${esc(s.name || "")}" placeholder="${esc(styleName(s, k))}" title="Name this style">` +
-      `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
-      `<button class="sc-play" title="Hear the sound this style rates highest" aria-label="Hear this style">▶</button>`;
-    const input = chip.querySelector(".sc-name");
-    // Sized to its text (or placeholder): a fixed 168 px clipped an
-    // auto-name like "env mods + sidechained" mid-word.
-    const fit = () => { input.size = Math.max(6, (input.value || input.placeholder).length + 1); };
-    fit();
-    input.addEventListener("input", fit);
-    input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
-    input.addEventListener("keyup", (e) => e.stopPropagation());
-    input.onblur = () => {
-      const name = input.value.trim();
-      if ((s.name || "") === name) return;
-      s.name = name;
-      send({ type: "set_style_name", k, name });
-      scheduleSave();
-      // Everywhere the style is mentioned says the new name at once: the
-      // chips, the map's titles, DIRECTIONS and the rack's family belief.
-      renderStyleChips();
-      if (currentView === "taste") drawTaste();
-    };
-    // A lens the model has learned but has no exemplar for yet cannot be
-    // auditioned. Saying so on the control beats a ▶ that silently returns.
-    const ex = s.exemplars && s.exemplars[0];
-    const scPlay = chip.querySelector(".sc-play");
-    if (ex == null) {
-      scPlay.disabled = true;
-      scPlay.title = "Nothing to play for this style yet: it needs more sounds in it";
-    } else {
-      scPlay.onclick = () => awaitRender(ex, () => play(ex, scPlay));
-    }
-    holder.appendChild(chip);
-  });
-}
-// Each caption says what the tab draws, in the player's words. MAP's said
-// "islands are styles", which nothing on it shows, and "Click a dot to open
-// it" is what a click does (it opens the patch on the bench; it does not play
-// the phrase). DIRECTIONS said "Longer bar = stronger pull" over bars that
-// were almost all guesses; it now says how a guess is drawn.
-const CAPTIONS = {
-  map: "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
-  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid: it’s sure. Hollow, with a ?: still a guess. Dim styles are idle.",
-  dir: "Where each style leans. Solid: it’s sure. Hollow: still a guess, and the thin line is how far it could be off.",
-  trust: "Should you believe it? Each dot is a bucket of guesses: how sure it was, against how often it was right. On the line: honest.",
-};
-// While a chart is empty, the caption must describe the state on screen —
-// a caption about bars over a void promises a chart that isn't there.
-const EMPTY_CAPTIONS = {
-  map: "Every sound you hear, placed by sound and structure. The dots light up when it first redraws your taste map.",
-  styles: "Your taste as separate styles. None on record yet.",
-  dir: "The sound qualities that pull you: brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you’ll pick, and after 20 guesses it grades itself here.",
-};
+// ---------- TASTE and LEARNING (taste.js) ----------
+// The map and the model room are drawn by taste.js (Plan-005 task 6). This
+// side owns their data (`views`, the calibration, the forecasts and the
+// math's numbers) and the things they ask for: opening a sound, playing one,
+// naming a style.
 
-const TRUST_MIN_N = 20;
-
-// Empty states are HTML, not canvas paint: selectable, with a real CTA, and
-// no two tabs identical.
-//
-// Every count and every CTA here is computed from what is left, in the words
-// EVOLVE's meter uses ("redraws your taste map"). They were fixed: "Start 6
-// quick picks →" at five picks of six, TRUST's twenty guesses behind the same
-// six-pick button, and STYLES promising "after a dozen picks" under "n of 6".
-/** Picks until the next refit redraws the taste map, as the EVOLVE meter
- *  counts them (`renderTeach`), or 0 when one is armed or running. */
+/** Picks until the next refit fits the model, as the EVOLVE meter counts
+ *  them (`renderTeach`), or 0 when one is armed or running. */
 function picksToRefit() {
   if (fitDue || fitting) return 0;
   return FIT_EVERY - (duelsSinceFit % FIT_EVERY);
 }
-function renderEmptyState(tab) {
-  const holder = $("crt-empty");
-  if (!holder) return;
-  const n = picksMade();
-  const cn = engineCalib ? engineCalib.n : 0;
-  const left = picksToRefit();
-  const skel = (rows, cls = "") =>
-    `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
-  const more = (k) => `${k} more pick${k === 1 ? "" : "s"}`;
-  const pickCta = left > 0
-    ? `<button class="hw-btn small" id="ce-cta">${more(left)} →</button>`
-    : `<button class="hw-btn small" id="ce-cta" disabled>redrawing your taste map…</button>`;
-  const count = left > 0
-    ? `<div class="ce-count">${more(left)} and it redraws your taste map</div>`
-    : `<div class="ce-count">redrawing your taste map…</div>`;
-  const toGo = Math.max(0, TRUST_MIN_N - cn);
-  const content = {
-    map: `
-      <div class="ce-title">nothing predicted yet</div>
-      <div class="ce-copy">Every sound you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
-      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it guesses
-      you’d like them.</div>
-      ${count}${pickCta}`,
-    styles: `${skel(3)}
-      <div class="ce-title">no style yet</div>
-      <div class="ce-copy">${left > 0
-        ? `Your first style appears at pick ${n + left}; more split off as you teach it.`
-        : "Your first style is on its way; more split off as you teach it."}
-      You can name each one.</div>
-      ${count}${pickCta}`,
-    dir: `${skel(4, "dir")}
-      <div class="ce-title">nothing learned yet</div>
-      <div class="ce-copy">This shows which <i>qualities</i> pull you (brightness,
-      roughness, attack), not which knobs, and how sure it is of each: solid
-      when it’s sure, hollow while it’s still a guess.</div>
-      ${count}${pickCta}`,
-    trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
-      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
-      <div class="ce-copy">${views && views.styles
-        ? "Before each pick it guesses which you’ll pick."
-        : `From pick ${n + left} on, it guesses before each pick which you’ll pick.`} After
-      ${TRUST_MIN_N} guesses it grades itself here.</div>
-      <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
-  }[tab];
-  holder.innerHTML = content || "";
-  const btn = holder.querySelector("#ce-cta");
-  if (btn && !btn.disabled) btn.onclick = () => showView("evolve");
-}
 
-let mapHits = [];
-
-function drawTaste() {
-  if (currentView !== "taste") return;
-  const canvas = $("taste-crt");
-  const ctx = scopeCtx(canvas);
-  const { width: w, height: h } = canvas;
-  if (w === 0) return;
-  const dpr = window.devicePixelRatio || 1;
-  ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.06));
-  renderStyleChips();
-  mapHits = [];
-
-  ctx.font = canvasFont(dpr);
-  const noTaste = !views || !views.styles;
-  const empty = {
-    map: !(views && views.map && views.map.points && views.map.points.length),
-    styles: noTaste,
-    dir: noTaste,
-    trust: !(engineCalib && engineCalib.n >= TRUST_MIN_N),
-  }[tasteTab];
-  // MAP before the first fit: the dots are real (patches by sound) but the
-  // glow is not — draw the map AND overlay the pre-state invitation, so the
-  // caption never describes a prediction that doesn't exist yet.
-  const mapPrefit = tasteTab === "map" && !empty && noTaste;
-  $("taste-caption").textContent = (empty || mapPrefit ? EMPTY_CAPTIONS : CAPTIONS)[tasteTab];
-  $("crt-empty").classList.toggle("hidden", !empty && !mapPrefit);
-  $("crt-empty").classList.toggle("translucent", mapPrefit);
-  $("map-legend").classList.toggle("hidden", tasteTab !== "map" || empty || noTaste);
-  // The map's label says how to walk it; STYLES and DIRECTIONS write their
-  // own as they draw (`describeTasteCanvas`).
-  if (tasteTab === "map" || tasteTab === "trust" || empty) describeTasteCanvas(null);
-  if (empty) return renderEmptyState(tasteTab);
-  if (mapPrefit) renderEmptyState("map");
-
-  if (tasteTab === "map") drawMapTab(ctx, w, h, dpr);
-  else if (tasteTab === "trust") drawTrustTab(ctx, w, h, dpr);
-  else if (tasteTab === "styles") drawStylesTab(ctx, w, h, dpr);
-  else drawDirectionsTab(ctx, w, h, dpr);
-}
-
-function drawTrustFromEngine(ctx, w, h, dpr, E) {
-  const pad = 56 * dpr;
-  const x0 = pad, y0 = pad * 0.5;
-  // The lines under the plot, measured first, because the plot gives up
-  // height to them. Where the answers came from goes on the headline's
-  // baseline, right-aligned, while the headline leaves room for it, and on a
-  // line of its own under the headline when it doesn't (a narrow window, at
-  // the canvas floor's 12 px).
-  const head = `${E.n} guesses · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`;
-  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
-  const prov = streams.length > 1
-    ? streams.map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`).join("  ·  ")
-    : "";
-  const provOwnLine = !!prov &&
-    x0 + ctx.measureText(head).width + 24 * dpr > w - 24 * dpr - ctx.measureText(prov).width;
-  const extra = provOwnLine ? 18 * dpr : 0;
-  // The last line sits 84 px under the plot (102 with the provenance on its
-  // own line), and 16 px clear of the canvas's edge (TA20: it sat on the
-  // edge, and at the canvas floor's 12 px its descenders were cut off).
-  const side = Math.min(w - pad * 2.4, h - y0 - (84 + 16) * dpr - extra);
-  const sx = (p) => x0 + p * side;
-  const sy = (p) => y0 + (1 - p) * side;
-
-  ctx.strokeStyle = inkAlpha(INK.amber, 0.22);
-  ctx.lineWidth = 1 * dpr;
-  ctx.strokeRect(x0, y0, side, side);
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(sx(0), sy(0));
-  ctx.lineTo(sx(1), sy(1));
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "center";
-  // The axes are P(A wins) predicted vs observed — NOT "confidence" vs
-  // "accuracy". A bin at p_a = 0.1 where A wins 10% of the time is perfectly
-  // calibrated, and the old labels made that read as a failure.
-  ctx.fillText("it said A would win this often", x0 + side / 2, y0 + side + 26 * dpr);
-  ctx.fillText("perfectly honest", sx(0.82), sy(0.86));
-  ctx.save();
-  ctx.translate(x0 - 36 * dpr, y0 + side / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText("A actually won this often", 0, 0);
-  ctx.restore();
-
-  for (const b of E.bins || []) {
-    if (!b.n) continue;
-    const r = (3 + 5 * Math.min(1, b.n / 12)) * dpr;
-    const bx = sx(b.predicted);
-    // A bin of two forecasts plots far off the diagonal under a caption that
-    // says "on the line = honest" — without an interval, the user's correct
-    // inference is that the model is lying. Wilson 95% on the observed rate.
-    const z = 1.96;
-    const denom = 1 + (z * z) / b.n;
-    const centre = (b.observed + (z * z) / (2 * b.n)) / denom;
-    const half =
-      (z * Math.sqrt((b.observed * (1 - b.observed)) / b.n + (z * z) / (4 * b.n * b.n))) / denom;
-    ctx.strokeStyle = inkAlpha(INK.amber, 0.4);
-    ctx.lineWidth = 1 * dpr;
-    ctx.beginPath();
-    ctx.moveTo(bx, sy(Math.min(1, centre + half)));
-    ctx.lineTo(bx, sy(Math.max(0, centre - half)));
-    ctx.stroke();
-    ctx.shadowColor = INK.amber;
-    ctx.shadowBlur = 8 * dpr;
-    ctx.beginPath();
-    ctx.arc(bx, sy(b.observed), r, 0, Math.PI * 2);
-    if (b.n >= 5) {
-      ctx.fillStyle = INK.amber;
-      ctx.fill();
-    } else {
-      // Too few forecasts to mean anything: hollow, recessed.
-      ctx.globalAlpha = 0.4;
-      ctx.strokeStyle = INK.amber;
-      ctx.lineWidth = 1.2 * dpr;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = INK.amberDim;
-    ctx.textAlign = "left";
-    ctx.fillText(`n=${b.n}`, bx + r + 4 * dpr, sy(b.observed) + 3 * dpr);
-  }
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "left";
-  ctx.fillText("dots inside their whisker are indistinguishable from honest", x0, y0 + side + 84 * dpr + extra);
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = INK.silk;
-  ctx.fillText(head, x0, y0 + side + 48 * dpr);
-  ctx.fillStyle = INK.amberDim;
-  ctx.fillText(
-    E.check_n >= SKILL_MIN_N
-      ? `on ${E.check_n} fair-test picks: ${skillLine(E.check_skill, E.check_n)}, the number to trust`
-      : `fair-test picks (pairs dealt at random) are the unbiased measure: ${E.check_n} of ${SKILL_MIN_N} so far`,
-    x0, y0 + side + 66 * dpr + extra
-  );
-  // Where the answers came from. Committing a hand edit after hearing it
-  // against the original is a different act from ticking "my edit is better",
-  // and the model has no way to know which it was told — so the two are
-  // scored apart, and the split is drawn rather than left in the log. Silent
-  // until there is something to compare: one stream is not a comparison.
-  if (prov) {
-    // Right-aligned against the panel's own edge, on the headline's baseline:
-    // the plot is a square in a wide panel, and the whole right half of that
-    // line is empty. Under the headline when the panel is too narrow for both.
-    ctx.fillStyle = INK.amberDim;
-    if (provOwnLine) ctx.fillText(prov, x0, y0 + side + 66 * dpr);
-    else {
-      ctx.textAlign = "right";
-      ctx.fillText(prov, w - 24 * dpr, y0 + side + 48 * dpr);
-      ctx.textAlign = "left";
-    }
-  }
-}
-
-/** Brier skill as a signed percentage — a negative skill is worse than a coin
+/** Brier skill as a signed percentage: a negative skill is worse than a coin
  *  flip and has to look like it, not like a small positive number. */
 function skillPct(s) {
   return `${s >= 0 ? "+" : "−"}${Math.abs(Math.round(s * 100))}%`;
 }
 
-// How a preference reached the log, in the words the app uses for it.
+// How a pick reached the log, in the words the app uses for it.
 const PROVENANCE_NAME = {
   duel: "dealt pairs",
   heard_edit: "edits you heard",
@@ -19446,123 +19197,12 @@ const PROVENANCE_NAME = {
   perform_offer: "offers you took or passed",
 };
 
-// Reliability is computed by the engine, which is the only place that has
-// both the forecast and the *outcome*. There is deliberately no client-side
-// approximation: the obvious one — bin by forecast, plot the share above 0.5 —
-// scores the forecast against itself and draws a staircase no matter how
-// calibrated the model is. Emptiness is decided in drawTaste (n >= 20).
-function drawTrustTab(ctx, w, h, dpr) {
-  drawTrustFromEngine(ctx, w, h, dpr, engineCalib);
-}
-
-function drawMapTab(ctx, w, h, dpr) {
-  const map = views && views.map;
-  const pts = map.points;
-  // Size carries the model's *uncertainty*, spread over this map's own range
-  // of it — see taste-geom.js for why, and for the numbers the legend shows.
-  const unsureOf = mapUnsureScale(pts.filter((p) => p.id != null).map((p) => p.utility_std));
-  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-  const pad = 34 * dpr;
-  const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
-  const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
-  const sx = (v) => pad + ((v - x0) / Math.max(1e-9, x1 - x0)) * (w - 2 * pad);
-  const sy = (v) => pad + ((v - y0) / Math.max(1e-9, y1 - y0)) * (h - 2 * pad);
-  // Absolute glow, same logistic map as the bank bar — min–max across the
-  // visible map made the least-liked dot always dark and the most-liked
-  // always bright, which the legend's absolute ramp contradicted. Pre-fit,
-  // every dot glows uniformly dim: no prediction, no gradient.
-  const fitted = !!(views && views.styles);
-  const un = fitted ? (u) => 1 / (1 + Math.exp(-u)) : () => 0.35;
-
-  const draw = (p) => {
-    const cx = sx(p.x), cy = sy(p.y);
-    const isPool = p.id != null;
-    const glow = un(p.utility);
-    const color = STYLE_COLORS[p.style % STYLE_COLORS.length];
-    if (isPool) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 3 + glow * 16;
-      ctx.globalAlpha = 0.35 + 0.65 * glow;
-      ctx.fillStyle = color;
-      // Size is uncertainty and nothing else; origin no longer nudges it.
-      const r = mapDotRadius(unsureOf(p.utility_std)) * dpr;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (p.id === wb.subjectId) {
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        // Silk, the panel's own white: pure #fff was the one cold hue on
-        // the model's amber map.
-        ctx.strokeStyle = INK.silk;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (p.id === benchPending && p.id !== wb.subjectId) {
-        // Asked for and on its way: a dotted silk ring until the patch is
-        // the one being played, when the solid ring above takes over.
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = INK.silk;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.setLineDash([1.5 * dpr, 2.5 * dpr]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      mapHits.push({ x: cx, y: cy, id: p.id, u01: fitted ? glow : null });
-      if (p.id === mapCursorId) {
-        // Keyboard cursor: dashed ring, distinct from the solid subject ring.
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = INK.amber;
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.setLineDash([3 * dpr, 3 * dpr]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 5 * dpr, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    } else {
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 0.16 + 0.2 * glow;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2 * dpr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  };
-  pts.filter((p) => p.id == null).forEach(draw);
-  pts.filter((p) => p.id != null).forEach(draw);
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
-
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "left";
-  // In words, not "axes = sound-space PCA · 29% of variance": the two axes
-  // are the directions the patches differ most, and the share is how much of
-  // their difference a flat picture can hold — 29–32% in the sessions the
-  // films measured, so "close" is a hint, not a promise.
-  // Left of the legend, which sits over the canvas's bottom right: on a
-  // narrow window the sentence breaks before it, and the lines stack upward.
-  const footer = `A flat view of ${pts.filter((p) => p.id != null).length} sounds: close dots usually sound alike ` +
-    `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`;
-  const legend = $("map-legend");
-  const cr = ctx.canvas.getBoundingClientRect();
-  const room = legend && !legend.classList.contains("hidden") && cr.width
-    ? (legend.getBoundingClientRect().left - cr.left) * (w / cr.width) - 10 * dpr - 16 * dpr
-    : w - 20 * dpr;
-  const lines = [];
-  for (const word of footer.split(" ")) {
-    const last = lines.length ? lines[lines.length - 1] : null;
-    if (last != null && ctx.measureText(`${last} ${word}`).width <= room) lines[lines.length - 1] = `${last} ${word}`;
-    else lines.push(word);
-  }
-  const lead = CANVAS_PX * 1.4 * dpr;
-  lines.forEach((ln, i) => ctx.fillText(ln, 10 * dpr, h - 8 * dpr - (lines.length - 1 - i) * lead));
+/** The skill by where the answers came from, once there is more than one
+ *  kind ("dealt pairs 24: +12%  ·  edits you heard 10: +20%"), or "". */
+function kindsText() {
+  const streams = ((engineCalib && engineCalib.by_provenance) || []).filter((p) => p.n > 0);
+  if (streams.length < 2) return "";
+  return streams.map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`).join("  ·  ");
 }
 
 function activeStyles() {
@@ -19572,327 +19212,58 @@ function activeStyles() {
     .sort((a, b) => b.share - a.share);
 }
 
-function drawStylesTab(ctx, w, h, dpr) {
-  const styles = activeStyles();
-  const blockH = h / styles.length;
-  // Each style's five strongest coordinates, drawn with DIRECTIONS' mark and
-  // on one scale across the tab: it drew them with no interval at all, each
-  // style stretched to its own longest bar, so a guess (chorus & sweeps,
-  // 0.159 ± 0.227) came out the longest, surest-looking bar of its style.
-  const top = (s) => [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
-  const cx = w * 0.6, usable = w * 0.3;
-  const scale = directionsScale(styles.flatMap(top), usable);
-  const said = [];
-  styles.forEach((s, row) => {
-    const y0 = row * blockH;
-    const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
-    const active = s.share >= 0.08;
-    ctx.globalAlpha = active ? 1 : 0.35;
-
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = active ? 8 : 0;
-    ctx.beginPath();
-    ctx.arc(18 * dpr, y0 + 20 * dpr, 5 * dpr, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = INK.silk;
-    ctx.textAlign = "left";
-    ctx.fillText(`${styleName(s, s.k)} · claims ${Math.round(s.share * 100)}% of the pool`, 30 * dpr, y0 + 24 * dpr);
-
-    // The centre line a guess's whisker crosses, as in DIRECTIONS.
-    const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
-    if (rowsFit > 0) {
-      ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx, y0 + 34 * dpr);
-      ctx.lineTo(cx, y0 + (42 + (rowsFit - 1) * 18 + 8) * dpr);
-      ctx.stroke();
-    }
-    top(s).forEach((r, i) => {
-      const y = y0 + (42 + i * 18) * dpr;
-      if (y > y0 + blockH - 8 * dpr) return;
-      const mark = pullMark(r, scale, usable);
-      const label = pullLabel(niceName(r.name), mark.guess);
-      said.push({ label: `${styleName(s, s.k)}: ${label}`, guess: mark.guess });
-      ctx.fillStyle = INK.amberDim;
-      ctx.textAlign = "right";
-      ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
-      ctx.textAlign = "left";
-      drawPull(ctx, cx, y, mark, color, dpr, 5 * dpr);
-    });
-    ctx.globalAlpha = 1;
-    if (row > 0) {
-      ctx.strokeStyle = inkAlpha(INK.amber, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(10 * dpr, y0);
-      ctx.lineTo(w - 10 * dpr, y0);
-      ctx.stroke();
-    }
-  });
-  describeTasteCanvas("Styles", said);
-}
-
-function drawDirectionsTab(ctx, w, h, dpr) {
-  const styles = activeStyles().filter((s) => s.share >= 0.08);
-  if (styles.length === 0) {
-    // Fitted, but every lens is idle — show the pre-state, not a void.
-    $("taste-caption").textContent = EMPTY_CAPTIONS.dir;
-    $("crt-empty").classList.remove("hidden");
-    describeTasteCanvas(null);
-    return renderEmptyState("dir");
-  }
-  const chosen = new Map();
-  for (const s of styles) {
-    [...s.theta]
-      .sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))
-      .slice(0, 7)
-      .forEach((r) => {
-        const score = Math.abs(r.mean);
-        if (!chosen.has(r.name) || chosen.get(r.name) < score) chosen.set(r.name, score);
-      });
-  }
-  const names = [...chosen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([n]) => n);
-  const cx = w * 0.60, usable = w * 0.30;
-  const rowH = h / (names.length + 1);
-  // Bars and whiskers on one scale, fitted so the widest interval reaches the
-  // half-width (taste-geom.js). The whisker used to be capped at 0.3 of it
-  // while a bar could take 0.7, so an interval crossing zero was drawn
-  // stopping short of the centre line — a guess drawn as settled.
-  const scale = directionsScale(
-    styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name))),
-    usable,
-  );
-
-  ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
-  ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
-
-  // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
-  // at the edge — so neither reaches the label column: a long negative bar
-  // plus its whisker used to strike through "filtering" and "shimmer". The
-  // clip is the belt to that pair of braces.
-  const said = [];
-  names.forEach((name, i) => {
-    const y = rowH * (i + 1);
-    const lane = 7 * dpr;
-    const pulls = [];
-    styles.forEach((s, si) => {
-      const r = s.theta.find((t) => t.name === name);
-      if (r) pulls.push({ s, si, mark: pullMark(r, scale, usable) });
-    });
-    // A row is a guess when no style is sure of it; its label says so.
-    const rowGuess = pulls.length > 0 && pulls.every((p) => p.mark.guess);
-    const label = pullLabel(niceName(name), rowGuess);
-    said.push({ label, guess: rowGuess });
-    ctx.fillStyle = INK.amberDim;
-    ctx.textAlign = "right";
-    ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
-    ctx.textAlign = "left";
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cx - usable - 2 * dpr, 0, 2 * usable + 4 * dpr, h);
-    ctx.clip();
-    for (const { s, si, mark } of pulls) {
-      const yy = y + (si - (styles.length - 1) / 2) * lane;
-      drawPull(ctx, cx, yy, mark, STYLE_COLORS[s.k % STYLE_COLORS.length], dpr, 4 * dpr);
-    }
-    ctx.restore();
-  });
-  describeTasteCanvas("Directions", said);
-}
-
-/** One pull, the same mark in STYLES and DIRECTIONS (taste-geom `pullMark`):
- *  settled is a solid bar with its whisker; a guess is a hollow 1 px outline
- *  at GUESS_ALPHA with its whisker at full strength, because for a guess the
- *  whisker is the reading and the bar is only where it happens to point. */
-function drawPull(ctx, cx, yy, mark, color, dpr, thick) {
-  const x = Math.min(cx, cx + mark.len);
-  const w = Math.abs(mark.len);
-  ctx.save();
-  if (mark.hollow) {
-    ctx.globalAlpha *= mark.barAlpha;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = dpr;
-    ctx.strokeRect(x + dpr / 2, yy - thick / 2 + dpr / 2, Math.max(0, w - dpr), thick - dpr);
-  } else {
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6;
-    ctx.fillRect(x, yy - thick / 2, w, thick);
-  }
-  ctx.restore();
-  // Silk, not a fourth amber: the whisker is a reading about the bar, and has
-  // to show over it.
-  ctx.save();
-  ctx.globalAlpha *= mark.whiskerAlpha;
-  ctx.strokeStyle = INK.silk;
-  ctx.fillStyle = INK.silk;
-  ctx.lineWidth = Math.max(1, dpr * 0.75);
-  ctx.beginPath();
-  ctx.moveTo(cx + mark.lo, yy);
-  ctx.lineTo(cx + mark.hi, yy);
-  ctx.stroke();
-  // Cut at the edge, and said to be: an arrowhead, not a shorter line.
-  const head = (hx, dir) => {
-    ctx.beginPath();
-    ctx.moveTo(hx, yy);
-    ctx.lineTo(hx - dir * 4 * dpr, yy - 2.5 * dpr);
-    ctx.lineTo(hx - dir * 4 * dpr, yy + 2.5 * dpr);
-    ctx.closePath();
-    ctx.fill();
-  };
-  if (mark.clipLo) head(cx + mark.lo, -1);
-  if (mark.clipHi) head(cx + mark.hi, 1);
-  ctx.restore();
-}
-
-/** The canvas's words for what it draws, for anyone who cannot see it: which
- *  pulls are settled and which are guesses, in the labels on screen. The map
- *  keeps its own label, which says how to walk it with the keys. */
-const TASTE_CANVAS_MAP_LABEL = "Taste map: arrow keys step between sounds, and Enter opens one";
-function describeTasteCanvas(what, rows) {
-  const canvas = $("taste-crt");
-  if (!canvas) return;
-  if (!what) {
-    canvas.setAttribute("role", "application");
-    canvas.setAttribute("aria-label", TASTE_CANVAS_MAP_LABEL);
-    return;
-  }
-  const { settled, guesses } = countPulls(rows);
-  canvas.setAttribute("role", "img");
-  canvas.setAttribute(
-    "aria-label",
-    `${what}: ${settled} settled, ${guesses} still a guess (marked ?). ` + rows.map((r) => r.label).join(", "),
-  );
-}
-
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.onclick = () => {
-    document.querySelectorAll(".tab").forEach((t) => {
-      t.classList.remove("active");
-      t.setAttribute("aria-selected", "false");
-    });
-    tab.classList.add("active");
-    tab.setAttribute("aria-selected", "true");
-    tasteTab = tab.dataset.tab;
-    drawTaste();
-  };
-});
-
-$("taste-crt").addEventListener("click", (ev) => {
-  if (tasteTab !== "map" || mapHits.length === 0) return;
-  const rect = ev.target.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (ev.clientX - rect.left) * dpr;
-  const y = (ev.clientY - rect.top) * dpr;
-  let best = null, bestD = 12 * dpr;
-  for (const hit of mapHits) {
-    const d = Math.hypot(hit.x - x, hit.y - y);
-    if (d < bestD) { bestD = d; best = hit; }
-  }
-  if (best) {
-    // No toast at the click: it claimed the patch was "on the workbench and
-    // under your fingers" before the engine had opened it, and a second toast
-    // followed when it had. The dot shows the open pending (a dotted ring),
-    // and a slow one is announced when it lands (the bench reply).
-    openOnBench(best.id);
-    drawTaste();
-    bankScrollTo = best.id;
+taste = createTaste({
+  geom,
+  words,
+  INK,
+  inkAlpha,
+  canvasFont,
+  motionMs,
+  tok,
+  views: () => views,
+  engine: () => ({ calib: engineCalib, forecasts: engineForecasts, facts: engineFacts || (views && views.facts) || null }),
+  isCut: (id) => cutIds.has(id),
+  subjectId: () => wb.subjectId,
+  pendingId: () => benchPending,
+  nameOf: (id) => nameOrKnown(id),
+  // No toast at the click: the map marks the open pending (a dotted ring),
+  // and a slow one is announced when it lands (the bench reply).
+  open: (id) => {
+    openOnBench(id);
+    bankScrollTo = id;
     bankScrollAt = performance.now();
-  }
+    drawTaste();
+  },
+  play: (id, btn) => awaitRender(id, () => play(id, btn)),
+  niceName,
+  styleName,
+  styleColor: (k) => STYLE_COLORS[k % STYLE_COLORS.length],
+  // The name, in the views every surface reads; the next fit's views carry
+  // it from the engine. LEARNING updates its own chip in place.
+  setStyleName: (k, name) => {
+    const s = views && views.styles && views.styles[k];
+    if (s) s.name = name;
+    send({ type: "set_style_name", k, name });
+    scheduleSave();
+  },
+  fittedFrom: () => words.fittedFrom({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
+  taught: () => taughtKinds(),
+  // What the track keeps with each moment: the engine's picks, observation
+  // count and generation as the last status said them (not TAUGHT, which
+  // also counts picks still inside their undo window).
+  picks: () => status.picks | 0,
+  observations: () => status.observations | 0,
+  generation: () => status.generation | 0,
+  scheduleSave: () => scheduleSave(),
+  skillText: () => skillText(),
+  kindsText,
+  fitEvery: FIT_EVERY,
 });
 
-// The dots are clickable and the surface should say so: pointer cursor over a
-// hit, plus a tooltip naming the patch.
-let mapTipEl = null;
-
-function hideMapTip() {
-  if (mapTipEl) {
-    mapTipEl.remove();
-    mapTipEl = null;
-  }
+/** Redraw TASTE or LEARNING, whichever is showing, from the views main holds. */
+function drawTaste() {
+  if (taste) taste.draw();
 }
-
-function mapHitAt(ev) {
-  const canvas = $("taste-crt");
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (ev.clientX - rect.left) * dpr;
-  const y = (ev.clientY - rect.top) * dpr;
-  let best = null;
-  let bestD = 12 * dpr;
-  for (const hit of mapHits) {
-    const d = Math.hypot(hit.x - x, hit.y - y);
-    if (d < bestD) { bestD = d; best = hit; }
-  }
-  return best;
-}
-
-$("taste-crt").addEventListener("pointermove", (ev) => {
-  const canvas = $("taste-crt");
-  // A finger has no hover: a tap fires one pointermove at the touch point and
-  // then never a pointerleave, so the hover tooltip would paint itself over
-  // the map and stay there for the rest of the session. The tap's own job —
-  // open that patch on the bench — is the same thing the tooltip was
-  // advertising, so touch skips straight to it.
-  if (ev.pointerType !== "mouse") return hideMapTip();
-  if (tasteTab !== "map" || mapHits.length === 0) {
-    canvas.classList.remove("hit");
-    return hideMapTip();
-  }
-  const best = mapHitAt(ev);
-  canvas.classList.toggle("hit", !!best);
-  if (!best) return hideMapTip();
-  if (!mapTipEl) {
-    mapTipEl = document.createElement("div");
-    mapTipEl.className = "map-tip";
-    document.body.appendChild(mapTipEl);
-  }
-  const r = rowOf(best.id);
-  mapTipEl.innerHTML =
-    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to play it</div>`;
-  mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
-  // The signature is engine bookkeeping: on request (⋯ › Show measurements).
-  mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
-  mapTipEl.children[2].textContent =
-    best.u01 != null ? `would like: ${guessLabel(best.u01)}` : "no guess yet";
-  // Clamp to the viewport — unclamped, the tooltip clips at the right edge.
-  mapTipEl.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - 250)}px`;
-  mapTipEl.style.top = `${Math.min(ev.clientY + 12, window.innerHeight - 90)}px`;
-});
-$("taste-crt").addEventListener("pointerleave", () => {
-  $("taste-crt").classList.remove("hit");
-  hideMapTip();
-});
-
-// Keyboard traversal of the map: arrows step the dashed cursor in x-order,
-// Enter opens the patch on the bench.
-let mapCursorId = null;
-$("taste-crt").addEventListener("keydown", (e) => {
-  if (tasteTab !== "map" || mapHits.length === 0) return;
-  const sorted = [...mapHits].sort((p, q) => p.x - q.x);
-  const i = sorted.findIndex((hh) => hh.id === mapCursorId);
-  if (e.key === "Enter") {
-    if (mapCursorId != null) {
-      e.preventDefault();
-      bankScrollTo = mapCursorId;
-      bankScrollAt = performance.now();
-      openOnBench(mapCursorId);
-      drawTaste(); // the dot's pending ring, as for a click
-    }
-    return;
-  }
-  let j = null;
-  if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(sorted.length - 1, i + 1);
-  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = i < 0 ? 0 : Math.max(0, i - 1);
-  else if (e.key === "Home") j = 0;
-  else if (e.key === "End") j = sorted.length - 1;
-  if (j == null) return;
-  e.preventDefault();
-  mapCursorId = sorted[j].id;
-  drawTaste();
-});
 
 // ---------- lineage ----------
 // The strip speaks names, not ids: "Soft Pad → Warm Drone 2", where it used
@@ -21944,6 +21315,7 @@ bootMidi();
     restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
     restoreHoles(saved.ui.holes);
+    if (taste) taste.restore(saved.ui.taste);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

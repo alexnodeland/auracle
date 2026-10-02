@@ -37,6 +37,40 @@ changelog that edits its own past is not a record.
   each knob as a wide slider with − and + steps, each named setting as its
   choices, and REMOVE MODULE at its foot.
 
+### Changed: TASTE draws each pick, and LEARNING is the model room
+
+- **A pick draws as an arrow on TASTE's map, and every glow moves with
+  it.** The map changed only when the model fitted again, every sixth pick,
+  so a pick left no mark there. Now each pick draws an arrow from the sound
+  you passed to the sound you picked, and every sound's glow moves to the
+  model's new rating at once, because a pick moves its view of every sound.
+  Picks made in EVOLVE are drawn in turn when you open TASTE. A refit
+  settles every glow and every place together.
+- **TASTE is the map, with a card for each sound.** Each sound glows amber
+  by how much the model guesses you’d like it, dashed while it has no
+  guess, and is larger where it is less sure. Point at one for its name,
+  the guess (*would like: 59% · leaning*), **▶ PLAY** and **OPEN**; the
+  arrow keys walk the map. The MAP, STYLES, DIRECTIONS and TRUST tabs are
+  gone: their contents are in LEARNING.
+- **LEARNING, a new view, shows what the model weighs and how it has
+  guessed.** Each style's 44 weights, a guess drawn hollow with a **?** in
+  the margin; which way liking rises across the map; every forecast it made
+  before a pick, scored (*14 / 22*, *expected 64% · was 58%*) with the skill
+  the menu bar shows; **COPY AS JSON**; and **THE MATH**, whose numbers (18
+  audio and 26 structural features, 500 draws, a style for every 20 things
+  it learns from, up to five) come from the model itself. Name a style on
+  its chip here. TRUST's reliability chart is not drawn any more; its
+  numbers are in the copied JSON.
+- **TASTE's map has a track of your taste over time.** Drag it, or press ▶,
+  to see the glows and places as the model had them after any pick this
+  session has kept, with that pick's arrow. It is saved with your session
+  and starts when this version first ran.
+- **SOUND / TASTE** at the map's top left: SOUND shows the sounds as they
+  are, TASTE dims each by how little the model likes it.
+- **LEARNING's weights move with every pick, and REPLAY (R) steps them
+  through your picks.** Pointing at a weight shades the small map by how
+  much of that quality each sound has.
+
 ### Added: PERFORM's palette, its offers in motion, and stage mode
 
 - **You choose PERFORM's controls.** **ARRANGE** opens the palette: the
@@ -154,8 +188,7 @@ changelog that edits its own past is not a record.
   canvas is smaller than 12 px.** Labels, chips, and captions that were
   10 px are 11 px, and values and readouts are 12. The minimap's bookmark
   numbers, which were 7 px, are 11 on a larger pip. The scopes' and TASTE's
-  canvas text, which was 9 to 11 px, is 12, and TRUST's last line no longer
-  sits on the canvas's bottom edge. The rack keeps its own sizes, which grow
+  canvas text, which was 9 to 11 px, is 12. The rack keeps its own sizes, which grow
   and shrink with its zoom, and a glyph on a button is sized to its button.
 - **Some text grew and some shrank.** Prose is 14 px where it was 13, a
   sound's name and a card's title are 21 where they were 17, and the model's
