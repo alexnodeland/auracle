@@ -112,6 +112,10 @@ measured with audition clips, from quiver to the PATCH plate.
    - the live worklet's input;
    - the AUDIO IN plate: device select, level meter, live face;
    - monitoring off, with a headphones note;
+   - **held sounds** (task 6): the bank shows the sounds a restore held back
+     because a CAPTURE's recording couldn't be read (`held_sounds`), and opens
+     one on the bench to record it again, then sends the take
+     (`readmit_held`); both are wired in `worker.js` with nothing asking yet;
    - **turning AUDIO IN on in the prior** once a player can hear a live input:
      set `AUDIO_IN_WEIGHT` to `AUDIO_IN_ENABLED_WEIGHT`. The revalidation in
      task 2 measured exactly that setting, so if nothing else has changed it
@@ -176,9 +180,14 @@ measured with audition clips, from quiver to the PATCH plate.
      the existing `edit_structure` binding. A render never records;
    - a player kind, like TRACK; walks hold its `#op`, never propose a take
      (it is not a trace site), and carry it onto every term they score.
-   - Open: `LivePoly`'s record and read-back bindings and the record control
-     (web task); a sound whose only source is its take restores silent and is
-     dropped by restore's rule for any entry that no longer renders.
+   - a sound whose only source was a take that couldn't be read is **held**:
+     restore keeps it out of the pool (never dealt, fitted, mapped, wired or
+     bred), reports it apart from the repairs, and the app says "its
+     recording couldn't be read"; a save writes it back with the take's bytes
+     as loaded; `Engine::readmit_held` (wasm `readmit_held`) brings it back
+     with a readable take, measured as a new sound.
+   - Open: `LivePoly`'s record and read-back bindings and the record control,
+     and showing held sounds in the bank (task 4).
 7. **The guide and the reference:** a guide page on playing through Auracle,
    and a reference section on audition clips (ADR-004). The reference section
    is *done* (*Audition clips*, with the AUDIO IN term on the grammar page);

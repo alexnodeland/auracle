@@ -256,7 +256,12 @@ no higher than `MAX_TAKE_RATE` (192 kHz), a length no longer than
 `TAKE_SECONDS` (4 s, quiver’s default `Capture` buffer) at that rate, and the
 data’s length checked before it is decoded. A take that breaks a rule never
 costs the sound: the term loads with the take empty, and a restore counts the
-sound as repaired, so the app says so. A take is not a trace site, so no walk
+sound as repaired, so the app says so. When that take was the sound's only
+source it no longer renders, and the restore **holds it back** instead of
+dropping it: out of the pool, so nothing deals, fits or breeds it, reported
+apart from the repairs ("its recording couldn't be read"), and written back
+by every save with the take's bytes as they were loaded, until a readable
+take brings it back (`readmit_held`), measured as a new sound. A take is not a trace site, so no walk
 can propose a new one.
 
 Recording is the host’s. A compiled voice has a record gate per capture and
