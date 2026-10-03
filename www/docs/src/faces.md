@@ -43,6 +43,8 @@ the face.
 
 ## Where faces appear
 
+- **The menu bar**, beside the name of the sound you’re playing, at every
+  level: the face of what the keys play.
 - **[The bank](./bank.md)**, on every row, in a column left of the row’s two
   lines. Preset rows draw theirs as you scroll to them, since a preset you
   haven’t heard may need a render first.

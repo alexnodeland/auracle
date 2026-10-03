@@ -10,8 +10,10 @@ the long-form notes are this directory's `README.md`.
 
 | File | Runs on | Holds |
 | --- | --- | --- |
-| `index.html` | page | Markup for every view, the menu bar, the dialogs |
-| `main.js` | main thread | Views (PERFORM, PATCH, EVOLVE, TASTE, LEARNING), the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip |
+| `index.html` | page | Markup for every level, the menu bar, the levels' rail, the keys bar, the dialogs |
+| `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
+| `shell.js` | main thread | Where you are (Plan-008): the level registry, `show`, `#where`, the rail and its `aria-current`, the level keys (⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, ADR-017), the saved level and the hash |
+| `levels.js` | main thread | Pure rules for the levels: the axis, `step`, `dirOf`, `railPath`, `levelForKey`, `startLevel`; unit-tested in `tests/` |
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
@@ -49,7 +51,9 @@ the long-form notes are this directory's `README.md`.
   ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
   words, colours (green sound, amber the model, red danger, silk you), undo,
   message channels and keymap in RFC-003, except that Space plays the sound
-  in every view ([ADR-016](../../docs/decisions/016-space-plays-everywhere.md)).
+  in every view ([ADR-016](../../docs/decisions/016-space-plays-everywhere.md))
+  and the views are levels with keys of their own
+  ([ADR-017](../../docs/decisions/017-the-levels-keys.md)).
   New copy, colours and keys follow them; an exception amends the ADR.
 - **One design system**
   ([ADR-011](../../docs/decisions/011-one-design-system.md)): views are

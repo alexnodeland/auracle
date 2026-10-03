@@ -158,7 +158,7 @@ takes both apart.
 | `auracle-taste` | The max-of-experts utility, three likelihoods, recency weighting, the MCMC posterior, label alignment, and portable profiles |
 | `auracle-session` | The two-loop engine: the pool, dealing pairs (at random by default; BALD selectable), locked refinement, taste-tilted proposals, and session persistence |
 | `auracle-wasm` | `WasmEngine` (the worker's engine) and `LivePoly` (the worklet's instrument) |
-| `apps/web` | The instrument: PERFORM, PATCH, EVOLVE, and TASTE, the bank, the keyboard dock, and MIDI |
+| `apps/web` | The instrument: PERFORM, PATCH, EVOLVE, TASTE and LEARNING as levels of one space, the bank, the keyboard dock, and MIDI |
 
 Auracle builds on [`quiver-dsp`](https://crates.io/crates/quiver-dsp)
 (patch-graph DSP), [`fugue-ppl`](https://crates.io/crates/fugue-ppl), and

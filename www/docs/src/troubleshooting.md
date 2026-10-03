@@ -9,14 +9,14 @@ Check in this order:
 
 1. **The pool is still filling.** Boot renders 40 sounds, and the first pair
    is dealt at eight; the rest arrive while you play.
-2. **No sound is open.** PATCH says *no sound open*. Click a row in the bank.
+2. **No sound is open.** The menu bar says *no sound*, and PATCH *no sound open*. Click a row in the bank.
 3. **The browser hasn’t allowed audio yet.** Browsers need a gesture before
    they start audio. Click anywhere, or press a key.
 4. **The sound is muted because it failed its check.** A pinned strip says so,
    and stays until it’s resolved. A render that came back broken, silent, or
    mostly DC offset is never played. Open another sound.
-5. **Voices are stuck.** Press **◼** on the keybed.
-6. **The level is down.** Check **VOL** at the far right of the keybed.
+5. **Voices are stuck.** Press **◼ SILENCE** in **KEYS ⋯**, at the right of the keys bar.
+6. **The level is down.** Check **VOL** at the right of the keys bar.
 7. **The tab is muted**, or your computer is sending sound somewhere else.
    Check both.
 
@@ -72,7 +72,7 @@ The instrument runs on a real-time audio thread.
 
 ## A MIDI controller doesn’t play
 
-The right of the keybed reads *midi ●* when a device is connected. *midi ?*
+The right of the keys bar reads *midi ●* when a device is connected. *midi ?*
 means the page can’t reach MIDI at all; click it, and the panel says why:
 
 - **Safari** has no Web MIDI. Use Chrome, Edge, or Firefox.

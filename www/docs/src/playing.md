@@ -27,18 +27,18 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> and <kbd>x</kbd> shift the octave, from `a = C0` to `a = C7`. At
-the bottom, <kbd>a</kbd> plays C0; at the top, <kbd>'</kbd> plays F8, five
-notes past an 88-key piano’s C8. The keybed on screen stops at C8, so the last
-few letters sound without a key lighting. The left of the keybed always shows
-where <kbd>a</kbd> sits (`a = C4`).
+<kbd>z</kbd> and <kbd>x</kbd> shift the octave, so that <kbd>a</kbd> plays
+anything from C0 to C7. At the bottom, <kbd>a</kbd> plays C0; at the top,
+<kbd>'</kbd> plays F8, five notes past an 88-key piano’s C8. The keybed on
+screen stops at C8, so the last few letters sound without a key lighting. The
+left of the keys bar always shows the note <kbd>a</kbd> plays (**KEYS**
+`Z C4 X octave`), and **Z** and **X** there are buttons too.
 
 ```admonish note title="Letters play unless you’re typing"
 Note letters stop only while a text field or a drop-down has focus, so naming
 a sound doesn’t play a melody. A focused control keeps the keys it uses and
 lets the letters through. A button, a bank row, and a setting on the rack
-reached with the keyboard take Space and Enter; a knob or a tab takes the
-arrows. A click leaves no focus on a button or a setting, so everywhere else
+reached with the keyboard take Space and Enter; a knob takes the arrows. A click leaves no focus on a button or a setting, so everywhere else
 Space plays the sound you’re playing. That is why <kbd>m</kbd> saves a sound,
 not <kbd>s</kbd>: <kbd>s</kbd> is a note.
 ```
@@ -46,8 +46,8 @@ not <kbd>s</kbd>: <kbd>s</kbd> is a note.
 ### MIDI
 
 Plug in a keyboard and it plays, with velocity, pitch bend, and the sustain
-pedal. The right of the keybed shows the MIDI state (*midi ●* with a device
-connected); click it for the mapping panel.
+pedal. The right end of the keys bar shows the MIDI state (*midi ●* with a
+device connected); click it for the mapping panel.
 
 A controller with knobs works too, with nothing to set up. The first eight
 knobs you turn take the first eight controls on
@@ -59,12 +59,12 @@ clock sets the tempo. The mapping is remembered for each device.
 rings until the pedal lifts, and lifting it releases exactly those notes.
 Notes still under your fingers keep sounding, and a sustained note you strike
 again belongs to your finger again. The pedal is separate from **HOLD**, the
-keybed’s latch.
+keybed’s latch in **KEYS ⋯**.
 
 Web MIDI works in Chrome, Edge, and the other Chromium browsers, and in
 Firefox, which asks the first time whether to add a site permission for it.
 Safari has none; there the other two ways in still play. When MIDI isn’t
-available the keybed reads *midi ?*, and the panel says why, with **CONNECT
+available the keys bar reads *midi ?*, and the panel says why, with **CONNECT
 MIDI** to ask again.
 
 **MIDI plays one tab.** With Auracle open twice, the tab you used last plays
@@ -75,18 +75,30 @@ range, endless encoders, and soft takeover.
 
 ## The keybed’s controls
 
+Three sit at the right end of the keys bar:
+
 | Control | What it does |
 |---|---|
-| **HOLD** | Latches every note you play until you switch HOLD off or press **◼**. Playing a held note again strikes it again |
-| **◼** | Silences every voice at once |
-| **⇕ TALL** | A taller keybed, for fingers. The rack zooms to fit what is left |
-| **KEYS** | How many octaves the keybed shows, one to four: fewer octaves, wider keys |
+| **VOL** | The output level, for live keys and every ▶ |
+| **MIDI** | The MIDI state, and its panel (above) |
+| **● REC** | Records your playing to a WAV |
+
+**KEYS ⋯** beside them opens the rest. It is lit while HOLD, UNI, ARP or SYNC
+is on, and its tooltip names which:
+
+| Control | What it does |
+|---|---|
+| **HOLD** | Latches every note you play until you switch HOLD off or press **◼ SILENCE**. Playing a held note again strikes it again |
+| **UNI** | Unison: all four voices on one note, detuned wide |
 | **ARP** | The arpeggiator, below |
 | **SYNC** | Puts the patch’s step sequencers on the tempo, below |
-| **UNI** | Unison: all four voices on one note, detuned wide |
-| **GLD** | Glide: how long a note takes to slide into the next when you play a line. Chords stay clean |
-| **● REC** | Records your playing to a WAV |
-| **VOL** | The output level, for live keys and every ▶ |
+| **GLIDE** | How long a note takes to slide into the next when you play a line. Chords stay clean |
+| **⇕ TALL** | A taller keybed, for fingers. The rack zooms to fit what is left |
+| **SPAN** | How many octaves the keybed shows, one to four: fewer octaves, wider keys |
+| **◼ SILENCE** | Silences every voice at once |
+
+**KEYS ⋯** stays open while you play through it (the keybed, the octave,
+HOLD), and folds on a click outside the keys bar or <kbd>Esc</kbd>.
 
 The keybed’s width starts at three octaves for a mouse and two for a finger.
 The narrow sizes center on the computer keyboard’s octave, so what you see
@@ -94,7 +106,7 @@ matches what your keys play. The height and width persist.
 
 ## The arpeggiator
 
-1. Press **ARP**. Its settings open in a drawer above the keybed.
+1. Press **ARP** in **KEYS ⋯**. Its settings show there, under the four buttons.
 2. Hold a chord, or latch one with **HOLD**.
 3. Set the pattern and rate against it.
 
@@ -107,9 +119,9 @@ matches what your keys play. The height and width persist.
 | **GATE** | Note length, as a share of the step |
 | **SWING** | Shuffle |
 
-The drawer folds to a chip under the buttons (`arp 1/8 · 120`) when you click
-outside the keybed or press <kbd>Esc</kbd>; the chip opens it again. Playing,
-HOLD, and the keybed’s other controls leave it open.
+While ARP or SYNC runs, a chip at the head of the keys bar’s cluster says what
+it is set to (`arp 1/8 · 120`), and opens the settings again after **KEYS ⋯**
+folds.
 
 The arpeggiator runs inside the audio engine rather than on a page timer, so
 it doesn’t drift, and it doesn’t stutter when the screen is busy.

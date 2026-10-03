@@ -96,7 +96,7 @@ answers your last pick. The refit is the full version: inference over every
 pick so far, a few seconds of work off the audio thread.
 
 While a refit runs, the job slot in the menu bar says *refitting your taste
-map…*, and the **E** of the wordmark is lit. The reference has [the fit and the
+map…*, and the amber lamp after the wordmark is lit. The reference has [the fit and the
 reweighting](../../reference/taste/posterior.html) and [how pairs are
 dealt](../../reference/search/acquisition.html).
 ```
@@ -115,9 +115,9 @@ dealt](../../reference/search/acquisition.html).
 says each walk as it comes back, and what came of it: **WALK 3 OF 10**
 *joined the pool*, *rated below the pool*, *already in the pool*, *came back
 unchanged*, or *couldn’t start*. The job slot in the menu bar counts the
-walks with the time left (*⚡ breeding 3/10 · about 40 s*), in every view.
-**GENERATIONS** in the menu bar counts the generation once its first child
-lands. Hover **EVOLVE POOL** while it breeds and the bank marks this
+walks with the time left (*⚡ breeding 3/10 · about 40 s*), at every level.
+**GENERATIONS**, at the top of EVOLVE beside its name, counts the generation
+once its first child lands. Hover **EVOLVE POOL** while it breeds and the bank marks this
 generation’s seeds, and **WILL BE REPLACED** on the sounds its end will
 replace so far; each child still to come can add one more, so save what you
 want to keep.

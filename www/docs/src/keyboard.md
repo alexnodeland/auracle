@@ -3,8 +3,31 @@
 <p class="lede">Every key and MIDI message Auracle answers to, in one place.
 Press <kbd>?</kbd> in the app for the same map without leaving it.</p>
 
-The keys below use the Mac’s ⌘. On Windows and Linux, use Ctrl where you see
-⌘: <kbd>⌘Z</kbd> is Ctrl Z, and the app shows it that way there.
+The keys below use the Mac’s ⌘ and ⌥. On Windows and Linux, use Ctrl where
+you see ⌘ and Alt where you see ⌥: <kbd>⌘Z</kbd> is Ctrl Z and <kbd>⌥↑</kbd>
+is Alt ↑, and the app shows them that way there.
+
+## The levels
+
+PERFORM, PATCH, EVOLVE, TASTE and LEARNING are levels of one space around the
+sound you’re playing: TASTE is zoomed out (the sound among all sounds),
+PATCH zoomed in (what it is made of), LEARNING past TASTE, and EVOLVE beside
+PERFORM. The levels at the right edge of the stage show where you are, and a
+click on a stop goes there. The app opens at PERFORM, or at the level you were
+at last time.
+
+| | |
+|---|---|
+| <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Zoom out / in: PATCH, PERFORM, TASTE, LEARNING. From EVOLVE, out goes to TASTE and in to PATCH |
+| <kbd>⌥←</kbd> / <kbd>⌥→</kbd> | Beside it to EVOLVE / back to PERFORM |
+| <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
+
+They work with a knob or a list focused. In a text field they stay the
+field’s (there <kbd>⌥←</kbd> moves by a word), and with a dialog open they do
+nothing. Clicking a stop puts the keyboard in that level. If you reach the
+levels with <kbd>Tab</kbd>, the arrow keys walk them as they are drawn (<kbd>↑</kbd>
+out, <kbd>↓</kbd> in, <kbd>←</kbd> to EVOLVE, <kbd>→</kbd> back), and
+<kbd>Home</kbd> and <kbd>End</kbd> go to their ends.
 
 ## Notes
 
@@ -36,11 +59,11 @@ are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>Space</kbd> | Hear the sound you’re playing as it stands on the rack: your edits in PATCH, and what you kept or took in PERFORM, without a control turned since or Wander’s drift. Pressed while an edit is on its way, it plays once the edit lands; outside PATCH, *▶ waiting for the edit…* stands in for the sound’s name at the right of the keybed until then. It plays with a knob or a PERFORM control focused. |
+| <kbd>Space</kbd> | Hear the sound you’re playing as it stands on the rack: your edits in PATCH, and what you kept or took in PERFORM, without a control turned since or Wander’s drift. The ▶ beside the sound’s name at the top does the same. Pressed while an edit is on its way, it plays once the edit lands: that ▶ wears a dotted ring, and outside PATCH *▶ waiting for the edit…* stands in for the sound’s name until then. It plays with a knob or a PERFORM control focused. |
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the sound you’re on |
 | <kbd>m</kbd> | Save the sound you’re on |
-| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
+| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
@@ -50,11 +73,8 @@ are stepping through them with the arrow keys.
 | | |
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd> | Hear A / B |
-| <kbd>←</kbd> / <kbd>→</kbd> | Pick A / B, from the moment you click the EVOLVE tab |
+| <kbd>←</kbd> / <kbd>→</kbd> | Pick A / B, from the moment you click EVOLVE’s stop in the levels |
 | <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
-
-Clicking a view’s tab puts the keyboard in that view. If you reach the tabs
-with <kbd>Tab</kbd>, <kbd>←</kbd> and <kbd>→</kbd> move between them.
 
 ## The rack canvas
 
@@ -133,7 +153,7 @@ The search finds a module by sound as well as by name: *grit*, *vowel*,
 
 | | |
 |---|---|
-| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and in every other view <kbd>⇧F</kbd> is the accented F |
+| <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and at every other level <kbd>⇧F</kbd> is the accented F |
 
 A focused control (reach it with <kbd>Tab</kbd>):
 
@@ -169,12 +189,12 @@ with knobs, and they work too.
 | Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter. With BRIGHT off the panel, it adds nothing |
 | Any other CC | The first eight you move take the first eight controls on PERFORM’s deck, in order. Reserved CCs are never taken (below) |
 | MIDI clock | Sets the tempo |
-| CC 120, CC 123 | All sound off, all notes off: the same as **◼** |
+| CC 120, CC 123 | All sound off, all notes off: the same as **◼ SILENCE** in **KEYS ⋯** |
 | CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
 
 Web MIDI works in Chromium browsers and in Firefox, which asks once whether to
 add a site permission for it. Safari has none; there the computer keyboard and
-the keybed on screen still play. When MIDI isn’t available, the keybed reads
+the keybed on screen still play. When MIDI isn’t available, the keys bar reads
 *midi ?*, and the panel says why and offers **CONNECT MIDI** to ask again.
 
 With Auracle open in more than one tab, MIDI plays the tab you used last. The
@@ -182,7 +202,7 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
 
 ### The MIDI panel
 
-1. Click the MIDI state at the right of the keybed (*midi ●* with a device
+1. Click the MIDI state at the right of the keys bar (*midi ●* with a device
    connected).
 2. Press **LEARN** on a row, then move a knob: that knob now drives the row’s
    control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
@@ -217,7 +237,7 @@ way.
 
 A sound’s controls have to be measured before they turn anything. Moving a
 mapped knob measures the sound you’re playing if PERFORM hasn’t already, so the
-knobs work from any view.
+knobs work from any level.
 
 ### Endless encoders
 
@@ -291,17 +311,30 @@ The mapping, the switch, and the bend range are remembered for each device,
 or combination of devices, in this browser. Plug the same controller in
 tomorrow, and its knobs mean what they meant today.
 
-## The keybed’s controls
+## The keys bar
 
-Not bound to keys, but this is where people look for them:
+Not bound to keys, but this is where people look for them. At the left,
+**KEYS** and the octave (**Z** and **X** are buttons too). At the right end:
+
+| | |
+|---|---|
+| **VOL** | Master volume: the keys and every ▶ |
+| **MIDI** | The MIDI panel (above) |
+| **● REC** | Record your playing to a WAV |
+| **KEYS ⋯** | Everything else the keybed does, below. Lit while HOLD, UNI, ARP or SYNC is on, and its tooltip names which |
+
+In **KEYS ⋯**:
 
 | | |
 |---|---|
 | **HOLD** | Latch notes |
-| **◼** | Silence every voice |
-| **ARP** | Pattern, rate, tempo, range, gate, and swing |
 | **UNI** | All four voices on one note, detuned |
-| **GLD** | Glide between single notes; chords stay clean |
-| **● REC** | Record your playing to a WAV |
+| **ARP** | Pattern, rate, tempo, range, gate, and swing, shown while it runs. The chip at the head of the bar’s cluster says what it is set to (*arp 1/8 · 120*) and opens them |
+| **SYNC** | Step sequencers play the nearest division of the tempo |
+| **GLIDE** | Glide between single notes; chords stay clean |
 | **⇕ TALL** | A taller keybed |
-| **KEYS** | Keybed width, one to four octaves |
+| **SPAN** | Keybed width, one to four octaves |
+| **◼ SILENCE** | Silence every voice |
+
+It stays open while you play through it (the keybed, the octave, HOLD), and
+folds on a click outside the keys bar or <kbd>Esc</kbd>.

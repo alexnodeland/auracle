@@ -78,13 +78,21 @@ three-pick warm start*.
 EVOLVE is where you teach the model most. It plays you two sounds, A and B,
 on the same phrase, and you pick the one you’d reach for.
 
+PERFORM, PATCH, EVOLVE, TASTE and LEARNING are the levels of one space around
+the sound you’re playing, and the stops at the stage’s right edge show where
+you are: TASTE and LEARNING above PERFORM, PATCH below it, and EVOLVE beside
+it. Click a stop to go there, or press <kbd>⌥←</kbd> for EVOLVE,
+<kbd>⌥↑</kbd> and <kbd>⌥↓</kbd> to zoom out and in, and <kbd>⌥1</kbd>–
+<kbd>⌥5</kbd> for each level (Alt off a Mac). The menu bar names the level
+you’re at.
+
 <figure>
 <img src="../img/evolve.webp" alt="The EVOLVE view: two cards side by side, each with a name and a rendered waveform and three buttons below it, a teaching line above them, and a strip of recent generations below." loading="lazy" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
 above them counts down to the next refit.</figcaption>
 </figure>
 
-1. Open **EVOLVE**.
+1. Go to **EVOLVE**: its stop, left of PERFORM’s, or <kbd>⌥←</kbd>.
 2. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ SAMPLE** on each card) to hear A
    and B.
 3. Click a card’s body to play that sound live on the keys, if the phrase
@@ -109,14 +117,14 @@ What you see:
 - **The toast.** *Picked Glass Pad over Soft Wash.*, with **NOT WHAT I MEANT**
   for seven seconds. <kbd>⌘Z</kbd> (Ctrl Z) does the same.
 - **The refit.** On the sixth pick the line reads *● learning from your last 6
-  picks…*, and the **E** of the wordmark lights while the model fits. Then it
+  picks…*, and the amber lamp after the wordmark lights while the model fits. Then it
   reads *● it just learned: see what changed ▸*, and the link opens TASTE.
 
 ## 4. See what it learned
 
-1. Open **TASTE**: every sound in the pool, glowing by how much the model
+1. Go to **TASTE** (<kbd>⌥↑</kbd> from PERFORM or EVOLVE): every sound in the pool, glowing by how much the model
    guesses you’d like it. Point at one to see its card.
-2. Open **LEARNING**, and read each style’s name on its chip.
+2. Go to **LEARNING** (<kbd>⌥↑</kbd> again), and read each style’s name on its chip.
 3. Read **ITS FORECASTS**, and see how close it is to grading the model.
 
 Early on the glows are a first guess, and the styles too. A style is named
@@ -131,7 +139,7 @@ why a plain hit rate would have flattered it.
 
 ## 5. Breed a generation
 
-1. Open **EVOLVE**.
+1. Go to **EVOLVE**.
 2. Press **EVOLVE POOL**.
 3. Play the new sounds as they land at the top of the bank.
 
@@ -140,7 +148,7 @@ each, toward what it has learned. Hover **EVOLVE POOL** before you press it,
 and the bank marks those ten **SEED**. **EVOLVE POOL** becomes its own
 progress bar, saying each walk as it comes back (**WALK 3 OF 10** *joined the
 pool*), with **STOP** beside it, and the job slot in the menu bar counts the
-walks in every view. A generation takes from under a minute to a few,
+walks at every level. A generation takes from under a minute to a few,
 depending on the machine, and the instrument keeps answering while it breeds.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·

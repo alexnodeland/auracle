@@ -1,0 +1,495 @@
+---
+title: "The shell: one space, the levels, the rail, the model view and ⌘K"
+number: 8
+status: accepted
+author: Claude Code
+created: 2026-10-02
+updated: 2026-10-02
+originating_proposal: 6
+related_adrs: [4, 9, 11, 12, 16, 17]
+---
+
+# Plan-008: The shell
+
+Plan-005 task 2, in four sequential PRs. The approved specimen is
+`docs/notes/vision-2026-09/prototype/` (built by `build.py`). Its 1440 × 900
+screenshots are the acceptance shots: `a-perform-doors.png`, `z-desk-{perform,
+patch,evolve,taste,model}.png`, `v2-rail.png`, `out-grid.png`, `a-stage*.png`,
+`b-own-perform.png`, and `flow2-1024.png` for the narrow header. Line numbers
+are origin/main at 819c925.
+
+Everything the faces, lineage, PERFORM, TASTE/LEARNING, PATCH, explain and
+AUDIO IN PRs built stays. The shell changes the frame around them and the way
+you move between them. It does not rebuild their internals.
+
+## Progress
+
+| PR | Status |
+| --- | --- |
+| A: the frame, the header, the level rail, the keys bar | in progress |
+| B: the bank and the model view | not started |
+| C: the levels laid out, and the zoom | not started |
+| D: ⌘K, and the guide for the levels | not started |
+
+The maintainer accepted the plan with the decisions at its end, which override
+the proposals in §6 where they differ (PATCH is rebuilt to the mock's canvas,
+not framed). ADR-017 records §6 Q1.
+
+**PR A, as built, where it differs from §1–§3:**
+- The levels leave the rail 96 px, not the mock's 76, with the cross 8 px
+  from the edge: at 76, EVOLVE's stop (which branches left of PERFORM's) sat
+  on PERFORM's FREEZE pad and the module rail's rows. Under 1080 px the cross
+  draws smaller and the inset is the mock's 76. `shell_levels.spec.js` pins
+  that the stops cover no control at 1000, 1080 and 1440.
+- With the rail beside them, PERFORM's eight-column deck (77 px a column at
+  1000) and PATCH's callout cell (208 px) cut their words, so under 1180 px
+  the deck is two rows of four and the callout takes a row of its own. PR C
+  replaces both layouts.
+- The wordmark is set at a new app size token, `--t-wordmark` (17 px, the
+  mock's).
+- KEYS ⋯ is lit while HOLD, UNI, ARP or SYNC is on and names them in its
+  title, and the arp chip stays on the bar while ARP or SYNC runs, so a
+  keybed that plays differently still says so with its controls folded away.
+  KEYS ⋯ keeps the arp drawer's rule: open through the dock's controls and
+  notes, folded by a press outside the dock or Esc.
+- A focused stop walks the rail with the plain arrows and Home/End, which is
+  where the tab list's arrow keys went.
+- The film shots' raw `.viewtab` selectors (26 lines in six `shots.json`) and
+  their keybar ids now inside KEYS ⋯ are owed with the Wave 3 re-records, as
+  §3 says; `footage.mjs`'s `view` op already uses the rail.
+
+## 1. Delta inventory (mock vs app)
+
+### Header (mock `core.js` 398–423, `style.css` 81–135; app `index.html` 74–256, `style.css` 420–630)
+
+| Element | Mock | App today | Reuse | New |
+|---|---|---|---|---|
+| Wordmark and lamp | AURACLE, then an amber lamp that pulses on a model update | `AURACL<b id=wm-lamp>E</b>`, the E lit by `lampOn` while a job runs | `wm-lamp` and `lampOn` (main.js) | Restyled to the mock: spaced word plus a round lamp. The lamp keeps today's meaning (lit while the model works) |
+| Level name and subtitle | `.where`: "PERFORM  the sound, under your hands". The new name arrives from the direction of the move (`syncWhere` 827–842) | None: the five `.viewtab` buttons (78–84) | – | `#where`, `aria-live=polite`. Texts are the mock's `WHERE` (813). The subtitle is hidden ≤980 px |
+| Held-sound chip | Face 30 px, name, ▶/■ (Space) | The name is in the keybar (`#live-label` and `#live-wait`, `index.html` ~797–801; `paintLiveLabel`, main.js 4268) and in PATCH's `#rack-play` | `#live-label` and `#live-wait` move here with their ids; the face comes from `drawVessel` and `host.faceOf`; ▶ calls `toggleAudition` (the Space path, ADR-016) | The chip markup. ▶ shows the same dotted wait ring as `#rack-play` while `playOnSettle` holds |
+| TAUGHT | Cap word plus an amber mono number; the cap is hidden ≤1240 | `#taught`/`#duel-count` (97), tooltip from `renderTaught` (3374) | The ids and `renderTaught` | Restyle. The spark into TAUGHT waits for its own engine-sourced trigger and is not in this plan |
+| GENERATIONS | Not shown | `#gen-count` (100) | The id | Moves into EVOLVE's head (the cap line), id kept (§6 Q7) |
+| Job slot | Not shown at rest | `#job-slot` (106–110), shown only while long work runs | As is | Placed between `#where` and the chip, so the rest state matches the mock |
+| Skill line | Not shown | `#skill` (111) | LEARNING already shows it (`md-skill`) | Removed from the header |
+| Film chip | Not shown | `#film-chip` (91–94), `pointFilmChip` (main.js ~21800) | As is | Folded `▶ film` after `#where`. Hidden in `?film`, booth, and for unpublished films, as today (§6 Q8) |
+| MODEL ⌥ | Pill with an LED. Press and hold shows the model view; a tap toggles it (`core.js` 401–408) | None. No ⌥ handling exists (main.js 5399 returns on `altKey`) | – | New in PR B (§2.5) |
+| ⌘K search | "Search or do anything ⌘K"; icon only ≤1240 | `?` button (112) and the ⋯ menu (113–140) | ⋯ items become commands | New in PR D. Until then ⋯ sits in the header's rightmost slot (where the mock has its prototype-only notes icon) |
+| Notes icon | "About this prototype" | – | – | **Prototype-only.** Not built. Its slot holds ⋯ until PR D, then is removed |
+
+### Left rail, the bank (mock `core.js` 491–606, `style.css` 136–178; app `index.html` 258–297, main.js 7206–8440, `style.css` 675–1030)
+
+| Element | Mock | App | Reuse | New |
+|---|---|---|---|---|
+| Tabs | POOL n / SAVED n / PRESETS n, `role=tab`, arrow keys | `.bank-filters .bf[data-f=pool\|mine\|preset]` with `.bf-n`; `selectBank` (8070) | `bankFilter`, `renderBankCounts` (7557), `selectBank` | Markup becomes `[role=tab][data-bank=pool\|saved\|presets]` in a `role=tablist`, `aria-controls=bank-list`, and `wireArrowNav` with activate |
+| Head extras | None | "bank" label, `#bank-count`, `#pin-budget`, tour `?`, `#bank-note` line | `renderPinBudget` and `renderBankNote` text | The pin budget moves to the SAVED tab's title, with its count amber at cap. The note becomes each tab's title. The tour becomes a ⌘K entry (PR D) |
+| Find a sound | Search field, filtering name, category and blurb | None | `bankSource` (7547) | `#bank-find`. Filters rows and presets as the source is built. A text input, so the note-key guard (main.js 5408) already holds. Esc clears it |
+| Presets by category | Groups with a count | `renderPresetBank` (7977) emits `.pb-cat` | As is | Restyled to `.bank-group` plus a count |
+| Row | Face 26 px, name, optional "seed"/"may go" mark, actions on hover or focus (compare, ▶, ★, save, cut), pct and liking bar only under the model view | `bankRow` (7741): face slot, origin glyph, name, NEW and the unheard dot, lineage line, utility bar, pct, ▶, five stars, save, id | Ids and classes on what survives: `.bank-item[data-id]`, `.bi-name`, `.bi-hear`, `.bi-flag`, `.bi-from`, `.bank-group.new/.replaced`, `.replaced-names` | Layout to the mock (one line, two for a child with "from X · diff"). Stars collapse to one ★ action, with 1–5 rating the cursor row as today (`rateRow`). `.bi-u` and `.bi-pct` show only under `body.model-view` |
+| New, Replaced, unheard dot | As built in #94, mock 565–585 | Built | All of it | – |
+| Taking a sound up | The face flies from the row into the level's `anchor()` (`A.takeUp` 157) | Click opens on the bench | `openOnBench` | PR C: `shell.takeUp(id, srcCanvas)` |
+
+### Level rail (mock `core.js` 1063–1077, 843–873, `style.css` 360–392)
+
+The rail is new: a vertical cross at the stage's right edge (`--rail-w: 76px`).
+From top to bottom it holds "out", LEARNING, TASTE, PERFORM with EVOLVE
+branching left, PATCH, then "in". It is a `nav` with `aria-label="Where you
+are"`, and each stop carries `aria-current=location` when it is the current
+level. Labels show on hover or focus, and a puck travels between stops. Nothing
+in the app can be reused for it.
+
+### Keys bar (mock `core.js` 632–689, `style.css` 244–262; app `index.html` 745–805)
+
+| Mock | App | Plan |
+|---|---|---|
+| A 240 px side column (KEYS, `Z C4 X octave`), then the keybed C3–C6 across the full width, 78 px tall | Octave ±, panic, ⇕ tall, HOLD, UNI, ARP, SYNC, key span, arp chip and drawer, the piano (`#piano`), glide, ● REC, MIDI, `#live-label`, volume; `--keybar-h: 128px` | The side column follows the mock, reusing `#oct-down/up/label`. `buildPiano` is unchanged. `#live-label` moves to the header. The rest go into one compact cluster at the keybar's right end: VOL, MIDI, ● REC, and a **KEYS ⋯** disclosure that opens a popover with hold/uni/arp/sync/glide/tall/span/panic/arp settings, all ids kept. Each also becomes a ⌘K command in PR D (§6 Q5) |
+
+### Each level's main area
+
+| Level | Mock | App | Plan |
+|---|---|---|---|
+| PERFORM | `a-perform-doors.png`: left column has the cap (BASS · IN HAND), the name at display size with share, the blurb, and the well holding the large face with a ⇧F button. Right column has CONTROLS with Arrange and How it works, a 3 × 2 knob grid, the hood, and the pads OFFER / PEEK / TAKE / PASS | `perform.js` 320–420: head (face, title, scope), marquee (steps), deck, touch row, pads (KEEP, BACK, OFFER, TAKE, PEEK, FREEZE), offer card, XY plus hood, why | PR C. Move the existing nodes into `.pf-left` (head and well) and `.pf-right` (controls, pads, offer card, hood). The well's canvas draws the held face with `drawVessel` (glow and reflection, as stage mode does). Every `pf-*` class and `data-` stays. XY, touch, Keep, Back and Freeze go under the pads in a "More" disclosure; see §6 Q4. First steps (`pf-steps`) move to the guide corner |
+| PATCH | `z-desk-patch.png`: cap, name, "4 modules · 1 modulator, in signal order", NEW PATCH, HOW TO READ THIS; a signal-flow canvas with the face at OUT; a catalogue only for a new patch | The rack workbench: toolbar rows, belief row, SVG rack, tray, spec dock, module rail on the right, teach strip | PR C frames it. The rack's subject row becomes the mock's head block (cap, title, subtitle from the rack's module count); the toolbars fold into one quiet row under it; the rack sits in a rounded well; the face is drawn at OUT (`vesselBox` beside the output jack, the same face as the header chip). The module rail stays at the well's right, inside the stage and left of the level rail. **Not** the canvas rebuild (§6 Q3) |
+| EVOLVE | `z-desk-evolve.png`: a "Keep the one you'd reach for." head with pips, a small TASTE map top right, two cards with large faces, then name, category and blurb, PLAY 1, KEEP A ←, ANOTHER PAIR N, and EVOLVE POOL | `#duel-mid` and `.duel-card` (587–663): face in the header, scope canvas, mini rack, readout, play/open/pick buttons, lineage log | PR C. The card's well draws the face large in place of `#scope-a/b` (§6 Q6); `⇄ circuit` stays as a corner button; the buttons are relabelled to the mock (PLAY · 1, KEEP A · ←). Every id stays (`#choose-a` has 67 spec uses). The mini map draws TASTE's map through `taste.drawMini(canvas)` |
+| TASTE | `z-desk-taste.png` | Built to the mock (`taste.js`, #101) | Restyle only. Add `anchor()` |
+| LEARNING | `z-desk-model.png` | Built to the mock | Add `anchor()` (the held sound's mark on "where liking rises") |
+| Stage | `a-stage.png`: wordmark and lamp top left, × top right, name and "bass · in hand" bottom left, key hints centred | `perform.js` `openStage` (~3087): `st-name`, `st-cat` "PERFORM · in hand", ticks, hint, leave | PR C. Match the wordmark and placement. `st-cat` shows the category only where the engine has one (§6, truth checks) |
+| "What to try" corner | `proto-tag` bottom right | – | **Prototype-only, not built.** Its notes go into the guide's pages |
+| First-visit guide | `.guide` pill bottom left: pips, one step, × (`core.js` 781–805) | PERFORM's `pf-steps` marquee (`perform.js` 3371–3422) and the bench, bank and node-bank tours | PR C. The pill becomes the one onboarding surface (ADR-009). It absorbs PERFORM's three steps and adds the mock's zoom and model-view steps; `auracle-perform-steps` is migrated |
+
+## 2. Architecture
+
+### 2.1 Where level routing lives
+
+- **A new module `apps/web/shell.js`, `createShell(host)`.** It owns:
+  - the level registry;
+  - `show(level)`, `zoom(dir)`;
+  - the header's `#where`;
+  - the rail and its puck;
+  - gestures;
+  - the morph overlay;
+  - the model view;
+  - the ⌘K list.
+
+  `main.js` imports it like `patch.js` (main.js 136) and passes a host.
+- **A new pure module `apps/web/levels.js`.** It holds `LEVELS = ["learning","taste","perform","patch"]`, `ASIDE = "evolve"`, `WHERE`, `dirOf(a, b)`, `step(cur, dir)` (from EVOLVE it measures from PERFORM, as audit finding 3 requires), `railPath(a, b)` (turns the corner at PERFORM), and `rank(q, s)` with `fuzzy` for ⌘K (mock 750–757). It is unit-tested in `apps/web/tests/levels.test.mjs`, like `taste-geom`.
+- **`showView` (main.js 4297–4339) becomes `levelChanged(prev, next)`.** The host callback keeps every side effect: `disarm`, `cancelPending`, `playWaitCancel`, `closeCompare`, `explain.close`, `perform.show/hide`, `refitRack`, `patchView.shown/hidden`, `positionToastLane`, `pointFilmChip`, `taste.setView`, and EVOLVE's redraw. The shell does the DOM: one section `.on`, `body[data-level]`, `#where`, `aria-current`, and the hash.
+- **Rename the internal view `play` to the level `patch`.** That covers 15 sites in main.js, `#view-play` → `#view-patch`, `VIEW_FILMS` keys, `taste.setView`'s names, and `localStorage auracle-view` (read `"play"` as `"patch"` once). `footage.mjs` maps `v:"play"` to `"patch"`.
+- **Start level.** It is the hash (`#perform` etc.) if valid, else `auracle-view`, else PERFORM ("at rest is PERFORM", RFC-006 §1). Today the app opens on PATCH and switches to PERFORM later (main.js 4833, 21645).
+- **The keydown wiring follows the mock (1046–1050).** One capture-phase listener takes ⌥+Arrow and ⌥+Digit before any focused control. It skips text inputs (`#bank-find`, `#nb-q`, a rename, the ⌘K input), where ⌥← moves by word. The global handler (main.js 5328) stays and gets one branch: a level's `key(e)` if the shell registered one.
+
+### 2.2 How the existing views map onto levels
+
+| Level | Section | Registered by | `anchor()` returns |
+|---|---|---|---|
+| learning | `#view-learning` | `taste` (`createTaste`, main.js 19829) | The held sound's mark on the "where liking rises" map, or null if it is not on the map |
+| taste | `#view-taste` | `taste` | The held sound's mark on the map (`mapPos` of `host.subjectId()`), or null if it is off the map (an offer, an unsaved edit) |
+| perform | `#view-perform` | `perform` | The well's vessel box, measured from `offsetLeft/Top` and not from the transformed box (mock 776–781) |
+| patch | `#view-patch` | `patchView` | The face at OUT, or null in a new patch (mock 1401) |
+| evolve (beside) | `#view-evolve` | main.js (EVOLVE lives there) | Null: the face flies off to the side (mock `overlay.fly` 950–951) |
+
+Each registration is `shell.register(level, { el, show, hide, anchor, key,
+cmds })`. Modules already have host seams (`createPerform(host)`,
+`createPatch(host)`, `createTaste(host)`, `createExplain(host)`,
+`createAudioIn(host)`), so each module adds `anchor()` and `cmds()` to the
+object it returns. `perform.show/hide` (perform.js API ~3890), `patchView.shown/hidden`
+(patch.js 1095) and `taste.setView` (taste.js 1468) are the existing hooks.
+
+### 2.3 Zoom, and what "the held sound's face carries the zoom" means in code
+
+- **Inputs:**
+  - ⌥↑/⌥↓, and ⌥← to EVOLVE (⌥→ back from it);
+  - ⌥1–5, in the mock's order: perform, patch, evolve, taste, learning;
+  - a rail click;
+  - ⌥+wheel anywhere on `.stage`, accumulated past 70 then a 500 ms lockout (mock 1081–1087);
+  - a two-finger pinch on touch (1088–1100), at ratio > 1.3 or < 0.77, with the rail leaning toward the level it would reach while pinching.
+
+  On PATCH, ctrl+wheel and trackpad pinch over the rack keep zooming the rack camera (`zoomAt`, main.js 12400). Elsewhere they zoom levels (§6 Q9). The end of the axis nods the rail (it animates `translate`, audit finding 4).
+- **The morph.** `show(next)` does the following:
+  1. Read `from = levels[prev].anchor()`.
+  2. Show the new section at opacity 0.
+  3. Wait two frames so it lays itself out and its ResizeObserver runs (audit finding 2).
+  4. Read `to = levels[next].anchor()`.
+  5. Scale the old section (1 → 1.12 in, 1 → 0.86 out, ±14% sideways for EVOLVE) and fade it by 45%. Scale the new section from the opposite side and fade it in after 40%.
+  6. Meanwhile draw **the held sound's face** on one fixed overlay canvas, tweening its box from `from` to `to`.
+
+  The face is `host.faceOf(benchTree)` whitened by `host.faceStats()` (the bank's mean and spread, `faces.js` `bankStats`), drawn by `drawVessel(ctx, face, stats, {box, glow})` (`vessel.js` 57). Both ends are drawn with that same face, so the flight lands without a seam.
+- **Settling.** Every move has a sequence number. `settle()` leaves exactly one section `.on` and clears all transforms (audit finding 1). A move in flight finishes before the next starts.
+- **Reduced motion.** There is no morph and no puck, the swap is instant, and the name swaps without sliding. Every duration comes from `motionMs` (main.js 41), so the reduced rule zeros them.
+- **ADR-012.** The flight is navigation feedback. Its one claim, "this is the sound you hold", is true only if the face is the bench's. So it is drawn only when the bench's render has a face. With no face (an edit still at the engine, or vetting refused it), the two levels cross-fade and nothing flies. The code names `faceOf`/`face_of_key` beside it.
+- **Taking a sound up from the bank** (`shell.takeUp`) uses the same overlay: from the row's canvas to the current level's `anchor()`.
+
+### 2.4 ⌘K as the one list (PR D)
+
+- **Sources.** `shell.cmd({id, level?, label, key, icon, run, when?})` from the shell and each module's `cmds()`. Groups, as in the mock (758–776):
+  - **This level:** the current level's commands.
+  - **Anywhere:** the levels and their keys, Space, M save, cut, ⌥ model view, ⌘Z, `[ ]`, Z/X, and the KEYS ⋯ settings.
+  - **Sounds:** pool rows, saved, and presets, each with a 24 px face. Running one does what a bank row click does (`openOnBench`, or `load_preset` with `open:true`). It shows 5 with no query and 8 with one.
+- **Absorbs ⋯** (`index.html` 116–136), the hidden file inputs staying in the DOM:
+  - Download your taste;
+  - Open a taste file…;
+  - Download this patch;
+  - Download as a picture…;
+  - Open a patch file…;
+  - Scope & analyzer…;
+  - Re-run the warm start;
+  - Reset your taste…;
+  - Show measurements;
+  - Booth mode;
+  - New visitor ⇧Esc;
+  - Watch the films ↗.
+
+  It also gains the film of this level and "What are the three banks?" (the tour).
+- **Absorbs the ? card's prose.** Each action carries its key as a hint, and "Keys and gestures" links the guide's `keyboard.md`. Explain's two entries ("What does BRIGHT do?" and "Learn: what a filter does", deferred by Plan-005 task 10) land here.
+- **Keys.** ⌘K or Ctrl K (with `preventDefault`, since Firefox takes Ctrl K). `?` opens the list unless explain.js claimed it over a control: explain's listener (explain.js 594) runs first and calls `preventDefault`, and main checks `defaultPrevented`. While the list is open it swallows every key; notes can't play, because the input is a text field.
+- **Accessibility.** `role=dialog aria-modal`, a combobox with a listbox and `aria-activedescendant`, focus returned on close, Esc closes.
+
+### 2.5 The model view (⌥)
+
+- **Built as in the mock (`core.js` 716–738, 992–1014):**
+  - Holding ⌥ for 220 ms shows it, and releasing hides it. Another key pressed meanwhile cancels the timer, so ⌥↑ never flashes it.
+  - MODEL works the same way by press and hold, and a tap toggles it.
+  - Esc and window blur end it.
+  - `body.model-view` plus a tag that says *what it believes, from N picks* (or *still guessing*, from `views.styles`/`fittedFrom`).
+- **What it shows, engine facts only:**
+  - Bank rows: pct and liking (the ranked list's posterior); the pool sorted by liking once fitted, with the FLIP glide.
+  - TASTE: halos shown even before the fit, dashed (taste.js already has the state).
+  - EVOLVE: the pre-pick forecast (§6, truth checks).
+  - PERFORM: nothing per control until the engine exposes it.
+- **Words.** Copy says "the model view", never "lens" (voice.md bans it). Identifiers are `modelView`.
+
+### 2.6 Seams and data hooks the app itself uses
+
+These are not test-only attributes (tests/web/AGENTS.md):
+- `body[data-level]`, which CSS keys off for the level's header and keys tint;
+- `.rail-stop[data-level][aria-current=location]`;
+- `[role=tab][data-bank][aria-selected]`;
+- `body.model-view`;
+- `#where`;
+- ids kept on everything moved.
+
+## 3. Slicing into PRs
+
+Each PR starts from main after the previous one merges, leaves the app
+working, and passes `make check` and the fast browser tier.
+
+### PR A: the frame, the header, the level rail, the keys bar
+
+- **Scope:**
+  - the grid becomes bar / bank / stage / keys (mock `style.css` 74–76);
+  - the header per §1, keeping ⋯ and `?` in its rightmost slots;
+  - `#live-label`/`#live-wait` move into the chip;
+  - `#gen-count` moves to EVOLVE's head;
+  - the tabs are removed;
+  - `shell.js` and `levels.js` with the registry, `show` (instant, no morph), and the rail with click and ⌥ keys;
+  - the `play`→`patch` rename;
+  - start level PERFORM;
+  - the keys bar's side column and compact cluster with the KEYS ⋯ popover;
+  - **ADR-017** (§6 Q1).
+- **Files:**
+  - `apps/web/index.html` (74–140, 745–805);
+  - `main.js` (`showView` 4297, tab wiring 4344–4398, the saved view 4833, reset keys 4974, `paintLiveLabel`, `VIEW_FILMS`, `pointHelpFilm`);
+  - `style.css` (412–630, keybar ~2260/3824);
+  - new `shell.js`, `levels.js`, `tests/levels.test.mjs`;
+  - `www/video/tools/footage.mjs` (the `view` op, line 462);
+  - `docs/decisions/017-the-levels-keys.md`.
+- **Tests:**
+  - new helper `tests/web/shell.js` (`goLevel(page, level)`: click the stop and expect `aria-current=location`);
+  - mechanical migration of 108 `.viewtab[data-view=…]` lines in 41 specs plus `patch_page.js:118` (`"play"`→`"patch"`, `aria-selected`→`aria-current`);
+  - `type_scale.spec.js:159` keeps `.menubar` and `--menubar-h` (56 px now; one row at 1000);
+  - `film_chip.spec.js` for its new place;
+  - specs that assumed PATCH at boot without clicking: grep for `#rack-` before any `goLevel`.
+  - New `shell_levels.spec.js`: ⌥↑/⌥↓/⌥←/⌥1–5 and the rail move levels; `#where` names the level; ⌥↑ inside `#bank-find` does not; Space plays in every level (ADR-016); a reload restores the level; a hash link works.
+- **Docs:**
+  - `keyboard.md` (the tab paragraph at 53–57; ⌥ keys);
+  - `glossary.md` (menu bar);
+  - `first-session.md`;
+  - `accessibility.md`;
+  - `apps/web/AGENTS.md` table, `README.md`;
+  - `docs/architecture/web-runtime.md`;
+  - voice.md's row for the level rail (§6 Q2);
+  - CHANGELOG.
+- **Risks:**
+  - The default level flips to PERFORM.
+  - `Alt` alone opens the browser menu in Firefox and Edge on Windows: `preventDefault` on keydown and keyup.
+  - The film shots' raw `.viewtab` selectors go stale (45 lines in `www/video/films/*/shots.json`). They are owed a re-record after the shell (Wave 3); this PR lists them and doesn't fix them.
+
+### PR B: the bank and the model view
+
+- **Scope:**
+  - the tabs as `role=tab` with `data-bank`;
+  - Find a sound;
+  - grouped presets;
+  - rows to the mock (§1), the stars collapsing to ★ plus 1–5;
+  - pct and liking only under the model view;
+  - the head extras moved to titles;
+  - MODEL ⌥ and ⌥ hold (§2.5), with the bank sort and FLIP;
+  - EVOLVE's pre-pick forecast under ⌥.
+- **Files:**
+  - `index.html` 258–297;
+  - main.js 7206–8440 (`bankRow`, `renderBank`, `renderPresetBank`, `selectBank`, `renderBankNote`, the tour button), plus the header button;
+  - `shell.js` (the model view);
+  - `taste.js` (halos under the model view);
+  - `style.css` 675–1030;
+  - `footage.mjs` (the `preset` op: `.bf[data-f="preset"]`→`[data-bank=presets]`).
+- **Tests:**
+  - `bankTab(page, "pool"|"saved"|"presets")` replaces 43 `.bf[data-f=…]` and 2 `.bf-n` lines (`mine`→`saved`, `preset`→`presets`);
+  - `.bi-id` text lookups (≈4, in `evolve_*`, `bank_lineage`) move to `data-id`;
+  - `.star[data-s]` (1) moves to the 1–5 keys;
+  - `faces.spec.js` (15 bank selectors; the face slot is unchanged);
+  - `bank_row.spec.js`, `taste_profile.spec.js` (6).
+  - New `model_view.spec.js`: hold ⌥ shows pct and liking and sorts, release restores; a tap on MODEL toggles; no "lens" in copy. Plus `bank_find.spec.js`.
+
+  About 70 lines in about 35 specs, mostly through the helper.
+- **Docs:** `bank.md` (whole page, a new figure), `glossary.md`, `teaching.md`, `accessibility.md` (Tab stops), `reading-the-model.md` (the model view), voice.md (MODEL, "Find a sound").
+- **Risks:**
+  - Hiding pct at rest changes what players saw before.
+  - Collapsing five stars to one ★ is a density change.
+  - The bank re-renders often (`renderBank` guard for a rename, 7582): Find must survive a redraw.
+
+### PR C: the levels laid out, and the zoom
+
+- **Scope:**
+  - PERFORM well-and-panel;
+  - EVOLVE cards and the mini map;
+  - PATCH's frame and the face at OUT;
+  - the stage-mode placement;
+  - `anchor()` on all five levels;
+  - the morph overlay, the rail puck, `#where`'s directional name;
+  - pinch and ⌥-scroll;
+  - `shell.takeUp`;
+  - the guide pill absorbing `pf-steps`;
+  - the duration token (§6 Q10).
+- **Files:**
+  - `perform.js` (layout 320–420, steps 3371–3422, `openStage` ~3087, return `anchor`);
+  - `patch.js` (head, return `anchor`);
+  - `taste.js` (`anchor`, `drawMini`);
+  - main.js (EVOLVE 587–663 DOM, the PATCH subject row, `takeUp` from bank rows);
+  - `index.html` 299–738;
+  - `style.css` per level;
+  - `shell.js`;
+  - `www/brand/tokens.json` with `make tokens`.
+- **Tests:**
+  - Moving nodes keeps ids and classes, so most `.pf-*` (73/46/41/35) and `#choose-a`/`#evolve-btn` uses hold.
+  - Churn is in the 6 `.pf-step` lines (to the guide pill), `.pf-xy*` (≈14, if XY moves under the disclosure), `responsive.spec.js` and `text_fits.spec.js` (PERFORM captions at 1000 and 1280 in the narrower right column), `perform_stage.spec.js`, and `faces.spec.js` (the EVOLVE well).
+  - New `shell_zoom.spec.js`:
+    - after a move exactly one section is `.on`, at gaps of 0, 40, 120 and 300 ms;
+    - the flight's end rect equals the destination `anchor()` within 2 px;
+    - no overlay under reduced motion;
+    - no flight when the bench has no face;
+    - ctrl+wheel over the rack zooms the camera, not the level.
+- **Docs:** each `views/*.md` figure and layout paragraph it changes, plus `playing.md` and `rack.md` where the layout is described.
+- **Risks:**
+  - This is the largest PR. If review size demands, split it at **C1** (the layouts, the guide pill and `anchor()`, levels still switching instantly) and **C2** (the morph, puck, pinch, ⌥-scroll and token).
+  - PERFORM's right column at 1000 px.
+  - The two-frame wait in the morph against the rack's own resize (`refitRack`).
+
+### PR D: ⌘K, and the guide for the levels
+
+- **Scope:**
+  - the ⌘K list (§2.4) and the header button;
+  - ⋯, `#help-open`, `#help` and the overflow code removed (main.js 21704–21752, 21896–21910; `index.html` 113–140 and the help section);
+  - `?` falls through to the list;
+  - the KEYS ⋯ settings and every level's commands registered;
+  - explain's two entries.
+- **Files:** `shell.js`, `index.html`, main.js, `perform.js`, `patch.js`, `taste.js`, `explain.js` (`cmds`), `style.css` (`.palette`).
+- **Tests:**
+  - `#ovf-btn`/`#ovf-menu` (6), `#import-input` (2), `#image-btn`, `#engineer-btn`, `#booth-reset-btn` (2) and `.ovf-item` move to `runCommand(page, label)` in `shell.js` (≈15 lines in `booth`, `failure_flows`, `faces`, `perform_*`);
+  - `?` opening help (in `first_run`, `keys_are_not_notes`).
+  - New `cmdk.spec.js`:
+    - ⌘K opens it, typing ranks a prefix first;
+    - Enter runs, Esc returns focus;
+    - a file command opens the picker;
+    - no note plays while typing;
+    - `?` over a knob opens explain, and elsewhere opens the list.
+- **Docs (the guide's full level rewrite, ADR-004):**
+  - `views/{perform,play,evolve,taste,learning}.md`, keeping the file names because `VIEW_FILMS` and the films link them;
+  - a new `levels.md` ("One space": zoom, rail, the model view, ⌘K) in `SUMMARY.md`;
+  - every "⋯ ›" mention: `faces.md:99`, `first-session.md:73`, `running-locally.md:76,91`, `glossary.md:32,280`, `teaching.md:85`, `rack.md:244`;
+  - `keyboard.md` (⌘K, `?`);
+  - `www/reference` where it names the menu (`persistence.md`, `structural.md`);
+  - the landing screenshots (`capture-screens.mjs`) re-captured;
+  - truth-pass skill run.
+- **Risks:**
+  - Removing the ? card is visible to returning players.
+  - File-picker activation from a keyboard Enter: keydown is a user activation, but test it in Safari.
+
+## 4. Acceptance
+
+**Rules for every PR:**
+- labels never move for a mark (Plan-005 task 1);
+- every size, colour, space and duration from tokens (`make dev-check`);
+- reduced motion makes every move instant (`type_scale.spec.js` reduced test);
+- Space plays the edited sound in every level (ADR-016);
+- no page errors;
+- one onboarding surface per level (ADR-009);
+- text budget, at most one sentence of guidance at rest (ADR-011);
+- copy follows voice.md (`checkwords`).
+
+**Widths.** Side by side with the mock at 1440 × 900. The mock has no 1280 or
+1080 shots, so at those widths the mock's own media rules hold:
+- ≤1240: TAUGHT's cap and ⌘K's label hide, as in `flow2-1024.png`;
+- ≤980: the subtitle hides.
+
+The app's 1000 px floor still passes (`narrow_gate.spec.js`, `text_fits` at
+1000, the `type_scale` header height).
+
+| PR | Shots to match | Must hold |
+|---|---|---|
+| A | The header and keys bar of `a-perform-doors.png` and `z-desk-*.png` (the level names); the rail in `v2-rail.png` | `#where` names the level; the rail's current stop is green at every level; one header row at 1000–1440 |
+| B | The left rail in `a-perform-doors.png` (PRESETS, grouped) and `flow2-1024.png` (POOL); the bank under ⌥ (prototype `lin2-desk-*.png`, `b-own-*` rows) | Pct is hidden at rest; ⌥ held 220 ms shows it and releasing restores the order; the name never shifts for the unheard dot or a mark |
+| C | `a-perform-doors.png`, `z-desk-patch.png` (frame only), `z-desk-evolve.png`, `z-desk-taste.png`, `z-desk-model.png`, `out-grid.png`/`in-grid.png`/`side-grid.png` (morph frames), `a-stage.png` | The flight lands on `anchor()` within 2 px; one level on after rapid moves; no flight without a face; nothing flies under reduced motion |
+| D | The palette as in the prototype (no screenshot; build `preview.html` and capture it at 1440 for the PR) | ⋯ and the ? card are gone and each of their items is reachable in ⌘K; `?` over a control still asks |
+
+## 5. Test impact
+
+From `git grep` on origin/main `tests/web`:
+
+| Selector | Uses | Specs | Moves in |
+|---|---|---|---|
+| `.viewtab[data-view=…]` | 108 | 41 | A, via `goLevel` |
+| `.bf[data-f=…]`, `.bf-n` | 45 | ~30 | B, via `bankTab` |
+| `.bank-item` and children (`.bi-hear`, `.bi-id`, `.bi-name`, `.bi-flag`, `.star`, `.bank-group.*`, `.replaced-*`) | ~110 | 37 | B (kept classes; ≈10 real edits) |
+| `#duel-count` 16, `#live-label` 9, `#job-slot` 8, `#gen-count` 5, `#taught` 2, `#film-chip` 3 | 43 | ~15 | A (ids kept: ≈0 edits, except film chip placement) |
+| `#ovf-btn`/`#ovf-menu`/`.ovf-item`/menu items | ~15 | ~8 | D, via `runCommand` |
+| `.pf-*` | ~260 | ~20 | C (classes kept; ≈25 edits: steps, XY, layout specs) |
+| EVOLVE ids | ~160 | ~10 | C (ids kept) |
+
+That is roughly 300 mechanical line edits, most of them in A and B, through
+three helpers in `tests/web/shell.js`: `goLevel`, `bankTab`, `runCommand`. It
+also adds about 6 new specs. The hooks they use are the app's own (§2.6), so a
+visual change does not break them. Off-suite, `footage.mjs` (`view`, `preset`
+ops) moves with A and B; the raw selectors in films' `shots.json` are owed with
+the Wave 3 re-records.
+
+## 6. Truth checks and open questions
+
+**Truth checks (ADR-012), each to verify in its PR:**
+- **The morph's face.** It is drawn only from `faceOf` for the bench's render key. If no face exists, it cross-fades (§2.3).
+- **PERFORM leans under ⌥** (mock `perform.js` 281, 330). No per-control lean is exposed. It would be the posterior mean's projection on each palette direction, with its interval, drawn as a guess when the interval crosses zero. Not drawn until the engine exposes it (an engine follow-up).
+- **EVOLVE's pre-pick forecast under ⌥.** The worker answers `duel_pred` (`engine.duel_pred(a, b)`, worker.js ~3075) only after the vote. Under the model view, ask for it at deal time; it is the same call on the same posterior. Verify that no refit can land between the deal and the vote and change it, and drop it if one does.
+- **"BASS · IN HAND"** (the PERFORM cap, stage mode). The category exists for presets (`presetRows[].category`); a bred or edited sound has none, so the cap reads "IN HAND". Don't infer it from a seed.
+- **TASTE and LEARNING anchors** exist only when the held sound is on the map. An offer or an unsaved edit isn't, so the face fades in rather than flying from a made-up spot.
+- **Pinch against the rack camera** in PATCH. Proposed rule: the rack keeps ctrl-wheel and pinch, and ⌥-scroll, ⌥↑ and the rail leave (Q9).
+- **The mock's PATCH** (canvas flow, estimated faces, light along cables) is already ruled by Plan-005 task 7. The face at OUT is the measured face of the bench, not an estimate.
+
+**Open questions for the maintainer:**
+1. **ADR-017, the levels' keys.** It amends ADR-009's "⌥1–4 for views":
+   - ⌥↑/⌥↓ zoom, ⌥← EVOLVE and ⌥→ back, ⌥1–5;
+   - hold ⌥ for the model view;
+   - ⌘K the one list;
+   - `?` asks over a control, else opens the list.
+
+   The mock also binds `-` and `=` to zoom; the proposal is not to adopt them, since PATCH's ⌘−/⌘= camera keys sit beside them. Approve?
+2. **The level rail's name.** voice.md uses "the rail" for the bank and "the module rail" for PATCH. Propose "the levels" in copy, with `aria-label` "Where you are", and a word-table row.
+3. **PATCH: frame the rack, or rebuild it as the mock's canvas?** This plan frames it. A rebuild means deciding which of locks, layouts, minimap, tray, scope and the module rail survive.
+4. **PERFORM's extra controls** (XY, touch, KEEP, BACK, FREEZE, Blend, Wander), which the mock doesn't show. Propose: Blend and Wander stay as knobs in the grid (they are controls), and XY, touch, Keep, Back and Freeze go under a "More" disclosure below the pads.
+5. **The keys bar.** The mock has only KEYS and the octave. Propose the compact right cluster (VOL, MIDI, ● REC, KEYS ⋯) plus ⌘K.
+6. **EVOLVE's waveform scope.** The mock draws faces. Propose: the face replaces the scope, and ⇄ circuit stays.
+7. **GENERATIONS.** Propose EVOLVE's cap line, not the header.
+8. **The film chip.** Not in the mock. Propose keeping it folded after `#where`, plus a ⌘K entry.
+9. **Pinch and ctrl-wheel in PATCH** (the rule above).
+10. **The zoom's 620 ms.** The tokens say "three durations". Propose a fourth, `d-zoom: 620ms` (0 under reduced motion), or 2 × `d-move`.
+11. **The bank's width and default tab.** The mock is 272 px and opens on PRESETS; the app is 280 px (Plan-005 task 3's "a face never narrows a name") and opens on POOL. Propose 280 and POOL.
+
+## 7. What comes after
+
+- **A sound of your own (task 11's card).** It lands in the shell's places:
+  - drop a file on PERFORM's well (C); the card opens in the well's left (mock `own.js`, `b-own-perform.png`);
+  - FIND IT ON THE MAP is `shell.show("taste")`, flying the recording's face to its mark through `anchor()`;
+  - the recording sits in the bank under a "yours" group (B's grouping);
+  - BREED TOWARD IT is a ⌘K command as well.
+- **Touch (task 8).** The shell's seams carry it:
+  - the rail becomes the phone's bottom bar (`.rail` media rules, mock 398–548, audit findings 5–19);
+  - the bank becomes a sheet and the keys a drawer (PR A's grid areas);
+  - pinch already drives `zoom`;
+  - MODEL's press and hold is the touch model view;
+  - `body.touch` hides `kbd`;
+  - the narrow and handheld gates retire there, not here.
+
+### Critical files for implementation
+- `apps/web/main.js` (showView 4297–4398, keydown 5328–5480, bank 7206–8440, overflow and help 21704–21910)
+- `apps/web/index.html` (header 74–256, bank 258–297, views 299–738, keybar 745–805)
+- `apps/web/style.css` (frame 412–630, bank 675–1030, keybar)
+- `apps/web/perform.js` (layout 320–420, steps 3371–3422, stage ~3087, API 3794+), `apps/web/taste.js` (setView 1468)
+- `docs/notes/vision-2026-09/prototype/core.js` (header 398, bank 491, keys 632, lens 716, palette 742, guide 781, levels and morph 812–968, keys 980–1060, rail 1063, gestures 1079) and `style.css` (74–76, 360–392)
+
+## 8. Maintainer decisions (2026-10-02)
+
+- **PATCH: rebuild to the mock's canvas signal flow.** Drop no functionality: anything the mock lacks must still be represented in the new design. Backend concepts that could be lifted into the UI, following the design, are proposed to the maintainer as questions before building.
+- **PERFORM extras:** integrate XY and touch into the mock's design. Keep, Back and Freeze keep their functions but need not keep their buttons (e.g. freeze by press-and-hold on WANDER).
+- **Keys bar:** the mock's side column, plus a compact cluster (VOL, MIDI, ● REC, KEYS ⋯ with the rest), all also in ⌘K.
+- **ADR-017 approved** as proposed: ⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, hold ⌥ for the model view, ⌘K, `?` over a control else the list. No `-`/`=`.
+- Defaults taken for the rest: "the levels" in copy; face replaces EVOLVE's scope, ⇄ circuit kept; GENERATIONS in EVOLVE's cap; film chip folded after the level name plus ⌘K; PATCH rack keeps ctrl-wheel/pinch; a `d-zoom` token; bank 280 px.
+- **Overall rule (maintainer):** drop no functionality anywhere in the shell. Stay as close to the mock as possible, and integrate every capability it lacks.
+
+## 9. Maintainer decisions, round 2 (2026-10-02), from the design inventory
+
+- **PATCH camera:** quiet corner controls in the well's bottom-left (fit · − · + · map · layout ▾ chain/compact/by hand + snap + reset; bookmarks with the map). Signal-order flow by default.
+- **PATCH keys:** the mock's (←/→ signal order, ↑/↓ into modulators, Enter into knobs, Esc out, Home/End first/OUT; structure menu on F2/right-click; fit-all ⇧Home).
+- **Catalogue:** on demand in the well (ADD MODULE always in the head, and /); everything from today's rail kept; θ bars under ⌥; price and ▶ preview on the well's top line.
+- **Locks and ⚡:** "⚡ EVOLVE FROM THIS ▾" in the head (▾: lock knobs / wiring / clear); selected module shows its lock; lock dots on knobs on hover/focus; L locks; solid edge when locked.
+- **⌥ in PATCH:** all of it (family lean edges, worth per kind, belief line in the subtitle, the guess's runners-up as fainter plates).
+- **Engine facts, all four:** measured "without this module" outline at OUT (face_of_tree on the bypassed patch); "What goes here?" on any socket (guess `at`); what a generation changed (lineage ticks + seed values as pale pointers, while unedited); which PERFORM controls turn the selected knob.
+- **Pad keys (ADR-018):** N Offer/Next, hold B Peek, ⇧↵ Take; a "moved · KEEP · BACK" bar when the sound has left home, ↵ Keep (no control focused), ⇧⌫ Back; Freeze = tap Wander (no key), state on Wander; "Next" stays.
+- **PERFORM layout:** XY a mode of the well (button beside ⇧F); Blend a slider under the two faces while an offer is held; Wander an amber knob at the start of the pad row (WANDER · OFFER · PEEK · TAKE · PASS); touch a row in Arrange + "vel" tick. PASS (without growing another) is new if no path does it.
+- Words: keep "PICK A ←" / "Pick the one you'd reach for." (voice.md); "keep as new" in PATCH's edit bar; GUESS not SUGGESTED.

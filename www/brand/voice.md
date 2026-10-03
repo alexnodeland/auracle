@@ -497,6 +497,8 @@ banned-words check in `make dev-check` reads the list after it.
 | **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
+| **the levels** | PERFORM, PATCH, EVOLVE, TASTE and LEARNING as one space around the sound you're playing: zoom out to TASTE and LEARNING, in to PATCH, beside it to EVOLVE; and the cross at the stage's right edge that shows where you are (its name to a screen reader: *Where you are*) | tabs, pages, "the rail" (that is the bank's), the depth rail |
+| **KEYS ⋯** | The keys bar's settings: HOLD, UNI, ARP, SYNC, glide, the keybed's height and span, and silence | settings, options, the dock's drawer |
 
 ### The view names
 
@@ -504,8 +506,10 @@ The view names are PERFORM, PATCH, EVOLVE, TASTE and LEARNING:
 - always in capitals, in prose too;
 - never PLAY.
 
-A subtitle follows a colon: "PERFORM: the sound under your hands". The words in
-the app's tab markup are lowercase and set in capitals by CSS.
+A subtitle follows a colon in prose: "PERFORM: the sound, under your hands".
+In the header the level's name stands in capitals and its line beside it in
+small type (`#where`, from `apps/web/levels.js`), and moving between them is
+moving between *the levels* (the word table).
 
 ### Never in player-facing copy
 

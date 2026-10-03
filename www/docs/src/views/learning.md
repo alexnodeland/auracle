@@ -9,7 +9,7 @@ It is the level above [TASTE](./taste.md), for when you want to see inside.
 
 1. Make a few picks in [EVOLVE](./evolve.md). LEARNING fills in once the model
    first fits: at the sixth pick, or right after the warm start.
-2. Open **LEARNING**.
+2. Go to **LEARNING**: its stop at the top of the levels, or <kbd>⌥5</kbd>.
 3. Choose a style, read what it weighs, and name it.
 
 The line under the title says what the model was fitted from (*From 18
@@ -92,7 +92,7 @@ it.
 - **The strip:** each forecast as the chance it gave the sound you picked,
   from 0% to 100%. Bright where it guessed right, dim where it guessed the
   other. The newest drops in as it lands.
-- **The skill line:** the number the menu bar shows, *calibrating · 4/20*
+- **The skill line:** *calibrating · 4/20*
   until it has 20 guesses, then how much sharper than a coin flip it has been
   (*13% sharper than chance*), on the fair-test picks once there are 20 of
   them.

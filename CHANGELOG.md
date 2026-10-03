@@ -8,6 +8,40 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: the views are levels of one space, and the frame around them is new
+
+- **PERFORM, PATCH, EVOLVE, TASTE and LEARNING are levels now, not tabs.**
+  They sit around the sound you're playing: TASTE is zoomed out (the sound
+  among all sounds), PATCH zoomed in (what it's made of), LEARNING past
+  TASTE, and EVOLVE beside PERFORM. A cross of stops at the right edge of
+  the stage shows where you are, with each one's name on hover; click a stop
+  to go there. The tabs at the top are gone.
+- **New keys for moving between them:** <kbd>⌥↑</kbd> zooms out and
+  <kbd>⌥↓</kbd> in, <kbd>⌥←</kbd> goes to EVOLVE and <kbd>⌥→</kbd> back,
+  and <kbd>⌥1</kbd>–<kbd>⌥5</kbd> go straight to PERFORM, PATCH, EVOLVE,
+  TASTE or LEARNING (Alt on Windows and Linux). They work with a knob or a
+  list focused, but not while you type in a field, where ⌥ and an arrow
+  still move by word. With the stops focused, the plain arrows walk them.
+- **It opens at PERFORM,** or at the level you were at last time, or at the
+  one a link names (`…/play/#taste`). It used to open on PATCH.
+- **The top bar is new.** The wordmark has a round amber lamp after it, lit
+  while the model works, where the final E used to light. Beside it, the
+  level's name and what it is. The sound you're playing moved up from the
+  keyboard to the bar, with its face and a ▶ that does what Space does.
+  **GENERATIONS** moved to the top of EVOLVE. The forecast skill line moved
+  out of the bar: LEARNING's forecasts show it, as they did. **?** and **⋯**
+  are where they were, at the right.
+- **The keyboard bar is quieter.** On the left, KEYS and the octave (**Z**
+  and **X** are buttons too). On the right, **VOL**, **MIDI**, **● REC**
+  and **KEYS ⋯**, which holds HOLD, UNI, ARP and its settings, SYNC, GLIDE,
+  ⇕ TALL, the keybed's span and ◼ SILENCE. KEYS ⋯ lights while HOLD, UNI,
+  ARP or SYNC is on, and its tooltip says which; while ARP or SYNC runs, a
+  chip beside VOL says what it's set to. The bar is shorter, so the levels
+  above it are taller.
+- On a window under 1180 px, PERFORM's controls sit in two rows of four and
+  PATCH's next-step line has a row of its own, so neither cuts its words
+  beside the stops.
+
 ### Fixed: a sound you keep as new is safe until it has been in a pick
 
 - **A sound you make in PATCH and keep as new is no longer replaced before
