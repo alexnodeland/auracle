@@ -3105,9 +3105,11 @@ async function dispatch(m) {
     }
     // The forecast alone, for immediate display: the vote itself is buffered
     // behind an undo window on the main thread, but its payoff line must not
-    // arrive seven seconds late.
+    // arrive seven seconds late. Asked before the pick too (`pre`), under the
+    // model view: the pair rides back so the page shows it only for the pair
+    // it was asked for.
     case "duel_pred": {
-      post({ type: "duel_pred", pred: engine.duel_pred(m.a, m.b), choseA: m.choseA });
+      post({ type: "duel_pred", pred: engine.duel_pred(m.a, m.b), choseA: m.choseA, a: m.a, b: m.b, pre: !!m.pre });
       break;
     }
     case "record_keep": {

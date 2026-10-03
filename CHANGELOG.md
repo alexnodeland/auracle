@@ -8,6 +8,37 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: the bank is quieter, and holding ⌥ shows what the model thinks
+
+- **The bank has tabs and a search.** POOL, SAVED and PRESETS are tabs with
+  their counts (the arrow keys move between them), and **Find a sound** under
+  them keeps only the sounds whose name, family or description has what you
+  type. Esc clears it, and typing there plays no notes. The line that said
+  what each bank holds is now each tab's tooltip; the save count is SAVED's
+  tooltip, and its count turns amber when every save is used. **+12** on POOL
+  says sounds are still arriving. The **?** that walks you through the banks
+  sits at the end of the search.
+- **A row is a face and a name.** Its actions show when you point at it or
+  put the keyboard cursor on it: compare (for a bred sound), ▶, ★, save, and
+  cut. On a touch screen every row shows them, and every preset its ▶, on a
+  line under the name. ★ opens the five stars; 1–5 still rate the row under the cursor. A
+  child's second line still says which seed it grew from and what changed.
+  Ids and signatures show only with Show measurements. Presets are grouped
+  by family with a count, and a preset's description is its name's tooltip.
+  Double-clicking the name of a sound you aren't playing renames it now: its
+  second click used to open the sound again, and that redraw swallowed the
+  rename.
+- **Hold ⌥ (Alt) for the model view.** Every row shows the model's guess, a
+  percentage and a bar, and once it has fitted the pool glides into the order
+  it rates the sounds, and back when you let go. At rest the pool stands in
+  the order its sounds joined it, and the guesses are hidden. TASTE switches
+  to its TASTE side while you hold, and in EVOLVE the card the model favours
+  says its guess before you pick (*it guesses this · 62% · leaning*), as does
+  each card's style. A tag under the top bar says what it believes and from
+  how many picks. **MODEL** in the top bar does the same when held, and a tap
+  keeps it up until you tap again or press Esc. ⌥ and an arrow still move
+  between levels without flashing it.
+
 ### Changed: the views are levels of one space, and the frame around them is new
 
 - **PERFORM, PATCH, EVOLVE, TASTE and LEARNING are levels now, not tabs.**

@@ -14,7 +14,7 @@
 // `Worker` before main.js runs. Sessions are seeded (the films' own
 // Math.random), so the pool is the same run to run.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const SEED = `(() => { let s = 20261002 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -111,7 +111,7 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   // it: the edit kept from it then has nothing beneath it but sounds that
   // rate higher.
   await goLevel(page, "patch");
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const lowest = replaceable(await state(page))[0];
   const tOpen = await now(page);
   await row(page, lowest).locator(".bi-name").click();
@@ -152,7 +152,7 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   const names = new Set(before.ranked.map((r) => r.name));
 
   // Open a preset that is not in the pool yet.
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   const preset = await page.evaluate((have) => {
     const rows = [...document.querySelectorAll("#bank-list .bank-item")];
     const r = rows.find((e) => {
@@ -171,7 +171,7 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   expect(gone, "the sound kept as new was replaced").not.toContain(kept);
 
   // The kept row is still in the pool, and the toast names what was replaced.
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   await expect(row(page, kept), "the kept row left the bank").toHaveCount(1);
   const goneName = before.ranked.find((r) => r.id === gone[0]).name;
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 }).toContain(`sound it could: ${goneName}`);

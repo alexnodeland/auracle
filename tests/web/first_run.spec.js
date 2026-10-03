@@ -12,7 +12,7 @@
 // pointer (a card lifted over it turned "hear this" into "pick this"), and
 // PERFORM has to name the patch that is playing, not the one before it.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 test("warm start: a slow chooser keeps all 18 preferences", async ({ page }) => {
   const errors = [];
@@ -62,7 +62,7 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
   await goLevel(page, "perform");

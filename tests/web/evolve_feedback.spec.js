@@ -320,18 +320,28 @@ test("a bank row's ▶ lights while it plays and stops on a second press; ▶ SA
   await toEvolve(page);
   const hear = page.locator("#bank-list .bank-item .bi-hear").first();
   const lit = page.locator("#bank-list .bi-hear.playing");
+  // A row's ▶ is among the actions it shows when pointed at.
+  const first = page.locator("#bank-list .bank-item[data-id]").first();
 
+  await first.hover();
   await hear.click();
   await expect(lit).toHaveCount(1, { timeout: 30_000 });
   // A rating re-renders the bank; the row that is playing still says so.
-  await page.locator('#bank-list .bank-item').nth(1).locator('.star[data-s="4"]').evaluate((el) => el.click());
+  // (the second row, from the keyboard: the list focused, ↓ ↓, then 4)
+  await page.locator("#bank-list").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("4");
+  await expect(page.locator("#bank-list .bank-item").nth(1).locator(".bi-star")).toHaveAttribute("aria-pressed", "true");
   await expect(lit).toHaveCount(1);
   await expect(page.locator("#bank-list .bank-item").first().locator(".bi-hear")).toHaveClass(/\bplaying\b/);
   // Pressed again, it stops — it does not start the phrase over.
+  await first.hover();
   await page.locator("#bank-list .bank-item .bi-hear").first().click();
   await expect(lit).toHaveCount(0, { timeout: 1_000 });
 
   // Played to its end, it goes dark by itself.
+  await first.hover();
   await page.locator("#bank-list .bank-item .bi-hear").first().click();
   await expect(lit).toHaveCount(1, { timeout: 15_000 });
   await expect(lit).toHaveCount(0, { timeout: 15_000 });

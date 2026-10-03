@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=72">
+<link rel="stylesheet" href="style.css?b=73">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -48,7 +48,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=136";
+    s.src = "main.js?b=137";
     document.head.appendChild(s);
   }
 })();
@@ -114,6 +114,11 @@
     <!-- TAUGHT: everything it learned from (picks, stars and cuts), its
          tooltip split by kind (main.js, renderTaught). -->
     <span class="counter taught" id="taught" title="0 picks · 0 stars · 0 cuts"><span class="counter-label">taught</span> <span id="duel-count">0</span></span>
+    <!-- MODEL: the model view (shell.js, ADR-017). Held (the pill, or ⌥ for
+         220 ms) it shows while you hold; tapped it stays until tapped again
+         or Esc. Its LED is lit while the view is up; pressed (`aria-pressed`)
+         only while tapped on. -->
+    <button class="model-btn" id="model-btn" type="button" aria-pressed="false" aria-keyshortcuts="Alt" aria-label="The model view: what it believes about every sound. Hold, or hold Alt (Option); a tap keeps it" title="The model view · hold ⌥"><span class="led" aria-hidden="true"></span><span class="mb-word">model</span><kbd>⌥</kbd></button>
     <!-- ? and ⋯ hold the rightmost slots until the ⌘K list takes in what they
          hold (Plan-008 PR D). -->
     <button id="help-open" class="iconbtn" type="button" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
@@ -261,29 +266,29 @@
   <!-- ===================== deck: bank + stage ===================== -->
   <div class="deck">
 
-    <aside class="bank">
+    <aside class="bank" aria-label="Bank">
+      <!-- The bank's head, to the mock: three tabs and Find a sound. What the
+           head used to hold lives in titles: each bank's line in its tab's,
+           the save budget in SAVED's (its count amber at the cap), and the
+           pool still filling as POOL's "+N" (`#bank-count`). The tour's ?
+           sits quietly at the end of the find row until the ⌘K list takes it
+           in (Plan-008 PR D). Three places, not five filters and a sort menu:
+           the sounds that came with the instrument, the sounds it is
+           breeding for you, and the ones you decided to keep. -->
       <div class="bank-head">
-        <span class="panel-label">bank</span>
-        <span class="silk-dim mono" id="bank-count"></span>
-        <span class="pin-budget mono" id="pin-budget" hidden></span>
-        <button class="bank-tour-btn" id="bank-tour-btn" title="What are these three banks?" aria-label="Explain the three banks">?</button>
+        <div class="bank-tabs" role="tablist" aria-label="Bank">
+          <button class="btab" type="button" role="tab" id="bank-tab-pool" data-bank="pool" aria-controls="bank-list" aria-selected="true" tabindex="0"><span class="bt-w" id="bank-tab-pool-w">pool</span><span class="bt-n" data-n="pool"></span><span class="bt-fresh" id="bank-count"></span></button>
+          <button class="btab" type="button" role="tab" id="bank-tab-saved" data-bank="saved" aria-controls="bank-list" aria-selected="false" tabindex="-1"><span class="bt-w" id="bank-tab-saved-w">saved</span><span class="bt-n" data-n="saved" id="pin-budget"></span></button>
+          <button class="btab" type="button" role="tab" id="bank-tab-presets" data-bank="presets" aria-controls="bank-list" aria-selected="false" tabindex="-1"><span class="bt-w" id="bank-tab-presets-w">presets</span><span class="bt-n" data-n="presets"></span></button>
+        </div>
+        <div class="bank-find-row">
+          <!-- A text field, so the keys type here and play nothing (main.js's
+               note guard), and ⌥ and an arrow move by word (shell.js). Esc
+               clears it. -->
+          <label class="bank-find"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><input id="bank-find" type="search" placeholder="Find a sound" aria-label="Find a sound" aria-controls="bank-list" autocomplete="off" spellcheck="false"></label>
+          <button class="bank-tour-btn" id="bank-tour-btn" type="button" title="What are these three banks?" aria-label="Explain the three banks">?</button>
+        </div>
       </div>
-      <!-- Three banks, not five filters and a sort menu.
-           A sort <select> used to sit beside a row of provenance chips
-           answering nearly the same question in different words ("liked" next
-           to "saved"), labelling nothing and reading as a sixth chip. What a
-           person actually wants to switch between is three places: the sounds
-           that came with the instrument, the sounds it is breeding for them,
-           and the sounds they decided to keep. -->
-      <div class="bank-filters" role="group" aria-label="Which bank">
-        <button class="bf active" data-f="pool" title="The sounds the model weighs and breeds from">pool<b class="bf-n" data-n="pool"></b></button>
-        <button class="bf" data-f="mine" title="Sounds you saved. No generation replaces them.">saved<b class="bf-n" data-n="mine"></b></button>
-        <button class="bf" data-f="preset" title="The hand-made preset library that came with the instrument">presets<b class="bf-n" data-n="preset"></b></button>
-      </div>
-      <!-- Each bank says what it is, in one line, in place. The three-bank
-           split is only clearer than the old filters if the words "pool" and
-           "generation" mean something, and nothing on screen ever said. -->
-      <div class="bank-note" id="bank-note"></div>
       <div class="bank-list" id="bank-list" role="listbox" aria-label="Bank" tabindex="0">
         <div class="bench-empty">Warming up…</div>
       </div>
@@ -629,7 +634,10 @@
             <div class="panel-head">
               <span id="face-a"></span>
               <div class="duel-name" id="name-a">sound a</div>
+              <!-- The model view's (⌥): its style, and its guess before
+                   you pick on the card it favours (main.js, askPairGuess). -->
               <span class="style-badge mono" id="style-a"></span>
+              <span class="duel-guess mono" id="guess-a"></span>
               <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
             <canvas class="scope" id="scope-a"></canvas>
@@ -648,6 +656,7 @@
               <span id="face-b"></span>
               <div class="duel-name" id="name-b">sound b</div>
               <span class="style-badge mono" id="style-b"></span>
+              <span class="duel-guess mono" id="guess-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
             <canvas class="scope" id="scope-b"></canvas>
@@ -876,6 +885,11 @@
   <div class="cmp-play" id="compare-play"></div>
 </div>
 
+<!-- The model view's tag (shell.js): while ⌥ is held or MODEL is on, what
+     it believes and from how many picks, in the model's voice; a tapped view
+     says it once and settles. A status, so a screen reader hears it once. -->
+<div class="model-tag" id="model-tag" role="status" aria-live="polite"><span class="led" aria-hidden="true"></span><span class="mt-voice"></span></div>
+
 <!-- transient confirmations; persistent conditions go to #alarm -->
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 <div class="alarm hidden" id="alarm" role="alert"></div>
@@ -963,7 +977,7 @@
         <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
         <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller’s first eight knobs claim the deck’s first eight controls.</p>
         <div class="help-h">the levels</div>
-        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING</p>
+        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING · hold <kbd>⌥</kbd> (or <b>model</b>) for the model view: what it believes, over any level; a tap on <b>model</b> keeps it, <kbd>Esc</kbd> ends it</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>Space</kbd> hear the sound you’re playing · in PERFORM, <kbd>⇧F</kbd> stage mode, and <kbd>?</kbd> on a control shows what it does to this sound, measured (BRIGHT’s has a lesson on filters) · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
@@ -986,7 +1000,7 @@
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The bank’s <b>?</b> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
         a bred sound that joins it replaces the <i>lowest</i>-rated one it can (not saved, nor just kept as new).
         <b>presets</b> is the hand-made library that came with the instrument.

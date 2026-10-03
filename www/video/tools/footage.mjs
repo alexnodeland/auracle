@@ -463,7 +463,7 @@ async function step(page, s, ctx = {}) {
     case "view":
       return page.locator(`.rail-stop[data-level="${s.v === "play" ? "patch" : s.v}"]`).click();
     case "preset": {
-      await page.locator('.bf[data-f="preset"]').click();
+      await page.locator('[role=tab][data-bank="presets"]').click();
       // By its exact name: "Loom" must not open a preset whose blurb says "looming".
       const name = page.locator(".bi-name").filter({ hasText: new RegExp(`^\\s*${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`) });
       await page.locator(".bank-item.preset-item").filter({ has: name }).first().click();

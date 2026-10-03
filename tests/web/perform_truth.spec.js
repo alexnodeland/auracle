@@ -25,7 +25,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
@@ -68,7 +68,7 @@ async function boot(page, { shipped = true, stalled = false } = {}) {
 /** Open a preset from the library and go to PERFORM, without waiting for it
  *  to be measured. */
 async function openOnPerform(page, name) {
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
   await goLevel(page, "perform");

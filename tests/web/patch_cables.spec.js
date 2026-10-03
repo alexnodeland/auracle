@@ -75,8 +75,12 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.up();
   // While the change is unmeasured, the marks are hollow.
   await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
-  await expect.poll(asked, { timeout: 30_000 }).toBe(before + 1);
+  await expect.poll(asked, { timeout: 30_000 }).toBeGreaterThan(before);
   await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 30_000 }).toBe(true);
+  // Not one per step. At most one probe at the engine and one owed
+  // (patch.js `askProbe`): on a slow runner the drag's last step can land
+  // after the first probe went out, and is measured by one more (CI asked 2).
+  expect(await asked(), "a ten-step drag asks once, or once more for its last step").toBeLessThanOrEqual(before + 2);
 
   // Probes are slow from here (4 s each at the engine). A source placed in a
   // new patch while the empty patch's probe is still out: the page holds the
@@ -216,14 +220,26 @@ test("a knob turned in PATCH lights its cables again while a measurement nobody 
     };
   });
   // A knob turned: the marks go hollow, and the probe that lights them again
-  // is the one the measurement goes out ahead of.
+  // is the one the measurement goes out ahead of. The hollow moment is
+  // watched for from before the turn, not looked for after it: the probe can
+  // light the marks again between two looks, and a missed moment is not a
+  // knob that changed nothing.
+  await page.evaluate(() => {
+    window.__pwHollow = false;
+    const svg = document.getElementById("rack-svg");
+    const look = () => {
+      const marks = [...svg.querySelectorAll(".cable-mark")];
+      if (marks.length > 0 && marks.every((m) => m.classList.contains("unknown"))) window.__pwHollow = true;
+    };
+    new MutationObserver(look).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  });
   const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
   const box = await knob.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
   await page.mouse.up();
-  await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__pwHollow), { timeout: 15_000, message: "the turned knob's cables went unmeasured" }).toBe(true);
   await expect.poll(settled, { timeout: 60_000 }).toBe(true);
   const t = await page.evaluate(() => window.__bgT);
   expect(t.sent, "the measurement went out ahead of the probe").not.toBeNull();

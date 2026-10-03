@@ -40,8 +40,10 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 ## What you see
 
 **The cards.** Each card is one sound: its [face](../faces.md) and its
-name, the style that rates it highest, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
-**PICK B**). The names come from what the sound is, so *Round Wash* and
+name, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
+**PICK B**). Hold <kbd>⌥</kbd> for [the model view](../reading-the-model.md#the-model-view)
+and each card also shows the style that rates it highest, and the card the
+model favours says so before you pick: *it guesses this · 62% · leaning*. The names come from what the sound is, so *Round Wash* and
 *Gritty Swell* mean something. **⇄ CIRCUIT** flips the waveform to the patch’s
 modules. **OPEN IN PATCH** opens the sound in [PATCH](./play.md) without
 picking.
@@ -61,7 +63,9 @@ when breeding finishes* instead, because a refit waits for them.
 **The forecast.** After each pick, the line above **ANOTHER PAIR** says what
 the model guessed before you picked, and how sure it was: *it guessed this ·
 72% · fairly sure*, or *it guessed the other · 62% · leaning*. The words come
-from one scale: *a hunch*, *leaning*, and *fairly sure*.
+from one scale: *a hunch*, *leaning*, and *fairly sure*. It is the same guess
+the model view shows on a card before the pick; if the model refits while the
+pair is up, the card’s guess is asked again.
 
 **How the pair was dealt.** Beside **ANOTHER PAIR**, *◇ random pair · a fair
 test* says that every pair is dealt at random from the pool. The model

@@ -22,7 +22,7 @@
 // Playwright's polling is not in them. The budgets are the spec's; a miss on
 // a loaded machine is a finding about the machine only if the log says so.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = ({ warmed }) => `(() => {
   const Orig = window.Worker;
@@ -107,7 +107,7 @@ test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and 
   await page.keyboard.down("a");
   await page.waitForTimeout(300);
   await page.keyboard.up("a");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
   await expect.poll(async () => (await page.evaluate(() => window.__aur.marks())).map((m) => m.name), { timeout: 200_000 })
@@ -125,7 +125,7 @@ test("a preset's controls are live within a second of its click", async ({ page 
   test.setTimeout(300_000);
   const errs = await boot(page);
   await goLevel(page, "perform");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   for (const name of ["Acid Line", "Bell Jar", "Glass Pad"]) {
     const row = page.locator(".bank-item", { hasText: name }).first();
     await row.scrollIntoViewIfNeeded();

@@ -12,7 +12,7 @@
 // The spec watches the page's requests to the engine worker and its replies
 // by wrapping `Worker` before `main.js` runs, as the other PERFORM specs do.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -50,7 +50,7 @@ async function boot(page) {
 }
 
 async function openOnPerform(page, name) {
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
   await goLevel(page, "perform");

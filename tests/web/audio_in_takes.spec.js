@@ -32,7 +32,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
@@ -126,7 +126,7 @@ function takeOf(n) {
 
 test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an input", async ({ page }) => {
   const errors = await boot(page);
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
   for (const kind of ["track", "capture"]) {
@@ -284,7 +284,7 @@ test("a recording stops when you move to another sound, and its take lands on ne
   const lane = page.locator("#rack-svg .take-lane").first();
   const line = lane.locator(".take-line");
   await expect(line).toHaveText("take · 0.2 s");
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const open = async (name) => {
     await page.locator("#bank-list .bank-item", { hasText: name }).first().locator(".bi-name").click();
     await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -362,7 +362,7 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
     .toContain("One sound’s take couldn’t be read. It’s kept safe until you record it again.");
   await goLevel(next, "patch");
-  await next.locator('.bf[data-f="pool"]').click();
+  await bankTab(next, "pool");
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
   await expect(row).toBeVisible({ timeout: 30_000 });
   return { ctx, next, row, errors };
@@ -409,7 +409,7 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   // The bench reads input 2 (Fake Interface B), and Mic Loop input 1.
   await openFile(next, { name: "Line B", tree: { amp, root: ain(1) } }, info.outputDir);
   await expect(next.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 60_000 });
-  await next.locator('.bf[data-f="pool"]').click();
+  await bankTab(next, "pool");
   await expect(row).toBeVisible({ timeout: 30_000 });
   const ins = () => next.evaluate(() => window.__aur.audioIn());
   expect((await ins()).voiceId).toBe("mic-b");

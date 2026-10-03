@@ -131,9 +131,16 @@ const sawToast = (page, text, timeout = 15_000) =>
 const count = (page, type) => page.evaluate((t) => window.__pwCounts[t] || 0, type);
 /** The id of the first bank row on the surface. */
 async function firstBankId(page) {
-  const id = Number((await page.locator("#bank-list .bank-item .bi-id").first().textContent()).replace("#", ""));
+  const id = Number(await page.locator("#bank-list .bank-item[data-id]").first().getAttribute("data-id"));
   expect(id).toBeGreaterThan(0);
   return id;
+}
+/** Rate the bank's first row from the keyboard, as the list takes it: the
+ *  list focused, ↓ to its first row, then the digit. */
+async function rateFirstRow(page, stars) {
+  await page.locator("#bank-list").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press(String(stars));
 }
 
 async function boot(page, { seed } = {}) {
@@ -191,7 +198,7 @@ test("AU-S1: a save this build cannot parse is quarantined, not overwritten, unt
   // Give autosave every reason to fire: a real vote, which schedules one, and
   // the engine's `saved` reply itself, which is the only thing that writes.
   // Then outwait the 2.5 s debounce.
-  await page.locator('#bank-list .star[data-s="3"]').first().evaluate((el) => el.click());
+  await rateFirstRow(page, 3);
   await inject(page, { type: "saved", json: JSON.stringify({ probe: "must-not-land" }) });
   await page.waitForTimeout(4_000);
   expect(await idb(page, "get", "state")).toEqual(seed);
@@ -324,11 +331,12 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
   // posts when `record_stars` answers false, carrying `prev`. The lit star must
   // go back to what the bank showed before.
   const id = await firstBankId(page);
-  const row = page.locator(`#bank-list .bank-item:has(.bi-id:text-is("#${id}"))`);
-  const star3 = () => row.locator('.star[data-s="3"]');
-  expect(await star3().getAttribute("aria-pressed")).toBe("false");
-  await star3().evaluate((el) => el.click());
-  expect(await star3().getAttribute("aria-pressed")).toBe("true");
+  const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
+  // The row's ★ says whether it is rated; 3 rates it from the keyboard.
+  const star = () => row.locator(".bi-star");
+  expect(await star().getAttribute("aria-pressed")).toBe("false");
+  await rateFirstRow(page, 3);
+  await expect(star()).toHaveAttribute("aria-pressed", "true");
   const status = await page.evaluate(() => window.__pwLast.status.status);
   await inject(page, {
     type: "status",
@@ -337,7 +345,7 @@ test("AU-S4: a vote the engine did not take is reported and rolled back (duel re
     vote: { kind: "stars", id, rating: 3, prev: 0 },
   });
   await sawToast(page, "the rating wasn’t recorded", 2_000);
-  expect(await star3().getAttribute("aria-pressed")).toBe("false");
+  expect(await star().getAttribute("aria-pressed")).toBe("false");
   expect(await row.locator(".star.lit").count()).toBe(0);
 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);

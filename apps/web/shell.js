@@ -1,11 +1,13 @@
 // The shell: which level you are at, and the ways you move between them
 // (Plan-008). It owns the level registry, `show`, the header's `#where`, the
 // level rail and the level keys (ADR-017: ⌥↑/⌥↓ zoom, ⌥← to EVOLVE and ⌥→
-// back, ⌥1–5). main.js creates it with a host and keeps every side effect of
-// a move in `host.levelChanged(prev, next)`: the shell does the DOM (one
-// section shown, `body[data-level]`, `#where`, the rail's `aria-current`, the
-// saved level and the hash). The rules for which level a key or a hash leads
-// to are levels.js's, unit-tested.
+// back, ⌥1–5), and the model view (hold ⌥, or MODEL). main.js creates it
+// with a host and keeps every side effect of a move in
+// `host.levelChanged(prev, next)` and of the model view in
+// `host.modelViewChanged(on)`: the shell does the DOM (one section shown,
+// `body[data-level]`, `#where`, the rail's `aria-current`, the saved level
+// and the hash; `body.model-view`, MODEL's LED and the tag). The rules for
+// which level a key or a hash leads to are levels.js's, unit-tested.
 //
 // A move is instant here. The morph between levels (the held sound's face
 // carried from one level to the next) is Plan-008 PR C.
@@ -14,6 +16,15 @@
 const { WHERE, isLevel, startLevel, hashLevel, levelForKey } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
+// ⌥ held this long shows the model view (ADR-017); a key pressed sooner
+// cancels it, so ⌥↑ never flashes it on the way to TASTE.
+const MODEL_HOLD_MS = 220;
+// MODEL pressed this long is a hold (the view goes when it is let go), not a
+// tap (which keeps it), as the prototype has it.
+const PRESS_HOLD_MS = 280;
+// A tapped view says what it believes, then its tag settles out of the way;
+// the amber stays. When, not how long a move takes.
+const TAG_SAYS_MS = 3200;
 
 /** A text field, where ⌥ and an arrow move by word and must stay its own. */
 function typing(target) {
@@ -31,6 +42,74 @@ export function createShell(host = {}) {
     if (!isLevel(level) || !spec || !spec.el) return;
     levels.set(level, spec);
   }
+
+  // ---------- the model view ----------
+  // What the model believes, raised over whatever level is showing
+  // (Plan-008 §2.5): `body.model-view`, which the bank, EVOLVE and TASTE
+  // read; MODEL's LED; and the tag, in the model's voice. Held (⌥ or MODEL
+  // pressed), it goes when let go; tapped, it stays until a tap or Esc. A
+  // hold never ends a view that was tapped on.
+  const model = { on: false, held: false };
+  let altTimer = 0;
+  let quietTimer = 0;
+  function paintModelTag() {
+    const tag = document.getElementById("model-tag");
+    const voice = tag && tag.querySelector(".mt-voice");
+    if (voice) voice.textContent = model.on && host.modelTag ? host.modelTag() : "";
+  }
+  function setModelView(on, { sticky = false } = {}) {
+    if (!sticky && model.on && !model.held) return;
+    const was = model.on;
+    model.on = !!on;
+    model.held = model.on && !sticky;
+    document.body.classList.toggle("model-view", model.on);
+    const btn = document.getElementById("model-btn");
+    if (btn) btn.setAttribute("aria-pressed", String(model.on && !model.held));
+    clearTimeout(quietTimer);
+    document.body.classList.remove("model-quiet");
+    if (model.on && !model.held) quietTimer = setTimeout(() => document.body.classList.add("model-quiet"), TAG_SAYS_MS);
+    if (was !== model.on) paintModelTag();
+    if (was !== model.on && host.modelViewChanged) host.modelViewChanged(model.on);
+  }
+  function cancelAltHold() {
+    clearTimeout(altTimer);
+    altTimer = 0;
+  }
+  // MODEL, pressed and held or tapped. The click a hold ends with is not a
+  // tap. Enter and Space click it, so the keyboard taps.
+  const modelBtn = document.getElementById("model-btn");
+  if (modelBtn) {
+    let pressTimer = 0;
+    let heldByPress = false;
+    modelBtn.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      heldByPress = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        heldByPress = true;
+        if (!model.on) setModelView(true);
+      }, PRESS_HOLD_MS);
+    });
+    const release = () => {
+      clearTimeout(pressTimer);
+      if (heldByPress && model.held) setModelView(false);
+    };
+    for (const t of ["pointerup", "pointercancel", "pointerleave"]) modelBtn.addEventListener(t, release);
+    modelBtn.addEventListener("click", () => {
+      if (heldByPress) {
+        heldByPress = false;
+        return;
+      }
+      setModelView(!model.on || model.held, { sticky: true });
+    });
+    // A long press on a touch screen is the hold, not the page's menu.
+    modelBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  // The window going away takes the held ⌥ with it: its keyup never comes.
+  window.addEventListener("blur", () => {
+    cancelAltHold();
+    if (model.held) setModelView(false);
+  });
 
   function read() {
     try {
@@ -140,11 +219,26 @@ export function createShell(host = {}) {
   document.addEventListener(
     "keydown",
     (e) => {
-      // ⌥ alone opens the window's menu in Firefox and Edge on Windows.
+      // Any other key while ⌥'s hold is counting cancels it.
+      if (e.key !== "Alt") cancelAltHold();
+      // ⌥ alone opens the window's menu in Firefox and Edge on Windows. Held,
+      // it shows the model view, except where ⌥ is the field's (a text field
+      // moves by word with it) or under a modal dialog.
       if (e.key === "Alt") {
-        if (!typing(e.target)) e.preventDefault();
+        if (typing(e.target)) return;
+        e.preventDefault();
+        if (!e.repeat && !altTimer && !model.on && !(host.blocked && host.blocked())) {
+          altTimer = setTimeout(() => {
+            altTimer = 0;
+            setModelView(true);
+          }, MODEL_HOLD_MS);
+        }
         return;
       }
+      // Esc ends the model view, however it came up, and goes on to close
+      // whatever else it closes; in a text field Esc is the field's (Find a
+      // sound clears), and the view stays.
+      if (e.key === "Escape" && model.on && !typing(e.target)) setModelView(false, { sticky: true });
       if (!e.altKey || e.metaKey || e.ctrlKey) return;
       if (!(e.key.startsWith("Arrow") || /^Digit[1-5]$/.test(e.code || ""))) return;
       if (typing(e.target)) return;
@@ -152,6 +246,9 @@ export function createShell(host = {}) {
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return;
+      // A level key while ⌥ holds the model view up: the move is what was
+      // meant, and the view goes with the hold.
+      if (model.held) setModelView(false);
       const next = levelForKey(cur, e.key, e.code);
       if (next) show(next, { chosen: true });
     },
@@ -160,7 +257,10 @@ export function createShell(host = {}) {
   document.addEventListener(
     "keyup",
     (e) => {
-      if (e.key === "Alt" && !typing(e.target)) e.preventDefault();
+      if (e.key !== "Alt") return;
+      cancelAltHold();
+      if (model.held) setModelView(false);
+      if (!typing(e.target)) e.preventDefault();
     },
     true,
   );
@@ -190,5 +290,9 @@ export function createShell(host = {}) {
     start,
     /** The level shown, or null before `start`. */
     current: () => cur,
+    /** Is the model view up? */
+    modelView: () => model.on,
+    /** Say the tag again: what it believes has changed (a pick, a fit). */
+    modelTagChanged: () => { if (model.on) paintModelTag(); },
   };
 }

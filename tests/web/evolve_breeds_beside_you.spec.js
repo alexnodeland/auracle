@@ -31,7 +31,7 @@
 // Math.random), so the pool and the generation are the same run to run.
 // `?farm=N` sets the crew's width; the default is the app's own rule.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -326,7 +326,7 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   await page.locator("#evolve-btn").click();
   await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^(breeding \d+\/10|walk \d+ of 10)$/, { timeout: 30_000 });
   // A preset PERFORM has not measured, opened mid-generation.
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   const wired0 = await count(page, "perform_wired");
   const opened = await page.evaluate(() => performance.now());
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();

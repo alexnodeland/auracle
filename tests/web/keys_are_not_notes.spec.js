@@ -11,7 +11,7 @@
 //
 // Reached the way the other specs reach the app: a wrapped `Worker`, seeded.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const SEED = `(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -143,7 +143,7 @@ test("L on a rack knob locks it without playing a note", async ({ page }) => {
 test("p in the preset list hears the preset without playing a note", async ({ page }) => {
   const pageErrors = await boot(page);
   await page.waitForFunction(() => window.__aur && window.__aur.getLive && window.__aur.getLive(), null, { timeout: 60_000 });
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await expect(page.locator("#bank-list .preset-item").first()).toBeVisible({ timeout: 30_000 });
   await page.locator("#bank-list").focus();
   await page.keyboard.press("ArrowDown");

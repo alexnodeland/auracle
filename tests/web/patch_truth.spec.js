@@ -16,7 +16,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs,
 // to count edits out and replies back (the lane has settled when they agree).
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -75,7 +75,7 @@ async function settled(page, quiet = 700) {
 async function openPreset(page, name) {
   // The app opens at PERFORM (Plan-008): PATCH is a level away.
   await goLevel(page, "patch");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
   await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible();

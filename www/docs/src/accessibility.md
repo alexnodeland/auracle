@@ -10,8 +10,11 @@ uneven, and this page says where.</p>
 included.
 
 Each region is one tab stop, and the arrows move inside it. Tabbing through
-several hundred rack controls would be unusable, so the bank is one stop, the
-rack is one stop, and the module rail is one stop per group.
+several hundred rack controls would be unusable, so the bank’s list is one
+stop, the rack is one stop, and the module rail is one stop per group. The
+bank’s three tabs are a tab list, one stop, whose <kbd>←</kbd> and
+<kbd>→</kbd> show the next bank as they move; **Find a sound** and the
+walkthrough’s **?** are a stop each between the tabs and the list.
 
 **The levels.** <kbd>⌥↑</kbd> and <kbd>⌥↓</kbd> zoom out and in,
 <kbd>⌥←</kbd> and <kbd>⌥→</kbd> go to EVOLVE and back, and <kbd>⌥1</kbd>–
@@ -25,6 +28,12 @@ Reached with <kbd>Tab</kbd>, the arrow keys walk them as they are drawn.
 Clicking a stop moves focus into its level, so EVOLVE’s <kbd>←</kbd> and
 <kbd>→</kbd> work at once. The menu bar names the level you’re at in a polite
 live region, so a level key is announced where it went.
+
+**The model view.** Holding <kbd>⌥</kbd> (Alt) shows it, under the same
+rules; **MODEL** in the menu bar is a button whose <kbd>Enter</kbd> or
+<kbd>Space</kbd> keeps it up (`aria-pressed`), and <kbd>Esc</kbd> ends it. Its
+tag, saying what the model believes and from how many picks, is a status, read
+once as the view comes up.
 
 To place a module without a mouse:
 
@@ -49,8 +58,12 @@ Focus is always visible, and a dialog returns focus to whatever opened it.
 - **The bank announces its cursor.** The list follows it with
   `aria-activedescendant`.
 - **A bank row says its whole state:** its name, whether it’s saved, its
-  rating, and the model’s guess. The row’s buttons sit outside the tab order,
-  so the label carries what they show.
+  rating, and the model’s guess (at rest too, though the guess is drawn only
+  under the model view). The row’s buttons sit outside the tab order, so the
+  label carries what they show, and <kbd>1</kbd>–<kbd>5</kbd>, <kbd>m</kbd> and
+  <kbd>c</kbd> reach what they do.
+- **The bank’s list is named by its tab** (*Pool*, *Saved*, *Presets*), and
+  the tabs control it.
 - **A socket says what will happen** when you arrow onto it: whether placing
   the module there inserts it, replaces what’s there, or shapes it.
 - **Toasts** are read from a live region.
@@ -65,8 +78,11 @@ locks, and the ⋯ menus.
 
 Two rules make that work. Controls that own a drag claim the gesture before
 the browser can, which leaves the rack’s frame its own panning. And whatever a
-mouse finds by hovering (knob lock dots, a bank row’s stars and cut) is shown
-outright on a touch screen, because on a tablet, hover-to-reveal means never.
+mouse finds by hovering (knob lock dots, a bank row’s actions) is shown
+outright on a touch screen, because on a tablet, hover-to-reveal means never:
+every bank row shows its actions (and every preset its **▶**) at rest, on a
+line under its name, so a sound can be heard, rated, saved or cut without
+opening it. **MODEL**’s press and hold is the model view under a finger.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
 desktop is unchanged.
 
@@ -104,8 +120,9 @@ information, not decoration.
 
 Auracle follows your system’s reduced-motion setting, and follows it live if
 you change it with the app open. With it on, the cable pulses, glows, and
-transitions stop; the rack jumps to a new layout or view instead of gliding;
-and a card waiting for its sound stops sweeping. The scope still moves,
+transitions stop; the rack jumps to a new layout or view instead of gliding,
+and the bank’s rows jump to the model view’s order rather than glide; and a
+card waiting for its sound stops sweeping. The scope still moves,
 because what it shows is the sound, but it redraws ten times a second rather
 than every frame. The guide and the reference follow the setting too.
 

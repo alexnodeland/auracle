@@ -1,17 +1,19 @@
 # The bank
 
-<p class="lede">The bank, on the left of every view, holds your sounds in
+<p class="lede">The bank, on the left of every level, holds your sounds in
 three tabs. This page is about finding a sound, keeping it, seeing where a
-bred sound came from, and knowing which sounds a generation may replace.</p>
+bred sound came from, what the model thinks of each, and knowing which sounds
+a generation may replace.</p>
 
 <!-- film:composing --><!-- /film:composing -->
 
 <figure>
-<img src="./img/bank.webp" alt="The bank rail: three tabs with counts above a list of rows, each with a name, a percentage, a play button, five stars, and a save icon." loading="eager" width="252" height="720">
-<figcaption><strong>The bank.</strong> Three tabs, and a row for each sound
-carrying the model’s guess about it. The screenshot predates the current tab
-names (POOL, SAVED, and PRESETS), each row’s face, and the column left of each
-name where NEW and the dot sit.</figcaption>
+<img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name." loading="eager" width="280" height="766">
+<figcaption><strong>The bank.</strong> Three tabs, Find a sound, and a row
+for each sound: its face, a mark for where it came from, and its name. The
+green rail marks the sound you’re playing, a silk rail a saved sound, and an
+amber name is one it was given (a preset’s, or one you typed) rather than one
+drawn from the sound.</figcaption>
 </figure>
 
 | Tab | What it holds |
@@ -20,45 +22,60 @@ name where NEW and the dot sit.</figcaption>
 | **SAVED** | The sounds you saved. No generation replaces them |
 | **PRESETS** | The hand-made library that came with the instrument |
 
-Each tab has a line under it saying what it holds, with **WHAT’S THIS?**,
-which walks you through the three tabs and what a generation is. The head
-counts your saves (*3/10 saved*).
+Each tab carries its count, and its tooltip says what it holds. SAVED’s
+tooltip also counts your saves (*3 of 10 saved*), and its count turns amber
+when every save is used. While the pool is still filling after a start, POOL
+reads **+12** beside its count, the sounds still on their way.
+
+The **?** at the end of the find row walks you through the three tabs and
+what a generation is, starting at the tab you’re on.
+
+## Find a sound
+
+Type in **Find a sound** under the tabs, and the bank keeps only the sounds
+whose name, family, or description has what you typed: *bass*, *bright*,
+*saws*. It works in every tab, and what you typed stays as you switch tabs,
+rate, cut, or rename. While it narrows **POOL**, the rows stand on their own,
+without the groups below. <kbd>Esc</kbd> clears it.
+
+A preset’s family and description are its own; a pool sound you opened from a
+preset is found by that preset’s too. Typing in the field plays no notes.
 
 ## Find and keep a sound
 
-1. Click a row to open it as the sound you’re playing. **▶** plays the
-   standard phrase without opening it.
-2. Rate it with **★** (one to five) if you want to teach the model what you
-   think of it.
-3. Press the save icon (a disk) to keep it: no generation will replace it.
-4. Press **cut** to tell the model “not this one” and take the row out of the
-   pairs.
+1. Click a row to open it as the sound you’re playing.
+2. Point at a row (or put the bank’s cursor on it) and its actions appear at
+   its end (on a touch screen they are always there, under the name): **▶**
+   plays the standard phrase without opening it.
+3. **★** opens five stars in the actions’ place: press one to rate the sound
+   and teach the model what you think of it. From the keyboard,
+   <kbd>1</kbd>–<kbd>5</kbd> rate the row under the cursor.
+4. The save icon (a disk) keeps it: no generation will replace it.
+5. **×** cuts it: it tells the model “not this one” and takes the row out of
+   the pairs.
 
-From the keyboard, <kbd>[</kbd> and <kbd>]</kbd> step through the bank in any
-view; [the keys](#the-bank-from-the-keyboard) are below.
+From the keyboard, <kbd>[</kbd> and <kbd>]</kbd> step through the bank at any
+level; [the keys](#the-bank-from-the-keyboard) are below.
 
 ## Reading a row
 
 <figure>
-<img src="./img/bank-row.webp" alt="One bank row, outlined in green: a glyph, a name, a percentage and an id on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar." loading="lazy" width="252" height="70">
-<figcaption><strong>One row.</strong> The green outline is the row you’re on.
-The id at the right shows only with Show measurements now, and the name now
-starts a little further right, after the row’s face and a column every row
-keeps for its marks.</figcaption>
+<img src="./img/bank-row.webp" alt="One bank row under the pointer: a small face, a glyph and a name, with its actions at the end: play, a star, a save icon, and a cross." loading="lazy" width="280" height="40">
+<figcaption><strong>One row,</strong> pointed at: its actions sit over the
+row’s end.</figcaption>
 </figure>
 
-- **The face**, left of the row’s two lines, is the sound’s
-  [face](./faces.md): its spectrum against the rest of the bank, from the
-  sound’s own render. Every row keeps the face’s column, so the name is in the
-  same place before the face arrives, and the bank is wider by the column
-  rather than any name narrower.
+- **The face**, left of the name, is the sound’s [face](./faces.md): its
+  spectrum against the rest of the bank, from the sound’s own render. Every row
+  keeps the face’s column, so the name is in the same place before the face
+  arrives, and the bank is wider by the column rather than any name narrower.
 - **The glyph** says where the sound came from: **◇** grown fresh, with no
   taste in it yet; **⚡** bred toward your taste; **✎** your edit, kept as new;
   **▤** a hand-made preset.
 - **NEW**, in the glyph’s place, marks a child of the latest generation (every
   one of them is bred, ⚡). In **POOL**, those children lead the list under
   **NEW · GENERATION 3** and their count, in the order they were bred, and the
-  rest follow under **RANKED BY THE MODEL**, highest rated first. A child of
+  rest follow under **IN THE POOL**, in the order they joined it. A child of
   [⚡ evolve from this](./rack.md#locks-and-evolving-from-here) joins the group
   the same way, since ⚡ counts as a generation of its own. If the generation
   bred children the pool didn’t keep, a line under the group counts them
@@ -78,33 +95,56 @@ keeps for its marks.</figcaption>
   three changes and then how many more. The modules are counted, so the line
   says what the patch gained and lost: a module that moved from one place in
   the patch to another isn’t a change, and a swap (`filter → delay`) is said
-  only where one module went and another came. Click the line, or press
-  <kbd>c</kbd> on the row, to [compare](#compare-a-sound-beside-its-seed) the
-  sound with its seed.
-- **The percentage** is the model’s guess: roughly how likely you are to pick
-  this sound in a pair. Its tooltip adds the word for how sure that reads
-  (*59% · leaning*). Before the model has been fitted it reads **·**.
-- **The bar** along the row’s bottom edge draws the same guess. The bright
-  tick is the guess, and the dimmer block around it shows how unsure it is: a
-  narrow block is a sure guess, a wide one an unsure guess.
-- **▶** plays the standard phrase. If it has to be rendered first, a dotted
-  amber ring says it’s on its way.
-- **★★★★★** rates it, and teaches the model.
-- **The save icon** keeps it, and teaches nothing: *Saved Glass Pad. No generation will
-  replace it (3 of 10 saved).*
-- **cut** teaches the model “not this one”. The sound is never dealt to you in
-  a pair again; if it was on the cards, a new pair is dealt. The toast, *Cut
-  Soft Wash. It won’t be dealt again.*, carries **UNDO** for seven seconds
-  (<kbd>⌘Z</kbd>, or Ctrl Z, does the same), and nothing is recorded until
-  they’re up. The cut shows when you hover the row or put the cursor on it,
-  and always on a touch screen.
+  only where one module went and another came. Click the line, the row’s
+  EVOLVE mark among its actions, or press <kbd>c</kbd> on the row, to
+  [compare](#compare-a-sound-beside-its-seed) the sound with its seed.
+- **The actions**, at the row’s end when you point at it or the cursor is on
+  it: the EVOLVE mark for a bred sound (compare), **▶**, **★**, the save icon
+  and **×**. Out of sight they can’t be pressed either. On a touch screen
+  every row shows them at rest, on a line under its name, since a tap on the
+  row would open it.
+  - **▶** plays the standard phrase, and shows **■** while it plays. If it has
+    to be rendered first, a dotted amber ring says it’s on its way.
+  - **★** opens the five stars; a rated sound’s ★ is filled. Rating teaches
+    the model.
+  - **The save icon** keeps it, and teaches nothing: *Saved Glass Pad. No
+    generation will replace it (3 of 10 saved).*
+  - **×** cuts it, which teaches the model “not this one”. The sound is never
+    dealt to you in a pair again; if it was on the cards, a new pair is dealt.
+    The toast, *Cut Soft Wash. It won’t be dealt again.*, carries **UNDO** for
+    seven seconds (<kbd>⌘Z</kbd>, or Ctrl Z, does the same), and nothing is
+    recorded until they’re up.
 
-A cut sound stays in the pool until a generation replaces it.
+A cut sound stays in the pool until a generation replaces it. With Show
+measurements on, a row also shows its id, and its tooltip its signature.
+
+## What the model thinks of each: hold ⌥
+
+Hold <kbd>⌥</kbd> (Alt off Apple platforms), or press and hold **MODEL** in
+the menu bar, and the bank shows [the model view](./reading-the-model.md#the-model-view):
+
+- **A percentage** at each row’s end: the model’s guess, roughly how likely you
+  are to pick this sound in a pair. Its tooltip adds the word for how sure that
+  reads (*59% · leaning*). Before the model has been fitted it reads **·**.
+- **A bar** along the row’s foot draws the same guess. The bright tick is the
+  guess, and the dimmer block around it shows how unsure it is: a narrow block
+  is a sure guess, a wide one an unsure guess. Before the first fit it is
+  hatched: there is no guess yet.
+- **The pool in the order the model rates it**, highest first, under
+  **RANKED BY THE MODEL**, once it has been fitted. The rows glide to their
+  places, and when you let go they glide back to the order they joined the
+  pool. **NEW** keeps its children in the order they were bred.
+
+Let go and the bank is as it was. A tap on **MODEL** keeps the model view up
+until you tap it again or press <kbd>Esc</kbd>. The row’s actions still come
+when you point at it. A screen reader hears the guess in every row’s name, at
+rest too.
 
 ## Compare a sound beside its seed
 
-Click the line under a bred sound’s name, or press <kbd>c</kbd> with the
-bank’s cursor on it. Compare opens beside the bank:
+Click the line under a bred sound’s name, its EVOLVE mark among the row’s
+actions, or press <kbd>c</kbd> with the bank’s cursor on it. Compare opens
+beside the bank:
 
 - **The figure** draws the seed’s phrase as a dashed outline, and the child’s
   growing out of it into its own. Only the two ends are the engine’s: a walk
@@ -195,7 +235,8 @@ lowest-rated sounds it could: Bell Jar, Soft Wash, Glass Rain, and 1 more.*
    the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
    other sound can be replaced when it ends. A saved sound is never marked,
    and nor is a sound you kept as new that hasn’t been in a pick yet. The
-   words sit where the stars are, so no name moves.
+   words sit at the row’s end, where its actions come when you point at the
+   row, so no name moves.
 2. Save any you want to keep before you press it.
 
 The marks are the engine’s own lists, and they move as your picks move the
@@ -226,11 +267,12 @@ which is why the [reference](../reference/architecture/two-loops.html) quotes
 ## Presets
 
 Sixty-two hand-made sounds in seven families (bass, lead, keys, pad, texture,
-perc, and weird), browsed in place.
+perc, and weird), browsed in place under each family’s name and count. A
+preset’s description is its name’s tooltip.
 
 1. Open **PRESETS**.
-2. Press **▶** to hear one, or click its row to open it as the sound you’re
-   playing.
+2. Point at a row and press **▶** to hear it (on a touch screen the **▶** is
+   always there), or click the row to open it as the sound you’re playing.
 
 The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the lowest-rated sound it can. The toast names what it
@@ -245,11 +287,14 @@ modules more evenly than the fresh sounds do.
 
 ## The bank from the keyboard
 
-The bank is a single tab stop. Reach it with <kbd>Tab</kbd>, then:
+The tabs are one tab stop: <kbd>←</kbd> and <kbd>→</kbd> (or <kbd>Home</kbd>
+and <kbd>End</kbd>) show the next bank as they move. **Find a sound** and the
+walkthrough’s **?** are the next stops, and the list is a single stop after
+them. In the list:
 
 | | |
 |---|---|
-| <kbd>↑</kbd> <kbd>↓</kbd> | Move the cursor |
+| <kbd>↑</kbd> <kbd>↓</kbd> | Move the cursor (the row’s actions show on it) |
 | <kbd>Enter</kbd> | Open the sound |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate it |
 | <kbd>m</kbd> | Save it |
@@ -269,5 +314,7 @@ model’s guess), because the row’s buttons sit outside the tab order.
 
 - Save the sounds you’d reach for again, before your next generation.
 - Rate a few sounds you wouldn’t reach for: low stars teach too.
+- Hold <kbd>⌥</kbd> and see which sounds the model rates highest, and how
+  sure it is of each.
 - [What the model learns from](./teaching.md) says how stars, picks, and cuts
   differ.

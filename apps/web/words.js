@@ -40,6 +40,25 @@ export function forecastLine(pChosen) {
   return `it guessed ${hit ? "this" : "the other"} · ${guessLabel(p)}`;
 }
 
+/** The same guess before you pick, under the model view (⌥), on the card it
+ *  favours: "it guesses this · 62% · leaning". `p` is the probability it
+ *  gives that card (`WasmEngine::duel_pred`, or one minus it for B). */
+export function pairGuess(p) {
+  return `it guesses this · ${guessLabel(p)}`;
+}
+
+/** The model view's tag (⌥): what it believes and from what, from the same
+ *  counts as TASTE's line (`fittedFrom`), so the two never disagree. */
+export function modelTag({ fitted = false, picks = 0, stars = 0, cuts = 0, left = 0 } = {}) {
+  if (fitted) {
+    const parts = [count(picks, "pick")];
+    if (stars) parts.push(count(stars, "star"));
+    if (cuts) parts.push(count(cuts, "cut"));
+    return `what it believes, from ${series(parts)}`;
+  }
+  return left > 0 ? `still guessing · ${count(left, "more pick")} and it fits` : "still guessing · fitting your taste…";
+}
+
 /** TAUGHT's tooltip: everything it learned from, by kind. */
 export function taughtTitle({ picks = 0, stars = 0, cuts = 0 } = {}) {
   return `${count(picks, "pick")} · ${count(stars, "star")} · ${count(cuts, "cut")}`;
@@ -601,6 +620,7 @@ export const TASTE_LABELS = {
   stripEnd: "100% for the one picked",
   stripEndShort: "100%",
   togTitle: "Color by taste",
+  togByModel: "The model view shows the TASTE side while it is up",
   sound: "sound",
   taste: "taste",
   track: "Taste over time",

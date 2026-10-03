@@ -21,8 +21,11 @@ at last time.
 | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Zoom out / in: PATCH, PERFORM, TASTE, LEARNING. From EVOLVE, out goes to TASTE and in to PATCH |
 | <kbd>⌥←</kbd> / <kbd>⌥→</kbd> | Beside it to EVOLVE / back to PERFORM |
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
+| Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up; <kbd>Esc</kbd> ends it |
 
-They work with a knob or a list focused. In a text field they stay the
+They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
+view after a moment; a key pressed while it is down (<kbd>⌥↑</kbd>, say) is
+that key instead, and the model view doesn’t come up. In a text field they stay the
 field’s: on a Mac <kbd>⌥←</kbd> there moves by a word, and on Windows and Linux
 Alt ← is the browser’s Back, so it can leave the page from a field (elsewhere
 the app takes it). With a modal dialog up (the warm start, the ? card, stage
@@ -108,7 +111,10 @@ are stepping through them with the arrow keys.
 
 ## The bank
 
-<kbd>Tab</kbd> reaches the bank as a single stop, then:
+The bank’s tabs are one stop: <kbd>←</kbd> and <kbd>→</kbd> (and
+<kbd>Home</kbd>, <kbd>End</kbd>) show the next one as they move. **Find a
+sound** is the next stop (<kbd>Esc</kbd> clears it, and nothing typed there is
+a note), then the walkthrough’s **?**, and then the list, a single stop:
 
 | | |
 |---|---|

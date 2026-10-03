@@ -28,7 +28,7 @@
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
 const { test, expect } = require("@playwright/test");
-const { goLevel, openKeys } = require("./shell");
+const { goLevel, openKeys, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -191,7 +191,7 @@ test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page })
 test("Space plays the sound in hand at every level, and the header's ▶ says so", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page);
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#live-label")).toHaveText("Glass Pad", { timeout: 60_000 });
   await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
@@ -253,7 +253,7 @@ test("a reload comes back to the level you were at, and a level's link opens it"
 
 test("stage mode, which is modal, keeps the level keys", async ({ page }) => {
   const errors = await boot(page);
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
   await page.locator("#view-perform").click({ position: { x: 4, y: 4 } });
@@ -323,7 +323,7 @@ for (const width of [1000, 1080, 1440]) {
   test(`at ${width} px the levels cover no control at any level`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     const errors = await boot(page);
-    await page.locator('.bf[data-f="preset"]').click();
+    await bankTab(page, "presets");
     await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
     await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
     for (const level of ["perform", "patch", "evolve", "taste", "learning"]) {

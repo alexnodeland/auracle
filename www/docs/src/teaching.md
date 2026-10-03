@@ -24,8 +24,8 @@ in what they say about that.
 |---|---|---|
 | **Pick** between two sounds | EVOLVE, or the TEACH strip in PATCH | You’d reach for A over B |
 | **Take** or **pass** on an offer you heard | PERFORM | The same, between the sound you were playing and the offer |
-| **★** a sound | Any bank row | Where it sits on your scale, one to five |
-| **cut** a sound | Any bank row | Not this one |
+| **★** a sound | Any bank row: its **★** opens five stars, or <kbd>1</kbd>–<kbd>5</kbd> on the row under the cursor | Where it sits on your scale, one to five |
+| **×** cut a sound | Any bank row | Not this one |
 | **Keep as new** an edit | PATCH: the **WHICH WOULD YOU REACH FOR?** card, or **PICK THE EDIT** to skip it | Your edit over the original, or the original over your edit |
 
 **Picks teach the most.** People compare two sounds reliably, and give one

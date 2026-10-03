@@ -102,10 +102,36 @@ Two things follow:
   type. Once a style is called what you’d call it, every place it appears
   reads at a glance, and the name is kept.
 
+## The model view
+
+Hold <kbd>⌥</kbd> (Alt off Apple platforms) for a moment, at any level, and
+what the model believes comes up over it; let go and it goes. Press and hold
+**MODEL** in the menu bar for the same, or tap it to keep the view up until
+you tap it again or press <kbd>Esc</kbd>. Its light is lit while the view is
+up, and a tag under the menu bar says what it is reading from: *what it
+believes, from 18 picks*, or *still guessing · 4 more picks and it fits*
+before its first fit. A key pressed while you hold <kbd>⌥</kbd> (a level key
+such as <kbd>⌥↑</kbd>) is that key, and the view doesn’t come up; in a text
+field or under a dialog <kbd>⌥</kbd> is left alone.
+
+It shows only what the engine has:
+
+- **The bank:** each row’s guess, a percentage and a bar (below), and the pool
+  in the order the model rates it, which the rows glide into and back out of.
+- **TASTE:** the halos, and the map’s TASTE side, as if you had switched the
+  toggle; dashed rings before the first fit, when there is no rating to draw.
+- **EVOLVE:** its guess for the pair on the table before you pick, on the card
+  it favours (*it guesses this · 62% · leaning*), and each card’s
+  [style](#styles-are-leanings-not-genres). The guess is the same one the line
+  after your pick reads, asked again if the model refits before you pick.
+- **PERFORM:** nothing per control yet. The engine doesn’t say which way your
+  taste leans on each control, so nothing is drawn there.
+
 ## The guess on a bank row
 
-The percentage is roughly how likely you are to pick this sound in a pair. On
-its own, a sure 80% and an unsure 80% print the same number.
+Under the model view, each bank row shows the model’s guess. The percentage is
+roughly how likely you are to pick this sound in a pair. On its own, a sure
+80% and an unsure 80% print the same number.
 
 The bar under the row tells them apart. Its bright tick is the same guess, and
 the dimmer block around it shows the doubt: a narrow block is a sure guess, a

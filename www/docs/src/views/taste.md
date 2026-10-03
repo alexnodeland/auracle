@@ -45,6 +45,11 @@ The switch at the map’s top left chooses how the sounds are shown.
   stand out. Before the first fit it shows every glow as a dashed ring, a
   guess.
 
+Holding <kbd>⌥</kbd> for [the model view](../reading-the-model.md#the-model-view)
+switches the map to its **TASTE** side while you hold it (or while **MODEL**
+is tapped on), and back to where you left the switch when it goes. While the
+view is up the switch rests, dimmed, and its tooltip says why.
+
 Size is the one people miss, and it’s the useful one. A big, dim face is a
 sound the model has no guess about. A small, bright one is a sound it’s sure
 you’d reach for. The sizes are spread over this map’s own range of doubt, and
@@ -68,8 +73,8 @@ Clicking a sound opens it too. A dotted ring marks it while it opens, and the
 green ring moves to it when it’s yours.
 
 The card’s percentage is the model’s rating after your last pick. The bank’s
-rows show the rating from the last refit, so between refits the two can
-differ.
+rows, under the model view, show the rating from the last refit, so between
+refits the two can differ.
 
 From the keyboard: Tab to the map, then the arrow keys move to the nearest
 sound in that direction, <kbd>Enter</kbd> opens it, and <kbd>Esc</kbd> closes

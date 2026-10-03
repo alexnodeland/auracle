@@ -10,6 +10,7 @@
 const { test, expect } = require("@playwright/test");
 const { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess } = require("./patch_page.js");
 const { SLOW_ENGINE } = require("./perform_budget.js");
+const { bankTab } = require("./shell");
 
 const SURE = "(a hunch|leaning|fairly sure)";
 const LINE = new RegExp(`· \\d+%( over your pool’s average)? · ${SURE}( · it may not help)?$`);
@@ -278,7 +279,7 @@ test("a guess skipped after keep as new is still skipped when the kept sound is 
   // kept sound rated 24%, opening Reese replaced it, and its row was never
   // there to click. A sound kept as new is now safe until it has been in a
   // pick (bank_kept.spec.js), but this test is about the skip, not that.
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const other = await page.locator(`#bank-list .bank-item:not([data-id="${kept}"])`).first().getAttribute("data-id");
   const tOther = await now(page);
   await page.locator(`#bank-list .bank-item[data-id="${other}"] .bi-name`).click();

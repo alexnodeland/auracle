@@ -186,8 +186,13 @@ export function createTaste(host) {
   // SOUND (false) or TASTE (true): the toggle at the map's top left. Not
   // saved, as in the prototype.
   let tasteMode = false;
+  // The model view (⌥, shell.js) drives TASTE's side of the toggle while it
+  // is up, so there is one model view, not two; the toggle comes back to
+  // where the player left it when it goes.
+  let modelView = false;
+  const tasteOn = () => tasteMode || modelView;
   let scrub = null; // the track's moment shown, an index into the history, or null for now
-  const halosOn = () => fitted() || tasteMode || scrub != null;
+  const halosOn = () => fitted() || tasteOn() || scrub != null;
 
   // The track shows once there are two moments to move between.
   const trackOn = () => history.entries.length >= 2;
@@ -316,7 +321,7 @@ export function createTaste(host) {
       const q = shownPos.get(p.id);
       if (!q) continue;
       const r = geom.mapDotRadius(isFit ? unsure(stdNow.get(p.id)) : 0.5);
-      ctx.globalAlpha = tasteMode && isFit ? 0.22 + 0.78 * (likeShown.get(p.id) ?? 0.5) : 1;
+      ctx.globalAlpha = tasteOn() && isFit ? 0.22 + 0.78 * (likeShown.get(p.id) ?? 0.5) : 1;
       drawMark(ctx, p.id, q.x, q.y, r);
       ctx.globalAlpha = 1;
       // The sound you're playing: a green ring. One on its way: dotted silk.
@@ -569,7 +574,7 @@ export function createTaste(host) {
   tog.title = words.TASTE_LABELS.togTitle;
   tog.addEventListener("click", () => {
     tasteMode = !tasteMode;
-    tog.setAttribute("aria-pressed", String(tasteMode));
+    tog.setAttribute("aria-pressed", String(tasteOn()));
     syncTasteText();
     drawMap();
   });
@@ -1520,6 +1525,21 @@ export function createTaste(host) {
     },
     /** Redraw with whatever views main now holds. */
     draw: sync,
+    /** The model view went up or down (shell.js): TASTE's side of the
+     *  toggle while it is up. */
+    setModelView(on) {
+      if (modelView === !!on) return;
+      modelView = !!on;
+      tog.setAttribute("aria-pressed", String(tasteOn()));
+      // While the view is up the map is on its TASTE side whatever the
+      // switch says, so the switch rests, and says why.
+      tog.disabled = modelView;
+      tog.title = modelView ? words.TASTE_LABELS.togByModel : words.TASTE_LABELS.togTitle;
+      if (visible === "taste") {
+        syncTasteText();
+        drawMap();
+      }
+    },
     /** A `status` reply: a pick, a star or a cut the engine took, with the
      *  ratings it left (`WasmEngine::belief`). It is kept as a moment on the
      *  track. A pair's pick (`record_duel`) also draws its arrow, from the
