@@ -135,8 +135,12 @@ test("teach it opens PERFORM on the first pick, named at once", async ({ page })
   test.setTimeout(240_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  // The app opens at PERFORM (Plan-008); a player who was last in PATCH comes
+  // back there, so the move to PERFORM is the warm start's own.
+  await page.addInitScript(() => { try { localStorage.setItem("auracle-view", "patch"); } catch (_) {} });
   await boot(page, { skipWarm: false });
   await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  await expect(page.locator(".rail-stop[data-level='patch']")).toHaveAttribute("aria-current", "location");
   const cards = page.locator(".warm-cell .warm-item");
   for (const i of [2, 5, 8]) await cards.nth(i).click();
   const pick = (await cards.nth(2).locator(".wi-name").textContent()).trim();
