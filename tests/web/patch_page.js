@@ -4,6 +4,7 @@
 // without the warm start's fit). Not a spec: `playwright.config.js` matches
 // `*.spec.js` only.
 const { expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 // The worker wrapped before main.js runs: the last reply of each type, a count
 // of each, every request posted, and every toast said. `__pw_slow` makes chosen
@@ -115,7 +116,7 @@ async function warmStartAndFit(page) {
 
 /** PATCH, with a preset open on it and its rack drawn. */
 async function openPreset(page, name) {
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });

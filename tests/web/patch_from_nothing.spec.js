@@ -92,6 +92,9 @@ test("Esc on a plate button in a new patch backs out to its plate and keeps the 
   await openPreset(page, "Reese");
   await page.locator("#patch-new-btn").click();
   await expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout: 30_000 });
+  // The name changes before the new patch's rack is drawn: the module is
+  // placed on the new rack, as the first test waits for it.
+  await expect.poll(() => kinds(page)).toEqual(["amp", "silence"]);
   await place(page, "capture");
   await expect.poll(() => kinds(page), { timeout: 30_000 }).toContain("capture");
   // The keyboard on CAPTURE's RECORD (a plate button, on the rack's walk),

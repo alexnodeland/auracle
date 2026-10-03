@@ -3,7 +3,7 @@
        outer ring swept bright: the instrument is fitting.
 
        This is a state, not a second logo. It belongs where the state is real —
-       beside a running search, the way apps/web lights the wordmark's E from
+       beside a running search, the way apps/web lights the lamp after its wordmark from
        `$("wm-lamp").classList.add("thinking")`. It must never be the favicon,
        the README lockup or the social card, because in all three the light
        would be permanently on and would therefore mean nothing.

@@ -105,7 +105,7 @@ strip in PATCH, or an offer answered in PERFORM. Then:
    last 6 picks…*. The sixth pick keeps its seven seconds to be taken back
    like any other, and the refit goes out when they’re up, or at once if you
    pick again first.
-2. The **E** of the wordmark lights while the refit runs.
+2. The amber lamp after the wordmark lights while the refit runs.
 3. When it lands, the TASTE map is redrawn, and the line reads *● it just
    learned: see what changed ▸* until your next pick.
 

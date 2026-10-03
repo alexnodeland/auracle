@@ -30,9 +30,9 @@ library). See [the bank](./bank.md).
 ### Brier skill
 
 How much better than a coin flip the model’s guesses have been. 0 is a coin
-flip, 1 is perfect, and below 0 is worse than guessing. The menu bar shows it
-(*13% sharper than chance*), and so does
-[its forecasts in LEARNING](./views/learning.md#its-forecasts).
+flip, 1 is perfect, and below 0 is worse than guessing.
+[Its forecasts in LEARNING](./views/learning.md#its-forecasts) show it
+(*13% sharper than chance*).
 
 ### Budget
 
@@ -90,7 +90,7 @@ pick), and the toast names them. There is no crossover:
 every child grows from one seed.
 
 **⚡ evolve from this** is one walk from the sound you’re playing, and counts
-as a generation of its own.
+as a generation of its own. **GENERATIONS** at the top of EVOLVE counts them.
 
 ### Guess
 
@@ -103,10 +103,10 @@ the qualities that count most.
 
 ### Job slot
 
-The place in the menu bar where long work shows while it runs: a generation
-(*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, or a refit. It has
-**STOP** where the job can be stopped. The **E** of the wordmark is lit
-exactly while it shows.
+The place in the menu bar where long work shows while it runs, just left of
+the sound you’re playing: a generation (*⚡ breeding 3/10 · about 40 s*),
+⚡ evolve from this, or a refit. It has **STOP** where the job can be stopped.
+The amber lamp after the wordmark is lit exactly while it shows.
 
 ### Keep as new
 
@@ -119,10 +119,28 @@ keeping an edit of it as new with an answer (the card, or PICK THE EDIT), or
 a cut. Its own card doesn’t count, nor do stars
 ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
+### KEYS ⋯
+
+At the right end of the keys bar, beside **VOL**, **MIDI** and **● REC**: the
+rest of what the keybed does, **HOLD**, **UNI**, **ARP** (and its settings),
+**SYNC**, **GLIDE**, **⇕ TALL**, **SPAN** and **◼ SILENCE**. It is lit while
+HOLD, UNI, ARP or SYNC is on. See [the keyboard map](./keyboard.md#the-keys-bar).
+
 ### Leans
 
 PATCH’s toggle that tints each module by which way your taste leans on its
 kind: amber toward, red away.
+
+### Levels
+
+PERFORM, PATCH, EVOLVE, TASTE and LEARNING are **levels** of one space around
+the sound you’re playing: zoom out to TASTE (the sound among all sounds) and
+LEARNING (how it learns), in to PATCH (what the sound is made of), and beside
+it to EVOLVE (what it could become). The cross at the stage’s right edge shows
+where you are; click a stop to go there, or use <kbd>⌥↑</kbd>, <kbd>⌥↓</kbd>,
+<kbd>⌥←</kbd>, <kbd>⌥→</kbd> and <kbd>⌥1</kbd>–<kbd>⌥5</kbd>
+([the keyboard map](./keyboard.md#the-levels)). The menu bar names the level
+you’re at.
 
 ### Lock
 
@@ -140,6 +158,13 @@ and pass it off as a taste in timbre.
 The 44 numbers the model hears each sound through: 18 of the standard render’s
 sound, and 26 counts of how the patch is built. **If a taste of yours doesn’t
 show in these, it can’t be learned.**
+
+### Menu bar
+
+The row across the top: the wordmark and its lamp, the level you’re at and
+what it is, the film of that level, the job slot while long work runs, the
+sound you’re playing (its face, its name and ▶, which is <kbd>Space</kbd>),
+**TAUGHT**, and **?** and **⋯**.
 
 ### Module, module rail
 
@@ -220,7 +245,7 @@ edited sound again.
 
 The model fitting again from everything you have taught it: a few seconds of
 work, off the audio thread, every sixth pick. Between refits each answer is
-folded in at once. The **E** of the wordmark lights while a refit runs, and
+folded in at once. The amber lamp after the wordmark lights while a refit runs, and
 EVOLVE’s line says *● learning from your last 6 picks…* until it lands, then
 *● it just learned*.
 

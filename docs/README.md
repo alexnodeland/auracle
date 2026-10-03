@@ -62,6 +62,7 @@ plugins work on it.
 | [014](decisions/014-the-films-sound.md) | The films' sound: one key, one room, the instrument on top, no cues |
 | [015](decisions/015-audio-in.md) | Audio in: one source node, its uses by patching, measured with an audition clip |
 | [016](decisions/016-space-plays-everywhere.md) | Space plays the sound you're playing, in every view (supersedes ADR-009's Space for PERFORM's pads) |
+| [017](decisions/017-the-levels-keys.md) | The levels' keys: ⌥ and an arrow, ⌥1–5, hold ⌥, ⌘K (amends ADR-009's ⌥1–4 for views) |
 
 ## Proposals
 
@@ -87,6 +88,7 @@ plugins work on it.
 | [005](plans/005-the-sound-at-the-centre.md) | active | RFC-006, ADR-012 (the views rebuilt as one space around the sound in hand) |
 | [006](plans/006-the-sound-of-the-films.md) | active | RFC-007, ADR-014 (the film tools, the cast and the re-mix) |
 | [007](plans/007-audio-in.md) | active | RFC-008, ADR-015 (audio in, from quiver to the plate) |
+| [008](plans/008-the-shell.md) | accepted | RFC-006, ADR-017 (Plan-005 task 2: the shell, the levels and ⌘K, in four PRs) |
 
 ## Notes
 

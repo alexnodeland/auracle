@@ -11,6 +11,7 @@
 //
 // Seeded (the films' own Math.random), so the session is the same run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -62,7 +63,7 @@ test("a ⚡ child joins the bank's New group, as a generation's children do", { 
 
   // Six picks and their refit: a taste to breed toward.
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
     await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
     await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
@@ -72,7 +73,7 @@ test("a ⚡ child joins the bank's New group, as a generation's children do", { 
 
   // ⚡ from the sound on the bench, until one breeds a child (a walk can
   // come back with nothing; each refusal says why, never "its parent").
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   let landed = null;
   for (let attempt = 0; attempt < 4 && !landed; attempt++) {
     await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });

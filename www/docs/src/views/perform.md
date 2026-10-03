@@ -505,7 +505,7 @@ where it is, and the line reads *frozen*. Tap again to release it.
 | **NEXT** | What OFFER reads while B holds an offer, with *passes on B* under it. It passes on B (B empties, BLEND glides home) and brings the next, which has been growing meanwhile |
 | **TAKE** | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
 | **PEEK** | Hold to hear the offer alone |
-| **FREEZE** | Stops Wander where it is, and its line reads *frozen*. The same as tapping the WANDER dial; not the dock’s **HOLD**, which latches notes |
+| **FREEZE** | Stops Wander where it is, and its line reads *frozen*. The same as tapping the WANDER dial; not **HOLD** in the keys bar’s **KEYS ⋯**, which latches notes |
 
 KEEP changes the sound you’re playing, not the bank. To keep the result as a
 sound of its own, press **KEEP AS NEW** in [PATCH](./play.md). Until a sound

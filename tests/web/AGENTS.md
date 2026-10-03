@@ -77,5 +77,10 @@ waits on a fixed timer is better made faster than tagged.
   ([`testing.md` § Rules](../../docs/architecture/testing.md#rules)).
 - **Seed and skip the warm start deliberately**: `boot(page, { warmed })`
   helpers exist in the newer specs; reuse them rather than clicking through.
+- **Go to a level with `goLevel(page, level)`** and into KEYS ⋯ with
+  `openKeys(page)`, from `shell.js`. The app opens at PERFORM (Plan-008), so a
+  spec about PATCH goes there first, and waits for the state it needs (the
+  rack drawn, a pair named), not for a name or a time: PERFORM's first
+  measurement runs at boot and moves when the rest lands.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).

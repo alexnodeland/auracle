@@ -16,6 +16,7 @@
 // The engine worker is reached by wrapping `Worker` before main.js runs, to
 // see which deals were asked for ahead. Sessions are seeded.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -71,7 +72,7 @@ async function boot(page) {
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
   return errs;
 }

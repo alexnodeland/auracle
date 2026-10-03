@@ -11,6 +11,7 @@
 // runs, as the other PERFORM specs do, and keeps every explain request and
 // reply, so what a figure says can be held against what the worker posted.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -89,11 +90,11 @@ async function boot(page) {
 }
 
 async function openOnPerform(page, name) {
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
@@ -161,7 +162,7 @@ test("each control on the panel opens its figure, by ?, by its chip, and from th
   await page.keyboard.press("ArrowRight");
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Bright · what it does");
   // A view change puts it away: it belongs to where it was asked.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator(".xp.on")).toHaveCount(0);
   expect(errs).toEqual([]);
 });

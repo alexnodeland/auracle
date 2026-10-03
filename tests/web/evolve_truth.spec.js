@@ -22,6 +22,7 @@
 // `Worker` before main.js runs. Sessions are seeded (the films' own
 // Math.random), so the pool and the sides are the same run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -167,7 +168,7 @@ async function expectNotDealtSinceCut(page, cut) {
 
 async function toEvolve(page) {
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
   await expect(page.locator("#name-a .dn-id")).toBeAttached({ timeout: 30_000 });
 }
@@ -181,7 +182,7 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
   const pageErrors = await boot(page);
   // An edit in PATCH, so there is something edit undo *could* take back.
   await page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const knob = page.locator("#rack-svg [data-addr]").first();
   await expect(knob).toBeAttached({ timeout: 30_000 });
   await knob.focus();
@@ -202,7 +203,7 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
   expect(await page.locator("#toasts .toast").count()).toBe(1);
 
   // Back in PATCH the edit is still there, and ⌘Z there does undo it.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(knob).toHaveAttribute("aria-valuetext", edited);
   await page.keyboard.press("Control+z");
   await expect.poll(() => count(page, "sent:edit_set_tree"), { timeout: 10_000 }).toBeGreaterThan(restores);
@@ -269,7 +270,7 @@ test("the sixth pick can be taken back, and it just learned only once fitted has
   await expect(page.locator("#taste-crt")).toBeVisible();
 
   // The next pick ends it.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await pick(page, "a");
   await expect(copy).toContainText("5 more picks");
   await expect(page.locator("#teach-pips i.lit")).toHaveCount(1);
@@ -485,21 +486,22 @@ test("a sound cut while the table waits on its fourth deal is not put up by it",
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("after clicking the EVOLVE tab, → picks", async ({ page }) => {
+test("after clicking EVOLVE's stop on the rail, → picks", async ({ page }) => {
   const pageErrors = await boot(page);
-  await toEvolve(page); // arrives by a pointer click on the tab
+  await toEvolve(page); // arrives by a pointer click on its stop
   const focus = await page.evaluate(() => document.activeElement && (document.activeElement.id || document.activeElement.tagName));
-  console.log(`focus after the tab click: ${focus}`);
+  console.log(`focus after the stop's click: ${focus}`);
   expect(focus).toBe("view-evolve");
   const n0 = await picks(page);
   await page.keyboard.press("ArrowRight");
   expect(await picks(page)).toBe(n0 + 1);
   await expect(page.locator("#view-evolve")).toBeVisible();
   await expect(page.locator("#toasts .toast-msg")).toContainText("Picked ");
-  // A keyboard user on the tablist still walks the tabs with the arrows.
-  await page.locator('.viewtab[data-view="evolve"]').focus();
+  // A keyboard user on the rail walks the levels with the arrows: from
+  // EVOLVE, → goes back to PERFORM, and is not a pick.
+  await page.locator('.rail-stop[data-level="evolve"]').focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.locator("#view-taste")).toBeVisible();
+  await expect(page.locator("#view-perform")).toBeVisible();
   expect(await picks(page)).toBe(n0 + 1);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
@@ -507,7 +509,7 @@ test("after clicking the EVOLVE tab, → picks", async ({ page }) => {
 test("opening a patch is not announced unless it kept you waiting", async ({ page }) => {
   const pageErrors = await boot(page);
   await toEvolve(page);
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const mark = await toastMark(page);
   const rows = page.locator("#bank-list .bank-item");
   for (const i of [1, 2]) {

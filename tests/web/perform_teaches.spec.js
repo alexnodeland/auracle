@@ -9,6 +9,7 @@
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const budget = require("./perform_budget.js");
 
 // How long an offer takes to grow is the renders it is made of (about twenty
@@ -32,7 +33,7 @@ test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow"
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(1500);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   // Until PERFORM names the preset, "controls reach" may be the previous
   // patch's (the first pool patch lands on the bench at boot).
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });

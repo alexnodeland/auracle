@@ -12,6 +12,7 @@
 // The spec watches the page's requests to the engine worker and its replies
 // by wrapping `Worker` before `main.js` runs, as the other PERFORM specs do.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -52,7 +53,7 @@ async function openOnPerform(page, name) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
@@ -143,7 +144,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   // its own is still out when the order changes.
   await expect(page.locator(".pf-knob.waiting")).toHaveCount(0, { timeout: 150_000 });
   await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 150_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible({ timeout: 30_000 });
   const hit = await page.evaluate(() => {
     const g = [...document.querySelectorAll("#rack-svg g[data-addr]")].find((g) => {
@@ -160,7 +161,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   for (let i = 1; i <= 8; i++) await page.mouse.move(hit.x, hit.y - i * 5);
   await page.mouse.up();
   await expect.poll(() => page.evaluate(() => window.__benched || 0), { timeout: 30_000 }).toBeGreaterThan(0);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await page.locator(".pf-arrange").click();
   const asked = () => page.evaluate(() => window.__sent.filter((m) => m.type === "perform_wire").length);
   await expect.poll(async () => { const a = await asked(); await page.waitForTimeout(500); return (await asked()) === a; }, { timeout: 30_000 }).toBe(true);
@@ -184,7 +185,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   page.on("pageerror", (e) => errs.push(e.message));
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   if (await page.locator("#warm-skip").isVisible()) await page.locator("#warm-skip").click();
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect.poll(() => deckNames(page), { timeout: 30_000 }).toEqual(arranged);
   expect(errs).toEqual([]);
 });

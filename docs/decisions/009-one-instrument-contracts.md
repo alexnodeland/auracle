@@ -14,7 +14,8 @@ superseded_by: null
 
 Accepted. [ADR-016](016-space-plays-everywhere.md) supersedes one point:
 Space plays the sound you're playing in every view, and is not a PERFORM pad
-key.
+key. [ADR-017](017-the-levels-keys.md) amends another: the views are levels,
+reached with ⌥ and an arrow and ⌥1–5, in place of ⌥1–4.
 
 *Note (2026-10-02):* ⇧F in PERFORM opens stage mode, replacing F's accent
 there (Shift with a note key plays it harder); in every other view ⇧F is

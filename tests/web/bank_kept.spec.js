@@ -14,6 +14,7 @@
 // `Worker` before main.js runs. Sessions are seeded (the films' own
 // Math.random), so the pool is the same run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20261002 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -109,7 +110,7 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   // Open the sound the model rates lowest of those it may replace, and save
   // it: the edit kept from it then has nothing beneath it but sounds that
   // rate higher.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="pool"]').click();
   const lowest = replaceable(await state(page))[0];
   const tOpen = await now(page);
@@ -178,7 +179,7 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   expect(said.some((t) => keptName && t.includes(`it could: ${keptName}`)), "a toast said the kept sound was replaced").toBe(false);
 
   // Pointing at EVOLVE POOL marks what may be replaced, never the kept sound.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await page.locator("#evolve-wrap").hover();
   const may = () => page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)));
   await expect.poll(async () => (await may()).length, { timeout: 30_000 }).toBeGreaterThan(0);

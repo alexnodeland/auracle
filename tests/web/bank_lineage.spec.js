@@ -24,6 +24,7 @@
 // is posted to main.js as the worker would post it. Sessions are seeded (the
 // films' own Math.random), so the pool is the same run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -150,7 +151,7 @@ async function boot(page) {
 async function taught(page) {
   const pageErrors = await boot(page);
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
     await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
     await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
@@ -223,7 +224,7 @@ async function landChild(page, child, { seed, generation, index = 0, reason = nu
 async function pooled(page) {
   const pageErrors = await boot(page);
   await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.status, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#evolve-wrap")).toBeVisible();
   return pageErrors;
 }
@@ -512,11 +513,11 @@ test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound i
   // and nothing else.
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });
   await page.locator("#rack-evolve").click();
   const seedId = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "sent:refine_from").pop().id);
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await page.locator("#evolve-wrap").hover();
   // Read the marks against the ratings main.js holds as it draws them.
   const read = () => page.evaluate(() => ({

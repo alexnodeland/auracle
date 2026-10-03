@@ -20,6 +20,7 @@
 // wrapping `Worker` before main.js runs. Sessions are seeded (the films' own
 // Math.random), so the pool and the sides are the same run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -111,7 +112,7 @@ const cardIds = (page) =>
 
 async function toEvolve(page) {
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
   // The names are painted from the bank's rows; wait for real ones.
   await expect(page.locator("#name-a .dn-id")).toBeAttached({ timeout: 30_000 });
@@ -144,6 +145,10 @@ test("TAUGHT counts a pick at once, ⌘Z takes it back, and the lane names the l
   let before = 0;
   for (let i = 0; i < 3; i++) {
     await expect(chooseA).toBeEnabled();
+    // A pair dealt from sounds still arriving shows their ids until the bank
+    // names them (the app opens at PERFORM, whose first measurement goes
+    // before the rest of the fill): the third pick is read once it's named.
+    if (i === 2) await expect.poll(async () => (await cardNames(page)).some((n) => /^#\d+$/.test(n)), { timeout: 60_000 }).toBe(false);
     const [a, b] = await cardNames(page);
     if (i === 2) {
       third = `Picked ${a} over ${b}.`;

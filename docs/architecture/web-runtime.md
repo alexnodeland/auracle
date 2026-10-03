@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-10-02
-related_adrs: [1, 2, 7, 12, 15]
+related_adrs: [1, 2, 7, 12, 15, 17]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -16,8 +16,8 @@ history of each choice.
 ## Overview
 
 ```text
- main thread (main.js, perform.js, midi.js, booth.js)
-   │  views, bank, rack SVG, toasts, persistence, the bench lane
+ main thread (main.js, shell.js, perform.js, midi.js, booth.js)
+   │  the levels, bank, rack SVG, toasts, persistence, the bench lane
    │
    ├── postMessage ──► engine worker (worker.js + WasmEngine)
    │                      lanes: now │ soon │ later ; long jobs breathe
@@ -39,6 +39,44 @@ history of each choice.
   [The farm on demand](#the-farm-on-demand)).
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
   voice per note, allocation-free per quantum, no clock.
+
+## The levels
+
+PERFORM, PATCH, EVOLVE, TASTE and LEARNING are levels of one space
+(Plan-008, RFC-006). `shell.js` (`createShell(host)`, created at the top of
+`main.js`) owns where you are; the rules are `levels.js`, pure and
+unit-tested (`tests/levels.test.mjs`):
+
+- **`show(level, {chosen, focus})`** shows one level's section (the others
+  `.hidden`), sets `body[data-level]`, names it in the header's `#where` (a
+  polite live region), lights its stop on the rail (`aria-current=location`),
+  saves it as `auracle-view` and puts it in the address's hash
+  (`history.replaceState`, so Back still leaves the instrument). Then it calls
+  `host.levelChanged(prev, next, {chosen})`, where main keeps every side effect
+  a move has: disarming a module in hand, taking back a waiting ▶, closing
+  Compare and a figure, PERFORM's `show`/`hide`, PATCH's `refitRack` and
+  `patchView.shown`/`hidden`, the toast lane, the film chip (a `chosen` move
+  outranks the tour's note) and TASTE's `setView`. `showView(name)` is a
+  one-line wrapper the app's own moves use (after the warm start, PERFORM's
+  "show me the knob", booth mode).
+- **The start level** is the hash if it names a level, else the saved one
+  (a saved `"play"`, PATCH's name before the levels, opens PATCH), else
+  PERFORM (`startLevel`). PERFORM's controls arrive with `perform.js`, which
+  shows them when it is built.
+- **The keys** (ADR-017) are taken in the capture phase, before any control's
+  own handler: ⌥↑/⌥↓ step along the axis (from EVOLVE, measured from
+  PERFORM), ⌥← goes to EVOLVE and ⌥→ back, ⌥1–5 by `event.code`. A text field
+  keeps them (`typing`), and so does any modal dialog showing (`host.blocked`:
+  a connected, visible `[aria-modal="true"]`, which is the warm start, the
+  commit pair, the ? card, PERFORM's stage mode and explain's lesson); a
+  non-modal panel does not. ⌥ alone is `preventDefault`ed on keydown and
+  keyup, or Firefox and Edge on Windows open the window's menu. The wordmark's
+  click is a move like the others (`show("perform")`, the address replaced),
+  its `href` kept for a middle click.
+  A focused stop walks the rail with the plain arrows and Home/End, taken on
+  the rail so EVOLVE's ←/→ never hear them.
+- **A move is instant.** The morph that carries the held sound's face from one
+  level to the next is PR C, and so is each level's `anchor()`.
 
 ## The worker's lanes
 
@@ -564,10 +602,13 @@ through one ordered lane in `main.js`:
   the bench (`toggleAudition`): PERFORM and EVOLVE play the edited patch and
   wait for an edit in flight as PATCH does, and with ▶ disabled Space says
   why rather than playing the bank's render of the patch from before any
-  edit. Outside PATCH, where ▶ is out of sight, the dock's label says Space
-  waits (`paintLiveLabel`: "▶ waiting for the edit…" in `#live-wait`, a
-  polite live region over the name, outside its ellipsis) within the
-  same frame as the press.
+  edit. The menu bar's ▶ beside the sound in hand (`#inhand-play`) is that
+  same press, and wears the rack's waiting ring at every level; outside PATCH,
+  where the rack's ▶ is out of sight, the sound in hand also says Space waits
+  (`paintLiveLabel`: "▶ waiting for the edit…" in `#live-wait`, a polite live
+  region in the name's place, outside its ellipsis) within the same frame as
+  the press. A bench phrase is played under the key `"inhand"`, so both ▶s
+  light while it sounds (`data-hear`).
 - Space is the transport even with a drawn control focused (a rack knob, a
   PERFORM control, the XY pad): only a native button, or a control whose own
   handler used the key (`defaultPrevented`), keeps it. A rack setting's chip
@@ -851,11 +892,13 @@ the voices' input in the worklet, and the clip in the engine.
 
 ## The job slot
 
-Long work has one home, in the menu bar beside GENERATIONS: "⚡ breeding
-3/10 · about 40 s", "⚡ evolving Glass Pad", "refitting your taste map…",
-with **stop** where the job can be stopped. It shows only while such a job
-runs, and the wordmark's E is lit exactly while it shows: both are drawn from
-`lampJobs` (`lampOn`/`lampOff`, one count per job kind) in `renderJobSlot`.
+Long work has one home, in the menu bar just left of the sound in hand:
+"⚡ breeding 3/10 · about 40 s", "⚡ evolving Glass Pad", "refitting your
+taste map…", with **stop** where the job can be stopped. It shows only while
+such a job runs, and the round lamp after the wordmark (`#wm-lamp`) is lit
+exactly while it shows: both are drawn from `lampJobs` (`lampOn`/`lampOff`,
+one count per job kind) in `renderJobSlot`. GENERATIONS (`#gen-count`) is on
+EVOLVE's cap line.
 EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
@@ -870,7 +913,7 @@ and when the window closes its button is removed. Read the comment above
 
 A teaching act with an undo window (a pick from EVOLVE or PATCH's strip, a
 cut) registers how to take itself back (`holdTakeBack` in `main.js`) and
-leaves when its window closes. ⌘Z takes back the newest one in any view; only
+leaves when its window closes. ⌘Z takes back the newest one at any level; only
 with none left does it reach the bench's edit undo, and only in PATCH.
 Elsewhere it changes nothing and says so. The sixth pick's refit is sent when
 that pick commits (`settleFit`), so it keeps its window too.

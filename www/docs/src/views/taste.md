@@ -12,7 +12,7 @@ one level up, in [LEARNING](./learning.md).
 
 1. Make a few picks in [EVOLVE](./evolve.md). The glows light once the model
    first fits: at the sixth pick, or right after the warm start.
-2. Open **TASTE**.
+2. Go to **TASTE**: its stop above PERFORM’s, or <kbd>⌥↑</kbd> from PERFORM.
 3. Point at a sound to see its card, and click it to open it.
 
 The line under the title says what the map is drawn from: *From 18 picks.*,

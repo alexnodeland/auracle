@@ -40,6 +40,7 @@
 // The spec reaches the worker by wrapping `Worker` before `main.js` runs, as
 // perform_next.spec.js does.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const patchPage = require("./patch_page.js");
 const budget = require("./perform_budget.js");
 
@@ -83,7 +84,7 @@ async function openOnPerform(page, name) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }

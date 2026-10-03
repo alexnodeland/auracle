@@ -17,6 +17,7 @@
 // a fix. The engine worker is reached the way failure_flows.spec.js reaches it:
 // by wrapping `Worker` before main.js runs.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -62,7 +63,7 @@ test("a player's ▶ is answered while PERFORM is still listening to a patch", a
   page.on("pageerror", (e) => errs.push(e.message));
   await boot(page, { shipped: false });
   await openPreset(page, "Glass Pad");
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   // A fresh profile has no wiring cached (and the shipped one is blocked):
   // the measurement is thirty-odd renders. Ask for a render of another patch
@@ -134,8 +135,12 @@ test("teach it opens PERFORM on the first pick, named at once", async ({ page })
   test.setTimeout(240_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  // The app opens at PERFORM (Plan-008); a player who was last in PATCH comes
+  // back there, so the move to PERFORM is the warm start's own.
+  await page.addInitScript(() => { try { localStorage.setItem("auracle-view", "patch"); } catch (_) {} });
   await boot(page, { skipWarm: false });
   await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  await expect(page.locator(".rail-stop[data-level='patch']")).toHaveAttribute("aria-current", "location");
   const cards = page.locator(".warm-cell .warm-item");
   for (const i of [2, 5, 8]) await cards.nth(i).click();
   const pick = (await cards.nth(2).locator(".wi-name").textContent()).trim();
@@ -143,7 +148,7 @@ test("teach it opens PERFORM on the first pick, named at once", async ({ page })
   // The view is PERFORM at once, and it names the pick — as the patch on its
   // way, or as the patch under the keys — never another patch beside
   // "opening the patch you picked…".
-  await expect(page.locator(".viewtab[data-view='perform']")).toHaveAttribute("aria-selected", "true", { timeout: 2_000 });
+  await expect(page.locator(".rail-stop[data-level='perform']")).toHaveAttribute("aria-current", "location", { timeout: 2_000 });
   await expect
     .poll(async () => {
       const name = (await page.locator(".pf-name").textContent()).trim();
@@ -163,7 +168,7 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   page.on("pageerror", (e) => errs.push(e.message));
   await boot(page);
   await openPreset(page, "Glass Pad");
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   await page.waitForSelector(".pf-status:has-text('controls reach')", { timeout: 120_000 });
   const reachBefore = await page.evaluate(() => [0, 1, 2, 3, 4, 5].filter((i) => !document.querySelector(`.pf-knob[data-i="${i}"]`).classList.contains("unwired")).length);

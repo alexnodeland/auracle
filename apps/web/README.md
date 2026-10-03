@@ -1,9 +1,19 @@
 # Auracle web app
 
-A full instrument (Animoog-Z-style app frame): menu bar with three views,
-patch-bank sidebar, and a **playable keyboard** docked at the bottom — the
+A full instrument in one frame (Plan-008, to the prototype in
+`docs/notes/vision-2026-09/prototype/`): a menu bar (the wordmark and its
+lamp, the level you're at, the film chip, the job slot, the sound in hand with
+its face and ▶, TAUGHT, ? and ⋯), the bank on the left, the stage with the
+levels at its right edge, and a **playable keyboard** docked at the bottom
+(KEYS and the octave, the keybed, and VOL, MIDI, ● REC and KEYS ⋯) — the
 current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;
-everything is visible at once. The whole session **autosaves to IndexedDB**
+everything is visible at once.
+
+PERFORM, PATCH, EVOLVE, TASTE and LEARNING are **levels** of one space around
+the sound in hand (`shell.js`, `levels.js`): TASTE zoomed out, PATCH zoomed
+in, LEARNING past TASTE, EVOLVE beside PERFORM. The rail's stops go there, as
+do ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 (ADR-017). It opens at PERFORM, or at the level in
+the address's hash, or the one you were at last. The whole session **autosaves to IndexedDB**
 (bank, names, taste history, settings) and restores on reload.
 
 The sidebar is **three banks**, not one list with filters: **pool** (the
@@ -103,10 +113,10 @@ and grid size are independent on purpose.
 Playing: on-screen keys (mouse/touch with glissando), computer keys
 `a w s e d f t g y h u j k o l p ; '` (Ableton layout, `z`/`x` octave), or a
 **MIDI keyboard** (velocity, pitch bend, sustain pedal). HOLD latches,
-◼ panics; the dock also has an **arpeggiator** (pattern / division / BPM /
-gate / swing), **unison**, **glide**, and **● rec** (bounces your playing to a
-WAV). ⌘Z first takes back a pick or cut still inside its seven seconds, in any
-view; after that, ⌘Z / ⇧⌘Z undo and redo workbench edits in PATCH only.
+◼ panics; KEYS ⋯ at the dock's right end also has an **arpeggiator**
+(pattern / division / BPM / gate / swing), **unison**, **sync** and **glide**,
+and beside it **● rec** bounces your playing to a WAV. ⌘Z first takes back a
+pick or cut still inside its seven seconds, at any level; after that, ⌘Z / ⇧⌘Z undo and redo workbench edits in PATCH only.
 Press `?` in-app for the full map.
 
 **Keyboard and screen readers.** Tab reaches the bank as a single stop (arrows
@@ -342,7 +352,8 @@ to a pinned `role="alert"` strip that stays until resolved.
   glyphs get an invisible `fingerPad`, created only for coarse pointers, so
   desktop hit areas are byte-for-byte what they were.
 - **Keybed size**: `⇕ tall` is height (the dock grows via `--keybar-h`, the
-  deck re-zooms into what's left); `keys` is width, 1–4 octaves. Both persist
+  deck re-zooms into what's left); `span` is width, 1–4 octaves. Both are in
+  KEYS ⋯. Both persist
   in `perf`. The width defaults by input device — three octaves for a mouse,
   two for a finger — and the narrow sizes anchor on the computer keymap's
   octave rather than an octave below it.
@@ -375,8 +386,8 @@ to a pinned `role="alert"` strip that stays until resolved.
 - All feedback surfaces emit into one observation stream; the posterior
   re-fits **at most** every 6 duels, and only when the engine's own
   `status().needs_refit` says the between-fit importance updates have run out
-  of road — signalled by the wordmark's final **E**, which is the "listening"
-  light rather than a separate LED. The duel pair's
+  of road — signalled by the round lamp after the wordmark, the "listening"
+  light, which the job slot beside the sound in hand names. The duel pair's
   audio is requested ahead of the fit, so the cards are always audible while
   it runs. Profiles export the log **with** its standardizer.
 

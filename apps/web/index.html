@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=71">
+<link rel="stylesheet" href="style.css?b=72">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -48,7 +48,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=135";
+    s.src = "main.js?b=136";
     document.head.appendChild(s);
   }
 })();
@@ -72,182 +72,188 @@
 
   <!-- ===================== menu bar ===================== -->
   <header class="menubar">
-    <!-- The final E is split out because it is also the "model is thinking"
-         light — see `.wordmark b` in style.css and `wm-lamp` in main.js. -->
-    <div class="wordmark">AURACL<b id="wm-lamp">E</b></div>
-    <nav class="viewtabs" role="tablist" aria-label="Views">
-      <button class="viewtab" data-view="perform" role="tab" aria-selected="false" aria-controls="view-perform" title="Play the sound: named controls, wander, and pads">perform</button>
-      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules, and knobs">patch</button>
-      <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
-      <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
-      <button class="viewtab" data-view="learning" role="tab" aria-selected="false" aria-controls="view-learning" title="How it learns your taste">learning</button>
-    </nav>
-    <div class="menubar-right">
-      <!-- The film of the view you are in (main.js, pointFilmChip). The first
-           time you open a view it says so in words, then it folds to a small
-           ▶ film. publish.py writes the published films' lengths into
-           data-films and un-hides it; until a view's film is out, that view
-           shows nothing, and nothing asks the site whether it exists. -->
-      <div class="film-chip hidden" id="film-chip" data-films="{}">
-        <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
-        <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
+    <!-- The wordmark and its lamp. The lamp is lit exactly while the model
+         works (a generation, ⚡, a refit): main.js, `renderJobSlot`, which
+         also gives it the job's words as its title. The word goes to
+         PERFORM, the level at rest. -->
+    <a class="brand" href="./#perform" aria-label="Auracle"><span class="word">AURACLE</span><span class="lamp" id="wm-lamp"></span></a>
+    <!-- Where you are: the level's name and what it is (shell.js). A polite
+         live region, so a level key says where it went. -->
+    <div class="where" id="where" aria-live="polite"><span class="where-n">Perform</span><span class="where-d">the sound, under your hands</span></div>
+    <!-- The film of the level you are at (main.js, pointFilmChip). The first
+         time you open a level it says so in words, then it folds to a small
+         ▶ film. publish.py writes the published films' lengths into
+         data-films and un-hides it; until a level's film is out, that level
+         shows nothing, and nothing asks the site whether it exists. -->
+    <div class="film-chip hidden" id="film-chip" data-films="{}">
+      <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
+      <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
+    </div>
+    <!-- The job slot: long work, only while it runs (a generation, ⚡ evolve
+         from this, a refit), with stop where it can be stopped. Between the
+         level's name and the sound in hand, so at rest the bar is the
+         mock's. Not a live region: its estimate changes every second. -->
+    <div class="job-slot hidden" id="job-slot">
+      <span class="job-fill" id="job-fill" aria-hidden="true"></span>
+      <span class="job-text mono" id="job-text"></span>
+      <button class="job-stop hidden" id="job-stop" type="button">stop</button>
+    </div>
+    <!-- The sound in hand: its face, its name (what the keys play), and ▶,
+         which is Space (ADR-016): the patch as it stands, waiting for an
+         edit still on its way, with ▶'s dotted ring and the wait said in
+         the name's place (main.js, paintLiveLabel; `#live-wait` is a polite
+         live region of its own, so the name's ellipsis cannot clip it). -->
+    <div class="inhand" role="group" aria-label="The sound in hand">
+      <span class="inhand-face" id="inhand-face"></span>
+      <div class="live-slot">
+        <div class="live-label" id="live-label">no sound</div>
+        <div class="live-wait mono" id="live-wait" role="status" aria-live="polite"></div>
       </div>
-      <!-- TAUGHT: everything it learned from (picks, stars and cuts), its
-           tooltip split by kind (main.js, renderTaught). -->
-      <span class="counter" id="taught" title="0 picks · 0 stars · 0 cuts"><span class="counter-label">taught</span> <span id="duel-count">0</span></span>
-      <!-- Named in full: "gen" beside "taught" said what it counted only in
-           its tooltip. -->
-      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
-      <!-- The job slot: long work, only while it runs — a generation, ⚡
-           evolve from this, a refit — with stop where it can be stopped. The
-           wordmark's E is lit exactly while this is showing (main.js,
-           renderJobSlot). -->
-      <!-- Not a live region: its estimate changes every second. -->
-      <div class="job-slot hidden" id="job-slot">
-        <span class="job-fill" id="job-fill" aria-hidden="true"></span>
-        <span class="job-text mono" id="job-text"></span>
-        <button class="job-stop hidden" id="job-stop" type="button">stop</button>
+      <button class="inhand-play" id="inhand-play" type="button" data-hear="inhand" title="Play · Space" aria-label="Play the sound in hand" disabled><svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6.2v11.6l9.3-5.8z"/></svg><svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.6"/></svg></button>
+    </div>
+    <!-- TAUGHT: everything it learned from (picks, stars and cuts), its
+         tooltip split by kind (main.js, renderTaught). -->
+    <span class="counter taught" id="taught" title="0 picks · 0 stars · 0 cuts"><span class="counter-label">taught</span> <span id="duel-count">0</span></span>
+    <!-- ? and ⋯ hold the rightmost slots until the ⌘K list takes in what they
+         hold (Plan-008 PR D). -->
+    <button id="help-open" class="iconbtn" type="button" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
+    <div class="ovf">
+      <button id="ovf-btn" class="iconbtn" aria-haspopup="menu" aria-expanded="false" title="Files, your taste &amp; help" aria-label="More: files, your taste, and help">⋯</button>
+      <div class="ovf-menu hidden" id="ovf-menu" role="menu">
+        <button id="export-btn" class="ovf-item" role="menuitem">Download your taste</button>
+        <label class="ovf-item" role="menuitem" tabindex="0">Open a taste file…<input id="import-input" type="file" accept=".json" hidden></label>
+        <div class="ovf-sep"></div>
+        <button id="patch-export-btn" class="ovf-item" role="menuitem">Download this patch</button>
+        <button id="image-btn" class="ovf-item" role="menuitem">Download as a picture…</button>
+        <!-- One import for all three: the .json sidecar, and the .png/.svg
+             that carry the very same sidecar inside them. There is no second
+             "import an image" route because there is no second kind of
+             file — an exported picture *is* an exported patch. -->
+        <label class="ovf-item" role="menuitem" tabindex="0">Open a patch file…<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
+        <div class="ovf-sep"></div>
+        <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyzer…</button>
+        <div class="ovf-sep"></div>
+        <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
+        <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset your taste…</button>
+        <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget">Show measurements</button>
+        <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
+        <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor’s taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
+        <div class="ovf-sep"></div>
+        <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
+        <a id="films-link" class="ovf-item" role="menuitem" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener">Watch the films <span aria-hidden="true">↗</span></a>
       </div>
-      <span class="skill mono" id="skill" title="How much sharper than a coin flip its guesses have been (Brier skill). Blank until it has guessed something."></span>
-      <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help: keyboard map and gestures">?</button>
-      <div class="ovf">
-        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, your taste &amp; help" aria-label="More: files, your taste, and help">⋯</button>
-        <div class="ovf-menu hidden" id="ovf-menu" role="menu">
-          <button id="export-btn" class="ovf-item" role="menuitem">Download your taste</button>
-          <label class="ovf-item" role="menuitem" tabindex="0">Open a taste file…<input id="import-input" type="file" accept=".json" hidden></label>
-          <div class="ovf-sep"></div>
-          <button id="patch-export-btn" class="ovf-item" role="menuitem">Download this patch</button>
-          <button id="image-btn" class="ovf-item" role="menuitem">Download as a picture…</button>
-          <!-- One import for all three: the .json sidecar, and the .png/.svg
-               that carry the very same sidecar inside them. There is no second
-               "import an image" route because there is no second kind of
-               file — an exported picture *is* an exported patch. -->
-          <label class="ovf-item" role="menuitem" tabindex="0">Open a patch file…<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
-          <div class="ovf-sep"></div>
-          <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyzer…</button>
-          <div class="ovf-sep"></div>
-          <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
-          <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset your taste…</button>
-          <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM’s controls in their tooltips (purity, reach in σ, the measured halves, the knob gains), and show the engine’s own bookkeeping: ids, topology signatures, and the full structural budget">Show measurements</button>
-          <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
-          <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor’s taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
-          <div class="ovf-sep"></div>
-          <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
-          <a id="films-link" class="ovf-item" role="menuitem" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener">Watch the films <span aria-hidden="true">↗</span></a>
+      <!-- The scope's own panel. It hangs off the same ⋯ the rest of the
+           app's settings do rather than growing a second gear icon on the
+           rack, and everything in it is persisted: a scope you have to
+           re-aim on every reload is a scope you stop configuring. -->
+      <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
+        <div class="sp-head">
+          <span class="sp-title">scope &amp; analyzer</span>
+          <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
         </div>
-        <!-- The scope's own panel. It hangs off the same ⋯ the rest of the
-             app's settings do rather than growing a second gear icon on the
-             rack, and everything in it is persisted: a scope you have to
-             re-aim on every reload is a scope you stop configuring. -->
-        <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyzer settings">
-          <div class="sp-head">
-            <span class="sp-title">scope &amp; analyzer</span>
-            <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
-          </div>
-          <div class="sp-grid">
-            <label class="sp-row"><span>mode</span>
-              <select id="sp-mode">
-                <option value="off">off</option>
-                <option value="scope">waveform</option>
-                <option value="spectrum">spectrum</option>
-              </select></label>
-            <label class="sp-row"><span>tap</span>
-              <select id="sp-tap">
-                <option value="pre">pre-master</option>
-                <option value="post">post-master</option>
-              </select></label>
-            <label class="sp-row"><span>fft size</span>
-              <select id="sp-fft">
-                <option value="512">512</option>
-                <option value="1024">1024</option>
-                <option value="2048">2048</option>
-                <option value="4096">4096</option>
-              </select></label>
-            <label class="sp-row"><span>window</span>
-              <select id="sp-smooth">
-                <option value="0">none</option>
-                <option value="0.35">light</option>
-                <option value="0.6">medium</option>
-                <option value="0.85">heavy</option>
-              </select></label>
-            <label class="sp-row"><span>color</span>
-              <select id="sp-colour">
-                <option value="green">phosphor</option>
-                <option value="amber">amber</option>
-              </select></label>
-            <label class="sp-row"><span>corner</span>
-              <select id="sp-corner">
-                <option value="tl">top left</option>
-                <option value="tr">top right</option>
-                <option value="bl">bottom left</option>
-                <option value="br">bottom right</option>
-              </select></label>
-            <label class="sp-row"><span>size</span>
-              <select id="sp-size">
-                <option value="S">small</option>
-                <option value="M">medium</option>
-                <option value="L">large</option>
-              </select></label>
-            <label class="sp-row"><span>park after</span>
-              <select id="sp-park">
-                <option value="0.5">½ s</option>
-                <option value="1.5">1½ s</option>
-                <option value="4">4 s</option>
-                <option value="600">never</option>
-              </select></label>
-            <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
-              <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
-            <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
-              <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
-            <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
-            <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
-            <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
-          </div>
-          <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
+        <div class="sp-grid">
+          <label class="sp-row"><span>mode</span>
+            <select id="sp-mode">
+              <option value="off">off</option>
+              <option value="scope">waveform</option>
+              <option value="spectrum">spectrum</option>
+            </select></label>
+          <label class="sp-row"><span>tap</span>
+            <select id="sp-tap">
+              <option value="pre">pre-master</option>
+              <option value="post">post-master</option>
+            </select></label>
+          <label class="sp-row"><span>fft size</span>
+            <select id="sp-fft">
+              <option value="512">512</option>
+              <option value="1024">1024</option>
+              <option value="2048">2048</option>
+              <option value="4096">4096</option>
+            </select></label>
+          <label class="sp-row"><span>window</span>
+            <select id="sp-smooth">
+              <option value="0">none</option>
+              <option value="0.35">light</option>
+              <option value="0.6">medium</option>
+              <option value="0.85">heavy</option>
+            </select></label>
+          <label class="sp-row"><span>color</span>
+            <select id="sp-colour">
+              <option value="green">phosphor</option>
+              <option value="amber">amber</option>
+            </select></label>
+          <label class="sp-row"><span>corner</span>
+            <select id="sp-corner">
+              <option value="tl">top left</option>
+              <option value="tr">top right</option>
+              <option value="bl">bottom left</option>
+              <option value="br">bottom right</option>
+            </select></label>
+          <label class="sp-row"><span>size</span>
+            <select id="sp-size">
+              <option value="S">small</option>
+              <option value="M">medium</option>
+              <option value="L">large</option>
+            </select></label>
+          <label class="sp-row"><span>park after</span>
+            <select id="sp-park">
+              <option value="0.5">½ s</option>
+              <option value="1.5">1½ s</option>
+              <option value="4">4 s</option>
+              <option value="600">never</option>
+            </select></label>
+          <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
+            <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
+          <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
+            <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
+          <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
+          <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
+          <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
         </div>
-        <!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
-             screenshot key; a design tool asks the four questions it cannot
-             guess — how much of the patch, at what size, on what, and in
-             which format — and then tells you exactly what you are about to
-             get. It hangs off the same ⋯ as the scope panel and wears the
-             same shell, because it is the same kind of thing: a preference
-             you set once and a command you run often. -->
-        <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
-          <div class="sp-head">
-            <span class="sp-title">download a picture</span>
-            <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
-          </div>
-          <div class="sp-grid">
-            <label class="sp-row"><span>scope</span>
-              <select id="ix-scope">
-                <option value="all">whole patch</option>
-                <option value="sel">selection</option>
-                <option value="card">the sound's card</option>
-              </select></label>
-            <label class="sp-row"><span>size</span>
-              <select id="ix-scale">
-                <option value="1">1×</option>
-                <option value="2">2×</option>
-                <option value="3">3×</option>
-              </select></label>
-            <label class="sp-row"><span>background</span>
-              <select id="ix-bg">
-                <option value="solid">solid</option>
-                <option value="transparent">transparent</option>
-              </select></label>
-            <label class="sp-row"><span>format</span>
-              <select id="ix-fmt">
-                <option value="png">PNG</option>
-                <option value="svg">SVG</option>
-              </select></label>
-          </div>
-          <!-- Figma's readout, and for the same reason: the one number you
-               want before you press the button is the one you get afterwards
-               by opening the file. -->
-          <div class="ix-dims mono" id="ix-dims">·</div>
-          <button class="ix-go" id="ix-go">download</button>
-          <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
+        <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
+      </div>
+      <!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
+           screenshot key; a design tool asks the four questions it cannot
+           guess — how much of the patch, at what size, on what, and in
+           which format — and then tells you exactly what you are about to
+           get. It hangs off the same ⋯ as the scope panel and wears the
+           same shell, because it is the same kind of thing: a preference
+           you set once and a command you run often. -->
+      <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Download the patch as a picture">
+        <div class="sp-head">
+          <span class="sp-title">download a picture</span>
+          <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
         </div>
+        <div class="sp-grid">
+          <label class="sp-row"><span>scope</span>
+            <select id="ix-scope">
+              <option value="all">whole patch</option>
+              <option value="sel">selection</option>
+              <option value="card">the sound's card</option>
+            </select></label>
+          <label class="sp-row"><span>size</span>
+            <select id="ix-scale">
+              <option value="1">1×</option>
+              <option value="2">2×</option>
+              <option value="3">3×</option>
+            </select></label>
+          <label class="sp-row"><span>background</span>
+            <select id="ix-bg">
+              <option value="solid">solid</option>
+              <option value="transparent">transparent</option>
+            </select></label>
+          <label class="sp-row"><span>format</span>
+            <select id="ix-fmt">
+              <option value="png">PNG</option>
+              <option value="svg">SVG</option>
+            </select></label>
+        </div>
+        <!-- Figma's readout, and for the same reason: the one number you
+             want before you press the button is the one you get afterwards
+             by opening the file. -->
+        <div class="ix-dims mono" id="ix-dims">·</div>
+        <button class="ix-go" id="ix-go">download</button>
+        <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
       </div>
     </div>
   </header>
@@ -301,10 +307,10 @@
       <!-- ------------- PERFORM: the sound under your hands ------------- -->
       <!-- Built by perform.js. Nothing in it opens a modal: a player in the
            middle of a phrase cannot answer a dialog. -->
-      <section id="view-perform" class="view perform hidden" role="tabpanel" aria-label="Perform"></section>
+      <section id="view-perform" class="view perform hidden" aria-label="Perform"></section>
 
-      <!-- ------------- PLAY: the patch is the instrument ------------- -->
-      <section id="view-play" class="view" role="tabpanel" aria-label="Play">
+      <!-- ------------- PATCH: what the sound is made of ------------- -->
+      <section id="view-patch" class="view hidden" aria-label="Patch">
         <!-- Two rows, always, whatever the patch is called: the name, the
              callout and ⚡ on the first; teaching, the camera and the locks on
              the second. This row used to wrap or unwrap with the length of the
@@ -584,7 +590,14 @@
       </section>
 
       <!-- ------------- EVOLVE: duels + generations ------------- -->
-      <section id="view-evolve" class="view hidden" role="tabpanel" aria-label="Evolve">
+      <section id="view-evolve" class="view hidden" aria-label="Evolve">
+        <!-- The level's cap line, and how many generations it has bred toward
+             your taste (main.js, renderGenCount). Named in full: "gen" said
+             what it counted only in its tooltip. -->
+        <div class="ev-cap">
+          <span class="lv-eyebrow">evolve</span>
+          <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
+        </div>
         <!-- The teaching meter sits above the cards so A and B stay side by
              side at every width — the comparison IS the interaction. -->
         <div class="duel-mid" id="duel-mid">
@@ -662,7 +675,7 @@
            The map (taste.js): every sound in the pool where the engine's map
            puts it, the model's liking an amber halo behind it. A pick draws
            an arrow from the sound passed to the sound picked. -->
-      <section id="view-taste" class="view hidden" role="tabpanel" aria-label="Taste">
+      <section id="view-taste" class="view hidden" aria-label="Taste">
         <div class="ts">
           <header class="ts-head">
             <span class="lv-eyebrow">taste</span>
@@ -693,7 +706,7 @@
       <!-- ------------- LEARNING: the model room -------------
            What it weighs, which way liking rises on the map, its forecasts,
            the data as JSON, and the math (taste.js). -->
-      <section id="view-learning" class="view hidden" role="tabpanel" aria-label="Learning">
+      <section id="view-learning" class="view hidden" aria-label="Learning">
         <div class="md">
           <header class="md-head">
             <span class="lv-eyebrow">learning</span>
@@ -738,69 +751,102 @@
         </div>
       </section>
 
+      <!-- ------------- the levels: where you are ------------- -->
+      <!-- A cross at the stage's right edge (shell.js): out to in, LEARNING,
+           TASTE, PERFORM and PATCH, with EVOLVE beside PERFORM. The current
+           stop is lit (`aria-current=location`); a stop's name shows on hover
+           or focus; a click goes there, and so do the level keys (ADR-017). -->
+      <nav class="rail" id="rail" aria-label="Where you are">
+        <span class="rail-hint" aria-hidden="true">out</span>
+        <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg><span class="rl" aria-hidden="true">Learning</span></button>
+        <span class="rail-line" aria-hidden="true"></span>
+        <button class="rail-stop" type="button" data-level="taste" aria-label="Taste: the sound among all sounds" aria-keyshortcuts="Alt+4" title="Taste · ⌥4"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/></svg><span class="rl" aria-hidden="true">Taste</span></button>
+        <span class="rail-line" aria-hidden="true"></span>
+        <div class="rail-mid">
+          <button class="rail-stop aside" type="button" data-level="evolve" aria-label="Evolve: what it could become" aria-keyshortcuts="Alt+3" title="Evolve · ⌥3"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg><span class="rl" aria-hidden="true">Evolve</span></button>
+          <span class="rail-branch" aria-hidden="true"></span>
+          <button class="rail-stop" type="button" data-level="perform" aria-label="Perform: the sound, under your hands" aria-keyshortcuts="Alt+1" title="Perform · ⌥1"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13l3.6-4.2"/><path d="M12 3.2v1.6"/></svg><span class="rl" aria-hidden="true">Perform</span></button>
+        </div>
+        <span class="rail-line" aria-hidden="true"></span>
+        <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg><span class="rl" aria-hidden="true">Patch</span></button>
+        <span class="rail-hint" aria-hidden="true">in</span>
+      </nav>
     </main>
   </div>
 
   <!-- ===================== keyboard dock ===================== -->
   <footer class="keybar">
-    <div class="key-side">
-      <div class="ctl-grid">
-        <button class="util-btn sq" id="oct-down" data-kbd="z" title="Octave down (Z)" aria-label="Octave down">−</button>
-        <span class="mono" id="oct-label" title="Octave shift: Z down, X up">a = C4</span>
-        <button class="util-btn sq" id="oct-up" data-kbd="x" title="Octave up (X)" aria-label="Octave up">+</button>
-        <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic: silence all voices">◼</button>
-        <button class="util-btn" id="bigkeys-btn" title="Taller keybed, for fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
-        <button class="util-btn" id="hold-btn" title="Latch held notes" aria-pressed="false">hold</button>
-        <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide" aria-pressed="false">uni</button>
-        <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern" aria-pressed="false">arp</button>
-        <button class="util-btn" id="sync-btn" title="Tempo sync: step sequencers play the nearest division of the tempo, restarting with the first key (or MIDI start)" aria-pressed="false">sync</button>
-        <label class="keys-span mono" title="How much of the keybed to show: fewer octaves, wider keys">
-          <span class="pc-cap">keys</span>
-          <select id="key-span" class="perf-sel" aria-label="Keybed width in octaves">
-            <option value="12">1 oct</option>
-            <option value="24">2 oct</option>
-            <option value="36">3 oct</option>
-            <option value="48">4 oct</option>
-          </select>
-        </label>
-        <!-- The arp's drawer, folded: while ARP or SYNC runs, what it is set
-             to, in the grid cells the width selector leaves free. -->
-        <button type="button" class="perf-sel arp-chip hidden" id="arp-chip" aria-controls="arp-ctl" aria-expanded="false" title="Arp and tempo settings"></button>
-      </div>
-      <div class="perf-ctl idle" id="arp-ctl" role="group" aria-label="Arp and tempo settings">
-        <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
-          <option value="0">up</option><option value="1">down</option>
-          <option value="2">up·dn</option><option value="3">rnd</option>
-        </select></span>
-        <span class="pc"><span class="pc-cap">rate</span><select id="arp-div" class="perf-sel" title="Arp rate (steps per beat)" aria-label="Arp rate">
-          <option value="1">1/4</option><option value="2" selected>1/8</option>
-          <option value="4">1/16</option><option value="3">1/8t</option>
-        </select></span>
-        <span class="pc"><span class="pc-cap">tempo</span><input type="number" id="bpm" class="perf-num" min="30" max="300" value="120" title="Tempo (BPM)" aria-label="Tempo in BPM"></span>
-        <span class="pc"><span class="pc-cap">range</span><select id="arp-oct" class="perf-sel" title="Arp octave range" aria-label="Arp octave range">
-          <option value="1">1 oct</option><option value="2">2 oct</option>
-          <option value="3">3 oct</option><option value="4">4 oct</option>
-        </select></span>
-        <span class="pc"><span class="pc-cap">gate</span><label class="perf-glide mono" title="Arp gate length"><input type="range" id="arp-gate" min="0.05" max="1" step="0.05" value="0.5" aria-label="Arp gate length"><span class="pc-val" id="arp-gate-val">50%</span></label></span>
-        <span class="pc"><span class="pc-cap">swing</span><label class="perf-glide mono" title="Arp swing"><input type="range" id="arp-swing" min="0" max="0.7" step="0.05" value="0" aria-label="Arp swing"><span class="pc-val" id="arp-swing-val">0%</span></label></span>
+    <!-- The side column: what the computer keys play, and Z and X to move
+         the octave (they are buttons too). -->
+    <div class="keys-side">
+      <div class="panel-label">keys</div>
+      <div class="oct">
+        <button class="kcap" id="oct-down" type="button" title="Octave down (Z)" aria-label="Octave down">Z</button>
+        <span class="mono" id="oct-label" title="The A key plays C4. Z moves the keys an octave down, X up">C4</span>
+        <button class="kcap" id="oct-up" type="button" title="Octave up (X)" aria-label="Octave up">X</button>
+        <span class="oct-word">octave</span>
       </div>
     </div>
     <div class="piano" id="piano" role="group" aria-label="Musical keyboard"></div>
-    <div class="key-side right">
-      <div class="perf-ctl">
-        <label class="perf-glide mono" title="Glide: how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
-        <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
+    <!-- The cluster: volume, MIDI and REC in reach, and KEYS ⋯ for how the
+         keybed plays. While ARP or SYNC runs, the chip says what it is set
+         to and opens the same settings. -->
+    <div class="keys-cluster">
+      <button type="button" class="perf-sel arp-chip hidden" id="arp-chip" aria-controls="keys-pop" aria-expanded="false" title="Arp and tempo settings"></button>
+      <label class="perf-glide vol mono" title="Master volume: live keys and every ▶"><span class="pc-cap">vol</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
+      <div class="midi-wrap">
         <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi ·</button>
         <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
-      <!-- The sound's name, and over it while Space waits for an edit outside
-           PATCH, the wait (main.js, paintLiveLabel): a box of its own, so the
-           name's ellipsis cannot clip it, and a polite live region. -->
-      <div class="live-slot">
-        <div class="live-label mono" id="live-label">no sound</div>
-        <div class="live-wait mono" id="live-wait" role="status" aria-live="polite"></div>
+      <button class="util-btn" id="rec-btn" type="button" title="Record what you play; stop to download a WAV">● rec</button>
+      <div class="keys-more">
+        <button class="util-btn" id="keys-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="keys-pop" title="How the keybed plays: hold, unison, arp, sync, glide, its size, and silence">keys ⋯</button>
+        <!-- Everything else the keybed does, one press away. It stays open
+             while you play through it (the keybed, the octave, HOLD: an
+             arpeggio is set up by latching a chord and then setting the rate
+             against it), and folds on a press outside the dock or Esc. -->
+        <div class="keys-pop hidden" id="keys-pop" role="dialog" aria-label="How the keybed plays">
+          <div class="kp-row">
+            <button class="util-btn" id="hold-btn" type="button" title="Latch held notes" aria-pressed="false">hold</button>
+            <button class="util-btn" id="uni-btn" type="button" title="Unison: all 4 voices on one note, detuned wide" aria-pressed="false">uni</button>
+            <button class="util-btn" id="arp-btn" type="button" title="Arpeggiator: hold a chord, it plays the pattern" aria-pressed="false">arp</button>
+            <button class="util-btn" id="sync-btn" type="button" title="Tempo sync: step sequencers play the nearest division of the tempo, restarting with the first key (or MIDI start)" aria-pressed="false">sync</button>
+          </div>
+          <div class="perf-ctl idle" id="arp-ctl" role="group" aria-label="Arp and tempo settings">
+            <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
+              <option value="0">up</option><option value="1">down</option>
+              <option value="2">up·dn</option><option value="3">rnd</option>
+            </select></span>
+            <span class="pc"><span class="pc-cap">rate</span><select id="arp-div" class="perf-sel" title="Arp rate (steps per beat)" aria-label="Arp rate">
+              <option value="1">1/4</option><option value="2" selected>1/8</option>
+              <option value="4">1/16</option><option value="3">1/8t</option>
+            </select></span>
+            <span class="pc"><span class="pc-cap">tempo</span><input type="number" id="bpm" class="perf-num" min="30" max="300" value="120" title="Tempo (BPM)" aria-label="Tempo in BPM"></span>
+            <span class="pc"><span class="pc-cap">range</span><select id="arp-oct" class="perf-sel" title="Arp octave range" aria-label="Arp octave range">
+              <option value="1">1 oct</option><option value="2">2 oct</option>
+              <option value="3">3 oct</option><option value="4">4 oct</option>
+            </select></span>
+            <span class="pc"><span class="pc-cap">gate</span><label class="perf-glide mono" title="Arp gate length"><input type="range" id="arp-gate" min="0.05" max="1" step="0.05" value="0.5" aria-label="Arp gate length"><span class="pc-val" id="arp-gate-val">50%</span></label></span>
+            <span class="pc"><span class="pc-cap">swing</span><label class="perf-glide mono" title="Arp swing"><input type="range" id="arp-swing" min="0" max="0.7" step="0.05" value="0" aria-label="Arp swing"><span class="pc-val" id="arp-swing-val">0%</span></label></span>
+          </div>
+          <div class="kp-row">
+            <label class="perf-glide mono" title="Glide: how long a note takes to slide to the next one in a line"><span class="pc-cap">glide</span><input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
+          </div>
+          <div class="kp-row">
+            <button class="util-btn" id="bigkeys-btn" type="button" title="Taller keybed, for fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
+            <label class="keys-span mono" title="How much of the keybed to show: fewer octaves, wider keys">
+              <span class="pc-cap">span</span>
+              <select id="key-span" class="perf-sel" aria-label="Keybed width in octaves">
+                <option value="12">1 oct</option>
+                <option value="24">2 oct</option>
+                <option value="36">3 oct</option>
+                <option value="48">4 oct</option>
+              </select>
+            </label>
+            <button class="util-btn" id="panic-btn" type="button" title="Silence all voices" aria-label="Panic: silence all voices">◼ silence</button>
+          </div>
+        </div>
       </div>
-      <label class="perf-glide mono" title="Master volume: live keys and every ▶">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
     </div>
   </footer>
 </div>
@@ -916,6 +962,8 @@
         <p><b>Bright, Snap, Motion, Body, Grit</b>, and <b>Space</b> are named for what you hear, and <b>Arrange</b> places up to eight of the palette’s eighteen, in your order. Each is wired to the knobs of <i>this</i> sound that do that job, measured when it opens, and the strip underneath shows them move. An <b>amber</b> control is one this sound’s knobs can’t reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>
         <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
         <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, and all the way roams. Let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller’s first eight knobs claim the deck’s first eight controls.</p>
+        <div class="help-h">the levels</div>
+        <p>The levels at the right edge say where you are, and a click on one goes there. <kbd>⌥↑</kbd> zooms out (PATCH, PERFORM, TASTE, LEARNING) and <kbd>⌥↓</kbd> in · <kbd>⌥←</kbd> goes beside it to EVOLVE and <kbd>⌥→</kbd> back · <kbd>⌥1–5</kbd> go straight to PERFORM, PATCH, EVOLVE, TASTE or LEARNING</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>Space</kbd> hear the sound you’re playing · in PERFORM, <kbd>⇧F</kbd> stage mode, and <kbd>?</kbd> on a control shows what it does to this sound, measured (BRIGHT’s has a lesson on filters) · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
@@ -925,8 +973,8 @@
         <p><kbd>Ctrl</kbd> and the wheel, or a pinch, zooms at the pointer · the wheel or a drag on bare canvas pans · <kbd>Space</kbd> and a drag, or a middle-button drag, pans from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
         <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>Shift</kbd> to place it freely. <b>snap</b> pins everything where it sits now, on the grid, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file.</p>
         <div class="help-h">the keybed</div>
-        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
-        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
+        <p><b>vol</b>, <b>midi</b> and <b>● rec</b> sit at the dock's right end: <b>● rec</b> bounces your playing to a WAV. <b>keys ⋯</b> holds the rest, and is lit while any of hold, uni, arp or sync is on: <b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>glide</b> slides one note into the next when you play a line (chords stay clean) · <b>◼ silence</b> stops every voice</p>
+        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>span</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
         <p>A MIDI keyboard plays it, with velocity, pitch bend, and the sustain pedal.</p>
       </div>
       <div>

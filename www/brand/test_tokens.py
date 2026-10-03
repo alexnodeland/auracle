@@ -369,10 +369,11 @@ class TheDriftsItClosed(unittest.TestCase):
 
     def test_the_brand_page_lights_the_lamp_in_the_apps_amber(self):
         app, brand = source("apps/web/style.css"), source("www/brand/index.html")
-        # The app's lit lamp, then the brand page's two drawings of a lit one:
-        # the "lamp live" lockup and the "two lamps" example.
-        self.assertRegex(app, r"\.wordmark b\.thinking \{[^}]*?\bcolor: var\(--phos-b\);")
-        self.assertRegex(brand, r'AURACL<b style="[^"]*\bcolor:var\(--phos-b\)">E</b>')
+        # The app's lit lamp (the round lamp after the wordmark, Plan-008),
+        # then the brand page's two drawings of a lit one: the "lamp live"
+        # lockup and the "two lamps" example.
+        self.assertRegex(app, r"\.lamp\.thinking \{[^}]*?\bbackground: var\(--phos-b\);")
+        self.assertRegex(brand, r'AURACLE<i class="lamp-live" style="[^"]*\bbackground:var\(--phos-b\)"></i>')
         self.assertRegex(brand, r"\.versus \.no \.wm b \{[^}]*?\bcolor: var\(--phos-b\);")
 
 

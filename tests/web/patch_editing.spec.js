@@ -17,6 +17,7 @@
 // against any build, so each test here can be run against the code before its
 // fix to watch it fail.
 const { test, expect } = require("@playwright/test");
+const { goLevel, openKeys } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -98,6 +99,8 @@ async function boot(page) {
 
 /** Open a library preset on the bench, and wait until the rack is its. */
 async function openPreset(page, name) {
+  // The app opens at PERFORM (Plan-008): PATCH is a level away.
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -507,6 +510,8 @@ test("▶ plays the socket the preview was rendering, after the pointer has left
 test("HOLD, the octave buttons and notes leave the arp drawer open", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");
+  // ARP is in KEYS ⋯ (Plan-008); the arp's settings are a row there.
+  await openKeys(page);
   await page.locator("#arp-btn").click();
   const drawer = page.locator("#arp-ctl");
   await expect(drawer).toHaveClass(/\bopen\b/);
@@ -535,6 +540,7 @@ test("with SYNC on, a sequencer's RATE reads the division it plays", async ({ pa
   await expect(rate).toHaveCount(1);
   const free = await rate.locator(".knob-value").textContent();
   expect(free).toMatch(/Hz$/);
+  await openKeys(page);
   await page.locator("#sync-btn").click();
   await expect(rate.locator(".knob-value")).toHaveText(/Hz sync$/);
   await expect(rate).toHaveAttribute("aria-valuetext", /synced to \d+ BPM/);

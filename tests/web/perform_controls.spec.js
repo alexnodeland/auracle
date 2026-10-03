@@ -10,6 +10,7 @@
 // An XY axis set to a control the patch cannot move strikes its end words
 // through, as the guide promises, rather than only dimming them.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 async function openOnPerform(page, name) {
   await page.goto("/");
@@ -18,7 +19,7 @@ async function openOnPerform(page, name) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForTimeout(800);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30000 });
   await page.waitForFunction(
     () =>
