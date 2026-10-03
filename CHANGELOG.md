@@ -8,6 +8,41 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: PERFORM shows the sound large, and its pads have keys
+
+- **PERFORM is a well and a panel.** On the left, the sound: its family (for
+  a sound opened from the library), its name, large, with a share button that
+  opens the picture of its card, its description, and a well holding its face
+  with a glow and a reflection, as stage mode draws it. Click the face to hear
+  the phrase. On the right, what you turn: CONTROLS with ARRANGE and HOW IT
+  WORKS, your controls three to a row, the knobs they move, and the pads.
+- **An offer stands beside your sound.** B's face grows in amber next to
+  yours, with what changed and *hold B to peek* under it, and BLEND is a
+  slider under the two while B holds one.
+- **The pads are WANDER, OFFER, PEEK, TAKE and PASS.** PASS passes on B
+  without growing another, and counts as a pick for what you had once you
+  have heard B, with UNDO, as NEXT's pass does. Tap WANDER to freeze it (the
+  FREEZE pad is gone); its ring lights and it says *frozen*.
+- **Keep and Back appear when they mean something.** Once the sound has moved
+  from where you last kept it, *moved · KEEP · BACK* shows by its name.
+- **Keys for the pads.** N offers (and passes on B for the next), hold B to
+  peek, ⇧↵ takes, ↵ keeps when nothing is focused, ⇧⌫ goes back. In EVOLVE, N
+  deals another pair. None of them fire while you type or a dialog is open.
+- **XY and How it works open in the well,** from XY in its corner and HOW IT
+  WORKS in CONTROLS, so the controls stay in reach beside them. What your
+  velocity plays is a row of ARRANGE, and its control wears a small *vel*.
+- **First steps move into a pill** at the bottom left: one step at a
+  time with a pip for each, ticked off as you do it, and × to stop it. Steps
+  you had already done carry over.
+- **EVOLVE asks one question.** *Pick the one you'd reach for.* heads it with
+  its pips, a small TASTE map shows the pair among every sound, and each card
+  shows its sound's face large in place of the waveform, with ⇄ circuit and
+  ↓ patch in its corner. The buttons read PLAY · 1, PICK A · ←, ANOTHER PAIR ·
+  N; EVOLVE POOL is dashed until your picks have taught the model, and what
+  each generation did opens from under it.
+- **Stage mode** shows the wordmark and the model's lamp, and the sound's
+  family where it has one.
+
 ### Changed: the bank is quieter, and holding ⌥ shows what the model thinks
 
 - **The bank has tabs and a search.** POOL, SAVED and PRESETS are tabs with

@@ -16,7 +16,8 @@ the long-form notes are this directory's `README.md`.
 | `levels.js` | main thread | Pure rules for the levels: the axis, `step`, `dirOf`, `railPath`, `levelForKey`, `startLevel`; unit-tested in `tests/` |
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
-| `perform.js` | main thread | PERFORM: named controls, XY, offers, Wander, Keep/Back, the hood |
+| `perform.js` | main thread | PERFORM (the well and the panel, Plan-008 C1): named controls, the well's modes (the face, XY, How it works), offers and B, Blend, Wander and Freeze, the moved bar's Keep/Back, PASS, the pad keys (ADR-018), the hood, stage mode |
+| `guide.js` | main thread | The guide pill: the first-visit steps one at a time, bottom left of the stage, and what was done (`auracle-guide`, migrated from `auracle-perform-steps`); unit-tested in `tests/` |
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
 | `takes.js` | main thread | CAPTURE's RECORD (the worklet copies the input while it is lit, the engine worker renders the take with `render_take`, sent as `set_take`) and the sounds kept safe for a recording, listed in the pool with RECORD AGAIN |
 | `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |
@@ -53,7 +54,8 @@ the long-form notes are this directory's `README.md`.
   message channels and keymap in RFC-003, except that Space plays the sound
   in every view ([ADR-016](../../docs/decisions/016-space-plays-everywhere.md))
   and the views are levels with keys of their own
-  ([ADR-017](../../docs/decisions/017-the-levels-keys.md)).
+  ([ADR-017](../../docs/decisions/017-the-levels-keys.md)), and PERFORM's
+  pads have the keys of [ADR-018](../../docs/decisions/018-the-pad-keys.md).
   New copy, colours and keys follow them; an exception amends the ADR.
 - **One design system**
   ([ADR-011](../../docs/decisions/011-one-design-system.md)): views are

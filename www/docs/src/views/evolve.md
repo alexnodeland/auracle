@@ -7,22 +7,22 @@ EVOLVE POOL grows new sounds toward your picks.</p>
 <!-- film:view-evolve --><!-- /film:view-evolve -->
 
 <figure>
-<img src="../img/evolve.webp" alt="Two cards side by side with rendered waveforms and three buttons each, a teaching line above them, and a log of recent generations below." loading="eager" width="1440" height="900">
+<img src="../img/evolve.webp" alt="EVOLVE: the question Pick the one you’d reach for, with six pips and a teaching line under it and a small TASTE map at its right; two cards, each with its sound’s face large in a well, its name, and PLAY and PICK; ANOTHER PAIR and EVOLVE POOL under them." loading="eager" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
-above them counts down to the next refit; the strip below says what the last
-generation changed.</figcaption>
+under it counts down to the next refit; the small map shows the pair among
+every sound.</figcaption>
 </figure>
 
 ## Pick between two sounds
 
-1. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ SAMPLE** on each card) to hear
+1. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ PLAY** on each card) to hear
    A and B. Press again to stop.
 2. Click a card’s body to play that sound live on the keys, when the phrase
    doesn’t tell two sounds apart.
 3. Press <kbd>←</kbd> or <kbd>→</kbd> (or **PICK A**, **PICK B**) for the one
    you’d reach for.
-4. Press **ANOTHER PAIR** to deal a new pair without picking. It records
-   nothing.
+4. Press **ANOTHER PAIR** (<kbd>N</kbd>) to deal a new pair without picking.
+   It records nothing.
 
 Both sides play the same five-second phrase: a held C4, a C5 stab, a C4 and E4
 together, and a low C3 with a long release. The same phrase is what makes two
@@ -39,16 +39,24 @@ take back it says *Nothing to undo here. PATCH edits undo in PATCH.*
 
 ## What you see
 
-**The cards.** Each card is one sound: its [face](../faces.md) and its
-name, its waveform, and **▶ SAMPLE**, **OPEN IN PATCH**, and **PICK A** (or
-**PICK B**). Hold <kbd>⌥</kbd> for [the model view](../reading-the-model.md#the-model-view)
-and each card also shows the style that rates it highest, and the card the
-model favours says so before you pick: *it guesses this · 62% · leaning*. The names come from what the sound is, so *Round Wash* and
-*Gritty Swell* mean something. **⇄ CIRCUIT** flips the waveform to the patch’s
-modules. **OPEN IN PATCH** opens the sound in [PATCH](./play.md) without
-picking.
+**The head.** *Pick the one you’d reach for.*, with the six pips and the
+teaching line under it (below), and at its right a small [TASTE](./taste.md)
+map: every sound in the pool where the map puts it, with A and B ringed where
+they are on it. Click it to go to TASTE.
 
-**The teaching line.** Above the cards, six pips count down to the next
+**The cards.** Each card is one sound: its [face](../faces.md), large, in a
+well, then its name, its family and blurb where it has them (a sound opened
+from the library keeps its preset’s), and **▶ PLAY** and **PICK A** (or
+**PICK B**). While a sound’s audio is on its way, *rendering…* sweeps across
+its well. In the well’s corner, **⇄ CIRCUIT** flips the face to the patch’s
+modules (and back, **⇄ FACE**), and **↓ PATCH** opens the sound in
+[PATCH](./play.md) without picking. Hold <kbd>⌥</kbd> for [the model
+view](../reading-the-model.md#the-model-view) and each card also shows the
+style that rates it highest, and the card the model favours says so before
+you pick: *it guesses this · 62% · leaning*. The names come from what the
+sound is, so *Round Wash* and *Gritty Swell* mean something.
+
+**The teaching line.** Under the question, six pips count down to the next
 refit, and the line says how far it is:
 
 - *Play both. Pick the one you’d reach for.* before your first pick;
@@ -60,7 +68,7 @@ refit, and the line says how far it is:
 During a generation or a ⚡ walk the line reads *● it will learn from these 6
 when breeding finishes* instead, because a refit waits for them.
 
-**The forecast.** After each pick, the line above **ANOTHER PAIR** says what
+**The forecast.** After each pick, the line beside **ANOTHER PAIR** says what
 the model guessed before you picked, and how sure it was: *it guessed this ·
 72% · fairly sure*, or *it guessed the other · 62% · leaning*. The words come
 from one scale: *a hunch*, *leaning*, and *fairly sure*. It is the same guess
@@ -72,7 +80,10 @@ test* says that every pair is dealt at random from the pool. The model
 doesn’t choose what you hear, so every pick is a fair test of its guess.
 [its forecasts in LEARNING](./learning.md#its-forecasts) are graded on them all.
 
-**EVOLVE POOL**, at the right. It’s the next section.
+**EVOLVE POOL**, at the right under the cards, with **WHAT EACH GENERATION
+DID** under it. It’s the next section. Until your picks have taught the model
+(its first refit), EVOLVE POOL is dashed amber: a generation then breeds from
+the grammar alone, a guess. It can still be pressed.
 
 ```admonish info collapsible=true title="How it works: the next pair is already waiting"
 While a pair is on the table, the engine deals the one after it and renders
@@ -205,10 +216,11 @@ pair can take up to about 20 seconds, and the cards say which seed they are
 waiting on.
 ```
 
-## The EVOLUTION strip
+## What each generation did
 
-Under the cards, **EVOLUTION · what each generation did** lists the three most
-recent steps, newest first:
+**WHAT EACH GENERATION DID**, under EVOLVE POOL, opens **EVOLUTION · what
+each generation did** over the foot of the cards (<kbd>Esc</kbd>, **×** or the
+button again folds it). It lists the three most recent steps, newest first:
 
 ```text
 gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 398 ms → 759 ms, mod depth 25% → 4%,
@@ -225,7 +237,7 @@ gen 0 ✎ your edit from Glass Rain → Glass Rain 2 · cutoff 1.78 kHz → 20 k
   like the child than its seed, when the step was made.
 - **exploring** marks a bred step it rated lower: the walk stepping sideways or
   down. Your picks decide whether it was worth it.
-- **✎ your edit** marks a sound you kept as new in PATCH. The strip records
+- **✎ your edit** marks a sound you kept as new in PATCH. It records
   everything that made a sound, not only breeding.
 
 The sparkline to the left has one point per step, oldest to newest: amber for
@@ -233,7 +245,7 @@ a bred step, green for your edit. Each point is the child as the model rated
 it when the step was made. It’s a record of the steps, not a score of the
 pool over time.
 
-Before any step, the strip says so: *No generations yet. Make a few picks,
+Before any step, it says so: *No generations yet. Make a few picks,
 then press EVOLVE POOL, or ⚡ on a sound you like.* If generations have run
 and none added a sound, it says that instead (*2 generations ran, and none
 put a new sound in the pool.*).

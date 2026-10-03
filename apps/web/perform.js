@@ -3552,13 +3552,13 @@ export function createPerform(host) {
       if (!nothingFocused()) return;
       e.preventDefault();
       if (e.repeat) return;
-      if (!movedFromHome()) return void host.note("Nothing to keep: this sound is home.", { replace: "pf-keep" });
+      if (!movedFromHome()) return void host.note("Nothing to keep: this sound is home.", { replace: "pf-keep", urgent: true });
       touch();
       keep();
     } else if (k === "Backspace" && e.shiftKey) {
       e.preventDefault();
       if (e.repeat) return;
-      if (!movedFromHome()) return void host.note("Nothing to go back to: this sound is home.", { replace: "pf-keep" });
+      if (!movedFromHome()) return void host.note("Nothing to go back to: this sound is home.", { replace: "pf-keep", urgent: true });
       touch();
       back();
     }
