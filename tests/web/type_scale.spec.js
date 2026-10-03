@@ -132,9 +132,9 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
     ([c, s]) => window.__pwCanvasText.some((t) => (!c || c.includes(t.canvas)) && t.text.startsWith(s)),
     [canvas, text], { timeout: 90_000 },
   );
-  // EVOLVE's scopes label full scale once a pair's sound is in.
-  await openView(page, "evolve");
-  await drawn(["scope-a", "scope-b"], "0 dBFS");
+  // (EVOLVE's cards draw faces now, not labelled scopes: Plan-008 C1. The
+  // commit pair's scopes still label full scale; they are drawn only in a
+  // commit, which this boot doesn't reach.)
   // TASTE's map, and LEARNING with forecasts to draw, handed over as the
   // worker hands them.
   await openView(page, "taste");

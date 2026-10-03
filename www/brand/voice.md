@@ -472,6 +472,14 @@ banned-words check in `make dev-check` reads the list after it.
 | **Velocity plays**, **vel** | ARRANGE's row for which control a note's velocity drives, and the tick on that control | TOUCH, velo |
 | **share** | PERFORM's button by the name: the sound's card as a picture | export, send |
 | **what each generation did** | EVOLVE's disclosure under EVOLVE POOL, opening the lineage's spark and log | history, log (as a label) |
+| **frozen** | Wander's state while a tap (or Enter) holds it still: its ring lit, this word under it and as its value | paused (that is hands on), held, stopped |
+| **Nothing to keep: this sound is home.** / **Nothing to go back to: this sound is home.** | ↵ or ⇧⌫ pressed with the sound at home: the refusal, said at once | No changes, Already saved |
+| **B · ‹aim›** (B · GRITTIER) | B's label for an offer a control asked for: B and the aim word of the way it was turned | B (grittier), target |
+| **offered · hold B to peek** / **hold Peek to hear it** (touch) | B's line under its face: it is an offer, and how to hear it | press and hold, preview |
+| **depth** | ARRANGE's slider beside Velocity plays: how far velocity reaches | amount, intensity, sensitivity |
+| **CONTROLS** | PERFORM's cap over the controls, with ARRANGE and HOW IT WORKS | knobs, macros, deck |
+| **Share this sound as a picture** | The share button's accessible name | export image, save image |
+| **or** | The word between EVOLVE's two cards, a silk label | vs, versus |
 | **listening…** | PERFORM measuring a sound's controls | measuring… (that is a figure's) |
 | **measuring…** | Renders on their way for an answer or the lesson: a figure, or the lesson's shape, while the engine renders and measures the sound in hand | listening… (that is PERFORM's), loading… |
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
