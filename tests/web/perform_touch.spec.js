@@ -7,7 +7,7 @@
 //   its × leaves.
 // - EVOLVE's corner (⇄ circuit) and what each generation did answer a tap.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 // A tablet: a coarse pointer and touch, wide enough to have no gate.
 test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
@@ -32,6 +32,12 @@ async function boot(page) {
 test("on a touch screen every PERFORM function the layout moved is a tap away, with no printed keys", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page);
+  // Glass Pad, whose BRIGHT turns both ways: the XY pad's first axis moves.
+  await bankTab(page, "presets");
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().tap();
+  await goLevel(page, "perform");
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
+  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   // No printed key on a pad or in the moved bar under a finger.
   const keyShown = await page.evaluate(() =>
     [...document.querySelectorAll(".pf-pad[data-key]")].some((b) => getComputedStyle(b, "::before").display !== "none"),
