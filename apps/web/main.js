@@ -419,10 +419,10 @@ function lruGet(map, k) {
   map.set(k, v);
   return v;
 }
-function lruSet(map, k, v) {
+function lruSet(map, k, v, keep = FACE_KEEP) {
   map.delete(k);
   map.set(k, v);
-  while (map.size > FACE_KEEP) map.delete(map.keys().next().value);
+  while (map.size > keep) map.delete(map.keys().next().value);
 }
 const faceByKey = new Map();    // "<ns>/<key>" -> decoded face
 const faceKeyById = new Map();  // pool id -> key
@@ -435,6 +435,12 @@ let faceStats = null;           // the bank's mean and spread (faces.js `bankSta
 let faceBankKeys = "";          // the keys those were taken over
 let faceEpoch = 0;              // bumped when they change: every face redraws
 const faceMarkupCache = new Map(); // "key|epoch|w|h" -> <img> markup
+// The large faces (`FACE_FLUID`: PERFORM's well and B, EVOLVE's cards) keep
+// their own few: each is a 480 px tall picture, where a row's is 34, so they
+// are not counted among the bank's hundreds. Enough for the sound in hand, B,
+// the pair on the table and the pairs around it.
+const FACE_WELL_KEEP = 24;
+const faceWellCache = new Map();
 // Each face is drawn once per bank (vessel.js `drawVessel`, the renderer every
 // size shares) into an image: rows are rebuilt as HTML on every bank render,
 // and an <img> of a drawing already made costs nothing to put back.
@@ -477,11 +483,13 @@ function faceMarkup(target, kind, ask = true, build = true) {
   if (!faceStats) return "";
   const [w, h] = FACE_SIZE[kind];
   const ck = `${key}|${faceEpoch}|${w}|${h}${FACE_OPTS[kind] ? `|${kind}` : ""}`;
-  let s = lruGet(faceMarkupCache, ck);
+  const large = FACE_FLUID.has(kind);
+  const cache = large ? faceWellCache : faceMarkupCache;
+  let s = lruGet(cache, ck);
   if (s == null && !build) return "";
   if (s == null) {
     s = `<img class="face" src="${faceImage(face, w, h, FACE_OPTS[kind] ? FACE_OPTS[kind]() : {})}" width="${w}" height="${h}" alt="" draggable="false">`;
-    lruSet(faceMarkupCache, ck, s);
+    lruSet(cache, ck, s, large ? FACE_WELL_KEEP : FACE_KEEP);
   }
   return s;
 }
@@ -704,6 +712,7 @@ function faceRestat() {
   faceStats = now;
   faceEpoch++;
   faceMarkupCache.clear();
+  faceWellCache.clear();
   return true;
 }
 /** Draw every slot whose face or bank changed since it was drawn. The bank's

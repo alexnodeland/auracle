@@ -54,70 +54,97 @@ async function openOnPerform(page, name) {
 const blur = (page) => page.evaluate(() => document.activeElement?.blur());
 const offersAsked = (page) => page.evaluate(() => window.__offers.length);
 
-test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ takes", { tag: "@slow" }, async ({ page }) => {
+/** Drag a dial vertically by `dy` px (negative is up) with the mouse. */
+async function drag(page, loc, dy) {
+  const b = await loc.boundingBox();
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + dy, { steps: 10 });
+  await page.mouse.up();
+}
+
+/** Slide Blend, under the faces, most of the way to B with the mouse. */
+async function slideBlend(page) {
+  const b = await page.locator(".pf-blend input").boundingBox();
+  await page.mouse.move(b.x + 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width * 0.8, b.y + b.height / 2, { steps: 8 });
+  await page.mouse.up();
+}
+
+test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ takes, after Blend too", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
-  await blur(page);
   const n0 = await offersAsked(page);
   await page.keyboard.press("n");
   await expect.poll(() => offersAsked(page)).toBe(n0 + 1);
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
-  // B held is PEEK held; let go, it is up again.
+  // Blend slid with the mouse, then B held is PEEK held; let go, it is up.
+  await slideBlend(page);
+  expect(Number(await page.locator(".pf-blend input").getAttribute("aria-valuenow"))).toBeGreaterThan(0.3);
   const peekPad = page.locator(".pf-pad", { hasText: "Peek" });
   await page.keyboard.down("b");
   await expect(peekPad).toHaveClass(/\bdown\b/);
   await page.keyboard.up("b");
   await expect(peekPad).not.toHaveClass(/\bdown\b/);
-  // N again: Next, a pass on B (unheard, so not counted) and another offer.
+  // With Blend focused from the keyboard (a range is a control, not a text
+  // field), N is still Next: a pass on B (unheard, so not counted) and
+  // another offer.
+  await page.locator(".pf-blend input").focus();
   await page.keyboard.press("n");
   await expect(page.locator("#toasts")).toContainText("Skipped B.");
   await expect.poll(() => offersAsked(page)).toBe(n0 + 2);
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
-  // ⇧↵ takes it: the sound in hand is the offer.
+  // Blend slid again with the mouse (which leaves no focus), and focused from
+  // the keyboard too: ⇧↵ takes either way, and the sound in hand is the offer.
+  await slideBlend(page);
+  expect(await page.evaluate(() => document.activeElement === document.body), "a slide leaves no focus").toBe(true);
+  await page.locator(".pf-blend input").focus();
   await page.keyboard.press("Shift+Enter");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad (taken offer)", { timeout: 60_000 });
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   expect(errs).toEqual([]);
 });
 
-test("↵ keeps only with no control focused, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page }) => {
+test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its own Enter, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page }) => {
   test.setTimeout(240_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
   const bar = page.locator(".pf-moved");
-  // At home: nothing to keep, nothing to go back to.
+  // At home: nothing to keep, nothing to go back to. (The level's stop the
+  // spec clicked to get here is a button, whose Enter is its own.)
   await blur(page);
   await page.keyboard.press("Enter");
   await expect(page.locator("#toasts")).toContainText("Nothing to keep: this sound is home.");
   await page.keyboard.press("Shift+Backspace");
   await expect(page.locator("#toasts")).toContainText("Nothing to go back to: this sound is home.");
-  // Turned: the sound has moved, and the dial keeps the focus.
+  // A dial reached with the keyboard and turned there keeps its focus, and
+  // ↵ is its own (its sweep through both ends and back): nothing is kept.
+  // Waited out, so the sweep's return does not land after the Keep below.
   const k = page.locator(".pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)").first();
   await k.focus();
   for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
   await expect(bar).toHaveClass(/\bon\b/);
-  // ↵ with the dial focused is the dial's (its sweep through both ends and
-  // back to where it was): nothing is kept. Waited out, so the sweep's
-  // return does not land after the Keep below.
   const at = await k.getAttribute("aria-valuenow");
   await page.keyboard.press("Enter");
   await expect(k).not.toHaveAttribute("aria-valuenow", at, { timeout: 5_000 });
   await expect(k).toHaveAttribute("aria-valuenow", at, { timeout: 10_000 });
   await expect(bar).toHaveClass(/\bon\b/);
   await expect(page.locator("#toasts")).not.toContainText("Kept: this is home now.");
-  // With nothing focused, ↵ keeps.
-  await blur(page);
+  // A dial turned with the mouse leaves no focus: ↵ is KEEP.
+  await drag(page, k, -60);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
   await page.keyboard.press("Enter");
   await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
   await expect(bar).not.toHaveClass(/\bon\b/);
-  // Moved again, ⇧⌫ glides back home.
-  await k.focus();
-  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+  // Moved again with the mouse, ⇧⌫ glides back home.
+  await drag(page, k, -60);
   await expect(bar).toHaveClass(/\bon\b/);
-  await blur(page);
   await page.keyboard.press("Shift+Backspace");
   await expect(bar).not.toHaveClass(/\bon\b/, { timeout: 10_000 });
   expect(errs).toEqual([]);
@@ -142,7 +169,7 @@ test("the pad keys yield to a text field and a modal, the note keys still play, 
   await page.keyboard.press("n");
   await page.keyboard.press("Escape");
   await expect(page.locator("#help")).toBeHidden();
-  await page.waitForTimeout(800);
+  // An offer is asked for in the keydown itself, so none asked by now is none.
   expect(await offersAsked(page), "no offer asked for from a text field or under a modal").toBe(n0);
   // The note keys still play in PERFORM, beside the pad keys.
   await page.keyboard.down("a");

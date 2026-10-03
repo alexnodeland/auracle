@@ -53,9 +53,7 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   expect(g.y).toBeGreaterThanOrEqual(well.y + well.height - 1);
   expect(g.y + g.height).toBeLessThanOrEqual(stage.y + stage.height);
   // A note: step 2, which names a control that turns here.
-  await page.keyboard.down("a");
-  await page.waitForTimeout(200);
-  await page.keyboard.up("a");
+  await page.keyboard.press("a");
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn [A-Z]+: drag/);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   // A turn: step 3.

@@ -168,7 +168,7 @@ The pads’ keys, printed on each pad:
 | <kbd>n</kbd> | **OFFER**: grow a variant into B. While B holds one, **NEXT**: pass on it and bring the next |
 | Hold <kbd>b</kbd> | **PEEK**: hear B alone while the key is down |
 | <kbd>⇧↵</kbd> | **TAKE** the offer in B. Not from a focused button, link or drop-down, where Enter is theirs |
-| <kbd>↵</kbd> | **KEEP**: make the sound home, once it has moved. Only with nothing focused: a focused control keeps its own Enter |
+| <kbd>↵</kbd> | **KEEP**: make the sound home, once it has moved. Only with nothing focused: a control you reached with <kbd>Tab</kbd> keeps its own Enter. A turn with the mouse or a finger leaves nothing focused, so ↵ keeps straight after it |
 | <kbd>⇧⌫</kbd> | **BACK**: glide back to the last sound you kept, once it has moved |
 | <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and at every other level <kbd>⇧F</kbd> is the accented F |
 

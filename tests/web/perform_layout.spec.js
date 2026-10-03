@@ -224,8 +224,8 @@ test("Blend shows only while B holds an offer, and PASS passes on B without grow
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   await expect(slot).toBeHidden();
   await expect(page.locator("#toasts")).toContainText("Passed on B. That counts as a pick for what you had.");
-  // No offer was asked for: a pass, not a Next.
-  await page.waitForTimeout(1500);
+  // No offer was asked for: a pass, not a Next (an offer is asked in the
+  // press itself, so none by now is none).
   expect(await page.evaluate(() => window.__offers.length), "PASS grows nothing").toBe(asked);
   await expect(page.locator(".pf-pad.primary")).toHaveText("Offer");
   // UNDO brings B back, heard as it was, and nothing is recorded.

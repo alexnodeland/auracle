@@ -193,7 +193,7 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   await goLevel(page, "perform");
   await expect(page.locator("#view-perform")).toBeVisible();
 
-  // A named control, dragged a little and let go: it keeps the focus.
+  // A named control, dragged a little and let go (a pointer's turn leaves no focus, so ↵ is KEEP).
   const ctl = page.locator("#view-perform .pf-knob[role=slider]").first();
   const box = await ctl.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

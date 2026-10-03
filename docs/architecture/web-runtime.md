@@ -456,7 +456,9 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   EVOLVE card, are slots too (`FACE_SIZE` `well`, `wellb`, `evolve`), drawn
   once per bank at a fixed size with the glow and the floor's reflection
   (`FACE_OPTS`, through `drawVessel`) and scaled by the well that holds them
-  (`FACE_FLUID`: no fixed size on the slot, the image contained in it). B's
+  (`FACE_FLUID`: no fixed size on the slot, the image contained in it), at
+  2× at most and in a cache of their own (`faceWellCache`, 24), apart from the
+  bank's 400 thumbnails. B's
   is drawn in the model's amber, smaller, on the same floor line as the held
   face's, so the two stand side by side in the well.
 - **Stage mode** (`stageDraw` in `perform.js`) draws the sound in hand's

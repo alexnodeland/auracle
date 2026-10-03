@@ -54,7 +54,7 @@ On the left, the sound:
   (see [Blend, Peek, and B](#blend-peek-and-b)); a click on B’s face plays
   nothing, since B is heard with **PEEK** or by holding <kbd>B</kbd>. In its corner: **XY** (see
   [the XY pad](#the-xy-pad)) and **⇧F** for [stage mode](#stage-mode); in
-  the other, a small trace of what is sounding now.
+  the top left, a small trace of what is sounding now.
 
 On the right, what you turn:
 
@@ -552,8 +552,10 @@ comes or goes.
 | **KEEP** | <kbd>↵</kbd>, with nothing focused | Makes the sound you hear home: *Kept: this is home now. Back returns here.* The controls’ positions are written into the patch as one undo step, so PATCH shows it, and the controls re-center on it |
 | **BACK** | <kbd>⇧⌫</kbd> | Glides back to home: the last sound you kept or opened |
 
-With a control focused, <kbd>↵</kbd> is that control’s (a button presses, a
-named control plays its sweep), not KEEP. With the sound at home, either key
+With a control you reached with <kbd>Tab</kbd> focused, <kbd>↵</kbd> is that
+control’s (a button presses, a named control plays its sweep), not KEEP. A
+turn with the mouse or a finger leaves nothing focused, so <kbd>↵</kbd> keeps
+straight after it. With the sound at home, either key
 says there is nothing to keep or go back to. None of the pad keys act while
 you type in a field or a dialog is open ([the key map](../keyboard.md#in-perform)).
 

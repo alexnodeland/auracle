@@ -38,7 +38,9 @@ once as the view comes up.
 **PERFORM.** Its pads have keys, printed on each and given in
 `aria-keyshortcuts`: <kbd>n</kbd> OFFER (NEXT), hold <kbd>b</kbd> PEEK,
 <kbd>⇧↵</kbd> TAKE, and, once the sound has moved, <kbd>↵</kbd> KEEP with
-nothing focused and <kbd>⇧⌫</kbd> BACK. They yield to a text field and a
+nothing focused (a dial or BLEND turned with the mouse or a finger lets go of
+the focus; one reached with <kbd>Tab</kbd> keeps it, and its Enter) and
+<kbd>⇧⌫</kbd> BACK. They yield to a text field and a
 modal dialog. Each named control and WANDER is a slider (arrows turn it,
 <kbd>Home</kbd> centers it, <kbd>Enter</kbd> on a named control plays its
 sweep and on WANDER freezes it); WANDER’s value reads *frozen* while it is,

@@ -48,7 +48,10 @@ In PERFORM, while it shows:
   takes from there too.
 - **↵: Keep**, only when no control has focus (a focused button presses, a
   focused control plays its sweep), and only when the sound has moved;
-  otherwise it says there is nothing to keep.
+  otherwise it says there is nothing to keep. A turn of a dial or Blend with
+  the mouse or a finger leaves no focus behind, as a click leaves none on a
+  button, so ↵ keeps straight after it; a control reached with Tab keeps its
+  focus and its own Enter.
 - **⇧⌫: Back** to the last sound kept, when the sound has moved; otherwise it
   says there is nothing to go back to.
 - **Freeze has no key.** A tap on Wander freezes it, and Enter on a focused

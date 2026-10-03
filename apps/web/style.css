@@ -5889,6 +5889,8 @@ html.handheld .handheld-gate {
 .pf-mv[data-key]::after { content: attr(data-key); }
 @media (pointer: coarse) {
   .pf-mv[data-key]::after, .pf-pad[data-key]::before, .pf-kbd { display: none; }
+  /* Under a finger, KEEP and BACK are as tall as the pads on a short screen. */
+  .pf-mv { min-height: 44px; padding-inline: var(--s4); }
 }
 
 /* The well: the sound's face, large, with its glow and the floor's
@@ -5998,9 +6000,11 @@ html.handheld .handheld-gate {
 .pf-blend-in { grid-area: in; width: 100%; accent-color: var(--phos-b); }
 .pf-blend-in:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .pf-blend-v { grid-area: v; text-align: center; letter-spacing: 0; text-transform: none; font-size: var(--t-value); color: var(--phos-b-dim); }
-/* The live trace, small in the well's corner. */
-.pf-scope { position: absolute; left: var(--s3); bottom: var(--s3); width: 120px; height: 30px; opacity: 0.55; pointer-events: none; }
-.pf-well.offered .pf-scope { display: none; }
+/* The live trace, small in the well's top left (the corner the buttons
+   leave free): clear of B and of Blend, so it stays while you compare. The
+   XY pad and How it works cover the well, and it gives way to them. */
+.pf-scope { position: absolute; left: var(--s3); top: var(--s3); width: 120px; height: 30px; opacity: 0.55; pointer-events: none; }
+.pf-well:not([data-mode="face"]) .pf-scope { display: none; }
 /* The well's corner: XY and stage mode. */
 .pf-corner { position: absolute; top: var(--s3); right: var(--s3); display: flex; gap: var(--s2); z-index: 3; }
 .pf-corner .util-btn { display: inline-flex; align-items: center; gap: var(--s1); }
@@ -6750,6 +6754,11 @@ body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7)
 .guide .x { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--silk-dim); cursor: pointer; }
 .guide .x:hover { color: var(--silk); background: var(--plate-edge); }
 .guide .x:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+/* Under a finger, the pill and its × are a finger's size. */
+@media (pointer: coarse) {
+  .guide .next { height: 44px; }
+  .guide .x { width: 40px; height: 40px; }
+}
 @media (max-width: 1180px) {
   .guide { left: var(--s3); bottom: var(--s3); max-width: calc((100% - var(--rail-w)) / 2 - var(--s3)); }
   .guide .next { font-size: var(--t-value); gap: var(--s2); padding-left: var(--s3); }

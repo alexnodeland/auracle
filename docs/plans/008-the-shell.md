@@ -117,8 +117,8 @@ and C3; round 2's decisions govern PERFORM):
   strip and the pad row WANDER · OFFER · PEEK · TAKE · PASS. Every `pf-*`
   class specs read stays on its node (`.pf-name`, `.pf-status`, `.pf-knob`,
   `.pf-pad`, `.pf-offer`, `.pf-face`, `.pf-xy-*`, `.pf-why-*`). The live
-  scope survives as a small trace in the well's corner, hidden while B
-  stands in the well.
+  scope survives as a small trace in the well's top left, clear of B and
+  Blend, so it stays while you compare; it gives way to XY and How it works.
 - **The faces in the well are face slots** (`FACE_SIZE` `well` and `wellb`,
   drawn with `FACE_OPTS`' glow and reflection and scaled by the well), not a
   canvas drawn per frame, so a face redraws only when its render or the bank
@@ -178,10 +178,16 @@ and C3; round 2's decisions govern PERFORM):
   picks, no generations, Ceiling with an offer in B and no chord latched,
   not SCREENSHOTS.md's taught session; `encode-screens.sh`'s `teach-meter`
   rectangle is the old layout's).
-- **The large faces share the face cache.** The well's and EVOLVE's faces
-  are drawn at 2× at most, but share `faceMarkupCache` (an LRU of 400) with
-  the bank's rows, so each dealt pair adds two 480 px pictures; the least
-  recently used go first, as for every face.
+- **The large faces have their own cache.** The well's and EVOLVE's faces
+  are drawn at 2× at most and kept in `faceWellCache`, an LRU of 24, apart
+  from the bank's 400 thumbnails, so their memory is bounded.
+- **A pointer's turn leaves no focus.** A dial or Blend turned with the
+  mouse or a finger is blurred when the turn ends (as main.js leaves no
+  focus on a clicked button), so ↵ is KEEP straight after; a control reached
+  with Tab keeps its focus and its Enter. The pad keys treat Blend's range
+  input as a control, not a text field.
+- **Touch sizes.** On a coarse pointer KEEP and BACK are 44 px tall and the
+  pill's × 40 px.
 
 ## 1. Delta inventory (mock vs app)
 

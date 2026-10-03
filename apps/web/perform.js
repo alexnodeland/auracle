@@ -525,6 +525,9 @@ export function createPerform(host) {
     const up = () => {
       k.held = false;
       queueMicrotask(panelLater);
+      // As a dial's: a pointer's slide leaves no focus, so the pad keys and
+      // ↵ KEEP work straight after it.
+      if (document.activeElement === input) input.blur();
     };
     input.addEventListener("pointerup", up);
     input.addEventListener("pointercancel", up);
@@ -800,6 +803,10 @@ export function createPerform(host) {
         if (performance.now() - pressT < 300) toggleHold();
         wanderLetGo();
       } else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
+      // A pointer's turn leaves no focus behind (as a click leaves none on a
+      // button): ↵ is then KEEP, not this control's own Enter (ADR-018). A
+      // control reached with the keyboard keeps its focus and its Enter.
+      if (document.activeElement === k.wrap) k.wrap.blur();
     };
     k.wrap.addEventListener("pointerup", end);
     k.wrap.addEventListener("pointercancel", end);
@@ -1957,11 +1964,17 @@ export function createPerform(host) {
     moment("folded");
     const gh = ghost("folded");
     if (!gh) return;
-    const back = gh.g.animate(
-      [{ transform: "none", opacity: 1 }, { transform: onto(heldFace.getBoundingClientRect(), gh.r), opacity: 0 }],
-      { duration: gh.ms, easing: easeOf("--e-swap"), fill: "forwards" },
-    );
-    back.onfinish = gh.gone;
+    // B leaving reflows the well (one column for PASS, two again while NEXT
+    // grows the next), so where the face stands is read a frame later, once
+    // that is done: the copy folds into the face as it is drawn then.
+    requestAnimationFrame(() => {
+      if (!gh.g.isConnected) return;
+      const back = gh.g.animate(
+        [{ transform: "none", opacity: 1 }, { transform: onto(heldFace.getBoundingClientRect(), gh.r), opacity: 0 }],
+        { duration: gh.ms, easing: easeOf("--e-swap"), fill: "forwards" },
+      );
+      back.onfinish = gh.gone;
+    });
   }
 
   function requestDrift() {
@@ -3488,7 +3501,9 @@ export function createPerform(host) {
   // was (ADR-009's status note). Matched on the key's character, as the
   // keymap is, so a Dvorak or Colemak F is F. Only Shift and F, nothing else
   // held, and never while typing. Esc leaves; Tab stays on the stage.
-  const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
+  // A range input (Blend) is a control, not text entry: the keys stay, as
+  // main.js keeps the note keys for it.
+  const typing = (t) => !!t?.closest?.("input:not([type=range]), textarea, select, [contenteditable]");
   window.addEventListener(
     "keydown",
     (e) => {
@@ -3522,7 +3537,7 @@ export function createPerform(host) {
   // key, so it takes from a focused dial too, but not from a button or a
   // drop-down, where Enter is theirs. Freeze has no key: a tap on Wander.
   // Matched by character, as the keymap is (N and B are no note's key).
-  const ENTER_OWNERS = "button, a[href], select, textarea, input, [contenteditable], [role=button], [role=tab], [role=menuitem], [role=option], [role=listbox]";
+  const ENTER_OWNERS = "button, a[href], select, textarea, input:not([type=range]), [contenteditable], [role=button], [role=tab], [role=menuitem], [role=option], [role=listbox]";
   const padKeysOff = (e) => !state.visible || !!stageOn || typing(e.target) || !!host.blocked?.() || e.metaKey || e.ctrlKey || e.altKey;
   const nothingFocused = () => {
     const a = document.activeElement;
@@ -4383,7 +4398,7 @@ export function createPerform(host) {
       return k.spec.kind === "named" ? (k.value + 1) / 2 : k.value;
     },
     pad(key) {
-      ({ keep, back, offer: () => requestOffer(), take, pass: () => passOffer(), hold: toggleHold })[key]?.();
+      ({ keep, back, offer: () => requestOffer(), take, pass: () => state.offer && passOffer(), hold: toggleHold })[key]?.();
     },
     // Has the sound left home (the moved bar)?
     moved: () => movedFromHome(),

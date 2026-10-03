@@ -449,7 +449,8 @@ banned-words check in `make dev-check` reads the list after it.
 | **TAUGHT n** | The counter: everything it learned from (picks, stars, cuts) | PICKS for a count that includes stars |
 | **save / saved** | Kept safe from replacement, on the Saved shelf | "saved" for a download |
 | **download / open** | Files | save, export, load for files |
-| **keep** | PERFORM's Keep pad, only | every other keep |
+| **keep** | PERFORM's Keep, in the moved bar (↵), only | every other keep |
+| **moved · KEEP · BACK** | PERFORM's head, shown exactly when the sound has left home (a control turned, a drift not kept, a glide) | changed, dirty, edited |
 | **keep as new** | PATCH: the edit joins the pool as a new sound, and the original stays | commit |
 | **pick the edit** | KEEP AS NEW's one-time shortcut: keep the edit as new without the comparison, telling the model you'd pick it | my edit is better |
 | **bank** | The rail and its tabs: Pool, Saved, Presets | "IN BANK", "the node bank" |
@@ -463,6 +464,14 @@ banned-words check in `make dev-check` reads the list after it.
 | **ideas** | Wander's middle zone | "offer" as a zone name |
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
+| **PASS** | PERFORM's pad: pass on the offer in B without growing another; heard, a pick for what you had, with UNDO | skip, reject, discard |
+| **first steps** | PERFORM's first-visit steps, one at a time in a pill bottom left; its × is *Stop showing these* | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
+| **▶ PLAY** | An EVOLVE card's button: its phrase | SAMPLE, audition |
+| **↓ patch** | An EVOLVE card's corner: open its sound in PATCH without picking | open in patch, promote |
+| **⇄ face** | An EVOLVE card's corner, flipped to its circuit: back to its face | wave |
+| **Velocity plays**, **vel** | ARRANGE's row for which control a note's velocity drives, and the tick on that control | TOUCH, velo |
+| **share** | PERFORM's button by the name: the sound's card as a picture | export, send |
+| **what each generation did** | EVOLVE's disclosure under EVOLVE POOL, opening the lineage's spark and log | history, log (as a label) |
 | **listening…** | PERFORM measuring a sound's controls | measuring… (that is a figure's) |
 | **measuring…** | Renders on their way for an answer or the lesson: a figure, or the lesson's shape, while the engine renders and measures the sound in hand | listening… (that is PERFORM's), loading… |
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
