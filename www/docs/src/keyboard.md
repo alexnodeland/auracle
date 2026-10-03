@@ -23,8 +23,11 @@ at last time.
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
 
 They work with a knob or a list focused. In a text field they stay the
-field’s (there <kbd>⌥←</kbd> moves by a word), and with a dialog open they do
-nothing. Clicking a stop puts the keyboard in that level. If you reach the
+field’s: on a Mac <kbd>⌥←</kbd> there moves by a word, and on Windows and Linux
+Alt ← is the browser’s Back, so it can leave the page from a field (elsewhere
+the app takes it). With a modal dialog up (the warm start, the ? card, stage
+mode, a lesson) they do nothing; a panel that leaves the page usable (MIDI,
+**KEYS ⋯**, the scope’s settings, Compare) doesn’t stop them. Clicking a stop puts the keyboard in that level. If you reach the
 levels with <kbd>Tab</kbd>, the arrow keys walk them as they are drawn (<kbd>↑</kbd>
 out, <kbd>↓</kbd> in, <kbd>←</kbd> to EVOLVE, <kbd>→</kbd> back), and
 <kbd>Home</kbd> and <kbd>End</kbd> go to their ends.

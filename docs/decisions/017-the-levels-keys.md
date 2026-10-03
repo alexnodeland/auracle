@@ -37,9 +37,12 @@ everything, and `-` and `=` to zoom.
 - **⌥1–5 go straight to** PERFORM, PATCH, EVOLVE, TASTE and LEARNING. The digit
   is read from the key's code, since ⌥1 types a character on a Mac.
 - **They come first.** They are taken before any focused control (a knob turns
-  on the arrows, a list walks on them), except in a text field, where ⌥ and an
-  arrow move by word, and under a modal dialog, whose level must not change
-  unseen. ⌥ alone is taken too, since Firefox and Edge on Windows open the
+  on the arrows, a list walks on them), except in a text field, where on a Mac ⌥ and an
+  arrow move by word (on Windows and Linux Alt ← there is the browser's Back,
+  left to it), and under any modal dialog showing (the warm start, the commit
+  pair, the ? card, stage mode, a lesson), whose level must not change
+  unseen. Non-modal panels (MIDI, KEYS ⋯, the scope's settings, Compare)
+  leave them working. ⌥ alone is taken too, since Firefox and Edge on Windows open the
   window's menu on it.
 - **Holding ⌥ shows the model view** (after 220 ms; released, it goes; another
   key pressed meanwhile cancels it, so ⌥↑ never flashes it). Built in

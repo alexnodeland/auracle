@@ -20,8 +20,8 @@ changelog that edits its own past is not a record.
   <kbd>⌥↓</kbd> in, <kbd>⌥←</kbd> goes to EVOLVE and <kbd>⌥→</kbd> back,
   and <kbd>⌥1</kbd>–<kbd>⌥5</kbd> go straight to PERFORM, PATCH, EVOLVE,
   TASTE or LEARNING (Alt on Windows and Linux). They work with a knob or a
-  list focused, but not while you type in a field, where ⌥ and an arrow
-  still move by word. With the stops focused, the plain arrows walk them.
+  list focused, but not while you type in a field (where on a Mac ⌥ and an
+  arrow still move by word) or while a dialog such as stage mode is up. With the stops focused, the plain arrows walk them.
 - **It opens at PERFORM,** or at the level you were at last time, or at the
   one a link names (`…/play/#taste`). It used to open on PATCH.
 - **The top bar is new.** The wordmark has a round amber lamp after it, lit

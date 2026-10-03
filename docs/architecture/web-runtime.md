@@ -66,9 +66,13 @@ unit-tested (`tests/levels.test.mjs`):
 - **The keys** (ADR-017) are taken in the capture phase, before any control's
   own handler: ⌥↑/⌥↓ step along the axis (from EVOLVE, measured from
   PERFORM), ⌥← goes to EVOLVE and ⌥→ back, ⌥1–5 by `event.code`. A text field
-  keeps them (`typing`), and so does a modal dialog (`host.blocked`: the warm
-  start, the commit pair, the ? card). ⌥ alone is `preventDefault`ed on
-  keydown and keyup, or Firefox and Edge on Windows open the window's menu.
+  keeps them (`typing`), and so does any modal dialog showing (`host.blocked`:
+  a connected, visible `[aria-modal="true"]`, which is the warm start, the
+  commit pair, the ? card, PERFORM's stage mode and explain's lesson); a
+  non-modal panel does not. ⌥ alone is `preventDefault`ed on keydown and
+  keyup, or Firefox and Edge on Windows open the window's menu. The wordmark's
+  click is a move like the others (`show("perform")`, the address replaced),
+  its `href` kept for a middle click.
   A focused stop walks the rail with the plain arrows and Home/End, taken on
   the rail so EVOLVE's ←/→ never hear them.
 - **A move is instant.** The morph that carries the held sound's face from one

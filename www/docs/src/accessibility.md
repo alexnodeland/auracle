@@ -16,7 +16,8 @@ rack is one stop, and the module rail is one stop per group.
 **The levels.** <kbd>⌥↑</kbd> and <kbd>⌥↓</kbd> zoom out and in,
 <kbd>⌥←</kbd> and <kbd>⌥→</kbd> go to EVOLVE and back, and <kbd>⌥1</kbd>–
 <kbd>⌥5</kbd> go straight to a level, from anywhere but a text field or a
-dialog (Alt off Apple platforms). The levels at the stage’s right edge are a
+modal dialog (Alt off Apple platforms; in a text field there, Alt ← is the
+browser’s Back). The levels at the stage’s right edge are a
 navigation landmark named *Where you are*: each stop is a button named for its
 level and what it is (*Taste: the sound among all sounds*), with its key in
 `aria-keyshortcuts`, and the one you’re at is `aria-current="location"`.
