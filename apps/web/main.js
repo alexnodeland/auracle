@@ -155,7 +155,13 @@ const shell = createShell({
   levelChanged: (prev, next, how) => levelChanged(prev, next, how),
   // A modal dialog keeps the level keys: the level behind it must not change
   // unseen.
-  blocked: () => ["warmstart", "cduel", "help"].some((id) => !$(id).classList.contains("hidden")),
+  // Any modal one showing: the warm start, the commit pair, the ? card,
+  // PERFORM's stage mode, explain's lesson. A non-modal panel (MIDI, KEYS ⋯,
+  // the scope's settings, Compare) does not keep them.
+  blocked: () =>
+    [...document.querySelectorAll('[aria-modal="true"]')].some(
+      (el) => el.isConnected && !el.classList.contains("hidden") && el.getClientRects().length > 0,
+    ),
 });
 for (const level of ["perform", "patch", "evolve", "taste", "learning"]) shell.register(level, { el: $(`view-${level}`) });
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
@@ -4140,9 +4146,9 @@ function renderSkill() {
   el.textContent = skillText();
   if (!el.textContent) el.title = "How much sharper than a coin flip its guesses have been (Brier skill). Blank until it has guessed something.";
   if (E && E.check_n >= SKILL_MIN_N) {
-    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. LEARNING shows them.`;
+    el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. The strip above shows each one.`;
   } else if (E && E.n >= SKILL_MIN_N) {
-    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). LEARNING shows them.`;
+    el.title = `Brier skill over ${E.n} guesses (biased by how pairs were chosen, until enough fair-test picks land). The strip above shows each one.`;
   } else if ((E ? E.n : calib.n) >= 1) {
     el.title = `It guesses each pick before you make it. After ${SKILL_MIN_N} it says how much sharper than a coin flip it has been.`;
   }
@@ -5409,7 +5415,11 @@ function attachPianoPointers(piano) {
 }
 
 // Computer keys play notes everywhere (no text inputs in the app).
-const downComputerKeys = new Map(); // event.key -> midi
+// Held computer keys by the physical key (`event.code`), not the character:
+// on a Mac, ⌥ pressed while a note is held makes that key's keyup say "å",
+// and a note looked up by the character then never let go.
+const downComputerKeys = new Map(); // event.code -> midi
+const physicalKey = (e) => e.code || e.key.toLowerCase();
 document.addEventListener("keydown", (e) => {
   // ⌘Z: first the newest teaching act still inside its undo window, in any
   // view; then, in PATCH only, the edit undo.
@@ -5534,8 +5544,8 @@ document.addEventListener("keydown", (e) => {
   }
   if (k in KEYMAP) {
     const midi = 60 + 12 * octShift + KEYMAP[k];
-    if (midi >= 0 && midi <= 127 && !downComputerKeys.has(k)) {
-      downComputerKeys.set(k, midi);
+    if (midi >= 0 && midi <= 127 && !downComputerKeys.has(physicalKey(e))) {
+      downComputerKeys.set(physicalKey(e), midi);
       // A computer key has no strike position, so it gets a musical default
       // rather than the implicit 1.0 — full velocity on every note is not a
       // neutral choice, it is the loudest one, and it made `vel_gain` a
@@ -5578,9 +5588,9 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
   if (k === " " && rackSpaceUp()) return;
-  const midi = downComputerKeys.get(k);
+  const midi = downComputerKeys.get(physicalKey(e));
   if (midi !== undefined) {
-    downComputerKeys.delete(k);
+    downComputerKeys.delete(physicalKey(e));
     liveNoteOff(midi);
   }
 });

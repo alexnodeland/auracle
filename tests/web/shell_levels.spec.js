@@ -216,27 +216,75 @@ test("Space plays the sound in hand at every level, and the header's ▶ says so
 
 test("a reload comes back to the level you were at, and a level's link opens it", async ({ page }) => {
   const errors = await boot(page);
+  // A full load of `path`, never a move within the page.
+  const load = async (path) => {
+    await page.goto("about:blank");
+    await page.goto(path);
+    await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  };
   await goLevel(page, "taste");
   await expect(page).toHaveURL(/#taste$/);
   // A fresh visit with no hash: the level saved last time.
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await load("/");
   await expectAt(page, "taste");
-  // A link to a level wins over the saved one.
-  await page.goto("/#learning");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  // A link to another level wins over the saved one, on a full load.
+  expect(await page.evaluate(() => localStorage.getItem("auracle-view"))).toBe("taste");
+  await load("/#learning");
   await expectAt(page, "learning");
-  // The hash changed in place moves too, and a reload keeps it.
+  // The hash changed in place moves too.
   await page.evaluate(() => { location.hash = "#evolve"; });
   await expectAt(page, "evolve");
+  // A reload keeps the hash's level over a different saved one.
+  await page.evaluate(() => localStorage.setItem("auracle-view", "taste"));
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expectAt(page, "evolve");
   // PATCH's old name, saved before the levels, still opens PATCH.
   await page.evaluate(() => localStorage.setItem("auracle-view", "play"));
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await load("/");
   await expectAt(page, "patch");
+  // The wordmark goes to PERFORM without a new history entry.
+  const entries = await page.evaluate(() => history.length);
+  await page.locator(".brand").click();
+  await expectAt(page, "perform");
+  expect(await page.evaluate(() => history.length), "the wordmark's move replaces the address").toBe(entries);
+  expect(errors).toEqual([]);
+});
+
+test("stage mode, which is modal, keeps the level keys", async ({ page }) => {
+  const errors = await boot(page);
+  await page.locator('.bf[data-f="preset"]').click();
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
+  await page.locator("#view-perform").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("Shift+F");
+  await expect(page.locator(".st-stage")).toBeVisible();
+  await page.keyboard.press("Alt+ArrowDown");
+  await page.keyboard.press("Alt+Digit2");
+  await expectAt(page, "perform");
+  await expect(page.locator(".st-stage")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".st-stage")).toHaveCount(0);
+  await page.keyboard.press("Alt+ArrowDown");
+  await expectAt(page, "patch");
+  expect(errors).toEqual([]);
+});
+
+test("a note held while ⌥ goes down is let go by its key", async ({ page }) => {
+  const errors = await boot(page);
+  // On a Mac, ⌥ held turns the A key's keyup into "å": the note is let go by
+  // the physical key, or it would sound for good.
+  await page.evaluate(() => {
+    const send = (type, key) => document.dispatchEvent(new KeyboardEvent(type, { key, code: "KeyA", bubbles: true }));
+    send("keydown", "a");
+  });
+  await expect(page.locator('.pkey[data-note="60"]')).toHaveClass(/\bdown\b/);
+  await page.evaluate(() => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Alt", code: "AltLeft", altKey: true, bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent("keyup", { key: "å", code: "KeyA", altKey: true, bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", code: "AltLeft", bubbles: true }));
+  });
+  await expect(page.locator('.pkey[data-note="60"]')).not.toHaveClass(/\bdown\b/);
   expect(errors).toEqual([]);
 });
 

@@ -164,6 +164,18 @@ export function createShell(host = {}) {
     },
     true,
   );
+  // The wordmark goes to PERFORM, the level at rest. Its href stays for a
+  // middle click and for a page without scripts; a plain click is a move, so
+  // it is replaced in the address like every other one, not a new entry Back
+  // would step through.
+  const brand = document.querySelector(".brand");
+  if (brand) {
+    brand.addEventListener("click", (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      show("perform", { chosen: true });
+    });
+  }
   // A link to a level ("…/play/#taste"), or the address edited by hand.
   window.addEventListener("hashchange", () => {
     const level = hashLevel(location.hash);
