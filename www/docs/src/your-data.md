@@ -77,7 +77,9 @@ picks, 4 stars, and 2 cuts. Redrawing your taste map…*
 
 **Download this patch** writes the sound you’re playing as a patch file.
 **Open a patch file…** opens one, and accepts `.json`, `.png`, and `.svg`.
-You can also drop a file on the window.
+You can also drop a file on the window. The sound it opens joins the pool the
+way a sound you keep as new does, and is just as safe until it has been in a
+pick ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
 ### A patch as a picture
 

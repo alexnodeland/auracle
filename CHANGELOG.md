@@ -19,7 +19,8 @@ changelog that edits its own past is not a record.
   pair in EVOLVE, or an offer in PERFORM you heard and took or passed, with it
   on either side, whatever you picked. The question KEEP AS NEW asks itself
   doesn't count, since that one is about the sound you edited from. After its
-  first pick it's an ordinary pool sound; save it to keep it for good.
+  first pick it's an ordinary pool sound; save it to keep it for good. A
+  patch file you open joins the pool the same way and waits too.
 - It isn't a save: no mark, no charge to your saves, and EVOLVE POOL never
   marks it *may be replaced* while it waits. Up to a quarter of the pool (10
   of 40) can wait at once; keep one more as new and the oldest goes back to
