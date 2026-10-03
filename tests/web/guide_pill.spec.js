@@ -5,8 +5,8 @@
 // - It shows the step that is next, ticks it off when it happens (a note
 //   played, a control turned, an offer asked for), and after the last says
 //   what the loop was, then goes.
-// - It sits bottom left of the stage, under PERFORM's well, and shows on
-//   PERFORM only (its steps are PERFORM's).
+// - It sits bottom left of the stage, under PERFORM's well, and shows each
+//   level's own steps: PERFORM's on PERFORM, PATCH's on PATCH (Plan-008 C2a).
 // - × stops it, and a reload keeps it stopped (`auracle-guide`).
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
@@ -61,11 +61,14 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await k.focus();
   for (let i = 0; i < 6; i++) await page.keyboard.press(/half-hi/.test(await k.getAttribute("class")) ? "ArrowDown" : "ArrowUp");
   await expect(page.locator("#guide .pf-step.now")).toContainText("Press OFFER");
-  // Off PERFORM it does not show; back, it does.
+  // PATCH shows its own steps; back on PERFORM, PERFORM's.
   await goLevel(page, "patch");
-  await expect(pill(page)).toBeHidden();
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^(Drag a knob|Tap a module)/);
+  await expect(pips(page)).toHaveCount(3);
+  await expect(page.locator("#guide .pips i.done")).toHaveCount(0);
   await goLevel(page, "perform");
   await expect(pill(page)).toBeVisible();
+  await expect(page.locator("#guide .pf-step.now")).toContainText("Press OFFER");
   // An offer asked for: the last step, said once, then the pill goes.
   await page.locator(".pf-pad", { hasText: /^Offer$/ }).click();
   await expect(page.locator("#guide .pf-step.all")).toContainText("That is the loop");

@@ -5283,31 +5283,6 @@ input[type="range"]::-moz-range-thumb {
    rack legitimately shows the sound you are hearing. The amber header line
    carries the "this is a candidate" state. */
 
-/* ---------- one-time bench walkthrough ---------- */
-.bench-tour {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  border: 1px solid var(--phos-b-deep);
-  border-radius: var(--r1);
-  background: var(--phos-b-06);
-  /* A chip's padding: the button sets the height of a one-line strip. */
-  padding: var(--s1) var(--s1) var(--s1) var(--s3);
-}
-.bench-tour .bt-copy {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--t-body);
-  line-height: 1.5;
-  color: var(--silk-dim);
-  /* One line at every width it has to live at; a narrower window loses the
-     tail of the sentence, not a row of the rack. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.bench-tour .bt-copy b { color: var(--phos-b); font-weight: 500; }
-
 /* ---------- first-run coach mark on the piano ---------- */
 .coach {
   position: fixed;
@@ -6293,7 +6268,7 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-value); align-items: center; }
 
 /* Level three at rest takes no room (notes/ui-hierarchy.md). */
-.tray.empty { display: none; }
+.tray.empty, .tray[hidden] { display: none; }
 /* The arp's settings follow its switch: gone while it does not run. They were
    recessed-but-present, which read as six controls that did nothing — and then
    pinned open for as long as it ran, which covered the bank's last row and the
@@ -6480,7 +6455,9 @@ g.performed .knob-value { fill: var(--phos-b); }
    specimen's `.guide`): pips, the step, ×. PERFORM's steps today, so it
    shows on PERFORM, and PERFORM keeps it a row of room under the well. */
 .guide { position: absolute; left: var(--s5); bottom: var(--s4); z-index: 6; max-width: calc((100% - var(--rail-w)) / 2 - var(--s5)); }
-.guide.hidden, body:not([data-level="perform"]) .guide { display: none; }
+.guide.hidden, body:not([data-level="perform"]):not([data-level="patch"]) .guide { display: none; }
+/* PATCH leaves the pill a row under its well, as PERFORM does. */
+body[data-level="patch"]:has(#guide:not(.hidden)) #view-patch { padding-bottom: calc(var(--s7) + var(--s2)); }
 body:has(#guide:not(.hidden)) .view.perform .pf-left { padding-bottom: var(--s7); }
 .guide .next {
   display: inline-flex;
@@ -7514,3 +7491,52 @@ html.xl-on .alarm { z-index: 62; }
 .cknob, .cknob * { pointer-events: none; }
 /* The fit hint is a note in the well's corner, over the camera. */
 #view-patch .fit-hint { left: var(--s3); top: auto; bottom: calc(var(--s3) + 44px); transform: none; }
+
+/* ---- set aside (C2a): the chip at the foot, the shelf over it ---- */
+.pt-aside b { font-weight: 600; color: var(--phos-a); margin-left: var(--s1); }
+.pt-aside[hidden] { display: none; }
+.pt-shelf {
+  position: absolute;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: calc(var(--s3) + 40px);
+  z-index: 12;
+  min-height: 40px;
+  background: var(--panel-94);
+  box-shadow: var(--shadow-pop);
+}
+.nb-aside-list { display: grid; gap: var(--s1); padding: 0 var(--s2) var(--s2); }
+.nb-aside-list .tray-item { max-width: none; }
+/* A finger needs more than the jack's 13 px to start a cable. */
+@media (pointer: coarse) {
+  .tray-item .t-jack { position: relative; }
+  .tray-item .t-jack::before { content: ""; position: absolute; inset: -14px; }
+  .tray-item .t-x { min-width: 40px; min-height: 40px; }
+}
+
+/* ---- TEACH (C2a): a chip at the foot, the strip over it ---- */
+.pt-teach { margin-left: auto; color: var(--phos-b); }
+.pt-teach[hidden] { display: none; }
+#view-patch .play-duel {
+  position: absolute;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: calc(var(--s3) + 40px);
+  z-index: 12;
+  margin: 0;
+}
+.pd-fold { margin-left: var(--s1); }
+@media (pointer: coarse) { .pd-fold { min-width: 40px; min-height: 40px; } }
+/* The touch sheet's figure (C2a): the bench's face beside its settings. */
+.msheet .ms-body { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: var(--s3); align-items: start; }
+.ms-fig { margin: 0; position: sticky; top: 0; display: grid; justify-items: center; gap: var(--s1); }
+.ms-face { position: relative; display: block; width: 72px; height: 120px; }
+.ms-face .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ms-cap { font-family: var(--font-mono); font-size: var(--t-label); color: var(--silk-mute); }
+/* One input feeding several AUDIO IN modules (`ain-fan`). */
+.ain-fan, .ain-fan * { pointer-events: none; }
+.ain-fan-line { fill: none; stroke: var(--phos-a-60); stroke-width: 2; stroke-dasharray: 1.5 4; stroke-linecap: round; }
+.ain-fan-src { fill: var(--bezel); stroke: var(--phos-a); stroke-width: 2; }
+.ain-fan-dot { fill: var(--phos-a); }
+.ain-fan-name { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-a-dim); }
+#rack-svg.silk-floor[data-illegible~="value"] .ain-fan-name { visibility: hidden; }

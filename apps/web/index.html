@@ -373,16 +373,6 @@
               <button class="pt-act" id="pt-how" type="button" aria-expanded="false" aria-controls="pt-legend" title="How to read this patch" aria-label="How to read this patch"><svg class="pt-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span class="pt-act-l">how to read this</span></button>
             </div>
         </div>
-        <!-- One line, not three: at 77px this card was the second-largest
-             thing between the rack and the menubar on a first visit, and it
-             explained COMMIT and the node bank, which explain themselves (the
-             commit button's tooltip; the rail's own ?). What is left is the
-             three gestures nothing else on screen teaches. -->
-        <div class="bench-tour hidden" id="bench-tour">
-          <span class="bt-copy">Live under your fingers: <b>drag a knob</b> and hear it change.
-            <b>Lock</b> what you love (a knob’s dot, or a module’s <b>▢</b>), then <b>⚡ evolve from this</b>.</span>
-          <button class="util-btn" id="bt-close">got it</button>
-        </div>
         <!-- What the model currently believes about the patch under your
              hands, and how much room that patch has left. Above the rack
              because it is the objective you are steering against, and it has
@@ -460,6 +450,11 @@
               <!-- What the patch on the bench is actually made of. The rail is
                    a legend for the canvas beside it, so it should be able to
                    answer "what am I looking at" as well as "what can I add". -->
+              <!-- What is set aside, first: the same shelf, to drag from. -->
+              <section class="nb-aside hidden" id="nb-aside" aria-labelledby="nb-aside-h">
+                <h3 class="nb-sect"><span id="nb-aside-h">set aside</span><span class="nb-n mono" id="nb-aside-n"></span></h3>
+                <div class="nb-aside-list" id="nb-aside-list"></div>
+              </section>
               <section class="nb-inpatch hidden" id="nb-inpatch" aria-labelledby="nb-inpatch-h">
                 <h3 class="nb-sect"><span id="nb-inpatch-h">in this patch</span><span class="nb-n mono" id="nb-inpatch-n"></span></h3>
                 <div class="nb-chips" id="nb-inpatch-list"></div>
@@ -522,7 +517,35 @@
                   </div>
                 </div>
               </div>
+              <!-- SET ASIDE n: what was unplugged, deleted or bypassed, kept
+                   across a reload; it opens the shelf to drag from. Shown
+                   only while something is set aside. -->
+              <button class="pt-cam pt-aside" id="tray-chip" type="button" aria-expanded="false" aria-controls="tray" hidden>set aside <b id="tray-n">0</b></button>
               <div class="pt-read" id="pt-read" aria-live="polite"></div>
+              <!-- TEACH: picks between two sounds without leaving PATCH. -->
+              <button class="pt-cam pt-teach" id="pt-teach" type="button" aria-expanded="false" aria-controls="play-duel" title="Teach it your taste: pick between two sounds" hidden>teach ▸</button>
+              </div>
+              <!-- TEACH, unfolded from its chip over the well's foot: the same
+                   pips and forecast line as EVOLVE, A and B, pick, another
+                   pair, back to the sound you were playing, and ✕ to fold. -->
+              <div class="play-duel mono hidden" id="play-duel" role="region" aria-label="Teach">
+          <span class="pd-label amber">teach</span>
+          <span class="teach-pips" id="pd-pips" aria-hidden="true"></span>
+          <button class="pd-side" id="pd-a" title="Play sound A on the keys below"></button>
+          <span class="silk-dim">vs</span>
+          <button class="pd-side" id="pd-b" title="Play sound B on the keys below"></button>
+          <button class="util-btn" id="pd-pick-a" title="Pick A">pick a</button>
+          <button class="util-btn" id="pd-pick-b" title="Pick B">pick b</button>
+          <button class="util-btn" id="pd-skip" title="Another pair" aria-label="Another pair">↻</button>
+          <button class="util-btn" id="pd-back" title="Back to the sound you were playing">← back</button>
+          <span class="pd-pred" id="pd-pred"></span>
+          <button class="util-btn pd-fold" id="pd-fold" type="button" title="Fold TEACH away · Esc" aria-label="Fold TEACH away">✕</button>
+        </div>
+              <!-- The shelf the chip opens: each thing set aside, its jack to
+                   drag back onto a ○, what it brings with it, and ✕. -->
+              <div class="tray pt-shelf" id="tray" role="region" aria-label="Set aside" hidden>
+                <span class="tray-label">set aside</span>
+                <div class="tray-items" id="tray-items" aria-live="polite"></div>
               </div>
               <!-- The well's edges when the patch is wider than the view: how
                    many modules lie past each side, and a press brings the
@@ -570,30 +593,7 @@
               <div class="guess-read" id="guess-read" role="status" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
-            <!-- Held, not "tray". Placement goes direct from the node bank
-                 now, so the only thing that lands here is what you unplugged —
-                 and the strip says its own terms rather than implying they
-                 are safe. -->
-            <div class="tray" id="tray">
-              <span class="tray-label">set aside</span>
-              <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span></div>
-            </div>
           </div>
-        </div>
-        <!-- Teaching without leaving the instrument. This carries the same
-             pips and the same forecast line as EVOLVE — a stripped-down copy
-             of the loop teaches the user there is nothing here. -->
-        <div class="play-duel mono hidden" id="play-duel">
-          <span class="pd-label amber">teach</span>
-          <span class="teach-pips" id="pd-pips" aria-hidden="true"></span>
-          <button class="pd-side" id="pd-a" title="Play sound A on the keys below"></button>
-          <span class="silk-dim">vs</span>
-          <button class="pd-side" id="pd-b" title="Play sound B on the keys below"></button>
-          <button class="util-btn" id="pd-pick-a" title="Pick A">pick a</button>
-          <button class="util-btn" id="pd-pick-b" title="Pick B">pick b</button>
-          <button class="util-btn" id="pd-skip" title="Another pair" aria-label="Another pair">↻</button>
-          <button class="util-btn" id="pd-back" title="Back to the sound you were playing">← back</button>
-          <span class="pd-pred" id="pd-pred"></span>
         </div>
       </section>
 
@@ -1050,9 +1050,9 @@
         <p><b>add module</b> (or <kbd>/</kbd>) opens the catalog over the well. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it, or <b>▶</b> on the line along the well’s top to hear it there first. <kbd>Esc</kbd> puts it down, and closes the catalog.</p>
         <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Point at any module for a sentence on what it does and its ports (hold <kbd>⌥</kbd> to see which way your taste leans on it). Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
-        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
+        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b>, even across a reload. <b>set aside</b> at the well’s foot opens the shelf (the catalog lists it first too), and dragging its ● onto a ○ puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or <b>teach</b> at the foot of PATCH’s well). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
         a bred sound that joins it replaces the <i>lowest</i>-rated one it can (not saved, nor just kept as new).
         <b>presets</b> is the hand-made library that came with the instrument.

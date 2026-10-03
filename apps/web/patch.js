@@ -709,10 +709,20 @@ export function createPatch(host) {
         }, "remove module"))
       : null;
     s.setAttribute("aria-label", `${name} settings`);
+    // The sound's face beside the settings (the specimen's `.ms` figure): the
+    // bench's measured face, the same as the one at OUT, never an estimate;
+    // "as made" until it is edited, "measured" after, "measuring…" while an
+    // edit is on its way to its render.
+    const face = el("span", { class: "ms-face" });
+    const cap = el("figcaption", { class: "ms-cap" });
+    sheet.face = face;
+    sheet.cap = cap;
     s.replaceChildren(
       el("div", { class: "ms-grab", "aria-hidden": "true" }),
       head,
-      el("div", { class: "ms-body" }, says ? el("p", { class: "ms-says", text: says }) : null, rows),
+      el("div", { class: "ms-body" },
+        el("div", { class: "ms-left" }, says ? el("p", { class: "ms-says", text: says }) : null, rows),
+        el("figure", { class: "ms-fig", "aria-label": "The sound's face" }, face, cap)),
       foot,
     );
     paintSheet(m);
@@ -879,6 +889,11 @@ export function createPatch(host) {
 
   function paintSheet(m) {
     if (!sheet.el) return;
+    if (sheet.face) {
+      host.paintFace?.(sheet.face);
+      const st = host.benchState?.() || {};
+      sheet.cap.textContent = st.pending ? "measuring…" : st.dirty ? "measured" : "as made";
+    }
     const variant = knobVariant(m);
     for (const r of sheet.rows) {
       const k = (m.knobs || []).find((x) => x.addr === r.addr) || host.knobByAddr(r.addr);

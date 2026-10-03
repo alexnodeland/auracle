@@ -175,7 +175,28 @@ function modalUp() {
 // The guide pill (guide.js): the first-visit steps, one at a time, bottom
 // left of the stage. PERFORM adds its three when it is built.
 const { createGuide } = await import(`./guide.js?v=${BUILD}`);
-const guide = createGuide({ el: $("guide") });
+const guide = createGuide({
+  el: $("guide"),
+  ends: {
+    perform: "That is the loop. Every offer you take or pass teaches it what you like.",
+    patch: "That is the patch: turn it, lock what you love, and ⚡ breeds around what you kept.",
+  },
+});
+// PATCH's first steps (Plan-008 C2a; they were the bench's one-line tour):
+// turn a knob, lock what you love, ⚡. Each ticks off when it happens. A tour
+// already dismissed (`auracle-bench-tour`) counts them done.
+guide.add({
+  id: "patch-knob", levels: ["patch"],
+  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Tap a module, and turn one of its settings" : "Drag a knob up or down, and hear it change"),
+});
+guide.add({
+  id: "patch-lock", levels: ["patch"],
+  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Lock what you love: tap ▢ on a module" : "Lock what you love: select a module and press L"),
+});
+guide.add({ id: "patch-evolve", levels: ["patch"], text: () => "Press ⚡ EVOLVE FROM THIS: it breeds around what you locked" });
+try {
+  if (localStorage.getItem("auracle-bench-tour")) guide.markDone(["patch-knob", "patch-lock", "patch-evolve"]);
+} catch (_) { /* private window: the steps show */ }
 for (const level of ["perform", "patch", "evolve", "taste", "learning"]) shell.register(level, { el: $(`view-${level}`) });
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1876,6 +1897,9 @@ const patchView = createPatch({
   // A new patch opens the catalogue (the specimen's `np-desk`), and leaving
   // it closes it.
   openCatalogue: () => openCatalogue(false),
+  // The touch sheet's figure: the bench's face, as at OUT.
+  paintFace: (slot) => setFaceSlot(slot, "out", wb.rack && wb.subjectId != null ? (benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId }) : null),
+  benchState: () => ({ dirty: !!wb.dirty, pending: !!editPending || !laneFree() }),
   closeCatalogue: () => closeCatalogue(false),
   escBusy: () =>
     !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogueOpen() || plateSel != null ||
@@ -2573,16 +2597,6 @@ worker.onmessage = (e) => {
           // meets. Only an open the player asked for that kept them waiting
           // is news, and it is said once, in place of any earlier one.
           note(`Opened ${nameOf(m.subject)}.`, { replace: "open" });
-        }
-        // First patch on the bench: a one-time walkthrough of the gestures
-        // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
-        if (!localStorage.getItem("auracle-bench-tour")) {
-          $("bench-tour").classList.remove("hidden");
-          $("bt-close").onclick = () => {
-            $("bench-tour").classList.add("hidden");
-            localStorage.setItem("auracle-bench-tour", "1");
-            refitRack();
-          };
         }
       }
       const structural = m.edited === "structure" || m.edited === "restore";
@@ -3803,17 +3817,14 @@ function renderNextStep() {
   // first teaching cycle. The invitation to play already lives in the rack's
   // own empty state, which is where it belongs.
   if (n === 0 && !hasPlayed) {
-    // A fresh profile is invited to make a sound before it is asked to vote.
-    label = "Play it first: press A, or tap a key below ▸";
-    act = () => {
-      document.activeElement?.blur?.();
-      pulseOnce($("piano"));
-    };
+    // A fresh profile is invited to make a sound before it is asked to vote:
+    // that is the first steps' pill now (its "play"), so nothing is said here.
+    label = "";
+    act = null;
   } else if (n === 0) {
-    label = `Teach it your taste: ${FIT_EVERY} quick picks below ▸`;
+    label = `Teach it your taste: ${FIT_EVERY} quick picks ▸`;
     act = () => {
-      const strip = $("play-duel");
-      if (currentView === "patch" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
+      if (currentView === "patch" && currentDuel) setTeach(true);
       else showView("evolve");
     };
   } else if (n < FIT_EVERY) {
@@ -4532,6 +4543,7 @@ function levelChanged(prev, name, { chosen = false } = {}) {
   closeCompare(); // it belongs to where it was asked
   if (explain) explain.close(); // so does a figure
   currentView = name;
+  guide.setLevel(name); // each level shows its own first steps
   if (perform) {
     if (name === "perform") perform.show();
     else perform.hide();
@@ -5605,7 +5617,9 @@ document.addEventListener("keydown", (e) => {
       if (inside) $("keys-btn").focus();
     }
     if (layoutMenuOpen()) setLayoutMenu(false);
-    if (evolveMenuOpen()) setEvolveMenu(false);
+    if (shelfOpen()) setShelf(false);
+    else if (teachOpen && currentView === "patch") setTeach(false);
+    else if (evolveMenuOpen()) setEvolveMenu(false);
     // PATCH's chain (the specimen's): a selected module, then the catalog;
     // a new patch after both (patch.js).
     else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) {
@@ -6238,13 +6252,23 @@ function dealCards() {
 // The quick-duel strip on PLAY: vote without leaving the instrument. Labels
 // carry the letter AND the name so PICK A / PICK B have an antecedent, and
 // names backfill when the bank lands (refreshInstruments re-calls this).
+// PATCH's TEACH: a chip at the well's foot (Plan-008 C2a) that unfolds the
+// strip over it. Folded at rest; ✕, Esc or the chip folds it again.
+let teachOpen = false;
+function setTeach(open) {
+  teachOpen = !!open && !!currentDuel;
+  $("play-duel").classList.toggle("hidden", !teachOpen);
+  $("pt-teach").setAttribute("aria-expanded", String(teachOpen));
+  positionToastLane();
+}
 function renderPlayDuel() {
   const strip = $("play-duel");
+  $("pt-teach").hidden = !currentDuel;
   if (!currentDuel) {
     strip.classList.add("hidden");
     return;
   }
-  strip.classList.remove("hidden");
+  strip.classList.toggle("hidden", !teachOpen);
   // Said to be on its way, quietly, while the bank row hasn't landed. A bare
   // #20 collides with the bank's own numbering and names nothing, and "▶ A · …"
   // read as a patch called "…". It is only ever a wait: a pair that loses a
@@ -6266,6 +6290,8 @@ function renderPlayDuel() {
   side($("pd-a"), "A", currentDuel[0]);
   side($("pd-b"), "B", currentDuel[1]);
 }
+$("pt-teach").onclick = () => setTeach(!teachOpen);
+$("pd-fold").onclick = () => { setTeach(false); $("pt-teach").focus(); };
 $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
@@ -9226,6 +9252,7 @@ function setRackTake(key, take, text) {
 }
 
 function sendEdit(addr, value, isIndex, id) {
+  if (currentView === "patch") guide.done("patch-knob");
   if (!wb.dirty && !editPending) {
     editPending = true;
     syncCommitBtn();
@@ -11918,6 +11945,39 @@ function buildRack(svg, rack, opts) {
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
 
+  // One input feeding several: AUDIO IN modules that read the same input slot
+  // share one stream (audio-in.js opens one per device and fans it out), and
+  // the canvas draws it so, the specimen's dotted fan from one source to each.
+  // Read off the modules' `input` knobs as set; nothing moves along it.
+  if (!fit) {
+    const bySlot = new Map();
+    for (const m of rack.modules) {
+      if (m.kind !== "audio_in") continue;
+      const k = m.knobs.find((x) => x.addr.endsWith("#input"));
+      const p = pos.get(m.key);
+      if (!k || !p) continue;
+      const slot = Math.round(k.value);
+      if (!bySlot.has(slot)) bySlot.set(slot, []);
+      bySlot.get(slot).push(p);
+    }
+    for (const [slot, ps] of bySlot) {
+      if (ps.length < 2) continue;
+      const sx = Math.min(...ps.map((p) => p.x)) - 34;
+      const sy = ps.reduce((a, p) => a + p.y + p.h / 2, 0) / ps.length;
+      const fan = svgEl("g", {}, "ain-fan");
+      for (const p of ps) {
+        const ty = p.y + p.h / 2;
+        fan.appendChild(svgEl("path", { d: `M ${sx} ${sy} C ${sx + 18} ${sy}, ${p.x - 18} ${ty}, ${p.x} ${ty}` }, "ain-fan-line"));
+      }
+      fan.appendChild(svgEl("circle", { cx: sx, cy: sy, r: 6 }, "ain-fan-src"));
+      fan.appendChild(svgEl("circle", { cx: sx, cy: sy, r: 2.2 }, "ain-fan-dot"));
+      const t = svgEl("text", { x: sx, y: sy - 14, "text-anchor": "middle" }, "ain-fan-name");
+      t.textContent = `input ${slot + 1}`;
+      fan.appendChild(t);
+      wireLayer.appendChild(fan);
+    }
+  }
+
   // OUT, past the amp: its lead, its jack and its name, drawn in the amp's
   // own group so they travel with it, and where the face at OUT stands
   // (`placeOutFace`: the bench's measured face, `#rack-play` over it).
@@ -14126,6 +14186,7 @@ function isLockedAddr(addr) {
 /** Set or clear the lock on a trace address. */
 function setLock(addr, on) {
   const id = lockIdOf(addr);
+  if (on) guide.done("patch-lock");
   if (on) wb.locks.add(id);
   else wb.locks.delete(id);
   // A ⌘Z on its way puts back the lock set of the step it restores, which
@@ -15746,6 +15807,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
 });
 
 function startEvolveFrom(id) {
+  guide.done("patch-evolve");
   // ⚡ waits for a generation (see `breeding`). Its button is disabled then,
   // but a commit's duel can end with "…then evolve" while one breeds: the
   // commit stands, and the ⚡ it was on its way to says why it did not go.
@@ -17176,51 +17238,69 @@ function fragParamStrip(frag) {
   return parts.join(" · ");
 }
 
+/** One thing set aside, as the shelf and the catalog both draw it: its jack
+ *  (the drag source), its name, what it brings with it, and ✕. */
+function trayItemEl(t) {
+  const el = document.createElement("div");
+  el.className = "tray-item" + (t.isMod ? " mod" : "") + (t.pending ? " pending" : "");
+  const jackTitle = t.pending
+    ? "Going into the patch, waiting for the engine"
+    : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
+  const params = fragParamStrip(t.frag) || "·";
+  el.innerHTML = `
+    <div class="ti-head">
+      <span class="t-jack" title="${esc(jackTitle)}"></span>
+      <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
+      <button class="t-x" title="Discard" aria-label="Discard">✕</button>
+    </div>
+    <div class="ti-params mono">${esc(params)}</div>`;
+  // One line, so the parameter strip is clipped; the whole of it is one
+  // hover away.
+  el.title = `${t.label} · ${params}`;
+  // Discarding something the engine is in the middle of accepting would race
+  // its own reply, so the ✕ waits with it.
+  el.querySelector(".t-x").onclick = () => {
+    if (t.pending) return note("That one is going into the patch. Give it a moment.");
+    unstage(t.uid);
+  };
+  const tjack = el.querySelector(".t-jack");
+  claimGesture(tjack); // the shelf scrolls sideways; the cable pull is not that
+  tjack.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    if (t.pending) return;
+    startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
+  });
+  return el;
+}
+
+/** The shelf and its chip (SET ASIDE n, at the well's foot), and the
+ *  catalog's first group. Nothing shows while nothing is set aside. */
 function renderTray() {
   const holder = $("tray-items");
+  const aside = $("nb-aside-list");
   holder.innerHTML = "";
-  // HELD is level three: it appears once something is held. At rest it was a
-  // 64 px row of instructions taken out of the rack's height, and height is
-  // what decides whether a patch is drawn with its knobs or as a diagram.
-  $("tray").classList.toggle("empty", tray.length === 0);
-  if (tray.length === 0) {
-    holder.innerHTML =
-      '<span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span>';
-    return;
-  }
+  if (aside) aside.innerHTML = "";
+  const n = tray.length;
+  $("tray").classList.toggle("empty", n === 0);
+  $("tray-chip").hidden = n === 0;
+  $("tray-n").textContent = String(n);
+  $("tray-chip").title = `${words.count(n, "module")} set aside: drag one back onto a ○ to put it in`;
+  $("nb-aside")?.classList.toggle("hidden", n === 0);
+  if ($("nb-aside-n")) $("nb-aside-n").textContent = String(n);
+  if (n === 0) setShelf(false);
   for (const t of tray) {
-    const el = document.createElement("div");
-    el.className = "tray-item" + (t.isMod ? " mod" : "") + (t.pending ? " pending" : "");
-    const jackTitle = t.pending
-      ? "Going into the patch, waiting for the engine"
-      : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
-    const params = fragParamStrip(t.frag) || "·";
-    el.innerHTML = `
-      <div class="ti-head">
-        <span class="t-jack" title="${esc(jackTitle)}"></span>
-        <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
-        <button class="t-x" title="Discard" aria-label="Discard">✕</button>
-      </div>
-      <div class="ti-params mono">${esc(params)}</div>`;
-    // HELD is one line now, so the parameter strip is clipped; the whole of
-    // it is one hover away.
-    el.title = `${t.label} · ${params}`;
-    // Discarding something the engine is in the middle of accepting would race
-    // its own reply, so the ✕ waits with it.
-    el.querySelector(".t-x").onclick = () => {
-      if (t.pending) return note("That one is going into the patch. Give it a moment.");
-      unstage(t.uid);
-    };
-    const tjack = el.querySelector(".t-jack");
-    claimGesture(tjack); // the tray scrolls sideways; the cable pull is not that
-    tjack.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      if (t.pending) return;
-      startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
-    });
-    holder.appendChild(el);
+    holder.appendChild(trayItemEl(t));
+    if (aside) aside.appendChild(trayItemEl(t));
   }
 }
+function setShelf(open) {
+  const shelf = $("tray");
+  if (!shelf) return;
+  shelf.hidden = !open;
+  $("tray-chip").setAttribute("aria-expanded", String(open));
+}
+const shelfOpen = () => !$("tray").hidden;
+$("tray-chip").onclick = () => setShelf(!shelfOpen());
 
 // ===========================================================================
 // THE NODE BANK — the instrument's catalogue
