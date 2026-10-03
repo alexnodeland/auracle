@@ -1413,6 +1413,11 @@ const redoStack = [];
 // The stack keeps 60 steps; past that its bottom is no longer the sound as it
 // was opened, so the edit bar's count and "undo to as opened" say so.
 let undoTrimmed = false;
+// Each continuous knob's value as the sound was opened, keyed by node identity
+// (`lockIdOf`), so a structural edit leaves it on the knob it was on: the edit
+// bar's compare, drawn on the knob as a pale pointer where it was.
+let openedKnobs = null;
+let openedKnobsWant = false;
 let restoreInFlight = false;
 /** The bench as a step: everything one edit can change and ⌘Z has to answer
  *  for, except what the shelf owes — which only the edit itself knows. */
@@ -2576,6 +2581,11 @@ worker.onmessage = (e) => {
         holesRestoreFor(m.subject);
         undoStack.length = 0;
         undoTrimmed = false;
+        // The knobs as the sound was opened, by node identity, for each knob's
+        // pale pointer once it has been turned (`paintWas`): taken when the
+        // rack below lands (`openedKnobsWant`).
+        openedKnobs = null;
+        openedKnobsWant = true;
         redoStack.length = 0;
         // ⚡'s child is announced here, where it is true (see `evolved_from`);
         // `replace` lets it take over from "⚡ evolving around…" if that is
@@ -10861,6 +10871,13 @@ function modBreath(src) {
 function renderRack(rebuild = false) {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  if (openedKnobsWant && hasRack) {
+    openedKnobsWant = false;
+    openedKnobs = new Map();
+    for (const m of wb.rack.modules) for (const k of m.knobs) {
+      if (k.kind.t === "continuous") openedKnobs.set(lockIdOf(k.addr), k.value);
+    }
+  }
   // The engine's rack, with the player's newest values over it (see
   // `overlayPending`). Here rather than in the reply handler, because a drag
   // keeps writing after the last reply and it is the redraw that must agree.
@@ -11537,7 +11554,8 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      hitPad(menuG, menuX, 15, 24, 26);
+      // A finger gets a wider pad (the plate is a few hundred units wide).
+      hitPad(menuG, menuX, 15, COARSE ? 44 : 24, COARSE ? 44 : 26);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -11555,7 +11573,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, lockX, 15, 24, 26);
+        hitPad(lockG, lockX, 15, COARSE ? 44 : 24, COARSE ? 44 : 26);
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -11776,6 +11794,12 @@ function buildRack(svg, rack, opts) {
         kg.appendChild(arc);
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
         kg.appendChild(body);
+        // Where the knob was as the sound was opened: a pale pointer, shown
+        // once it has been turned away from there (`paintWas`).
+        if (interactive) {
+          kg.appendChild(svgEl("line", {}, "knob-was"));
+          paintWas(kg, k);
+        }
         // The pointer starts at 45% radius: a full-radius spoke reads as a pie
         // slice, not a pointer.
         const ang = (-135 + 270 * k.value) * (Math.PI / 180);
@@ -14485,7 +14509,7 @@ function openStructMenu(mod, x, y) {
     }, [
       {
         label: "replace with…",
-        sub: "pick another modulator from the rail",
+        sub: "pick another modulator from the catalog",
         run: () => armFromRack("insert", parentKey, { accepts: ["mod"], verb: "modulate" }),
       },
       {
@@ -14548,7 +14572,7 @@ function openStructMenu(mod, x, y) {
       label: `modulate → ${port}`,
       sub: modAtKey(key)
         ? `replaces the ${fragLabel(modAtKey(key), true)} already on it`
-        : "arms the rail at the modulators",
+        : "opens the catalog at the modulators",
       run: () => armFromRack("insert", key, { accepts: ["mod"], verb: "modulate" }),
     });
   }
@@ -15399,6 +15423,24 @@ function paintKnob(kg, knob) {
   }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
   kg.setAttribute("aria-valuetext", heardUnit(knob.addr, v, kind, variant, true));
+  paintWas(kg, knob);
+}
+/** A knob's pale pointer at its value as the sound was opened, once it has
+ *  been turned from there (the edit bar's compare, on the knob itself). */
+function paintWas(kg, knob) {
+  const was = kg.querySelector(".knob-was");
+  if (!was) return;
+  const w = openedKnobs ? openedKnobs.get(lockIdOf(knob.addr)) : undefined;
+  if (w == null || Math.abs(w - knob.value) < 0.004) {
+    was.style.display = "none";
+    return;
+  }
+  const a = (-135 + 270 * w) * (Math.PI / 180);
+  was.setAttribute("x1", (Math.sin(a) * (KNOB_R - 2)).toFixed(2));
+  was.setAttribute("y1", (-Math.cos(a) * (KNOB_R - 2)).toFixed(2));
+  was.setAttribute("x2", (Math.sin(a) * (KNOB_R + 6)).toFixed(2));
+  was.setAttribute("y2", (-Math.cos(a) * (KNOB_R + 6)).toFixed(2));
+  was.style.display = "";
 }
 
 function attachKnobDrag(el, mod, knob) {
@@ -16127,8 +16169,10 @@ function setEvolveMenu(open, focusFirst) {
 const evolveMenuOpen = () => !$("pt-evmenu").classList.contains("hidden");
 $("pt-evolve-more").onclick = (e) => setEvolveMenu(!evolveMenuOpen(), e.detail === 0);
 $("pt-evolve-stop").onclick = () => { stopEvolveFrom(); setEvolveMenu(false); };
+// A press on an item folds the menu (a disabled one takes no click; an item
+// its own press disables, clear locks, still folds it).
 $("pt-evmenu").addEventListener("click", (e) => {
-  if (e.target.closest(".pt-mi:not(:disabled)")) setEvolveMenu(false);
+  if (e.target.closest(".pt-mi")) setEvolveMenu(false);
 });
 $("pt-evmenu").addEventListener("keydown", (e) => {
   const items = [...$("pt-evmenu").querySelectorAll(".pt-mi")].filter((b) => !b.disabled && !b.classList.contains("hidden"));
@@ -16213,7 +16257,7 @@ function setLayoutMenu(open, focusFirst) {
 const layoutMenuOpen = () => !$("pt-laymenu").classList.contains("hidden");
 $("rack-layout").onclick = (e) => setLayoutMenu(!layoutMenuOpen(), e.detail === 0);
 $("pt-laymenu").addEventListener("click", (e) => {
-  const it = e.target.closest(".pt-mi:not(:disabled)");
+  const it = e.target.closest(".pt-mi");
   if (!it) return;
   if (it.dataset.layout) setLayoutMode(it.dataset.layout);
   if (it.dataset.layout || it.id === "rack-grid" || it.id === "rack-reseed") setLayoutMenu(false);

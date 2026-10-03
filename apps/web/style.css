@@ -7076,7 +7076,7 @@ html.xl-on .alarm { z-index: 62; }
   border-radius: var(--r1);
   padding: 0 var(--s1);
 }
-@media (pointer: coarse) { .pt-act kbd { display: none; } .pt-act { height: 40px; } }
+@media (pointer: coarse) { .pt-act kbd { display: none; } .pt-act { height: 40px; min-width: 40px; justify-content: center; } }
 .seg-new { gap: var(--s1); }
 .seg-new:empty { display: none; }
 .seg-new > * { display: inline-flex; }
@@ -7101,7 +7101,7 @@ html.xl-on .alarm { z-index: 62; }
   cursor: pointer;
 }
 .pt-evolve-more:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
-@media (pointer: coarse) { .pt-evolve-more { width: 40px; } }
+@media (pointer: coarse) { .pt-evolve-more { width: 40px; } .pt-evolve #rack-evolve { min-height: 40px; } }
 /* A menu over the head: ⚡'s locks, the camera's layout. */
 .pt-menu {
   position: absolute;
@@ -7540,3 +7540,31 @@ html.xl-on .alarm { z-index: 62; }
 .ain-fan-dot { fill: var(--phos-a); }
 .ain-fan-name { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-a-dim); }
 #rack-svg.silk-floor[data-illegible~="value"] .ain-fan-name { visibility: hidden; }
+/* The sheet's lane buttons: the input line, MONITOR, NEW CLIP, ALLOW INPUT;
+   RECORD. A finger's size. */
+.ms-lane { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.ms-lane:empty { display: none; }
+.ms-lane-btn {
+  flex: 1 1 auto;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-hi);
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.ms-lane-btn.on { color: var(--phos-a); border-color: var(--phos-a-deep); background: var(--phos-a-06); }
+/* Where a knob was as the sound was opened, once it has been turned: a pale
+   pointer across its rim (`paintWas`). */
+#rack-svg .knob-was { stroke: var(--silk-mute); stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+.pt-leg .lg-arc { stroke: var(--phos-a); stroke-width: 2; }
+.pt-leg .lg-was { stroke: var(--silk-mute); stroke-width: 1.6; }
+/* Focused from the keyboard while it waits: the focus ring stays where it is,
+   and the dotted amber cue moves onto the face's own edge, as ▶'s did. */
+.out-play.pending:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; border: 1px dotted var(--phos-b); }
