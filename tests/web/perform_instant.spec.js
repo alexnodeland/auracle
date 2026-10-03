@@ -332,6 +332,9 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
+  // Opened from PATCH, then PERFORM clicked: the app opens at PERFORM now
+  // (Plan-008), where the wiring would be marked before the click.
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
   await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });

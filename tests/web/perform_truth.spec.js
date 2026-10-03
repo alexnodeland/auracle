@@ -211,7 +211,12 @@ test("a control still being listened to does nothing, and never looks or acts li
 test("first steps name a control that turns on this patch, and speak alone", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
-  // A newcomer: the keybed coach is up until the first note.
+  // A newcomer, at PERFORM, where the app opens: step 1 says what the keybed
+  // coach would, so the coach keeps quiet. In PATCH it is up until the first
+  // note.
+  await expect(page.locator("#view-perform .pf-steps")).toBeVisible();
+  await expect(page.locator(".coach")).toBeHidden();
+  await goLevel(page, "patch");
   await expect(page.locator(".coach")).toBeVisible();
   await openOnPerform(page, "Glass Pad");
   await expect(page.locator(".pf-steps")).toBeVisible();
