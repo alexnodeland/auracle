@@ -1878,10 +1878,10 @@ const patchView = createPatch({
   openCatalogue: () => openCatalogue(false),
   closeCatalogue: () => closeCatalogue(false),
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogueOpen() ||
+    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogueOpen() || plateSel != null ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
-    !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"),
+    !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
 });
 
 worker.onmessage = (e) => {
@@ -5606,7 +5606,12 @@ document.addEventListener("keydown", (e) => {
     }
     if (layoutMenuOpen()) setLayoutMenu(false);
     if (evolveMenuOpen()) setEvolveMenu(false);
-    else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) closeCatalogue(false);
+    // PATCH's chain (the specimen's): a selected module, then the catalog;
+    // a new patch after both (patch.js).
+    else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) {
+      if (plateSel != null) selectPlate(null);
+      else closeCatalogue(false);
+    }
     closeMenu();
     return;
   }
@@ -5637,7 +5642,15 @@ document.addEventListener("keydown", (e) => {
   // `.` is the second half of the conventional pair; its partner `F` is not
   // available, being the note F on the computer keybed (see KEYMAP).
   if (currentView === "patch" && !e.defaultPrevented) {
-    if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
+    // ⇧Home fits the whole patch; Home and End go to the first module and to
+    // the last (the amp, at OUT), as they do from a plate.
+    if (e.key === "Home" && e.shiftKey) { e.preventDefault(); fitAll(true); return; }
+    if ((e.key === "Home" || e.key === "End") && wb.rack) {
+      e.preventDefault();
+      const plates = platesInOrder();
+      focusPlate(e.key === "Home" ? plates[0] : plates[plates.length - 1]);
+      return;
+    }
     if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
     // The minimap's shift-click, from the keyboard. Read off `code` rather
     // than `key`: shift+1 *is* "!" on a US layout and "&" on a French one, and
@@ -15502,8 +15515,53 @@ function knobByAddr(addr) {
 // pointer. With a plate focused the whole verb set is one key away, the menu
 // that opens is a real `role="menu"`, and every result is spoken on the live
 // region the node bank already owns.
+/** The plates in signal order (Plan-008 C2a, the specimen's keys): left to
+ *  right as the layout draws them, top to bottom within a column. */
+function platesInOrder() {
+  // The model's guess is a plate of its own on this walk, where it is drawn
+  // (patch.js); Enter on it takes it.
+  const guess = $("rack-svg").querySelector(".guess-plate");
+  const at = (g) => {
+    if (g === guess) {
+      const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(g.getAttribute("transform") || "");
+      return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
+    }
+    return rackBoxes.get(g.getAttribute("data-key")) || { x: 0, y: 0, w: 0, h: 0 };
+  };
+  return [...rackPlates(), ...(guess ? [guess] : [])].sort((a, b) => {
+    const pa = at(a);
+    const pb = at(b);
+    return pa.x - pb.x || pa.y - pb.y;
+  });
+}
+/** The nearest plate above (`dir` −1) or below (+1) this one, by its box:
+ *  into a module's modulators, and back up out of them. */
+function plateToward(plate, dir) {
+  const cur = rackBoxes.get(plate.getAttribute("data-key"));
+  if (!cur) return null;
+  const cy = cur.y + cur.h / 2;
+  const cx = cur.x + cur.w / 2;
+  let best = null;
+  let bestD = Infinity;
+  for (const g of rackPlates()) {
+    if (g === plate) continue;
+    const b = rackBoxes.get(g.getAttribute("data-key"));
+    if (!b) continue;
+    const dy = b.y + b.h / 2 - cy;
+    if (Math.sign(dy) !== dir || Math.abs(dy) < 4) continue;
+    const d = Math.hypot(b.x + b.w / 2 - cx, dy * 0.6);
+    if (d < bestD) { bestD = d; best = g; }
+  }
+  return best;
+}
 function focusPlate(el, say) {
   if (!el) return;
+  if (el.classList.contains("guess-plate")) {
+    el.focus({ preventScroll: true });
+    ensureRackVisible(el);
+    if (say !== false) nbAnnounce(el.getAttribute("aria-label") || "The model's guess.");
+    return;
+  }
   selectPlate(el.getAttribute("data-key"));
   setRackStop(el);
   el.focus({ preventScroll: true });
@@ -15511,11 +15569,11 @@ function focusPlate(el, say) {
   if (say !== false) {
     const key = el.getAttribute("data-key");
     const m = wb.rack?.modules.find((x) => x.key === key);
-    const plates = rackPlates();
+    const plates = platesInOrder();
     nbAnnounce(
       `${isPlaceholderKey(key) ? "empty socket" : m?.title || key}, ` +
       `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
-      `Enter for the structure menu, right and left for its controls.`,
+      `Left and right for the next module, Enter for its controls, F2 for the structure menu.`,
     );
   }
 }
@@ -15533,25 +15591,62 @@ const NUDGE_GAP_MS = 700;
 let nudge = null; // {id, at} — the last knob nudged, and when
 
 $("rack-svg").addEventListener("keydown", (e) => {
+  // On the model's guess: the walk goes on through it (its own Enter takes
+  // it, Delete skips it; patch.js).
+  const guessed = e.target.closest?.(".guess-plate");
+  if (guessed && e.target === guessed && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const order = platesInOrder();
+    const at = order.indexOf(guessed);
+    let next = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") next = order[at + (e.key === "ArrowRight" ? 1 : -1)];
+    else if (e.key === "Home") next = order[0];
+    else if (e.key === "End") next = order[order.length - 1];
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); guessed.blur(); return; }
+    else return;
+    e.preventDefault();
+    if (next) focusPlate(next);
+    return;
+  }
   const plate = e.target.closest?.("g.mod-group");
+  // On a plate (the specimen's keys, Plan-008 C2a): ←/→ the next module in
+  // signal order, ↑/↓ into its modulators and back out, Home/End the first
+  // module and the last (the amp, at OUT), Enter into its controls, F2 (or
+  // the context-menu key) its structure menu, Delete removes it through the
+  // survivor choice, L locks it, / puts a module after it, Esc leaves it.
   if (plate && !e.target.closest?.("[data-addr], [data-stop]")) {
-    const plates = rackPlates();
+    const plates = platesInOrder();
     const i = plates.indexOf(plate);
     const key = plate.getAttribute("data-key");
     const mod = wb.rack?.modules.find((x) => x.key === key);
     const knobs = [...plate.querySelectorAll("[data-addr], [data-stop]")].filter(shownControl);
     const box = plate.getBoundingClientRect();
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       e.preventDefault();
-      focusPlate(plates[Math.max(0, Math.min(plates.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]);
-    } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const next = plates[i + (e.key === "ArrowRight" ? 1 : -1)];
+      if (next) focusPlate(next);
+      else nbAnnounce(e.key === "ArrowRight" ? "The last module: OUT is next." : "The first module.");
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = plateToward(plate, e.key === "ArrowDown" ? 1 : -1);
+      if (next) focusPlate(next);
+    } else if ((e.key === "Home" || e.key === "End") && !e.shiftKey) {
+      e.preventDefault();
+      focusPlate(e.key === "Home" ? plates[0] : plates[plates.length - 1]);
+    } else if (e.key === "Enter") {
       e.preventDefault();
       if (knobs.length === 0) return nbAnnounce("This module has no knobs.");
-      const k = e.key === "ArrowRight" ? knobs[0] : knobs[knobs.length - 1];
-      focusRackControl(rackControls().indexOf(k));
-    } else if (e.key === "Enter" || e.key === "F2") {
+      focusRackControl(rackControls().indexOf(knobs[0]));
+    } else if (e.key === "F2" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
       e.preventDefault();
       if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4);
+    } else if (e.key === "Escape") {
+      // Out of the plate: the selection goes, and the next Esc closes the
+      // catalog, then a new patch.
+      e.preventDefault();
+      e.stopPropagation();
+      selectPlate(null);
+      plate.blur();
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       // Through the same confirm the pointer gets: on a binary this is the
@@ -15559,8 +15654,8 @@ $("rack-svg").addEventListener("keydown", (e) => {
       if (mod && mod.kind !== "amp" && !mod.is_mod) deleteModule(key, box.left + 24, box.bottom + 4);
       else if (mod?.is_mod) unplugMod(key.replace(/\/m$/, ""));
     } else if (e.key === "/") {
-      // Stopped here, or the global `/` would take it and open the rail with
-      // no socket chosen — which is the same rail, aimed at nothing.
+      // Stopped here, or the global `/` would open the catalog with no
+      // socket chosen.
       e.preventDefault();
       e.stopPropagation();
       if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
@@ -15588,11 +15683,18 @@ $("rack-svg").addEventListener("keydown", (e) => {
   }
   const els = rackControls();
   const i = els.indexOf(kg);
+  // The arrows walk this plate's controls, and stop at its ends (Esc goes
+  // back to the plate, and ←/→ there to the next one).
+  const own = plate ? [...plate.querySelectorAll("[data-addr], [data-stop]")].filter(shownControl) : els;
+  const step = (d) => {
+    const j = own.indexOf(kg) + d;
+    if (j >= 0 && j < own.length) focusRackControl(els.indexOf(own[j]));
+  };
   // A plate's button: the arrows move on, and Enter or Space was its own.
   if (!kg.dataset.addr) {
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       e.preventDefault();
-      focusRackControl(i + (e.key === "ArrowRight" ? 1 : -1));
+      step(e.key === "ArrowRight" ? 1 : -1);
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
     }
@@ -15600,10 +15702,10 @@ $("rack-svg").addEventListener("keydown", (e) => {
   }
   const knob = knobByAddr(kg.dataset.addr);
   if (!knob) return;
-  const step = e.shiftKey ? 0.002 : 0.02;
+  const turnBy = e.shiftKey ? 0.002 : 0.02;
   if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
     e.preventDefault();
-    focusRackControl(i + (e.key === "ArrowRight" ? 1 : -1));
+    step(e.key === "ArrowRight" ? 1 : -1);
   } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     e.preventDefault();
     if (knob.kind.t !== "continuous") return;
@@ -15615,7 +15717,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     const id = lockIdOf(knob.addr);
     if (!nudge || nudge.id !== id || now - nudge.at > NUDGE_GAP_MS) pushUndo();
     nudge = { id, at: now };
-    knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? step : -step)));
+    knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? turnBy : -turnBy)));
     paintKnob(kg, knob);
     sendEdit(knob.addr, knob.value, false, id);
   } else if (e.key === "Enter" || e.key === " ") {
