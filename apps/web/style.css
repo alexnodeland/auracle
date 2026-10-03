@@ -2004,13 +2004,15 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
 #view-evolve { padding: var(--s5) var(--s5) var(--s4); gap: var(--s4); }
 .ev-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s5); }
 .ev-head-words { min-width: 0; display: grid; gap: var(--s2); }
-.ev-title { margin: 0; font-size: clamp(var(--t-title), 3vw, var(--t-display)); }
+#view-evolve .ev-title { margin: 0; font-size: clamp(var(--t-title), 3.4vw, var(--t-display)); } /* (1,1,0): over .lv-title's display size, set further down */
 .duel-foot .hw-btn { white-space: nowrap; }
 @media (max-width: 1180px) {
   #view-evolve { padding: var(--s4) var(--s3) var(--s3); gap: var(--s3); }
-  .ev-title { font-size: var(--t-title); }
+  #view-evolve .ev-title { font-size: var(--t-title); }
   .ev-map { width: 200px; height: 110px; }
-  .duel-foot { flex-wrap: wrap; }
+  /* Each card's foot: the name on its line, PLAY and PICK under it, so the
+     two cards keep one height whatever their names. */
+  .duel-foot { flex-direction: column; align-items: stretch; }
 }
 .ev-map {
   flex: none;
@@ -5978,6 +5980,7 @@ html.handheld .handheld-gate {
    offer. */
 .pf-blend-slot { position: absolute; left: 50%; bottom: var(--s3); transform: translateX(-50%); width: min(360px, 80%); display: none; z-index: 2; }
 .pf-blend-slot.on { display: block; }
+.pf-well:not([data-mode="face"]) .pf-blend-slot { display: none; }
 .pf-blend {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -6159,7 +6162,7 @@ html.handheld .handheld-gate {
    it), then OFFER, PEEK, TAKE and PASS. */
 .pf-pads {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr);
+  grid-template-columns: 160px minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr);
   align-items: center;
   gap: var(--s2);
 }

@@ -211,7 +211,7 @@ with knobs, and they work too.
 | Sustain pedal (CC 64) | Sustains. Notes you release while it’s down ring until it lifts |
 | Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control. With MOTION off PERFORM’s panel, it adds nothing |
 | Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter. With BRIGHT off the panel, it adds nothing |
-| Any other CC | The first eight you move take the first eight controls on PERFORM’s deck, in order. Reserved CCs are never taken (below) |
+| Any other CC | The first eight you move take PERFORM’s first eight controls, in order (the panel’s, then BLEND and WANDER). Reserved CCs are never taken (below) |
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off, all notes off: the same as **◼ SILENCE** in **KEYS ⋯** |
 | CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
@@ -232,8 +232,9 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
    control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
-The panel lists the first eight controls on PERFORM’s deck and what drives
-each. A row is a place on the deck: after you [arrange PERFORM’s
+The panel lists PERFORM’s first eight controls (the panel’s in its order,
+then BLEND and WANDER) and what drives each. A row is a place in that order:
+after you [arrange PERFORM’s
 panel](./views/perform.md#the-palette), a row names whatever sits there now. A row with no
 knob bound says what does drive it: *mod wheel* on MOTION, *pressure* on
 BRIGHT, and *·* elsewhere. Below the rows: a switch for *first knobs you turn
@@ -242,7 +243,7 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 ### Knobs you turn
 
 With that switch on, the first eight different knobs you move take PERFORM’s
-controls in the order you move them, in the deck’s order: with the six,
+controls in the order you move them, in that order: with the six,
 BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE, BLEND, and WANDER. With seven on the
 panel, WANDER falls past the eighth, and with eight BLEND does too: MIDI
 doesn’t reach what falls past. Each is announced (*CC 74 now moves Bright, the first free

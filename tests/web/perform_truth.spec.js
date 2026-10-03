@@ -223,7 +223,12 @@ test("first steps name a control that turns on this patch, and speak alone", asy
   // One voice per lesson: step 1 says what the coach says.
   await expect(page.locator(".coach")).toBeHidden();
   await wired(page);
-  // The guide pill shows one step at a time: a note played, step 2 is next.
+  // Back in PATCH the coach speaks again (until the first note).
+  await goLevel(page, "patch");
+  await expect(page.locator(".coach")).toBeVisible();
+  await goLevel(page, "perform");
+  // The pill shows one step at a time: a note played, step 2 is next (and
+  // the note retires the coach for good).
   await expect(page.locator("#guide .pf-step.now")).toContainText("Play a key");
   await page.keyboard.press("a");
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn /);
@@ -235,9 +240,6 @@ test("first steps name a control that turns on this patch, and speak alone", asy
   const cls = await k.getAttribute("class");
   expect(cls, `${m[1]} turns on this patch`).not.toMatch(/\b(search|pending|unwired)\b/);
   if (m[2] === "up or down") expect(cls).not.toMatch(/\bhalf-(lo|hi)\b/);
-  // Back in PATCH the coach speaks again.
-  await goLevel(page, "patch");
-  await expect(page.locator(".coach")).toBeVisible();
   expect(errs).toEqual([]);
 });
 

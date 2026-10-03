@@ -31,8 +31,9 @@ home, Freeze as a tap on Wander. The note keys (A W S E D F T G Y H U J K O L
 P ; '), Z and X (octave), M (save), 1–5 (rate, and in EVOLVE 1 and 2 play its
 pair), [ and ] (step the bank), / (PATCH's index), ? (the ? card, explain over
 a control), ⇧F (stage mode in PERFORM), ⌥ with an arrow or a digit (the
-levels), ← → in EVOLVE and R in LEARNING were taken; N, B and Backspace were
-free everywhere, and Enter and ⇧Enter belong to whatever control has focus.
+levels), ← → in EVOLVE and R in LEARNING were taken; N and B were free
+everywhere, Backspace in PERFORM (PATCH's rack deletes a module with it), and
+Enter and ⇧Enter belong to whatever control has focus.
 
 ## Decision
 
