@@ -11974,6 +11974,7 @@ function buildRack(svg, rack, opts) {
   // the canvas draws it so, the specimen's dotted fan from one source to each.
   // Read off the modules' `input` knobs as set; nothing moves along it.
   if (!fit) {
+    rackExtras = [];
     const bySlot = new Map();
     for (const m of rack.modules) {
       if (m.kind !== "audio_in") continue;
@@ -11999,6 +12000,8 @@ function buildRack(svg, rack, opts) {
       t.textContent = `input ${slot + 1}`;
       fan.appendChild(t);
       wireLayer.appendChild(fan);
+      // What a fit has to show besides the plates: the fan's source and name.
+      rackExtras.push({ x: sx - 30, y: sy - 28, w: 36, h: 36 });
     }
   }
 
@@ -12127,6 +12130,7 @@ const OUT_FACE_DX = 22;
 const OUT_FACE_H = 168;
 const OUT_ZONE = OUT_JACK_DX + OUT_FACE_DX + OUT_FACE_H * 0.6 + 24;
 let rackOut = null; // {x, y, w, h}: the face at OUT's box, in rack units
+let rackExtras = []; // other boxes a fit must show (an input's fan), in rack units
 let rackTween = null;  // rAF handle for the survivors' tween
 
 /** A CSS transform placing a plate at (x,y) and scaled about its own centre.
@@ -12589,14 +12593,16 @@ function contentBox() {
   if (!rackBoxes.size) return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
   const PAD = 18;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const b of rackOut ? [...rackBoxes.values(), rackOut] : rackBoxes.values()) {
+  for (const b of [...rackBoxes.values(), ...(rackOut ? [rackOut] : []), ...rackExtras]) {
     if (b.x < x0) x0 = b.x;
     if (b.y < y0) y0 = b.y;
     if (b.x + b.w > x1) x1 = b.x + b.w;
     if (b.y + b.h > y1) y1 = b.y + b.h;
   }
-  x0 = Math.max(0, x0 - PAD);
-  y0 = Math.max(0, y0 - PAD);
+  // The floor is the rack's origin, except where an input's fan is drawn
+  // left of the first plate (past the origin) and the fit has to reach it.
+  x0 = Math.max(Math.min(0, ...rackExtras.map((b) => b.x - PAD)), x0 - PAD);
+  y0 = Math.max(Math.min(0, ...rackExtras.map((b) => b.y - PAD)), y0 - PAD);
   return { x: x0, y: y0, w: Math.max(1, x1 + PAD - x0), h: Math.max(1, y1 + PAD - y0) };
 }
 // The SVG fills the frame's content box exactly and its viewBox has the frame's

@@ -7453,8 +7453,13 @@ html.xl-on .alarm { z-index: 62; }
 /* With the catalogue open, the well's top line starts past it. */
 .rack-frame.cat-open .pick-chip,
 .rack-frame.cat-open .guess-read { left: calc(248px + var(--s3) + var(--s3)); }
-.pick-armed { overflow: hidden; }
+.pick-armed { overflow: hidden; flex-wrap: wrap; row-gap: 2px; }
+.pick-armed > * { white-space: nowrap; }
 .pick-armed .sd-hint { margin-left: 0; }
+/* Beside the open catalog the line has less room than the well: its width
+   is what is left, and the price and ▶ go to a second line rather than past
+   the well's edge. */
+.rack-frame.cat-open .pick-chip { max-width: calc(100% - 248px - var(--s3) - var(--s3) - var(--s4)); white-space: normal; flex-wrap: wrap; }
 .pick-chip .pick-chip-text { flex: none; }
 
 /* ---- the camera's corner (C2a): fit · − · + · map · layout ▾ ---- */
