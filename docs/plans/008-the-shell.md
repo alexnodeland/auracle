@@ -124,6 +124,11 @@ and C3; round 2's decisions govern PERFORM):
   canvas drawn per frame, so a face redraws only when its render or the bank
   changes (ADR-012), and B's is amber, smaller, on the held face's floor
   line. Stage mode keeps its own canvas.
+- **A click on the held face plays the phrase** (Space's ▶, as the mock's
+  well does, and a tap on a touch screen); a click on B does not, since B is
+  heard with PEEK or B held.
+- **The *vel* tick** sits in its control's top-left corner rather than under
+  the name, so no word in the cell moves for it (a mark never moves a label).
 - **Share** opens the existing picture panel on *the sound's card*; the
   mock's share dialog (Copy image, Copy name) is not built.
 - **Freeze has no `aria-pressed`.** Wander is a slider, and ARIA does not

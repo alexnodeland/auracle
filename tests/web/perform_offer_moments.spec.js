@@ -121,9 +121,11 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   await page.keyboard.down("a");
 
   // Grown: B's first frame is the sound's face, its last is B's own place.
+  // The face is read where it stands once B is in the well beside it (the
+  // well makes room for B as it grows, a jump, before B grows from it).
   let n0 = (await anims(page)).length;
-  const name0 = await faceBox(page);
   await grow(page, OFFER_MS);
+  const name0 = await faceBox(page);
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "grown");
   let grown = (await anims(page)).slice(n0).find((a) => !/ghost/.test(a.cls));
   expect(grown, "B grows").toBeTruthy();
@@ -146,9 +148,11 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   await peek(page, 1800);
   n0 = (await anims(page)).length;
   const before = await page.locator(".pf-name").textContent();
-  const nameAtTake = await faceBox(page);
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "taken");
+  // Taken, B leaves the well and the face stands alone again: B goes into
+  // the face where it stands then.
+  const nameAtTake = await faceBox(page);
   const after = (await anims(page)).slice(n0);
   const fill = after.find((a) => /pf-ghost-fill/.test(a.cls));
   expect(fill, "B fills").toBeTruthy();

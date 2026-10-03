@@ -99,9 +99,13 @@ test("↵ keeps only with no control focused, ⇧⌫ goes back, and at home each
   await k.focus();
   for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
   await expect(bar).toHaveClass(/\bon\b/);
-  // ↵ with the dial focused is the dial's: nothing is kept.
+  // ↵ with the dial focused is the dial's (its sweep through both ends and
+  // back to where it was): nothing is kept. Waited out, so the sweep's
+  // return does not land after the Keep below.
+  const at = await k.getAttribute("aria-valuenow");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1500);
+  await expect(k).not.toHaveAttribute("aria-valuenow", at, { timeout: 5_000 });
+  await expect(k).toHaveAttribute("aria-valuenow", at, { timeout: 10_000 });
   await expect(bar).toHaveClass(/\bon\b/);
   await expect(page.locator("#toasts")).not.toContainText("Kept: this is home now.");
   // With nothing focused, ↵ keeps.

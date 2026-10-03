@@ -47,8 +47,14 @@ test("on a touch screen every PERFORM function the layout moved is a tap away, w
   // has moved, so the bar offers KEEP, which answers a tap.
   await page.locator(".pf-xy-btn").tap();
   await expect(page.locator(".pf-well")).toHaveAttribute("data-mode", "xy");
+  // A control that turns one way only stops at the center on the other, so
+  // the corners are tried until one moves the sound.
   const f = await page.locator(".pf-xy-field").boundingBox();
-  await page.touchscreen.tap(f.x + f.width * 0.85, f.y + f.height * 0.15);
+  for (const [fx, fy] of [[0.85, 0.15], [0.15, 0.85], [0.15, 0.15], [0.85, 0.85]]) {
+    await page.touchscreen.tap(f.x + f.width * fx, f.y + f.height * fy);
+    const moved = await expect(page.locator(".pf-moved.on")).toHaveCount(1, { timeout: 2_000 }).then(() => true, () => false);
+    if (moved) break;
+  }
   await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
   await page.locator(".pf-xy-btn").tap();
   await expect(page.locator(".pf-well")).toHaveAttribute("data-mode", "face");

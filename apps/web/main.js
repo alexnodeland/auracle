@@ -403,9 +403,9 @@ const wellBox = (w, h, scale = 1) => {
   return { x: (w - bw) / 2, y: h * 0.79 - bh, w: bw, h: bh };
 };
 const FACE_OPTS = {
-  well: () => ({ box: wellBox(...FACE_SIZE.well), glow: 18, reflection: true, line: 2 }),
-  wellb: () => ({ box: wellBox(...FACE_SIZE.wellb, 0.62), glow: 12, reflection: true, line: 1.6, color: tok("--phos-b") }),
-  evolve: () => ({ box: wellBox(...FACE_SIZE.evolve), glow: 18, reflection: true, line: 2 }),
+  well: () => ({ box: wellBox(...FACE_SIZE.well), glow: 18, reflection: true, line: 2, dprMax: 2 }),
+  wellb: () => ({ box: wellBox(...FACE_SIZE.wellb, 0.62), glow: 12, reflection: true, line: 1.6, color: tok("--phos-b"), dprMax: 2 }),
+  evolve: () => ({ box: wellBox(...FACE_SIZE.evolve), glow: 18, reflection: true, line: 2, dprMax: 2 }),
 };
 // Bounded: a bench edit is a new tree, so a new ref, key and drawing each
 // time. The least recently used go past FACE_KEEP (the bank's faces are used
@@ -487,8 +487,11 @@ function faceMarkup(target, kind, ask = true, build = true) {
 }
 /** One face drawn at `w × h` CSS px, at the screen's density, as a PNG. */
 let faceCanvas = null;
-function faceImage(face, w, h, opts = {}) {
-  const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+function faceImage(face, w, h, { dprMax = 3, ...opts } = {}) {
+  // A large face (`FACE_FLUID`) is drawn at most at 2×: it is scaled to its
+  // well anyway, and each one is a 480 px tall picture in the cache the
+  // bank's thumbnails share.
+  const dpr = Math.min(dprMax, Math.max(1, window.devicePixelRatio || 1));
   const c = faceCanvas || (faceCanvas = document.createElement("canvas"));
   c.width = Math.round(w * dpr);
   c.height = Math.round(h * dpr);
@@ -20451,16 +20454,20 @@ function drawLineage() {
   const canvas = $("lineage-spark");
   const ctx = scopeCtx(canvas);
   const { width: w, height: h } = canvas;
-  if (w === 0) return;
+  // Folded (what each generation did is a disclosure), the spark has no size
+  // and is drawn when it opens; the log below is written either way, so it
+  // is current the moment it is opened.
   const dpr = window.devicePixelRatio || 1;
-  ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.05));
+  if (w > 0) {
+    ctx.clearRect(0, 0, w, h);
+    drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.05));
+  }
 
   // One point per step, oldest to newest: the child's predicted score as the
   // model saw it when the step was made (amber bred, green your edit). The
   // guide says exactly this; it used to say "the pool's utility over
   // generations", which this never plotted.
-  if (lineage.length > 0) {
+  if (w > 0 && lineage.length > 0) {
     const us = lineage.map((ev) => ev.child_utility);
     const [u0, u1] = [Math.min(...us, 0), Math.max(...us, 0.001)];
     const sx = (i) => 8 * dpr + (i / Math.max(1, us.length - 1)) * (w - 16 * dpr);

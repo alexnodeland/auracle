@@ -6308,7 +6308,10 @@ html.handheld .handheld-gate {
   z-index: 2;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--s4) var(--s5);
+  /* Clear of the well's corner (XY and stage mode), on a veil over the
+     dimmed face so the words read. */
+  padding: calc(var(--s7) + var(--s2)) var(--s5) var(--s4);
+  background: var(--scrim-82);
   font-family: var(--font-silk);
   font-size: var(--t-body);
   color: var(--silk-dim);
@@ -6316,7 +6319,7 @@ html.handheld .handheld-gate {
 }
 .pf-why-body.hidden { display: none; }
 .pf-why-body b { color: var(--silk); font-weight: 600; }
-.pf-why-x { position: sticky; top: 0; float: right; margin-left: var(--s3); }
+.pf-why-x { position: absolute; top: var(--s3); left: var(--s3); }
 
 /* Under 1180 px the two columns narrow: smaller dials, the pads' sub-words
    and names in one size, Wander's dial smaller. */

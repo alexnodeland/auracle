@@ -3174,8 +3174,9 @@ export function createPerform(host) {
   });
   // A click on the sound plays it, as Space does (the specimen's well), and
   // stage mode's tap: on a touch screen there is no Space.
+  // A click on B is not on the sound in hand: B is heard with PEEK or B.
   faces.addEventListener("click", (e) => {
-    if (wellMode !== "face" || e.target.closest("button, input")) return;
+    if (wellMode !== "face" || e.target.closest("button, input, .pf-offer")) return;
     host.play?.();
   });
 
