@@ -1772,8 +1772,9 @@ async function guessRun(m) {
 // Each child is posted as it lands (`refine_child`, with the ranked rows, so
 // the bank shows it at once), and the progress carries an estimate from this
 // session's own walk times. **Stop** (`refine_stop`) keeps what has been
-// absorbed: `refine_finish` retires the lowest unpinned members to bring the
-// pool back to size, and walks still running are for nobody.
+// absorbed: `refine_finish` retires the lowest members not kept (saved, or
+// kept as new and not yet in a pick) to bring the pool back to size, and walks
+// still running are for nobody.
 //
 // With no farm (width 0, a crew that never came up, every worker lost, a walk
 // a worker could not run) the job is walked here with `refine_seed`, which
@@ -1792,7 +1793,7 @@ function refineRetiring() {
 
 /** What the open generation's end will replace now, for a reply that can
  *  change it (a save, a preset or a kept edit joining the pool: each moves
- *  the pool's lowest unsaved members); undefined with none open, so main
+ *  the pool's lowest members not kept); undefined with none open, so main
  *  keeps its own. */
 function openRetiring() {
   return gen ? refineRetiring() : undefined;
@@ -3350,7 +3351,10 @@ async function dispatch(m) {
     case "perform_record": {
       let took = false;
       performReply(m, "perform_recorded", "recorded", true, () =>
-        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took)));
+        // `asOf`: the newest pool id main had seen when the answer was given.
+        // A sound kept as new after it (a Take waits eight seconds) is not
+        // judged by it (`Engine::record_tree_duel_as_of`).
+        (took = engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took, m.asOf == null ? 0xffffffff : m.asOf >>> 0)));
       // `recorded` false when the engine took nothing (the two the same, no
       // standardizer yet, a vet that failed): nothing moved, so no ratings,
       // and TASTE keeps no moment for it.
@@ -3525,7 +3529,7 @@ async function dispatch(m) {
         ranked: JSON.parse(engine.ranked()),
         // A save changes what a generation may replace, and while one is
         // open, what its end will: a saved sound leaves `retiring` and the
-        // next lowest unsaved one takes its place (`openRetiring`).
+        // next lowest one not kept takes its place (`openRetiring`).
         ratings: engineRatings(),
         retiring: openRetiring(),
       });

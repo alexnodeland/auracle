@@ -15,17 +15,28 @@ changelog that edits its own past is not a record.
   so anything that joins it (a preset you open, a generation's children, a ⚡
   child) replaces the sound the model rates lowest. A sound you had just kept
   as new was often that sound: open a preset straight after, and the toast
-  said your new sound had been replaced. Now it waits for its first pick: a
-  pair in EVOLVE, or an offer in PERFORM you heard and took or passed, with it
-  on either side, whatever you picked. The question KEEP AS NEW asks itself
-  doesn't count, since that one is about the sound you edited from. After its
-  first pick it's an ordinary pool sound; save it to keep it for good. A
-  patch file you open joins the pool the same way and waits too.
+  said your new sound had been replaced. Now it waits for its first pick,
+  with it on either side, whatever you picked: a pair in EVOLVE (or PATCH's
+  quick-pick strip); an offer in PERFORM you heard and took or passed while
+  playing it, if you had kept the sound before you answered (a TAKE counts
+  when its window closes, and a sound kept in that window isn't judged by
+  it); keeping an edit of it as new with an answer (the WHICH WOULD YOU REACH
+  FOR? card, or PICK THE EDIT); or a cut. The question KEEP AS NEW asks about
+  the sound it keeps doesn't count, since that one is about the sound you
+  edited from, and nor do stars or SKIP COMPARING. After its first pick it's
+  an ordinary pool sound; save it to keep it for good. A patch file you open
+  joins the pool the same way and waits too.
 - It isn't a save: no mark, no charge to your saves, and EVOLVE POOL never
   marks it *may be replaced* while it waits. Up to a quarter of the pool (10
-  of 40) can wait at once; keep one more as new and the oldest goes back to
-  being an ordinary pool sound. It survives a reload, and sessions saved
-  before this load as they did.
+  of 40) can wait at once, not counting any you have also saved; keep one
+  more as new and the oldest goes back to being an ordinary pool sound. It
+  survives a reload, and sessions saved before this load as they did.
+- **What a replacement says is true now.** The toast used to say *The sound
+  it rated lowest was replaced*, which was not so when a saved sound (or now
+  one waiting for its first pick) rated lower. It says *It replaced the
+  lowest-rated sound it could: Bell Jar.*, and the app's help, tooltips and
+  guide say the same: a generation or a preset replaces the lowest-rated
+  sounds it can, never a saved one, nor one kept as new before its first pick.
 
 ### Added: ask a control what it does, and a lesson on filters
 

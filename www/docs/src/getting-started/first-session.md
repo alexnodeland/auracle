@@ -163,7 +163,8 @@ small changes to the seed’s knobs and modules, each one rendered, measured, an
 kept or refused by how the model rates it.
 
 A child joins the pool only if the model rates it above the sound it would
-replace: the lowest-rated unsaved one. When the generation ends, those sounds
+replace: the lowest-rated one it can, not saved, nor kept as new and still
+waiting for its first pick. When the generation ends, those sounds
 are replaced and the toast names them. [Refinement](../../reference/search/refinement.html)
 in the reference has the walk in full.
 ```

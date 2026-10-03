@@ -70,8 +70,9 @@ export function kindsInLog(observations) {
 //   no_move          the walk ended where it started
 //   duplicate        it landed on a sound the pool already holds
 //   not_admitted     a new sound that did not pass the vet, or did not rate
-//                    above the sound it would replace (the lowest unsaved
-//                    one: `admit_refined`'s bar), so it was not kept
+//                    above the sound it would replace (the lowest-rated one
+//                    not kept, `Candidate::kept`: `admit_refined`'s bar), so
+//                    it was not kept
 //   outside_support  its seed is somewhere the walk cannot start from
 function tally(reasons) {
   const t = { no_move: 0, duplicate: 0, not_admitted: 0, outside_support: 0, other: 0 };
@@ -408,7 +409,7 @@ export function bredRatings(seedName, seedP, childName, childP) {
  *    sound outside the list can go at its end), or ⚡'s child would, if the
  *    pool takes it;
  *  - `will`: the running generation's end will replace it, stopped now or
- *    run out (`refine_child`'s `retiring`: the lowest unsaved members, as
+ *    run out (`refine_child`'s `retiring`: the lowest members not kept, as
  *    many as its children put the pool over size, under the posterior it
  *    opened with, so a child taken in adds one and takes none away). Each
  *    child still to come adds the next lowest, so it is not the whole of

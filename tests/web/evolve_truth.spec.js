@@ -591,7 +591,7 @@ test("with no farm, a pick's deal during a generation says which seed it waits o
   console.log(`generation receipt: ${receipt}`);
   expect(receipt).toBeTruthy();
   expect(receipt).not.toMatch(/#\d|retired/);
-  if (/replaced/.test(receipt)) expect(receipt).toMatch(/replaced: [^.]*\S\./);
+  if (/replaced/.test(receipt)) expect(receipt).toMatch(/it could: [^.]*\S\./);
   // The strip names parent and child and says "liked", not "Δtaste" or ids.
   const lineage = (await page.locator("#lineage-log").textContent()).trim();
   console.log(`lineage strip: ${lineage.slice(0, 300)}`);

@@ -3596,7 +3596,7 @@ function slotJob() {
       text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
       fill: total ? b.done / total : 0,
       stop: total > 0,
-      title: "EVOLVE POOL is breeding a generation beside you, so keep playing. Stop ends it with the children bred so far, and the lowest unsaved sounds are replaced, as at any generation’s end.",
+      title: "EVOLVE POOL is breeding a generation beside you, so keep playing. Stop ends it with the children bred so far, and it replaces the lowest-rated sounds it can, as at any generation’s end.",
     };
   }
   if (lampJobs.has("refine_from")) {
@@ -4179,7 +4179,10 @@ function applyViews(next) {
   // Every name a row has had, last one wins: what was replaced is named by the
   // name it had when it went, and the lineage names parents long gone.
   for (const [id, name] of prevNames) knownNames.set(id, name);
-  for (const r of (next && next.ranked) || []) knownNames.set(r.id, r.name);
+  for (const r of (next && next.ranked) || []) {
+    knownNames.set(r.id, r.name);
+    if (r.id > newestSeenId) newestSeenId = r.id;
+  }
   views = next;
   const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
@@ -4242,7 +4245,10 @@ function applyViews(next) {
 // The clause every insertion path appends to its own message, so the exchange
 // is reported as an exchange rather than as a gift — and by name. It used to
 // count ("The 10 patches it liked least were retired to make room."), which
-// told the player something was lost and nothing about what.
+// told the player something was lost and nothing about what. "Lowest-rated
+// it could": a saved sound, or one kept as new and not yet in a pick, is
+// passed over however low it rates, so "the sound it rated lowest" was not
+// always true.
 const REPLACED_NAMED = 3;
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
@@ -4250,13 +4256,16 @@ function madeRoom(evicted) {
   const more = evicted.length - names.length;
   const list = series(more > 0 ? [...names, `${more} more`] : names);
   return evicted.length === 1
-    ? ` The sound it rated lowest was replaced: ${list}.`
-    : ` The ${evicted.length} it rated lowest were replaced: ${list}.`;
+    ? ` It replaced the lowest-rated sound it could: ${list}.`
+    : ` It replaced the ${evicted.length} lowest-rated sounds it could: ${list}.`;
 }
 
 // id -> the last name its bank row had. Filled by `applyViews`; never pruned
 // (a name is a few bytes, and a session holds a few hundred ids at most).
 const knownNames = new Map();
+// The highest id any of those rows has had. Ids are issued in order, so a
+// sound with a higher id joined the pool after the bank last showed it.
+let newestSeenId = 0;
 /** A patch's name, including one no longer in the pool. */
 function nameOrKnown(id) {
   return rowOf(id)?.name || knownNames.get(id) || null;
@@ -4753,6 +4762,9 @@ async function bootPerform() {
     note,
     logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
     heldCount: () => heldNotes.size,
+    // The newest pool id the bank has shown: what a PERFORM answer was given
+    // against (`perform_record`'s `asOf`).
+    newestId: () => newestSeenId,
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
     // Wirings are measured against the taste model; a new observation can
@@ -7080,7 +7092,7 @@ function breedingFrom(m) {
 }
 
 // Stop ends the generation with what has been bred: the worker finishes it
-// with the children absorbed so far, and the lowest unsaved members (which
+// with the children absorbed so far, and the lowest-rated members it can replace (which
 // can include a child bred early) leave then, as at any generation's end.
 function stopBreeding() {
   if (!breeding || breeding.stopping || !breeding.total) return;
@@ -8302,7 +8314,7 @@ function voteDropped(v) {
 // (`last_refine_reason`), is `evolveRefusal` in words.js. Only
 // `outside_support` changes the advice: no budget or lock-loosening reaches a
 // seed the prior gives zero mass, so "try again" would be a lie there. A
-// refused child's bar is the sound it would replace (the lowest unsaved one,
+// refused child's bar is the sound it would replace (the lowest-rated one not kept,
 // `admit_refined`), never its seed.
 
 $("bank-list").addEventListener("keydown", (e) => {
@@ -8410,7 +8422,8 @@ const TOUR = [
     body:
       `Press <b>EVOLVE POOL</b> and it breeds: it grows children from the sounds it ` +
       `rates highest. A child joins the pool if it rates above the sound it would ` +
-      `replace, the lowest unsaved one. That round is a <b>generation</b>. ` +
+      `replace, the lowest-rated one it can (not saved, nor just kept as new). ` +
+      `That round is a <b>generation</b>. ` +
       `The ⚡ glyph marks every sound it has bred, and the newest ones glow ` +
       `and say <b>new</b>.`,
   },
@@ -8419,7 +8432,7 @@ const TOUR = [
     title: "and what it costs",
     body:
       `The pool is a fixed size, so every child that joins <b>replaces</b> the ` +
-      `unsaved sound the model rates lowest. That is deliberate: the pool is what the ` +
+      `lowest-rated sound it can. That is deliberate: the pool is what the ` +
       `model works with, not a hard drive. But a sound you loved can be ` +
       `replaced before the model has learned why you loved it. A sound you ` +
       `<b>keep as new</b> is safe until it has been in a pick.`,

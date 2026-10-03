@@ -121,8 +121,9 @@ from each walk’s outcome:
 
 - *Generation 4: every walk came back unchanged.*
 - *Generation 4: 3 were bred, but none rated above the sounds they would
-  replace.* A child joins only if the model rates it above the lowest unsaved
-  sound it could replace.
+  replace.* A child joins only if the model rates it above the lowest-rated
+  sound it could replace (not saved, nor kept as new and still waiting for
+  its first pick).
 - A count of each, when the walks differ.
 
 That happens now and then. When it keeps happening:

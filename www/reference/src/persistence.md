@@ -223,8 +223,17 @@ start's, and a later kept edit's comparison with it as the original) clears
 both sides, and `record_tree_duel` (a PERFORM offer heard and answered)
 clears any member whose tree is either side; the app's `perform_record` also
 clears the sound in hand as it is in the bank, since PERFORM plays it with its
-controls moved (`Engine::mark_judged`). Stars and cuts are not picks and leave
-it set.
+controls moved (`Engine::mark_judged`). A cut (`record_keep(false)`) is an
+answer about the sound and clears it too; stars leave it set.
+
+A PERFORM answer is recorded a window after it is given (eight seconds for a
+Take, so DON'T COUNT IT can drop it), and in that window the player can take
+the offer onto the bench and keep it as new. So the answer carries `asOf`,
+the newest pool id the page had shown when it was given, and
+`record_tree_duel_as_of` and `mark_judged` clear only members with an id at
+most `asOf` (ids are issued in order). A sound kept after the answer was
+given is not judged by it. The page's knowledge can only lag the engine's,
+which errs toward keeping a protection a little longer.
 
 The rule is `Candidate::kept()` (`pinned || unjudged`), and it is the one
 `insert_candidate` and `eviction_order_by` both apply, so `retiring()`,
@@ -232,10 +241,12 @@ The rule is `Candidate::kept()` (`pinned || unjudged`), and it is the one
 pass over it alike. It is not charged to `pin_cap` and the app shows no mark
 for it.
 
-Bounded at `pool_size / 4` (`Engine::unjudged_cap`) on the flags themselves:
-a keep that would put one more past the cap clears the oldest (lowest id;
-ids are issued in order), which stays in the pool as an ordinary member. With
-pins capped the same, at least half the pool is always evictable, less any
-⚡ seed in flight, so an insert always lands and a generation's end always
-brings the pool back to size. A restore applies the cap again, for a file
-written under a larger one.
+Bounded at `pool_size / 4` (`Engine::unjudged_cap`) on the flags of unsaved
+members: a keep that would put one more past the cap clears the oldest (lowest
+id; ids are issued in order), which stays in the pool as an ordinary member. A
+saved member is protected by its pin and is not counted; unsaving it bounds
+the flags again. With pins capped the same, at least half of a pool of four or
+more is always evictable, less any ⚡ seed in flight, so an insert always lands
+and a generation's end always brings the pool back to size (below four, the
+caps' floor of one each can protect more than half). A restore applies the cap
+again, for a file written under a larger one.

@@ -173,9 +173,9 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   await page.locator('.bf[data-f="pool"]').click();
   await expect(row(page, kept), "the kept row left the bank").toHaveCount(1);
   const goneName = before.ranked.find((r) => r.id === gone[0]).name;
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 }).toContain(`was replaced: ${goneName}`);
-  const said = await page.evaluate(() => window.__pwToasts.filter((t) => /was replaced/.test(t)));
-  expect(said.some((t) => keptName && t.includes(`replaced: ${keptName}`)), "a toast said the kept sound was replaced").toBe(false);
+  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 }).toContain(`sound it could: ${goneName}`);
+  const said = await page.evaluate(() => window.__pwToasts.filter((t) => /It replaced/.test(t)));
+  expect(said.some((t) => keptName && t.includes(`it could: ${keptName}`)), "a toast said the kept sound was replaced").toBe(false);
 
   // Pointing at EVOLVE POOL marks what may be replaced, never the kept sound.
   await page.locator('.viewtab[data-view="evolve"]').click();

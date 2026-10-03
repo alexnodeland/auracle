@@ -149,7 +149,11 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
 - **On a pick's reply:** the `status` that answers `record_duel`,
   `record_keep` and `record_stars` (`null` when `recorded` is false: the
   engine took nothing, so nothing moved), and the `status` that follows
-  `perform_record`. These are `now`-lane replies. In wasm at five lenses
+  `perform_record`. These are `now`-lane replies. A `perform_record`
+  request carries `asOf`, the newest pool id main had shown when the answer
+  was given (`newestSeenId` in `main.js`, via PERFORM's `host.newestId`): a
+  Take waits eight seconds before it is sent, and a sound kept as new in
+  that window is not judged by it (`Engine::record_tree_duel_as_of`). In wasm at five lenses
   the ratings add under 2 ms at rest, and about 4 ms while a generation is
   open with the pool over size, when what its end would retire is ranked
   too (`crates/auracle-wasm/examples/pick_belief.mjs`; its native twin is

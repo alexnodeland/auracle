@@ -218,7 +218,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // It counts the children kept, names what they replaced, and only now did
   // those leave the bank.
   expect(receipt).toContain(`Generation ${(await page.evaluate(() => window.__pwLast.refined)).status.generation}: ${survivors.length} new sound`);
-  if (retired.some((id) => !born.includes(id))) expect(receipt).toMatch(/replaced: [^.]*\S\./);
+  if (retired.some((id) => !born.includes(id))) expect(receipt).toMatch(/it could: [^.]*\S\./);
   for (const id of retired) expect(after).not.toContain(id);
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 10_000 });
   // ⚡'s turn: the generation is over.
