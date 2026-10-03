@@ -79,6 +79,11 @@ async function boot(page) {
   for (const i of [1, 4, 7]) await cards.nth(i).click();
   await page.locator("#warm-go").click();
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
+  // …and the bank whole (`filled`). The fit can land while the pool is
+  // still arriving (on a CI runner, pool 21 of 40 at the fit and 40 ten
+  // seconds later), and each sound that joins it moves the ratings and the
+  // map these tests read twice and compare.
+  await expect.poll(() => page.evaluate(() => window.__pwCounts.filled || 0), { timeout: 150_000 }).toBeGreaterThan(0);
   return pageErrors;
 }
 

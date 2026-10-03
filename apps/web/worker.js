@@ -1395,8 +1395,9 @@ function faceAfterRender(id) {
 // measurement is finished from the memo — the same numbers, pinned natively by
 // `a_planned_measurement_is_the_measurement`.
 //
-// A measurement nobody is waiting on (a re-check, a pre-warm) gives way to
-// long work the player asks for, and loses nothing by it: every render it made
+// A measurement nobody is waiting on (a re-check, a pre-warm, one demoted by
+// `retire`) gives way to long work the player asks for and to anything else
+// waiting in `later` (`idleOnly`), and loses nothing by it: every render it made
 // is in the memo, so it resumes where it stopped. What it has learned about
 // renders that do not vet rides on the message, because the memo keeps only
 // successes and would otherwise ask for those again.
@@ -1422,7 +1423,11 @@ async function measure(m) {
       if (!need.length) break;
       for (const job of need) {
         if (!engine.memo_render(job.tree)) failed.push(job.key);
-        if (await breathe(laneOf(m))) {
+        // Nobody waiting on it (`idleOnly`): it also gives way to anything
+        // else in `later` (a cable probe, a guess, a face lookup, a refit).
+        // With Wander on, the drifts go first, one each time; PERFORM coming
+        // back into sight (`promote`) makes a demoted one the player's again.
+        if ((await breathe(laneOf(m))) || (idleOnly(m) && laterWaiting())) {
           lanes[LATER].unshift(m);
           return;
         }
@@ -2422,6 +2427,13 @@ function blocked(m) {
     case "refine":
     case "refine_from":
       return walking() || bootCrewLive();
+    // The guess's crew phase waits for boot's crew the same way: started
+    // while the bank is still arriving, it can raise no crew of its own and
+    // ranks only the floor's eight candidates, where a few seconds later a
+    // crew ranks every one. It used to start late enough by accident,
+    // queued behind PERFORM's background measurements (see `idleOnly`).
+    case "guess":
+      return !m.crewed && bootCrewLive();
     default:
       return false;
   }
@@ -2432,12 +2444,28 @@ function bootCrewDone() {
   if (farmCrew_ === 0) farmShutdown();
 }
 
-// The first request in `soon`, then `later`, then the faces lane, that may
-// start now.
+// A measurement nobody is waiting on (`bg`: one `retire` demoted because
+// PERFORM moved to another patch or out of sight, a re-check, a pre-warm) is
+// the last work in `later`: it starts only when nothing else there is ready,
+// and gives way at its next breath to anything that arrives (see `measure`).
+// It is thirty-odd renders, and as an ordinary `later` job it held the floor
+// for all of them: the app opens at PERFORM (Plan-008), whose measurement of
+// the sound it boots with is demoted the moment the player goes to PATCH or
+// opens another sound, and PATCH's cable probe, the model's guess and every
+// face lookup then waited for it (up to 46 s on a 16-core laptop, by the
+// sound, and past a minute on a CI runner), with the rack's cables unlit and
+// the stage's face blank. It loses
+// nothing by waiting: every render it made is in the memo.
+const idleOnly = (q) => q.type === "perform_wire" && !!q.bg;
+const laterWaiting = () => lanes[LATER].some((q) => !idleOnly(q) && !blocked(q));
+
+// The first request in `soon`, then `later` (a measurement nobody is waiting
+// on last), then the faces lane, that may start now.
 function nextLong() {
   if (floor) return null;
   for (const lane of [SOON, LATER, FACES]) {
-    const i = lanes[lane].findIndex((q) => !blocked(q));
+    let i = lanes[lane].findIndex((q) => !blocked(q) && !(lane === LATER && idleOnly(q)));
+    if (i < 0 && lane === LATER) i = lanes[LATER].findIndex((q) => !blocked(q));
     if (i >= 0) return lanes[lane].splice(i, 1)[0];
   }
   return null;
@@ -2592,11 +2620,12 @@ self.onmessage = (e) => {
   }
   // PERFORM moved on to another patch, or out of sight. Its measurement is
   // still worth finishing — it is cached, and coming back is the common case —
-  // but nobody is waiting on it now, so it drops to `later`, where long work
-  // the player asks for can overtake it (a running one gives way at its next
-  // breath). Offers and drifts grown from a patch it left are worth nothing,
-  // so any of those named here that are still queued are answered empty:
-  // PERFORM holds every request open until its reply lands.
+  // but nobody is waiting on it now, so it drops to the back of `later`, where
+  // long work the player asks for and the rest of `later` overtake it (a
+  // running one gives way at its next breath; see `idleOnly`). Offers and
+  // drifts grown from a patch it left are worth nothing, so any of those
+  // named here that are still queued are answered empty: PERFORM holds every
+  // request open until its reply lands.
   if (m.type === "retire") {
     const reqs = new Set(m.reqs || []);
     if (floor && floor.m && floor.m.type === "perform_wire" && reqs.has(floor.m.req)) floor.m.bg = true;

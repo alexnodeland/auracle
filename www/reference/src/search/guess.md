@@ -199,8 +199,9 @@ two phases:
 
 - **On a crew.** It plans first: a refusal (`no_taste`, `full`) or a guess
   the memo already holds raises no crew. Otherwise, where a walk crew can be
-  had (raised on demand as a generation raises one: not while boot's own crew
-  is filling the pool, nor while a generation or ⚡ walks), it plans every
+  had (raised on demand as a generation raises one: not while a generation
+  or ⚡ walks; while boot's own crew is filling the pool, the guess waits for
+  it to finish, as a generation does), it plans every
   candidate (`limit` 0) and hands them out, one `farm_render` per idle
   worker, absorbing each result as it lands (`memo_absorb`, which refuses a
   row measured under another stimulus). It stops after `GUESS_BUDGET_MS` of

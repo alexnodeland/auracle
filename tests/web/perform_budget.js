@@ -149,4 +149,4 @@ async function offerBudget(page, { waits = 0 } = {}) {
   return ms;
 }
 
-module.exports = { watch, measureStep, offerBudget, FLOOR_MS, STEPS };
+module.exports = { watch, measureStep, offerBudget, FLOOR_MS, STEPS, SLOW_ENGINE };

@@ -101,7 +101,16 @@ served within a lane (`laneOf` in `worker.js`):
 Queueing cannot help a request that arrives while a long call is *running*,
 so long jobs are cut into pieces and `breathe` between pieces, answering every
 `now` request that arrived meanwhile. One long job holds the floor at a time.
-A hidden PERFORM's measurement drops to `later`. The jobs cut this way are
+A hidden PERFORM's measurement drops to `later`, and goes last there
+(`idleOnly` in `worker.js`): a measurement nobody is waiting on (that one, one
+of a patch PERFORM has left, a re-check, a pre-warm) starts only when nothing
+else in `later` is ready, and at each breath gives way to anything that has
+arrived there, resuming from the memo. The app opens at PERFORM, so the
+sound it boots with is being measured when the player first goes to PATCH or
+opens another sound; held on the floor, that measurement kept PATCH's cable
+probe, the model's guess and every face lookup waiting for all of its thirty-odd
+renders (1 to 46 s on a 16-core M3 Max, by the sound, and over a minute on
+a CI runner). The jobs cut this way are
 PERFORM's measurement (`measure`, a render at a time), the model's guess and
 PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
 most one render, at a time; below).
@@ -297,8 +306,9 @@ it drops a stale pre-placement audition.
   - `guessCrewPhase`, detached from the pump (one guess's at a time): it plans first, and a refusal (`no_taste`, `full`) or
     a guess the memo already holds raises no crew. Otherwise, where a walk
     crew can be had
-    (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
-    walks), it plans every candidate (`guess_plan` with limit 0) and hands
+    (`crewUp`; not while a generation or ⚡ walks; while boot's crew is
+    filling the pool the guess waits for it to finish, `blocked`, as a
+    generation does, rather than rank only the floor's eight), it plans every candidate (`guess_plan` with limit 0) and hands
     them out one `farm_render` per idle worker (the farm's `job`, its `done`
     routed by `guessDone`; a lost worker gives its job back, `guessLost`),
     absorbing each with `memo_absorb` as it lands, for at most

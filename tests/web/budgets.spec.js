@@ -28,6 +28,12 @@ const INIT = ({ warmed }) => `(() => {
   const Orig = window.Worker;
   const ahead = (window.__ahead = []);
   const rendered = (window.__rendered = new Set());
+  // The pair on the table, as main says it showed it (\`duel_shown\`), the
+  // one before it, and for each pair dealt ahead, which table it was dealt for.
+  window.__shown = null;
+  window.__shownBefore = null;
+  const aheadFor = (window.__aheadFor = []);
+  let shownSeq = 0;
   // Where an open's time goes: [what, t] for the load, its reply, the bench
   // open and the bench's reply.
   const steps = (window.__steps = []);
@@ -36,13 +42,20 @@ const INIT = ({ warmed }) => `(() => {
     if (/worker\\.js/.test(String(url))) {
       w.addEventListener("message", (e) => {
         const d = e.data;
-        if (d && d.type === "duel" && d.ahead && d.pair) ahead.push(d.pair);
+        if (d && d.type === "duel" && d.ahead && d.pair) {
+          ahead.push(d.pair);
+          aheadFor.push(shownSeq);
+        }
         if (d && d.type === "render" && !d.failed) rendered.add(d.id);
         if (d && (d.type === "preset_loaded" || d.type === "warm_first" || (d.type === "bench" && d.subject != null))) steps.push([d.type, performance.now()]);
       });
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
         if (m && (m.type === "load_preset" || m.type === "edit_begin" || m.type === "warm_start")) steps.push([m.type, performance.now()]);
+        if (m && m.type === "duel_shown") {
+          window.__shownBefore = window.__shown;
+          window.__shown = { a: m.a, b: m.b, seq: ++shownSeq };
+        }
         return post(m, t);
       };
     }
@@ -181,10 +194,21 @@ test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 
   const plays = [];
   for (let i = 0; i < 5; i++) {
     // A player listens before choosing: by then the next pair and its sounds
-    // are here.
+    // are here. The next pair is the one dealt for the pair now on the table:
+    // right after a pick the newest pair dealt ahead is the one the pick just
+    // put up, whose sounds are already here, and a pick made then raced the
+    // next deal and its renders (on a CI runner, behind a render of PERFORM's
+    // measurement of the sound the app opened with). Nor is it a deal of the
+    // table's own pair or of the pair just picked, which main refuses and
+    // deals again (`aheadUsable`).
     await page.waitForFunction(() => {
-      const p = window.__ahead[window.__ahead.length - 1];
-      return p && p.every((id) => window.__rendered.has(id));
+      const n = window.__ahead.length - 1;
+      const p = window.__ahead[n];
+      const s = window.__shown;
+      if (!p || !s || window.__aheadFor[n] !== s.seq) return false;
+      const same = (q) => !!q && p.includes(q.a) && p.includes(q.b);
+      if (same(s) || same(window.__shownBefore)) return false;
+      return p.every((id) => window.__rendered.has(id));
     }, null, { timeout: 60_000 });
     await page.waitForTimeout(500);
     const d = await page.evaluate(async ([side, js]) => {
