@@ -8,6 +8,50 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: PATCH is a canvas that reads in signal order
+
+- **A head above the patch.** PATCH · BASS (the family, for a sound opened
+  from the library), the sound's name, large, and what it is made of: *4
+  modules · 1 modulator, in signal order*. On the right: ⚡ EVOLVE FROM THIS,
+  whose ▾ holds LOCK KNOBS, LOCK WIRING and CLEAR LOCKS (and STOP while it
+  runs), ADD MODULE, NEW PATCH, and HOW TO READ THIS, which says what every
+  mark on the canvas is. The two rows of buttons that were there are gone;
+  everything they did is in the head, the edit bar or the well's corner.
+- **An edit bar once you have edited.** *2 changes · KEEP AS NEW · PICK THE
+  EDIT · UNDO TO AS OPENED.* The count is how many steps ⌘Z would take back.
+  UNDO TO AS OPENED takes them all back in one go, and its toast's undo (or
+  ⇧⌘Z) brings them back. A knob you have turned shows a pale tick where it
+  was when you opened the sound.
+- **The patch sits in a rounded well,** its modules drawn flat with every knob
+  at full detail, sound flowing left to right into OUT and the sound's face.
+  The face is the patch as it stands, measured on its latest render, and a
+  click on it plays the sound, as ▶ did. Modulation cables say how far and how
+  fast they move their knob (*depth 25% · 0.51 Hz*). When the patch is wider
+  than the view, its edges count the modules past them.
+- **Select a module** by pressing on it: it shows its ⋯ (replace, insert,
+  duplicate, set aside, bypass, modulate, probe, swap, delete) and its lock,
+  and the line at the well's foot names it and says what it does. Press L to
+  lock it; a locked module's edge is solid amber.
+- **The catalog opens when you ask.** ADD MODULE or / opens every module over
+  the left of the well, with its search, what is set aside and what is in the
+  patch; Esc or ✕ closes it. A module in hand is named along the well's top,
+  with its price and a ▶ to hear it at a socket. Which way your taste leans on
+  each module now shows only while you hold ⌥. The module rail and the strip
+  that described modules under the rack are gone.
+- **The camera is in the corner:** fit, −, +, map, and a menu for the layout
+  (chain, compact, by hand; snap; reset; detail; leans). Zoomed out, a module
+  keeps three knobs to read. ⇧Home fits the whole patch now; Home and End go
+  to the first module and the last.
+- **The keys follow the signal.** ←/→ walk the modules in signal order, ↑/↓
+  go into a module's modulators, Enter goes into its knobs, F2 opens its
+  menu, Esc steps back out: the knob, the module, the catalog, then a new
+  patch.
+- **SET ASIDE and TEACH are chips** at the well's foot that open their shelf
+  and their strip over it, and PATCH's first steps (turn a knob, lock what you
+  love, ⚡) move into the pill. On a touch screen every module shows its ⋯,
+  and a module's sheet has AUDIO IN's and CAPTURE's buttons and the sound's
+  face.
+
 ### Changed: PERFORM shows the sound large, and its pads have keys
 
 - **PERFORM is a well and a panel.** On the left, the sound: its family (for

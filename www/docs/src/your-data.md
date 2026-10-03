@@ -31,7 +31,7 @@ It is kept as you play:
 | Names | The names you gave sounds and styles |
 | The log | Every pick, star, cut, and kept edit |
 | Your taste | What the model learned, with its standardizer |
-| Layout and settings | Rack positions, the keybed’s size and width, the scope, and the module rail |
+| Layout and settings | Rack positions, the keybed’s size and width, the scope, and which of the catalog's groups are open |
 | **SET ASIDE** | What you unplugged, across reloads |
 | The clip | The seconds of your input AUDIO IN captured for the model, with the session |
 | Takes | Each CAPTURE’s take, with the sound that holds it. A take you record is an edit, kept once you keep the edit as new. A sound kept safe keeps its unreadable take as it was |

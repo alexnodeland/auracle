@@ -236,7 +236,7 @@ first guess of the ranking:
   would cut, over the empty socket a `replace` would fill, under the module a
   `set_mod` would plug, with a dashed lead to that place. It is kept in the
   camera's view: with no room above, below the chain; with no room there, at
-  the view's top. The module rail marks the guessed kind.
+  the view's top. The catalog marks the guessed kind.
 - **Add** (a click, or <kbd>Enter</kbd>) sends the guess through the edit lane
   as `edit_structure` with `guess`; a refusal (`the patch changed after that
   guess, so it was not placed`) is said as any refused edit is, at once.

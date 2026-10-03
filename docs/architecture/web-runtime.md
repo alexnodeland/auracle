@@ -396,7 +396,67 @@ lane, holding `knobDragging` while a finger is down so no knob is rebuilt
 under it. It reaches main.js only through the host it is handed, and main
 calls it back at a handful of points: `onWorker` (its three replies),
 `benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
-`committed`, and `shown`/`hidden`.
+`committed`, and `shown`/`hidden`. A new patch opens the catalog and leaving
+it closes it (`host.openCatalogue`/`closeCatalogue`); the sheet's figure is the
+bench's face (`host.paintFace`, captioned from `host.benchState`), and AUDIO
+IN's and CAPTURE's lane buttons are in the sheet as buttons that press the
+lane's own on the rack, so there is one of each.
+
+### PATCH's canvas
+
+PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
+(`buildRack`), so every hook on it (`g.mod-group[data-key]`, `[data-addr]`,
+`.jack`, the motion system's records) is unchanged:
+
+- **The head** is `renderSubject`: the cap's family (a preset's category, only
+  while unedited), the name, and the subtitle the rack counts (patch.js
+  `counts`: not the amp, not an empty socket; modulators apart) with the
+  layout's words and the states the caption carried. The edit bar
+  (`syncEditBar`) shows while the bench is edited (`wb.dirty` or an edit in
+  the lane); its count is `undoStack.length`, the stack being emptied at every
+  open, so it is what ⌘Z would take back. **Undo to as opened**
+  (`revertToOpened`) is one `edit_set_tree` to `undoStack[0]` with `restore`,
+  offered only while the lane is free and the stack still reaches the open
+  (`undoTrimmed`); `settleRestore` settles it as that many undos in a row
+  (`restorePending.all`), newest first, so the redo stack holds them in order.
+  Each continuous knob's value as opened is kept by node identity
+  (`openedKnobs`, `lockIdOf`) for its pale pointer (`paintWas`).
+- **The face at OUT** is `#rack-play` itself, an HTML button the camera places
+  (`placeOutFace`, from `applyView`) over the box `buildRack` leaves past the
+  amp (`rackOut`; the layout's width grows by `OUT_ZONE`, and `contentBox`
+  counts it, so every fit shows it). Its slot is the bench's face
+  (`setFaceSlot(..., "out", {tree: benchTreeJson})`), so it is never an
+  estimate, and its press is the rack's ▶ (`playBench`, `playWaitCancel`).
+- **Fits** keep the well's own chrome clear (`fitBox`): the top line
+  (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open, the catalog
+  (`catalogueReserve`), as they keep the scope's corner (`scopeReserve`).
+- **The selection** (`plateSel`, set by a press on bare panel in the rack's
+  pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
+  both of a module's groups `.selected`; the readout (`renderSpecDock` into
+  `#pt-read`) follows the plate under the pointer (`plateHover`) or the
+  selected one, and a module pointed at in the catalog (`specSubject`). The
+  thing in hand renders into the well's top line (`#pick-chip`'s
+  `#pick-armed`), with `pickFeedback` naming the socket under the pointer.
+- **The catalog** is `#nodebank` inside the frame: `nbSetCollapsed` is its
+  open and closed, never saved (`buildNodeBank` closes it at every start);
+  `openCatalogue`/`closeCatalogue`; closing it puts down a module in hand.
+- **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
+  y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
+  plate's controls (which walk only that plate's), F2 or the menu key for
+  `openStructMenu`. Esc's chain is the selection, then the catalog
+  (`escBusy` holds a new patch's Esc while either is up). The global Home/End
+  focus the first and last plate; ⇧Home is `fitAll`.
+- **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
+  `#rack-map-btn`, the layout's menu `#pt-laymenu` with `setLayoutMode`),
+  SET ASIDE (`renderTray` fills the shelf `#tray` and the catalog's
+  `#nb-aside` from one `trayItemEl`), and TEACH (`setTeach` folds or unfolds
+  `#play-duel` over the well; `renderPlayDuel` shows its chip while a pair is
+  dealt). The well's edges (`syncEdges`, `nudgeRack`) count the plates whose
+  middles lie past the view.
+- **First steps** are per level (guide.js `levels`, `setLevel` from
+  `levelChanged`): PATCH's three tick in `sendEdit`, `setLock` and
+  `startEvolveFrom`, and a dismissed bench tour (`auracle-bench-tour`) counts
+  them done (`markDone`).
 
 ## Faces
 
@@ -980,7 +1040,7 @@ and when the window closes its button is removed. Read the comment above
 
 ## ⌘Z
 
-A teaching act with an undo window (a pick from EVOLVE or PATCH's strip, a
+A teaching act with an undo window (a pick from EVOLVE or PATCH's TEACH, a
 cut) registers how to take itself back (`holdTakeBack` in `main.js`) and
 leaves when its window closes. ⌘Z takes back the newest one at any level; only
 with none left does it reach the bench's edit undo, and only in PATCH.

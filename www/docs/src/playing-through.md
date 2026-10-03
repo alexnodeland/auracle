@@ -8,8 +8,8 @@ knobs.</p>
 ## Add AUDIO IN
 
 1. Open a sound in [PATCH](./views/play.md).
-2. In the module rail, under **SOURCES**, click **audio in**. Every socket it
-   can take lights up.
+2. Press **ADD MODULE** and, in the catalog, under **SOURCES**, click **audio
+   in**. Every socket it can take lights up.
 3. Click a lit socket. AUDIO IN takes it, as any source does.
 4. The browser asks for a microphone or an interface. Allow it.
 
@@ -114,7 +114,7 @@ stored, and measured.
 
 ## Play it with your voice: TRACK
 
-**track**, under **DYNAMICS** in the module rail, plays a chain from the pitch
+**track**, under **DYNAMICS** in the catalog, plays a chain from the pitch
 and the notes of what it listens to: sing, whistle, or play a line into an
 input, and the chain follows you.
 

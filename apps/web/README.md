@@ -34,13 +34,19 @@ what a generation is and what evolving costs.
   into a second slot and Peek, Blend or Take it, velocity →
   timbre, and stage mode (⇧F, in PERFORM). MIDI controllers auto-map onto the deck's
   first eight controls.
-- **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at
-  true positions, mod wires pulsing at their modulator's rate), editable and
-  lockable, playable from the keyboard while you turn knobs. The rack **scales
-  to fill its frame** (1×–2.2×) and centres, knobs wear value arcs and read in
+- **PATCH** — the patch is the hero, as the specimen's canvas (Plan-008 C2a):
+  a head (PATCH · family, the name, *4 modules · 1 modulator, in signal
+  order*, the edit bar once edited, ⚡ EVOLVE FROM THIS with its locks under
+  ▾, ADD MODULE, NEW PATCH, HOW TO READ THIS), and the full rack in a rounded
+  well (modules in signal order, cables, every knob at its true position, mod
+  wires pulsing at their modulator's rate and labelled with their depth and
+  rate), into OUT and the sound's measured face, which plays on a click.
+  Editable and lockable, playable from the keyboard while you turn knobs, and
+  walked with the arrows in signal order. Knobs wear value arcs and read in
   **musical units** (`840 Hz`, `24 ms`, `−6.0 dB`, `+12 ¢`), and a **live scope**
-  traces the output while you play. A quick-pick strip votes without leaving
-  the view, and a **next-step chip** always says what to do now.
+  traces the output while you play. The camera sits in the well's corner, the
+  catalog opens over its left on demand, TEACH votes without leaving the view,
+  and a **next-step** line says what to do now.
 - **EVOLVE** — duels (click a card to play that candidate live; ▶ SAMPLE for
   the fixed A/B stimulus) under a **teaching meter** that counts down to the
   next refit and takes the strip over when the model learns. Candidates carry
@@ -57,22 +63,23 @@ what a generation is and what evolving costs.
   50% by an acquisition function that serves near-ties on purpose), copy as
   JSON, and the math, its numbers read from the engine.
 
-## The node bank
+## The catalog (the node bank)
 
-The rail on the right of PATCH is the instrument's **catalogue** — forty-five
+PATCH's **catalog** (ADD MODULE, or `/`, opens it over the left of the well) —
+forty-five
 modules in ten signal-flow groups (sources → shape → filter → space → motion
 → dynamics → combine → modulation → shape cv → combine cv), not one alphabetical shelf. Every entry carries four things at
 rest: a **transfer-function glyph** (what this does to a wave — never a
 pictogram, so the set cannot drift as it grows), the name a synthesist would
-use, a **port signature** in both phosphors, and, once the model has been fitted
-*and* at least five patches in the pool use the module, a **θ bar with a ±σ
-whisker**. Below that support threshold it draws a dash: "the model barely
+use, a **port signature** in both phosphors, and, under the model view (⌥),
+once the model has been fitted *and* at least five patches in the pool use the
+module, a **θ bar with a ±σ whisker**. Below that support threshold it draws a dash: "the model barely
 likes this" and "the model has never seen this" must not look alike.
 
 `/` focuses the index, which matches by **sound as well as by name** — *grit*
 finds distortion and bitcrush, *wander* finds s&h rand, *vowel* finds the
-formant oscillator. Hovering or focusing an
-entry opens a **spec card**: one sentence in the app's voice, the port map, the
+formant oscillator. Hovering an entry opens its **spec card** over the
+well's foot (focusing one, a card beside the catalog): one sentence in the app's voice, the port map, the
 parameters it will arrive with, an honest line about what the model believes
 (with four distinct silences — not measured / not fitted / too few examples /
 here is the belief), and a **heard as** line saying what the feature extractor
@@ -82,7 +89,8 @@ no stereo-width coordinate.
 Placing is **arm-and-place**: click a module and it is in your hand; every
 socket it can legally go into lights up and *names what will happen there* —
 green **inserts** ahead of what is in the socket, amber **replaces** it. Click a
-lit ○ to place, `esc` to put it down. Press-drag from an entry still works for
+lit ○ to place, `esc` to put it down; the well's top line names it with its
+price and a ▶ to hear it at a socket first. Press-drag from an entry still works for
 anyone who prefers it, and a missed drop now says so instead of silently doing
 nothing. Every placement is one undo step and the toast offers **take it out**.
 
@@ -90,10 +98,10 @@ The whole path has a keyboard equivalent, which wiring did not have at all
 before: arrows walk the catalogue (one tab stop per group), `enter` arms,
 arrows then walk the **lit sockets** with each one announced, `enter` places.
 **IN THIS PATCH** lists what the bench patch is made of; clicking a pill jumps
-to that module in the rack. Collapsed, the rail keeps its name and the count of
-anything **held** below, because a drawer that can hide staged work without
-saying so is a trap. Its width, its collapsed state and which groups are folded
-all persist.
+to that module in the rack. **SET ASIDE** comes first: what was unplugged,
+deleted or bypassed, to drag back (the well's foot counts it too, so staged
+work is never hidden). Which groups are folded persists; the catalog itself
+opens when asked.
 
 Modulation is a **sort, not a slot**: a cable can carry `s&h rand → quantize →
 slew` before it reaches a cutoff, and the rack draws the whole chain in amber.
@@ -102,7 +110,7 @@ than evicting it, and the socket says which of fill / replace / wrap you are
 about to do.
 
 The rack's ⋯ menu no longer reprints the module list: **replace with…** and
-**insert after…** hand off to the rail with the socket already chosen and lit.
+**insert after…** hand off to the catalog with the socket already chosen and lit.
 One inventory, one place — the palette and the right-click menu cannot describe
 different instruments.
 

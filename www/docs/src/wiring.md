@@ -1,48 +1,48 @@
-# Wiring and the module rail
+# Wiring and the catalog
 
-<p class="lede">The module rail on the right of PATCH holds all 45 modules.
-This page is about adding a module to a patch, rewiring it with cables, and
-reading what the model makes of each module.</p>
+<p class="lede">PATCH's catalog holds all 45 modules. This page is about
+adding a module to a patch, rewiring it with cables, and reading what the
+model makes of each module.</p>
 
 ## Add a module
 
-1. Click a module in the rail. It is now in your hand.
-2. Every socket it can go into lights up and says what will happen there:
+1. Press **ADD MODULE** in PATCH's head (or <kbd>/</kbd>). The catalog opens
+   over the well's left.
+2. Click a module. It is now in your hand, and the line along the well's top
+   names it, with its price and **▶**.
+3. Every socket it can go into lights up and says what will happen there:
    green **inserts** it after what’s in the socket, and amber **replaces** it.
-3. Click a lit ○ to place it. <kbd>Esc</kbd> puts it down.
+4. Click a lit ○ to place it. <kbd>Esc</kbd>, or **✕** on that line, puts it
+   down.
 
 To hear a placement before you make it, rest the pointer on a lit ○ for a
-moment, or press **▶** on the strip under the rack. It renders two seconds of
-the patch with the module in it, and places nothing. Once the pointer leaves
-the socket, the strip names the one it means (*hear it after the filter*) and
-that socket is ringed, so ▶ plays what the strip shows.
+moment, or press **▶** on the line along the well's top. It renders two
+seconds of the patch with the module in it, shows them in that line's scope,
+and places nothing. Once the pointer leaves the socket, the line names the one
+it means (*hear it after the filter*) and that socket is ringed, so ▶ plays
+what the line shows.
 
 Every placement is one undo step, and its toast offers **TAKE IT OUT**.
-Dragging a module from the rail onto a socket works too, and a missed drop
-says so.
+Dragging a module from the catalog onto a socket works too, and a missed drop
+says so. The catalog closes with **✕** or <kbd>Esc</kbd> (after a module in
+hand is put down).
 
 ### From the keyboard
 
 | | |
 |---|---|
-| <kbd>Tab</kbd> | Reach the rail: one stop per group |
+| <kbd>/</kbd> | Open the catalog in its search |
+| <kbd>Tab</kbd> | Reach the groups: one stop per group |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Walk the modules |
 | <kbd>Enter</kbd> | Pick one up |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Then walk the lit sockets, each one announced |
 | <kbd>Enter</kbd> | Place it |
 | <kbd>Esc</kbd> | Put it down |
 
-## The module rail
+## The catalog
 
-<figure>
-<img src="./img/node-bank.webp" alt="The PATCH view with the module rail open on the right: ten groups of modules down a rail, each module with a glyph, a name, its ports, and a bar, with the formant oscillator’s card open beside it." loading="eager" width="1440" height="900">
-<figcaption><strong>The module rail, with a card open.</strong> Every module
-says what it does to a wave, what it takes and gives, and what the model makes
-of it.</figcaption>
-</figure>
-
-The rail, headed **MODULES**, holds 45 modules in ten groups, in the order a
-signal meets them:
+The catalog, headed **ADD A MODULE**, holds 45 modules in ten groups, in the
+order a signal meets them:
 
 - the sound: **SOURCES**, **SHAPE**, **FILTER**, **SPACE**, **MOTION**,
   **DYNAMICS**, and **COMBINE**;
@@ -51,16 +51,19 @@ signal meets them:
 
 So “what goes after a filter” is a question the order answers.
 
-Above the groups, **IN THIS PATCH** lists the modules the patch is made of.
-Click one to jump to it in the rack.
+Above the groups, **SET ASIDE** lists what you have set aside (to drag back
+onto a socket), and **IN THIS PATCH** the modules the patch is made of. Click
+one to jump to it in the rack.
 
-Each module shows four things at rest:
+Each module shows three things at rest:
 
 - a **glyph** for what it does to a wave;
 - the **name** a synthesist would use;
-- its **ports**: what it takes, and what it gives;
-- a **bar with a whisker**: which way your taste leans on this kind of module,
-  and how sure the model is.
+- its **ports**: what it takes, and what it gives.
+
+Under the model view (hold <kbd>⌥</kbd>), a fourth: a **bar with a whisker**,
+which way your taste leans on this kind of module, and how sure the model is.
+The model's guess for the next module has an amber dot beside its name.
 
 The bar appears only once the model has been fitted and at least five sounds
 in the pool use the module; until then it’s a dash. It is solid when the
@@ -77,7 +80,9 @@ doesn’t have says so, and says why.
 
 ### The spec card
 
-Point at a module, or focus it, and its card opens:
+Point at a module and its description opens over the well's bottom edge, from
+the readout at its foot; focus it from the keyboard and a card opens beside
+the catalog:
 
 <figure>
 <img src="./img/spec-card.webp" alt="The formant oscillator’s spec card: a glyph, the name FORMANT, its ports, a sentence describing it, its default settings, a heard line, and a line on what the model makes of it." loading="eager" width="950" height="108">
@@ -110,15 +115,15 @@ you mean.
    so you can’t make a loop.
 3. Drop it on a lit jack. It snaps within a short distance.
 
-Dropping into empty space opens the module rail with that socket already
-chosen, and a drop that can’t work says why. Clicking the source and then the
+Dropping into empty space opens the catalog with that socket already chosen,
+and a drop that can’t work says why. Clicking the source and then the
 target works too.
 
 Drop an output onto a socket that already has something in it, and a small
 menu asks which you mean:
 
 - **move it here**: the module leaves its old socket (which becomes empty), and
-  what was here is set aside below;
+  what was here is set aside;
 - **branch here**: a copy joins what is here through a mix, and nothing moves.
   It’s a copy because one output can’t feed two places.
 
@@ -177,21 +182,22 @@ rack won’t let you wire it as audio.
 
 ## SET ASIDE
 
-Anything you unplug, delete, or bypass goes to **SET ASIDE** under the rack,
-and stays across a reload.
+Anything you unplug, delete, or bypass is set aside, and stays across a
+reload. **SET ASIDE n** at the well's foot counts it and opens the shelf; the
+catalog lists it first too.
 
 1. Drag a wired **in** jack off its socket to unplug it. The chain is set
    aside, and the socket it left is [empty and silent](./rack.md#empty-sockets).
-2. Drag it back from **SET ASIDE** onto a lit ○ to put it in.
+2. Drag its ● back from the shelf (or the catalog) onto a lit ○ to put it in.
+   **✕** discards it.
 
-Folded away, the rail keeps its name and a count of what is set aside, so
-staged work is never hidden. The rail’s width, whether it is folded, and which
-groups are open all persist.
+Which of the catalog's groups are open persists; the catalog itself opens when
+you ask for it.
 
 ## What to try next
 
-- Search the rail for *grit*, and try each module it finds on the same sound.
+- Search the catalog for *grit*, and try each module it finds on the same sound.
 - Drop a **SHAPE CV** module on an amber cable, and hear the modulation change
   shape.
-- [Reading what it learned](./reading-the-model.md): what the bars on the rail
-  can and can’t tell you.
+- [Reading what it learned](./reading-the-model.md): what the bars in the
+  catalog can and can’t tell you.

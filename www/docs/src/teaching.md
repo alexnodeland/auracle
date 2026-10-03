@@ -22,11 +22,11 @@ in what they say about that.
 
 | You | Where | What it says |
 |---|---|---|
-| **Pick** between two sounds | EVOLVE, or the TEACH strip in PATCH | You’d reach for A over B |
+| **Pick** between two sounds | EVOLVE, or **TEACH** at the foot of PATCH's well | You’d reach for A over B |
 | **Take** or **pass** (NEXT or PASS) on an offer you heard | PERFORM | The same, between the sound you were playing and the offer |
 | **★** a sound | Any bank row: its **★** opens five stars, or <kbd>1</kbd>–<kbd>5</kbd> on the row under the cursor | Where it sits on your scale, one to five |
 | **×** cut a sound | Any bank row | Not this one |
-| **Keep as new** an edit | PATCH: the **WHICH WOULD YOU REACH FOR?** card, or **PICK THE EDIT** to skip it | Your edit over the original, or the original over your edit |
+| **Keep as new** an edit | PATCH's edit bar: the **WHICH WOULD YOU REACH FOR?** card, or **PICK THE EDIT** to skip it | Your edit over the original, or the original over your edit |
 
 **Picks teach the most.** People compare two sounds reliably, and give one
 sound a number much less reliably, even against themselves an hour later. If
@@ -98,8 +98,8 @@ seconds of work, off the audio thread. This is where it can change its mind,
 find a new style, or move the points on your star scale.
 
 In EVOLVE, the teaching line counts down to the refit in six pips (*3 more
-picks and it redraws your taste map.*). A pick counts from EVOLVE, the TEACH
-strip in PATCH, or an offer answered in PERFORM. Then:
+picks and it redraws your taste map.*). A pick counts from EVOLVE, TEACH in
+PATCH, or an offer answered in PERFORM. Then:
 
 1. On the sixth pick, the pips fill and the line reads *● learning from your
    last 6 picks…*. The sixth pick keeps its seven seconds to be taken back
