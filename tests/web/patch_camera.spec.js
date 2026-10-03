@@ -17,10 +17,22 @@ const { test, expect } = require("@playwright/test");
 const { boot, openPreset } = require("./patch_page");
 
 const viewBox = (page) => page.evaluate(() => document.getElementById("rack-svg").getAttribute("viewBox").split(/\s+/).map(Number));
+// The camera at rest: two reads a quarter second apart agree (opening a
+// preset fits it with a tween, and a bookmark keeps the zoom it was set at).
+const restingView = async (page) => {
+  let last = null;
+  await expect.poll(async () => {
+    const v = (await viewBox(page)).join(" ");
+    const same = v === last;
+    last = v;
+    return same;
+  }, { timeout: 10_000, intervals: [250] }).toBe(true);
+};
 
 test("−, + and fit in the corner zoom the camera and frame the patch again", async ({ page }) => {
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Reese");
+  await restingView(page);
   const fitted = await viewBox(page);
   await page.locator("#pt-zoom-in").click();
   await expect.poll(async () => (await viewBox(page))[2]).toBeLessThan(fitted[2]);
@@ -85,6 +97,7 @@ test("map shows the minimap, a shift-click bookmarks a spot, and ⇧1 goes back 
   await expect(map).toBeVisible();
   await expect(page.locator("#rack-map-btn")).toHaveAttribute("aria-pressed", "true");
   const m = await map.boundingBox();
+  await restingView(page);
   await page.keyboard.down("Shift");
   await page.mouse.click(m.x + m.width * 0.3, m.y + m.height * 0.5);
   await page.keyboard.up("Shift");
@@ -106,6 +119,7 @@ test("map shows the minimap, a shift-click bookmarks a spot, and ⇧1 goes back 
 test("ctrl-wheel over the well zooms the camera, not the level", async ({ page }) => {
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Reese");
+  await restingView(page);
   const before = await viewBox(page);
   const f = await page.locator("#rack-scroll").boundingBox();
   await page.mouse.move(f.x + f.width / 2, f.y + f.height / 2);
@@ -132,6 +146,7 @@ test("zoomed in, the well's edges count the modules past them, and a press bring
   const n = Number(await edge.locator("b").textContent());
   expect(n).toBeGreaterThan(0);
   await expect(edge).toHaveAttribute("aria-label", /more module(s)? to the (left|right)/);
+  await restingView(page);
   const x0 = (await viewBox(page))[0];
   await edge.click();
   await expect.poll(async () => (await viewBox(page))[0], { timeout: 5_000 }).not.toBeCloseTo(x0, 0);
