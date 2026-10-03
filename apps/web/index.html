@@ -491,45 +491,36 @@
                    does in one sentence; pointed at in the catalogue, a longer
                    description opens over the well's bottom edge. -->
               <div class="pt-foot" id="pt-foot">
-              <div class="pt-corner" id="pt-corner">
-                  <!-- Three camera controls in one group: which shape the rack is
-                 drawn in, how much of each plate is drawn, and whether the
-                 map is up. Arrangement and detail are different questions and
-                 stay different buttons — Reaktor's mistake is folding them. -->
-            <div class="seg seg-view" role="group" aria-label="How the rack is drawn">
-              <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn seg-item" id="rack-layout" aria-pressed="false">chain</button></span>
-              <!-- Two verbs that only *act* in freeform, and hold their slots
-                   everywhere else (see `.tt.held`): a control that appears
-                   moves the control beside it, and the control beside this one
-                   is the mode toggle you just pressed.
-
-                   One word each, because two of them at "apply grid" /
-                   "reset positions" wrapped this group onto a second row at
-                   1280 — 35px out of the same vertical budget M4 is fighting
-                   for. The tooltip carries the sentence.
-
-                   `snap` pins whatever is currently on screen to the 24px grid,
-                   so a patch that arrived from evolution with no layout has one
-                   to start dragging from. -->
-              <span class="tt held" title="Snap every module to the 24 px grid and pin it there. If the hand layout has spread past anything the frame can show, this lays it out again from the signal chain instead."><button class="util-btn seg-item" id="rack-grid" disabled>snap</button></span>
-              <!-- The way back. Freeform never rearranges your plates — that is
-                   its contract and the reason a recovery *verb* has to exist:
-                   a persisted layout can strand the view completely, and
-                   cycling the mode (which does work) is not a thing anything
-                   on screen said. -->
-              <span class="tt held" title="Throw away the hand positions for this patch and lay it back out along the signal chain."><button class="util-btn seg-item" id="rack-reseed" disabled>reset</button></span>
-              <!-- The tooltip is rewritten by `syncLodBtn` on boot and on every
-                   frame resize: the threshold is a function of the frame's
-                   height now, so the only honest number is the live one. -->
-              <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
-              <!-- A fourth way of reading the rack, and the only one that
-                   draws the model onto it. Off by default: it is a second
-                   colour law over the first, and it speaks about families of
-                   module rather than about any one plate — its tooltip says
-                   so, and so does every plate's. -->
-              <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">leans</button></span>
-              <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
-            </div>
+              <!-- The camera, quiet in the corner (Plan-008 C2a): fit, out,
+                   in, the map (where its bookmarks are), and the layout's ▾
+                   (chain, compact, by hand; snap and reset for by hand; the
+                   level of detail; leans). Every gesture stays on the canvas:
+                   the wheel and a drag pan, ctrl-wheel or a pinch zooms at the
+                   pointer, Space+drag and a middle drag pan, ⌘0 ⌘− ⌘=. -->
+              <div class="pt-corner" id="pt-corner" role="toolbar" aria-label="The camera">
+                <button class="pt-cam" id="pt-fit" type="button" title="Fit the whole patch · ⇧Home" aria-label="Fit the whole patch">fit</button>
+                <button class="pt-cam" id="pt-zoom-out" type="button" title="Zoom out · ⌘−" aria-label="Zoom out">−</button>
+                <button class="pt-cam" id="pt-zoom-in" type="button" title="Zoom in · ⌘=" aria-label="Zoom in">+</button>
+                <span class="tt" title="Show the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="pt-cam" id="rack-map-btn" type="button" aria-pressed="false">map</button></span>
+                <div class="pt-layout">
+                  <span class="tt" title="Chain: the signal path on one baseline."><button class="pt-cam" id="rack-layout" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="pt-laymenu">chain</button></span>
+                  <div class="pt-menu pt-laymenu hidden" id="pt-laymenu" role="menu" aria-label="Layout and detail">
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="chain" aria-checked="true">chain: in signal order</button>
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="compact" aria-checked="false">compact: packed tight</button>
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="freeform" aria-checked="false">by hand: drag them where you like</button>
+                    <i class="pt-msep" aria-hidden="true"></i>
+                    <!-- Snap pins whatever is on screen to the 24 px grid; reset
+                         lays it back out along the chain. Both act on a layout
+                         by hand only. -->
+                    <span class="tt" title="Snap every module to the 24 px grid and pin it there. If the hand layout has spread past anything the frame can show, this lays it out again from the signal chain instead."><button class="pt-mi" id="rack-grid" type="button" role="menuitem" disabled>snap to the grid</button></span>
+                    <span class="tt" title="Throw away the hand positions for this patch and lay it back out along the signal chain."><button class="pt-mi" id="rack-reseed" type="button" role="menuitem" disabled>reset positions</button></span>
+                    <i class="pt-msep" aria-hidden="true"></i>
+                    <!-- Rewritten by `syncLodBtn`: the threshold is a function of
+                         the frame's height. -->
+                    <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="pt-mi" id="rack-lod" type="button" role="menuitem" aria-pressed="false">detail auto</button></span>
+                    <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="pt-mi" id="rack-belief" type="button" role="menuitemcheckbox" aria-checked="false" aria-pressed="false">leans</button></span>
+                  </div>
+                </div>
               </div>
               <div class="pt-read" id="pt-read" aria-live="polite"></div>
               </div>

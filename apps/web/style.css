@@ -7479,3 +7479,38 @@ html.xl-on .alarm { z-index: 62; }
 .pick-armed { overflow: hidden; }
 .pick-armed .sd-hint { margin-left: 0; }
 .pick-chip .pick-chip-text { flex: none; }
+
+/* ---- the camera's corner (C2a): fit · − · + · map · layout ▾ ---- */
+.pt-corner { gap: 2px; padding: 2px; border-radius: var(--r2); background: var(--bezel-72); }
+.pt-cam {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pt-cam:hover, .pt-cam:focus-visible { color: var(--silk); border-color: var(--hairline); background: var(--panel-hi); }
+.pt-cam:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+.pt-cam[aria-pressed="true"], .pt-cam[aria-expanded="true"] { color: var(--phos-a); }
+#pt-zoom-out, #pt-zoom-in { font-family: var(--font-mono); font-size: var(--t-value); letter-spacing: 0; }
+@media (pointer: coarse) { .pt-cam { min-width: 40px; height: 40px; } }
+.pt-layout { position: relative; display: inline-flex; }
+/* The corner's menu opens upward, from its left. */
+.pt-laymenu { top: auto; bottom: calc(100% + var(--s1)); left: 0; right: auto; min-width: 240px; }
+.pt-laymenu .tt { display: grid; }
+.pt-laymenu .tt.held { visibility: visible; }
+.pt-msep { display: block; height: 1px; margin: var(--s1) var(--s2); background: var(--hairline); }
+/* The minimap stands over the corner. */
+#view-patch .rack-map { bottom: calc(var(--s3) + 40px); left: var(--s3); }
+.cknob, .cknob * { pointer-events: none; }
+/* The fit hint is a note in the well's corner, over the camera. */
+#view-patch .fit-hint { left: var(--s3); top: auto; bottom: calc(var(--s3) + 44px); transform: none; }

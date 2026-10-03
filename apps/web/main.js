@@ -5604,6 +5604,7 @@ document.addEventListener("keydown", (e) => {
       setKeysPop(false);
       if (inside) $("keys-btn").focus();
     }
+    if (layoutMenuOpen()) setLayoutMenu(false);
     if (evolveMenuOpen()) setEvolveMenu(false);
     else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) closeCatalogue(false);
     closeMenu();
@@ -10762,6 +10763,8 @@ function repaintRackInPlace(fresh) {
       if (k.kind.t !== "continuous") continue;
       const kg = svg.querySelector(`[data-addr="${CSS.escape(k.addr)}"]`);
       if (kg) paintKnobKept(kg, k);
+      const cg = svg.querySelector(`[data-caddr="${CSS.escape(k.addr)}"]`);
+      if (cg) paintCompactKnob(cg, k.value);
     }
   }
   if (rackFrame) {
@@ -11871,6 +11874,24 @@ function buildRack(svg, rack, opts) {
     });
     // After the dials, so the roving tab order reads rate → length → glide →
     // step 1 … step 8, the order the plate is read in.
+    // Compact, a plate shows the specimen's three knobs to read (its first
+    // three dials, their value arcs and pointers, as set), not to grab: at the
+    // zoom that chose compact a knob is too small for a hand, and the plate's
+    // ⋯, a tap's sheet or zooming in reach every setting.
+    if (compact && !isEmpty) {
+      let shown = 0;
+      m.knobs.forEach((k, i) => {
+        if (shown >= 3 || k.kind.t !== "continuous" || isLaneKnob(m, i)) return;
+        shown += 1;
+        const { x, y } = knobPos(m, i, box);
+        const cg = svgEl("g", { transform: `translate(${x},${y})`, "data-caddr": k.addr }, "cknob");
+        cg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, 1) }, "knob-track"));
+        cg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, Math.max(0.004, k.value)) }, `knob-arc${m.is_mod ? " modside" : ""}`));
+        cg.appendChild(svgEl("line", {}, "knob-ind"));
+        paintCompactKnob(cg, k.value);
+        g.appendChild(cg);
+      });
+    }
     if (!compact && !isEmpty && m.lane) drawStepLane(g, m, box, interactive, locks);
     // AUDIO IN's lane belongs to the player's inputs, so only the bench draws
     // it; a picture of another patch leaves the space plain.
@@ -12713,17 +12734,17 @@ function syncSilkFloor() {
 function syncLodBtn() {
   const b = $("rack-lod");
   if (!b) return;
-  b.textContent = lodMode === "auto" ? "detail auto" : lodMode === "full" ? "detail full" : "detail lite";
+  b.textContent = lodMode === "auto" ? "detail: automatic" : lodMode === "full" ? "detail: full" : "detail: compact";
   b.setAttribute("aria-pressed", String(lodMode !== "auto"));
   b.closest(".tt").title =
     lodMode === "auto"
       // The number is read out rather than written in, because it is a
       // function of the frame now (`lodThreshold`) and a tooltip that says
       // 0.55 in a frame that switches at 0.34 is a tooltip that lies.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and modules lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and past ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
       : lodMode === "full"
-        ? "Detail: full, at every zoom. Click for modules without knobs."
-        : "Detail: modules, titles, and jacks only. Click to go back to automatic.";
+        ? "Detail: full, at every zoom. Click for compact modules."
+        : "Detail: compact. Modules, titles, jacks and three knobs each to read. Click to go back to automatic.";
 }
 $("rack-lod").onclick = () => {
   lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
@@ -12754,6 +12775,7 @@ function syncBeliefBtn() {
   const b = $("rack-belief");
   if (!b) return;
   b.setAttribute("aria-pressed", String(beliefOverlay));
+  b.setAttribute("aria-checked", String(beliefOverlay));
   b.closest(".tt").title = beliefOverlay
     ? "Leans: on. An amber edge means your taste leans toward that kind of module, red away, "
       + "stronger where the model is surer. It reads the kind, not this module: φ counts how many "
@@ -13294,7 +13316,7 @@ function syncMapBtn() {
   b.setAttribute("aria-pressed", String(mapOn));
   b.closest(".tt").title = platformKeys(mapOn
     ? "Hide the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."
-    : "Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.");
+    : "Show the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one.");
   if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
@@ -14965,6 +14987,22 @@ const silkLabel = (label) => SILK[label] || label;
 // ---------- knob geometry & units ----------
 // An arc on the knob's outer ring from normalized v0 to v1, sweeping the
 // standard −135°…+135° travel.
+/** A compact plate's knob, painted to a value: its arc and its pointer. */
+function paintCompactKnob(cg, v) {
+  const arc = cg.querySelector(".knob-arc");
+  if (arc) {
+    arc.setAttribute("d", arcPath(KNOB_R + 3, 0, Math.max(0.004, v)));
+    arc.style.opacity = v > 0.004 ? "" : "0";
+  }
+  const ind = cg.querySelector(".knob-ind");
+  if (ind) {
+    const ang = (-135 + 270 * v) * (Math.PI / 180);
+    ind.setAttribute("x1", (Math.sin(ang) * KNOB_R * 0.45).toFixed(2));
+    ind.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.45).toFixed(2));
+    ind.setAttribute("x2", (Math.sin(ang) * (KNOB_R - 3)).toFixed(2));
+    ind.setAttribute("y2", (-Math.cos(ang) * (KNOB_R - 3)).toFixed(2));
+  }
+}
 function arcPath(r, v0, v1) {
   const at = (v) => (-135 + 270 * v) * (Math.PI / 180);
   const pt = (t) => `${(Math.sin(t) * r).toFixed(2)} ${(-Math.cos(t) * r).toFixed(2)}`;
@@ -15954,17 +15992,21 @@ document.addEventListener("pointerdown", (e) => {
 // hand positions, they merely stop drawing them, so freeform is exactly where
 // you left it when you come back — including after a reload.
 const LAYOUT_TIP = {
-  chain: "Chain: the signal path on one baseline. Click to pack it tight.",
-  compact: "Compact: layers packed tight. Click to place modules by hand.",
-  freeform: platformKeys("Freeform: drag modules where you like. They snap to the grid, and " +
-    "⇧ places them freely. Click for the straight signal chain."),
+  chain: "Layout: chain, the signal path on one baseline.",
+  compact: "Layout: compact, layers packed tight.",
+  freeform: platformKeys("Layout: by hand. Drag modules where you like; they snap to the grid, and " +
+    "⇧ places them freely."),
 };
+// The corner's word for each layout, and the menu's.
+const LAYOUT_WORD = { chain: "chain", compact: "compact", freeform: "by hand" };
 function syncLayoutBtn() {
   const b = $("rack-layout");
   if (!b) return;
-  b.textContent = layoutMode;
-  b.setAttribute("aria-pressed", String(layoutMode !== "chain"));
+  b.textContent = `${LAYOUT_WORD[layoutMode]} ▾`;
   b.closest(".tt").title = LAYOUT_TIP[layoutMode];
+  for (const it of document.querySelectorAll("#pt-laymenu [data-layout]")) {
+    it.setAttribute("aria-checked", String(it.dataset.layout === layoutMode));
+  }
   // "apply grid" and "reset positions" only *act* in the mode they belong to,
   // and the frame advertises that a plate can be picked up — a draggable
   // object with a default cursor is a draggable object nobody discovers.
@@ -15987,14 +16029,53 @@ function syncLayoutBtn() {
   $("rack-scroll").classList.toggle("freeform", ff);
   syncFitHint();
 }
-$("rack-layout").onclick = () => {
-  layoutMode = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
+function setLayoutMode(mode) {
+  if (!LAYOUT_MODES.includes(mode) || mode === layoutMode) return;
+  layoutMode = mode;
   try { localStorage.setItem("auracle-layout", layoutMode); } catch (_) {}
   syncLayoutBtn();
   renderRack();
-};
+  renderSubject(); // the subtitle names the layout
+}
+// The layout's ▾: a menu over the corner. The arrows walk it; Esc, a choice
+// or a press outside folds it and gives the focus back to ▾.
+function setLayoutMenu(open, focusFirst) {
+  const menu = $("pt-laymenu");
+  const btn = $("rack-layout");
+  menu.classList.toggle("hidden", !open);
+  btn.setAttribute("aria-expanded", String(open));
+  if (open && focusFirst) menu.querySelector(`[data-layout="${layoutMode}"]`)?.focus();
+}
+const layoutMenuOpen = () => !$("pt-laymenu").classList.contains("hidden");
+$("rack-layout").onclick = (e) => setLayoutMenu(!layoutMenuOpen(), e.detail === 0);
+$("pt-laymenu").addEventListener("click", (e) => {
+  const it = e.target.closest(".pt-mi:not(:disabled)");
+  if (!it) return;
+  if (it.dataset.layout) setLayoutMode(it.dataset.layout);
+  if (it.dataset.layout || it.id === "rack-grid" || it.id === "rack-reseed") setLayoutMenu(false);
+});
+$("pt-laymenu").addEventListener("keydown", (e) => {
+  const items = [...$("pt-laymenu").querySelectorAll(".pt-mi")].filter((b) => !b.disabled);
+  const i = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    e.stopPropagation();
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    setLayoutMenu(false);
+    $("rack-layout").focus();
+  }
+});
+document.addEventListener("pointerdown", (e) => {
+  if (layoutMenuOpen() && !e.target.closest?.(".pt-layout")) setLayoutMenu(false);
+}, true);
 $("rack-grid").onclick = () => applyGrid();
 $("rack-reseed").onclick = () => resetPositions();
+$("pt-fit").onclick = () => fitAll(true);
+$("pt-zoom-out").onclick = () => zoomStep(1 / 1.25);
+$("pt-zoom-in").onclick = () => zoomStep(1.25);
 
 /** The frame's own way out of a stranded layout — M3(e).
  *
