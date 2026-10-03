@@ -1351,12 +1351,20 @@ export function createPerform(host) {
   const knownWiring = (key) => wireCache.get(key) || shipped.get(key) || null;
   // The first wiring of the patch under the hands is here: a timing mark the
   // film recorder and the budget specs read (`window.__aur.marks`).
+  // A patch reaches PERFORM before its name does (main.js `setLivePatchJson`,
+  // then `setLiveLabel`, in the same task): with PERFORM in view, which is
+  // where the app opens, a wiring from the cache is marked between the two.
+  // So the mark keeps the time of the wiring and takes the name once the
+  // task is done, or it named the sound before.
   function markWired(how) {
-    try {
-      performance.mark("auracle:perform-wired", { detail: { how, name: host.label() } });
-    } catch {
-      /* marks are evidence, never load-bearing */
-    }
+    const at = performance.now();
+    queueMicrotask(() => {
+      try {
+        performance.mark("auracle:perform-wired", { startTime: at, detail: { how, name: host.label() } });
+      } catch {
+        /* marks are evidence, never load-bearing */
+      }
+    });
   }
   // Written 1.5 s after the last change, and at once when the page is hidden
   // or left (`pagehide`, `visibilitychange`), as the session is

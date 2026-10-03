@@ -145,6 +145,10 @@ test("TAUGHT counts a pick at once, ⌘Z takes it back, and the lane names the l
   let before = 0;
   for (let i = 0; i < 3; i++) {
     await expect(chooseA).toBeEnabled();
+    // A pair dealt from sounds still arriving shows their ids until the bank
+    // names them (the app opens at PERFORM, whose first measurement goes
+    // before the rest of the fill): the third pick is read once it's named.
+    if (i === 2) await expect.poll(async () => (await cardNames(page)).some((n) => /^#\d+$/.test(n)), { timeout: 60_000 }).toBe(false);
     const [a, b] = await cardNames(page);
     if (i === 2) {
       third = `Picked ${a} over ${b}.`;

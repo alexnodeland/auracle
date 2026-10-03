@@ -4328,6 +4328,16 @@ function sigOf(id) {
 // because only one of the messages that replace the rows re-rendered them.
 function refreshNames() {
   renderSubject();
+  // EVOLVE's pair is named on the deal and when its sound lands. A pair dealt
+  // from sounds still arriving, whose renders landed before the bank had
+  // rows for them, read "#15" over "#15" until the next deal; it is named
+  // when the bank names them.
+  if (currentDuel) {
+    for (const [side, id] of [["a", currentDuel[0]], ["b", currentDuel[1]]]) {
+      const el = $(`name-${side}`);
+      if (el && rowOf(id) && el.firstChild?.textContent !== nameOf(id)) paintDuelName(side, id);
+    }
+  }
   const edited = / \((edited|taken offer)\)$/.test(liveLabelText);
   const id = livePatchId != null ? livePatchId : edited ? wb.subjectId : null;
   if (id == null || !rowOf(id)) return;
