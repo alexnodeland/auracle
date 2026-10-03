@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-02
-related_adrs: [1, 2, 7, 12, 15, 17]
+last_updated: 2026-10-03
+related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -76,7 +76,7 @@ unit-tested (`tests/levels.test.mjs`):
   A focused stop walks the rail with the plain arrows and Home/End, taken on
   the rail so EVOLVE's ←/→ never hear them.
 - **A move is instant.** The morph that carries the held sound's face from one
-  level to the next is PR C, and so is each level's `anchor()`.
+  level to the next is PR C3, and so is each level's `anchor()`.
 
 ### The model view
 
@@ -452,6 +452,15 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   URL); after the bank changes, the bank's rows in view are redrawn the next
   frame and the rest when the page is idle. A slot is fixed-size and present
   whether or not its face has arrived, so no name moves for it.
+- **Large faces** (Plan-008 C1): PERFORM's sound in hand and B, and each
+  EVOLVE card, are slots too (`FACE_SIZE` `well`, `wellb`, `evolve`), drawn
+  once per bank at a fixed size with the glow and the floor's reflection
+  (`FACE_OPTS`, through `drawVessel`) and scaled by the well that holds them
+  (`FACE_FLUID`: no fixed size on the slot, the image contained in it), at
+  2× at most and in a cache of their own (`faceWellCache`, 24), apart from the
+  bank's 400 thumbnails. B's
+  is drawn in the model's amber, smaller, on the same floor line as the held
+  face's, so the two stand side by side in the well.
 - **Stage mode** (`stageDraw` in `perform.js`) draws the sound in hand's
   face (`host.faceOf(tree)`: the face and the bank) with `drawVessel` at full
   height, with its glow and reflection, on a still layer drawn again only
@@ -758,6 +767,26 @@ change owes `make perform-wirings`.
 While the warm start is open, `main.js` pre-warms its nine cards
 (`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
 inserts), one at a time in `later`, once the pool is full.
+
+**The layout** (Plan-008 C1) is the specimen's well and panel: `.pf-left`
+(the head, and the well with the held face, B, Blend, XY and How it works)
+and `.pf-right` (CONTROLS, the deck, the hood, the pad row). The well has one
+mode at a time (`setWellMode`: face, xy, how). Blend and Wander keep their
+slots in `knobs` after the panel's controls (MIDI's and the keys'
+`setControl`), wherever they are drawn: Blend a native range input under the
+faces (`makeBlend`, shown only while B holds an offer), Wander the first cell
+of the pad row; Freeze is a tap or Enter on Wander (`toggleHold`). PASS is
+`passOffer`, the pass Next makes before it grows another. The moved bar shows
+exactly when `movedFromHome()` (a `movedOn` reason for any knob, or a
+structure other than home's), checked where `renderHood` already runs each
+frame a knob moves, in a slot the head keeps, so nothing moves when it does.
+Touch (what velocity plays) is a row of the Arrange panel. The pad keys
+(ADR-018) are a `keydown` listener in `perform.js`: only while PERFORM shows,
+never while typing, under a modal dialog (`host.blocked`, main's `modalUp`,
+the same rule as the level keys) or with ⌘, Ctrl or ⌥; ↵ only with nothing
+focused (a focused named control takes its own Enter and stops it). The first
+steps are added to the guide pill (`guide.js`, `host.guide`), which keeps what
+was done as `auracle-guide` and migrates `auracle-perform-steps` into it.
 
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls

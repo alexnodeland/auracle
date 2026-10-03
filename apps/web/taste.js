@@ -1525,6 +1525,53 @@ export function createTaste(host) {
     },
     /** Redraw with whatever views main now holds. */
     draw: sync,
+    /** EVOLVE's small TASTE map (Plan-008 C1), drawn into `cv` at its CSS
+     *  size: every sound in the pool where the engine's map puts it
+     *  (`taste_map`), the model's liking a faint amber halo once it has
+     *  fitted (`WasmEngine::belief`), and the pair on the table, `a` and `b`,
+     *  ringed and lettered where they are on it. Still: it is redrawn when a
+     *  views post, a pick's ratings or a new pair changes what it shows, and
+     *  draws nothing before the engine has a map. */
+    drawMini(cv, { a = null, b = null } = {}) {
+      const w = cv.clientWidth, h = cv.clientHeight;
+      if (!w || !h) return;
+      const ctx = sizeCanvas(cv, w, h);
+      ctx.clearRect(0, 0, w, h);
+      const v = host.views();
+      const pts = (v && v.map && Array.isArray(v.map.points) ? v.map.points : []).filter((p) => p.id != null && !host.isCut(p.id));
+      if (!pts.length) return;
+      const pos = geom.miniLayout(pts, w, h, 14);
+      const isFit = !!(v && v.styles);
+      const like = new Map(pts.map((p) => [p.id, p.utility]));
+      if (v.ratings && Array.isArray(v.ratings.ranked)) for (const row of v.ratings.ranked) like.set(row.id, row.mean);
+      for (const [id, q] of pos) {
+        if (isFit) {
+          const l = geom.liking(like.get(id) ?? 0);
+          const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, 3 + l * 9);
+          g.addColorStop(0, inkAlpha(INK.amber, 0.08 + 0.3 * l));
+          g.addColorStop(1, inkAlpha(INK.amber, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 3 + l * 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = inkAlpha(INK.green, 0.6);
+        ctx.fill();
+      }
+      for (const [id, letter] of [[a, "A"], [b, "B"]]) {
+        const q = id != null ? pos.get(id) : null;
+        if (!q) continue;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
+        ctx.strokeStyle = inkAlpha(INK.silk, 0.9);
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.fillStyle = inkAlpha(INK.silk, 0.9);
+        text(ctx, letter, q.x, q.y - 9, "center");
+      }
+    },
     /** The model view went up or down (shell.js): TASTE's side of the
      *  toggle while it is up. */
     setModelView(on) {

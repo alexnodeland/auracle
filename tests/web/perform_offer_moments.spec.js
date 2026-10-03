@@ -7,8 +7,9 @@
 //   place.
 // - Taken, B fills with green and goes into the face: the bench takes its
 //   tree, and it is the sound you play.
-// - Passed, B folds back into the face it grew from: it is dropped, and the
-//   sound you had is the sound you play.
+// - Passed (NEXT, or PASS), B folds back into the face it grew from, where
+//   the face stands once the well has reflowed: it is dropped, and the sound
+//   you had is the sound you play.
 // - The heard rule, unchanged: an offer can be taken heard or not, and only a
 //   heard one (a second of PEEK, or of BLEND past half, while a note sounds)
 //   is recorded as a pick.
@@ -108,7 +109,7 @@ function boxOf(transform, at) {
   return { left: at.left + dx, top: at.top + dy, width: at.width * sx, height: at.height * sy };
 }
 const near = (a, b, px = 2) => ["left", "top", "width", "height"].every((k) => Math.abs(a[k] - b[k]) <= px);
-const faceBox = (page) => page.locator(".pf-head .pf-face").evaluate((e) => {
+const faceBox = (page) => page.locator(".pf-faces > .pf-face").evaluate((e) => {
   const r = e.getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 });
@@ -117,13 +118,15 @@ const anims = (page) => page.evaluate(() => window.__anims.slice());
 test("an offer grows from the sound in hand, fills when taken, and folds back when passed", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
   const errs = await boot(page);
-  const OFFER_MS = await openOnPerform(page, "Glass Pad", 2);
+  const OFFER_MS = await openOnPerform(page, "Glass Pad", 3);
   await page.keyboard.down("a");
 
   // Grown: B's first frame is the sound's face, its last is B's own place.
+  // The face is read where it stands once B is in the well beside it (the
+  // well makes room for B as it grows, a jump, before B grows from it).
   let n0 = (await anims(page)).length;
-  const name0 = await faceBox(page);
   await grow(page, OFFER_MS);
+  const name0 = await faceBox(page);
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "grown");
   let grown = (await anims(page)).slice(n0).find((a) => !/ghost/.test(a.cls));
   expect(grown, "B grows").toBeTruthy();
@@ -135,20 +138,37 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   n0 = (await anims(page)).length;
   await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(page.locator("#toasts")).toContainText("Passed on B.", { timeout: 10_000 });
+  // The copy folds a frame after the press, into the face as it stands once
+  // the well has reflowed (NEXT keeps B's room while the next grows).
+  const foldOf = (from) => expect.poll(async () => (await anims(page)).slice(from).find((a) => /ghost/.test(a.cls) && a.moment === "folded") || null, { timeout: 5_000 }).not.toBeNull();
+  await foldOf(n0);
   const folded = (await anims(page)).slice(n0).find((a) => /ghost/.test(a.cls) && a.moment === "folded");
-  expect(folded, "B folds back").toBeTruthy();
   expect(folded.frames[0].transform).toBe("none");
   expect(near(boxOf(folded.frames[folded.frames.length - 1].transform, folded.at), await faceBox(page)), "into the sound's face").toBe(true);
 
-  // Taken (heard): a copy of B fills green from its base, then goes into the
-  // face, and the name is the offer's.
+  // Passed with PASS (heard): no next offer, so B's room goes and the face
+  // stands alone; the copy folds into the face where it stands then.
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   await peek(page, 1800);
   n0 = (await anims(page)).length;
+  await page.locator(".pf-pad.pf-pass").click();
+  await expect(page.locator("#toasts")).toContainText("Passed on B.", { timeout: 10_000 });
+  await foldOf(n0);
+  const passed = (await anims(page)).slice(n0).find((a) => /ghost/.test(a.cls) && a.moment === "folded");
+  await expect(page.locator(".pf-well")).not.toHaveClass(/\boffered\b/);
+  expect(near(boxOf(passed.frames[passed.frames.length - 1].transform, passed.at), await faceBox(page)), "PASS folds into the sound's face where it stands").toBe(true);
+
+  // Taken (heard): a copy of B fills green from its base, then goes into the
+  // face, and the name is the offer's.
+  await grow(page, OFFER_MS);
+  await peek(page, 1800);
+  n0 = (await anims(page)).length;
   const before = await page.locator(".pf-name").textContent();
-  const nameAtTake = await faceBox(page);
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await expect(page.locator(".pf-offer")).toHaveAttribute("data-moment", "taken");
+  // Taken, B leaves the well and the face stands alone again: B goes into
+  // the face where it stands then.
+  const nameAtTake = await faceBox(page);
   const after = (await anims(page)).slice(n0);
   const fill = after.find((a) => /pf-ghost-fill/.test(a.cls));
   expect(fill, "B fills").toBeTruthy();

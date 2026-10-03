@@ -125,7 +125,7 @@ test("a face appears on every row, card and chip once its render lands", async (
   await expect(page.locator("#pd-b .face-slot img.face")).toHaveCount(1);
   // PERFORM: the sound in hand, and B once an offer has grown.
   await goLevel(page, "perform");
-  await expect(page.locator(".pf-head .pf-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout: 60_000 });
   await expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(0);
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   await page.evaluate(() => {
@@ -137,7 +137,7 @@ test("a face appears on every row, card and chip once its render lands", async (
   await expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(1, { timeout: 30_000 });
   // The offer's face is its own render's, not the sound in hand's.
   const [held, offer] = await page.evaluate(async () => [
-    await window.__pwOutline(document.querySelector(".pf-head .pf-face img.face")),
+    await window.__pwOutline(document.querySelector(".pf-faces > .pf-face img.face")),
     await window.__pwOutline(document.querySelector(".pf-offer .pf-face img.face")),
   ]);
   expect(held).not.toBe("");

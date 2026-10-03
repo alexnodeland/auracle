@@ -193,7 +193,7 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   await goLevel(page, "perform");
   await expect(page.locator("#view-perform")).toBeVisible();
 
-  // A named control, dragged a little and let go: it keeps the focus.
+  // A named control, dragged a little and let go (a pointer's turn leaves no focus, so ↵ is KEEP).
   const ctl = page.locator("#view-perform .pf-knob[role=slider]").first();
   const box = await ctl.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -203,19 +203,20 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   console.log(`[space_after_a_click] a PERFORM control dragged: focus on ${await focused(page)}`);
   await spacePlays(page, "after a drag on a PERFORM control");
 
-  // The XY pad, clicked.
+  // The XY pad (a mode of the well, from its corner), clicked.
+  await page.locator("#view-perform .pf-xy-btn").click();
   const xy = page.locator("#view-perform .pf-xy-field");
   const xbox = await xy.boundingBox();
   await page.mouse.click(xbox.x + xbox.width * 0.6, xbox.y + xbox.height * 0.4);
   console.log(`[space_after_a_click] the XY pad clicked: focus on ${await focused(page)}`);
   await spacePlays(page, "after a click on the XY pad");
 
-  // A pad: FREEZE, clicked, stays frozen through Space.
-  const freeze = page.locator(".pf-pad", { hasText: "Freeze" });
-  await freeze.click();
-  await expect(freeze).toHaveAttribute("aria-pressed", "true");
-  await spacePlays(page, "after a click on FREEZE");
-  await expect(freeze, "Space did not press FREEZE again").toHaveAttribute("aria-pressed", "true");
+  // Freeze: a tap on Wander, which stays frozen through Space.
+  const wander = page.locator("#view-perform .pf-wander");
+  await wander.click();
+  await expect(wander).toHaveAttribute("data-frozen", "true");
+  await spacePlays(page, "after a tap on Wander");
+  await expect(wander, "Space did not tap Wander again").toHaveAttribute("data-frozen", "true");
   expect(errors).toEqual([]);
 });
 

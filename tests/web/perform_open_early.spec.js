@@ -111,7 +111,13 @@ test("a Keep while a patch is still opening is refused and says why, and the pre
   await page.evaluate(clickRow, "Acid Line");
   await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Acid Line");
-  const keepPad = page.locator(".pf-pad", { hasText: /^Keep$/ });
+  // Keep is in the moved bar, there once the sound has left home: a control
+  // turned on the patch PERFORM already plays (its shipped wiring) moves it.
+  const turned = page.locator('.pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)').first();
+  await turned.focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+  const keepPad = page.locator(".pf-moved .pf-keep");
+  await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
   await keepPad.click();
   await expect.poll(() => page.evaluate(() => window.__toasts.join("\n"))).toContain("Keep waits for Acid Line to finish opening");
   expect(await page.evaluate(() => window.__toasts.join("\n"))).not.toContain("Kept");
@@ -131,6 +137,12 @@ test("a Keep while a patch is still opening is refused and says why, and the pre
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad");
   // Now it has landed, Keep is Keep: the pad lights when it is made. (Its
   // toast can queue behind the open's own news, so the pad is what is read.)
+  // A control turned on Glass Pad moves it, and the bar offers Keep again.
+  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
+  const turnedHere = page.locator('.pf-deck .pf-knob:not(.search):not(.pending):not(.half-hi)').first();
+  await turnedHere.focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+  await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
   await keepPad.click();
   await expect(keepPad).toHaveClass(/\bflash\b/, { timeout: 30_000 });
   expect(await page.evaluate(() => window.__toasts.join("\n"))).not.toMatch(/Keep waits for Glass Pad/);

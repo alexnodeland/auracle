@@ -63,6 +63,11 @@ under your fingers.*
 Your three are **saved**, so no generation will replace them. They take 3 of
 your 10 save slots; release any of them from its row if you want the room.
 
+At the bottom left, a pill shows the first things to try in PERFORM,
+one step at a time: *Play a key*, then a control to turn on this sound, then
+*Press OFFER*. Each ticks off (a pip fills) when you do it, not when you read
+it, and **×** stops it showing. It is the one place first steps are shown.
+
 ```admonish info collapsible=true title="How it works: why three picks are worth 18"
 Each of your three picks is recorded as a pick over each of the six you passed
 over: three times six. These picks fade with time like any other, so the warm
@@ -87,19 +92,19 @@ it. Click a stop to go there, or press <kbd>⌥←</kbd> for EVOLVE,
 you’re at.
 
 <figure>
-<img src="../img/evolve.webp" alt="The EVOLVE view: two cards side by side, each with a name and a rendered waveform and three buttons below it, a teaching line above them, and a strip of recent generations below." loading="lazy" width="1440" height="900">
+<img src="../img/evolve.webp" alt="The EVOLVE view: the question Pick the one you’d reach for, with a teaching line and a small TASTE map; two cards side by side, each with its sound’s face large in a well, its name, and PLAY and PICK below it." loading="lazy" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two sounds and one question. The line
-above them counts down to the next refit.</figcaption>
+under it counts down to the next refit.</figcaption>
 </figure>
 
 1. Go to **EVOLVE**: its stop, left of PERFORM’s, or <kbd>⌥←</kbd>.
-2. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ SAMPLE** on each card) to hear A
+2. Press <kbd>1</kbd> and <kbd>2</kbd> (or **▶ PLAY** on each card) to hear A
    and B.
 3. Click a card’s body to play that sound live on the keys, if the phrase
    doesn’t tell you enough.
 4. Press <kbd>←</kbd> or <kbd>→</kbd> (or **PICK A**, **PICK B**) for the one
    you’d reach for.
-5. Press **ANOTHER PAIR** when a pair tells you nothing.
+5. Press **ANOTHER PAIR** (<kbd>N</kbd>) when a pair tells you nothing.
 
 Ten or fifteen picks is a good first batch. If neither sound is one you’d
 reach for, pick the nearer one: what the model learns from a pick is a
@@ -153,7 +158,7 @@ depending on the machine, and the instrument keeps answering while it breeds.
 
 Each child appears the moment it’s bred, at the top of the bank under **NEW ·
 GENERATION 1**, tagged **NEW**, with the seed it grew from under its name. The
-**EVOLUTION** strip under the cards says what each step changed:
+**WHAT EACH GENERATION DID**, under EVOLVE POOL, says what each step changed:
 
 ```text
 gen 1 ⚡ bred from Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,

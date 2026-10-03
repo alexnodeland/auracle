@@ -57,8 +57,8 @@ knob focused, which is why the save key is <kbd>m</kbd> rather than
 <kbd>s</kbd>. Two letters are the exception, where something focused uses
 them: <kbd>p</kbd> in the presets list plays the preset, and <kbd>L</kbd> in
 the rack locks; neither plays its note then. PERFORM’s drop-downs (the XY
-pad’s axes, and TOUCH) hand the keys back as soon as you choose, unless you
-are stepping through them with the arrow keys.
+pad’s axes, and **Velocity plays** in ARRANGE) hand the keys back as soon as
+you choose, unless you are stepping through them with the arrow keys.
 ```
 
 ## Everywhere
@@ -80,6 +80,7 @@ are stepping through them with the arrow keys.
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd> | Hear A / B |
 | <kbd>←</kbd> / <kbd>→</kbd> | Pick A / B, from the moment you click EVOLVE’s stop in the levels |
+| <kbd>n</kbd> | Another pair: N means next, as it does in PERFORM |
 | <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
 
 ## The rack canvas
@@ -160,9 +161,23 @@ The search finds a module by sound as well as by name: *grit*, *vowel*,
 
 ## In PERFORM
 
+The pads’ keys, printed on each pad:
+
 | | |
 |---|---|
+| <kbd>n</kbd> | **OFFER**: grow a variant into B. While B holds one, **NEXT**: pass on it and bring the next |
+| Hold <kbd>b</kbd> | **PEEK**: hear B alone while the key is down |
+| <kbd>⇧↵</kbd> | **TAKE** the offer in B. Not from a focused button, link or drop-down, where Enter is theirs |
+| <kbd>↵</kbd> | **KEEP**: make the sound home, once it has moved. Only with nothing focused: a control you reached with <kbd>Tab</kbd> keeps its own Enter. A turn with the mouse or a finger leaves nothing focused, so ↵ keeps straight after it |
+| <kbd>⇧⌫</kbd> | **BACK**: glide back to the last sound you kept, once it has moved |
 | <kbd>⇧F</kbd> | Stage mode: the sound you’re playing on the whole screen. <kbd>⇧F</kbd> again or <kbd>Esc</kbd> leaves. It takes the place of F’s accent here; <kbd>F</kbd> on its own is still a note, and at every other level <kbd>⇧F</kbd> is the accented F |
+
+None of them acts while you type in a field, while a dialog is open (the
+warm start, the ? card, stage mode, a lesson), or with <kbd>⌘</kbd>,
+<kbd>Ctrl</kbd> or <kbd>⌥</kbd> held. With the sound at home, <kbd>↵</kbd>
+and <kbd>⇧⌫</kbd> say there is nothing to keep or go back to. **PASS** and
+freezing WANDER have no key: PASS is a pass without another, and a tap on
+WANDER freezes it.
 
 A focused control (reach it with <kbd>Tab</kbd>):
 
@@ -172,7 +187,7 @@ A focused control (reach it with <kbd>Tab</kbd>):
 | <kbd>↓</kbd> / <kbd>←</kbd> | Turn down |
 | <kbd>Shift</kbd> and an arrow | Fine |
 | <kbd>Home</kbd> | Back to the center (BLEND: to *home*; WANDER: to *still*) |
-| <kbd>Enter</kbd> | Hear it: a sweep through both ends and back |
+| <kbd>Enter</kbd> | Hear it: a sweep through both ends and back. On WANDER, freeze it or let it go |
 
 A run of arrow presses is one turn. An amber search control, or one still
 *listening…*, springs back to the center about half a second after the last
@@ -196,7 +211,7 @@ with knobs, and they work too.
 | Sustain pedal (CC 64) | Sustains. Notes you release while it’s down ring until it lifts |
 | Mod wheel (CC 1) | Adds MOTION on top of where the control sits, unless you learn CC 1 onto a control. With MOTION off PERFORM’s panel, it adds nothing |
 | Channel pressure | Adds BRIGHT on top of where the control sits: press harder, brighter. With BRIGHT off the panel, it adds nothing |
-| Any other CC | The first eight you move take the first eight controls on PERFORM’s deck, in order. Reserved CCs are never taken (below) |
+| Any other CC | The first eight you move take PERFORM’s first eight controls, in order (the panel’s, then BLEND and WANDER). Reserved CCs are never taken (below) |
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off, all notes off: the same as **◼ SILENCE** in **KEYS ⋯** |
 | CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
@@ -217,8 +232,9 @@ others read *midi ○*, and play nothing from MIDI until you click in one.
    control (*CC 21 now moves Snap.*). Any knob it replaces is unbound.
 3. Press **CLEAR** to unbind a row. It shows only on a row with a knob bound.
 
-The panel lists the first eight controls on PERFORM’s deck and what drives
-each. A row is a place on the deck: after you [arrange PERFORM’s
+The panel lists PERFORM’s first eight controls (the panel’s in its order,
+then BLEND and WANDER) and what drives each. A row is a place in that order:
+after you [arrange PERFORM’s
 panel](./views/perform.md#the-palette), a row names whatever sits there now. A row with no
 knob bound says what does drive it: *mod wheel* on MOTION, *pressure* on
 BRIGHT, and *·* elsewhere. Below the rows: a switch for *first knobs you turn
@@ -227,7 +243,7 @@ claim free controls*, the bend range, and the incoming clock’s tempo.
 ### Knobs you turn
 
 With that switch on, the first eight different knobs you move take PERFORM’s
-controls in the order you move them, in the deck’s order: with the six,
+controls in the order you move them, in that order: with the six,
 BRIGHT, SNAP, MOTION, BODY, GRIT, SPACE, BLEND, and WANDER. With seven on the
 panel, WANDER falls past the eighth, and with eight BLEND does too: MIDI
 doesn’t reach what falls past. Each is announced (*CC 74 now moves Bright, the first free

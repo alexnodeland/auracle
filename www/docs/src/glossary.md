@@ -58,14 +58,16 @@ from and what changed; click that line to compare the two.
 ### Control
 
 One of PERFORM’s round controls: the named controls on your panel (the six
-to start, up to eight), **BLEND**, and **WANDER**.
+to start, up to eight), and **WANDER** at the start of the pads. **BLEND** is
+a slider under the faces in the well while B holds an offer.
 
-### EVOLUTION strip
+### EVOLUTION, what each generation did
 
-The strip under EVOLVE’s cards: what each generation did, step by step. Each
-step names the seed and the child, what changed, and how much more the model
-guessed you’d like the child than its seed (*liked +0.06*). See [the EVOLUTION
-strip](./views/evolve.md#the-evolution-strip).
+What each generation did, step by step, opened from **WHAT EACH GENERATION
+DID** under EVOLVE POOL, over the foot of EVOLVE’s cards. Each step names the
+seed and the child, what changed, and how much more the model guessed you’d
+like the child than its seed (*liked +0.06*). See [what each generation
+did](./views/evolve.md#what-each-generation-did).
 
 ### Face
 
@@ -195,10 +197,11 @@ See [the named controls](./views/perform.md#the-named-controls).
 ### Offer, B
 
 A variant grown from the sound you’re playing, held in a second set of voices
-called **B** that plays every note you play. You hear it with **BLEND** or
-**PEEK**, at matched loudness, and it becomes your sound only if you press
-**TAKE**. An offer may add or change a module; Wander never does. See [Blend,
-Peek, and the B slot](./views/perform.md#blend-peek-and-the-b-slot).
+called **B** that plays every note you play. Its face stands in amber beside
+your sound’s in PERFORM’s well. You hear it with **BLEND** or **PEEK**, at
+matched loudness, and it becomes your sound only if you press **TAKE**;
+**NEXT** and **PASS** pass on it. An offer may add or change a module; Wander
+never does. See [Blend, Peek, and B](./views/perform.md#blend-peek-and-b).
 
 ### Palette, panel
 
@@ -221,7 +224,7 @@ library, made by hand. Open a sound in PATCH to see its patch.
 ### Phrase, sample
 
 The standard five seconds every sound is heard on: the same notes for every
-sound, so sounds can be compared. **▶ SAMPLE** plays it. It is a measuring
+sound, so sounds can be compared. **▶ PLAY** on an EVOLVE card plays it. It is a measuring
 instrument, not a demo: play the sound from the keybed to judge it.
 
 ### Pick
@@ -287,8 +290,8 @@ or bypass goes there instead of vanishing, and stays across a reload.
 
 ### Stage mode
 
-<kbd>⇧F</kbd> in PERFORM: the sound you’re playing on the whole screen,
-drawn from what you hear. See [stage mode](./views/perform.md#stage-mode).
+<kbd>⇧F</kbd> in PERFORM (or **⇧F** in the well’s corner): the sound you’re
+playing on the whole screen, drawn from what you hear. See [stage mode](./views/perform.md#stage-mode).
 
 ### Standardizer
 
@@ -320,7 +323,8 @@ them.
 PERFORM’s dial for how alive the sound is on its own: *still*, *ideas*
 (variants appear in B), *drift* (the knobs glide through nearby settings), and
 *roam* (bigger and faster). It never changes the patch’s structure, it pauses
-while your hands are on the other controls, and a tap freezes it. See
+while your hands are on the other controls, and a tap (or <kbd>Enter</kbd>
+on it) freezes it. It leads PERFORM’s pads. See
 [Wander](./views/perform.md#wander).
 
 ### Warm start
