@@ -10,8 +10,8 @@
 //   the 10 px the scopes and TASTE used too small for their job. The duel
 //   scopes' "0 dBFS" and LEARNING's forecast strip are drawn and read, and the
 //   strip's labels keep their descenders inside the canvas.
-// - The menu bar is as tall as `--menubar-h`, which what opens under it (the
-//   alarm) is placed by, in one row and in two.
+// - The menu bar is one row as tall as `--menubar-h`, which what opens under
+//   it (the alarm) is placed by, at every width.
 // - Under prefers-reduced-motion all three durations on the scale are 0, so a
 //   transition built on one is instant; without it, it plays.
 //
@@ -156,9 +156,11 @@ test("a canvas draws its text at the canvas floor, 12 px, or larger, and the for
   expect(errs).toEqual([]);
 });
 
-test("the menu bar is as tall as --menubar-h, which the alarm is placed under, at every width", async ({ browser }) => {
-  // One row at 1000 and up; two at 860 and on a phone, behind "look around
-  // anyway", where the token is the wrapped bar's measured height.
+test("the menu bar is one row as tall as --menubar-h, which the alarm is placed under, at every width", async ({ browser }) => {
+  // One row at every width (Plan-008): what gives way on a narrower window
+  // is words (TAUGHT's, the level's line, the sound's name, then the level),
+  // never a second row, and ⋯ stays on screen, on a phone behind "look
+  // around anyway" too.
   for (const [width, height, mobile] of [[1440, 900, false], [1000, 800, false], [860, 800, false], [390, 844, true]]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile, isMobile: mobile });
     const errs = [];
@@ -171,6 +173,9 @@ test("the menu bar is as tall as --menubar-h, which the alarm is placed under, a
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-h")),
     ]);
     expect(got[0], `the menu bar's height at ${width} px, against --menubar-h`).toBe(got[1]);
+    const ovf = await page.locator("#ovf-btn").boundingBox();
+    expect(ovf.x + ovf.width, `⋯ on screen at ${width} px`).toBeLessThanOrEqual(width);
+    expect(ovf.y + ovf.height, `⋯ in the bar's one row at ${width} px`).toBeLessThanOrEqual(got[1]);
     expect(errs).toEqual([]);
     await page.close();
   }
