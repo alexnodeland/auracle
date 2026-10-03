@@ -497,7 +497,11 @@ test("a ⚡ child that replaced nothing leaves the last generation's Replaced as
   // the worker posts it).
   await inject(page, { type: "pool_trimmed", retired: [gone.id], views, status: { ...s.status, generation: 1 } });
   const fold = page.locator("#bank-list .bank-group.replaced .bg-fold");
-  await fold.scrollIntoViewIfNeeded();
+  // The bank redraws as the engine answers (the child opened below, its
+  // bench), so a node can be swapped mid-scroll: the scroll is retried on
+  // the heading as it is then.
+  const toFold = () => expect(async () => { await fold.scrollIntoViewIfNeeded({ timeout: 2_000 }); }).toPass({ timeout: 15_000 });
+  await toFold();
   await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
   await expect(fold.locator(".bg-n")).toHaveText(/^1 /);
   // Then a ⚡ child lands with the pool not full: nothing displaced.
@@ -505,7 +509,7 @@ test("a ⚡ child that replaced nothing leaves the last generation's Replaced as
     type: "evolved_from", seedId: left[0].id, childId: left[1].id, reason: null,
     views, status: { ...s.status, generation: 2 },
   });
-  await fold.scrollIntoViewIfNeeded();
+  await toFold();
   await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
   await fold.click();
   await expect(page.locator("#bank-list .replaced-names span")).toHaveText([gone.name]);

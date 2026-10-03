@@ -52,6 +52,9 @@ async function boot(page) {
 }
 const at = (page, level) => expect(page.locator(`.rail-stop[data-level="${level}"]`)).toHaveAttribute("aria-current", "location");
 const toasts = (page) => page.evaluate(() => window.__pwToasts.slice());
+// The bank redraws as the engine answers, so a row's node can be swapped
+// mid-scroll: the scroll is retried on the row as it is then.
+const toRow = (row) => expect(async () => { await row.scrollIntoViewIfNeeded({ timeout: 2_000 }); }).toPass({ timeout: 15_000 });
 
 test("on a touch screen a pool row's and a preset's actions show at rest and answer a tap without opening the row", async ({ page }) => {
   test.setTimeout(240_000);
@@ -68,10 +71,12 @@ test("on a touch screen a pool row's and a preset's actions show at rest and ans
   await preset.locator(".bi-hear").tap();
   await expect.poll(() => page.evaluate((i) => window.__pwSent.some((m) => m.type === "load_preset" && m.index === i && m.preview && !m.open), index), { timeout: 15_000 }).toBe(true);
   await at(page, "perform");
+  // It joins the pool (the bank redraws for it): act on the pool once it has.
+  await expect(page.locator(`#bank-list .preset-item[data-index="${index}"]`)).toHaveClass(/\bin-bank\b/, { timeout: 60_000 });
   await bankTab(page, "pool");
   const id = await page.locator("#bank-list .bank-item[data-id]:not(.live)").nth(2).getAttribute("data-id");
   const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
-  await row.scrollIntoViewIfNeeded();
+  await toRow(row);
   // At rest, nothing pointed at: its actions are there.
   for (const a of [".bi-hear", ".bi-star", ".bi-save", ".bi-kill"]) await expect(row.locator(a), a).toBeVisible();
   // ▶ plays it (lit, or on its way), and the row is not opened.
@@ -92,7 +97,7 @@ test("on a touch screen tapping ★ and then the fifth star rates five, and cuts
   const errors = await boot(page);
   const id = await page.locator("#bank-list .bank-item[data-id]:not(.live):not(.saved)").nth(1).getAttribute("data-id");
   const row = page.locator(`#bank-list .bank-item[data-id="${id}"]`);
-  await row.scrollIntoViewIfNeeded();
+  await toRow(row);
   await row.locator(".bi-star").tap();
   await expect(row).toHaveClass(/\brating\b/);
   // The finger lifts (its pointer "leaves") before the tap's click: the

@@ -7623,6 +7623,7 @@ document.addEventListener("pointerdown", (e) => {
 // ---------- patch bank ----------
 let bankScrollTo = null;
 let bankScrollAt = 0;
+let bankScrollJump = false; // the scroll asked for is an open's: no glide
 
 // The three banks the tabs switch between.
 //
@@ -7828,10 +7829,15 @@ function renderBank() {
   if (bankScrollTo != null) {
     const target = list.querySelector(`.bank-item[data-id="${bankScrollTo}"]`);
     if (target) {
-      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      // An open's own scroll (`openOnBench`) jumps: a list gliding for a
+      // third of a second moves every row under the pointer, the hand that
+      // may be reaching for one. A step or a pick from the map still glides.
+      target.scrollIntoView({ block: "nearest", behavior: bankScrollJump ? "instant" : "smooth" });
       bankScrollTo = null;
+      bankScrollJump = false;
     } else if (performance.now() - bankScrollAt > 5000) {
       bankScrollTo = null;
+      bankScrollJump = false;
     }
   }
 }
@@ -8931,9 +8937,14 @@ function openOnBench(id, { auto = false } = {}) {
   benchPending = id;
   // Its row comes into view (`renderBank`, "nearest": a row in view stays
   // put): the pool stands in the order it joined at rest, so the sound boot
-  // opens, or one opened from elsewhere, can be anywhere in the list.
-  bankScrollTo = id;
-  bankScrollAt = performance.now();
+  // opens, or one opened from elsewhere, can be anywhere in the list. A
+  // caller that asked for its own scroll to this row (a step, the map) keeps
+  // its glide; otherwise the list jumps.
+  if (bankScrollTo !== id) {
+    bankScrollTo = id;
+    bankScrollAt = performance.now();
+    bankScrollJump = true;
+  }
   takes.benchMoved(id); // a recording for the sound being left stops here
   benchPendingTick = ++openTick;
   openAskedAt = performance.now();
