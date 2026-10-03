@@ -479,6 +479,11 @@
               <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
             </div>
               </div>
+              <!-- The well's edges when the patch is wider than the view: how
+                   many modules lie past each side, and a press brings the
+                   nearest in (main.js `syncEdges`). -->
+              <button class="pt-edge l" id="pt-edge-l" type="button" hidden><span aria-hidden="true">‹</span><b></b></button>
+              <button class="pt-edge r" id="pt-edge-r" type="button" hidden><b></b><span aria-hidden="true">›</span></button>
               <!-- The face at OUT: the bench's measured face, the same as the
                    menu bar's chip, past the amp's OUT jack and moved with the
                    camera (main.js `placeOutFace`). It is the rack's ▶: a

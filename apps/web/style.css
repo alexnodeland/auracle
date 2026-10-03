@@ -7502,3 +7502,34 @@ html.xl-on .alarm { z-index: 62; }
    dotted amber ring. */
 .out-play.playing { box-shadow: 0 0 0 1px var(--phos-a-45), 0 0 24px var(--phos-a-18); }
 .out-play.pending { outline: 1px dotted var(--phos-b); outline-offset: 2px; }
+/* A modulation cable's depth and rate, as set (`modCableText`). */
+.mod-cable-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-rack-value);
+  fill: var(--silk-dim);
+  pointer-events: none;
+}
+#rack-svg.silk-floor[data-illegible~="value"] .mod-cable-label { visibility: hidden; }
+/* The well's edges: modules past the view, and a press to go to them. */
+.pt-edge {
+  position: absolute;
+  top: var(--s7);
+  bottom: var(--s7);
+  z-index: 6;
+  width: 44px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--s2);
+  border: 0;
+  color: var(--silk-dim);
+  font-family: var(--font-mono);
+  font-size: var(--t-value);
+  cursor: pointer;
+}
+.pt-edge[hidden] { display: none; }
+.pt-edge.l { left: 0; justify-content: flex-start; background: linear-gradient(90deg, var(--bezel-72), transparent); }
+.pt-edge.r { right: 0; justify-content: flex-end; background: linear-gradient(270deg, var(--bezel-72), transparent); }
+.pt-edge b { font-weight: 500; color: var(--phos-a-dim); }
+.pt-edge:hover, .pt-edge:focus-visible { color: var(--silk); }
+.pt-edge:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -2px; }

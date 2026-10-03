@@ -10673,6 +10673,27 @@ function wirePathD(w, pos, modByKey) {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
 }
 
+/** A modulation cable's words: the host's mod depth and the modulator's rate,
+ *  each as its knob prints it (`heardUnit`). A modulator with no rate of its
+ *  own (an envelope, a follower) says its depth only; a chain's rate is its
+ *  source's, found up the chain's own cables. */
+function modCableText(w, modByKey, wires) {
+  const host = modByKey.get(w.to);
+  const depth = host && host.knobs.find((k) => k.label === "mod depth");
+  let src = modByKey.get(w.from);
+  let rate = null;
+  for (let hops = 0; src && hops < 6; hops++) {
+    rate = src.knobs.find((k) => k.label === "rate") || null;
+    if (rate) break;
+    const up = wires.find((x) => x.kind === "mod" && x.to === src.key);
+    src = up ? modByKey.get(up.from) : null;
+  }
+  const parts = [];
+  if (depth) parts.push(`depth ${heardUnit(depth.addr, depth.value, host.kind, null)}`);
+  if (rate && src) parts.push(heardUnit(rate.addr, rate.value, src.kind, null));
+  return parts.join(" · ");
+}
+
 /** A module's identity as the motion system spells it. `uid` is the real
  *  answer (WS-4 §6); the amp has none — it is the envelope, not a node — and
  *  a tree that has not been settled yet has none either, so both fall back to
@@ -10745,6 +10766,7 @@ function repaintRackInPlace(fresh) {
     for (const it of rackFrame.wires) {
       if (it.w.kind === "mod") {
         it.inkEl.style.animationDuration = `${modBreath(rackFrame.mods.get(it.w.from)).toFixed(2)}s`;
+        if (it.labelEl) it.labelEl.textContent = modCableText(it.w, rackFrame.mods, built.wires);
       } else {
         paintWireLevel(it.inkEl, rackFrame.flow.get(it.w.from) ?? 1);
       }
@@ -11219,7 +11241,8 @@ function buildRack(svg, rack, opts) {
       // duel minis are pictures of other patches, with no probe.
       paintWireLevel(wireEl, interactive ? (patchView.restLevel(w) ?? 0) : (flow.get(w.from) ?? 1));
     }
-    mWires.push({ w, wid, caseEl, inkEl: wireEl });
+    const wit = { w, wid, caseEl, inkEl: wireEl, labelEl: null };
+    mWires.push(wit);
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
       // patch looks alive where it sounds alive (`modBreath`).
@@ -11231,6 +11254,27 @@ function buildRack(svg, rack, opts) {
     }
     wireLayer.appendChild(caseEl);
     wireLayer.appendChild(wireEl);
+  }
+  // A modulation cable into a module says how far it moves it and how fast,
+  // "depth 25% · 0.51 Hz": the host's mod depth and the modulator's rate as
+  // set, printed as their knobs print them (`modCableText`). Beside the cable's
+  // middle, under the controls, never taking a press.
+  if (!fit) {
+    for (const it of mWires) {
+      if (it.w.kind !== "mod" || modByKey.get(it.w.to)?.is_mod) continue;
+      const text = modCableText(it.w, modByKey, rack.wires);
+      if (!text) continue;
+      let p = null;
+      try {
+        const len = it.inkEl.getTotalLength();
+        p = it.inkEl.getPointAtLength(len * 0.5);
+      } catch (_) { p = null; }
+      if (!p) continue;
+      const t = svgEl("text", { x: (p.x + 8).toFixed(1), y: (p.y + 4).toFixed(1) }, "mod-cable-label");
+      t.textContent = text;
+      wireLayer.appendChild(t);
+      it.labelEl = t;
+    }
   }
 
   // Silkscreen never overruns its knob. Abbreviating case by case is whack-a-
@@ -12468,6 +12512,7 @@ function applyView() {
   // is in the world.
   positionPickChip();
   placeOutFace();
+  syncEdges();
   // The model's guess is kept in sight of the camera (patch.js `inView`).
   patchView.cameraMoved();
   // The scope is *not* in the world — that is the point of parenting it to the
@@ -12502,6 +12547,41 @@ function placeOutFace() {
   slot.style.top = `${y.toFixed(1)}px`;
   slot.style.width = `${(rackOut.w * view.zoom).toFixed(1)}px`;
   slot.style.height = `${(rackOut.h * view.zoom).toFixed(1)}px`;
+}
+
+/** The well's edges, when the patch is wider than the view (the specimen's
+ *  ‹ 2 and 3 ›): how many modules' middles lie past each side, and a press
+ *  that brings the nearest of them to the middle of the view. */
+function rackBeyond() {
+  const { w } = frameSize();
+  const l = view.x;
+  const r = view.x + w / view.zoom;
+  const list = [...rackBoxes.entries()].map(([key, b]) => ({ key, b, cx: b.x + b.w / 2 }));
+  return {
+    left: list.filter((n) => n.cx < l).sort((a, b) => b.cx - a.cx),
+    right: list.filter((n) => n.cx > r).sort((a, b) => a.cx - b.cx),
+  };
+}
+function syncEdges() {
+  const L = $("pt-edge-l");
+  const R = $("pt-edge-r");
+  if (!L || !R) return;
+  const b = wb.rack ? rackBeyond() : { left: [], right: [] };
+  for (const [el, list, side] of [[L, b.left, "left"], [R, b.right, "right"]]) {
+    el.hidden = !list.length;
+    if (!list.length) continue;
+    el.querySelector("b").textContent = String(list.length);
+    el.setAttribute("aria-label", `${words.count(list.length, "more module")} to the ${side}`);
+    el.title = `${words.count(list.length, "more module")} to the ${side}`;
+  }
+}
+function nudgeRack(dir) {
+  const b = rackBeyond();
+  const n = (dir < 0 ? b.left : b.right)[0];
+  if (!n) return;
+  const { w } = frameSize();
+  viewUserSet = true;
+  tweenView({ zoom: view.zoom, y: view.y, x: n.cx - w / view.zoom / 2 }, motionMs("--d-move"));
 }
 
 /** 48px of fade on whichever horizontal edge actually has patch beyond it.
@@ -15779,6 +15859,8 @@ $("lock-clear").onclick = () => {
   renderRack();
 };
 $("pt-revert").onclick = () => revertToOpened();
+$("pt-edge-l").onclick = () => nudgeRack(-1);
+$("pt-edge-r").onclick = () => nudgeRack(1);
 // HOW TO READ THIS: the legend over the well's foot, toggled.
 function setLegend(open) {
   $("pt-legend").hidden = !open;
