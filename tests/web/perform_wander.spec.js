@@ -114,10 +114,10 @@ test("Wander answers a second and a half after it is let go, and says what it is
   await expect(sub).toHaveText(/^paused [1-4] s$/, { timeout: 2_000 });
   await expect(sub).not.toHaveText(/^paused/, { timeout: 8_000 });
 
-  // Frozen.
-  await page.locator(".pf-pad", { hasText: "Freeze" }).click();
+  // Frozen: a tap on Wander (the FREEZE pad went into it, Plan-008 C1).
+  await wander.click();
   await expect(sub).toHaveText("frozen");
-  await page.locator(".pf-pad", { hasText: "Freeze" }).click();
+  await wander.click();
 
   const statuses = await page.evaluate(() => window.__statuses);
   expect(statuses.filter((t) => /wander|paused|drifting|gliding|walking/.test(t)), "the status line keeps to the patch").toEqual([]);

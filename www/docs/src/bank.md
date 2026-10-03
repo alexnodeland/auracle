@@ -81,7 +81,7 @@ row’s end.</figcaption>
   bred children the pool didn’t keep, a line under the group counts them
   (*2 more were bred and rated below the pool.*).
 - **The green dot** after the glyph marks a child you haven’t heard yet. It
-  goes when its phrase plays (its **▶**, a pair’s **▶ SAMPLE**,
+  goes when its phrase plays (its **▶**, a pair’s **▶ PLAY**,
   [Compare](#compare-a-sound-beside-its-seed), or <kbd>Space</kbd> while it’s
   the sound you’re playing) or you play a note on it, and it is remembered
   across a reload until then. Playing an edit of it doesn’t count: that’s
@@ -157,7 +157,7 @@ beside the bank:
 - **What the model rated each when it bred them**, in its own words: *when it
   bred them, it rated Soft Pad 60% · leaning and Warm Drone 2 52% · a hunch*.
   A child rated well below its seed is marked *exploring*, as the
-  [EVOLUTION strip](./views/evolve.md#the-evolution-strip) marks it.
+  [EVOLUTION](./views/evolve.md#what-each-generation-did) marks it.
 - **▶ for each**, the seed and the child, while both are in the pool. A seed
   a generation has replaced is only a name (*Soft Pad · replaced*): its sound
   was dropped, so there is nothing to play.

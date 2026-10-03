@@ -1,8 +1,9 @@
 # PERFORM: the sound under your hands
 
-<p class="lede">PERFORM is for playing a sound. It gives you up to eight
-controls named for what you hear, chosen from a palette of eighteen, BLEND
-and WANDER, and six pads, and nothing in it stops to ask you a question.</p>
+<p class="lede">PERFORM is for playing a sound. It shows the sound large, in
+a well, and gives you up to eight controls named for what you hear, chosen
+from a palette of eighteen, WANDER and four pads, and nothing in it stops to
+ask you a question.</p>
 
 <!-- film:view-perform --><!-- /film:view-perform -->
 
@@ -18,53 +19,72 @@ every view shares.
    the keybed.
 2. Turn a named control: drag it up or down. Double-click it to go back to the
    center.
-3. Press **OFFER**, then hold **PEEK** to hear the variant it grew, or press
-   **TAKE** to make it yours.
-4. Press **KEEP** when you like where you are. **BACK** returns there.
-5. Turn **WANDER** up, and let the sound move on its own.
+3. Press **OFFER** (<kbd>N</kbd>), then hold **PEEK** (or hold <kbd>B</kbd>) to
+   hear the variant it grew beside your sound, or press **TAKE**
+   (<kbd>⇧↵</kbd>) to make it yours.
+4. Once the sound has moved, *moved · KEEP · BACK* shows by its name. Press
+   **KEEP** (<kbd>↵</kbd>) when you like where you are; **BACK**
+   (<kbd>⇧⌫</kbd>) returns there.
+5. Turn **WANDER**, at the start of the pads, up, and let the sound move on
+   its own.
 
-Until you have done the first three once, a strip under the header lays them
-out and ticks each off as you do it. Its second step names a control that
-turns on this sound (*Turn BRIGHT: drag up or down*), never one it can’t
-reach.
+Until you have done the first three once, a pill at the bottom left
+shows them one at a time, with a pip for each, and ticks each off as you do
+it. Its second step names a control that turns on this sound (*Turn BRIGHT:
+drag up or down*), never one it can’t reach. Its **×** stops it showing.
 
 ## What you see
 
-<img src="../img/perform.webp" alt="PERFORM: eight round controls in a row, a touch row, six large pads, a B strip, an XY pad, and an under-the-hood list of knobs with bars and values." loading="eager" width="1440" height="900">
+<img src="../img/perform.webp" alt="PERFORM: on the left the sound's family and name, large, and a well holding its face, with B's amber face beside it; on the right CONTROLS with six round controls in two rows, the knobs they turn, and the pads Wander, Next, Peek, Take and Pass." loading="eager" width="1440" height="900">
 
-From the top:
+On the left, the sound:
 
-- **The header.** The sound’s [face](../faces.md), its name, a status line,
-  **ARRANGE**, **STAGE ⇧F**, and a small scope. The face is the sound as it
-  was last rendered, so turning a control doesn’t change it; keeping or taking
-  does. The status line says what PERFORM is doing with the
-  sound: *listening to this sound…* while it measures a new one, then *4 of 6
-  controls reach this patch*, with *re-checking* after it while it measures
-  again in the background, or *listening to Bite…* while it measures a
-  control you just placed.
-- **Your controls in a row:** to start, **BRIGHT**, **SNAP**, **MOTION**,
-  **BODY**, **GRIT**, and **SPACE**, then **BLEND** and **WANDER**. **ARRANGE**
-  changes which sit here and in what order (see [the
-  palette](#the-palette)). The line under each says what it turns, or what
-  state it’s in.
-- **TOUCH.** What your playing velocity drives: *loudness only*, or one of
-  the named controls (*bright: soft dark, hard bright*), with a slider for how
-  far it reaches. The note beside it names the knobs velocity moves.
-- **Six pads:** **KEEP**, **BACK**, **OFFER**, **TAKE**, **PEEK**, and
-  **FREEZE**.
-- **The B strip.** One line, labeled **B**, that says whether an offer is
-  waiting and where it came from, with the offer’s own face once it has
-  grown: *no offer: press Offer to grow a variant
-  from here* until there is one.
-- **XY.** Two named controls under one finger.
+- **The head.** Its family and *in hand* (*BASS · IN HAND*; the family only
+  for a sound opened from the library and not edited since: a bred or edited
+  sound has none, so it reads *IN HAND*), its name, large, with **share**
+  beside it, and its blurb where it has one. Share opens **Download a
+  picture** on *the sound’s card*: its face, its name and its patch in one
+  picture. When the sound has moved from home, *moved · KEEP · BACK* shows at
+  the end of the first line (see [the pads](#the-pads)).
+- **The well.** The sound’s [face](../faces.md), large, standing on a floor
+  that reflects it, as stage mode draws it. The face is the sound as it was
+  last rendered, so turning a control doesn’t change it; keeping or taking
+  does. Click it to play the phrase, as <kbd>Space</kbd> does. While B holds
+  an offer, B’s face stands beside it in amber, with **BLEND** under the two
+  (see [Blend, Peek, and B](#blend-peek-and-b)); a click on B’s face plays
+  nothing, since B is heard with **PEEK** or by holding <kbd>B</kbd>. In its corner: **XY** (see
+  [the XY pad](#the-xy-pad)) and **⇧F** for [stage mode](#stage-mode); in
+  the top left, a small trace of what is sounding now.
+
+On the right, what you turn:
+
+- **CONTROLS**, with **ARRANGE** (see [the palette](#the-palette)) and
+  **HOW IT WORKS** (see [How it works](#how-it-works)), then a status line
+  saying what PERFORM is doing with the sound: *listening to this sound…*
+  while it measures a new one, then *4 of 6 controls reach this patch*, with
+  *re-checking* after it while it measures again in the background, or
+  *listening to Bite…* while it measures a control you just placed.
+- **Your controls**, three to a row: to start, **BRIGHT**, **SNAP**,
+  **MOTION**, **BODY**, **GRIT**, and **SPACE** (a longer panel takes four to
+  a row). The line under each says what it turns, or what state it’s in. A
+  small *vel* on one says your velocity plays it (see [what velocity
+  plays](#what-velocity-plays)).
 - **UNDER THE HOOD.** The patch’s own knobs the controls and Wander are
   turning right now, each a bar with its value in its own units.
-- **HOW IT WORKS.** Every control on the panel and what it does on this
-  sound (see [How it works](#how-it-works)), then a short version of this
-  page. Closed at rest.
+- **The pads:** **WANDER**, ringed in amber, then **OFFER**, **PEEK**,
+  **TAKE** and **PASS**, each with its key. On a window under about 1360
+  pixels wide, WANDER takes a line of its own above the four.
 
 **Show measurements** in the **⋯** menu adds the numbers behind each control
 to its tooltip: purity, reach in σ, the measured halves, and the knob gains.
+
+### What velocity plays
+
+**ARRANGE** has a row, **Velocity plays**: what your playing velocity drives,
+*loudness only* or one of the named controls that turns both ways on this
+sound (*bright: soft dark, hard bright*), with **depth**, a slider for how far
+it reaches, and a note naming the knobs velocity moves. The control it plays
+carries a small *vel* in its corner.
 
 ## The named controls
 
@@ -115,8 +135,7 @@ top.
 1. Press **+** on a control to place it on the panel, at the end. Up to eight
    sit there at once; with eight placed, **+** waits until you hide one.
 2. Press **×** to hide one. One always stays.
-3. Press **↑** or **↓** to move one earlier or later. BLEND and WANDER stay
-   at the end.
+3. Press **↑** or **↓** to move one earlier or later.
 
 The panel is kept with your session, through a reload. Press <kbd>Esc</kbd>
 or **×** at the top to put the palette away. It is a panel, not a dialog: the
@@ -139,7 +158,7 @@ Hiding a control you have turned leaves the sound where it is: what it was
 doing stays in the knobs, and the controls you keep turn on from there.
 **BACK** returns to the last sound you kept, from before it; ⌘Z doesn’t,
 because hiding a control is not an edit of the patch. A mod wheel or
-pressure held on the control you hide is let go. If **TOUCH** was playing
+pressure held on the control you hide is let go. If velocity was playing
 it, velocity moves to the first control left that turns both ways, or to
 loudness only, and a note says which. Reordering costs nothing at all: the
 same controls are the same measurement.
@@ -386,8 +405,10 @@ get smoother, and one with no tail can’t get closer.
 ## How it works
 
 To see what one control does to this sound, [ask it](#ask-what-it-does).
-**HOW IT WORKS**, below the hood, opens on the control you last touched, with
-every control on the panel a tap away. For each, it says what you hear it do
+**HOW IT WORKS**, in CONTROLS’ head, opens in the well over the dimmed face,
+on the control you last touched, with every control on the panel a tap away;
+the controls stay in reach beside it. **×**, <kbd>Esc</kbd> or HOW IT WORKS
+again puts the face back. For each, it says what you hear it do
 (*A soft attack and few harmonics.*), what it listens to, and what it does on
 this sound, from its measurement: the knobs it turns (*On this sound it turns
 amp attack and filter cutoff.*), that nothing here turns it, or that it hasn’t
@@ -411,8 +432,11 @@ pulsing where it is.
 
 ## The XY pad
 
-**XY** puts two named controls under one finger. It starts as BRIGHT across
-and MOTION up, and either axis can be any of the six.
+**XY**, in the well’s corner, puts two named controls under one finger: the
+well becomes the pad, with the face dimmed behind it, the axis drop-downs
+along its top and each control’s end words at its edges. **XY** again, or
+<kbd>Esc</kbd> inside it, puts the face back. It starts as BRIGHT across and
+MOTION up, and either axis can be any control on the panel.
 
 1. Choose an axis from its drop-down. The note keys play straight away after,
    so a note letter can’t change the axis.
@@ -426,16 +450,24 @@ end words are struck through, and an axis not measured yet is dimmed, with
 *listening to this sound…*. The pad has no “turn to ask” gesture; use the dial
 for that.
 
-## Blend, Peek, and the B slot
+## Blend, Peek, and B
 
 An offer is a second sound in a second set of voices that follows the same
 hands: every note you play sounds on both. You hear B by crossfading to it,
 never by a jump.
 
-- **BLEND** sets the mix, from *home* at the left to *offer* at the right.
-- **PEEK** plays B alone for as long as you hold it. Let go, and the mix
-  returns to wherever BLEND is.
-- **TAKE** makes the offer your sound.
+B stands in the well beside your sound: its label (**B**, or **B · GRITTIER**
+for an [aimed offer](#amber-dashed-search-controls)), its face in amber, and
+under its floor what changed, then where it grew from and how to hear it
+(*grown toward your taste · offered · hold B to peek*). While an offer grows,
+B says so where its face will be (*growing an offer…*). With nothing in B,
+your sound stands alone.
+
+- **BLEND**, the slider under the two faces while B holds an offer, sets the
+  mix, from *home* at the left to *B* at the right.
+- **PEEK** plays B alone for as long as you hold it, or hold <kbd>B</kbd>.
+  Let go, and the mix returns to wherever BLEND is.
+- **TAKE** (<kbd>⇧↵</kbd>) makes the offer your sound.
 
 The named controls turn the sound you’re on, not the offer.
 
@@ -477,7 +509,7 @@ The line under WANDER says what it is doing:
 - *drift · gliding* while the knobs glide;
 - *ideas · one in B* while B holds an offer;
 - *paused 3 s* while your hands are on other controls;
-- *frozen* while **FREEZE** stops it;
+- *frozen* while it is frozen;
 - *nothing better nearby* when the walk finds nothing it prefers, and stays.
 
 Wander runs only while PERFORM is on screen.
@@ -492,20 +524,40 @@ down. A touch mid-glide stops the glide where it is, and the sound stays
 there. Turning WANDER itself is not a touch: it waits while you turn it, and
 answers once you let go.
 
-**Tap to freeze.** A short tap on WANDER (or the **FREEZE** pad) stops it
-where it is, and the line reads *frozen*. Tap again to release it.
+**Tap to freeze.** A short tap on WANDER stops it where it is: its ring
+lights, and the line reads *frozen*. Tap again to release it. With WANDER
+focused, <kbd>Enter</kbd> does the same. Freeze has no key of its own.
 
 ## The pads
 
-| Pad | What it does |
-|---|---|
-| **KEEP** | Makes the sound you hear home: *Kept: this is home now. Back returns here.* The controls’ positions are written into the patch as one undo step, so PATCH shows it, and the controls re-center on it |
-| **BACK** | Glides back to home: the last sound you kept or opened |
-| **OFFER** | Grows a variant from here into B. The first is usually there at once, grown ahead once the sound has been steady for a few seconds and your hands have been off it for two |
-| **NEXT** | What OFFER reads while B holds an offer, with *passes on B* under it. It passes on B (B empties, BLEND glides home) and brings the next, which has been growing meanwhile |
-| **TAKE** | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
-| **PEEK** | Hold to hear the offer alone |
-| **FREEZE** | Stops Wander where it is, and its line reads *frozen*. The same as tapping the WANDER dial; not **HOLD** in the keys bar’s **KEYS ⋯**, which latches notes |
+| Pad | Key | What it does |
+|---|---|---|
+| **WANDER** | | How alive the sound is (see [Wander](#wander)); a tap freezes it. Not **HOLD** in the keys bar’s **KEYS ⋯**, which latches notes |
+| **OFFER** | <kbd>N</kbd> | Grows a variant from here into B. The first is usually there at once, grown ahead once the sound has been steady for a few seconds and your hands have been off it for two |
+| **NEXT** | <kbd>N</kbd> | What OFFER reads while B holds an offer, with *passes on B* under it. It passes on B (B empties, BLEND glides home) and brings the next, which has been growing meanwhile |
+| **PEEK** | hold <kbd>B</kbd> | Hold to hear the offer alone |
+| **TAKE** | <kbd>⇧↵</kbd> | Makes the offer in B your sound. It becomes home, with *(taken offer)* after its name, and BLEND returns home. The controls play on while the taken sound is measured, and the status line says *re-checking* until it is |
+| **PASS** | | Passes on B without growing another: B empties and BLEND glides home. A pass as NEXT’s is, with the same UNDO |
+
+PEEK, TAKE and PASS wait, dashed, with *needs an offer* under them, until B
+holds one.
+
+**Moved · KEEP · BACK.** When the sound has left home (a control turned, a
+drift not kept, a glide under way), *moved · KEEP · BACK* shows at the end of
+the head’s first line, in a place it always keeps, so nothing moves when it
+comes or goes.
+
+| | Key | What it does |
+|---|---|---|
+| **KEEP** | <kbd>↵</kbd>, with nothing focused | Makes the sound you hear home: *Kept: this is home now. Back returns here.* The controls’ positions are written into the patch as one undo step, so PATCH shows it, and the controls re-center on it |
+| **BACK** | <kbd>⇧⌫</kbd> | Glides back to home: the last sound you kept or opened |
+
+With a control you reached with <kbd>Tab</kbd> focused, <kbd>↵</kbd> is that
+control’s (a button presses, a named control plays its sweep), not KEEP. A
+turn with the mouse or a finger leaves nothing focused, so <kbd>↵</kbd> keeps
+straight after it. With the sound at home, either key
+says there is nothing to keep or go back to. None of the pad keys act while
+you type in a field or a dialog is open ([the key map](../keyboard.md#in-perform)).
 
 KEEP changes the sound you’re playing, not the bank. To keep the result as a
 sound of its own, press **KEEP AS NEW** in [PATCH](./play.md). Until a sound
@@ -526,9 +578,11 @@ app asks the engine again.
 
 ## Stage mode
 
-In PERFORM, <kbd>⇧F</kbd>, or **STAGE ⇧F** in the header, puts the sound
-you’re playing on the whole screen, for a gig or a stream: its name, its
-[face](../faces.md), large, standing on a floor that reflects it, and over the
+In PERFORM, <kbd>⇧F</kbd>, or **⇧F** in the well’s corner, puts the sound
+you’re playing on the whole screen, for a gig or a stream: the wordmark and
+the model’s lamp at the top left, × at the top right, its name and *family ·
+in hand* at the bottom left (the family only where it has one), the keys along
+the foot, and its [face](../faces.md), large, standing on a floor that reflects it, and over the
 face what you hear, drawn in the face’s own bands against the same bank, with
 100 Hz, 1 kHz and 10 kHz marked beside it. The face stands whether or not
 anything sounds; what you play lights the face’s outline and draws its own
@@ -550,7 +604,7 @@ plays it harder). F on its own is still a note, and in every other view
 
 Nothing reachable from PERFORM opens a modal. A player in the middle of a
 phrase can’t answer a question, so everything PERFORM needs to tell you arrives
-as a line: the status line, the B strip, or a toast. Everything it offers you
+as a line: the status line, B’s words in the well, or a toast. Everything it offers you
 is a pad you can ignore.
 
 ## Before you have taught it anything
@@ -565,7 +619,7 @@ drift · gliding · no taste yet
 grown before it has learned your taste
 ```
 
-The first is the line under WANDER, the second the B strip. Once the model has
+The first is the line under WANDER, the second B’s words in the well. Once the model has
 been fitted, the first loses *· no taste yet*, and the second reads *grown
 toward your taste*.
 
@@ -578,7 +632,7 @@ asks, without stopping the music. Once you have heard B, your answer counts:
 | You | It records |
 |---|---|
 | Press **TAKE** | B over what you had: *Took B. That counts as a pick over what you had.* |
-| Press **NEXT** | What you had over B: *Passed on B. That counts as a pick for what you had.* |
+| Press **NEXT** or **PASS** | What you had over B: *Passed on B. That counts as a pick for what you had.* |
 
 Heard means PEEK held, or BLEND past half, for at least a second while notes
 were sounding. An offer you answer without hearing it teaches nothing, and a
@@ -604,9 +658,9 @@ less reliable than dealt ones, that is where it will show.
 ## MIDI
 
 Plug in a controller and turn its first eight knobs: they take the first eight
-controls on PERFORM’s deck, in the order you turn them. A slot is a place on
-the deck, so after you rearrange the panel the same knob turns whatever is in
-its place now. Channel pressure brightens, and the mod wheel drives MOTION,
+of PERFORM’s slots, in the order you turn them: the panel’s controls in its
+order, then BLEND and WANDER. A slot is a place in that order, so after you
+rearrange the panel the same knob turns whatever is in its place now. Channel pressure brightens, and the mod wheel drives MOTION,
 wherever they sit on the panel; while one is off it, its source adds
 nothing. [MIDI](../keyboard.md#midi) has the whole map, including
 learn, endless encoders, and soft takeover.

@@ -35,6 +35,23 @@ rules; **MODEL** in the menu bar is a button whose <kbd>Enter</kbd> or
 tag, saying what the model believes and from how many picks, is a status, read
 once as the view comes up.
 
+**PERFORM.** Its pads have keys, printed on each and given in
+`aria-keyshortcuts`: <kbd>n</kbd> OFFER (NEXT), hold <kbd>b</kbd> PEEK,
+<kbd>⇧↵</kbd> TAKE, and, once the sound has moved, <kbd>↵</kbd> KEEP with
+nothing focused (a dial or BLEND turned with the mouse or a finger lets go of
+the focus; one reached with <kbd>Tab</kbd> keeps it, and its Enter) and
+<kbd>⇧⌫</kbd> BACK. They yield to a text field and a
+modal dialog. Each named control and WANDER is a slider (arrows turn it,
+<kbd>Home</kbd> centers it, <kbd>Enter</kbd> on a named control plays its
+sweep and on WANDER freezes it); WANDER’s value reads *frozen* while it is,
+since a slider cannot also be a toggle. BLEND is a native slider under the
+faces while B holds an offer. **XY** in the well’s corner is a toggle button
+(`aria-pressed`), and **HOW IT WORKS** a disclosure (`aria-expanded`); each
+fills the well, and <kbd>Esc</kbd> inside it hands focus back to the button.
+The moved bar’s KEEP and BACK leave the tab order while the sound is home.
+The first-steps pill’s step is a status, read once as each new step comes up, and
+its **×** is a button named *Stop showing these*.
+
 To place a module without a mouse:
 
 1. Press <kbd>Tab</kbd> until you reach the module rail.

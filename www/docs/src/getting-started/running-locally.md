@@ -82,7 +82,7 @@ What happens:
 
 - **It plays itself.** With nobody at the keys, the instrument plays itself in
   PERFORM, through a set of presets. It holds a chord progression, moves two
-  named controls under an invisible hand (the XY pad follows), lets Wander turn
+  named controls under an invisible hand (their dials turn), lets Wander turn
   the knobs, then grows an offer in B and blends it in.
 - **It hands over.** Any key, click, touch, wheel, or MIDI note stops it on
   the spot. The visitor is holding whatever was playing, with Wander still and

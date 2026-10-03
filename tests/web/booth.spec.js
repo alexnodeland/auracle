@@ -28,9 +28,9 @@ test("attract plays in PERFORM, hands over on a key, and teaches nothing", async
   await page.keyboard.press("h");
   await expect(page.locator("#booth-attract")).toHaveClass(/hidden/, { timeout: 5000 });
   await page.waitForTimeout(1000);
-  for (const i of [6, 7]) {
-    await expect(page.locator(`.pf-knob[data-i="${i}"]`)).toHaveAttribute("aria-valuenow", "0.00");
-  }
+  // Blend (the slider in the well) and Wander (at the start of the pads) home.
+  await expect(page.locator('.pf-blend[data-i="6"] input')).toHaveAttribute("aria-valuenow", "0.00");
+  await expect(page.locator('.pf-knob[data-i="7"]')).toHaveAttribute("aria-valuenow", "0.00");
   expect(await page.locator("#duel-count").textContent()).toBe(picks);
   expect(errs).toEqual([]);
 });

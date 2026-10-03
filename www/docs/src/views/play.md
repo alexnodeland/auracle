@@ -26,7 +26,7 @@ live while you edit it.</figcaption>
    original stays as it was, and the new sound is safe until it has been in a
    pick ([the bank](../bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
-You can also open a sound with **OPEN IN PATCH** on either side of a pair in
+You can also open a sound with **↓ PATCH** on either side of a pair in
 [EVOLVE](./evolve.md), or by clicking a sound on the [TASTE map](./taste.md#a-sounds-card).
 
 ## What you see

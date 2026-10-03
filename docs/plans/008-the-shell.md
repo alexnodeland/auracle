@@ -27,8 +27,10 @@ you move between them. It does not rebuild their internals.
 | PR | Status |
 | --- | --- |
 | A: the frame, the header, the level rail, the keys bar | merged (#112) |
-| B: the bank and the model view | in review |
-| C: the levels laid out, and the zoom | not started |
+| B: the bank and the model view | merged (#115) |
+| C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | in review |
+| C2: PATCH rebuilt as the mock's canvas | not started |
+| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | not started |
 | D: ⌘K, and the guide for the levels | not started |
 
 The maintainer accepted the plan with the decisions at its end, which override
@@ -105,6 +107,87 @@ not framed). ADR-017 records §6 Q1.
   bank itself (PATCH after the warm start) rather than a full
   `capture-screens.mjs` run, which PR D does; `encode-screens.sh` has the new
   rectangles.
+
+**PR C1, as built, where it differs from §1–§3** (PR C is split into C1, C2
+and C3; round 2's decisions govern PERFORM):
+- **PERFORM's well and panel.** The left column is the head (the family ·
+  in hand cap, the name at the display size with share, the blurb) and the
+  well; the right is CONTROLS (Arrange, How it works), the status line, the
+  knob grid (three to a row; four for a panel of seven or eight), the hood
+  strip and the pad row WANDER · OFFER · PEEK · TAKE · PASS. Every `pf-*`
+  class specs read stays on its node (`.pf-name`, `.pf-status`, `.pf-knob`,
+  `.pf-pad`, `.pf-offer`, `.pf-face`, `.pf-xy-*`, `.pf-why-*`). The live
+  scope survives as a small trace in the well's top left, clear of B and
+  Blend, so it stays while you compare; it gives way to XY and How it works.
+- **The faces in the well are face slots** (`FACE_SIZE` `well` and `wellb`,
+  drawn with `FACE_OPTS`' glow and reflection and scaled by the well), not a
+  canvas drawn per frame, so a face redraws only when its render or the bank
+  changes (ADR-012), and B's is amber, smaller, on the held face's floor
+  line. Stage mode keeps its own canvas.
+- **A click on the held face plays the phrase** (Space's ▶, as the mock's
+  well does, and a tap on a touch screen); a click on B does not, since B is
+  heard with PEEK or B held.
+- **The *vel* tick** sits in its control's top-left corner rather than under
+  the name, so no word in the cell moves for it (a mark never moves a label).
+- **Share** opens the existing picture panel on *the sound's card*; the
+  mock's share dialog (Copy image, Copy name) is not built.
+- **Freeze has no `aria-pressed`.** Wander is a slider, and ARIA does not
+  allow `aria-pressed` on `role=slider`; frozen is its `aria-valuetext`
+  ("frozen"), its `.held` lit ring and `data-frozen`. Enter on a focused
+  Wander toggles it.
+- **PASS reuses `passOffer`**, the pass Next already made before growing
+  another (heard: recorded as `perform_record` with `took: false` after the
+  pass window, with UNDO; unheard: *Skipped B* with UNDO). `clearOffer`
+  stays the silent clear on a patch change.
+- **Blend** is a native range input in the well (`makeBlend`), shown only
+  while B holds an offer, kept in the page so a MIDI pot still lands; it and
+  Wander keep their `knobs` slots after the panel's controls.
+- **The moved bar** is shown and hidden in a slot the cap row keeps; its
+  KEEP and BACK leave the tab order while the sound is home. Its printed keys
+  hide under 1180 px.
+- **The pad row** is one row from 1361 px; narrower, WANDER takes a line of
+  its own above the four pads. At 1000 × 760 the whole right column fits
+  above the keybed (`perform_layout.spec.js`).
+- **How it works** is the well's third mode (the mock opens an explain
+  figure from it instead; the control's figure stays on its `?`).
+- **The guide pill** (`guide.js`) shows on PERFORM only, as its three steps
+  are PERFORM's; C3 adds the zoom and model-view steps and decides where it
+  shows then. PERFORM leaves it a row under the well. The bench, bank and
+  node-bank tours are untouched (⌘K in D). Booth attract's band moved from
+  the marquee row to the top of the well.
+- **EVOLVE POOL dashed** means "before the first fit" (`views.styles`): a
+  generation then breeds from the grammar alone, a guess (ADR-012). It is
+  never disabled for it; the mock's *needs 6 picks* is not said, since the
+  engine breeds with none.
+- **EVOLVE's scope** keeps its canvas over the well for the *rendering…*
+  sweep and *no audio for this one*, and draws no waveform; the card's style
+  badge and the model view's guess sit over the well's top.
+- **The toast lane** steps over PERFORM's pad row (`LANE_STRIPS`).
+- **The film selectors C1 leaves stale**, owed with the Wave 3 re-records
+  as A's and B's are: the KEEP, BACK and FREEZE pads, `.pf-xy*` at rest,
+  `.pf-step`, `#pf-touch-*` in the touch row, `#scope-a/b`, `#promote-a/b`,
+  `.lineage-strip` and `.pf-head` in `view-perform` (24 lines in
+  `shots.json` and `gen_shots.py`, 2 in its storyboard), `playing` (5, and
+  5 in its storyboard), `perform` (2), `view-evolve` (3, and 1),
+  `sounddesign` (2) and `view-patch` (2); `capture-screens.mjs`'s PERFORM
+  and EVOLVE shots (3) go with D's full re-capture.
+- **Not built here:** `anchor()`, the morph and the puck (C3); PATCH's
+  canvas (C2); the landing's and guide's full re-capture (D: only
+  `perform.webp` and `evolve.webp` were re-captured, by hand, as PR B did
+  its bank figures, from a session taught by the warm start alone: 18
+  picks, no generations, Ceiling with an offer in B and no chord latched,
+  not SCREENSHOTS.md's taught session; `encode-screens.sh`'s `teach-meter`
+  rectangle is the old layout's).
+- **The large faces have their own cache.** The well's and EVOLVE's faces
+  are drawn at 2× at most and kept in `faceWellCache`, an LRU of 24, apart
+  from the bank's 400 thumbnails, so their memory is bounded.
+- **A pointer's turn leaves no focus.** A dial or Blend turned with the
+  mouse or a finger is blurred when the turn ends (as main.js leaves no
+  focus on a clicked button), so ↵ is KEEP straight after; a control reached
+  with Tab keeps its focus and its Enter. The pad keys treat Blend's range
+  input as a control, not a text field.
+- **Touch sizes.** On a coarse pointer KEEP and BACK are 44 px tall and the
+  pill's × 40 px.
 
 ## 1. Delta inventory (mock vs app)
 

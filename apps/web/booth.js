@@ -5,7 +5,7 @@
 //
 // 1. **Attract.** After a minute with nobody at the keys, the instrument
 //    plays itself in PERFORM: a curated patch, a chord progression, two named
-//    controls moving under an invisible hand (the XY dot follows), then hands
+//    controls moving under an invisible hand (their dials turn), then hands
 //    off while Wander drifts the knobs, then an offer grown into B and blended
 //    in. The patch changes every cycle. It is the product's pitch, performed.
 // 2. **Hand over.** Any key, click, touch, wheel or MIDI note stops it on the
