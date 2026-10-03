@@ -479,7 +479,11 @@
               <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
             </div>
               </div>
-              <span class="tt pt-play-slot" title="Pick a sound from the bank first"><button class="xport" id="rack-play" aria-label="Play this sound" disabled>▶</button></span>
+              <!-- The face at OUT: the bench's measured face, the same as the
+                   menu bar's chip, past the amp's OUT jack and moved with the
+                   camera (main.js `placeOutFace`). It is the rack's ▶: a
+                   press plays the sound. -->
+              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button></span>
               <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
               <!-- What is about to happen, pinned to the plate it will happen
                    to, named by the title silkscreened on that plate. The rail

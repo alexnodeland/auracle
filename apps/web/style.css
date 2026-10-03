@@ -7422,3 +7422,83 @@ html.xl-on .alarm { z-index: 62; }
 @media (max-width: 1599px) {
   #pt-how .pt-act-l, #pt-add kbd { display: none; }
 }
+
+/* ---- the well: the rack on its rounded canvas (C2a) ----
+   The frame is the specimen's `.well`: a rounded, recessed canvas with a
+   faint glow toward its middle. The viewport inside it loses its own edge. */
+#view-patch .rack-frame {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r3);
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 60%, var(--panel-lo), var(--bezel) 62%);
+  box-shadow: inset 0 0 0 1px var(--black-60), inset 0 30px 60px -30px var(--black-75);
+}
+#view-patch .rack-scroll {
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  box-shadow: none;
+}
+#view-patch .rack-dots { opacity: 0.6; }
+/* Plates, to the specimen's `.pl`: a flat plate with a hairline edge, its
+   name in silk caps; the panel's bevel, screws and pocket are not drawn. */
+#rack-svg .mod-plate { fill: url(#plateGrad); stroke: var(--steel); stroke-width: 1; }
+#rack-svg .mod-plate.modside { fill: var(--panel-lo); stroke: var(--steel); stroke-dasharray: 5 4; }
+#rack-svg .plate-screw,
+#rack-svg .plate-roll,
+#rack-svg .plate-lit,
+#rack-svg .plate-shade,
+#rack-svg .plate-edge,
+#rack-svg .plate-rule,
+#rack-svg .ctrl-well { display: none; }
+#rack-svg .mod-title {
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  fill: var(--silk);
+}
+#rack-svg .mod-title.modside { fill: var(--silk-dim); }
+#rack-svg .mod-title.empty { fill: var(--silk-mute); }
+/* A knob, as the specimen draws one: its travel and its value as arcs, and a
+   pointer; no body, no tick ring. */
+#rack-svg .knob-ticks { display: none; }
+#rack-svg .knob-body { fill: var(--panel-lo); stroke: none; }
+#rack-svg .knob-track { stroke: var(--hairline); stroke-width: 2.4; }
+#rack-svg .knob-ind { stroke: var(--silk); stroke-width: 1.6; }
+#rack-svg .knob-ind.modside { stroke: var(--silk); }
+#rack-svg .knob-label { font-family: var(--font-mono); letter-spacing: 0; text-transform: none; fill: var(--silk-mute); }
+/* OUT: the amp's lead to the jack, its name, and the face past it. */
+.out-lead { fill: none; stroke: var(--phos-a-34); stroke-width: 2; pointer-events: none; }
+.out-jack { fill: var(--bezel); stroke: var(--phos-a); stroke-width: 2; pointer-events: none; }
+.out-dot { fill: var(--phos-a); pointer-events: none; }
+.out-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  fill: var(--silk-dim);
+  pointer-events: none;
+}
+.out-slot { position: absolute; z-index: 5; display: block; }
+.out-slot.hidden { display: none; }
+.out-play {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r2);
+  background: none;
+  cursor: pointer;
+}
+.out-play:disabled { cursor: default; opacity: 0.55; }
+.out-play > .face-slot { position: absolute; inset: 0; }
+.face-slot.face-out .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.out-play:hover:not(:disabled) > .face-slot { filter: brightness(1.15); }
+.out-play:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+/* Sounding: the face lit, as the menu bar's ▶ is. Waiting for an edit: ▶'s
+   dotted amber ring. */
+.out-play.playing { box-shadow: 0 0 0 1px var(--phos-a-45), 0 0 24px var(--phos-a-18); }
+.out-play.pending { outline: 1px dotted var(--phos-b); outline-offset: 2px; }

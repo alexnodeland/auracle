@@ -389,8 +389,10 @@ const FACE_SIZE = {
   well: [240, 480],
   wellb: [200, 480],
   evolve: [240, 480],
+  // PATCH's face at OUT (Plan-008 C2a): the bench's, scaled with the camera.
+  out: [150, 250],
 };
-const FACE_FLUID = new Set(["well", "wellb", "evolve"]);
+const FACE_FLUID = new Set(["well", "wellb", "evolve", "out"]);
 // A large face's vessel stands on a floor at 79% of its picture, with room
 // under it for its reflection, as stage mode's does (perform.js
 // `stageBox`), 0.6 as wide as it is tall. B's is the model's, in amber, and
@@ -406,6 +408,7 @@ const FACE_OPTS = {
   well: () => ({ box: wellBox(...FACE_SIZE.well), glow: 18, reflection: true, line: 2, dprMax: 2 }),
   wellb: () => ({ box: wellBox(...FACE_SIZE.wellb, 0.62), glow: 12, reflection: true, line: 1.6, color: tok("--phos-b"), dprMax: 2 }),
   evolve: () => ({ box: wellBox(...FACE_SIZE.evolve), glow: 18, reflection: true, line: 2, dprMax: 2 }),
+  out: () => ({ box: wellBox(...FACE_SIZE.out), glow: 14, reflection: true, line: 1.8, dprMax: 2 }),
 };
 // Bounded: a bench edit is a new tree, so a new ref, key and drawing each
 // time. The least recently used go past FACE_KEEP (the bank's faces are used
@@ -11108,7 +11111,10 @@ function buildRack(svg, rack, opts) {
   // computes a coordinate of its own any more — that separation is what lets a
   // second mode be a second y-assignment instead of a second renderer.
   const L = layout(rack, mode, places, placeholders);
-  const natW = L.natW + 30;
+  // The workbench leaves room past the amp for OUT and the sound's face
+  // (`OUT_ZONE`); a picture of another patch ends at its amp.
+  const outZone = fit ? 0 : OUT_ZONE;
+  const natW = L.natW + 30 + outZone;
   const natH = L.natH + 24;
   // Content is laid out at its natural size at a fixed origin, always. It used
   // to be laid out into whatever box the frame happened to be, at a
@@ -11312,7 +11318,7 @@ function buildRack(svg, rack, opts) {
       }, "plate-focus"));
     }
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
-    const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
+    const plate = svgEl("rect", { width: p.w, height: p.h, rx: 8 }, plateCls);
     // Compact is the zoomed-out reading mode: title and jacks, and none of
     // the material that only means anything at a size where you could grab
     // it. A 1px bevel and a 3px screw at 0.4× are four elements of noise per
@@ -11825,6 +11831,30 @@ function buildRack(svg, rack, opts) {
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
 
+  // OUT, past the amp: its lead, its jack and its name, drawn in the amp's
+  // own group so they travel with it, and where the face at OUT stands
+  // (`placeOutFace`: the bench's measured face, `#rack-play` over it).
+  if (!fit) {
+    const amp = rack.modules.find((x) => x.kind === "amp");
+    const ap = amp && pos.get(amp.key);
+    const ag = amp && [...ctrlLayer.children].find((x) => x.getAttribute("data-key") === amp.key);
+    rackOut = null;
+    if (ap && ag) {
+      const jx = ap.w + OUT_JACK_DX;
+      const jy = ap.h / 2;
+      const og = svgEl("g", {}, "rack-out");
+      og.appendChild(svgEl("path", { d: `M ${ap.w} ${jy} L ${jx - 7} ${jy}` }, "out-lead"));
+      og.appendChild(svgEl("circle", { cx: jx, cy: jy, r: 7 }, "out-jack"));
+      og.appendChild(svgEl("circle", { cx: jx, cy: jy, r: 2.6 }, "out-dot"));
+      const t = svgEl("text", { x: jx, y: jy - 18, "text-anchor": "middle" }, "out-name");
+      t.textContent = "out";
+      og.appendChild(t);
+      ag.appendChild(og);
+      const fh = OUT_FACE_H;
+      rackOut = { x: ap.x + jx + OUT_FACE_DX, y: ap.y + jy - fh * 0.62, w: fh * 0.6, h: fh };
+    }
+  }
+
   // Must run after insertion — `getBBox` needs a laid-out element.
   fitLabels();
 
@@ -11917,6 +11947,15 @@ function bezierEase(x1, y1, x2, y2) {
 const EASE_MOTION = bezierEase(0.2, 0, 0.6, 1);
 
 let rackFrame = null;  // the last interactive build, as the motion system sees it
+// OUT and the face at OUT (Plan-008 C2a), in rack units: the jack this far past
+// the amp's right edge, the face this far past the jack, this tall (its picture
+// stands on a floor at 62% of it, with room for the reflection under), and the
+// zone the layout leaves for both.
+const OUT_JACK_DX = 46;
+const OUT_FACE_DX = 22;
+const OUT_FACE_H = 168;
+const OUT_ZONE = OUT_JACK_DX + OUT_FACE_DX + OUT_FACE_H * 0.6 + 24;
+let rackOut = null; // {x, y, w, h}: the face at OUT's box, in rack units
 let rackTween = null;  // rAF handle for the survivors' tween
 
 /** A CSS transform placing a plate at (x,y) and scaled about its own centre.
@@ -12379,7 +12418,7 @@ function contentBox() {
   if (!rackBoxes.size) return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
   const PAD = 18;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const b of rackBoxes.values()) {
+  for (const b of rackOut ? [...rackBoxes.values(), rackOut] : rackBoxes.values()) {
     if (b.x < x0) x0 = b.x;
     if (b.y < y0) y0 = b.y;
     if (b.x + b.w > x1) x1 = b.x + b.w;
@@ -12428,6 +12467,7 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  placeOutFace();
   // The model's guess is kept in sight of the camera (patch.js `inView`).
   patchView.cameraMoved();
   // The scope is *not* in the world — that is the point of parenting it to the
@@ -12442,6 +12482,26 @@ function applyView() {
   // Which tiers of silkscreen are big enough to print at this zoom. A class
   // flip, and only when a tier crosses 8px — see `syncSilkFloor`.
   syncSilkFloor();
+}
+
+/** The face at OUT: `#rack-play`, over the box the build left for it past the
+ *  amp (`rackOut`), moved and scaled with the camera. An HTML button rather
+ *  than SVG, so it is the rack's ▶ itself: a press plays the bench's phrase,
+ *  it waits for an edit with ▶'s dotted ring, and says why when it can't. */
+function placeOutFace() {
+  const slot = $("out-slot");
+  if (!slot) return;
+  const has = !!(rackOut && wb.rack && wb.rack.modules && wb.rack.modules.length);
+  slot.classList.toggle("hidden", !has);
+  if (!has) return;
+  const fr = $("rack-frame").getBoundingClientRect();
+  const sv = $("rack-svg").getBoundingClientRect();
+  const x = sv.left - fr.left + (rackOut.x - view.x) * view.zoom;
+  const y = sv.top - fr.top + (rackOut.y - view.y) * view.zoom;
+  slot.style.left = `${x.toFixed(1)}px`;
+  slot.style.top = `${y.toFixed(1)}px`;
+  slot.style.width = `${(rackOut.w * view.zoom).toFixed(1)}px`;
+  slot.style.height = `${(rackOut.h * view.zoom).toFixed(1)}px`;
 }
 
 /** 48px of fade on whichever horizontal edge actually has patch beyond it.
