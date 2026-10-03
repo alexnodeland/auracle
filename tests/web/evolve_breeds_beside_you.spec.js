@@ -12,7 +12,7 @@
 //   "new · generation N" group, in job order, as it is absorbed — the ranked
 //   rows below it do not move. The button is its own progress bar, naming
 //   each walk as it comes back ("walk 3 of 10"), and the job slot counts the
-//   generation with an estimate; the wordmark's E is lit exactly while the
+//   generation with an estimate; the wordmark's lamp is lit exactly while the
 //   slot shows.
 // - A pick mid-generation deals its next pair within a second.
 // - PERFORM is answered during a generation: a newly opened patch is measured
@@ -31,6 +31,7 @@
 // Math.random), so the pool and the generation are the same run to run.
 // `?farm=N` sets the crew's width; the default is the app's own rule.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -117,7 +118,7 @@ const toastMark = (page) => page.evaluate(() => window.__pwToasts.length);
 async function taught(page, query) {
   const pageErrors = await boot(page, query);
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
     await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
     await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
@@ -330,7 +331,7 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   const opened = await page.evaluate(() => performance.now());
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   await page.waitForFunction((n) => (window.__pwCounts.perform_wired || 0) > n &&
     /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), wired0, { timeout: 300_000 });
@@ -350,7 +351,7 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   const offeredAt = await page.evaluate(() => performance.now());
   console.log(`Offer landed ${Math.round((offeredAt - pressed) / 100) / 10} s after the press`);
 
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 480_000 });
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
@@ -373,7 +374,7 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
     return latencies(await logOf(page), "render", "render", t)[0];
   };
   await page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const name = (await page.locator("#rack-subject").textContent()).trim();
   await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 30_000 });
   await page.locator("#rack-evolve").click();
@@ -386,7 +387,7 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
   const since = await page.evaluate(() => performance.now());
 
   // While it walks: a deal in EVOLVE, and a bank row's ▶.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#skip-duel")).toBeEnabled({ timeout: 10_000 });
   await page.locator("#skip-duel").click();
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
@@ -414,7 +415,7 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
   await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", "");
 
   // Again, and stop it: answered at once, and nothing is added.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 30_000 });
   const pool = (await bankIds(page)).length;
   const mark = await toastMark(page);

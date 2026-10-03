@@ -12,6 +12,7 @@
 // pointer (a card lifted over it turned "hear this" into "pick this"), and
 // PERFORM has to name the patch that is playing, not the one before it.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 test("warm start: a slow chooser keeps all 18 preferences", async ({ page }) => {
   const errors = [];
@@ -46,7 +47,7 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page }) => 
   await expect(page.locator(".toast", { hasText: "is gone" })).toHaveCount(0);
 
   // PERFORM names what is playing.
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect
     .poll(async () => [await page.locator(".pf-name").textContent(), await page.locator("#live-label").textContent()], { timeout: 20_000 })
     .toEqual([await page.locator("#live-label").textContent(), await page.locator("#live-label").textContent()]);
@@ -64,7 +65,7 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   // The preset can land after the tab opens: until PERFORM names it, "controls
   // reach" may be the previous patch's, and a turn made then is a turn on a
   // patch still being measured.

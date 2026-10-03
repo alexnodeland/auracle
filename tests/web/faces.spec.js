@@ -23,6 +23,7 @@
 // Sessions are seeded (the films' own Math.random), so the pool is the same
 // run to run.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const fs = require("fs");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
@@ -114,7 +115,7 @@ test("a face appears on every row, card and chip once its render lands", async (
   await booted(page);
   await bankDrawn(page);
   // EVOLVE's two cards.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#face-a.face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
   await expect(page.locator("#face-b.face-slot img.face")).toHaveCount(1);
   // PATCH: the header and the teach strip's A and B.
@@ -123,7 +124,7 @@ test("a face appears on every row, card and chip once its render lands", async (
   await expect(page.locator("#pd-a .face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
   await expect(page.locator("#pd-b .face-slot img.face")).toHaveCount(1);
   // PERFORM: the sound in hand, and B once an offer has grown.
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-head .pf-face img.face")).toHaveCount(1, { timeout: 60_000 });
   await expect(page.locator(".pf-offer .pf-face img.face")).toHaveCount(0);
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
@@ -284,7 +285,7 @@ test("a refit is answered promptly while sixty face renders wait", async ({ page
   const errors = await boot(page);
   await booted(page);
   await bankDrawn(page);
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
     await page.locator("#choose-a").click();

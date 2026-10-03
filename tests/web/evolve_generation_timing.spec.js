@@ -22,6 +22,7 @@
 // child landed, and the bank the generation left, and requires that bank —
 // ids, names and the model's guesses — to be the same at every width.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const WIDTHS = (process.env.AURACLE_WIDTHS || "0,1,2,4").split(",").map(Number);
 
@@ -97,7 +98,7 @@ test("a generation's time at each farm width, and the same generation at every w
     await page.goto("/");
     await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 300_000 });
     await page.waitForFunction(() => window.__pwLast.filled, null, { timeout: 300_000 });
-    await page.locator('.viewtab[data-view="evolve"]').click();
+    await goLevel(page, "evolve");
     for (let i = 1; i <= 6; i++) {
       const side = i % 2 ? "#choose-a" : "#choose-b";
       await expect(page.locator(side)).toBeEnabled({ timeout: 30_000 });
@@ -124,7 +125,7 @@ test("a generation's time at each farm width, and the same generation at every w
     await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 300_000 });
     await page.waitForFunction(() => window.__pwLast.filled && window.__pwLast.fitted, null, { timeout: 300_000 });
     await expect(page.locator("#wm-lamp")).not.toHaveClass(/\bthinking\b/, { timeout: 60_000 });
-    await page.locator('.viewtab[data-view="evolve"]').click();
+    await goLevel(page, "evolve");
     const t0 = await page.evaluate(() => performance.now());
     await page.locator("#evolve-btn").click();
     await page.waitForFunction(() => window.__pwLast.refined, null, { timeout: 900_000 });

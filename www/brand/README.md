@@ -304,8 +304,9 @@ rename it back.
 - **Two phosphors, no third.** Green is sound, amber is the model's mind.
 - **The mark keeps its dark tile everywhere**, including on paper. The logotype
   inverts; the mark does not.
-- **The lit E belongs to the app.** `apps/web` lights the wordmark's `E` from
-  `$("wm-lamp").classList.add("thinking")` while the model is fitting, so there
-  it is a live reading. In static materials it would be a light that is always
+- **The lit lamp belongs to the app.** `apps/web` sets a round lamp after the
+  wordmark (Plan-008, the prototype's) and lights it from
+  `$("wm-lamp").classList.add("thinking")` while the model works, so there it
+  is a live reading. In static materials it would be a light that is always
   on, which is why the landing page, the 404 and the README all set the
   wordmark in plain silk.

@@ -18,6 +18,7 @@
 // and in the bars, on a fit whose two coefficients the spec chooses — one
 // settled, one a guess — delivered as the worker would.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -74,7 +75,7 @@ async function warmStartAndFit(page) {
 }
 
 async function openView(page, view) {
-  await page.locator(`.viewtab[data-view="${view}"]`).click();
+  await goLevel(page, view);
   await expect(page.locator(`#view-${view}`)).toBeVisible();
 }
 
@@ -146,7 +147,7 @@ test("a guess is drawn hollow with a ?, in LEARNING's weights and the module rai
 
   // PATCH's node bank draws the same two marks: the vco a hollow bar whose
   // whisker crosses the zero rule, the filter a solid one clear of it.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const cell = (kind) => page.locator(`#nb-groups .nb-item[data-kind="${kind}"] .ni-theta`);
   await expect(cell("vco")).toHaveClass(/\bguess\b/, { timeout: 15_000 });
   await expect(cell("filter")).not.toHaveClass(/\bguess\b|\bthin\b/);
@@ -204,7 +205,7 @@ test("TASTE's and LEARNING's early states count what is left, and the map says w
   await expect(page.locator("#md-fc .md-fcnote")).toHaveText("none yet: it starts guessing when it first fits");
 
   // Five picks in, the count has moved with them.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 0; i < 5; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
     await page.locator("#choose-a").click();
@@ -214,7 +215,7 @@ test("TASTE's and LEARNING's early states count what is left, and the map says w
   await expect(page.locator("#taste-sub")).toHaveText("1 more pick and it fits your taste.");
 
   // The sixth fits it: the halos light, and the map says what it shows.
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
   await page.locator("#choose-a").click();
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);

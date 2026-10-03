@@ -6,6 +6,7 @@
 // a structure not measured yet drawn unlit, not estimated; and the probe
 // asked once an edit settles, not per knob step.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const { boot, openPreset, slowWorker } = require("./patch_page.js");
 
 const FLOOR = -54;
@@ -152,10 +153,10 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
 test("sounds opened right after arriving in PATCH are not kept waiting behind a cable probe", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page, { warmed: true, slow: true });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#view-evolve")).toBeVisible();
   await slowWorker(page, { cable_levels: 900, guess: 900 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const n0 = await page.evaluate(() => window.__pwToasts.length);
   const rows = page.locator("#bank-list .bank-item");
   for (const i of [1, 2]) {

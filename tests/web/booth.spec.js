@@ -18,7 +18,7 @@ test("attract plays in PERFORM, hands over on a key, and teaches nothing", async
 
   await expect(page.locator("#booth-attract")).not.toHaveClass(/hidden/, { timeout: 30_000 });
   await expect(page.locator("#ba-cap")).toContainText("under one hand", { timeout: 90_000 });
-  await expect(page.locator('.viewtab[data-view="perform"]')).toHaveClass(/active/);
+  await expect(page.locator('.rail-stop[data-level="perform"]')).toHaveAttribute("aria-current", "location");
   await page.waitForTimeout(3000);
   const moved = await page.evaluate(() =>
     [0, 1, 2, 3, 4, 5].some((i) => Number(document.querySelector(`.pf-knob[data-i="${i}"]`).getAttribute("aria-valuenow")) !== 0),

@@ -14,6 +14,7 @@
 // Every message to the engine is held while the open is made, so the state
 // between the click and the rack is there to look at, not a race.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -108,7 +109,7 @@ test("a Keep while a patch is still opening is refused and says why, and the pre
   const errs = await remembered(page);
   await page.evaluate(() => (window.__hold = true));
   await page.evaluate(clickRow, "Acid Line");
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Acid Line");
   const keepPad = page.locator(".pf-pad", { hasText: /^Keep$/ });
   await keepPad.click();
@@ -156,7 +157,7 @@ test("an open that cannot complete puts the voices back on the rack", async ({ p
     return document.getElementById("live-label").textContent === rack && !/^Acid Line/.test(rack) ? "same" : "differ";
   });
   await expect.poll(same, { timeout: 10_000 }).toBe("same");
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect.poll(() => page.evaluate(() =>
     document.querySelector(".pf-name").textContent === document.getElementById("live-label").textContent ? "same" : "differ"), { timeout: 10_000 }).toBe("same");
   await expect(page.locator(".pf-name")).not.toHaveText("Acid Line");

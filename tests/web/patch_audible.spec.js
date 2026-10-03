@@ -86,6 +86,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -358,6 +359,8 @@ async function settled(page, quiet = 700) {
 }
 
 async function openPreset(page, name) {
+  // The app opens at PERFORM (Plan-008): PATCH is a level away.
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -863,7 +866,7 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
     await expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100] }).toBeLessThan(-80);
   };
   for (const view of ["perform", "evolve"]) {
-    await page.locator(`.viewtab[data-view="${view}"]`).click();
+    await goLevel(page, view);
     const s = await replaySpectrum(page, () => page.keyboard.press(" "), 2200);
     console.log(`[patch_audible] Space in ${view}: ${fmt(s)} (${s.n} reads)`);
     expectWave(s, "sin", `Space in ${view}`);
@@ -875,12 +878,12 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
   // wave when the reply lands, not the one before.
   await slow(page, { edit_param: 1500 });
   for (const [view, want] of [["perform", "tri"], ["evolve", "saw"]]) {
-    await page.locator('.viewtab[data-view="play"]').click();
+    await goLevel(page, "patch");
     await quiet(page);
     const n = await replies(page);
     const s = await replaySpectrum(page, async () => {
       await clickWave(page);
-      await page.locator(`.viewtab[data-view="${view}"]`).click();
+      await goLevel(page, view);
       await page.keyboard.press(" ");
     }, 4500);
     const at = await page.evaluate(() => window.__pwAt);
@@ -975,12 +978,12 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
   await play.click();
   await expect(play).toHaveClass(/\bpending\b/);
   t0 = await pageNow(page);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(play).not.toHaveClass(/\bpending\b/);
   await pastReply(page, n);
   expect(await playedSince(page, t0), "nothing from PATCH starts in PERFORM").toBe(false);
   expect(await peakDb(page)).toBeLessThan(-80);
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await settled(page);
 
   // Another ▶ wins: a bank row's ▶ takes the wait back, and the edit landing

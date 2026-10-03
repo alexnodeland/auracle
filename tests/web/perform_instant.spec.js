@@ -15,6 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const budget = require("./perform_budget.js");
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
@@ -34,14 +35,14 @@ test("a patch measured once is playable at once, even after a reload", { tag: "@
         /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
         ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired"));
       const t0 = performance.now();
-      document.querySelector('.viewtab[data-view="perform"]').click();
+      document.querySelector('.rail-stop[data-level="perform"]').click();
       for (;;) {
         if (live()) return Math.round(performance.now() - t0);
         if (performance.now() - t0 > 120_000) return Infinity;
         await new Promise((r) => setTimeout(r, 2));
       }
     }, name);
-    await page.locator('.viewtab[data-view="play"]').click();
+    await goLevel(page, "patch");
     return ms;
   };
   await open("Glass Pad");
@@ -115,9 +116,9 @@ test("a preset opened before plays at once after a reload, however busy the engi
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
   await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 120_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   // Both caches are written within 1.5 s: waited out, so this test is about
   // the engine (the next one is about a reload inside those 1.5 s).
   await page.waitForTimeout(2000);
@@ -129,7 +130,7 @@ test("a preset opened before plays at once after a reload, however busy the engi
     const row = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === "Acid Line");
     const t0 = performance.now();
     row.click();
-    document.querySelector('.viewtab[data-view="perform"]').click();
+    document.querySelector('.rail-stop[data-level="perform"]').click();
     const live = () =>
       document.getElementById("live-label")?.textContent === "Acid Line" &&
       document.querySelector(".pf-name")?.textContent === "Acid Line" &&
@@ -144,10 +145,10 @@ test("a preset opened before plays at once after a reload, however busy the engi
   // Let the engine answer: the bench becomes the patch the voices play, and
   // PERFORM stays on it.
   await page.evaluate(() => window.__release());
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-subject")).toHaveText(/^Acid Line/, { timeout: 60_000 });
   await expect(page.locator("#rack-meta")).not.toHaveText(/opening/, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Acid Line");
   await expect(page.locator(".pf-status")).toHaveText(/controls reach/, { timeout: 30_000 });
   expect(errs).toEqual([]);
@@ -182,7 +183,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
         const row = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === name);
         const t0 = performance.now();
         row.click();
-        if (perform) document.querySelector('.viewtab[data-view="perform"]').click();
+        if (perform) document.querySelector('.rail-stop[data-level="perform"]').click();
         const live = () =>
           document.getElementById("live-label")?.textContent === name &&
           (!perform ||
@@ -219,7 +220,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
   await expect(page.locator("#rack-subject")).toHaveText(/^Acid Line/, { timeout: 60_000 });
 
   // 2. A patch measured, then a reload at once.
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Acid Line");
   await page.waitForFunction(
     () =>
@@ -233,7 +234,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
   console.log(`reloading ${ago} ms after the measurement landed`);
   await page.reload();
   await booted();
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   // Away from Acid Line first, so PERFORM has to find it again.
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#rack-subject")).toHaveText(/^Glass Pad/, { timeout: 60_000 });
@@ -271,7 +272,7 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
   const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
@@ -341,7 +342,7 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
       /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
       ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired"));
     const t0 = performance.now();
-    document.querySelector('.viewtab[data-view="perform"]').click();
+    document.querySelector('.rail-stop[data-level="perform"]').click();
     while (!live() && performance.now() - t0 < 60_000) await new Promise((r) => setTimeout(r, 2));
     return performance.now() - t0;
   });

@@ -21,6 +21,7 @@
 // cascade with a smaller size, or a script that sets one, fails here even
 // when the count is clean.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   try {
@@ -60,8 +61,7 @@ async function boot(page) {
 const settled = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
 async function openView(page, view) {
-  await page.locator(`.viewtab[data-view="${view}"]`).click();
-  await expect(page.locator(`.viewtab[data-view="${view}"]`)).toHaveAttribute("aria-selected", "true");
+  await goLevel(page, view);
   await expect(page.locator(`#view-${view}`)).toBeVisible();
   await settled(page);
 }
@@ -94,7 +94,7 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   test.setTimeout(240_000);
   const errs = await boot(page);
   const under = {};
-  for (const view of ["perform", "play", "evolve", "taste", "learning"]) {
+  for (const view of ["perform", "patch", "evolve", "taste", "learning"]) {
     await openView(page, view);
     under[view] = await page.evaluate(UNDER(11));
   }
@@ -103,7 +103,7 @@ test("the page's text is at least the label size, 11 px, on every view", async (
   under["learning, the maths"] = await page.evaluate(UNDER(11));
   // A bookmark on the minimap: its number is text in a page, at the floor,
   // inside its pip.
-  await openView(page, "play");
+  await openView(page, "patch");
   if ((await page.locator("#rack-map-btn").getAttribute("aria-pressed")) !== "true") await page.locator("#rack-map-btn").click();
   await expect(page.locator("#rack-map")).toBeVisible();
   const map = await page.locator("#rack-map").boundingBox();

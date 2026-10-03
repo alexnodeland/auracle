@@ -22,6 +22,7 @@
 // Playwright's polling is not in them. The budgets are the spec's; a miss on
 // a loaded machine is a finding about the machine only if the log says so.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = ({ warmed }) => `(() => {
   const Orig = window.Worker;
@@ -89,7 +90,7 @@ const LIVE = `() => {
 test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and a patch opened", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await page.keyboard.down("a");
   await page.waitForTimeout(300);
   await page.keyboard.up("a");
@@ -110,7 +111,7 @@ test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and 
 test("a preset's controls are live within a second of its click", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await page.locator('.bf[data-f="preset"]').click();
   for (const name of ["Acid Line", "Bell Jar", "Glass Pad"]) {
     const row = page.locator(".bank-item", { hasText: name }).first();
@@ -174,7 +175,7 @@ test("a warm-start pick's controls are live within a second of teach it", async 
 test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
   const deals = [];
   const plays = [];

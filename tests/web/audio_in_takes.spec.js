@@ -32,6 +32,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
@@ -46,7 +47,7 @@ async function boot(page, { granted = false } = {}) {
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   return errors;
 }
 
@@ -347,7 +348,7 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
   await expect(next.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
     .toContain("One sound’s take couldn’t be read. It’s kept safe until you record it again.");
-  await next.locator('.viewtab[data-view="play"]').click();
+  await goLevel(next, "patch");
   await next.locator('.bf[data-f="pool"]').click();
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
   await expect(row).toBeVisible({ timeout: 30_000 });

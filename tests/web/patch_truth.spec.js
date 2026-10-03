@@ -16,6 +16,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs,
 // to count edits out and replies back (the lane has settled when they agree).
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -72,6 +73,8 @@ async function settled(page, quiet = 700) {
 
 /** Open a library preset on the bench, and wait until the rack is its. */
 async function openPreset(page, name) {
+  // The app opens at PERFORM (Plan-008): PATCH is a level away.
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -98,7 +101,7 @@ const livePeakDb = (page) =>
 /** Open PERFORM on the patch on the bench and wait until its controls are
  *  wired — the state in which PERFORM holds its own copy of every knob. */
 async function wirePerform(page, name) {
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await page.waitForFunction(
     () => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""),
@@ -178,7 +181,7 @@ test("a knob turned in PATCH keeps its value, with no ghost", async ({ page }) =
   // PERFORM measured first, so it holds its own copy of the cutoff — the
   // state the films were in.
   await wirePerform(page, "First Bass");
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   const before = await rackKnob(page, "node#cut");
   expect(before, "First Bass has a cutoff on the rack").not.toBeNull();
 
@@ -199,7 +202,7 @@ test("moving a PERFORM control after a PATCH edit plays from the new base", asyn
   const errors = await boot(page);
   await openPreset(page, "First Bass");
   await wirePerform(page, "First Bass");
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   // A big turn in PATCH (about +0.45 of the knob's travel) and a small one
   // in PERFORM (Bright to about +0.2), so "from the new base" and "from the
   // preset's" land far apart whatever Bright's gain on the cutoff is.
@@ -210,14 +213,14 @@ test("moving a PERFORM control after a PATCH edit plays from the new base", asyn
   expect(edited).toBeGreaterThan(before.value + 0.3);
 
   // Bright reaches the ladder's cutoff on First Bass (perform_circuit.spec).
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   const box = await page.locator('.pf-knob[data-i="0"]').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   for (let i = 1; i <= 3; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 6);
   await page.mouse.up();
 
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator('#rack-svg g.performed[data-addr="node#cut"]')).toHaveCount(1, { timeout: 5_000 });
   const k = await rackKnob(page, "node#cut");
   // The rack still shows the value the hand set; the ghost is what plays,

@@ -5,6 +5,7 @@
 // pointer at the sounding value, and its readout says that value: turn Bright
 // on First Bass, open PATCH, and the ladder's cutoff is visibly performed.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");
@@ -13,7 +14,7 @@ test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) =>
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: "First Bass" }).first().click();
   await page.waitForTimeout(800);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   // Until PERFORM names the preset, "controls reach" may be the previous
   // patch's (the first pool patch lands on the bench at boot).
   await expect(page.locator(".pf-name")).toHaveText("First Bass", { timeout: 30000 });
@@ -23,7 +24,7 @@ test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) =>
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 9);
   await page.mouse.up();
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.waitForTimeout(1200);
   const n = await page.locator("#rack-svg .knob-ghost").count();
   expect(n).toBeGreaterThan(0);

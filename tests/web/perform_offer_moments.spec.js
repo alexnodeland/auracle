@@ -26,6 +26,7 @@
 // wait is `offerBudget` (perform_budget.js): CI's floor, or more when a step
 // measured on the runner says so.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
@@ -79,7 +80,7 @@ async function openOnPerform(page, name, waits) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   return budget.offerBudget(page, { waits });
@@ -211,7 +212,7 @@ test("a sound kept as new while a Take waits out its window is not judged by tha
   await page.keyboard.up("a");
   await expect(page.locator(".pf-name")).not.toHaveText(name, { timeout: 60_000 });
   // Inside the window: PATCH, KEEP AS NEW, and the comparison skipped.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
   await page.locator("#rack-commit").click();
   const skip = page.locator("#cd-skip");

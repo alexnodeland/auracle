@@ -25,6 +25,7 @@
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const budget = require("./perform_budget.js");
 
 const INIT = `(() => {
@@ -70,7 +71,7 @@ async function openOnPerform(page, name) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
 }
 
@@ -226,7 +227,7 @@ test("first steps name a control that turns on this patch, and speak alone", asy
   expect(cls, `${m[1]} turns on this patch`).not.toMatch(/\b(search|pending|unwired)\b/);
   if (m[2] === "up or down") expect(cls).not.toMatch(/\bhalf-(lo|hi)\b/);
   // Back in PATCH the coach speaks again.
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator(".coach")).toBeVisible();
   expect(errs).toEqual([]);
 });

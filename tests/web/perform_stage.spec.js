@@ -18,6 +18,7 @@
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -72,7 +73,7 @@ async function boot(page) {
   return errs;
 }
 async function toPerform(page) {
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
@@ -124,8 +125,8 @@ test("⇧F is stage mode in PERFORM only; in PATCH it is the accented F", async 
   test.setTimeout(240_000);
   const errs = await boot(page);
   // PATCH: ⇧F plays F, harder, and no stage opens.
-  await page.locator('.viewtab[data-view="play"]').click();
-  await expect(page.locator('.viewtab[data-view="play"]')).toHaveClass(/\bactive\b/);
+  await goLevel(page, "patch");
+  await expect(page.locator('.rail-stop[data-level="patch"]')).toHaveAttribute("aria-current", "location");
   await quiet(page);
   await page.keyboard.down("Shift");
   await page.keyboard.down("F");

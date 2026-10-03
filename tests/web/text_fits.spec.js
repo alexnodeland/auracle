@@ -12,6 +12,7 @@
 // - At 1000 and 1080 px, PATCH's callout is whole in each of its short
 //   states: the step it names and its ▸.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEEN = (warmed) => `(() => {
   try {
@@ -81,7 +82,7 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
       await page.addInitScript(SEEN(true));
       await page.goto("/");
       await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
-      await page.locator('.viewtab[data-view="perform"]').click();
+      await goLevel(page, "perform");
       await expect(page.locator(".pf-knob .pf-k-sub")).toHaveCount(8);
       await expect(page.locator(".pf-deck")).toBeVisible();
       // Every caption state in every column, measured in the same task, so
@@ -175,7 +176,7 @@ for (const width of [1000, 1080]) {
       await page.addInitScript(SEEN(true));
       await page.goto("/");
       await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
-      await page.locator('.viewtab[data-view="play"]').click();
+      await goLevel(page, "patch");
       await expect(page.locator("#nextstep")).toBeVisible();
       const cut = await page.evaluate((labels) => {
         const el = document.getElementById("nextstep");

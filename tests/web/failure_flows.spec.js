@@ -40,6 +40,7 @@
 // spent without ever reaching the DOM. Refusals (`urgent`) pre-empt and are
 // shown at once; a toast carrying an undo is never trimmed.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 const fs = require("fs");
 const path = require("path");
 
@@ -286,7 +287,7 @@ test("AU-S2: a request that throws is released and reported; a fatal error pins 
 test("AU-S4: a vote the engine did not take is reported and rolled back (duel real, star reply injected)", async ({ page }) => {
   const pageErrors = await boot(page);
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair);
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   const chooseA = page.locator("#choose-a");
   await expect(chooseA).toBeEnabled();
 

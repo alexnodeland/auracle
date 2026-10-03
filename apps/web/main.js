@@ -147,6 +147,17 @@ const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`)
 // CAPTURE's RECORD and the sounds kept safe for a recording (takes.js,
 // Plan-007 task 6).
 const { createTakes, TAKE_LANE_H } = await import(`./takes.js?v=${BUILD}`);
+// The levels and the ways between them (shell.js, levels.js; Plan-008). The
+// shell does the DOM of a move; what a move does to the rest of the
+// instrument is `levelChanged`, below.
+const { createShell } = await import(`./shell.js?v=${BUILD}`);
+const shell = createShell({
+  levelChanged: (prev, next, how) => levelChanged(prev, next, how),
+  // A modal dialog keeps the level keys: the level behind it must not change
+  // unseen.
+  blocked: () => ["warmstart", "cduel", "help"].some((id) => !$(id).classList.contains("hidden")),
+});
+for (const level of ["perform", "patch", "evolve", "taste", "learning"]) shell.register(level, { el: $(`view-${level}`) });
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -259,7 +270,13 @@ let views = null;          // {map, styles, lineage, ranked, ratings, …} from 
 // TASTE's halos and LEARNING's arrow are drawn from it (taste.js).
 // TASTE and LEARNING, once the bridge creates them (taste.js `createTaste`).
 let taste = null;
-let currentView = "play";
+// The level shown (shell.js; `levelChanged` keeps this in step). PATCH until
+// the shell starts, which is before anything reads it.
+let currentView = "patch";
+// When the player last chose a level themselves (a rail stop, a level key, a
+// link): the film chip's tour note gives way to that, and not to the app
+// changing level on its own.
+let viewChosenAt = 0;
 
 const starsById = new Map();
 const cutIds = new Set();
@@ -344,6 +361,7 @@ const FACE_SIZE = {
   offer: [16, 26], // PERFORM's B
   warm: [24, 40],  // the warm start's cards
   share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
+  inhand: [20, 30], // the header's chip, the sound in hand
 };
 // Bounded: a bench edit is a new tree, so a new ref, key and drawing each
 // time. The least recently used go past FACE_KEEP (the bank's faces are used
@@ -863,6 +881,8 @@ function setLivePatchJson(json, makeup, knobs) {
   liveTreeJson = json;
   liveMakeup = makeup;
   liveRev += 1;
+  // The header's chip shows the face of what the keys play, as PERFORM does.
+  setFaceSlot($("inhand-face"), "inhand", json ? { tree: json } : null);
   // `knobs` (the tree's live knobs, when the worker sent them) lets PERFORM
   // keep a taken offer playable on the wiring it had until it is re-measured.
   if (perform) perform.patchChanged(json, makeup, knobs);
@@ -1707,7 +1727,7 @@ const patchView = createPatch({
   guessFace,
   words: PATCH_WORDS,
   send: (msg) => send(msg),
-  visible: () => currentView === "play",
+  visible: () => currentView === "patch",
   hasRack: () => !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0),
   rack: () => wb.rack,
   benchTree: () => wb.tree,
@@ -3547,10 +3567,10 @@ function showTasteMap() {
 }
 
 // ---------- the job slot, and the wordmark's lamp ----------
-// Long work has one home: the slot in the menu bar, beside GENERATIONS. It
+// Long work has one home: the slot in the menu bar, left of the sound in hand. It
 // shows only while something long runs — "⚡ breeding 3/10 · about 40 s",
 // "⚡ evolving Glass Pad", "refitting your taste map…" — with **stop** where
-// the job can be stopped, and the E of the wordmark is lit exactly while the
+// the job can be stopped, and the lamp after the wordmark is lit exactly while the
 // slot is not empty: both are drawn from `lampJobs`, one count per job kind.
 // Each job used to switch the lamp on and its own reply switch it off, so the
 // first reply cleared the lamp of another job still running; and the lamp was
@@ -3679,7 +3699,7 @@ function renderNextStep() {
     label = `Teach it your taste: ${FIT_EVERY} quick picks below ▸`;
     act = () => {
       const strip = $("play-duel");
-      if (currentView === "play" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
+      if (currentView === "patch" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
       else showView("evolve");
     };
   } else if (n < FIT_EVERY) {
@@ -3995,7 +4015,7 @@ function dismissToast(t, immediate) {
 // rack. Every `.duel-controls`, not the first: B's buttons are the ones at
 // the lane's edge.
 const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
-const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#arp-ctl"];
+const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
  *  Rule 2 above: the reserved rects are measured, not assumed. */
@@ -4110,11 +4130,15 @@ function skillText() {
   return n >= 1 ? `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}` : "";
 }
 
+// LEARNING's forecasts say the skill (taste.js draws its words from
+// `skillText`); this is the line's tooltip, what the number means. The menu
+// bar said it too, until the levels: LEARNING is where its forecasts are.
 function renderSkill() {
-  const el = $("skill");
+  const el = $("md-skill");
   if (!el) return;
   const E = engineCalib;
   el.textContent = skillText();
+  if (!el.textContent) el.title = "How much sharper than a coin flip its guesses have been (Brier skill). Blank until it has guessed something.";
   if (E && E.check_n >= SKILL_MIN_N) {
     el.title = `Brier skill on fair-test picks: the number to trust. Over all ${E.n} guesses: ${Math.round(E.skill * 100)}%. LEARNING shows them.`;
   } else if (E && E.n >= SKILL_MIN_N) {
@@ -4314,20 +4338,29 @@ function refreshNames() {
   if (perform) perform.relabel();
 }
 
-// The dock's label names what the keys play. Outside PATCH, while Space
-// waits for an edit to land (`playOnSettle`), the wait is said over it:
-// there ▶ is out of sight, and the press was otherwise answered by nothing
-// until the phrase began, which on a busy engine is seconds (ADR-009:
-// acknowledged within 100 ms, on what the player has). In PATCH the ▶'s
-// dotted ring says it. The wait has a box of its own (`#live-wait`, a polite
-// live region): appended to the name it was cut off by the name's ellipsis,
-// and the name's element announces nothing.
+// The header's chip names the sound in hand, what the keys play. Outside
+// PATCH, while Space waits for an edit to land (`playOnSettle`), the wait is
+// said in the name's place: there the rack's ▶ is out of sight, and the press
+// was otherwise answered by nothing until the phrase began, which on a busy
+// engine is seconds (ADR-009: acknowledged within 100 ms, on what the player
+// has). In PATCH the rack's ▶ says it with its dotted ring, and the chip's ▶
+// wears the same ring at every level. The wait has a box of its own
+// (`#live-wait`, a polite live region): appended to the name it was cut off
+// by the name's ellipsis, and the name's element announces nothing.
 const SPACE_WAITS = "▶ waiting for the edit…";
 function paintLiveLabel() {
   const label = $("live-label");
   label.textContent = liveLabelText;
-  const waits = playOnSettle && currentView !== "play";
+  label.title = liveLabelText;
+  const waits = playOnSettle && currentView !== "patch";
   const sign = $("live-wait");
+  const play = $("inhand-play");
+  // ▶ is Space, so it plays whatever Space would: nothing while no sound is
+  // in hand.
+  if (play) {
+    play.disabled = !(livePatchId != null || wb.subjectId != null);
+    play.setAttribute("aria-label", livePatchId != null || wb.subjectId != null ? `Play ${liveLabelText}` : "Play the sound in hand");
+  }
   if (!sign) return;
   const text = waits ? SPACE_WAITS : "";
   if (sign.textContent !== text) sign.textContent = text;
@@ -4351,38 +4384,38 @@ function refreshInstruments() {
   renderPlayDuel(); // names backfill once ranked rows exist
 }
 
-// ---------- views (tabs) ----------
-function showView(name) {
-  // Nothing may stay in your hand across a view change: PLAY is only hidden,
-  // not torn down, so its sockets still match and the armed key handler would
-  // go on swallowing EVOLVE's arrow-key votes.
-  // Nor may a ▶ or Space waiting for an edit: its phrase would start in a
-  // view other than the one it was pressed in.
-  if (name !== "play") { disarm(); cancelPending(); }
-  if (name !== currentView) playWaitCancel();
-  if (name !== currentView) closeCompare(); // it belongs to where it was asked
-  if (name !== currentView && explain) explain.close(); // so does a figure
+// ---------- the levels ----------
+// Where you are is the shell's (shell.js): it shows one level's section,
+// names it in the header, lights its stop on the rail, and remembers it.
+// `showView` is the app's own way to move (after the warm start, PERFORM's
+// "show me the knob", booth mode); a rail stop or a level key is the
+// player's, and says so (`chosen`).
+function showView(name, opts) {
+  return shell.show(name, opts);
+}
+
+/** What a move does to the rest of the instrument (the shell's host). */
+function levelChanged(prev, name, { chosen = false } = {}) {
+  if (chosen) viewChosenAt = performance.now();
+  // Nothing may stay in your hand across a level change: PATCH is only
+  // hidden, not torn down, so its sockets still match and the armed key
+  // handler would go on swallowing EVOLVE's arrow-key votes.
+  // Nor may a ▶ or Space waiting for an edit: its phrase would start at a
+  // level other than the one it was pressed at.
+  if (name !== "patch") { disarm(); cancelPending(); }
+  playWaitCancel();
+  closeCompare(); // it belongs to where it was asked
+  if (explain) explain.close(); // so does a figure
   currentView = name;
-  // Per-viewer convenience: a returning player comes back to the view they
-  // were in. Storage can throw (private windows); it is never load-bearing.
-  try { localStorage.setItem("auracle-view", name); } catch { /* ignore */ }
-  for (const v of ["perform", "play", "evolve", "taste", "learning"]) {
-    $(`view-${v}`).classList.toggle("hidden", v !== name);
-  }
   if (perform) {
     if (name === "perform") perform.show();
     else perform.hide();
   }
-  document.querySelectorAll(".viewtab").forEach((t) => {
-    const on = t.dataset.view === name;
-    t.classList.toggle("active", on);
-    t.setAttribute("aria-selected", String(on));
-  });
-  if (name === "play") refitRack();
-  if (name === "play") patchView.shown();
+  if (name === "patch") refitRack();
+  if (name === "patch") patchView.shown();
   else patchView.hidden();
-  // The lane is anchored to the rack frame, which only exists in PLAY, and it
-  // has to clear whichever teaching strip this view puts up.
+  // The lane is anchored to the rack frame, which only exists in PATCH, and it
+  // has to clear whichever teaching strip this level puts up.
   positionToastLane();
   pointFilmChip();
   // TASTE and LEARNING draw while they show, and stop when they don't.
@@ -4395,28 +4428,6 @@ function showView(name) {
     }
   }
 }
-
-// When the player last chose a view themselves (a click, or the tab list's
-// arrow keys, which click): the film chip's tour note gives way to that, and
-// not to the app changing view on its own.
-let viewChosenAt = 0;
-document.querySelectorAll(".viewtab").forEach((t) => {
-  t.onclick = (e) => {
-    viewChosenAt = performance.now();
-    showView(t.dataset.view);
-    // Clicked with a pointer, the view itself takes focus, so its own keys
-    // (EVOLVE's ←/→) work on arrival and Tab continues inside it. The tab
-    // keeps focus only for a keyboard user walking the tablist (a click
-    // synthesised by the arrows has `detail` 0), whose arrows move tabs.
-    if (e && e.detail > 0) {
-      const view = $(`view-${t.dataset.view}`);
-      if (view) {
-        view.tabIndex = -1;
-        view.focus({ preventScroll: true });
-      }
-    }
-  };
-});
 
 // role=tablist / role=menu promise arrow keys; deliver them. One wiring for
 // every group: roving focus with wrap, optional activate-on-move for tabs.
@@ -4454,7 +4465,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
     if (activate) items[j].click();
   });
 }
-wireArrowNav(document.querySelector(".viewtabs"), ".viewtab", { activate: true });
 wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
 
 // ---------- audio helpers ----------
@@ -4547,7 +4557,7 @@ function toggleAudition() {
   if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
-  awaitRender(id, () => play(id));
+  awaitRender(id, () => play(id, null, "inhand"));
 }
 
 // Step the bank without the mouse: loads the next patch onto the bench and
@@ -4825,7 +4835,7 @@ async function bootPerform() {
     // Opening PATCH re-renders the rack, which can replace the node found on
     // the first frame, so the pulse re-finds its knob until the rack settles.
     showKnob: (addr) => {
-      showView("play");
+      showView("patch");
       const sel = `#rack-svg [data-addr="${CSS.escape(addr)}"]`;
       let tries = 0;
       let shown = false;
@@ -4890,10 +4900,9 @@ async function bootPerform() {
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
   if (perform.marquee) perform.marquee.append($("booth-attract"));
   if (liveTreeJson) perform.patchChanged(liveTreeJson, liveMakeup);
-  let saved = null;
-  try { saved = localStorage.getItem("auracle-view"); } catch { /* ignore */ }
-  if (saved === "perform" && currentView === "play") showView("perform");
-  else if (currentView === "perform") perform.show();
+  // The shell opened at PERFORM before PERFORM was built (the level at rest,
+  // RFC-006): it shows now.
+  if (currentView === "perform") perform.show();
 }
 
 // ---------- measurements, for those who want them ----------
@@ -4946,7 +4955,7 @@ paintEngineer();
 // tenth of a second later at its *old* value, in amber, with a ghost claiming
 // PERFORM was playing it. A disagreement is not a performance.
 function paintPerformedKnobs() {
-  if (currentView !== "play" || !perform || !perform.performedKnobs) return;
+  if (currentView !== "patch" || !perform || !perform.performedKnobs) return;
   const svg = $("rack-svg");
   if (!svg) return;
   const playing = perform.performedKnobs();
@@ -5034,6 +5043,8 @@ async function boothResetVisitor() {
   await idbDel("state");
   for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-perform-steps"])
     localStorage.removeItem(k);
+  // The next visitor starts at PERFORM, not at the level the address names.
+  try { history.replaceState(history.state, "", `${location.pathname}${location.search}`); } catch { /* ignore */ }
   location.reload();
 }
 
@@ -5317,7 +5328,8 @@ function paintHints() {
     el.classList.toggle("mapped", !!letter);
   }
   // Say what the shift means, not its sign: the note the `a` key plays.
-  $("oct-label").textContent = `a = C${4 + octShift}`;
+  $("oct-label").textContent = `C${4 + octShift}`;
+  $("oct-label").title = `The A key plays C${4 + octShift}. Z moves the keys an octave down, X up`;
 }
 
 function paintKey(midi, down) {
@@ -5398,7 +5410,7 @@ document.addEventListener("keydown", (e) => {
     // used to be what ⌘Z fell through to everywhere: in EVOLVE, pressed a
     // moment after a pick's window had closed, it silently reverted a knob
     // turned minutes earlier on a patch the player could not see.
-    if (currentView !== "play") {
+    if (currentView !== "patch") {
       note(
         e.shiftKey
           ? "Nothing to redo here. PATCH edits redo in PATCH."
@@ -5416,7 +5428,7 @@ document.addEventListener("keydown", (e) => {
   // Camera zoom, on the bindings every expert already has in their fingers.
   // Checked here because the meta/ctrl bail-out below is what keeps browser
   // chords out of the note handler, and these are browser chords we want.
-  if ((e.metaKey || e.ctrlKey) && !e.altKey && currentView === "play" &&
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && currentView === "patch" &&
       !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
     if (e.key === "0") { e.preventDefault(); zoomActual(); return; }
     if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomStep(1 / 1.25); return; }
@@ -5439,10 +5451,10 @@ document.addEventListener("keydown", (e) => {
       endBankTour();
       $("bank-tour-btn").focus();
     }
-    if (arpDrawerOpen()) {
-      const inside = $("arp-ctl").contains(document.activeElement);
-      setArpDrawer(false);
-      if (inside) $("arp-chip").focus();
+    if (keysPopOpen()) {
+      const inside = $("keys-pop").contains(document.activeElement);
+      setKeysPop(false);
+      if (inside) $("keys-btn").focus();
     }
     closeMenu();
     return;
@@ -5450,7 +5462,7 @@ document.addEventListener("keydown", (e) => {
   // `/` is the index. It is deliberately checked before the text-entry guard's
   // sibling below, so it works from the rack, the bank or the keybed — but
   // after it, so typing a slash into a field still types a slash.
-  if (e.key === "/" && currentView === "play" &&
+  if (e.key === "/" && currentView === "patch" &&
       !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
     e.preventDefault();
     if (nbState.collapsed) nbSetCollapsed(false);
@@ -5475,7 +5487,7 @@ document.addEventListener("keydown", (e) => {
   // list you are inside of wins, and everywhere else it means the canvas.
   // `.` is the second half of the conventional pair; its partner `F` is not
   // available, being the note F on the computer keybed (see KEYMAP).
-  if (currentView === "play" && !e.defaultPrevented) {
+  if (currentView === "patch" && !e.defaultPrevented) {
     if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
     if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
     // The minimap's shift-click, from the keyboard. Read off `code` rather
@@ -5618,6 +5630,7 @@ $("hold-btn").onclick = () => {
   hold = !hold;
   $("hold-btn").classList.toggle("lit", hold);
   $("hold-btn").setAttribute("aria-pressed", String(hold));
+  paintKeysBtn();
   if (!hold) panic();
 };
 $("panic-btn").onclick = () => panic();
@@ -5661,9 +5674,10 @@ function sendArp() {
     drawer.querySelectorAll("select, input").forEach((c) => {
       c.tabIndex = open ? 0 : -1;
     });
-    if (!open) setArpDrawer(false);
   }
+  paintArpDrawer();
   renderArpChip();
+  paintKeysBtn();
   // Every route that moves SYNC or the tempo comes through here — the
   // buttons, the tempo field and MIDI clock, which can do it every beat — so
   // the sequencer readouts are repainted in place rather than the rack
@@ -5690,21 +5704,22 @@ function repaintSyncedRates() {
   }
 }
 
-// The drawer is a popover now, and the chip is what stays. Pinned open for as
-// long as ARP or SYNC ran, it covered the bank's last row and the corner of
-// the XY pad for a whole performance. It opens when either is switched on —
-// the moment its settings are wanted — and from the chip; it folds on a click
-// outside the dock and on Escape, leaving "arp 1/8 · 120" under the ARP
-// button: what the arp is doing, one click from changing it, and the keybed
-// never moves.
+// KEYS ⋯ (Plan-008): how the keybed plays, one press from the dock's
+// cluster. HOLD, UNI, ARP, SYNC, glide, the keybed's height and span, and
+// silence; and while ARP or SYNC runs, their settings (the arp's drawer, as
+// it was). The chip in the cluster says what the arp is set to, "arp 1/8 ·
+// 120", and opens the same settings; KEYS ⋯ is lit while any of HOLD, UNI,
+// ARP or SYNC is on, and its title names them, so a keybed that plays
+// differently says so on the bar.
 //
-// Not on the dock's own controls, and not on notes. It used to fold on any
-// press outside the drawer and on the next note played with the pointer
-// elsewhere, which is exactly how an arpeggio is set up: latch HOLD, play the
-// chord, then set the rate against it — and HOLD folded the drawer, and so did
-// the chord. The keybed, HOLD, the octave buttons and the rest of the dock are
-// the instrument the drawer's settings are heard through; the bank and the XY
-// pad it floats over are outside the dock, and reaching for them folds it.
+// It folds on a press outside the dock and on Escape. Not on the dock's own
+// controls, and not on notes. The drawer used to fold on any press outside it
+// and on the next note played with the pointer elsewhere, which is exactly how
+// an arpeggio is set up: latch HOLD, play the chord, then set the rate against
+// it — and HOLD folded the drawer, and so did the chord. The keybed, HOLD, the
+// octave buttons and the rest of the dock are the instrument these settings
+// are heard through; the bank and the levels above are outside the dock, and
+// reaching for them folds it.
 function renderArpChip() {
   const chip = $("arp-chip");
   if (!chip) return;
@@ -5713,20 +5728,34 @@ function renderArpChip() {
   const rate = $("arp-div").selectedOptions[0]?.textContent || "";
   chip.textContent = perf.arp ? `arp ${rate} · ${perf.bpm}` : `sync · ${perf.bpm}`;
 }
-function setArpDrawer(open) {
-  const drawer = $("arp-ctl");
-  const chip = $("arp-chip");
-  if (!drawer || !chip) return;
-  const show = !!open && (perf.arp || perf.sync);
-  drawer.classList.toggle("open", show);
-  chip.setAttribute("aria-expanded", String(show));
+function keysPopOpen() {
+  return !$("keys-pop").classList.contains("hidden");
 }
-const arpDrawerOpen = () => $("arp-ctl").classList.contains("open");
-$("arp-chip").onclick = () => setArpDrawer(!arpDrawerOpen());
+/** The arp's settings show while KEYS ⋯ is open and ARP or SYNC runs. */
+function paintArpDrawer() {
+  $("arp-ctl").classList.toggle("open", keysPopOpen() && (perf.arp || perf.sync));
+}
+function setKeysPop(open) {
+  $("keys-pop").classList.toggle("hidden", !open);
+  $("keys-btn").setAttribute("aria-expanded", String(!!open));
+  $("arp-chip").setAttribute("aria-expanded", String(!!open));
+  paintArpDrawer();
+  positionToastLane();
+}
+/** KEYS ⋯ lit while the keybed plays differently, and saying how. */
+function paintKeysBtn() {
+  const btn = $("keys-btn");
+  if (!btn) return;
+  const on = [hold && "hold", perf.uni && "uni", perf.arp && "arp", perf.sync && "sync"].filter(Boolean);
+  btn.classList.toggle("lit", on.length > 0);
+  btn.title = `How the keybed plays: hold, unison, arp, sync, glide, its size, and silence${on.length ? ` · on now: ${on.join(", ")}` : ""}`;
+}
+$("keys-btn").onclick = () => setKeysPop(!keysPopOpen());
+$("arp-chip").onclick = () => setKeysPop(!keysPopOpen());
 document.addEventListener("pointerdown", (e) => {
   // The MIDI panel opens up out of the dock but is a dialog of its own, over
   // the rack: a press in it is not a press on the instrument.
-  if (arpDrawerOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setArpDrawer(false);
+  if (keysPopOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setKeysPop(false);
 }, true);
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);
@@ -5744,6 +5773,7 @@ function sendUni() {
   btn.setAttribute("aria-pressed", String(perf.uni));
   // UNI silently turns a 4-voice poly synth mono — say so on the control.
   btn.textContent = perf.uni ? "uni ×4 mono" : "uni";
+  paintKeysBtn();
 }
 function renderArpVals() {
   const g = $("arp-gate-val");
@@ -5793,9 +5823,9 @@ function applyKeybed() {
   // re-measured. The app already knows how to answer that question.
   window.dispatchEvent(new Event("resize"));
 }
-// Switching either on opens the drawer: that is when its settings are wanted.
-$("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); if (perf.arp) setArpDrawer(true); scheduleSave(); };
-$("sync-btn").onclick = () => { perf.sync = !perf.sync; sendSync(); if (perf.sync) setArpDrawer(true); scheduleSave(); };
+// Switching either on shows its settings: that is when they are wanted.
+$("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); if (perf.arp) setKeysPop(true); scheduleSave(); };
+$("sync-btn").onclick = () => { perf.sync = !perf.sync; sendSync(); if (perf.sync) setKeysPop(true); scheduleSave(); };
 $("arp-mode").onchange = (e) => { perf.arpMode = Number(e.target.value); sendArp(); scheduleSave(); };
 $("arp-div").onchange = (e) => { perf.arpDiv = Number(e.target.value); sendArp(); scheduleSave(); };
 $("bpm").onchange = (e) => {
@@ -7899,7 +7929,7 @@ function bankRow(r, fitted) {
     if (e.target.closest("button")) return;
     kbdRowId = r.id;
     openOnBench(r.id);
-    showView("play");
+    showView("patch");
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
@@ -8084,7 +8114,7 @@ function renderPresetBank(list) {
       if (inBank) {
         openOnBench(loadedId);
         voicePresetEarly(p, loadedId);
-        showView("play");
+        showView("patch");
       } else {
         // Said at once: the engine may be busy for seconds, and a click
         // that shows nothing gets clicked again, or given up on.
@@ -8947,16 +8977,18 @@ function benchSettled() {
 function playBench() {
   if (!benchSettled()) {
     playOnSettle = true;
-    const b = $("rack-play");
-    b.classList.add("pending");
-    b.setAttribute("aria-busy", "true");
+    for (const b of [$("rack-play"), $("inhand-play")]) {
+      b.classList.add("pending");
+      b.setAttribute("aria-busy", "true");
+    }
     paintLiveLabel();
     return;
   }
   playWaitCancel();
   if (wb.buffer) {
     markHeard();
-    playBuffer(wb.buffer, $("rack-play"));
+    // "inhand": the header's ▶ lights with the rack's (`data-hear`).
+    playBuffer(wb.buffer, $("rack-play"), "inhand");
     // A child on the bench as it was bred, heard: its unheard dot goes. An
     // edit of it is another sound.
     if (!wb.dirty) heard(wb.subjectId);
@@ -8973,9 +9005,10 @@ function playBench() {
 function playWaitCancel() {
   const was = playOnSettle;
   playOnSettle = false;
-  const b = $("rack-play");
-  b.classList.remove("pending");
-  b.removeAttribute("aria-busy");
+  for (const b of [$("rack-play"), $("inhand-play")]) {
+    b.classList.remove("pending");
+    b.removeAttribute("aria-busy");
+  }
   if (was) paintLiveLabel();
   return was;
 }
@@ -12424,7 +12457,7 @@ function scopeOverPlates() {
 function scopeDuckSync() {
   const shell = $("scope-shell");
   if (!shell) return;
-  const duck = currentView === "play" && scopeOverPlates();
+  const duck = currentView === "patch" && scopeOverPlates();
   if (duck === scopeDucked) return;
   scopeDucked = duck;
   shell.classList.toggle("ducked", duck);
@@ -12978,7 +13011,7 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
  *  then. The only cost is that the toggle fires on release instead of press,
  *  which is under the threshold of noticing. */
 function rackSpaceDown() {
-  if (!rackHover || currentView !== "play" || !wb.rack) return false;
+  if (!rackHover || currentView !== "patch" || !wb.rack) return false;
   spacePan = true;
   spacePanned = false;
   $("rack-scroll").classList.add("grabbing");
@@ -14355,13 +14388,13 @@ $("promote-a").onclick = () => {
   if (!currentDuel) return;
   send({ type: "log_event", kind: "promote", id: currentDuel[0], value: 1 });
   openOnBench(currentDuel[0]);
-  showView("play");
+  showView("patch");
 };
 $("promote-b").onclick = () => {
   if (!currentDuel) return;
   send({ type: "log_event", kind: "promote", id: currentDuel[1], value: 1 });
   openOnBench(currentDuel[1]);
-  showView("play");
+  showView("patch");
 };
 
 // Faceplate silkscreen. Two knobs on a 168-unit plate share a 56-unit pitch,
@@ -15254,6 +15287,12 @@ window.addEventListener("keydown", (e) => {
 $("rack-play").onclick = () => {
   if (playWaitCancel()) return;
   playBench();
+};
+// The header's ▶ is Space (ADR-016): the sound in hand as it stands, from
+// any level; pressed while it waits for an edit, it takes the wait back.
+$("inhand-play").onclick = () => {
+  if (playWaitCancel()) return;
+  toggleAudition();
 };
 $("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
@@ -19549,7 +19588,7 @@ function startScope() {
   const draw = (now) => {
     const canvas = $("live-scope");
     const shell = $("scope-shell");
-    const on = currentView === "play" && wb.rack && scopeState.mode !== "off";
+    const on = currentView === "patch" && wb.rack && scopeState.mode !== "off";
     if (!on) {
       scopeRaf = null;
       shell.classList.remove("live");
@@ -21918,7 +21957,7 @@ const FILMS_DOCS = location.pathname.includes("/play/")
   : "https://auracle.alexnodeland.com/docs/";
 const VIEW_FILMS = {
   perform: { page: "perform", film: "view-perform", name: "PERFORM" },
-  play: { page: "play", film: "view-patch", name: "PATCH" },
+  patch: { page: "play", film: "view-patch", name: "PATCH" },
   evolve: { page: "evolve", film: "view-evolve", name: "EVOLVE" },
   taste: { page: "taste", film: "view-taste", name: "TASTE" },
 };
@@ -21957,7 +21996,8 @@ const FILM_LENGTHS = (() => {
 const FILM_NOTED = "auracle-film-notes";
 function filmNoted() {
   try {
-    return new Set(JSON.parse(localStorage.getItem(FILM_NOTED) || "[]"));
+    // PATCH's note was kept as "play", the view's name before the levels.
+    return new Set(JSON.parse(localStorage.getItem(FILM_NOTED) || "[]").map((k) => (k === "play" ? "patch" : k)));
   } catch {
     return new Set();
   }
@@ -22249,6 +22289,10 @@ dropInit();
 selInit();
 renderNextStep(); // never leave the "what now?" control blank on first paint
 renderTray();
+// The first level: the hash, the level you were at last time, or PERFORM
+// (levels.js `startLevel`). PERFORM's own controls arrive with perform.js,
+// which shows them when it is built (`bootPerform`).
+shell.start();
 bootLiveAudio();
 bootMidi();
 (async () => {

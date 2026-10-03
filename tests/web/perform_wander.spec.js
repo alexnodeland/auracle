@@ -16,6 +16,7 @@
 // The spec records PERFORM's requests to the engine by wrapping `Worker`
 // before `main.js` runs.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -49,7 +50,7 @@ async function openOnPerform(page, name) {
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
@@ -131,7 +132,7 @@ test("Wander answers a second and a half after it is let go, and says what it is
 // *frozen*); its tooltip and how it works said a tap would "hold" it.
 test("Wander's tooltip and how it works say a tap freezes it", async ({ page }) => {
   const errs = await boot(page);
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   const wander = page.locator('.pf-knob[data-i="7"]');
   await expect(wander).toHaveAttribute("title", /Tap to freeze it\./);
   await expect(wander).not.toHaveAttribute("title", /hold it/);

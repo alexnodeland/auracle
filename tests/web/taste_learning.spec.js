@@ -23,6 +23,7 @@
 // own pure layout (taste-geom.js `mapFrame`, `mapLayout`) from the map the
 // worker posted, so a check of the canvas looks where the app drew.
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SEED = `(() => { let s = 20261001 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -82,7 +83,7 @@ async function boot(page) {
 }
 
 async function openView(page, view) {
-  await page.locator(`.viewtab[data-view="${view}"]`).click();
+  await goLevel(page, view);
   await expect(page.locator(`#view-${view}`)).toBeVisible();
 }
 

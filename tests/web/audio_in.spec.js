@@ -45,6 +45,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const SHOTS = process.env.AURACLE_SHOTS || null;
 
@@ -72,7 +73,7 @@ async function boot(page, { query = "", spy = false } = {}) {
 }
 
 async function openPreset(page, name) {
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -290,7 +291,7 @@ test("the input is heard with no key down once MONITOR is on, and not at all whi
   await expect(mon).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await openFile(page, { name: "Mic Pad", tree: { amp, root: ain(0) } }, info.outputDir);
   await expect(lane(page)).toHaveAttribute("data-state", "live", { timeout: 60_000 });
   expect(await page.evaluate(() => window.__pwToasts.some((t) => t.startsWith("AUDIO IN asks")))).toBe(false);
@@ -366,13 +367,13 @@ test("a capture hands the farm crew standing the new phrase", { tag: "@slow" }, 
   const errors = await boot(page, { query: "?farm=2", spy: true });
   // A crew stands only after a walk: six picks, their fit, then ⚡.
   await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await page.locator('.viewtab[data-view="evolve"]').click();
+  await goLevel(page, "evolve");
   for (let i = 1; i <= 6; i++) {
     await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
     await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
   }
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });
   await page.locator("#rack-evolve").click();
   await expect.poll(() => page.evaluate(() => window.__pwCounts.evolved_from || 0), { timeout: 120_000 }).toBeGreaterThan(0);

@@ -87,7 +87,9 @@
 //   snap {name}                         a rehearsal screenshot (nothing when recording)
 //   log {js, name?}                     evaluate js in the page; the value goes into the sidecar
 //   click {sel, force?}  dblclick {sel} a click; a double-click (renaming a bank row)
-//   view {v}                            a view tab: perform, play (PATCH), evolve, taste
+//   view {v}                            a level, by its stop on the rail: perform, patch,
+//                                       evolve, taste, learning ("play", PATCH's old
+//                                       name, still means PATCH)
 //   preset {name}                       open a preset from the preset bank, and wait for it
 //   measured {name?, settle?}           wait until PERFORM has measured the patch and no
 //                                       re-check is in flight (a preset ships wired, then
@@ -459,7 +461,7 @@ async function step(page, s, ctx = {}) {
     case "dblclick":
       return page.locator(s.sel).first().dblclick({ force: !!s.force });
     case "view":
-      return page.locator(`.viewtab[data-view="${s.v}"]`).click();
+      return page.locator(`.rail-stop[data-level="${s.v === "play" ? "patch" : s.v}"]`).click();
     case "preset": {
       await page.locator('.bf[data-f="preset"]').click();
       // By its exact name: "Loom" must not open a preset whose blurb says "looming".

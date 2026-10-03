@@ -30,6 +30,7 @@
 // not claim: which phrase plays (patch_audible.spec.js holds that it is the
 // sound as edited, in every view).
 const { test, expect } = require("@playwright/test");
+const { goLevel } = require("./shell");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -72,7 +73,7 @@ async function boot(page) {
 }
 
 async function openPreset(page, name) {
-  await page.locator('.viewtab[data-view="play"]').click();
+  await goLevel(page, "patch");
   await page.locator('.bf[data-f="preset"]').click();
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
@@ -189,7 +190,7 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   test.setTimeout(120_000);
   const errors = await boot(page);
   await openPreset(page, "Falling Sign");
-  await page.locator('.viewtab[data-view="perform"]').click();
+  await goLevel(page, "perform");
   await expect(page.locator("#view-perform")).toBeVisible();
 
   // A named control, dragged a little and let go: it keeps the focus.
