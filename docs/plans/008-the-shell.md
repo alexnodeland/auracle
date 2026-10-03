@@ -174,7 +174,14 @@ and C3; round 2's decisions govern PERFORM):
 - **Not built here:** `anchor()`, the morph and the puck (C3); PATCH's
   canvas (C2); the landing's and guide's full re-capture (D: only
   `perform.webp` and `evolve.webp` were re-captured, by hand, as PR B did
-  its bank figures).
+  its bank figures, from a session taught by the warm start alone: 18
+  picks, no generations, Ceiling with an offer in B and no chord latched,
+  not SCREENSHOTS.md's taught session; `encode-screens.sh`'s `teach-meter`
+  rectangle is the old layout's).
+- **The large faces share the face cache.** The well's and EVOLVE's faces
+  are drawn at 2× at most, but share `faceMarkupCache` (an LRU of 400) with
+  the bank's rows, so each dealt pair adds two 480 px pictures; the least
+  recently used go first, as for every face.
 
 ## 1. Delta inventory (mock vs app)
 
