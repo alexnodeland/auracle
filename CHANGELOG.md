@@ -41,6 +41,12 @@ changelog that edits its own past is not a record.
 - On a window under 1180 px, PERFORM's controls sit in two rows of four and
   PATCH's next-step line has a row of its own, so neither cuts its words
   beside the stops.
+- Opening at PERFORM means PERFORM starts measuring the sound it opens with
+  straight away. Go to PATCH or open another sound before it is done, and it
+  finishes in the background, for when you come back. It no longer holds up
+  anything else waiting there: PATCH's cables light, the model's guess comes
+  and the faces in the bank and on the stage appear as they did before,
+  instead of after that measurement (up to a minute on a slow machine).
 
 ### Fixed: a sound you keep as new is safe until it has been in a pick
 

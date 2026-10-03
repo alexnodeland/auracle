@@ -8,6 +8,7 @@
 const { test, expect } = require("@playwright/test");
 const { goLevel } = require("./shell");
 const { boot, openPreset, slowWorker } = require("./patch_page.js");
+const { FLOOR_MS } = require("./perform_budget.js");
 
 const FLOOR = -54;
 const gain = (db) => Math.max(0, Math.min(1, (db - FLOOR) / -FLOOR));
@@ -168,5 +169,61 @@ test("sounds opened right after arriving in PATCH are not kept waiting behind a 
   const said = await page.evaluate((n) => window.__pwToasts.slice(n), n0);
   for (const t of said) expect(t, "an open was kept waiting").not.toMatch(/Opened/);
   await slowWorker(page, {});
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+// PERFORM's measurement of a sound it has left, or of one out of sight, is
+// still worth finishing (it is cached for coming back), but nobody is waiting
+// on it. The app opens at PERFORM (Plan-008), so one is running whenever the
+// player goes straight to PATCH or opens another sound, and held on the
+// engine's floor it kept PATCH's cables unlit for all of its thirty-odd
+// renders: past a minute on a CI runner. Here such a measurement (`bg`, as
+// `retire` leaves PERFORM's) is put in front of the rack's probe, sent just
+// before it, for the tree the knob turn made, which nothing has measured: the
+// probe is answered and the cables lit while it still runs, and it still
+// finishes after.
+test("a knob turned in PATCH lights its cables again while a measurement nobody is waiting on runs", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(300_000 + FLOOR_MS);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  const settled = async () => {
+    const d = await drawn(page);
+    return d.marks.length > 0 && d.marks.every((m) => !m.unknown);
+  };
+  await expect.poll(settled, { timeout: 60_000 }).toBe(true);
+  await page.evaluate(() => {
+    const w = window.__pwEngine();
+    const post = w.postMessage.bind(w);
+    const t = (window.__bgT = { sent: null, probed: null, measured: null });
+    w.addEventListener("message", (e) => {
+      const d = e.data;
+      if (!d || t.sent == null) return;
+      if (d.type === "perform_wired" && d.req === 9_100_001) t.measured = performance.now();
+      if (d.type === "cable_levels" && t.probed == null) t.probed = performance.now();
+    });
+    w.postMessage = (m, tr) => {
+      if (m && m.type === "cable_levels" && t.sent == null) {
+        t.sent = performance.now();
+        post({ type: "perform_wire", req: 9_100_001, tree: window.__pwLast.bench.treeJson, overrides: [], bg: true });
+      }
+      return post(m, tr);
+    };
+  });
+  // A knob turned: the marks go hollow, and the probe that lights them again
+  // is the one the measurement goes out ahead of.
+  const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
+  const box = await knob.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
+  await page.mouse.up();
+  await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
+  await expect.poll(settled, { timeout: 60_000 }).toBe(true);
+  const t = await page.evaluate(() => window.__bgT);
+  expect(t.sent, "the measurement went out ahead of the probe").not.toBeNull();
+  expect(t.probed).not.toBeNull();
+  expect(t.measured == null || t.probed < t.measured, "the probe waited for the whole measurement").toBe(true);
+  // Every request gets a reply: the measurement finishes, from where it gave way.
+  await expect.poll(() => page.evaluate(() => window.__bgT.measured), { timeout: FLOOR_MS }).not.toBeNull();
   expect(errors, errors.join("\n")).toEqual([]);
 });
