@@ -620,6 +620,7 @@ export const TASTE_LABELS = {
   stripEnd: "100% for the one picked",
   stripEndShort: "100%",
   togTitle: "Color by taste",
+  togByModel: "The model view shows the TASTE side while it is up",
   sound: "sound",
   taste: "taste",
   track: "Taste over time",

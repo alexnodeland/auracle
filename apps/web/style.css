@@ -569,6 +569,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .counter-label { color: var(--silk-dim); font-family: var(--font-silk); font-size: var(--t-label); font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; margin-right: var(--s1); }
 .taught { flex: none; }
 
+/* No keys under a finger: MODEL's ⌥ hint goes, as the other key hints do. */
+@media (pointer: coarse) { .model-btn kbd { display: none; } }
 /* MODEL: the model view's pill (shell.js). Its LED is the model's amber,
    dark at rest and lit while the view is up, however it came up (held or
    tapped); tapped on, the pill is pressed too. */
@@ -1230,6 +1232,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 body.model-view .bank-item .bi-pct,
 body.model-view .bank-item .bi-u { visibility: visible; opacity: 1; }
 .bank-item:hover .bi-pct, .bank-item.kbd .bi-pct { background: linear-gradient(to right, transparent, var(--panel-hi) var(--s4)); }
+/* A row EVOLVE POOL marks keeps its word (SEED, MAY BE REPLACED) at its end;
+   its guess gives way while the mark shows, so the two never overlap. */
+body.model-view .bank-item.seed .bi-pct,
+body.model-view .bank-item.may-go .bi-pct { visibility: hidden; opacity: 0; }
 /* Under the model view the end of a row is the guess's; its actions come
    back under the pointer. */
 body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidden; opacity: 0; }
@@ -2295,6 +2301,8 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
 .ts-tog[aria-pressed="false"] [data-seg="sound"], .ts-tog[aria-pressed="true"] [data-seg="taste"] { color: var(--silk); }
 .ts-tog[aria-pressed="true"] { border-color: var(--plate-edge); }
 .ts-tog[aria-pressed="true"] .led { background: var(--silk); box-shadow: 0 0 8px var(--white-35); }
+/* Resting under the model view, which holds the map on its TASTE side. */
+.ts-tog:disabled { cursor: default; opacity: 0.7; }
 /* Taste over time: a slim track along the map's foot, once there are two
    moments to move between. */
 .ts-time {
@@ -4268,10 +4276,28 @@ kbd { font-family: var(--font-mono); }
      is the third one and it is NOT here: `.lock-dot` is re-declared further
      down this file, and a later rule of equal specificity wins no matter
      what a media query wraps it in. It sits with its own kin instead. */
-  /* A row's actions show on the sound you're playing and on the keyboard
-     cursor, as the mock's do: a tap opens a row, and its actions are there. */
-  .bank-item.live .bi-acts,
-  body.model-view .bank-item.live .bi-acts { visibility: visible; opacity: 1; }
+  /* A bank row's actions and a preset's ▶, on every row at rest: a tap on
+     a row opens it (and goes to PATCH), so hover-to-reveal would leave a
+     finger no way to hear, rate, save or cut a sound without opening it.
+     They sit on a line of their own under the name, in the name's column,
+     so no name is covered or cut; what sits over the row's end (the seed
+     and may-be-replaced words, the model view's percentage, IN POOL) stays
+     level with the name. */
+  .bank-item .bi-acts {
+    position: static;
+    transform: none;
+    visibility: visible;
+    opacity: 1;
+    background: none;
+    padding-left: calc(30px + var(--s1) + var(--s2)); /* token-exempt: under the name, past the mark column's 30 px */
+  }
+  .preset-item .bi-acts { padding-left: 0; }
+  body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: visible; opacity: 1; }
+  .bank-item .bi-flag,
+  .bank-item .bi-pct,
+  .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
+  .bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
+  .preset-item:hover .pb-in, .preset-item.kbd .pb-in { visibility: visible; }
 
   /* Law 2 — gesture ownership.
      The rack frame no longer scrolls: it is a camera, and the drag and the

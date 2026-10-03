@@ -277,9 +277,9 @@
            breeding for you, and the ones you decided to keep. -->
       <div class="bank-head">
         <div class="bank-tabs" role="tablist" aria-label="Bank">
-          <button class="btab" type="button" role="tab" id="bank-tab-pool" data-bank="pool" aria-controls="bank-list" aria-selected="true" tabindex="0">pool<span class="bt-n" data-n="pool"></span><span class="bt-fresh" id="bank-count"></span></button>
-          <button class="btab" type="button" role="tab" id="bank-tab-saved" data-bank="saved" aria-controls="bank-list" aria-selected="false" tabindex="-1">saved<span class="bt-n" data-n="saved" id="pin-budget"></span></button>
-          <button class="btab" type="button" role="tab" id="bank-tab-presets" data-bank="presets" aria-controls="bank-list" aria-selected="false" tabindex="-1">presets<span class="bt-n" data-n="presets"></span></button>
+          <button class="btab" type="button" role="tab" id="bank-tab-pool" data-bank="pool" aria-controls="bank-list" aria-selected="true" tabindex="0"><span class="bt-w" id="bank-tab-pool-w">pool</span><span class="bt-n" data-n="pool"></span><span class="bt-fresh" id="bank-count"></span></button>
+          <button class="btab" type="button" role="tab" id="bank-tab-saved" data-bank="saved" aria-controls="bank-list" aria-selected="false" tabindex="-1"><span class="bt-w" id="bank-tab-saved-w">saved</span><span class="bt-n" data-n="saved" id="pin-budget"></span></button>
+          <button class="btab" type="button" role="tab" id="bank-tab-presets" data-bank="presets" aria-controls="bank-list" aria-selected="false" tabindex="-1"><span class="bt-w" id="bank-tab-presets-w">presets</span><span class="bt-n" data-n="presets"></span></button>
         </div>
         <div class="bank-find-row">
           <!-- A text field, so the keys type here and play nothing (main.js's
@@ -637,7 +637,7 @@
               <!-- The model view's (⌥): its style, and its guess before
                    you pick on the card it favours (main.js, askPairGuess). -->
               <span class="style-badge mono" id="style-a"></span>
-              <span class="duel-guess mono" id="guess-a" title="Its guess before you pick, on the sound it favours (the model view)"></span>
+              <span class="duel-guess mono" id="guess-a"></span>
               <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
             <canvas class="scope" id="scope-a"></canvas>
@@ -656,7 +656,7 @@
               <span id="face-b"></span>
               <div class="duel-name" id="name-b">sound b</div>
               <span class="style-badge mono" id="style-b"></span>
-              <span class="duel-guess mono" id="guess-b" title="Its guess before you pick, on the sound it favours (the model view)"></span>
+              <span class="duel-guess mono" id="guess-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
             <canvas class="scope" id="scope-b"></canvas>

@@ -283,7 +283,7 @@ declarative. **Only the model speaks in it.** Module descriptions, the landing
 page's pitch, and the docs' ledes are plain.
 
 - **Third person:** "it", never "I": *it guessed this · 62%*, *still guessing ·
-  it fits after 6 picks*.
+  4 more picks and it fits*.
 - **Its limits as facts:** *too few to price*, *no guess for this sound yet*.
 - **How sure it is**, in words beside any percentage, from one scale: *a hunch
   · leaning · fairly sure*. A bare "93%" is never shown alone.
@@ -467,7 +467,12 @@ banned-words check in `make dev-check` reads the list after it.
 | **measuring…** | Renders on their way for an answer or the lesson: a figure, or the lesson's shape, while the engine renders and measures the sound in hand | listening… (that is PERFORM's), loading… |
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
-| **the model view** | What ⌥ shows: the model's ratings over everything | lens |
+| **the model view** | What holding ⌥ or MODEL shows: what the model believes over the level you're at (the bank's guesses and order, TASTE's halos, EVOLVE's guess before a pick) | lens |
+| **MODEL** | The menu bar's pill for the model view: held (or ⌥ held) it shows while held; tapped it stays until tapped again or Esc. Its light is lit while the view is up | LENS, the model button |
+| **Find a sound** | The bank's search field: it keeps the sounds whose name, family or description has what you type; Esc clears it | search, filter, Search sounds |
+| **IN THE POOL**, **RANKED BY THE MODEL** | POOL's heading for the sounds below New: at rest in the order they joined it; under the model view, once it has fitted, in the order it rates them | the rest |
+| *it guesses this · 62% · leaning* | Under the model view, EVOLVE's guess before you pick, on the card it favours; *it guessed this* is the line after |  |
+| *still guessing · 4 more picks and it fits* | The model view's tag before the first fit; after it, *what it believes, from 18 picks* |  |
 | **face** | A sound's drawn shape | vessel (outside design notes) |
 | **card** | The picture of a sound you download to share: its face, its name and where it came from | poster, thumbnail, share image |
 | **module** | One part of a patch (a VCO, a filter) | node, plate (outside the reference) |

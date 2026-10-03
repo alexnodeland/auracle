@@ -46,8 +46,9 @@ The switch at the map’s top left chooses how the sounds are shown.
   guess.
 
 Holding <kbd>⌥</kbd> for [the model view](../reading-the-model.md#the-model-view)
-switches the map to its **TASTE** side while you hold it, and back to where you
-left the switch when you let go.
+switches the map to its **TASTE** side while you hold it (or while **MODEL**
+is tapped on), and back to where you left the switch when it goes. While the
+view is up the switch rests, dimmed, and its tooltip says why.
 
 Size is the one people miss, and it’s the useful one. A big, dim face is a
 sound the model has no guess about. A small, bright one is a sound it’s sure

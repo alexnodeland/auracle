@@ -20,7 +20,8 @@ changelog that edits its own past is not a record.
   sits at the end of the search.
 - **A row is a face and a name.** Its actions show when you point at it or
   put the keyboard cursor on it: compare (for a bred sound), ▶, ★, save, and
-  cut. ★ opens the five stars; 1–5 still rate the row under the cursor. A
+  cut. On a touch screen every row shows them, and every preset its ▶, on a
+  line under the name. ★ opens the five stars; 1–5 still rate the row under the cursor. A
   child's second line still says which seed it grew from and what changed.
   Ids and signatures show only with Show measurements. Presets are grouped
   by family with a count, and a preset's description is its name's tooltip.

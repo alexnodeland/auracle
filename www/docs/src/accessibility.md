@@ -80,8 +80,9 @@ Two rules make that work. Controls that own a drag claim the gesture before
 the browser can, which leaves the rack’s frame its own panning. And whatever a
 mouse finds by hovering (knob lock dots, a bank row’s actions) is shown
 outright on a touch screen, because on a tablet, hover-to-reveal means never:
-a bank row’s actions show on the sound you’re playing, so a tap on a row
-brings them. **MODEL**’s press and hold is the model view under a finger.
+every bank row shows its actions (and every preset its **▶**) at rest, on a
+line under its name, so a sound can be heard, rated, saved or cut without
+opening it. **MODEL**’s press and hold is the model view under a finger.
 Small glyphs get an invisible pad for a finger, only on touch screens, so the
 desktop is unchanged.
 

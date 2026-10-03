@@ -148,9 +148,15 @@ test("a tap on MODEL keeps the model view until a second tap or Esc; a press hel
   await btn.click();
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
   await expect(btn).toHaveAttribute("aria-pressed", "false");
-  // Esc ends it.
+  // Esc in a text field is the field's: Find a sound clears, and the view
+  // stays. Esc elsewhere ends it.
   await btn.click();
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await page.locator("#bank-find").fill("warm");
+  await page.locator("#bank-find").press("Escape");
+  await expect(page.locator("#bank-find")).toHaveValue("");
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await page.locator("#bank-find").blur();
   await page.keyboard.press("Escape");
   await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
   // Pressed and held: up while held, gone when let go, and that release is
@@ -205,10 +211,16 @@ test("under the model view TASTE shows its side of the toggle, and EVOLVE its gu
   await expect(tog).toHaveAttribute("aria-pressed", "false");
   await modelView(page, true);
   await expect(tog).toHaveAttribute("aria-pressed", "true");
+  // While the view holds the map there, the switch rests and says why.
+  await expect(tog).toBeDisabled();
+  await expect(tog).toHaveAttribute("title", /model view/);
   await modelView(page, false);
   await expect(tog).toHaveAttribute("aria-pressed", "false");
+  await expect(tog).toBeEnabled();
   // EVOLVE: the guess for the pair before the pick, asked of the engine
-  // (`duel_pred`, before the pick), on one card only; and each card's style.
+  // (`duel_pred` with `pre`), on one card only; and the cards' style badges
+  // come out of hiding (their visibility: a badge is empty when no style
+  // claims its sound, so its text is not what is checked).
   await goLevel(page, "evolve");
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
   await expect(page.locator(".duel-guess:visible")).toHaveCount(0);

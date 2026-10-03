@@ -45,7 +45,8 @@ preset is found by that preset’s too. Typing in the field plays no notes.
 
 1. Click a row to open it as the sound you’re playing.
 2. Point at a row (or put the bank’s cursor on it) and its actions appear at
-   its end: **▶** plays the standard phrase without opening it.
+   its end (on a touch screen they are always there, under the name): **▶**
+   plays the standard phrase without opening it.
 3. **★** opens five stars in the actions’ place: press one to rate the sound
    and teach the model what you think of it. From the keyboard,
    <kbd>1</kbd>–<kbd>5</kbd> rate the row under the cursor.
@@ -98,9 +99,10 @@ row’s end.</figcaption>
   EVOLVE mark among its actions, or press <kbd>c</kbd> on the row, to
   [compare](#compare-a-sound-beside-its-seed) the sound with its seed.
 - **The actions**, at the row’s end when you point at it or the cursor is on
-  it (and on the sound you’re playing, on a touch screen): the EVOLVE mark for
-  a bred sound (compare), **▶**, **★**, the save icon and **×**. Out of sight
-  they can’t be pressed either.
+  it: the EVOLVE mark for a bred sound (compare), **▶**, **★**, the save icon
+  and **×**. Out of sight they can’t be pressed either. On a touch screen
+  every row shows them at rest, on a line under its name, since a tap on the
+  row would open it.
   - **▶** plays the standard phrase, and shows **■** while it plays. If it has
     to be rendered first, a dotted amber ring says it’s on its way.
   - **★** opens the five stars; a rated sound’s ★ is filled. Rating teaches
@@ -269,8 +271,8 @@ perc, and weird), browsed in place under each family’s name and count. A
 preset’s description is its name’s tooltip.
 
 1. Open **PRESETS**.
-2. Point at a row and press **▶** to hear it, or click the row to open it as
-   the sound you’re playing.
+2. Point at a row and press **▶** to hear it (on a touch screen the **▶** is
+   always there), or click the row to open it as the sound you’re playing.
 
 The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the lowest-rated sound it can. The toast names what it

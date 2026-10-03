@@ -87,6 +87,20 @@ not framed). ADR-017 records §6 Q1.
   asked again on `fitted`. The style badge keeps its place at rest, hidden.
 - **The mock's veil** (an amber wash from MODEL) and the tag's flight out of
   it are not built: the LED, the tag and the amber marks say the view is up.
+- **Touch.** Under a coarse pointer every bank row shows its actions, and
+  every preset its ▶, at rest, on a line under the name (a tap on a row
+  opens it, so hover-to-reveal would lose them); the mouse keeps the mock's
+  actions on approach. ★'s stars fold on `pointerleave` for a mouse only: a
+  finger "leaves" before its tap's click. `bank_touch.spec.js` pins both.
+- **The film selectors PR B leaves stale**, owed with the Wave 3 re-records
+  as PR A's are, in the films' `shots.json`, `gen_shots.py`, `gen_base.json`,
+  `session.py` and storyboards: `.bf-n` (50, in composing, playing,
+  sounddesign, tour, view-evolve, view-patch, view-perform, view-taste,
+  zzprobe), `.bf[data-f]` (48: composing, tour, view-taste), `.star[data-s]`
+  on rows (30: composing, view-evolve, view-taste), `.bi-pct` read at rest
+  (9: tour, view-taste), `.bank-filters` (8: composing, tour, view-evolve)
+  and `#pin-budget` as "n/m saved" (7: composing, view-evolve). `.pb-cat`
+  appears in none. `footage.mjs`'s `preset` op and `shotgen.py` are updated.
 - **The figures** `bank.webp` and `bank-row.webp` were captured from the
   bank itself (PATCH after the warm start) rather than a full
   `capture-screens.mjs` run, which PR D does; `encode-screens.sh` has the new

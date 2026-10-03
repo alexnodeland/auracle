@@ -8011,7 +8011,7 @@ function bankRow(r, fitted) {
     <span class="bi-pct mono" title="${fitted ? `Its guess: ${guessLabel(frac)}` : "No guess yet: teach it a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "·"}</span>
     <div class="bi-acts">${
       lin
-        ? `<button class="bi-cmp" type="button" title="What changed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${ROW_ICON.compare}</button>`
+        ? `<button class="bi-cmp" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${ROW_ICON.compare}</button>`
         : ""
     }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${r.pinned ? " on" : ""}" type="button" aria-pressed="${!!r.pinned}"
         title="${r.pinned ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
@@ -8064,7 +8064,10 @@ function bankRow(r, fitted) {
       rateRow(Number(btn.dataset.s), r.id);
     };
   });
-  el.addEventListener("pointerleave", () => { if (ratingId === r.id) foldStars(); });
+  // A mouse leaving the row folds them. Not a finger: a touch pointer
+  // "leaves" as it lifts, before the tap's click, which would then land on
+  // whatever the stars were covering (cut, under the fifth).
+  el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && ratingId === r.id) foldStars(); });
   el.querySelector(".bi-save").onclick = () => {
     kbdRowId = r.id;
     // Optimism here would be a lie half the time: the engine refuses at the
@@ -8301,7 +8304,7 @@ function selectBank(which) {
     const on = x.dataset.bank === which;
     x.setAttribute("aria-selected", String(on));
     x.tabIndex = on ? 0 : -1;
-    if (on) $("bank-list").setAttribute("aria-labelledby", x.id);
+    if (on) $("bank-list").setAttribute("aria-labelledby", `${x.id}-w`);
   });
   // Presets are fetched once, lazily — the library is static, so the only
   // reason to ask twice is a reload.
@@ -8318,7 +8321,7 @@ document.querySelectorAll(".bank-tabs .btab").forEach((b) => {
 });
 wireArrowNav(document.querySelector(".bank-tabs"), ".btab", { activate: true });
 $("bank-list").removeAttribute("aria-label");
-$("bank-list").setAttribute("aria-labelledby", "bank-tab-pool");
+$("bank-list").setAttribute("aria-labelledby", "bank-tab-pool-w"); // the word alone, not its count
 
 // Find a sound. Typing filters as it goes; Esc clears it and stays in the
 // field. A text field, so the global note guard keeps every key here.
@@ -8926,6 +8929,11 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  // Its row comes into view (`renderBank`, "nearest": a row in view stays
+  // put): the pool stands in the order it joined at rest, so the sound boot
+  // opens, or one opened from elsewhere, can be anywhere in the list.
+  bankScrollTo = id;
+  bankScrollAt = performance.now();
   takes.benchMoved(id); // a recording for the sound being left stops here
   benchPendingTick = ++openTick;
   openAskedAt = performance.now();

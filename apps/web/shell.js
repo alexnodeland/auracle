@@ -236,8 +236,9 @@ export function createShell(host = {}) {
         return;
       }
       // Esc ends the model view, however it came up, and goes on to close
-      // whatever else it closes.
-      if (e.key === "Escape" && model.on) setModelView(false, { sticky: true });
+      // whatever else it closes; in a text field Esc is the field's (Find a
+      // sound clears), and the view stays.
+      if (e.key === "Escape" && model.on && !typing(e.target)) setModelView(false, { sticky: true });
       if (!e.altKey || e.metaKey || e.ctrlKey) return;
       if (!(e.key.startsWith("Arrow") || /^Digit[1-5]$/.test(e.code || ""))) return;
       if (typing(e.target)) return;

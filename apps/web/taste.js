@@ -1531,6 +1531,10 @@ export function createTaste(host) {
       if (modelView === !!on) return;
       modelView = !!on;
       tog.setAttribute("aria-pressed", String(tasteOn()));
+      // While the view is up the map is on its TASTE side whatever the
+      // switch says, so the switch rests, and says why.
+      tog.disabled = modelView;
+      tog.title = modelView ? words.TASTE_LABELS.togByModel : words.TASTE_LABELS.togTitle;
       if (visible === "taste") {
         syncTasteText();
         drawMap();

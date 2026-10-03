@@ -67,3 +67,44 @@ test("a bank row's actions show on the keyboard cursor, and its ★ folds out th
   await expect(r.locator(".star.lit")).toHaveCount(2);
   expect(errs).toEqual([]);
 });
+
+// The pool stands in the order it joined at rest, so the sound boot opens,
+// or one opened from elsewhere (here EVOLVE's OPEN IN PATCH), can be anywhere
+// in the list: its row is brought into view.
+test("a sound opened from outside the bank has its row brought into the bank's view", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errs = await boot(page);
+  const inView = (id) => page.evaluate((i) => {
+    const r = document.querySelector(`#bank-list .bank-item[data-id="${i}"]`);
+    if (!r) return false;
+    const a = document.getElementById("bank-list").getBoundingClientRect();
+    const b = r.getBoundingClientRect();
+    return b.top >= a.top - 1 && b.bottom <= a.bottom + 1;
+  }, id);
+  const live = page.locator("#bank-list .bank-item.live");
+  await expect(live).toHaveCount(1, { timeout: 60_000 });
+  await expect.poll(async () => inView(await live.getAttribute("data-id")), { timeout: 15_000 }).toBe(true);
+  // EVOLVE's card A, its row scrolled out of the bank's view, then opened.
+  await page.locator('.rail-stop[data-level="evolve"]').click();
+  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
+  const id = await page.evaluate(() => {
+    const t = document.getElementById("name-a").textContent;
+    const r = [...document.querySelectorAll("#bank-list .bank-item[data-id]")].find((e) => t.includes(e.querySelector(".bi-name").textContent.trim()));
+    return r ? r.dataset.id : null;
+  });
+  expect(id, "card A's row in the pool").not.toBeNull();
+  // (Set again until it holds: a smooth scroll already under way would win.)
+  await expect.poll(async () => {
+    await page.evaluate((i) => {
+      const list = document.getElementById("bank-list");
+      const r = document.querySelector(`#bank-list .bank-item[data-id="${i}"]`);
+      const mid = r.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      list.scrollTo({ top: mid > list.scrollHeight / 2 ? 0 : list.scrollHeight, behavior: "instant" });
+    }, id);
+    return inView(id);
+  }, { timeout: 10_000, message: "card A's row out of view before it opens" }).toBe(false);
+  await page.locator("#promote-a").click();
+  await expect(page.locator(`#bank-list .bank-item[data-id="${id}"]`)).toHaveClass(/\b(live|opening)\b/, { timeout: 30_000 });
+  await expect.poll(() => inView(id), { timeout: 15_000 }).toBe(true);
+  expect(errs).toEqual([]);
+});
