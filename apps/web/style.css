@@ -7409,6 +7409,18 @@ html.xl-on .alarm { z-index: 62; }
   background: var(--panel-94);
   box-shadow: var(--shadow-pop);
 }
+/* Where the line is narrow (a narrow window, or beside the open catalog) the
+   three columns would be a word wide each: they stack, and the card scrolls
+   rather than rising past the well's top. */
+.pt-read { container-type: inline-size; }
+@container (max-width: 560px) {
+  .pt-read.open .pr-more {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s2);
+    max-height: 300px;
+    overflow-y: auto;
+  }
+}
 /* Something in hand, or a socket waiting for a module: the armed line. */
 .pt-read.armed {
   padding: var(--s1) var(--s3);
