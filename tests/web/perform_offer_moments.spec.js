@@ -108,7 +108,7 @@ function boxOf(transform, at) {
   return { left: at.left + dx, top: at.top + dy, width: at.width * sx, height: at.height * sy };
 }
 const near = (a, b, px = 2) => ["left", "top", "width", "height"].every((k) => Math.abs(a[k] - b[k]) <= px);
-const faceBox = (page) => page.locator(".pf-head .pf-face").evaluate((e) => {
+const faceBox = (page) => page.locator(".pf-faces > .pf-face").evaluate((e) => {
   const r = e.getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 });

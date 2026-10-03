@@ -83,7 +83,7 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
       await page.goto("/");
       await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
       await goLevel(page, "perform");
-      await expect(page.locator(".pf-knob .pf-k-sub")).toHaveCount(8);
+      await expect(page.locator(".pf-knob .pf-k-sub")).toHaveCount(7); // the six and Wander (Blend is a slider in the well)
       await expect(page.locator(".pf-deck")).toBeVisible();
       // Every caption state in every column, measured in the same task, so
       // nothing repaints between the write and the read. Twice: as this

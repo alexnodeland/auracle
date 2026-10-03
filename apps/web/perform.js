@@ -316,9 +316,39 @@ export function createPerform(host) {
   const onPanel = (ks) => ks.map((k) => state.panel.indexOf(k)).filter((i) => i >= 0);
 
   // ---------- layout ----------
+  // To the specimen (Plan-008 PR C1, `a-perform-doors.png`): on the left the
+  // sound itself (its family, its name at the display size, its blurb, and
+  // the well holding its face); on the right what the player turns (the
+  // controls, the knobs they move, and the pad row). The well has three
+  // modes (`wellMode`): the face, the XY pad (`pf-xy`) and How it works
+  // (`pf-why-body`), one at a time.
+  const grid = el("div", "pf-grid");
+  const left = el("div", "pf-left");
+  const right = el("div", "pf-right");
   const head = el("div", "pf-head");
-  const title = el("div", "pf-title");
+  // The cap: the sound's family where the engine has one (a preset's
+  // category; a bred or edited sound has none) and "in hand".
+  const capRow = el("div", "pf-cap-row");
+  const capEl = el("span", "pf-cap", "in hand");
+  // Moved: the sound has left home (`movedFromHome`), and Keep or Back can
+  // settle it. Shown exactly then, in a slot the head always keeps, so
+  // nothing moves when it comes and goes (PATCH's edit bar, the specimen's).
+  const movedBar = el("div", "pf-moved");
+  movedBar.setAttribute("role", "group");
+  movedBar.setAttribute("aria-label", "The sound has moved from home");
+  capRow.append(capEl, movedBar);
+  const titleRow = el("div", "pf-title");
   const nameEl = el("div", "pf-name", "·");
+  // Share: the sound's card as a picture (⋯ › Download as a picture, the
+  // card), the one share the app has.
+  const shareBtn = el("button", "pf-share util-btn");
+  shareBtn.type = "button";
+  shareBtn.setAttribute("aria-label", "Share this sound as a picture");
+  shareBtn.title = "Share: download the sound’s card as a picture";
+  shareBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 8l4-4 4 4"/><path d="M5 13v6h14v-6"/></svg>';
+  shareBtn.onclick = () => host.share?.();
+  titleRow.append(nameEl, shareBtn);
+  const blurbEl = el("div", "pf-blurb", "");
   const statusEl = el("div", "pf-status mono", "");
   // What PERFORM is doing with the sound is announced politely, by a quiet
   // twin of the status line (`statusSaid`): the one live region for a
@@ -329,17 +359,24 @@ export function createPerform(host) {
   statusSaid.setAttribute("role", "status");
   // The visible line is for the eye; its twin is what is read, once.
   statusEl.setAttribute("aria-hidden", "true");
-  title.append(nameEl, statusEl, statusSaid);
+  head.append(capRow, titleRow, blurbEl, statusSaid);
+  // The live output's trace, small in the well's corner (it was beside the
+  // name): what sounds now, while the face is the render.
   const scope = el("canvas", "pf-scope");
-  scope.width = 360;
-  scope.height = 72;
+  scope.width = 160;
+  scope.height = 40;
   scope.setAttribute("aria-hidden", "true");
   // The faces of the sound in hand and of B (Plan-005 task 3): the engine's
   // picture of each one's render, drawn by main.js (`host.face`) into a slot
-  // that is always there, so the names beside them never move.
+  // that is always there. In the well, large, with its glow and the floor's
+  // reflection; B's in amber beside it (the model's offer).
+  const well = el("div", "pf-well");
+  well.setAttribute("role", "group");
+  well.setAttribute("aria-label", "The sound in hand");
+  well.dataset.mode = "face";
   const heldFace = el("span", "pf-face");
   const offerFace = el("span", "pf-face");
-  head.append(heldFace, title, scope);
+  const faces = el("div", "pf-faces");
 
   const deck = el("div", "pf-deck");
   deck.setAttribute("role", "group");
@@ -347,28 +384,38 @@ export function createPerform(host) {
   const pads = el("div", "pf-pads");
   pads.setAttribute("role", "group");
   pads.setAttribute("aria-label", "Performance pads");
+  // What velocity plays: a row of the Arrange panel (`renderPalette`).
   const touchRow = el("div", "pf-touch mono");
   const offerCard = el("div", "pf-offer");
-  const why = el("div", "pf-why");
+  faces.append(heldFace, offerCard);
   // Under the hood: the real knobs the controls and Wander are moving, live.
   // The named controls are a *view* onto these; this is where that becomes
-  // visible, and each one opens its module in PATCH.
+  // visible, and each one opens its module in PATCH. The strip between the
+  // controls and the pads, as the specimen sets it.
   const hood = el("div", "pf-hood");
   // The XY pad: two named controls under one finger, the gesture a
-  // performer reaches for first. Beside the hood strip, so the knobs it
-  // moves are visible while it moves them.
+  // performer reaches for first. A mode of the well: the face dims behind
+  // it, and the knobs it moves stay in sight on the right.
   const xy = el("div", "pf-xy");
-  const stage = el("div", "pf-stage");
-  stage.append(xy, hood);
-  // First steps: the whole loop in three moves, ticked off as they happen.
-  const stepsEl = el("div", "pf-steps mono");
-  stepsEl.setAttribute("role", "status");
-  // The marquee row holds the first steps, and in booth mode the attract band
-  // laid over the same slot (main.js moves it in): attract then hides nothing
-  // it is showing off, and nothing moves when a visitor takes over.
+  // Blend: from the sound in hand to B, under the two faces, while B holds an
+  // offer (`bMix`). Built with the deck (`buildDeck`).
+  const blendSlot = el("div", "pf-blend-slot");
+  // The well's corner: stage mode and the XY pad.
+  const corner = el("div", "pf-corner");
+  // The marquee: in booth mode the attract band is laid over the top of the
+  // well (main.js moves it in), so attract hides nothing it is showing off.
   const marquee = el("div", "pf-marquee");
-  marquee.append(stepsEl);
-  root.append(head, marquee, deck, touchRow, pads, offerCard, stage, why);
+  well.append(faces, xy, blendSlot, scope, marquee, corner);
+  left.append(head, well);
+  const ctlHead = el("div", "pf-ctlhead");
+  const ctlCap = el("span", "pf-ctlcap", "controls");
+  const ctlActs = el("div", "pf-actions");
+  ctlHead.append(ctlCap, ctlActs);
+  right.append(ctlHead, statusEl, deck, hood, pads);
+  grid.append(left, right);
+  root.append(grid);
+  // First steps live in the guide pill (guide.js): the whole loop in three
+  // moves, ticked off as they happen.
 
   // ---------- knobs ----------
   const knobs = [];
@@ -419,6 +466,12 @@ export function createPerform(host) {
     const line = el("div", "pf-k-line");
     line.append(sub, wait);
     wrap.append(s, name, ends, line);
+    if (spec.kind === "named") {
+      // Velocity plays this control (Arrange): a tick over the ring's corner.
+      const vel = el("span", "pf-k-vel mono", "vel");
+      vel.title = "Your velocity plays this control (Arrange › Velocity plays)";
+      wrap.append(vel);
+    }
     if (spec.kind === "named") wrap.dataset.index = String(spec.index);
     wrap.tabIndex = 0;
     wrap.setAttribute("role", "slider");
@@ -427,7 +480,53 @@ export function createPerform(host) {
     wrap.setAttribute("aria-valuemax", "1");
     const k = { i, spec, wrap, svg: s, sub, wait, value: spec.initial || 0 };
     bindDrag(k);
-    deck.append(wrap);
+    // Wander leads the pad row, ringed in amber (the model's walk); the
+    // panel's controls fill the grid.
+    if (spec.kind === "wander") {
+      wrap.classList.add("pf-wander");
+      wrap.setAttribute("aria-keyshortcuts", "Enter");
+      pads.prepend(wrap);
+    } else deck.append(wrap);
+    knobs.push(k);
+    return k;
+  }
+  // Blend, a slider under the two faces in the well (`blendSlot`), shown only
+  // while B holds an offer: it mixes the sound in hand with B (`bMix`). Still
+  // a slot on the deck for MIDI and the keys (`setControl`, the slot after
+  // the panel's controls), so a pot learned on it keeps working, and kept
+  // in the page while hidden so a pot's write lands somewhere.
+  function makeBlend(i, spec) {
+    const wrap = el("div", "pf-blend");
+    wrap.dataset.i = String(i);
+    const lab = el("span", "pf-blend-l", "home");
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "1";
+    input.step = "0.01";
+    input.className = "pf-blend-in";
+    input.setAttribute("aria-label", spec.name);
+    const end = el("span", "pf-blend-r", "B");
+    const sub = el("span", "pf-blend-v mono", "");
+    wrap.append(lab, input, end, sub);
+    wrap.title = "Blend: from the sound in hand to the offer in B. Peek is all of B while you hold it.";
+    const k = { i, spec, wrap, input, sub, svg: null, value: spec.initial || 0 };
+    input.addEventListener("input", () => {
+      if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
+      k.value = clamp(Number(input.value), 0, 1);
+      touch();
+      paintKnob(k);
+      onKnob(k);
+    });
+    input.addEventListener("pointerdown", () => (k.held = true));
+    const up = () => {
+      k.held = false;
+      queueMicrotask(panelLater);
+    };
+    input.addEventListener("pointerup", up);
+    input.addEventListener("pointercancel", up);
+    blendSlot.append(wrap);
     knobs.push(k);
     return k;
   }
@@ -466,6 +565,7 @@ export function createPerform(host) {
   }
 
   function paintKnob(k) {
+    if (k.spec.kind === "blend") return paintBlend(k);
     if (k.spec.kind === "named" && typeof paintXY === "function" && (k.i === XY.x || k.i === XY.y)) queueMicrotask(paintXY);
     const bipolar = k.spec.kind === "named" || k.spec.kind === "blend-bipolar";
     const v = k.value;
@@ -548,23 +648,36 @@ export function createPerform(host) {
           : k.spec.name;
       }
       k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "center" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
+      // What velocity plays (Arrange's "Velocity plays"): a small "vel" tick
+      // in the control's cell, over the ring's corner, so no word moves.
+      k.wrap.classList.toggle("vel", k.i === state.touch.i && state.touch.sites.length > 0);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
       const [words, left] = wanderState();
       k.sub.textContent = words;
+      // Frozen (a tap on Wander, or Enter on it): the ring lit and the word
+      // under it. A slider cannot also be a toggle button (aria-pressed is
+      // not allowed on role=slider), so the state is in its value's words.
       k.wrap.classList.toggle("held", state.hold);
+      k.wrap.dataset.frozen = String(state.hold);
       k.wrap.setAttribute("aria-valuetext", words);
       k.wrap.title = wanderTitle();
       // The wait for the next move, as a thin arc filling clockwise from the
       // dial's start: drawn only while Wander is counting down to one.
       const count = k.svg.querySelector(".pf-k-count");
       if (count) count.setAttribute("d", left == null ? "" : arcAt(-135, -135 + 270 * (1 - left), 39));
-    } else if (k.spec.kind === "blend") {
-      where.style.display = "none";
-      k.sub.textContent = state.offer ? `${Math.round(v * 100)}% offer` : "no offer yet";
-      k.wrap.classList.toggle("unwired", !state.offer);
-      k.wrap.setAttribute("aria-valuetext", `${Math.round(v * 100)} percent offer`);
     }
+  }
+  // Blend's slider: where it is (on its way home after a pass, `k.drawn`),
+  // and how much of B it lets in. Out of sight with no offer to blend.
+  function paintBlend(k) {
+    const v = k.drawn != null ? k.drawn : k.value;
+    if (document.activeElement !== k.input || k.drawn != null) k.input.value = String(v);
+    k.input.setAttribute("aria-valuenow", k.value.toFixed(2));
+    k.input.setAttribute("aria-valuetext", state.offer ? `${Math.round(k.value * 100)} percent offer` : "no offer yet");
+    k.sub.textContent = state.offer ? `${Math.round(k.value * 100)}% offer` : "no offer yet";
+    k.wrap.classList.toggle("unwired", !state.offer);
+    blendSlot.classList.toggle("on", !!state.offer);
   }
 
   // What letting go of a search control turned to `v` would do, said while it
@@ -697,8 +810,15 @@ export function createPerform(host) {
       if (e.key === "ArrowUp" || e.key === "ArrowRight") set(k.value + step, true);
       else if (e.key === "ArrowDown" || e.key === "ArrowLeft") set(k.value - step, true);
       else if (e.key === "Home") set(k.spec.kind === "named" ? 0 : 0);
-      else if (e.key === "Enter" && k.spec.kind === "named") hearIt(k);
-      else return;
+      // ⇧↵ is Take (ADR-018): it goes on to the page's keys.
+      else if (e.key === "Enter" && !e.shiftKey && k.spec.kind === "named") hearIt(k);
+      // Enter on Wander freezes it, as a tap does; it is not a turn.
+      else if (e.key === "Enter" && !e.shiftKey && k.spec.kind === "wander") {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleHold();
+        return;
+      } else return;
       e.preventDefault();
       e.stopPropagation();
       if (k.spec.kind === "wander") wanderGrab();
@@ -785,7 +905,7 @@ export function createPerform(host) {
     return [`${z} · next in ${Math.max(1, Math.ceil(left / 1000))} s`, Math.min(1, left / span)];
   }
   function wanderTitle() {
-    const base = "Wander: how alive the sound is. Still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to freeze it.";
+    const base = "Wander: how alive the sound is. Still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to freeze it. Enter does the same when it has focus.";
     return state.wanderWhy ? `${base}\nLast move: ${state.wanderWhy}.` : base;
   }
   function renderWander() {
@@ -954,9 +1074,14 @@ export function createPerform(host) {
     if (target) target.focus({ preventScroll: true });
   }
 
+  // Touch: which control a note's velocity plays, and how far. A row of the
+  // Arrange panel ("Velocity plays"), and a "vel" tick on that control.
   function renderTouch() {
+    for (const k of knobs) if (k.spec.kind === "named") k.wrap.classList.toggle("vel", k.i === state.touch.i && state.touch.sites.length > 0);
+    const had = touchRow.contains(document.activeElement) ? document.activeElement.id : null;
     touchRow.innerHTML = "";
-    const lab = el("span", "pf-touch-l", "touch");
+    const lab = el("label", "pf-touch-l", "velocity plays");
+    lab.htmlFor = "pf-touch-sel";
     const sel = document.createElement("select");
     sel.id = "pf-touch-sel";
     sel.setAttribute("aria-label", "What your velocity plays");
@@ -1002,7 +1127,10 @@ export function createPerform(host) {
       "pf-touch-n",
       state.touch.sites.length ? `velocity moves ${knobWords(state.touch.sites.map(([a]) => a))}` : "velocity sets loudness only",
     );
-    touchRow.append(lab, sel, depth, note);
+    const dLab = el("label", "pf-touch-d", "depth");
+    dLab.htmlFor = "pf-touch-depth";
+    touchRow.append(lab, sel, dLab, depth, note);
+    if (had && touchRow.isConnected) document.getElementById(had)?.focus({ preventScroll: true });
   }
 
   // What PERFORM adds when a control has nothing to turn (the engine's
@@ -2565,6 +2693,7 @@ export function createPerform(host) {
     return out;
   }
   function renderHood() {
+    paintMoved();
     const addrs = hoodAddrs();
     // The labels are part of the key: an open reaches PERFORM before PATCH's
     // rack has named its modules, so rows built then read raw addresses
@@ -2669,6 +2798,7 @@ export function createPerform(host) {
       host.commitTree(json);
       host.note("Kept: this is home now. Back returns here.", { replace: "pf-keep" });
       flash("keep");
+      paintMoved();
     });
   }
 
@@ -2732,18 +2862,79 @@ export function createPerform(host) {
     knobs.forEach(paintKnob);
   }
 
+  // Peek: all of B while held (the pad, or B held down, ADR-018), then back
+  // to Blend's mix. Heard time counts while it is held and notes sound.
+  function peekOn() {
+    const live = host.live();
+    state.peeking = true;
+    if (live && state.offer) live.bMix(1);
+    else host.note("Nothing offered yet. Press Offer first.", { urgent: true, replace: "pf-peek" });
+  }
+  function peekOff() {
+    if (!state.peeking) return;
+    state.peeking = false;
+    const live = host.live();
+    if (live && state.offer) live.bMix(state.blend);
+  }
+
+  // The head's words: the family where the engine has one (`host.family`, a
+  // preset's category, none for a bred or edited sound), the name, and the
+  // blurb where there is one. The blurb's line is kept either way, so the
+  // well does not move from one sound to the next.
+  function renderHeadWords() {
+    const fam = host.family?.() || "";
+    const cap = fam ? `${fam} · in hand` : "in hand";
+    if (capEl.textContent !== cap) capEl.textContent = cap;
+    const blurb = host.blurb?.() || "";
+    if (blurbEl.textContent !== blurb) blurbEl.textContent = blurb;
+    const name = host.label();
+    if (nameEl.textContent !== name) nameEl.textContent = name;
+    nameEl.title = name;
+  }
+
+  // ---------- moved ----------
+  // Has the sound left home (the last sound kept, loaded or taken)? A
+  // control turned, an expression on one, a glide under way, a drift not
+  // kept (each `movedOn`), or a structure other than home's (a graft Back
+  // can undo). What the moved bar shows, and what ↵ Keep and ⇧⌫ Back act on.
+  function movedFromHome() {
+    if (!state.cur || !state.home || !state.home.knobs) return false;
+    if (state.home.json && state.cur.json && state.home.json !== state.cur.json && structureDiffers(state.home.json, state.cur.json)) return true;
+    for (const a of state.cur.knobs.keys()) if (movedOn(a)) return true;
+    return false;
+  }
+  // Shown and hidden in place (its slot is kept), so nothing in the head
+  // moves when it comes or goes: a jump, not a glide.
+  function paintMoved() {
+    const on = movedFromHome();
+    if (movedBar.dataset.state === String(on)) return;
+    movedBar.dataset.state = String(on);
+    movedBar.classList.toggle("on", on);
+    movedBar.setAttribute("aria-hidden", String(!on));
+    for (const b of movedBar.querySelectorAll("button")) {
+      b.disabled = !on;
+      b.tabIndex = on ? 0 : -1;
+    }
+  }
+
+  // Freeze: Wander stops moving the sound until it is tapped again. Its
+  // state is shown on Wander, the thing tapped (`paintKnob`).
   function toggleHold() {
     state.hold = !state.hold;
-    padEls.hold.classList.toggle("lit", state.hold);
-    padEls.hold.setAttribute("aria-pressed", String(state.hold));
     knobs.forEach(paintKnob);
   }
 
   const padEls = {};
-  function pad(key, label, hint, onDown, onUp) {
-    const b = el("button", "pf-pad", label);
+  // A pad: pressed on pointerdown (a performer's press, not a click), and
+  // from the keyboard as a click. `kbd` is its printed key, drawn from
+  // `data-key` (style.css) so its words stay its name; `keys` says the same
+  // to assistive tech.
+  function pad(key, label, hint, onDown, onUp, { parent = pads, cls = "pf-pad", kbd = "", keys = "" } = {}) {
+    const b = el("button", cls, label);
     b.type = "button";
     b.title = hint;
+    if (kbd) b.dataset.key = kbd;
+    if (keys) b.setAttribute("aria-keyshortcuts", keys);
     b.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       touch();
@@ -2764,7 +2955,7 @@ export function createPerform(host) {
       if (onUp) setTimeout(onUp, 600);
     });
     padEls[key] = b;
-    pads.append(b);
+    parent.append(b);
   }
   function flash(key) {
     const b = padEls[key];
@@ -2779,7 +2970,9 @@ export function createPerform(host) {
   // many controls reach it, re-checking it. Wander's own state is said on
   // Wander (`wanderState`).
   function renderStatus(msg) {
-    host.face?.(heldFace, "hand", state.cur ? state.cur.json : null);
+    host.face?.(heldFace, "well", state.cur ? state.cur.json : null);
+    renderHeadWords();
+    paintMoved();
     const parts = [];
     // Another patch is on its way to the player's hands. The title still
     // names what the keys play — that is true until it lands — dimmed, and
@@ -2812,33 +3005,51 @@ export function createPerform(host) {
     if (statusSaid.textContent !== said) statusSaid.textContent = said;
   }
 
+  // B, in the well beside the sound in hand (the specimen's `offer-grid`):
+  // its label (B, and the way an aimed offer was asked for), its face in the
+  // model's amber, and under it what changed, the move along an aimed
+  // control, where it grew from and how to hear it. With nothing in B and
+  // nothing growing, B takes no room and the sound stands alone.
   function renderOffer(msg) {
     offerCard.innerHTML = "";
-    const lab = el("div", "pf-offer-label mono", "B");
+    const aim = state.offer && state.offer.aim;
+    const lab = el("div", "pf-offer-label mono", aim ? `B · ${aim.word}` : "B");
     const body = el("div", "pf-offer-body");
+    const touchOnly = !!window.matchMedia?.("(pointer: coarse)").matches;
     if (msg) body.textContent = msg;
     else if (state.offer) {
       const src = state.offer.taste ? "grown toward your taste" : "grown before it has learned your taste";
       // What changed first — it is the thing a player decides on — then
-      // where it came from, then what to do with it.
+      // the move along an aimed control, where it came from, and how to
+      // hear it.
+      // Two lines: what changed and the aimed move (cut at two lines, the
+      // whole in B's title), then where it grew from and how to hear it,
+      // which is never cut.
       body.innerHTML = "";
-      if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
-      const aim = state.offer.aim;
-      if (aim) body.append(aimNote(aim), document.createTextNode(" · "));
-      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""}: hold Peek to hear it, slide Blend, or Take it`));
+      const what = el("span", "pf-offer-line");
+      if (state.offer.changes) what.append(el("b", "pf-offer-what", state.offer.changes));
+      if (aim) what.append(document.createTextNode(state.offer.changes ? " · " : ""), aimNote(aim));
+      const how = el("span", "pf-offer-how", `${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""} · offered · ${touchOnly ? "hold Peek to hear it" : "hold B to peek"}`);
+      if (what.childNodes.length) body.append(what);
+      body.append(how);
+      offerCard.title = [what.textContent, how.textContent].filter(Boolean).join(" · ");
     }
-    else body.textContent = "no offer: press Offer to grow a variant from here";
+    const shown = !!(msg || state.offer);
+    if (!state.offer) offerCard.removeAttribute("title");
     offerCard.classList.toggle("ready", !!state.offer);
-    host.face?.(offerFace, "offer", state.offer ? state.offer.json : null);
+    offerCard.classList.toggle("empty", !shown);
+    well.classList.toggle("offered", shown);
+    host.face?.(offerFace, "wellb", state.offer ? state.offer.json : null);
     offerCard.append(lab, offerFace, body);
     paintPads();
+    knobs.forEach((k) => k.spec.kind === "blend" && paintKnob(k));
   }
   // Take and Peek act on an offer; until there is one they look it.
   // Waiting, not broken: a disabled pad says what it is waiting for. An
   // offer not heard yet can still be taken (the heard rule decides only
   // whether the answer counts, `holdAnswer`).
   function paintPads() {
-    for (const k of ["take", "peek"]) {
+    for (const k of ["take", "peek", "pass"]) {
       if (!padEls[k]) continue;
       padEls[k].disabled = !state.offer;
       padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
@@ -2858,11 +3069,21 @@ export function createPerform(host) {
   // touched: what you hear it do, what it listens to, and what it turns on
   // this sound, read from this sound's wiring (`perform_wire`'s entry for it,
   // found by its palette index). Then how the deck works, for every control
-  // at once. Closed at rest; nothing here is drawn as motion.
-  why.innerHTML = "";
-  const whyBtn = el("button", "pf-why-btn util-btn", "how it works");
+  // at once. Closed at rest; nothing here is drawn as motion. Opened from
+  // CONTROLS' head, it is a mode of the well (`setWellMode`): the knobs it
+  // describes stay in reach on the right.
+  const whyBtn = el("button", "pf-why-btn pf-disclose", "how it works");
   whyBtn.type = "button";
+  whyBtn.setAttribute("aria-controls", "pf-why-body");
   const whyBody = el("div", "pf-why-body hidden");
+  whyBody.id = "pf-why-body";
+  whyBody.setAttribute("role", "region");
+  whyBody.setAttribute("aria-label", "How it works");
+  const whyX = el("button", "pf-why-x util-btn sq", "×");
+  whyX.type = "button";
+  whyX.setAttribute("aria-label", "Close how it works");
+  whyX.title = "Close · Esc";
+  whyX.onclick = () => setWellMode("face");
   const howList = el("div", "pf-how-list");
   howList.setAttribute("role", "group");
   howList.setAttribute("aria-label", "Your controls");
@@ -2873,7 +3094,7 @@ export function createPerform(host) {
     "<p>The amber dot on a control’s ring is where this sound measures on it, compared with the sounds in your session. A control that turns only one way on this sound says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the center on the other. One that reads <i>listening…</i> hasn’t been measured on this sound yet, and does nothing until it has.</p>" +
     "<p>A control drawn in amber can’t be reached by this patch’s knobs (a patch with no drive can’t get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session’s sounds) or that it didn’t get there. Short of the notch it springs back and asks nothing.</p>" +
     "<p><b>Wander</b> sets how alive the sound is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to freeze it; touching any other control pauses it for a few seconds.</p>";
-  whyBody.append(howList, howOne, howAll);
+  whyBody.append(whyX, howList, howOne, howAll);
   // Which control How it works opens on: the one last touched (a palette
   // index), else the panel's first.
   let howAt = null;
@@ -2913,13 +3134,50 @@ export function createPerform(host) {
     h.append(el("span", "pf-how-name", c.name), el("span", "pf-how-ends mono", `${c.low} · ${c.high}`));
     howOne.append(h, el("p", "pf-how-hear", c.hear), el("p", "pf-how-how", c.how), el("p", "pf-how-here", on));
   }
-  whyBtn.onclick = () => {
-    whyBody.classList.toggle("hidden");
-    whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));
-    renderHow();
-  };
+  whyBtn.onclick = () => setWellMode(wellMode === "how" ? "face" : "how");
   whyBtn.setAttribute("aria-expanded", "false");
-  why.append(whyBtn, whyBody);
+  well.append(whyBody);
+
+  // ---------- the well's modes ----------
+  // The face (at rest), the XY pad or How it works, one at a time. The
+  // face stays drawn, dimmed, behind the other two. Esc inside the well, or
+  // the mode's own button again, puts the face back.
+  let wellMode = "face";
+  const xyBtn = el("button", "pf-xy-btn util-btn", "XY");
+  xyBtn.type = "button";
+  xyBtn.title = "XY pad: two controls under one finger";
+  xyBtn.setAttribute("aria-pressed", "false");
+  xyBtn.setAttribute("aria-controls", "pf-xy");
+  xy.id = "pf-xy";
+  xyBtn.onclick = () => setWellMode(wellMode === "xy" ? "face" : "xy");
+  function setWellMode(mode) {
+    const was = wellMode;
+    wellMode = mode;
+    well.dataset.mode = mode;
+    xy.classList.toggle("hidden", mode !== "xy");
+    whyBody.classList.toggle("hidden", mode !== "how");
+    xyBtn.setAttribute("aria-pressed", String(mode === "xy"));
+    whyBtn.setAttribute("aria-expanded", String(mode === "how"));
+    if (mode === "how") renderHow();
+    if (mode === "xy") {
+      paintXY();
+      if (was !== "xy") xyField.focus({ preventScroll: true });
+    }
+    // Focus left inside a mode that closed goes to the button that opens it.
+    if (was !== mode && was !== "face" && well.contains(document.activeElement) && !document.activeElement.closest(".pf-corner")) {
+      (was === "xy" ? xyBtn : whyBtn).focus({ preventScroll: true });
+    }
+  }
+  well.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || wellMode === "face") return;
+    setWellMode("face");
+  });
+  // A click on the sound plays it, as Space does (the specimen's well), and
+  // stage mode's tap: on a touch screen there is no Space.
+  faces.addEventListener("click", (e) => {
+    if (wellMode !== "face" || e.target.closest("button, input")) return;
+    host.play?.();
+  });
 
   // ---------- the palette ----------
   // Which controls sit on the panel, and in what order: place, hide and order
@@ -2930,7 +3188,7 @@ export function createPerform(host) {
   // control not on the panel is not measured, so it carries no mark.
   // Marks sit in a cell every row reserves, left of the name: a name never
   // moves for a mark, and is never cut short by one.
-  const arrangeBtn = el("button", "pf-arrange util-btn", "arrange");
+  const arrangeBtn = el("button", "pf-arrange pf-disclose", "arrange");
   arrangeBtn.type = "button";
   arrangeBtn.title = "Place, hide and order your controls";
   arrangeBtn.setAttribute("aria-haspopup", "dialog");
@@ -3027,7 +3285,8 @@ export function createPerform(host) {
   }
   function renderPalette() {
     if (!palOpen()) return;
-    const keep = pal.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
+    const inTouch = touchRow.contains(document.activeElement) ? document.activeElement : null;
+    const keep = !inTouch && pal.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
     const n = state.panel.length;
     pal.innerHTML = "";
     const head = el("div", "pp-head");
@@ -3042,7 +3301,11 @@ export function createPerform(host) {
     const body = el("div", "pp-body");
     const on = el("div", "pp-sec");
     on.append(el("div", "pp-h", "On the panel"), ...state.panel.map((k, i) => palRow(k, i)));
-    body.append(on);
+    // What a note's velocity plays: one of the panel's controls that turns
+    // both ways on this sound, or loudness only (`renderTouch`).
+    const vel = el("div", "pp-sec pp-vel");
+    vel.append(el("div", "pp-h", "Velocity plays"), touchRow);
+    body.append(on, vel);
     for (const fam of FAMILIES) {
       const rest = PALETTE.map((c, k) => k).filter((k) => PALETTE[k].family === fam && !state.panel.includes(k));
       if (!rest.length) continue;
@@ -3052,7 +3315,8 @@ export function createPerform(host) {
     }
     pal.append(head, body);
     // Focus stays on the button it was on, or the row's next useful one.
-    if (keep) {
+    if (inTouch) inTouch.focus({ preventScroll: true });
+    else if (keep) {
       const b = [...pal.querySelectorAll("button")].find((e) => e.getAttribute("aria-label") === keep && !e.disabled);
       (b || x).focus({ preventScroll: true });
     }
@@ -3086,14 +3350,18 @@ export function createPerform(host) {
   // in the vessel's own coordinates, left to fade like phosphor (`stageDraw`).
   // Nothing moves without sound. Space plays and the keys play, as
   // everywhere; ⇧F or Esc leaves. Not a modal: it asks nothing.
-  const stageBtn = el("button", "pf-stage-btn util-btn", "stage ⇧F");
+  const stageBtn = el("button", "pf-stage-btn util-btn");
   stageBtn.type = "button";
   stageBtn.title = platformKeys("Stage mode · ⇧F");
-  stageBtn.textContent = platformKeys("stage ⇧F");
+  stageBtn.setAttribute("aria-label", platformKeys("Stage mode (⇧F)"));
+  stageBtn.setAttribute("aria-keyshortcuts", "Shift+F");
+  stageBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M9 20h6"/></svg>';
+  stageBtn.append(el("kbd", "pf-kbd", platformKeys("⇧F")));
   stageBtn.onclick = () => openStage();
-  const actions = el("div", "pf-actions");
-  actions.append(arrangeBtn, stageBtn);
-  head.insertBefore(actions, scope);
+  // CONTROLS' head: Arrange and How it works. The well's corner: the XY
+  // pad and stage mode.
+  ctlActs.append(arrangeBtn, whyBtn);
+  corner.append(xyBtn, stageBtn);
   let stageOn = null; // {root, cv, trail, name, raf, entered, back, …}
   function openStage() {
     if (stageOn) return;
@@ -3109,13 +3377,28 @@ export function createPerform(host) {
     cv.setAttribute("aria-hidden", "true");
     const trail = el("canvas", "st-canvas st-trail");
     trail.setAttribute("aria-hidden", "true");
+    // The wordmark and the model's lamp, top left, as the specimen stages it
+    // (`a-stage.png`): the lamp is the header's, lit while the model works.
+    const brand = el("div", "st-brand");
+    brand.setAttribute("aria-hidden", "true");
+    const lamp = el("span", "lamp st-lamp");
+    brand.append(el("span", "word", "AURACLE"), lamp);
     const hud = el("div", "st-hud");
     const name = el("div", "st-name", host.label());
-    const where = el("div", "st-cat mono", "PERFORM · in hand");
+    // The family only where the engine has one (a preset's category): "bass ·
+    // in hand", or "in hand".
+    const fam = host.family?.() || "";
+    const where = el("div", "st-cat mono", fam ? `${fam.toLowerCase()} · in hand` : "in hand");
     hud.append(name, where);
-    // What plays and what leaves, in the hands this screen has.
+    // What plays and what leaves, in the hands this screen has, each key
+    // printed as a key.
     const touchOnly = !!window.matchMedia?.("(pointer: coarse)").matches;
-    const hint = el("div", "st-hint mono", touchOnly ? "tap to play the sound · × leaves" : platformKeys("A to L play · Space plays the sound · ⇧F or Esc leaves"));
+    const hint = el("div", "st-hint mono");
+    if (touchOnly) hint.textContent = "tap to play the sound · × leaves";
+    else {
+      const k = (t) => el("kbd", "st-kbd", platformKeys(t));
+      hint.append(k("A"), " to ", k("L"), " play · ", k("Space"), " plays the sound · ", k("⇧F"), " or ", k("Esc"), " leaves");
+    }
     const leave = el("button", "st-leave util-btn", "×");
     leave.type = "button";
     leave.setAttribute("aria-label", platformKeys("Leave stage mode (⇧F or Esc)"));
@@ -3130,7 +3413,7 @@ export function createPerform(host) {
     // outside a modal dialog, so a refusal is said here too (below).
     const ticks = ["100 Hz", "1 kHz", "10 kHz"].map((t) => el("div", "st-tick mono", t));
     ticks.forEach((t) => t.setAttribute("aria-hidden", "true"));
-    rootEl.append(cv, trail, ...ticks, hud, hint, leave, said);
+    rootEl.append(cv, trail, ...ticks, brand, hud, hint, leave, said);
     // A tap plays the sound, as Space does: on a touch screen there is no
     // Space.
     rootEl.addEventListener("click", (e) => {
@@ -3146,7 +3429,7 @@ export function createPerform(host) {
     behind.forEach((e) => (e.inert = true));
     document.body.append(rootEl);
     document.documentElement.classList.add("st-on");
-    stageOn = { root: rootEl, cv, trail, name, ticks, hint, leave, said, hintText: hint.textContent, hintTimer: 0, raf: 0, entered: false, back, behind };
+    stageOn = { root: rootEl, cv, trail, name, lamp, ticks, hint, leave, said, hintNodes: [...hint.childNodes], hintTimer: 0, raf: 0, entered: false, back, behind };
     rootEl.focus({ preventScroll: true });
     // A refusal is said in a toast, which stage mode would hide: urgent ones
     // are lifted above it (style.css), and said in the stage's own line too,
@@ -3164,7 +3447,7 @@ export function createPerform(host) {
           st.said.textContent = text;
           clearTimeout(st.hintTimer);
           st.hintTimer = setTimeout(() => {
-            st.hint.textContent = st.hintText;
+            st.hint.replaceChildren(...st.hintNodes);
             st.hint.classList.remove("said");
           }, 5000);
         }
@@ -3227,6 +3510,70 @@ export function createPerform(host) {
     },
     true,
   );
+  // ---------- the pad keys (ADR-018) ----------
+  // N offers (Next while B holds one), B held peeks, ⇧↵ takes, ↵ keeps and
+  // ⇧⌫ goes back. PERFORM's only, in sight, never over a modal (the warm
+  // start, the ? card, stage mode, a lesson) and never while typing. ↵ Keep
+  // only with no control focused: a focused control keeps its own Enter (a
+  // button presses, a control's long-press sweep). ⇧↵ is not a control's
+  // key, so it takes from a focused dial too, but not from a button or a
+  // drop-down, where Enter is theirs. Freeze has no key: a tap on Wander.
+  // Matched by character, as the keymap is (N and B are no note's key).
+  const ENTER_OWNERS = "button, a[href], select, textarea, input, [contenteditable], [role=button], [role=tab], [role=menuitem], [role=option], [role=listbox]";
+  const padKeysOff = (e) => !state.visible || !!stageOn || typing(e.target) || !!host.blocked?.() || e.metaKey || e.ctrlKey || e.altKey;
+  const nothingFocused = () => {
+    const a = document.activeElement;
+    return !a || a === document.body || a === document.documentElement || a === root;
+  };
+  let peekKey = false;
+  document.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented || padKeysOff(e)) return;
+    const k = e.key;
+    if ((k === "n" || k === "N") && !e.shiftKey) {
+      e.preventDefault();
+      if (e.repeat) return;
+      touch();
+      requestOffer();
+      flash("offer");
+    } else if ((k === "b" || k === "B") && !e.shiftKey) {
+      e.preventDefault();
+      if (e.repeat || peekKey) return;
+      peekKey = true;
+      touch();
+      padEls.peek?.classList.add("down");
+      peekOn();
+    } else if (k === "Enter" && e.shiftKey) {
+      if (e.target?.closest?.(ENTER_OWNERS)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      touch();
+      take();
+    } else if (k === "Enter" && !e.shiftKey) {
+      if (!nothingFocused()) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (!movedFromHome()) return void host.note("Nothing to keep: this sound is home.", { replace: "pf-keep" });
+      touch();
+      keep();
+    } else if (k === "Backspace" && e.shiftKey) {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (!movedFromHome()) return void host.note("Nothing to go back to: this sound is home.", { replace: "pf-keep" });
+      touch();
+      back();
+    }
+  });
+  const endPeekKey = () => {
+    if (!peekKey) return;
+    peekKey = false;
+    padEls.peek?.classList.remove("down");
+    peekOff();
+  };
+  document.addEventListener("keyup", (e) => {
+    if (e.key === "b" || e.key === "B") endPeekKey();
+  });
+  window.addEventListener("blur", endPeekKey);
+
   // The loop: size the canvas, follow the name, and hand one frame's state
   // to `stageDraw`, which is all that knows what the stage looks like.
   function stageFrame() {
@@ -3243,6 +3590,9 @@ export function createPerform(host) {
       }
     }
     if (s.name.textContent !== host.label()) s.name.textContent = host.label();
+    // The lamp says what the header's does: lit while the model works.
+    const thinking = !!document.getElementById("wm-lamp")?.classList.contains("thinking");
+    if (s.lamp.classList.contains("thinking") !== thinking) s.lamp.classList.toggle("thinking", thinking);
     const tree = state.cur ? state.cur.json : null;
     stageDraw(s.cv.getContext("2d"), {
       W,
@@ -3377,13 +3727,14 @@ export function createPerform(host) {
   // ---------- first steps ----------
   // For someone who walks up to it cold — no staff, no manual. Three moves
   // are the whole loop: play, turn a control, ask for an offer. Each ticks off
-  // when it happens (not when it is read), and the strip retires once all
-  // three have. Per visitor: the booth's "new visitor" brings it back.
-  const STEPS_KEY = "auracle-perform-steps";
+  // when it happens (not when it is read), and the guide pill (guide.js,
+  // `host.guide`) retires once all three have. Per visitor: the booth's "new
+  // visitor" brings it back.
+  const coarse = () => !!window.matchMedia?.("(pointer: coarse)").matches;
   const STEPS = [
     { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
     { id: "turn", text: turnStep },
-    { id: "offer", text: () => "Press OFFER, then hold PEEK or TAKE it" },
+    { id: "offer", text: () => (coarse() ? "Press OFFER, then hold PEEK or TAKE it" : "Press OFFER or N, then hold B to peek, or TAKE it") },
   ];
   // Step 2 names a control that turns on *this* patch. It used to say "Turn a
   // lit control: BRIGHT is a good start" on every patch, when the only
@@ -3400,39 +3751,18 @@ export function createPerform(host) {
     if (one != null) return `Turn ${controls()[one].name.toUpperCase()}: drag ${rangeOf(w[one])[1] > 0 ? "up" : "down"}`;
     return "Turn a named control: drag up or down";
   }
-  const stepsDone = new Set();
-  try {
-    for (const id of JSON.parse(localStorage.getItem(STEPS_KEY) || "[]")) stepsDone.add(id);
-  } catch {
-    /* a per-viewer convenience; an empty set is fine */
-  }
+  for (const st of STEPS) host.guide?.add(st);
+  // The pill's step 2 names what this sound can turn: said again when the
+  // wiring changes.
   function renderSteps() {
-    if (stepsDone.size >= STEPS.length) {
-      // The closing line stays for its moment (see stepDone).
-      if (!stepsEl.querySelector(".all")) stepsEl.classList.add("hidden");
-      return;
-    }
-    stepsEl.innerHTML = "";
-    const now = STEPS.find((st) => !stepsDone.has(st.id));
-    STEPS.forEach((st, i) => {
-      const done = stepsDone.has(st.id);
-      stepsEl.append(el("span", `pf-step${done ? " done" : ""}${st === now ? " now" : ""}`, `${done ? "✓" : i + 1}  ${st.text()}`));
-    });
+    host.guide?.refresh();
   }
+  // Booth attract plays the instrument by itself: nothing it does ticks a
+  // visitor's step.
   function stepDone(id) {
-    if (state.quiet || stepsDone.has(id) || stepsDone.size >= STEPS.length) return;
-    stepsDone.add(id);
-    try {
-      localStorage.setItem(STEPS_KEY, JSON.stringify([...stepsDone]));
-    } catch {
-      /* in memory is enough for this visit */
-    }
-    if (stepsDone.size < STEPS.length) return renderSteps();
-    stepsEl.innerHTML = "";
-    stepsEl.append(el("span", "pf-step done all", "✓  That is the loop. Every offer you take or pass teaches it what you like."));
-    setTimeout(() => stepsEl.classList.add("hidden"), 7000);
+    if (state.quiet) return;
+    host.guide?.done(id);
   }
-  renderSteps();
 
   // ---------- XY pad ----------
   // Named-control indices on each axis. Until the player picks, the pad
@@ -3475,8 +3805,11 @@ export function createPerform(host) {
     });
     sel.value = String(XY[axis]);
   }
-  xyHead.append(el("span", "pf-xy-cap", "XY"), axisSel("x"), el("span", null, "×"), axisSel("y"));
+  // The axis pickers along the well's top edge; the end words at the field's
+  // edges. Hidden until the well is in XY mode (`setWellMode`).
+  xyHead.append(axisSel("x"), el("span", "pf-xy-by", "×"), axisSel("y"));
   xy.append(xyHead, xyField);
+  xy.classList.add("hidden");
 
   const xyReach = (i) => turns(state.wire && state.wire[i]);
   // An axis not measured yet (no wiring, or a control a Take carried over with
@@ -3586,17 +3919,20 @@ export function createPerform(host) {
       clearTimeout(k.keyTimer);
       clearTimeout(k.bumpTimer);
     }
+    for (const k of knobs) if (k.spec.kind !== "named") k.wrap.remove();
     knobs.length = 0;
     deck.innerHTML = "";
     controls().forEach((c, i) =>
       makeKnob(i, { kind: "named", name: c.name, low: c.low, high: c.high, index: state.panel[i], initial: state.c[i] || 0 }),
     );
     const n = state.panel.length;
-    makeKnob(n, { kind: "blend", name: "Blend", low: "home", high: "offer", initial: state.blend });
+    // Blend and Wander keep the slots after the panel's controls (MIDI's and
+    // the keys' `setControl`), wherever they are drawn.
+    makeBlend(n, { kind: "blend", name: "Blend", low: "home", high: "offer", initial: state.blend });
     makeKnob(n + 1, { kind: "wander", name: "Wander", low: "still", high: "roam", initial: state.wander });
-    // Eight columns hold the six and Blend and Wander; a longer panel widens
-    // the row by a column a control (a count, not a size).
-    deck.style.setProperty("--pf-cols", String(Math.max(8, n + 2)));
+    // Three columns hold the six, as the specimen sets them; a longer panel
+    // takes four (a count, not a size).
+    deck.style.setProperty("--pf-cols", String(n <= 6 ? 3 : 4));
     knobs.forEach(paintKnob);
   }
   buildDeck();
@@ -3718,32 +4054,22 @@ export function createPerform(host) {
     renderPalette();
   }
 
-  pad("keep", "Keep", "Make this sound home: Back returns here", keep);
-  pad("back", "Back", "Glide back to the last sound you kept", back);
-  pad("offer", "Offer", "Grow a variant from here into B", () => requestOffer());
+  // Keep and Back settle a sound that has moved from home: they sit in the
+  // head's moved bar (`paintMoved`), shown exactly when there is something
+  // to keep or to go back from. ↵ and ⇧⌫ (ADR-018).
+  movedBar.append(el("span", "pf-moved-w mono", "moved"));
+  pad("keep", "Keep", "Make this sound home: Back returns here · ↵", keep, null, { parent: movedBar, cls: "pf-mv pf-keep", kbd: "↵", keys: "Enter" });
+  pad("back", "Back", "Glide back to the last sound you kept · ⇧⌫", back, null, { parent: movedBar, cls: "pf-mv pf-back", kbd: "⇧⌫", keys: "Shift+Backspace" });
+  // The pad row: Wander (built with the deck), then the model's three acts
+  // on B and a pass. The printed keys are ADR-018's.
+  pad("offer", "Offer", "Grow a variant from here into B · N", () => requestOffer(), null, { kbd: "N", keys: "N" });
   // The one gesture no other instrument has; it reads as the primary.
   padEls.offer.classList.add("primary");
-  pad("take", "Take", "Make the offer in B your sound", take);
-  pad(
-    "peek",
-    "Peek",
-    "Hold to hear the offer; let go to come back",
-    () => {
-      const live = host.live();
-      state.peeking = true;
-      if (live && state.offer) live.bMix(1);
-      else host.note("Nothing offered yet. Press Offer first.", { urgent: true });
-    },
-    () => {
-      state.peeking = false;
-      const live = host.live();
-      if (live && state.offer) live.bMix(state.blend);
-    },
-  );
-  // "Freeze", not "Hold": the dock's HOLD latches notes, and two buttons
-  // named the same thing on one screen doing different jobs is a trap.
-  pad("hold", "Freeze", "Freeze wander (tap Wander does the same)", toggleHold);
-  padEls.hold.setAttribute("aria-pressed", "false");
+  pad("peek", "Peek", "Hold to hear the offer; let go to come back · hold B", peekOn, peekOff, { kbd: "B", keys: "B" });
+  pad("take", "Take", "Make the offer in B your sound · ⇧↵", take, null, { kbd: "⇧↵", keys: "Shift+Enter" });
+  // A pass on B without growing another (Next is a pass and an Offer):
+  // recorded as Next's pass is, once B has been heard, with its UNDO.
+  pad("pass", "Pass", "Pass on the offer in B without growing another", () => passOffer(), null, { cls: "pf-pad pf-pass" });
   knobs.forEach(paintKnob);
   renderOffer();
   renderStatus();
@@ -3995,6 +4321,7 @@ export function createPerform(host) {
     // hears a blend it cannot see. The offer itself stays for coming back.
     hide() {
       state.visible = false;
+      endPeekKey();
       closePalette(false);
       const live = host.live();
       if (live && state.offer) live.bMix(0);
@@ -4014,7 +4341,7 @@ export function createPerform(host) {
     patchChanged,
     // The live patch was renamed (auto-names follow the pool).
     relabel() {
-      nameEl.textContent = host.label();
+      renderHeadWords();
     },
     onWorker,
     // For MIDI and the keyboard: set a named control (0..5), Blend (6) or
@@ -4053,7 +4380,9 @@ export function createPerform(host) {
       return k.spec.kind === "named" ? (k.value + 1) / 2 : k.value;
     },
     pad(key) {
-      ({ keep, back, offer: () => requestOffer(), take, hold: toggleHold })[key]?.();
+      ({ keep, back, offer: () => requestOffer(), take, pass: () => passOffer(), hold: toggleHold })[key]?.();
     },
+    // Has the sound left home (the moved bar)?
+    moved: () => movedFromHome(),
   };
 }

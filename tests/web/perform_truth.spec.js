@@ -214,16 +214,20 @@ test("first steps name a control that turns on this patch, and speak alone", asy
   // A newcomer, at PERFORM, where the app opens: step 1 says what the keybed
   // coach would, so the coach keeps quiet. In PATCH it is up until the first
   // note.
-  await expect(page.locator("#view-perform .pf-steps")).toBeVisible();
+  await expect(page.locator("#guide .pf-steps")).toBeVisible();
   await expect(page.locator(".coach")).toBeHidden();
   await goLevel(page, "patch");
   await expect(page.locator(".coach")).toBeVisible();
   await openOnPerform(page, "Glass Pad");
-  await expect(page.locator(".pf-steps")).toBeVisible();
+  await expect(page.locator("#guide .pf-steps")).toBeVisible();
   // One voice per lesson: step 1 says what the coach says.
   await expect(page.locator(".coach")).toBeHidden();
   await wired(page);
-  const step2 = (await page.locator(".pf-step").nth(1).textContent()).trim();
+  // The guide pill shows one step at a time: a note played, step 2 is next.
+  await expect(page.locator("#guide .pf-step.now")).toContainText("Play a key");
+  await page.keyboard.press("a");
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn /);
+  const step2 = (await page.locator("#guide .pf-step.now").textContent()).trim();
   const m = step2.match(/Turn ([A-Z]+): drag (up or down|up|down)$/);
   expect(m, step2).not.toBeNull();
   const k = page.locator(".pf-knob", { has: page.locator(".pf-k-name", { hasText: new RegExp(`^${m[1]}$`, "i") }) });
@@ -241,6 +245,7 @@ test("choosing an XY axis gives the note keys back", async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
+  await page.locator(".pf-xy-btn").click();
   const ysel = page.locator(".pf-xy-head select").nth(1);
   // As a click does: the select has focus when the choice is made.
   await ysel.focus();
@@ -299,15 +304,17 @@ test("after a pass, Blend comes home", async ({ page }) => {
   const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
-  const blend = page.locator('.pf-knob[data-i="6"]');
-  await drag(page, blend, -120);
+  // Blend, the slider under the two faces, toward B.
+  const blend = page.locator('.pf-blend[data-i="6"] input');
+  await blend.focus();
+  await page.keyboard.press("End");
   expect(Number(await blend.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
   // NEXT (Offer, while B holds one) is a pass: B empties, and Blend glides
   // home.
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
   await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
-  await expect(blend.locator(".pf-k-sub")).toHaveText(/^(no offer yet|0% offer)$/);
+  await expect(page.locator('.pf-blend[data-i="6"] .pf-blend-v')).toHaveText(/^(no offer yet|0% offer)$/);
   expect(errs).toEqual([]);
 });
 
@@ -335,7 +342,7 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   await wander.focus();
   for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
   await expect(wander.locator(".pf-k-sub")).toHaveText(/^roam/);
-  await page.locator(".pf-xy-field").focus(); // off the dial, hands off
+  await page.evaluate(() => document.activeElement?.blur()); // off the dial, hands off
   // A drift arrives and glides.
   await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: DRIFT_MS });
   // …and finishes: give the glide (3 s at most in roam) time to land.
@@ -351,7 +358,7 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   const k0 = await page.evaluate(() => performance.now());
   await wander.focus();
   await page.keyboard.press("Home"); // Wander still
-  await page.locator(".pf-pad", { hasText: "Keep" }).click();
+  await page.locator(".pf-moved .pf-keep").click();
   await expect(page.locator("#toasts")).toContainText("Kept: this is home now. Back returns here.", { timeout: 10_000 });
   await page.waitForTimeout(1500);
   const afterKeep = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t && !p.bg), k0);

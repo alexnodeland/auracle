@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=73">
+<link rel="stylesheet" href="style.css?b=74">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -48,7 +48,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=137";
+    s.src = "main.js?b=138";
     document.head.appendChild(s);
   }
 })();
@@ -596,83 +596,128 @@
 
       <!-- ------------- EVOLVE: duels + generations ------------- -->
       <section id="view-evolve" class="view hidden" aria-label="Evolve">
-        <!-- The level's cap line, and how many generations it has bred toward
-             your taste (main.js, renderGenCount). Named in full: "gen" said
-             what it counted only in its tooltip. -->
-        <div class="ev-cap">
-          <span class="lv-eyebrow">evolve</span>
-          <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
-        </div>
-        <!-- The teaching meter sits above the cards so A and B stay side by
-             side at every width — the comparison IS the interaction. -->
-        <div class="duel-mid" id="duel-mid">
-          <div class="teach">
-            <div class="teach-pips" id="teach-pips" aria-hidden="true"></div>
-            <div class="teach-copy" id="teach-copy">Play both. Pick the one you’d reach for.</div>
-          </div>
-          <div class="duel-centre">
-            <div class="mono duel-pred" id="duel-pred" title="Its guess for this pair, made before you picked"></div>
-            <!-- How the pair on the table was chosen: its own line, so it
-                 holds its place while forecasts come and go above it. -->
-            <div class="duel-deal">
-              <span class="mono duel-rule" id="duel-rule"></span>
-              <button class="inspect-btn" id="skip-duel" title="Deal a new pair without picking">another pair</button>
+        <!-- To the specimen (Plan-008 C1, `z-desk-evolve.png`): the head (the
+             level's cap with its generations, the question, the pips and the
+             teaching line), a small TASTE map at its right, two cards each
+             with its sound's face in a well, and the foot (another pair and
+             how the pair was dealt, the forecast after a pick, EVOLVE POOL
+             and what each generation did). -->
+        <div class="ev-head">
+          <div class="ev-head-words">
+            <!-- The level's cap line, and how many generations it has bred
+                 toward your taste (main.js, renderGenCount). -->
+            <div class="ev-cap">
+              <span class="lv-eyebrow">evolve</span>
+              <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
             </div>
+            <h1 class="lv-title ev-title">Pick the one you’d reach for.</h1>
+            <!-- The teaching meter: six pips to the next refit and its line
+                 (main.js, renderTeach). -->
+            <div class="duel-mid" id="duel-mid">
+              <div class="teach">
+                <div class="teach-pips" id="teach-pips" aria-hidden="true"></div>
+                <div class="teach-copy" id="teach-copy">Play both. Pick the one you’d reach for.</div>
+              </div>
+            </div>
+          </div>
+          <!-- The pair among every sound: TASTE's map, small (taste.js
+               drawMini). A press goes to TASTE. -->
+          <button class="ev-map" id="ev-map" type="button" aria-label="Taste: the pair among every sound" aria-keyshortcuts="Alt+4" title="Taste · ⌥4">
+            <canvas id="ev-map-cv" aria-hidden="true"></canvas>
+            <span class="ev-map-cap" aria-hidden="true">taste <kbd>⌥4</kbd></span>
+          </button>
+        </div>
+        <div class="duel-row">
+          <section class="duel-card" id="duel-a" aria-label="Sound A">
+            <!-- The well: the sound's face, large (main.js FACE_OPTS), or under
+                 ⇄ circuit its patch and, with Show measurements, its
+                 s-expression. Its corner: the circuit and open in PATCH. The
+                 model view's style and its guess before you pick sit over
+                 its top (main.js, askPairGuess). -->
+            <div class="duel-well">
+              <span class="duel-side" aria-hidden="true">A</span>
+              <span id="face-a"></span>
+              <!-- While its audio renders, a sweep and "rendering…" over the
+                   face; nothing once it has landed. -->
+              <canvas class="scope" id="scope-a" aria-hidden="true"></canvas>
+              <div class="mini-rack hidden" id="mini-a">
+                <svg id="mini-svg-a" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+              </div>
+              <div class="readout mono hidden" id="readout-a">·</div>
+              <span class="style-badge mono" id="style-a"></span>
+              <span class="duel-guess mono" id="guess-a"></span>
+              <div class="duel-corner">
+                <button class="inspect-btn" id="flip-a" title="Flip: face ⇄ circuit">⇄ circuit</button>
+                <button class="inspect-btn promote" id="promote-a" title="Open it in PATCH to edit, lock, and evolve" aria-label="Open A in PATCH">↓ patch</button>
+              </div>
+            </div>
+            <div class="duel-foot">
+              <div class="duel-who">
+                <div class="duel-name" id="name-a">sound a</div>
+                <div class="duel-fam" id="fam-a"></div>
+              </div>
+              <div class="duel-controls">
+                <button class="hw-btn play" id="play-a">▶ play <kbd>1</kbd></button>
+                <button class="hw-btn choose" id="choose-a">pick a <kbd>←</kbd></button>
+              </div>
+            </div>
+          </section>
+          <span class="duel-or" aria-hidden="true">or</span>
+          <section class="duel-card" id="duel-b" aria-label="Sound B">
+            <div class="duel-well">
+              <span class="duel-side" aria-hidden="true">B</span>
+              <span id="face-b"></span>
+              <canvas class="scope" id="scope-b" aria-hidden="true"></canvas>
+              <div class="mini-rack hidden" id="mini-b">
+                <svg id="mini-svg-b" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+              </div>
+              <div class="readout mono hidden" id="readout-b">·</div>
+              <span class="style-badge mono" id="style-b"></span>
+              <span class="duel-guess mono" id="guess-b"></span>
+              <div class="duel-corner">
+                <button class="inspect-btn" id="flip-b" title="Flip: face ⇄ circuit">⇄ circuit</button>
+                <button class="inspect-btn promote" id="promote-b" title="Open it in PATCH to edit, lock, and evolve" aria-label="Open B in PATCH">↓ patch</button>
+              </div>
+            </div>
+            <div class="duel-foot">
+              <div class="duel-who">
+                <div class="duel-name" id="name-b">sound b</div>
+                <div class="duel-fam" id="fam-b"></div>
+              </div>
+              <div class="duel-controls">
+                <button class="hw-btn play" id="play-b">▶ play <kbd>2</kbd></button>
+                <button class="hw-btn choose" id="choose-b">pick b <kbd>→</kbd></button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="ev-foot">
+          <!-- How the pair on the table was chosen, beside ANOTHER PAIR; the
+               forecast after a pick keeps its line beside the rule. -->
+          <div class="duel-deal">
+            <button class="inspect-btn" id="skip-duel" title="Deal a new pair without picking · N" aria-keyshortcuts="N">another pair <kbd>N</kbd></button>
+            <span class="mono duel-rule" id="duel-rule"></span>
+            <span class="mono duel-pred" id="duel-pred" title="Its guess for this pair, made before you picked"></span>
           </div>
           <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
                beside it, and it says what each walk came back as. Pointing at
                it marks, in the bank, the seeds a generation breeds from and
                the sounds it may replace (the wrapper hears the pointer while
-               the button is disabled). -->
-          <span class="evolve-wrap" id="evolve-wrap">
-            <button class="hw-btn small" id="evolve-btn" title="Breed a generation from the seeds it marks">evolve pool</button>
-            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, it replaces the lowest-rated sounds it can (not saved, nor just kept as new) to bring the pool back to its size, and that can be a child bred early.">stop</button>
-          </span>
+               the button is disabled). Under it, what each generation did. -->
+          <div class="ev-evolve">
+            <span class="evolve-wrap" id="evolve-wrap">
+              <button class="hw-btn small" id="evolve-btn" title="Breed a generation from the seeds it marks">evolve pool</button>
+              <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, it replaces the lowest-rated sounds it can (not saved, nor just kept as new) to bring the pool back to its size, and that can be a child bred early.">stop</button>
+            </span>
+            <button class="ev-lineage-btn" id="lineage-btn" type="button" aria-expanded="false" aria-controls="lineage-pop">what each generation did</button>
+          </div>
         </div>
-        <div class="duel-row">
-          <section class="duel-card" id="duel-a">
-            <div class="panel-head">
-              <span id="face-a"></span>
-              <div class="duel-name" id="name-a">sound a</div>
-              <!-- The model view's (⌥): its style, and its guess before
-                   you pick on the card it favours (main.js, askPairGuess). -->
-              <span class="style-badge mono" id="style-a"></span>
-              <span class="duel-guess mono" id="guess-a"></span>
-              <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
-            </div>
-            <canvas class="scope" id="scope-a"></canvas>
-            <div class="mini-rack hidden" id="mini-a">
-              <svg id="mini-svg-a" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
-            </div>
-            <div class="readout mono" id="readout-a">·</div>
-            <div class="duel-controls">
-              <button class="hw-btn play" id="play-a">▶ sample <kbd>1</kbd></button>
-              <button class="hw-btn promote" id="promote-a" title="Open it in PATCH to edit, lock, and evolve">open in patch</button>
-              <button class="hw-btn choose" id="choose-a">pick a <kbd>←</kbd></button>
-            </div>
-          </section>
-          <section class="duel-card" id="duel-b">
-            <div class="panel-head">
-              <span id="face-b"></span>
-              <div class="duel-name" id="name-b">sound b</div>
-              <span class="style-badge mono" id="style-b"></span>
-              <span class="duel-guess mono" id="guess-b"></span>
-              <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
-            </div>
-            <canvas class="scope" id="scope-b"></canvas>
-            <div class="mini-rack hidden" id="mini-b">
-              <svg id="mini-svg-b" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
-            </div>
-            <div class="readout mono" id="readout-b">·</div>
-            <div class="duel-controls">
-              <button class="hw-btn play" id="play-b">▶ sample <kbd>2</kbd></button>
-              <button class="hw-btn promote" id="promote-b" title="Open it in PATCH to edit, lock, and evolve">open in patch</button>
-              <button class="hw-btn choose" id="choose-b">pick b <kbd>→</kbd></button>
-            </div>
-          </section>
-        </div>
-        <div class="lineage-strip">
-          <div class="panel-label amber">evolution <span class="silk-dim">· what each generation did</span></div>
+        <!-- What each generation did (the lineage's spark and log), opened
+             over the foot of the cards. -->
+        <div class="lineage-strip hidden" id="lineage-pop" role="region" aria-label="What each generation did">
+          <div class="panel-label amber">evolution <span class="silk-dim">· what each generation did</span>
+            <button class="util-btn sq lineage-x" id="lineage-x" type="button" aria-label="Close" title="Close · Esc">×</button>
+          </div>
           <div class="lineage-body">
             <canvas id="lineage-spark"></canvas>
             <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet. Make a few picks, then press EVOLVE POOL, or ⚡ on a sound you like.</span></div>
@@ -780,6 +825,10 @@
         <button class="rail-stop" type="button" data-level="patch" aria-label="Patch: what the sound is made of" aria-keyshortcuts="Alt+2" title="Patch · ⌥2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.9c0 8 11 8 11 0"/><circle cx="6.5" cy="9" r="2.9"/><circle cx="17.5" cy="9" r="2.9"/></svg><span class="rl" aria-hidden="true">Patch</span></button>
         <span class="rail-hint" aria-hidden="true">in</span>
       </nav>
+
+      <!-- The guide pill (guide.js): the first-visit steps, one at a time,
+           bottom left of the stage, with × to stop showing them. -->
+      <div class="guide hidden" id="guide"></div>
     </main>
   </div>
 

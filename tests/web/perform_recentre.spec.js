@@ -82,7 +82,7 @@ test("a re-centred control glides home with a fading ghost, and a background re-
       window.__angles.push([performance.now(), m ? Number(m[1]) : NaN]);
     }).observe(turn, { attributes: true, attributeFilter: ["transform"] });
   });
-  await page.locator(".pf-pad", { hasText: "Keep" }).click();
+  await page.locator(".pf-moved .pf-keep").click();
   await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
   await expect(bright).toHaveAttribute("aria-valuenow", "0.00");
   await page.waitForTimeout(600);
@@ -122,7 +122,7 @@ test("a pot on Blend is let go when Blend comes home, and takes it again from ho
   await page.evaluate(() => window.__cc(20, 0));
   await expect(page.locator("#midi-panel .midi-row").nth(6)).toContainText("CC 20");
   await page.locator("#midi-ind").click();
-  const blend = page.locator('.pf-knob[data-i="6"]');
+  const blend = page.locator('.pf-blend[data-i="6"] input');
   const at = async () => Number(await blend.getAttribute("aria-valuenow"));
   // The pot picks Blend up at home and turns it most of the way to the offer.
   for (const v of [2, 20, 45, 70, 95, 115]) await page.evaluate((v) => window.__cc(20, v), v);

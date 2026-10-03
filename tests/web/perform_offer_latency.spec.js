@@ -193,7 +193,7 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
   await drag(page, bright, -150);
   expect(Number(await bright.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
   const keepAt = Date.now();
-  await page.locator(".pf-pad", { hasText: "Keep" }).click();
+  await page.locator(".pf-moved .pf-keep").click();
   await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: KEEP_MS });
   console.log(`Keep said so in ${Date.now() - keepAt} ms with the spare growing`);
 

@@ -162,11 +162,20 @@ const shell = createShell({
   // Any modal one showing: the warm start, the commit pair, the ? card,
   // PERFORM's stage mode, explain's lesson. A non-modal panel (MIDI, KEYS ⋯,
   // the scope's settings, Compare) does not keep them.
-  blocked: () =>
-    [...document.querySelectorAll('[aria-modal="true"]')].some(
-      (el) => el.isConnected && !el.classList.contains("hidden") && el.getClientRects().length > 0,
-    ),
+  blocked: () => modalUp(),
 });
+/** Is a modal dialog showing (the warm start, the commit pair, the ? card,
+ *  stage mode, explain's lesson)? It keeps the level keys and PERFORM's pad
+ *  keys: what is behind it must not change unseen. */
+function modalUp() {
+  return [...document.querySelectorAll('[aria-modal="true"]')].some(
+    (el) => el.isConnected && !el.classList.contains("hidden") && el.getClientRects().length > 0,
+  );
+}
+// The guide pill (guide.js): the first-visit steps, one at a time, bottom
+// left of the stage. PERFORM adds its three when it is built.
+const { createGuide } = await import(`./guide.js?v=${BUILD}`);
+const guide = createGuide({ el: $("guide") });
 for (const level of ["perform", "patch", "evolve", "taste", "learning"]) shell.register(level, { el: $(`view-${level}`) });
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -373,6 +382,30 @@ const FACE_SIZE = {
   warm: [24, 40],  // the warm start's cards
   share: [150, 230], // the sound's card (drawn into its SVG, not a slot)
   inhand: [20, 30], // the header's chip, the sound in hand
+  // Large, in a well (Plan-008 C1): PERFORM's sound in hand and its B, and
+  // an EVOLVE card's sound. Drawn at this size and scaled by the well that
+  // holds it (`FACE_FLUID`), with the glow and the floor's reflection stage
+  // mode draws (`FACE_OPTS`).
+  well: [240, 480],
+  wellb: [200, 480],
+  evolve: [240, 480],
+};
+const FACE_FLUID = new Set(["well", "wellb", "evolve"]);
+// A large face's vessel stands on a floor at 79% of its picture, with room
+// under it for its reflection, as stage mode's does (perform.js
+// `stageBox`), 0.6 as wide as it is tall. B's is the model's, in amber, and
+// smaller, on the same floor: the two pictures share a height in the well,
+// so the floors line up (style.css places B's label and words by these
+// numbers).
+const wellBox = (w, h, scale = 1) => {
+  const bh = h * 0.74 * scale;
+  const bw = Math.min(w * 0.9, bh * 0.6);
+  return { x: (w - bw) / 2, y: h * 0.79 - bh, w: bw, h: bh };
+};
+const FACE_OPTS = {
+  well: () => ({ box: wellBox(...FACE_SIZE.well), glow: 18, reflection: true, line: 2 }),
+  wellb: () => ({ box: wellBox(...FACE_SIZE.wellb, 0.62), glow: 12, reflection: true, line: 1.6, color: tok("--phos-b") }),
+  evolve: () => ({ box: wellBox(...FACE_SIZE.evolve), glow: 18, reflection: true, line: 2 }),
 };
 // Bounded: a bench edit is a new tree, so a new ref, key and drawing each
 // time. The least recently used go past FACE_KEEP (the bank's faces are used
@@ -443,11 +476,11 @@ function faceMarkup(target, kind, ask = true, build = true) {
   }
   if (!faceStats) return "";
   const [w, h] = FACE_SIZE[kind];
-  const ck = `${key}|${faceEpoch}|${w}|${h}`;
+  const ck = `${key}|${faceEpoch}|${w}|${h}${FACE_OPTS[kind] ? `|${kind}` : ""}`;
   let s = lruGet(faceMarkupCache, ck);
   if (s == null && !build) return "";
   if (s == null) {
-    s = `<img class="face" src="${faceImage(face, w, h)}" width="${w}" height="${h}" alt="" draggable="false">`;
+    s = `<img class="face" src="${faceImage(face, w, h, FACE_OPTS[kind] ? FACE_OPTS[kind]() : {})}" width="${w}" height="${h}" alt="" draggable="false">`;
     lruSet(faceMarkupCache, ck, s);
   }
   return s;
@@ -806,8 +839,11 @@ function setFaceSlot(el, kind, t) {
   el.classList.add("face-slot", `face-${kind}`);
   el.dataset.kind = kind;
   el.setAttribute("aria-hidden", "true");
-  el.style.width = `${w}px`;
-  el.style.height = `${h}px`;
+  // A large face takes the size of the well it is in (style.css).
+  if (!FACE_FLUID.has(kind)) {
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+  }
   const target = faceTarget(t);
   if (target && target === el.dataset.face) return void paintFaceSlot(el);
   if (target) el.dataset.face = target;
@@ -3545,6 +3581,7 @@ function renderTeach() {
   const pdPips = $("pd-pips");
   if (pdPips) pdPips.innerHTML = dots;
   const mid = $("duel-mid");
+  paintEvolveTaught();
   mid.classList.toggle("learning", learning);
   mid.classList.toggle("learned", !learning && learnedShown);
   $("play-duel")?.classList.toggle("learning", learning);
@@ -4026,13 +4063,14 @@ function dismissToast(t, immediate) {
 // lane moves above them: the teaching strips (rule 2), and the bands it used
 // to park on while someone was reading or reaching for them — the taste map's
 // footer, EVOLVE's record of what each generation did, the module strip under
-// the rack, and HELD. COLUMNS are stepped beside — the lane moves left of
+// the rack, HELD, and PERFORM's pad row (pressed mid-phrase). COLUMNS are
+// stepped beside — the lane moves left of
 // them: panels far taller than a toast that stand on the same bottom edge —
 // the node bank's rail, the tours on the rails, the MIDI and arp panels —
 // where stepping *over* a 460px rail would carry a toast to the top of the
 // rack. Every `.duel-controls`, not the first: B's buttons are the ones at
 // the lane's edge.
-const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
+const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
@@ -4450,11 +4488,12 @@ function levelChanged(prev, name, { chosen = false } = {}) {
   if (taste) taste.setView(name);
   if (name === "evolve") {
     drawLineage();
+    drawEvolveMap();
     if (currentDuel) {
       onRenderArrived(currentDuel[0]);
       onRenderArrived(currentDuel[1]);
     }
-  }
+  } else setLineageOpen(false);
 }
 
 // role=tablist / role=menu promise arrow keys; deliver them. One wiring for
@@ -4778,6 +4817,18 @@ async function bootPerform() {
     live: () => live,
     liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
     label: () => liveLabelText,
+    // The cap's family and the line under the name: a preset's category and
+    // blurb, for a sound opened from the library and not edited since
+    // (`livePatchId` is null once it is). A bred or edited sound has none,
+    // and the engine is not asked to guess one.
+    family: () => presetOfId(livePatchId)?.category || "",
+    blurb: () => presetOfId(livePatchId)?.blurb || "",
+    // Share: the sound's card, as a picture (the picture panel, on its card).
+    share: () => openSoundCard(),
+    // The first steps, in the guide pill.
+    guide,
+    // A modal dialog showing keeps the pad keys, as it keeps the level keys.
+    blocked: () => modalUp(),
     // A face into one of PERFORM's slots: the sound in hand's, or B's.
     face: (el, kind, json) => setFaceSlot(el, kind, json ? { tree: json } : null),
     // A tree's face and the bank it is drawn against, for a drawing of
@@ -5069,7 +5120,8 @@ function boothPrewarmLanded(m) {
 async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
-  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-perform-steps"])
+  // The guide pill's steps (`auracle-guide`), and the key they had before it.
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps"])
     localStorage.removeItem(k);
   // The next visitor starts at PERFORM, not at the level the address names.
   try { history.replaceState(history.state, "", `${location.pathname}${location.search}`); } catch { /* ignore */ }
@@ -5475,6 +5527,10 @@ document.addEventListener("keydown", (e) => {
     endConnectPick();
     foldStars(); // a bank row's ★, open
     if (compareId != null) closeCompare();
+    if (!$("lineage-pop").classList.contains("hidden")) {
+      setLineageOpen(false);
+      $("lineage-btn").focus();
+    }
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
@@ -5584,6 +5640,8 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "2") $("play-b").click();
     else if (e.key === "ArrowLeft") $("choose-a").click();
     else if (e.key === "ArrowRight") $("choose-b").click();
+    // ANOTHER PAIR · N: N means next (ADR-009, ADR-018).
+    else if (k === "n" && !e.shiftKey && !$("skip-duel").disabled) $("skip-duel").click();
     return;
   }
   // The help has always printed "[ / ] step through the bank · 1–5 rate the
@@ -6185,10 +6243,44 @@ function loadSide(side, id) {
 // bank. The s-expression is engine truth, not a label — it lives under the
 // ⇄ circuit flip, where an expert can still find it.
 function paintDuelName(side, id) {
-  setFaceSlot($(`face-${side}`), "pair", { id });
+  // Its face, large, in the card's well: what the scope's waveform was.
+  setFaceSlot($(`face-${side}`), "evolve", { id });
   $(`name-${side}`).innerHTML =
     `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
+  // Its family and blurb, where it has them: a sound opened from the library
+  // keeps its preset's. A bred sound has none, and none is made up.
+  const p = presetOfId(id);
+  const fam = $(`fam-${side}`);
+  if (fam) {
+    fam.innerHTML = p ? `<span class="duel-cat">${esc(p.category || "")}</span> ${esc(p.blurb || "")}` : "";
+    fam.title = p ? `${p.category || ""} · ${p.blurb || ""}` : "";
+  }
+  drawEvolveMap();
 }
+
+// EVOLVE's small TASTE map (taste.js drawMini): the pair among every sound.
+// Drawn when EVOLVE shows, when a pair is dealt, and when the views or a
+// pick's ratings change what it shows; a press goes to TASTE.
+function drawEvolveMap() {
+  if (currentView !== "evolve" || !taste || !taste.drawMini) return;
+  taste.drawMini($("ev-map-cv"), { a: currentDuel ? currentDuel[0] : null, b: currentDuel ? currentDuel[1] : null });
+}
+$("ev-map").onclick = () => showView("taste");
+
+// What each generation did: the lineage's spark and log, a disclosure under
+// EVOLVE POOL that opens over the foot of the cards. Esc or × folds it.
+function setLineageOpen(on) {
+  const pop = $("lineage-pop");
+  if (!pop || pop.classList.contains("hidden") === !on) return;
+  pop.classList.toggle("hidden", !on);
+  $("lineage-btn").setAttribute("aria-expanded", String(on));
+  if (on) drawLineage();
+}
+$("lineage-btn").onclick = () => setLineageOpen($("lineage-pop").classList.contains("hidden"));
+$("lineage-x").onclick = () => {
+  setLineageOpen(false);
+  $("lineage-btn").focus();
+};
 
 // A side whose buffer is on its way. The scopes used to sit as empty
 // graticules while the next pair rendered — seconds, behind a fit — which is
@@ -6292,7 +6384,9 @@ function onRenderArrived(id) {
   paintDuelName(side, id);
   $(`readout-${side}`).textContent = r.sexpr;
   styleBadge($(`style-${side}`), r.bestStyle);
-  drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
+  // Landed: the face is the picture, so the sweep goes (Plan-008 C1: the
+  // face replaces the waveform).
+  clearScope($(`scope-${side}`));
 }
 
 // The forecast is the payoff for the vote just cast, and the next pair arrives
@@ -7172,6 +7266,18 @@ function stopBreeding() {
 // from the engine's own outcome for it (`refine_child`'s `child` and `reason`,
 // `RefineOutcome`): "walk 3 of 10 · joined the pool", "· rated below the
 // pool". At rest it is the button it always was.
+// Dashed until the model has learned from your picks (its first fit,
+// `views.styles`): a generation bred before then walks from the grammar
+// alone, a guess, which is what dashed amber says (ADR-012). It can still be
+// pressed.
+function paintEvolveTaught() {
+  const btn = $("evolve-btn");
+  const taught = !!(views && views.styles);
+  btn.classList.toggle("untaught", !taught && !breeding);
+  btn.title = taught || breeding
+    ? "Breed a generation from the seeds it marks"
+    : "Breed a generation from the seeds it marks. Until your picks have taught it (its first refit), it breeds from the grammar alone";
+}
 function renderEvolveBtn() {
   const btn = $("evolve-btn");
   const stop = $("evolve-stop");
@@ -7183,6 +7289,7 @@ function renderEvolveBtn() {
   $("evolve-wrap").title = !b && evolvingFrom ? EVOLVE_WAITS_FOR_ZAP : "";
   // ⚡ takes its turn from this: disabled while a generation breeds.
   renderEvolveFrom();
+  paintEvolveTaught();
   if (!b) {
     btn.textContent = "evolve pool";
     btn.removeAttribute("aria-valuenow");
@@ -14548,6 +14655,7 @@ const flipped = { a: false, b: false };
 function setFlip(side, on) {
   flipped[side] = on;
   $(`scope-${side}`).classList.toggle("hidden", on);
+  $(`face-${side}`).classList.toggle("hidden", on);
   // The raw term is engine truth, not a label. It belongs *with* the circuit
   // view, not permanently under the waveform where it reads as the card's
   // description — truncated mid-token, at that. And only for those who asked
@@ -14555,7 +14663,7 @@ function setFlip(side, on) {
   // the s-expression says, in a form a player can read.
   $(`readout-${side}`).classList.toggle("hidden", !(on && engineerMode));
   $(`mini-${side}`).classList.toggle("hidden", !on);
-  $(`flip-${side}`).textContent = on ? "⇄ wave" : "⇄ circuit";
+  $(`flip-${side}`).textContent = on ? "⇄ face" : "⇄ circuit";
   if (on && currentDuel) {
     const id = side === "a" ? currentDuel[0] : currentDuel[1];
     send({ type: "describe", id });
@@ -20326,6 +20434,7 @@ taste = createTaste({
 /** Redraw TASTE or LEARNING, whichever is showing, from the views main holds. */
 function drawTaste() {
   if (taste) taste.draw();
+  drawEvolveMap();
 }
 
 // ---------- lineage ----------
@@ -20601,7 +20710,7 @@ $("taste-reset-btn").onclick = () => {
 };
 
 function clearFirstRunMarks() {
-  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"]) {
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-guide", "auracle-perform-steps"]) {
     try { localStorage.removeItem(k); } catch (_) { /* private window */ }
   }
 }
@@ -21563,6 +21672,20 @@ async function buildCardSvg(sub, { transparent = false, sidecar = null } = {}) {
   return { svg, w: CARD_W, h: CARD_H };
 }
 
+/** PERFORM's share: the picture panel opened on the sound's card (its face,
+ *  its name and its patch, downloaded as one picture), the one way to share
+ *  a sound the app has. */
+function openSoundCard() {
+  const panel = $("image-panel");
+  if (!panel) return;
+  imageState.scope = "card";
+  imageSave();
+  $("scope-panel")?.classList.add("hidden");
+  panel.classList.remove("hidden");
+  $("image-btn")?.setAttribute("aria-expanded", "true");
+  imageSync();
+  $("ix-scope").focus();
+}
 function imageSync() {
   const panel = $("image-panel");
   if (!panel || panel.classList.contains("hidden")) return;

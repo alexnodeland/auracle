@@ -125,10 +125,12 @@ test("the palette places, hides and orders up to eight controls, and the panel c
   const places = pal.locator(".pp-place");
   await expect(places).toHaveCount(10);
   for (let i = 0; i < 10; i++) await expect(places.nth(i)).toBeDisabled();
-  // Blend and Wander stay at the end of the deck, after the eight.
-  await expect(page.locator(".pf-knob")).toHaveCount(10);
-  await expect(page.locator('.pf-knob[data-i="8"]')).toHaveAttribute("aria-label", "Blend");
-  await expect(page.locator('.pf-knob[data-i="9"]')).toHaveAttribute("aria-label", "Wander");
+  // Blend and Wander keep the slots after the eight (MIDI's and the keys'),
+  // drawn where they live: Blend under the faces in the well, Wander at the
+  // start of the pad row.
+  await expect(page.locator(".pf-deck .pf-knob")).toHaveCount(8);
+  await expect(page.locator('.pf-blend[data-i="8"] input')).toHaveAttribute("aria-label", "Blend");
+  await expect(page.locator('.pf-pads .pf-knob[data-i="9"]')).toHaveAttribute("aria-label", "Wander");
 
   // Hide one, and there is room again.
   await row(page, "Snap", true).locator(".pp-hide").click();

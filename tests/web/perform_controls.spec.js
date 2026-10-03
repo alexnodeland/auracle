@@ -78,6 +78,8 @@ test("an XY axis the patch can't move strikes its end words through", async ({ p
     [0, 1, 2, 3, 4, 5].find((k) => document.querySelector(`.pf-knob[data-i="${k}"]`)?.classList.contains("search")),
   );
   expect(i, "Glass Pad has a search control").not.toBeUndefined();
+  // The XY pad is a mode of the well, opened from its corner.
+  await page.locator(".pf-xy-btn").click();
   const sels = page.locator(".pf-xy select");
   await expect(sels).toHaveCount(2);
   await sels.nth(1).selectOption(String(i));
