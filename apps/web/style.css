@@ -1311,8 +1311,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rail-mid { display: flex; align-items: center; }
 .rail-stop.aside { width: 34px; height: 34px; }
 .rail-stop.aside svg { width: 15px; height: 15px; }
-/* EVOLVE's name stands above it: left of it is the stage. */
-.rail-stop.aside .rl { right: auto; left: 50%; top: auto; bottom: 44px; transform: translate(-50%, 4px); }
+/* EVOLVE's name stands under it, between PERFORM's and PATCH's rows (above,
+   in the prototype, it sat on TASTE's name), and PERFORM's name stands left
+   of EVOLVE's stop rather than over it. */
+.rail-mid .rail-stop:not(.aside) .rl { right: 98px; }
+.rail-stop.aside .rl { right: auto; left: 50%; top: 40px; transform: translate(-50%, -4px); }
 .rail:hover .rail-stop.aside .rl, .rail-stop.aside:focus-visible .rl { transform: translate(-50%, 0); }
 .rail-line { width: 1px; height: 26px; margin-right: calc(var(--s4) + 3.5px); background: var(--plate-edge); }
 .rail-branch { width: 12px; height: 1px; background: var(--plate-edge); }
@@ -1326,9 +1329,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .rail-stop { width: 32px; height: 32px; }
   .rail-stop svg { width: 16px; height: 16px; }
   .rail-stop .rl { right: 42px; }
+  .rail-mid .rail-stop:not(.aside) .rl { right: 76px; }
   .rail-stop.aside { width: 28px; height: 28px; }
   .rail-stop.aside svg { width: 13px; height: 13px; }
-  .rail-stop.aside .rl { bottom: 36px; }
+  .rail-stop.aside .rl { top: 32px; }
   .rail-branch { width: 6px; }
   .rail-line { height: 20px; margin-right: calc(var(--s3) + 3.5px); }
   .rail-hint { margin-right: var(--s2); }
