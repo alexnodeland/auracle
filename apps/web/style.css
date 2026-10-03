@@ -2038,7 +2038,7 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
   align-items: stretch;
   gap: var(--s3);
 }
-.duel-or { align-self: center; font-family: var(--font-voice); font-style: italic; font-size: var(--t-body); color: var(--silk-dim); }
+.duel-or { align-self: center; font-family: var(--font-silk); font-size: var(--t-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--silk-dim); }
 .duel-card {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
