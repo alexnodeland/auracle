@@ -80,12 +80,14 @@ crop play.png      560x300+448+188  rack-detail.webp
 # The teaching meter (#duel-mid, 1160x56) with 6px either side and 2px above
 # and below, and the line saying how the pair was dealt inside it.
 crop evolve.png    1172x60+260+59   teach-meter.webp
-# The bank rail: its head, the three banks, and nine rows with per-row
-# prediction, stars and save — cut in the gap under the ninth.
-crop play.png      252x720+0+49     bank.webp
-# One row out of that rail, for the page that names its parts one at a time:
-# the rail's second slot, which is where the capture scrolls the bench row.
-crop play.png      252x70+0+269     bank-row.webp
+# The bank (Plan-008 PR B): its head (the three tabs and Find a sound) and
+# its rows, at rest, from under the menu bar (56px) to the keys bar.
+crop play.png      280x766+0+56     bank.webp
+# One row out of it, pointed at so its actions show, for the page that names
+# its parts: the list's second slot, which is where the capture scrolls the
+# bench row. (The capture for 2026-10 was the bank's own: PATCH after the warm
+# start, the second row hovered.)
+crop play.png      280x40+0+197     bank-row.webp
 # The three-pick warm start, cropped to the card, border to border. The rest of
 # the frame is the app behind a scrim and carries nothing.
 crop warmstart.png 760x468+340+216  warm-start.webp

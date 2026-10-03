@@ -13,7 +13,7 @@
 // way failure_flows.spec.js reaches it: by wrapping `Worker` before main.js
 // runs.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 const fs = require("fs");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
@@ -79,14 +79,14 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await expect(page.locator("#duel-count")).toHaveText("2");
 
   // Save one patch from the pool.
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const row = page.locator("#bank-list .bank-item").first();
   // By id: the name of a patch nobody has named is drawn from the pool
   // around it, and the pool is new after a reset.
-  const id = (await row.locator(".bi-id").first().textContent()).trim();
+  const id = await row.getAttribute("data-id");
   await row.hover();
   await row.locator(".bi-save").click();
-  await expect(page.locator('.bf-n[data-n="mine"]')).toHaveText("1", { timeout: 20_000 });
+  await expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout: 20_000 });
 
   // The question names what goes and what stays, and "keep it" keeps it.
   await menu(page, "taste-reset-btn");
@@ -117,9 +117,10 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
   await page.locator("#warm-skip").click();
   await expect(page.locator("#duel-count")).toHaveText("0");
-  await expect(page.locator('.bf-n[data-n="mine"]')).toHaveText("1", { timeout: 60_000 });
-  await page.locator('.bf[data-f="mine"]').click();
-  await expect(page.locator("#bank-list .bank-item .bi-id")).toHaveText([id]);
+  await expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout: 60_000 });
+  await bankTab(page, "saved");
+  await expect(page.locator("#bank-list .bank-item[data-id]")).toHaveCount(1);
+  await expect(page.locator("#bank-list .bank-item[data-id]")).toHaveAttribute("data-id", id);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 

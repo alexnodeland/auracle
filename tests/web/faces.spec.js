@@ -23,7 +23,7 @@
 // Sessions are seeded (the films' own Math.random), so the pool is the same
 // run to run.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 const fs = require("fs");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
@@ -320,8 +320,9 @@ test("a preset's face still lands after the bank redraws while it was on its way
   await bankDrawn(page);
   // PRESETS asks for the faces of the rows in view, each a render; a play at
   // once redraws the bank (the preset joins the pool) while they are pending.
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await expect(page.locator("#bank-list .preset-item").first()).toBeVisible();
+  await page.locator("#bank-list .preset-item").first().hover(); // its ▶ shows on approach
   await page.locator("#bank-list .preset-item .bi-hear").first().click();
   // Every row in view gets its face, without a scroll.
   const inView = () => page.evaluate(() => {

@@ -5,13 +5,13 @@
 // pointer at the sounding value, and its readout says that value: turn Bright
 // on First Bass, open PATCH, and the ladder's cutoff is visibly performed.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "First Bass" }).first().click();
   await page.waitForTimeout(800);
   await goLevel(page, "perform");

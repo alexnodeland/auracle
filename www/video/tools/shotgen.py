@@ -42,7 +42,7 @@ DEALS = ("(() => { const N = window.Worker; const d = (window.__deals = { all: [
          "if (m.ahead) { d.ahead = m.pair || null; d.aheads += 1; } }); } }; })();")
 SEED = "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();"
 INIT = SEED + " " + DEALS
-FILLED = {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000}
+FILLED = {"op": "until", "js": "Number(document.querySelector(\".btab .bt-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000}
 QUIET = {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
 WIRING = {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"}
 # The preset library by category (crates/auracle-grammar/src/presets.rs). The

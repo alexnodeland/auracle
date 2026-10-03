@@ -17,7 +17,7 @@
 // a fix. The engine worker is reached the way failure_flows.spec.js reaches it:
 // by wrapping `Worker` before main.js runs.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -52,7 +52,7 @@ async function boot(page, { skipWarm = true, shipped = true } = {}) {
 }
 
 async function openPreset(page, name) {
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item.preset-item", { hasText: name }).first().click();
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
 }
@@ -69,9 +69,9 @@ test("a player's ▶ is answered while PERFORM is still listening to a patch", a
   // the measurement is thirty-odd renders. Ask for a render of another patch
   // while it runs.
   await page.waitForSelector(".pf-status:has-text('listening to this sound')", { timeout: 30_000 });
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const target = await page.evaluate(() =>
-    [...document.querySelectorAll("#bank-list .bank-item .bi-id")].map((e) => Number(e.textContent.slice(1))).find((x) => x > 0));
+    [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((e) => Number(e.dataset.id)).find((x) => x > 0));
   expect(target, "a pool patch to render").toBeGreaterThan(0);
   // Straight to the worker, as a bank row's ▶ asks: `{type:"render", id}`.
   const measuringAtAsk = await page.evaluate((i) => {

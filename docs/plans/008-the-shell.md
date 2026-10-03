@@ -26,8 +26,8 @@ you move between them. It does not rebuild their internals.
 
 | PR | Status |
 | --- | --- |
-| A: the frame, the header, the level rail, the keys bar | in progress |
-| B: the bank and the model view | not started |
+| A: the frame, the header, the level rail, the keys bar | merged (#112) |
+| B: the bank and the model view | in review |
 | C: the levels laid out, and the zoom | not started |
 | D: ⌘K, and the guide for the levels | not started |
 
@@ -57,6 +57,40 @@ not framed). ADR-017 records §6 Q1.
 - The film shots' raw `.viewtab` selectors (26 lines in six `shots.json`) and
   their keybar ids now inside KEYS ⋯ are owed with the Wave 3 re-records, as
   §3 says; `footage.mjs`'s `view` op already uses the rail.
+
+**PR B, as built, where it differs from §1–§3:**
+- **The pool's order at rest.** `Engine::ranked` sorts by posterior mean, so
+  the pool used to stand in the model's order all the time. For ⌥ to reorder
+  it and letting go to restore it (§4, row B), the rest of the pool (New
+  keeps birth order) now stands in id order at rest, the order its sounds
+  joined, under **IN THE POOL**; under the model view, once fitted, it takes
+  `ranked`'s order under **RANKED BY THE MODEL**, with the FLIP glide
+  (`flipBank`).
+- **★ folds out the five stars.** The mock's ★ is star-4 / unstar, and an
+  unstar would log a 0-star rating (`record_stars` logs every call). So ★
+  opens the five existing `.star` buttons in the actions' place (a star
+  pressed, the pointer leaving or Esc folds them), which keeps every rating
+  reachable by pointer; 1–5 still rate the cursor row.
+- **The mark column stays.** The mock's row is face then name. The origin
+  glyph, NEW and the unheard dot keep their column left of the name (a mark
+  never moves a name), so names start 34 px further right than the mock's.
+  The seed and may-be-replaced words sit over the row's end like the
+  actions, and give way to them; IN POOL does the same on a preset row,
+  whose rows keep its width. Presets drop the ▤ glyph (their tab says it).
+- **Head extras.** The bank note is each tab's title, and the "what's this?"
+  link went with it: the tour's `?` at the end of the find row starts at the
+  tab you are on (`tourStepFor`). `#bank-count` is POOL's "+N", `#pin-budget`
+  SAVED's count (amber at the cap), the budget sentence SAVED's title.
+- **EVOLVE's guess before the pick** is a pill on the card it favours (*it
+  guesses this · 62% · leaning*), over the top of its figure, rather than a
+  line, so nothing below moves; `duel_pred` is asked with `pre: true` and
+  asked again on `fitted`. The style badge keeps its place at rest, hidden.
+- **The mock's veil** (an amber wash from MODEL) and the tag's flight out of
+  it are not built: the LED, the tag and the amber marks say the view is up.
+- **The figures** `bank.webp` and `bank-row.webp` were captured from the
+  bank itself (PATCH after the warm start) rather than a full
+  `capture-screens.mjs` run, which PR D does; `encode-screens.sh` has the new
+  rectangles.
 
 ## 1. Delta inventory (mock vs app)
 

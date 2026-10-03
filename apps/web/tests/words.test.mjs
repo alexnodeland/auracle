@@ -17,6 +17,8 @@ import {
   onApple,
   platformKeys,
   fittedFrom,
+  modelTag,
+  pairGuess,
   mapFoot,
   haloLegend,
   pickSaid,
@@ -678,4 +680,24 @@ test("CAPTURE says how long its take is, and what recording did, in the voice", 
     assert.match(s, /nothing was recorded/);
   }
   assert.match(TAKE_INPUT.refused, /refused/);
+});
+
+test("the model view's tag says what it believes, from the counts TASTE's line uses, or that it is still guessing", () => {
+  assert.equal(modelTag({ fitted: true, picks: 18 }), "what it believes, from 18 picks");
+  assert.equal(modelTag({ fitted: true, picks: 1, stars: 2, cuts: 1 }), "what it believes, from 1 pick, 2 stars, and 1 cut");
+  assert.equal(modelTag({ fitted: false, left: 4 }), "still guessing · 4 more picks and it fits");
+  assert.equal(modelTag({ fitted: false, left: 1 }), "still guessing · 1 more pick and it fits");
+  assert.equal(modelTag({ fitted: false, left: 0 }), "still guessing · fitting your taste…");
+  for (const s of [modelTag({ fitted: true, picks: 3 }), modelTag({ fitted: false, left: 2 }), modelTag({})]) {
+    voiced(s);
+    assert.ok(!/\blens\b/i.test(s), `the model view, never a lens: ${s}`);
+  }
+});
+
+test("before a pick, the model view says on the card it favours how sure it is, as the line after the pick does", () => {
+  assert.equal(pairGuess(0.72), "it guesses this · 72% · fairly sure");
+  assert.equal(pairGuess(0.62), "it guesses this · 62% · leaning");
+  assert.equal(pairGuess(0.5), "it guesses this · 50% · a hunch");
+  voiced(pairGuess(0.6));
+  assert.ok(!/\blens\b/.test(pairGuess(0.6)));
 });

@@ -15,7 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 const budget = require("./perform_budget.js");
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
@@ -24,7 +24,7 @@ test("a patch measured once is playable at once, even after a reload", { tag: "@
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   const open = async (name) => {
     await page.locator(".bank-item", { hasText: name }).first().click();
     await page.waitForTimeout(800);
@@ -55,7 +55,7 @@ test("a patch measured once is playable at once, even after a reload", { tag: "@
   // page (a test below holds that on its own).
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   const reloaded = await open("Acid Line");
   console.log(`after a reload, wired in ${reloaded} ms`);
   expect(reloaded, "after a reload").toBeLessThan(1500);
@@ -113,7 +113,7 @@ test("a preset opened before plays at once after a reload, however busy the engi
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
   await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });
   await goLevel(page, "perform");
@@ -124,7 +124,7 @@ test("a preset opened before plays at once after a reload, however busy the engi
   await page.waitForTimeout(2000);
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   const ms = await page.evaluate(async () => {
     window.__hold = true;
     const row = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === "Acid Line");
@@ -172,7 +172,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
   const booted = async (first = false) => {
     await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
     if (first) await page.locator("#warm-skip").click();
-    await page.locator('.bf[data-f="preset"]').click();
+    await bankTab(page, "presets");
   };
   // From the click, with the engine held: the voices play `name`, and with
   // `perform`, PERFORM's controls are wired to it.
@@ -269,7 +269,7 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
   await goLevel(page, "perform");
@@ -335,7 +335,7 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   // Opened from PATCH, then PERFORM clicked: the app opens at PERFORM now
   // (Plan-008), where the wiring would be marked before the click.
   await goLevel(page, "patch");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
   await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });
   await page.waitForTimeout(800);

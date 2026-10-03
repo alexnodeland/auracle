@@ -77,8 +77,12 @@ waits on a fixed timer is better made faster than tagged.
   ([`testing.md` § Rules](../../docs/architecture/testing.md#rules)).
 - **Seed and skip the warm start deliberately**: `boot(page, { warmed })`
   helpers exist in the newer specs; reuse them rather than clicking through.
-- **Go to a level with `goLevel(page, level)`** and into KEYS ⋯ with
-  `openKeys(page)`, from `shell.js`. The app opens at PERFORM (Plan-008), so a
+- **Go to a level with `goLevel(page, level)`**, into KEYS ⋯ with
+  `openKeys(page)`, to a bank with `bankTab(page, "pool"|"saved"|"presets")`
+  and into the model view with `modelView(page, on)`, from `shell.js`. A bank
+  row's guess (`.bi-pct`, `.bi-u`) shows only under the model view, its
+  actions (`.bi-acts`) only on approach, and its stars through ★ or the 1–5
+  keys; find a row by its `data-id`, not by text. The app opens at PERFORM (Plan-008), so a
   spec about PATCH goes there first, and waits for the state it needs (the
   rack drawn, a pair named), not for a name or a time: PERFORM's first
   measurement runs at boot and moves when the rest lands.

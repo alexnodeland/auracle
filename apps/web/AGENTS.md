@@ -12,7 +12,7 @@ the long-form notes are this directory's `README.md`.
 | --- | --- | --- |
 | `index.html` | page | Markup for every level, the menu bar, the levels' rail, the keys bar, the dialogs |
 | `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
-| `shell.js` | main thread | Where you are (Plan-008): the level registry, `show`, `#where`, the rail and its `aria-current`, the level keys (⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, ADR-017), the saved level and the hash |
+| `shell.js` | main thread | Where you are (Plan-008): the level registry, `show`, `#where`, the rail and its `aria-current`, the level keys (⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, ADR-017), the saved level and the hash; the model view (hold ⌥ or MODEL: `body.model-view`, the tag; what it shows is main.js's `modelViewChanged`) |
 | `levels.js` | main thread | Pure rules for the levels: the axis, `step`, `dirOf`, `railPath`, `levelForKey`, `startLevel`; unit-tested in `tests/` |
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |

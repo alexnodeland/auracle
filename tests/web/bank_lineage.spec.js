@@ -311,8 +311,11 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
     return { dotLeft: d.left, dotRight: d.right, nameLeft: n.left, tagRight: t.right };
   });
 
-  // Heard: the dot goes, and the name stays where it was.
+  // Heard: the dot goes, and the name stays where it was. (Its ▶ is among
+  // the actions the row shows when pointed at.)
+  await row(page, kid).hover();
   await row(page, kid).locator(".bi-hear").click();
+  await page.mouse.move(5, 5);
   await expect(row(page, kid).locator(".bi-dot")).toHaveCount(0, { timeout: 30_000 });
   const heard = await nameBox(page, kid);
   console.log(`name boxes: ${JSON.stringify({ before, hovered, landed, heard, gap })}`);
@@ -330,29 +333,31 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   expect(gap.dotRight).toBeLessThanOrEqual(gap.nameLeft);
   expect(gap.dotLeft).toBeGreaterThanOrEqual(gap.tagRight);
 
-  // Each word a row can carry while EVOLVE POOL is pointed at fits in the
-  // stars' place, clear of save and cut. ("will be replaced" shows
-  // only while a generation runs, so each word is measured in the flag of a
-  // marked row.) EVOLVE POOL focused marks the rows, and the pointer on the
-  // row shows its cut.
+  // Each word a row can carry while EVOLVE POOL is pointed at sits over the
+  // row's end, inside the row ("will be replaced" shows only while a
+  // generation runs, so each word is measured in the flag of a marked row),
+  // and gives that end to the row's actions when they show: never under or
+  // over save and cut. EVOLVE POOL focused marks the rows, and the pointer on
+  // the row shows its actions.
   await rate(page, { may: [may] });
   await page.locator("#evolve-btn").focus();
   await expect(row(page, may)).toHaveClass(/\bmay-go\b/);
-  await row(page, may).hover();
+  await expect(row(page, may).locator(".bi-flag")).toBeVisible();
   for (const word of ["seed", "may be replaced", "will be replaced"]) {
     const fit = await row(page, may).evaluate((r, w) => {
       const f = r.querySelector(".bi-flag");
       f.textContent = w;
-      const box = (el) => (el && el.getBoundingClientRect().width > 0 ? el.getBoundingClientRect() : null);
       const fl = f.getBoundingClientRect();
-      const save = box(r.querySelector(".bi-save"));
-      const kill = box(r.querySelector(".bi-kill"));
-      return { flagRight: fl.right, saveLeft: save ? save.left : null, killLeft: kill ? kill.left : null };
+      const rb = r.getBoundingClientRect();
+      return { flagLeft: fl.left, flagRight: fl.right, rowLeft: rb.left, rowRight: rb.right };
     }, word);
     console.log(`${width} px, "${word}": ${JSON.stringify(fit)}`);
-    if (fit.saveLeft != null) expect(fit.flagRight, `"${word}" runs into save`).toBeLessThanOrEqual(fit.saveLeft);
-    if (fit.killLeft != null) expect(fit.flagRight, `"${word}" runs into cut`).toBeLessThanOrEqual(fit.killLeft);
+    expect(fit.flagRight, `"${word}" runs past the row`).toBeLessThanOrEqual(fit.rowRight);
+    expect(fit.flagLeft, `"${word}" runs past the row`).toBeGreaterThanOrEqual(fit.rowLeft);
   }
+  await row(page, may).hover();
+  await expect(row(page, may).locator(".bi-acts")).toHaveCSS("opacity", "1");
+  await expect(row(page, may).locator(".bi-flag")).toBeHidden();
   await page.mouse.move(5, 5);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
@@ -375,6 +380,7 @@ test("a child keeps its unheard dot across a reload, and loses it when its phras
   await expect(row(page, kid).locator(".bi-dot")).toBeVisible({ timeout: 30_000 });
   // Its phrase plays: heard.
   const starts = await page.evaluate(() => window.__pwStarts.length);
+  await row(page, kid).hover();
   await row(page, kid).locator(".bi-hear").click();
   await expect.poll(() => page.evaluate(() => window.__pwStarts.length), { timeout: 30_000 }).toBeGreaterThan(starts);
   await expect(row(page, kid).locator(".bi-dot")).toHaveCount(0);

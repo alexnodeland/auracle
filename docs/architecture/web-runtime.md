@@ -78,6 +78,36 @@ unit-tested (`tests/levels.test.mjs`):
 - **A move is instant.** The morph that carries the held sound's face from one
   level to the next is PR C, and so is each level's `anchor()`.
 
+### The model view
+
+Holding ⌥ (220 ms, `MODEL_HOLD_MS`) or pressing **MODEL** (`#model-btn`,
+280 ms for a hold) raises what the model believes over whatever level shows
+(Plan-008 §2.5). `shell.js` owns the gesture and the DOM: `body.model-view`,
+MODEL's `aria-pressed` (true only for a tapped view), and the tag
+(`#model-tag`, a status; its words are `host.modelTag()`, `words.modelTag`
+from the counts TASTE's line uses). A hold never ends a tapped view. The
+timer starts in the same capture listener as the level keys, under the same
+rules (a text field and a modal dialog keep ⌥), and any other keydown while it
+counts cancels it, so ⌥↑ never flashes the view; a level key while ⌥ holds the
+view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
+(Esc any view; it goes on to close what it closes). Main does the rest in
+`host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
+
+- **The bank** redraws through `flipBank`: under the view, once fitted, the
+  pool's rest (New keeps birth order) stands in `views.ranked`'s order (by
+  posterior mean); at rest, in id order, the order the sounds joined. Each row
+  that moved glides from where it was (FLIP, `--d-move`; under reduced motion
+  it jumps). CSS shows each row's `.bi-pct` and `.bi-u` only under the view.
+- **TASTE**: `taste.setModelView(on)` drives the TASTE side of its toggle
+  while the view is up and restores the player's choice after.
+- **EVOLVE**: `askPairGuess` sends `duel_pred` with `pre: true` (the `now`
+  lane; the worker echoes `a`, `b` and `pre`), and the reply is drawn on the
+  card it favours only if the pair on the table is still the one asked about.
+  It is asked when the view comes up, on each `placePair`, and again on
+  `fitted`, so a refit between deal and pick cannot leave an old number; a pick
+  clears it. The cards' style badges show only under the view.
+- **PERFORM**: nothing per control; no engine call yet says a control's lean.
+
 ## The worker's lanes
 
 Requests are served in three lanes, most urgent first and first come, first
@@ -219,7 +249,7 @@ every halo on the map moves to the ratings it carries, in one tween; a views
 post settles every halo and every place at once. LEARNING's arrow (which way
 liking rises on the map) turns with the same ratings. `views.ranked` and
 `views.map` still change only when views are posted, so the bank's numbers
-follow the last refit. A pick in EVOLVE reaches the worker when its undo
+(shown under the model view) follow the last refit. A pick in EVOLVE reaches the worker when its undo
 window closes, so its ratings arrive then, not at the click; picks made while
 TASTE is hidden are drawn in turn when it opens.
 

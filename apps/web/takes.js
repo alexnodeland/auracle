@@ -315,10 +315,13 @@ export function createTakes(host) {
 
   /** Append the sounds kept safe to the pool's list, under their own group:
    *  each with the engine's sentence and RECORD AGAIN. */
-  function appendKept(frag, group) {
-    if (!held.length) return;
-    frag.appendChild(group(W.TAKE_SILK.kept, W.TAKE_TIPS.kept, held.length));
-    for (const h of held) {
+  // `match`: Find a sound's test on a name (main.js); the group lists the
+  // ones it passes.
+  function appendKept(frag, group, match = () => true) {
+    const shown = held.filter((h) => match(nameOf(h)));
+    if (!shown.length) return;
+    frag.appendChild(group(W.TAKE_SILK.kept, W.TAKE_TIPS.kept, shown.length));
+    for (const h of shown) {
       const row = document.createElement("div");
       // An option of the bank's listbox: the cursor reaches it past the
       // pool's last row, and Enter or Space presses RECORD AGAIN (main.js).

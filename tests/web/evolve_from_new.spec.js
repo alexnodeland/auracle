@@ -11,7 +11,7 @@
 //
 // Seeded (the films' own Math.random), so the session is the same run to run.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -95,9 +95,7 @@ test("a ⚡ child joins the bank's New group, as a generation's children do", { 
 
   // The bank's pool leads with the New group, its heading names the ⚡'s
   // generation, and the child's row is in it, tagged NEW.
-  if (await page.locator('.bf[data-f="pool"]').getAttribute("class").then((c) => !/\bactive\b/.test(c))) {
-    await page.locator('.bf[data-f="pool"]').click();
-  }
+  await bankTab(page, "pool"); // pressing the tab shown changes nothing
   const head = page.locator("#bank-list .bank-group.new .bg-label");
   await expect(head).toHaveText(`new · generation ${landed.status.generation}`, { timeout: 10_000 });
   const row = page.locator(`#bank-list .bank-item[data-id="${landed.childId}"]`);

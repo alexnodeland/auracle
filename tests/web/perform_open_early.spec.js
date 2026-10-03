@@ -14,7 +14,7 @@
 // Every message to the engine is held while the open is made, so the state
 // between the click and the rack is there to look at, not a race.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -84,7 +84,7 @@ async function remembered(page) {
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   for (const name of ["Acid Line", "Glass Pad"]) {
     await page.locator(".bank-item", { hasText: name }).first().click();
     await expect(page.locator("#live-label")).toHaveText(name, { timeout: 60_000 });
@@ -95,7 +95,7 @@ async function remembered(page) {
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expect(page.locator("#rack-subject")).not.toHaveText(/no sound open/, { timeout: 60_000 });
   await expect(page.locator("#rack-meta")).not.toHaveText(/opening/, { timeout: 60_000 });
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   return errs;
 }
 

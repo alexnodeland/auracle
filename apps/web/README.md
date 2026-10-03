@@ -13,13 +13,18 @@ PERFORM, PATCH, EVOLVE, TASTE and LEARNING are **levels** of one space around
 the sound in hand (`shell.js`, `levels.js`): TASTE zoomed out, PATCH zoomed
 in, LEARNING past TASTE, EVOLVE beside PERFORM. The rail's stops go there, as
 do ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 (ADR-017). It opens at PERFORM, or at the level in
-the address's hash, or the one you were at last. The whole session **autosaves to IndexedDB**
+the address's hash, or the one you were at last. Holding ⌥ (or MODEL in the
+menu bar) shows **the model view**: the bank's guesses and the pool in the
+order the model rates it, TASTE's side of its toggle, and EVOLVE's guess for
+the pair before you pick. The whole session **autosaves to IndexedDB**
 (bank, names, taste history, settings) and restores on reload.
 
 The sidebar is **three banks**, not one list with filters: **pool** (the
 sounds the model weighs and breeds from), **saved** (what you saved), and
-**presets** (the hand-made library, browsed in place). A `?` in
-the bank head walks through what a generation is and what evolving costs.
+**presets** (the hand-made library, browsed in place by family), three tabs
+over **Find a sound**. A row is its face and name, with its actions (compare,
+▶, ★, save, cut) on approach. A `?` at the end of the find row walks through
+what a generation is and what evolving costs.
 
 - **PERFORM** — the sound under your hands: up to eight named controls from
   a palette of eighteen (Bright, Snap, Motion, Body, Grit, Space to start),

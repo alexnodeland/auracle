@@ -18,7 +18,7 @@
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -67,7 +67,7 @@ async function boot(page) {
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 90_000 });
   return errs;

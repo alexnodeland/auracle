@@ -86,7 +86,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -361,7 +361,7 @@ async function settled(page, quiet = 700) {
 async function openPreset(page, name) {
   // The app opens at PERFORM (Plan-008): PATCH is a level away.
   await goLevel(page, "patch");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
   await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible();
@@ -788,7 +788,7 @@ test("an edit's reply leaves alone the makeup of a preset opened while the edit 
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(() => page.evaluate(() => window.__pwIO.early.length), { timeout: 10_000 }).toBeGreaterThan(early);
   const clicked = await pageNow(page);
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Held Under" }).first().click();
   await expect(page.locator("#rack-subject")).toContainText("Held Under", { timeout: 60_000 });
   await settled(page);
@@ -988,13 +988,14 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
 
   // Another ▶ wins: a bank row's ▶ takes the wait back, and the edit landing
   // does not cut the row's phrase off.
-  await page.locator('.bf[data-f="pool"]').click();
+  await bankTab(page, "pool");
   const row = page.locator("#bank-list .bank-item .bi-hear").first();
   n = await replies(page);
   await clickWave(page);
   await play.click();
   await expect(play).toHaveClass(/\bpending\b/);
   t0 = await pageNow(page);
+  await page.locator("#bank-list .bank-item[data-id]").first().hover(); // its ▶ shows on approach
   await row.click();
   await expect(play).not.toHaveClass(/\bpending\b/);
   await expect(row).toHaveClass(/\bplaying\b/, { timeout: 30_000 });

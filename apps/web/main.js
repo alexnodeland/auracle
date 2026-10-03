@@ -126,7 +126,7 @@ const { directionsScale, pullMark } = geom;
 const words = await import(`./words.js?v=${BUILD}`);
 const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
-  leanSentence, platformKeys,
+  leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
 } = words;
@@ -153,6 +153,10 @@ const { createTakes, TAKE_LANE_H } = await import(`./takes.js?v=${BUILD}`);
 const { createShell } = await import(`./shell.js?v=${BUILD}`);
 const shell = createShell({
   levelChanged: (prev, next, how) => levelChanged(prev, next, how),
+  // The model view (hold ⌥, or MODEL): what it shows is `modelViewChanged`'s,
+  // below; its tag says what it believes from the counts TASTE's line uses.
+  modelViewChanged: (on) => modelViewChanged(on),
+  modelTag: () => words.modelTag({ fitted: !!(views && views.styles), ...taughtKinds(), left: picksToRefit() }),
   // A modal dialog keeps the level keys: the level behind it must not change
   // unseen.
   // Any modal one showing: the warm start, the commit pair, the ? card,
@@ -264,6 +268,7 @@ let playingSrc = null;
 let evolvedAnnounce = null;
 
 let views = null;          // {map, styles, lineage, ranked, ratings, …} from the worker
+let modelOn = false;       // the model view is up (shell.js; `modelViewChanged`)
 // `views.ratings` is the model's ratings of the pool as they stand
 // (`WasmEngine::belief`; not `belief` below, the bench's guess): every pool
 // member's posterior mean, std and lens in ranked order, the seeds EVOLVE POOL
@@ -359,7 +364,7 @@ const heldNotes = new Set(); // midi numbers currently sounding
 // Sizes in CSS px, the slot's and the drawing's (a vessel is taller than
 // wide, as the specimen draws it).
 const FACE_SIZE = {
-  row: [24, 40],   // a bank row, beside its two lines
+  row: [26, 34],   // a bank row, beside its name (the mock's 26 px)
   pair: [28, 44],  // an EVOLVE card, beside its name
   subject: [20, 32], // PATCH's header, beside the patch's name
   chip: [14, 22],  // PATCH's teach strip, A and B
@@ -2208,6 +2213,8 @@ worker.onmessage = (e) => {
     // The forecast payoff, shown the instant the vote is cast — the vote
     // itself sits behind the undo window.
     case "duel_pred": {
+      // Asked before the pick, under the model view (`askPairGuess`).
+      if (m.pre) { showPairGuess(m); break; }
       if (m.pred != null && m.pred >= 0) showForecast(m.choseA ? m.pred : 1 - m.pred);
       break;
     }
@@ -2226,6 +2233,10 @@ worker.onmessage = (e) => {
       // The bench's guess under the model just fitted ("was" is the old one).
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       patchView.refit(); // and the next module's, ranked again under it
+      // Under the model view: the tag's count, and EVOLVE's guess for the
+      // pair on the table asked again under the model just fitted.
+      shell.modelTagChanged();
+      askPairGuess();
       refreshInstruments();
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -3065,8 +3076,8 @@ worker.onmessage = (e) => {
     case "presets": {
       presetRows = m.rows;
       if (warmPending) { warmPending = false; renderWarmStart(m.rows); }
-      else if (bankFilter === "preset") renderBank();
-      else renderBankCounts(); // the chip says how many even from another bank
+      else if (bankFilter === "presets") renderBank();
+      else renderBankCounts(); // the tab says how many even from another bank
       break;
     }
     case "pinned": {
@@ -3450,6 +3461,7 @@ function renderTaught() {
   $("duel-count").textContent = picksTaught();
   const counter = $("taught");
   if (counter) counter.title = taughtTitle(taughtKinds());
+  shell.modelTagChanged(); // the model view's tag counts the same picks
 }
 function renderPicks() {
   renderTaught();
@@ -5461,6 +5473,7 @@ document.addEventListener("keydown", (e) => {
     // and hands focus back to the control that opened it.
     cancelPending();
     endConnectPick();
+    foldStars(); // a bank row's ★, open
     if (compareId != null) closeCompare();
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
@@ -6720,6 +6733,7 @@ function placePair(pair, meta) {
   setDuelControlsEnabled(true);
   retireForecast();
   renderDealRule();
+  askPairGuess(); // under the model view, its guess for this pair
   if (currentDuel) {
     setFlip("a", false);
     setFlip("b", false);
@@ -6998,6 +7012,7 @@ function choose(side) {
     setTimeout(() => nameEl.classList.remove("chosen"), 400);
   }
   send({ type: "duel_pred", a, b, choseA });
+  clearPairGuess(); // picked: the line after the pick says it now
   const timer = setTimeout(commitAndSettle, UNDO_WINDOW_MS);
   pendingVote = {
     timer,
@@ -7601,7 +7616,7 @@ function compareRenderArrived(id) {
 $("compare-x").onclick = () => closeCompare();
 document.addEventListener("pointerdown", (e) => {
   if (compareId == null) return;
-  if (e.target.closest("#compare, .bi-from")) return;
+  if (e.target.closest("#compare, .bi-from, .bi-cmp")) return;
   closeCompare();
 }, true);
 
@@ -7609,20 +7624,20 @@ document.addEventListener("pointerdown", (e) => {
 let bankScrollTo = null;
 let bankScrollAt = 0;
 
-// The three banks the chips switch between.
+// The three banks the tabs switch between.
 //
 //   pool    — the live candidate pool: what evolution breeds from, what the
 //             model reasons over, and the only one of the three that evicts.
-//   mine    — patches the user saved. Engine-side `pinned`, so saving is what
+//   saved   — patches the user saved. Engine-side `pinned`, so saving is what
 //             actually exempts a patch from eviction rather than a label that
 //             says it does.
-//   preset  — the built-in library. Not pool members at all until you load
+//   presets — the built-in library. Not pool members at all until you load
 //             one, which is why this list is built from `presetRows`.
 //
 // One list, three sources. The old surface had five provenance filters plus a
 // four-option sort menu overlapping them, and could not answer "where are my
 // sounds?" at all, because the answer was "nowhere, they get evicted".
-const BANKS = ["pool", "mine", "preset"];
+const BANKS = ["pool", "saved", "presets"];
 
 // The save control, drawn rather than typed.
 //
@@ -7657,39 +7672,63 @@ const ORIGIN_TITLE = {
 // is a fixed, monotone map.
 const sq = (u) => 1 / (1 + Math.exp(-u));
 
+// Find a sound (`#bank-find`): what is typed, lowercased and trimmed. Held
+// here, not read from the field at render time, and the field sits outside
+// the list, so the bank's many redraws (and the rename guard's deferred one)
+// keep both the words and the filter.
+let bankQuery = "";
+/** The library's row for a pool sound opened from it, if any: its category
+ *  and blurb are what Find reads for it. */
+function presetOfId(id) {
+  if (!presetRows) return null;
+  for (const [index, pid] of presetIds) if (pid === id) return presetRows.find((p) => p.index === index) || null;
+  return null;
+}
+/** Does a sound match what is typed? Its name, its category and its blurb
+ *  (a preset's own, or the preset a pool sound was opened from). */
+function bankMatches(name, category = "", blurb = "") {
+  if (!bankQuery) return true;
+  return [name, category, blurb].some((t) => String(t || "").toLowerCase().includes(bankQuery));
+}
+function poolMatches(r) {
+  if (!bankQuery) return true;
+  const p = presetOfId(r.id);
+  return bankMatches(r.name, p && p.category, p && p.blurb);
+}
+
 function bankSource() {
   const ranked = (views && views.ranked) || [];
-  const live = ranked.filter((r) => !cutIds.has(r.id));
-  if (bankFilter === "mine") return live.filter((r) => r.pinned);
-  if (bankFilter === "preset") return presetRows || [];
+  const live = ranked.filter((r) => !cutIds.has(r.id) && poolMatches(r));
+  if (bankFilter === "saved") return live.filter((r) => r.pinned);
+  if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(p.name, p.category, p.blurb));
   return live;
 }
 
-// Counts on the chips themselves: the cheapest way to say what is in a place
+// Counts on the tabs themselves: the cheapest way to say what is in a place
 // you are not currently looking at.
 function renderBankCounts() {
   const ranked = (views && views.ranked) || [];
   const live = ranked.filter((r) => !cutIds.has(r.id));
   const n = {
     pool: live.length,
-    mine: live.filter((r) => r.pinned).length,
-    preset: (presetRows || []).length,
+    saved: live.filter((r) => r.pinned).length,
+    presets: (presetRows || []).length,
   };
-  for (const el of document.querySelectorAll(".bf-n")) {
+  for (const el of document.querySelectorAll(".btab .bt-n")) {
     el.textContent = n[el.dataset.n] != null ? String(n[el.dataset.n]) : "";
   }
 }
 
+// Each bank says what it is in its tab's title, and SAVED says the budget
+// there too: its count turns amber at the cap. The head's "3/10 saved" line
+// and the note under the tabs were the same facts, at the cost of two rows.
 function renderPinBudget() {
-  const el = $("pin-budget");
-  if (!el) return;
   const [used, cap] = pinBudget;
-  // Shown from the moment the cap is known, including at zero: releasing your
-  // last save used to delete the readout, so the one number that says how much
-  // room you have left disappeared exactly when it changed.
-  el.hidden = !cap;
-  el.textContent = cap ? `${used}/${cap} saved` : "";
-  el.title = `${used} of ${cap} saved. No generation replaces a saved sound.`;
+  const n = $("pin-budget");
+  // Amber at the cap (Plan-008): full is the one state of the budget worth
+  // seeing without hovering (`.cap`).
+  if (n) n.classList.toggle("cap", !!cap && used >= cap);
+  renderBankNote();
 }
 
 function renderBank() {
@@ -7708,12 +7747,11 @@ function renderBank() {
   bankRenderPending = false;
   refreshNames();
   const list = $("bank-list");
-  renderFillHint(); // owns the header count; it also carries "N arriving"
+  renderFillHint(); // POOL's "+N": sounds still arriving
   renderBankCounts();
-  renderPinBudget();
-  renderBankNote();
+  renderPinBudget(); // and each tab's title
 
-  if (bankFilter === "preset") {
+  if (bankFilter === "presets") {
     // Presets are not pool members, so they carry no id and nothing may rate
     // or save them — but they are still 29 rows in a focusable `listbox`, and
     // leaving `bankRows` empty made the entire keyboard fall through to the
@@ -7727,29 +7765,37 @@ function renderBank() {
   faceLazyDrop(); // the presets are out of sight: their faces' renders can wait
 
   // The pool leads with the latest generation's children, in the order they
-  // were bred, under their own heading; the rest keep their ranked order. So
-  // a child lands where the player is looking, and nothing below it moves.
+  // were bred, under their own heading. So a child lands where the player is
+  // looking, and nothing below it moves. The rest stand in the order they
+  // joined the pool (by id); under the model view, once it has fitted, in the
+  // order it rates them (`ranked`'s own, highest posterior mean first), so
+  // ⌥ held reorders the rows and letting go puts them back (`flipBank`).
+  const fitted = !!(views && views.styles);
+  const byModel = modelOn && fitted;
   const source = bankSource();
-  const fresh = bankFilter === "pool"
+  const ordered = byModel ? source : [...source].sort((a, b) => a.id - b.id);
+  // Under Find the matches stand alone: no groups to hold them.
+  const fresh = bankFilter === "pool" && !bankQuery
     ? [...lastBorn].map((id) => source.find((r) => r.id === id)).filter(Boolean)
     : [];
-  const rows = fresh.length ? [...fresh, ...source.filter((r) => !lastBorn.has(r.id))] : source;
+  const rows = fresh.length ? [...fresh, ...ordered.filter((r) => !lastBorn.has(r.id))] : ordered;
   bankRows = rows; // assigned before ANY return: [ ] and 1–5 step THIS list
   list.innerHTML = "";
   if (rows.length === 0) {
     // An empty state names the one thing to do next. It is never where a
     // known limitation gets confessed — the old `saved` copy spent its whole
     // budget apologising that stars did not protect anything.
-    const msg = {
-      mine:
-        "Nothing saved yet. Press <b>save</b> on any sound to keep it here, where no generation replaces it.",
-      pool: "The pool is empty. Open a preset, or press EVOLVE POOL to fill it again.",
-    }[bankFilter] || "Nothing here yet.";
+    const msg = bankQuery
+      ? "No sound matches. Esc clears it."
+      : {
+        saved:
+          "Nothing saved yet. Press <b>save</b> on any sound to keep it here, where no generation replaces it.",
+        pool: "The pool is empty. Open a preset, or press EVOLVE POOL to fill it again.",
+      }[bankFilter] || "Nothing here yet.";
     list.innerHTML = `<div class="bench-empty">${msg}</div>`;
     return;
   }
 
-  const fitted = !!(views && views.styles);
   landFlights(); // the rows move: every bud in flight lands now
   const frag = document.createDocumentFragment();
   rows.forEach((r, i) => {
@@ -7760,13 +7806,14 @@ function renderBank() {
     if (fresh.length && i === fresh.length) {
       // The New group's generation bred more than it holds: said under it.
       if (bredBelow.gen === bornGen && bredBelow.n > 0) frag.appendChild(bankBelow(belowNote(bredBelow.n)));
-      frag.appendChild(bankGroup(fitted ? "ranked by the model" : "the rest",
-        fitted ? "The rest of the pool, the sounds it rates highest first" : "", { count: rows.length - fresh.length }));
+      frag.appendChild(bankGroup(byModel ? "ranked by the model" : "in the pool",
+        byModel ? "The rest of the pool, the sounds it rates highest first" : "The rest of the pool, in the order they joined it",
+        { count: rows.length - fresh.length }));
     }
     frag.appendChild(bankRow(r, fitted));
   });
-  if (bankFilter === "pool") appendReplaced(frag);
-  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }));
+  if (bankFilter === "pool" && !bankQuery) appendReplaced(frag);
+  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }), (name) => bankMatches(name));
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
@@ -7852,6 +7899,36 @@ function appendReplaced(frag) {
   frag.appendChild(names);
 }
 
+// The row's actions, drawn (as the save's floppy is) so they obey the
+// palette: the mock's glyphs at the row's 14 px.
+const ROW_ICON = {
+  // ▶, and ■ while it sounds (`.playing`, set by `playBuffer`).
+  hear: `<svg class="i-play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 6.2v11.6l9.3-5.8z"/></svg>` +
+    `<svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.6"/></svg>`,
+  star: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.6l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg>`,
+  cut: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7l10 10M17 7L7 17"/></svg>`,
+  // EVOLVE's own mark: what changed from the seed.
+  compare: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 18.8 12 5.2l7.5 13.6"/><path d="M8 13.5h8"/></svg>`,
+};
+
+// The row whose ★ is open, by id, so a redraw keeps it open: ★ folds the
+// five stars out over the row's actions, and a star pressed, the pointer
+// leaving the row or Esc folds them back. 1–5 rate the cursor row without it.
+let ratingId = null;
+function foldStars() {
+  if (ratingId == null) return;
+  bankRowEl(ratingId)?.classList.remove("rating");
+  bankRowEl(ratingId)?.querySelector(".bi-star")?.setAttribute("aria-expanded", "false");
+  ratingId = null;
+}
+
+// A bank row, to the mock (Plan-008): the face, the mark column and the name
+// on one line (a bred sound's "from its seed · what changed" on a second),
+// the seed or may-be-replaced mark at its end while EVOLVE POOL is pointed
+// at, and its actions over the row's end on approach (the pointer, the
+// keyboard cursor, focus): compare, ▶, ★, save and cut. The model's guess,
+// its percentage and its bar, is the model view's (⌥): drawn on every row,
+// shown only under `body.model-view`.
 function bankRow(r, fitted) {
   const el = document.createElement("div");
   el.dataset.id = String(r.id);
@@ -7876,6 +7953,8 @@ function bankRow(r, fitted) {
     + (seeding.has(r.id) ? " seeding" : "")
     + (mayGo.has(r.id) && !seedMarks.has(r.id) ? " may-go" : "")
     + (lin ? " bred" : "")
+    + (fitted ? "" : " guess")
+    + (r.id === ratingId ? " rating" : "")
     // Its bench open is on its way (see `openOnBench`).
     + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
@@ -7898,7 +7977,7 @@ function bankRow(r, fitted) {
     isNew ? "new" : "",
     unheard.has(r.id) ? "not heard yet" : "",
     lin ? `bred from ${seedName}` : "",
-    sig,
+    sig && engineerMode ? sig : "",
     r.pinned ? "saved" : "",
     stars ? `${stars} of 5 stars` : "unrated",
     fitted ? `its guess ${guessLabel(frac).replace("% · ", " percent, ")}` : "",
@@ -7909,7 +7988,9 @@ function bankRow(r, fitted) {
   // The marks sit left of the name, in the mark column every row has, so the
   // name is in the same place, at the same width, with or without them: the
   // origin glyph, or NEW in its place for the latest generation's children
-  // (always ⚡, bred); and the unheard dot in the gap after it.
+  // (always ⚡, bred); and the unheard dot in the gap after it. The seed and
+  // may-be-replaced words sit over the row's end, as its actions do, and
+  // never move or narrow the name either.
   el.innerHTML = `${faceSlot("row", { id: r.id })}
     <div class="bi-top">
       <span class="bi-mark">${
@@ -7920,25 +8001,24 @@ function bankRow(r, fitted) {
           : `<span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>`
       }${unheard.has(r.id) ? `<span class="bi-dot" title="Not heard yet" aria-hidden="true"></span>` : ""}</span>
       <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} · ` : ""}Double-click to rename">${esc(r.name)}</span>
-      <span class="bi-pct mono" title="${fitted ? `Its guess: ${guessLabel(frac)}` : "No guess yet: teach it a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "·"}</span>
       <span class="bi-id">#${r.id}</span>
     </div>${
       lin
         ? `<div class="bi-sub"><span class="bi-mark" aria-hidden="true"></span><button class="bi-from" type="button" title="Compare with its seed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${esc(fromLine(seedName, lineageChanges(lin.diff)))}</button></div>`
         : ""
     }
-    <div class="bi-row">
-      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">▶</button>
-      <span class="bi-flag" aria-hidden="true">${flag}</span>
-      <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
-      ${[1, 2, 3, 4, 5]
-        .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">★</button>`)
-        .join("")}
-      </span>
-      <button class="bi-save${r.pinned ? " on" : ""}" aria-pressed="${!!r.pinned}"
-        title="${r.pinned ? "Saved: no generation replaces it. Click to release it." : "Save it, and no generation replaces it"}"
-        aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button>
-      <button class="bi-kill" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">cut</button>
+    <span class="bi-flag" aria-hidden="true">${flag}</span>
+    <span class="bi-pct mono" title="${fitted ? `Its guess: ${guessLabel(frac)}` : "No guess yet: teach it a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "·"}</span>
+    <div class="bi-acts">${
+      lin
+        ? `<button class="bi-cmp" type="button" title="What changed · c" aria-label="Compare ${esc(r.name)} with ${esc(seedName)}">${ROW_ICON.compare}</button>`
+        : ""
+    }<button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} type="button" data-hear="bank:${r.id}" title="Hear it · press again to stop" aria-label="Hear ${esc(r.name)}">${ROW_ICON.hear}</button><button class="bi-star${stars ? " on" : ""}" type="button" aria-pressed="${stars > 0}" aria-expanded="${r.id === ratingId}" title="${stars ? `${stars}★ · ` : ""}Rate it · 1–5" aria-label="Rate ${esc(r.name)}${stars ? `, now ${stars} of 5` : ""}">${ROW_ICON.star}</button><button class="bi-save${r.pinned ? " on" : ""}" type="button" aria-pressed="${!!r.pinned}"
+        title="${r.pinned ? "Saved: no generation replaces it. Click to release it · m" : "Save it, and no generation replaces it · m"}"
+        aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button><button class="bi-kill" type="button" title="Cut: teach the model you don’t want this" aria-label="Cut ${esc(r.name)}">${ROW_ICON.cut}</button>
+      <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">${[1, 2, 3, 4, 5]
+        .map((s) => `<button class="star${stars >= s ? " lit" : ""}" type="button" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ teaches the model, and doesn’t save the sound">${ROW_ICON.star}</button>`)
+        .join("")}</span>
     </div>
     <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? "Its guess, and the block is how sure it is" : "No prediction yet"}">${
       fitted
@@ -7947,6 +8027,7 @@ function bankRow(r, fitted) {
     }</span>`;
   el.addEventListener("click", (e) => {
     if (e.target.closest("button")) return;
+    if (e.detail > 1) return; // a double-click's second click: a rename, not another open
     kbdRowId = r.id;
     openOnBench(r.id);
     showView("patch");
@@ -7963,14 +8044,27 @@ function bankRow(r, fitted) {
     if (!renders.has(r.id)) bankHearPending(r.id, true);
     awaitRender(r.id, () => play(r.id, hear(), key), { settled: () => bankHearPending(r.id, false) });
   };
+  // ★ folds the five stars out in the actions' place; a second press folds
+  // them back.
+  el.querySelector(".bi-star").onclick = (e) => {
+    const open = ratingId !== r.id;
+    foldStars();
+    if (!open) return;
+    ratingId = r.id;
+    kbdRowId = r.id;
+    el.classList.add("rating");
+    e.currentTarget.setAttribute("aria-expanded", "true");
+  };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
       // The row you just rated is the one a follow-up 1–5 should correct,
       // whichever hand you rated it with.
       kbdRowId = r.id;
+      ratingId = null;
       rateRow(Number(btn.dataset.s), r.id);
     };
   });
+  el.addEventListener("pointerleave", () => { if (ratingId === r.id) foldStars(); });
   el.querySelector(".bi-save").onclick = () => {
     kbdRowId = r.id;
     // Optimism here would be a lie half the time: the engine refuses at the
@@ -7978,8 +8072,7 @@ function bankRow(r, fitted) {
     send({ type: "set_pinned", id: r.id, pinned: !r.pinned });
   };
   el.querySelector(".bi-kill").onclick = () => cutRow(r);
-  const from = el.querySelector(".bi-from");
-  if (from) from.onclick = () => openCompare(r.id);
+  for (const b of el.querySelectorAll(".bi-from, .bi-cmp")) b.onclick = () => openCompare(r.id);
   wireRename(el.querySelector(".bi-name"), r);
   el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
   return el;
@@ -8045,8 +8138,17 @@ function cutRow(r) {
 }
 
 function wireRename(nameEl, r) {
-  nameEl.ondblclick = (ev) => {
+  // A double-click on the name. The first click opens the row, and opening a
+  // row redraws the bank at once (it says "opening…"), so the second click
+  // lands on a new name element and `dblclick` may never reach this one: the
+  // second click's own count (`detail` 2) starts the rename too.
+  nameEl.addEventListener("click", (ev) => {
+    if (ev.detail === 2) startRename(ev);
+  });
+  nameEl.ondblclick = (ev) => startRename(ev);
+  function startRename(ev) {
     ev.stopPropagation();
+    if (renamingId != null) return;
     const input = document.createElement("input");
     input.className = "bi-rename";
     input.value = r.named ? r.name : "";
@@ -8078,7 +8180,7 @@ function wireRename(nameEl, r) {
     };
     input.onkeyup = (ke) => ke.stopPropagation();
     input.onblur = () => finish(true);
-  };
+  }
 }
 
 // The preset library, grouped by family.
@@ -8096,35 +8198,42 @@ function renderPresetBank(list) {
     return;
   }
   const frag = document.createDocumentFragment();
+  // Grouped by family, each with its count; Find narrows the groups too.
+  const shown = bankSource();
+  if (!shown.length) {
+    list.innerHTML = `<div class="bench-empty">No sound matches. Esc clears it.</div>`;
+    return;
+  }
+  const perCat = new Map();
+  for (const p of shown) perCat.set(p.category, (perCat.get(p.category) || 0) + 1);
   let lastCat = null;
-  for (const p of presetRows) {
+  for (const p of shown) {
     if (p.category !== lastCat) {
       lastCat = p.category;
-      const h = document.createElement("div");
-      h.className = "pb-cat";
-      h.textContent = p.category;
-      frag.appendChild(h);
+      frag.appendChild(bankGroup(p.category, "", { count: perCat.get(p.category) }));
     }
     const loadedId = presetIds.get(p.index);
     const inBank = loadedId != null && !!rowOf(loadedId);
     const el = document.createElement("div");
     el.className = "bank-item preset-item" + (inBank ? " in-bank" : "");
     el.dataset.index = String(p.index);
+    el.id = `preset-row-${p.index}`; // for the list's aria-activedescendant
     el.setAttribute("role", "option");
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
     el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your pool." : ""}`);
+    // To the mock: the face and the name, its blurb in the name's title (and
+    // what Find reads), IN POOL at the row's end once it is in the pool, and
+    // ▶ on approach. Its signature waits behind Show measurements.
     el.innerHTML = `${faceSlot("row", { preset: p.index }, { lazy: true })}
       <div class="bi-top">
-        <span class="bi-mark"><span class="bi-origin preset" title="▤ hand-made preset">▤</span></span>
-        <span class="bi-name">${esc(p.name)}</span>
-        ${inBank ? `<span class="pb-in" title="Already in your pool">in pool</span>` : ""}
-      </div>
-      <div class="pb-blurb">${esc(p.blurb)}</div>
-      <div class="bi-row">
-        <button class="bi-hear" aria-label="Hear ${esc(p.name)}"
-          title="Hear it. A preset you hear joins the pool, because the engine can only render what it holds.">▶</button>
+        <span class="bi-name" title="${esc(p.blurb)}">${esc(p.name)}</span>
         <span class="pb-sig mono">${esc(p.sig)}</span>
+      </div>
+      ${inBank ? `<span class="pb-in" title="Already in your pool">in pool</span>` : ""}
+      <div class="bi-acts">
+        <button class="bi-hear" type="button" aria-label="Hear ${esc(p.name)}"
+          title="Hear it. A preset you hear joins the pool, because the engine can only render what it holds.">${ROW_ICON.hear}</button>
       </div>`;
     const hear = el.querySelector(".bi-hear");
     hear.onclick = () => previewPreset(p, hear);
@@ -8185,23 +8294,50 @@ function bankHearPending(id, on) {
 function selectBank(which) {
   if (!BANKS.includes(which)) return;
   bankFilter = which;
-  document.querySelectorAll(".bank-filters .bf").forEach((x) => {
-    const on = x.dataset.f === which;
-    x.classList.toggle("active", on);
-    x.setAttribute("aria-pressed", String(on));
+  // One tab stop for the three (a roving tabindex), and the list named by
+  // the tab that shows it.
+  document.querySelectorAll(".bank-tabs .btab").forEach((x) => {
+    const on = x.dataset.bank === which;
+    x.setAttribute("aria-selected", String(on));
+    x.tabIndex = on ? 0 : -1;
+    if (on) $("bank-list").setAttribute("aria-labelledby", x.id);
   });
   // Presets are fetched once, lazily — the library is static, so the only
   // reason to ask twice is a reload.
-  if (which === "preset" && !presetRows) send({ type: "presets" });
+  if (which === "presets" && !presetRows) send({ type: "presets" });
   renderBank();
   // Not while restoring: the restore path calls this *before* `init`, and a
   // save that reaches the worker before the engine exists throws inside it.
   if (!restoreInFlight) scheduleSave();
 }
-document.querySelectorAll(".bank-filters .bf").forEach((b) => {
-  b.setAttribute("aria-pressed", String(b.classList.contains("active")));
-  b.onclick = () => selectBank(b.dataset.f);
+// The tabs: a click, or the arrows and Home/End, which go there as they
+// move (a tab list that activates on focus).
+document.querySelectorAll(".bank-tabs .btab").forEach((b) => {
+  b.onclick = () => { if (bankFilter !== b.dataset.bank) selectBank(b.dataset.bank); };
 });
+wireArrowNav(document.querySelector(".bank-tabs"), ".btab", { activate: true });
+$("bank-list").removeAttribute("aria-label");
+$("bank-list").setAttribute("aria-labelledby", "bank-tab-pool");
+
+// Find a sound. Typing filters as it goes; Esc clears it and stays in the
+// field. A text field, so the global note guard keeps every key here.
+{
+  const find = $("bank-find");
+  find.addEventListener("input", () => {
+    const q = find.value.trim().toLowerCase();
+    if (q === bankQuery) return;
+    bankQuery = q;
+    renderBank();
+  });
+  find.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !find.value) return;
+    e.preventDefault();
+    e.stopPropagation(); // Esc's other closings wait for a second press
+    find.value = "";
+    bankQuery = "";
+    renderBank();
+  });
+}
 
 // Which row the keyboard is pointing at, by id rather than by DOM position.
 // A rating re-renders the bank, and an index into a list that was just
@@ -8237,8 +8373,9 @@ function syncBankCursor() {
 }
 
 function moveKbdRow(d) {
-  // The pool's rows, then (in the pool) the sounds kept safe at its foot.
-  const kept = bankFilter === "pool" ? takes.keptIds() : [];
+  // The pool's rows, then (in the pool) the sounds kept safe at its foot:
+  // those listed (Find may have narrowed them).
+  const kept = bankFilter === "pool" ? takes.keptIds().filter((id) => document.getElementById(`kept-row-${id}`)) : [];
   const stops = [...bankRows.map((r) => ({ id: r.id })), ...kept.map((id) => ({ kept: id }))];
   if (stops.length === 0) return;
   let cur = kbdKeptId != null ? stops.findIndex((s) => s.kept === kbdKeptId) : stops.findIndex((s) => s.id === kbdRowId);
@@ -8368,7 +8505,7 @@ function voteDropped(v) {
 // `admit_refined`), never its seed.
 
 $("bank-list").addEventListener("keydown", (e) => {
-  if (bankFilter === "preset") return presetKeydown(e);
+  if (bankFilter === "presets") return presetKeydown(e);
   if (bankRows.length === 0 && !(bankFilter === "pool" && takes.keptIds().length)) return;
   if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null && kbdKeptId == null ? 0 : 1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveKbdRow(-1); }
@@ -8424,25 +8561,33 @@ $("bank-list").addEventListener("keydown", (e) => {
 // the bank, or why a patch you liked could disappear. That is the single
 // hardest idea in the product and it was left entirely implicit.
 //
-// Two surfaces carry it. A one-line note under the chips, always there, saying
-// what you are looking at. And a walkthrough that steps through all three,
-// switching banks as it goes — reading about the pool while looking at the
-// presets teaches nobody anything.
+// Two surfaces carry it. Each tab's title says what that bank is (it was a
+// line under the tabs, always there, until the shell's head to the mock). And
+// a walkthrough that steps through all three, switching banks as it goes —
+// reading about the pool while looking at the presets teaches nobody
+// anything. Its ? starts at the bank you are looking at.
 
-// One line each. The depth lives in the walkthrough; this is a label, and at
-// three lines it was costing more of the rail than it was worth.
+// One line each. The depth lives in the walkthrough.
 const BANK_NOTES = {
-  pool: `Every sound the model weighs and breeds from.`,
-  mine: `No generation replaces these. They stay in the pool, and it still learns from them.`,
-  preset: `Hand-made. <b>▶</b> puts one in the pool.`,
+  pool: "Every sound the model weighs and breeds from.",
+  saved: "No generation replaces these. They stay in the pool, and it still learns from them.",
+  presets: "Hand-made. ▶ puts one in the pool.",
 };
 
 function renderBankNote() {
-  const el = $("bank-note");
-  if (!el) return;
-  el.innerHTML = `${BANK_NOTES[bankFilter] || ""} <button class="note-more" id="bank-note-more">what’s this?</button>`;
-  const more = $("bank-note-more");
-  if (more) more.onclick = () => startBankTour(BANKS.indexOf(bankFilter));
+  const [used, cap] = pinBudget;
+  for (const b of document.querySelectorAll(".bank-tabs .btab")) {
+    const k = b.dataset.bank;
+    // SAVED carries the budget from the moment the cap is known, including
+    // at zero: releasing your last save is exactly when it changes.
+    b.title = k === "saved" && cap
+      ? `${used} of ${cap} saved. ${BANK_NOTES.saved}`
+      : BANK_NOTES[k] || "";
+  }
+}
+/** The walkthrough's first step about the bank you are looking at. */
+function tourStepFor(bank) {
+  return Math.max(0, TOUR.findIndex((t) => t.bank === bank));
 }
 
 const PRESET_COUNT_TOKEN = "%PRESETS%";
@@ -8451,7 +8596,7 @@ const PIN_CAP_TOKEN = "%CAP%";
 // Each step names the bank it is about, so the tour can drive the chips.
 const TOUR = [
   {
-    bank: "preset",
+    bank: "presets",
     title: "presets: where you start",
     body:
       `${PRESET_COUNT_TOKEN} hand-made sounds that came with the instrument. ` +
@@ -8463,8 +8608,9 @@ const TOUR = [
     title: "pool: what it breeds from",
     body:
       `The pool holds a fixed number of sounds. The model rates every one ` +
-      `by how much it guesses <i>you</i> would like it: that is the bar and ` +
-      `the % on each row. A ★ rating and a cut each teach it.`,
+      `by how much it guesses <i>you</i> would like it: hold <b>⌥</b> (the model ` +
+      `view) and each row shows it, a % and a bar, in its order. ` +
+      `A ★ rating and a cut each teach it.`,
   },
   {
     bank: "pool",
@@ -8488,7 +8634,7 @@ const TOUR = [
       `<b>keep as new</b> is safe until it has been in a pick.`,
   },
   {
-    bank: "mine",
+    bank: "saved",
     title: "saved: how you keep one",
     body:
       `Press <b>save</b> on any row. <b>No</b> generation replaces a saved sound, ` +
@@ -8505,11 +8651,12 @@ const TOUR = [
 let tourAt = -1;
 
 function tourText(s) {
-  return s
+  // ⌥ reads Alt off Apple platforms (`platformKeys`).
+  return platformKeys(s
     // No invented fallbacks: the old ones said "Two dozen" and "12" while the
     // library held 29 and the cap was 10. A number on screen is a claim.
     .replace(PRESET_COUNT_TOKEN, String((presetRows || []).length || "The"))
-    .replace(PIN_CAP_TOKEN, pinBudget[1] ? String(pinBudget[1]) : "a fixed number of");
+    .replace(PIN_CAP_TOKEN, pinBudget[1] ? String(pinBudget[1]) : "a fixed number of"));
 }
 
 function startBankTour(from = 0) {
@@ -8522,10 +8669,10 @@ function showTourStep() {
   if (tourAt < 0 || tourAt >= TOUR.length) return endBankTour();
   const step = TOUR[tourAt];
   selectBank(step.bank);
-  // Highlight the chip this step is about — the tour is a pointer, not a
+  // Highlight the tab this step is about — the tour is a pointer, not a
   // pamphlet.
-  document.querySelectorAll(".bank-filters .bf").forEach((b) => {
-    b.classList.toggle("tour-lit", b.dataset.f === step.bank);
+  document.querySelectorAll(".bank-tabs .btab").forEach((b) => {
+    b.classList.toggle("tour-lit", b.dataset.bank === step.bank);
   });
   $("tour-step").textContent = `${tourAt + 1} / ${TOUR.length}`;
   $("tour-title").textContent = step.title;
@@ -8539,11 +8686,11 @@ function showTourStep() {
 function endBankTour() {
   tourAt = -1;
   $("bank-tour").classList.add("hidden");
-  document.querySelectorAll(".bank-filters .bf").forEach((b) => b.classList.remove("tour-lit"));
+  document.querySelectorAll(".bank-tabs .btab").forEach((b) => b.classList.remove("tour-lit"));
   localStorage.setItem("auracle-bank-toured", "1");
 }
 
-$("bank-tour-btn").onclick = () => (tourAt >= 0 ? endBankTour() : startBankTour(0));
+$("bank-tour-btn").onclick = () => (tourAt >= 0 ? endBankTour() : startBankTour(tourStepFor(bankFilter)));
 $("tour-next").onclick = () => { tourAt += 1; showTourStep(); };
 $("tour-back").onclick = () => { tourAt -= 1; showTourStep(); };
 $("tour-skip").onclick = endBankTour;
@@ -19994,6 +20141,67 @@ function styleName(s, k) {
   return `${a.adj}${b.coord ? "," : ""} ${b.noun}`;
 }
 
+// ---------- the model view (shell.js, Plan-008 §2.5) ----------
+// Engine facts only, raised over whatever level shows:
+// - the bank: each row's guess, its percentage and its bar (CSS, from the
+//   `ranked` rows' posterior mean and std) and, once fitted, the pool in the
+//   order the model rates them, gliding there from where each row was: a
+//   real reorder (ADR-012), `ranked`'s own order, highest mean first;
+// - TASTE: the halos, dashed while there is no fit (`taste.setModelView`
+//   drives TASTE's side of its toggle while the view is up);
+// - EVOLVE: its guess for the pair before you pick (`askPairGuess`) and each
+//   card's style (CSS, `best_style_of`);
+// - PERFORM: nothing per control, until the engine exposes a control's lean.
+function modelViewChanged(on) {
+  modelOn = on;
+  flipBank(() => renderBank());
+  if (taste) taste.setModelView(on);
+  askPairGuess();
+}
+/** Redraw the bank, and let each row that moved glide from where it was.
+ *  Under reduced motion (`motionMs` 0) the rows are simply in their places. */
+function flipBank(render) {
+  const list = $("bank-list");
+  const ms = motionMs("--d-move");
+  const before = new Map();
+  if (ms && list.offsetParent) {
+    for (const r of list.querySelectorAll(".bank-item[data-id]")) before.set(r.dataset.id, r.getBoundingClientRect().top);
+  }
+  render();
+  if (!before.size) return;
+  const ease = tok("--e-settle");
+  for (const r of list.querySelectorAll(".bank-item[data-id]")) {
+    const was = before.get(r.dataset.id);
+    if (was == null) continue;
+    const dy = was - r.getBoundingClientRect().top;
+    if (Math.abs(dy) > 0.5) r.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: ms, easing: ease });
+  }
+}
+// EVOLVE's guess for the pair on the table, before you pick, on the card it
+// favours: the same call on the same posterior (`duel_pred`) the line after
+// the pick reads. A refit landing before the pick would change it, so a fit
+// asks again (`fitted`), and a reply is shown only for the pair it was asked
+// for. Before the first fit the engine has no guess (−1): nothing is shown.
+function clearPairGuess() {
+  for (const s of ["a", "b"]) {
+    const el = $(`guess-${s}`);
+    if (el) el.textContent = "";
+  }
+}
+function askPairGuess() {
+  clearPairGuess();
+  if (!modelOn || !currentDuel || dealing) return;
+  send({ type: "duel_pred", a: currentDuel[0], b: currentDuel[1], pre: true });
+}
+function showPairGuess(m) {
+  if (!modelOn || !currentDuel || m.a !== currentDuel[0] || m.b !== currentDuel[1]) return;
+  clearPairGuess();
+  if (m.pred == null || m.pred < 0) return;
+  const side = m.pred >= 0.5 ? "a" : "b";
+  const el = $(`guess-${side}`);
+  if (el) el.textContent = pairGuess(side === "a" ? m.pred : 1 - m.pred);
+}
+
 function styleBadge(el, k) {
   if (k == null || k < 0 || !views || !views.styles || !views.styles[k]) {
     el.innerHTML = "";
@@ -21572,12 +21780,13 @@ function dropBootVeil() {
 // this one always counted the *pool* whatever bank you were looking at — so it
 // read "BANK 40" directly above "Nothing saved yet." It keeps only the thing
 // no chip can say, which is that patches are still landing.
+// Since the shell's head (Plan-008 PR B) it is POOL's own "+N", the mock's
+// mark for sounds on their way into the pool; its title says the sentence.
 function renderFillHint() {
   const el = $("bank-count");
   if (!el) return;
   const arriving = Math.max(0, fillTarget - fillPool);
-  // The word is its own span so a narrow rail can drop it and keep the count.
-  el.innerHTML = arriving ? `+${arriving}<span class="bc-word"> arriving</span>` : "";
+  el.textContent = arriving ? `+${arriving}` : "";
   el.title = arriving ? `${plural(arriving, "more sound")} still rendering` : "";
 }
 
@@ -21800,7 +22009,7 @@ function previewPreset(row, btn) {
 function warmPreviewLoaded(index, id, evicted) {
   if (id) presetIds.set(index, id);
   if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`);
-  if (bankFilter === "preset") renderBank(); // it can now say "in bank"
+  if (bankFilter === "presets") renderBank(); // it can now say "in pool"
   const req = warmPreview;
   if (!req || req.index !== index) return; // superseded, taken back, or the card closed
   if (!id) {
@@ -22365,10 +22574,11 @@ bootMidi();
     restoreLocks(saved.ui.locks);
     restoreHoles(saved.ui.holes);
     if (taste) taste.restore(saved.ui.taste);
-    // `selectBank` re-applies the `active` class, which the markup hard-codes
-    // onto the first chip — restoring the variable alone would leave the
-    // highlight and the list disagreeing.
-    if (saved.ui.bank) selectBank(saved.ui.bank);
+    // `selectBank` re-applies `aria-selected`, which the markup hard-codes
+    // onto the first tab — restoring the variable alone would leave the
+    // highlight and the list disagreeing. Saved before Plan-008 PR B, the
+    // banks were "mine" and "preset".
+    if (saved.ui.bank) selectBank({ mine: "saved", preset: "presets" }[saved.ui.bank] || saved.ui.bank);
     applyPerfUi();
   }
   send(

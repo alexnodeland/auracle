@@ -17,7 +17,7 @@
 // against any build, so each test here can be run against the code before its
 // fix to watch it fail.
 const { test, expect } = require("@playwright/test");
-const { goLevel, openKeys } = require("./shell");
+const { goLevel, openKeys, bankTab } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -101,7 +101,7 @@ async function boot(page) {
 async function openPreset(page, name) {
   // The app opens at PERFORM (Plan-008): PATCH is a level away.
   await goLevel(page, "patch");
-  await page.locator('.bf[data-f="preset"]').click();
+  await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
   await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
   await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible();

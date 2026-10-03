@@ -25,7 +25,7 @@ Auracle](./playing-through.md#record-into-it-capture).
 
 The rail on the left, with three tabs: **POOL** (the sounds the model weighs
 and breeds from), **SAVED** (what you saved), and **PRESETS** (the hand-made
-library). See [the bank](./bank.md).
+library), and **Find a sound** under them. See [the bank](./bank.md).
 
 ### Brier skill
 
@@ -97,9 +97,10 @@ as a generation of its own. **GENERATIONS** at the top of EVOLVE counts them.
 The model’s guess about a sound: roughly how likely you are to pick it in a
 pair. It is always a percentage and a word, from one scale: *a hunch*
 (46–54%), *leaning* (55–69%, or 31–45%), or *fairly sure* (70% and over, or 30%
-and under), as in *59% · leaning*. A bank row draws it as a bar, with a block
-around the guess for how unsure it is, and PATCH shows it above the rack with
-the qualities that count most.
+and under), as in *59% · leaning*. Under [the model view](#model-view), a bank
+row draws it as a percentage and a bar, with a block around the guess for how
+unsure it is; PATCH shows it above the rack with the qualities that count
+most.
 
 ### Job slot
 
@@ -164,7 +165,15 @@ show in these, it can’t be learned.**
 The row across the top: the wordmark and its lamp, the level you’re at and
 what it is, the film of that level, the job slot while long work runs, the
 sound you’re playing (its face, its name and ▶, which is <kbd>Space</kbd>),
-**TAUGHT**, and **?** and **⋯**.
+**TAUGHT**, **MODEL** (the model view), and **?** and **⋯**.
+
+### Model view
+
+What holding <kbd>⌥</kbd> (or **MODEL** in the menu bar) shows: what the model
+believes, over whatever level is up. The bank’s guesses and the pool in the
+order the model rates it, TASTE’s halos, and EVOLVE’s guess for the pair
+before you pick. A tap on **MODEL** keeps it up. See [reading what it
+learned](./reading-the-model.md#the-model-view).
 
 ### Module, module rail
 
