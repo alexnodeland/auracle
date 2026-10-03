@@ -3033,30 +3033,6 @@ input, textarea, .bi-rename {
 }
 .nb-resize:hover { background: linear-gradient(90deg, transparent, var(--phos-a-18)); }
 
-/* The same handle on the other axis, above the spec strip (M4). It sits in the
-   8px gap `.play-canvas` already leaves between the frame and the dock, so it
-   costs no height of its own — the grip only appears under the pointer, the
-   way the rail's does. */
-.dock-resize {
-  flex: 0 0 8px;
-  margin: calc(-1 * var(--s1)) 0;
-  cursor: row-resize;
-  border-radius: 2px;
-  z-index: 2;
-}
-.dock-resize:hover,
-.dock-resize:focus-visible { background: linear-gradient(0deg, transparent, var(--phos-a-18)); }
-.dock-resize:focus-visible { outline: 1px solid var(--phos-a-deep); outline-offset: -1px; }
-
-.nb-body {
-  width: clamp(196px, 17vw, 268px);
-  padding: 0 0 var(--s2);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-}
-
 /* The header is a bezel band, so the catalogue reads as an instrument's
    silkscreen rather than as a sidebar title. */
 .nb-head {
@@ -3469,93 +3445,7 @@ input, textarea, .bi-rename {
 }
 .nb-spec.hidden { display: none; }
 
-/* ---- the docked spec strip ----
-   The card's real home. It reads left to right the way the chip does — what it
-   is, what it does, what the model thinks — and it holds a reserved height so
-   that nothing on the bench moves as its content changes. The floating card
-   above is now the keyboard's copy only. */
-/* Two heights, and which one is in force is decided by whether there is
-   anything to describe (M4).
-
-   The strip reserves its height so that nothing under the pointer moves as its
-   content changes — that rule is right and it stays. What was wrong is *which*
-   height was reserved: 96–150 px of "Point at a module…" held permanently
-   against a rack frame that was 295 px at 1280×900, which is how five of five
-   stock presets came to open as knob-less block diagrams on a standard laptop.
-   A sentence gets a sentence's worth of room. A description gets a
-   description's.
-
-   Resting and armed share the one-line height on purpose: arming is a gesture
-   that happens over the canvas, and a canvas that resizes under a placement in
-   progress would be a worse defect than the one this fixes.
-
-   And a description no longer takes its height out of the rack at all. It
-   did, and the frame shrank by the difference the moment the pointer touched
-   a catalogue chip — the rack refitted, every plate re-zoomed (0.91× → 0.70×
-   on Glass Pad at 1440×900), and it grew back on the way out: the patch
-   breathing in and out exactly while you were trying to see where a module
-   would go. The layout box is now always the one line; the description's
-   extra height is drawn upward, over the frame's bottom edge (the negative
-   margin cancels it out of the column), so the frame never resizes on hover.
-   It is on screen only while the pointer is in the catalogue (see
-   `nbSpecHide`), which is when the bottom of the rack is not what you are
-   reading. */
-.play-canvas {
-  --spec-h: clamp(96px, 13vh, 150px); /* token-exempt: the strip's height, which its negative margin cancels out of the column: geometry, not space */
-  --spec-line: 46px; /* token-exempt: the strip's one line, the height the column keeps for it */
-}
-.spec-dock {
-  flex: 0 0 var(--spec-h);
-  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
-  /* Over the frame's own overlays (scope 4, minimap and pick chip 6, fit
-     hint 7) and under everything that opens over the view (toasts 30+). */
-  position: relative;
-  z-index: 8;
-  display: grid;
-  grid-template-columns: 208px minmax(0, 1fr) 300px;
-  gap: var(--s4);
-  align-items: start;
-  padding: var(--s3) var(--s4);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r1);
-  background: linear-gradient(180deg, var(--recess-hi), var(--spec-dock-lo));
-  /* It is lying on the rack now, so it casts onto it — same lamp, same
-     shadow family as the plates under it. */
-  box-shadow: var(--lift), 0 -6px 16px var(--black-50);
-  overflow: hidden;
-}
-/* Resting and armed are one line, so they span the whole strip rather than
-   leaving two empty columns where the description used to be. */
-.spec-dock.rest, .spec-dock.armed {
-  grid-template-columns: 1fr;
-  align-items: center;
-  /* `min`, so the divider above still gives feedback when it is dragged past
-     the line height — a control with no visible effect in the state you happen
-     to be in is a control you stop trusting. */
-  flex-basis: min(var(--spec-h), var(--spec-line));
-  margin-top: 0;
-  box-shadow: var(--lift);
-  padding-top: var(--s1); padding-bottom: var(--s1);
-}
-/* The divider sets the height a description opens to, and no description is
-   up while the hand is on the divider (the pointer has left the catalogue) —
-   so for the length of a drag the strip opens to that height, over the rack,
-   and the drag has something to show. */
-.spec-dock.rest.sizing, .spec-dock.armed.sizing {
-  flex-basis: var(--spec-h);
-  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
-  box-shadow: var(--lift), 0 -6px 16px var(--black-50);
-  align-items: start;
-}
-.sd-rest {
-  font-size: var(--t-value);
-  line-height: 1.7;
-  color: var(--silk-dim);
-  /* One line, and it ends in an ellipsis rather than wrapping out of a strip
-     that is now one line tall. */
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 100%;
-}
+/* ---- the readout's parts (`#pt-read`, renderSpecDock) ---- */
 .sd-id { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; }
 .sd-idtext { min-width: 0; }
 .sd-name { display: block; margin-bottom: 3px; }
@@ -3638,10 +3528,6 @@ input, textarea, .bi-rename {
   border: 1px solid var(--hairline); border-radius: 3px;
   background: var(--black-35);
 }
-/* The armed strip is one line tall now (M4), and the preview scope is the only
-   thing in it that is not text. 30px still reads as a waveform — it is a
-   "does this sound like anything" glance, not a measurement. */
-.spec-dock.armed .pv-scope { height: 30px; }
 .pv-label { font-size: var(--t-value); color: var(--silk-dim); white-space: nowrap; }
 /* Rendering is a half-second of somebody else's CPU: say so by dimming the
    thing that is about to change rather than by adding a spinner. */
@@ -4080,12 +3966,6 @@ input, textarea, .bi-rename {
 @media (max-height: 940px) {
   /* (The dock is the prototype's 78 px at every height now; it gave ground
      here when it was 128.) */
-  /* The canvas is the elastic part everywhere else in this block, and the spec
-     strip is the newest claim on it — so it gives ground first. Its height is
-     still reserved, just smaller: the blurb wraps rather than the strip
-     appearing and disappearing under the pointer. */
-  .play-canvas { --spec-h: 92px; } /* token-exempt: the strip's height on a short window, as above */
-  .spec-dock { padding: var(--s2) var(--s4); }
   /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
      rail folds itself to the 34px group tab rather than squeezing the canvas. */
   .nb-body { width: clamp(180px, 15vw, 220px); }
@@ -7533,3 +7413,97 @@ html.xl-on .alarm { z-index: 62; }
 .pt-edge b { font-weight: 500; color: var(--phos-a-dim); }
 .pt-edge:hover, .pt-edge:focus-visible { color: var(--silk); }
 .pt-edge:focus-visible { outline: 2px solid var(--phos-a); outline-offset: -2px; }
+
+/* ---- the well's foot: the camera's corner, then the readout (C2a) ---- */
+.pt-foot {
+  position: absolute;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: var(--s3);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 32px;
+  pointer-events: none;
+}
+.pt-foot > * { pointer-events: auto; }
+.pt-foot .pt-corner { position: static; flex: none; }
+/* The readout: one line, the module's name in silk caps and what it does. */
+.pt-read {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+.pt-read.rest { pointer-events: none; }
+.pr-line { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; white-space: nowrap; overflow: hidden; }
+.pr-name {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--phos-a);
+}
+.pr-sub { flex: none; font-size: var(--t-value); color: var(--silk-mute); }
+.pr-says {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  color: var(--silk);
+}
+.pr-lock { flex: none; font-size: var(--t-value); color: var(--phos-b); }
+/* Pointed at in the catalogue: the longer description opens over the well's
+   bottom edge, above the line, and never resizes the well. */
+.pr-more { display: none; }
+.pt-read.open .pr-more {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--s2));
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  gap: var(--s4);
+  align-items: start;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+  box-shadow: var(--shadow-pop);
+}
+/* Something in hand, or a socket waiting for a module: the armed line. */
+.pt-read.armed {
+  padding: var(--s1) var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+}
+.pt-read.armed .pv-scope { height: 30px; }
+/* The scope stands clear of the foot. */
+#view-patch .scope-shell.corner-bl,
+#view-patch .scope-shell.corner-br { bottom: calc(var(--s3) + 40px); }
+
+/* ---- the selection (C2a) ----
+   The selected plate shows its ⋯ (the structure menu) and its lock; any
+   other plate shows them only while the pointer is on it. A locked plate's
+   edge is solid amber. */
+#rack-svg .mod-menu-btn, #rack-svg .mod-lock { opacity: 0; transition: opacity var(--d-state) ease; }
+#rack-svg .plate-hot .mod-menu-btn,
+#rack-svg .plate-hot .mod-lock,
+#rack-svg g.selected .mod-menu-btn,
+#rack-svg g.selected .mod-lock,
+#rack-svg .mod-lock.on,
+#rack-svg .mod-group:focus-within .mod-menu-btn,
+#rack-svg .mod-group:focus-within .mod-lock { opacity: 1; }
+#rack-svg .mod-plate.locked { stroke: var(--phos-b); stroke-width: 1.6; stroke-dasharray: none; }
+#rack-svg .rack-plates g.selected .mod-plate { stroke: var(--phos-a-dim); stroke-width: 1.4; }
+#rack-svg .rack-plates g.selected .mod-plate.locked { stroke: var(--phos-b); }
+#rack-svg .rack-plates g.selected .mod-title { fill: var(--phos-a); }
+/* A finger has no hover: ⋯ and the lock show on every plate. */
+@media (pointer: coarse) { #rack-svg .mod-menu-btn, #rack-svg .mod-lock { opacity: 1; } }

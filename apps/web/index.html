@@ -438,7 +438,11 @@
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
               </div>
-              <!-- The camera, quiet in the well's bottom-left corner. -->
+              <!-- The well's foot: the camera's corner on the left, then the
+                   readout (`pt-read`): the selected module's name and what it
+                   does in one sentence; pointed at in the catalogue, a longer
+                   description opens over the well's bottom edge. -->
+              <div class="pt-foot" id="pt-foot">
               <div class="pt-corner" id="pt-corner">
                   <!-- Three camera controls in one group: which shape the rack is
                  drawn in, how much of each plate is drawn, and whether the
@@ -478,6 +482,8 @@
               <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">leans</button></span>
               <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
             </div>
+              </div>
+              <div class="pt-read" id="pt-read" aria-live="polite"></div>
               </div>
               <!-- The well's edges when the patch is wider than the view: how
                    many modules lie past each side, and a press brings the
@@ -519,26 +525,6 @@
               <div class="guess-read" id="guess-read" role="status" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
-            <!-- The final say on the split below, and the in-house pattern for
-                 it: the node bank's rail is dragged the same way, on the other
-                 axis. The strip takes one line out of the patcher, always; a
-                 description opens over the rack's bottom edge rather than
-                 shrinking it, and this is how tall it opens. -->
-            <div class="dock-resize" id="dock-resize" role="separator"
-                 aria-orientation="horizontal" tabindex="0"
-                 aria-label="Resize the spec strip: drag, or press up and down"
-                 title="Drag to set how tall the spec strip opens when it describes a module. It opens over the rack, so the rack never resizes under the pointer."></div>
-            <!-- The spec card, docked. It used to float over the graph it was
-                 describing — you could read what a module does or look at
-                 where it would go, never both — while the bench's lower band
-                 sat empty. Reading left to right: what it is, what it does,
-                 what the model thinks of it. Its box is one line, so nothing
-                 under the pointer moves as its content changes (M4: 120px of
-                 "point at a module" was the difference between a patch with
-                 knobs on it and a block diagram at 1280×900), and a
-                 description opens upward over the rack instead of taking the
-                 rack's height — see `.spec-dock` in style.css. -->
-            <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —
                  and the strip says its own terms rather than implying they

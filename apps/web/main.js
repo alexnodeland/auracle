@@ -4125,7 +4125,7 @@ function dismissToast(t, immediate) {
 // where stepping *over* a 460px rail would carry a toast to the top of the
 // rack. Every `.duel-controls`, not the first: B's buttons are the ones at
 // the lane's edge.
-const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#spec-dock", "#tray"];
+const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#taste-foot", ".lineage-strip", "#pt-foot", "#tray"];
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
@@ -10937,6 +10937,9 @@ function renderRack(rebuild = false) {
   // …unless the keyboard was already somewhere, in which case it stays there.
   // Strictly after the default stop is set, or both would claim tabindex 0.
   restoreRackFocus(focusMark);
+  // The selection survives a rebuild by its key (or goes, with its module).
+  if (plateHover != null && !wb.rack.modules.some((x) => x.key === plateHover)) plateHover = null;
+  syncPlateSel();
 
   // The rack is rebuilt from scratch on every edit, which throws away the lit
   // sockets. Re-light them, or a knob turn while something is in hand would
@@ -11464,6 +11467,9 @@ function buildRack(svg, rack, opts) {
       const hot = (on) => {
         plateG.classList.toggle("plate-hot", on);
         g.classList.toggle("plate-hot", on);
+        // The readout follows the pointer, as the specimen's approach does.
+        if (on) hoverPlate(m.key);
+        else if (plateHover === m.key) hoverPlate(null);
       };
       for (const el of [plateG, g]) {
         el.addEventListener("pointerenter", () => hot(true));
@@ -13440,6 +13446,11 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   releaseTextEntry();
   // The model's guess (patch.js) is pressed to add it, and its × to skip it.
   const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock, .rack-guess, .ain-ctl");
+  // A press on a plate, not on one of its controls, selects it; one on the
+  // well's bare floor that does not become a pan clears the selection.
+  const onPlate = ev.target?.closest?.(".rack-plates g[data-key], .rack-controls g[data-key]"); // voice: name
+  if (onPlate && !onControl && ev.button === 0) selectPlate(onPlate.getAttribute("data-key"));
+  const fromFloor = !onPlate && !onControl && ev.button === 0 && !spacePan;
   // In freeform, a plain press on a faceplate moves the module. Tested after
   // the modifier gestures below would be too late — they are tested here, in
   // order, and space still wins so the pan modifier keeps working over a plate
@@ -13462,12 +13473,14 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   el.classList.add("grabbing");
   el.setPointerCapture(ev.pointerId);
   let px = ev.clientX, py = ev.clientY;
+  const sx = ev.clientX, sy = ev.clientY;
   const move = (mv) => {
     panBy(px - mv.clientX, py - mv.clientY);
     px = mv.clientX;
     py = mv.clientY;
   };
-  const up = () => {
+  const up = (u) => {
+    if (fromFloor && u.type === "pointerup" && Math.hypot(u.clientX - sx, u.clientY - sy) < 4) selectPlate(null);
     el.classList.remove("grabbing");
     el.removeEventListener("pointermove", move);
     el.removeEventListener("pointerup", up);
@@ -15441,6 +15454,7 @@ function knobByAddr(addr) {
 // region the node bank already owns.
 function focusPlate(el, say) {
   if (!el) return;
+  selectPlate(el.getAttribute("data-key"));
   setRackStop(el);
   el.focus({ preventScroll: true });
   ensureRackVisible(el);
@@ -15455,6 +15469,13 @@ function focusPlate(el, say) {
     );
   }
 }
+
+// The focus arriving anywhere on a plate selects it (a press is taken in the
+// rack's pan handler, which sees every press first).
+$("rack-svg").addEventListener("focusin", (e) => {
+  const g = e.target.closest?.("g.mod-group");
+  if (g) selectPlate(g.getAttribute("data-key"));
+});
 
 // The keyboard's knob gesture: presses on one knob less than this far apart
 // are one turn (see the ↑/↓ branch below).
@@ -17334,88 +17355,6 @@ function nbInitResize() {
   });
 }
 
-// ---- the spec strip can be dragged shorter; the height is remembered ----
-// M4's third lever, and the one all three panelists could name a precedent for:
-// the node bank's rail already drags, so the split above the strip drags the
-// same way with the same memory. It is deliberately a *player's* control on top
-// of an automatic budget rather than instead of one — the automatic half is
-// what makes the default right on a laptop, and this is what makes it theirs.
-const SPEC_H_MIN = 34;   // one line of the resting sentence and its padding
-const SPEC_H_MAX = 300;
-/** The reserved height, read off the variable rather than off the element.
- *  While the strip is collapsed the element is one line tall and its rendered
- *  height is *not* what the divider is setting — the divider sets the height
- *  the strip takes when it has something to describe. */
-function specDockHeight(px) {
-  const el = document.querySelector(".play-canvas");
-  if (px == null) {
-    // Measured, not parsed. The default is `clamp(96px, 13vh, 150px)` and the
-    // short-laptop media query overrides it to 92px; `getPropertyValue` hands
-    // back whichever *expression* is in force, unevaluated, so the only honest
-    // way to ask "how tall is that right now" is to give the number to a box
-    // and measure the box. Once the divider has been used the value is a plain
-    // px string and this costs one layout read on the first drag only.
-    const inline = parseFloat(el?.style.getPropertyValue("--spec-h"));
-    if (Number.isFinite(inline)) return inline;
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:absolute;visibility:hidden;width:0;height:var(--spec-h)";
-    el.appendChild(probe);
-    const h = probe.getBoundingClientRect().height;
-    probe.remove();
-    return h > 0 ? h : 120;
-  }
-  const v = clamp(Math.round(px), SPEC_H_MIN, SPEC_H_MAX);
-  el?.style.setProperty("--spec-h", `${v}px`);
-  return v;
-}
-(function initDockResize() {
-  const h = $("dock-resize");
-  if (!h) return;
-  const stored = Number(localStorage.getItem("auracle-spec-h"));
-  if (Number.isFinite(stored) && stored > 0) specDockHeight(stored);
-  const save = (v) => { try { localStorage.setItem("auracle-spec-h", String(v)); } catch (_) {} };
-  // What the divider sets is the height a description opens to, over the rack
-  // (the strip's own box is always one line — see `.spec-dock` in style.css).
-  // Nothing is being described while the hand is here, so the strip opens to
-  // that height for as long as it is being set: the edge has to follow the
-  // hand, or the drag moves nothing on screen.
-  const dock = $("spec-dock");
-  let sizingTimer = null;
-  const sizing = (on) => {
-    clearTimeout(sizingTimer);
-    dock?.classList.toggle("sizing", on);
-  };
-  h.addEventListener("pointerdown", (ev) => {
-    ev.preventDefault();
-    const startY = ev.clientY;
-    const startH = specDockHeight(null);
-    let last = startH;
-    sizing(true);
-    // Dragging *up* makes the strip taller, because the handle is on its top
-    // edge and the edge follows the hand.
-    const move = (mv) => { last = specDockHeight(startH + (startY - mv.clientY)); };
-    const up = () => {
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", up);
-      sizing(false);
-      save(last);
-    };
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", up);
-  });
-  // A divider a keyboard cannot move is a divider half the users do not have.
-  h.addEventListener("keydown", (ev) => {
-    const step = ev.key === "ArrowUp" ? 16 : ev.key === "ArrowDown" ? -16 : 0;
-    if (!step) return;
-    ev.preventDefault();
-    save(specDockHeight(specDockHeight(null) + step));
-    // Each press shows the new height for a moment, then the strip folds back.
-    sizing(true);
-    sizingTimer = setTimeout(() => sizing(false), 900);
-  });
-  h.addEventListener("blur", () => sizing(false));
-})();
-
 /** While something is in your hand the group headers stop being controls
  *  (WS-2 §2): the rail's job for the length of a placement is to narrow, not
  *  to rearrange itself under the pointer. Called from every place that changes
@@ -17819,22 +17758,28 @@ function nbSpecPaint(kind, chip) {
   card.style.right = `8px`;
 }
 
-/** The docked strip. Three states, and only one of them is a description:
- *  resting, describing, and — while something is in your hand — collapsed to
- *  one line, because the question has changed from "what is this" to "where
- *  is it going", and that one is answered on the canvas. */
+/** The well's readout (`#pt-read`, at its foot). Four states:
+ *  - something in your hand: what it is, its price and ▶ preview (the armed
+ *    line, until it moves to the well's top line);
+ *  - a socket chosen from the rack, waiting for a module;
+ *  - a module pointed at in the catalogue: its name and what it does, and
+ *    the longer description (ports, settings, what is heard, how your taste
+ *    leans) opened over the well's bottom edge;
+ *  - a module on the canvas selected or under the pointer: its name and what
+ *    it does in one sentence.
+ *  At rest, nothing (a view shows at most one sentence of guidance). */
 function renderSpecDock() {
-  const dock = $("spec-dock");
+  const dock = $("pt-read");
   if (!dock) return;
   const held = armed ? MOD_BY_KIND[armed.kind] : null;
   if (held) {
-    // While something is in your hand the strip stops describing and starts
+    // While something is in your hand the line stops describing and starts
     // answering the two questions a placement actually raises: what does the
     // model expect of it (§5), and what does it sound like (§6). Both are
     // about the socket the pointer is on, so both move with it.
     const target = previewTarget();
     const p = target ? socketPrice(held.kind, target.mode, target.key) : socketPrice(held.kind, "insert", null);
-    dock.className = "spec-dock armed";
+    dock.className = "pt-read armed";
     const html =
       `<div class="sd-line">${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
@@ -17842,11 +17787,9 @@ function renderSpecDock() {
       previewStripHTML(target) +
       `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit` +
       ` · click one, or <kbd>esc</kbd> to put it down</span></div>`;
-    // Rewritten only when it actually changed. This strip re-renders on every
+    // Rewritten only when it actually changed: this line re-renders on every
     // socket enter and leave, and an unconditional `innerHTML =` there would
-    // destroy and rebuild the ▶ *while the pointer is travelling to it* — the
-    // click lands on an element that no longer exists. It also throws away the
-    // painted waveform for no reason.
+    // destroy and rebuild the ▶ *while the pointer is travelling to it*.
     if (dock.dataset.armedHtml !== html) {
       dock.innerHTML = html;
       dock.dataset.armedHtml = html;
@@ -17856,7 +17799,7 @@ function renderSpecDock() {
   }
   delete dock.dataset.armedHtml;
   if (pendingTarget) {
-    dock.className = "spec-dock armed";
+    dock.className = "pt-read armed";
     dock.innerHTML =
       `<div class="sd-line"><b>${esc(pendingTarget.prompt || "pick a module")}</b>` +
       `<span class="sd-hint mono">the socket is already chosen, and anything dimmed can’t go in it` +
@@ -17864,28 +17807,70 @@ function renderSpecDock() {
     return;
   }
   const m = specSubject ? MOD_BY_KIND[specSubject] : null;
-  if (!m) {
-    dock.className = "spec-dock rest";
-    // One line of copy for a strip that is now one line tall (M4). The three
-    // things it promised — what it does to a signal, where it can legally go,
-    // what the model thinks — are still the three things it delivers; they no
-    // longer have to be enumerated in advance while holding 120 px of the
-    // patcher's vertical budget to say so.
+  if (m) {
+    const p = specParts(m);
+    dock.className = "pt-read open";
     dock.innerHTML =
-      `<div class="sd-rest mono">Point at a module, here or in the module rail: ` +
-      `this strip says what it does, where it can go, and how your taste leans.</div>`;
+      `<div class="pr-line"><span class="pr-name">${esc(m.name)}</span>` +
+      `<span class="pr-says">${esc(m.blurb)}</span></div>` +
+      `<div class="pr-more">` +
+      `<div class="sd-id">${specGlyph(m)}<div class="sd-idtext"><div class="panel-label sd-name">${esc(m.name)}</div>` +
+      `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
+      `<div class="sd-body"><div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
+      `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
+      `<div class="sd-model mono">${p.belief}</div></div>`;
     return;
   }
-  const p = specParts(m);
-  dock.className = "spec-dock";
+  // A module on the canvas: the one under the pointer, else the selected one.
+  const key = plateHover ?? plateSel;
+  const mod = key != null ? wb.rack?.modules.find((x) => x.key === key) : null;
+  if (!mod) {
+    dock.className = "pt-read rest";
+    dock.innerHTML = "";
+    return;
+  }
+  const empty = isPlaceholderKey(mod.key) || mod.kind === "silence";
+  const name = empty ? "empty socket" : mod.title;
+  const which = (mod.knobs || []).find((k) => k.kind.t === "enum" && /^(mode|wave|kind|color|table|type)$/i.test(k.label));
+  const says = empty ? "Nothing is plugged in here: drop a source on it, or pick one from ADD MODULE."
+    : mod.kind === "amp" ? "Every voice ends here: an envelope shapes each note’s loudness, then OUT."
+    : MOD_BY_KIND[mod.kind]?.blurb || "";
+  dock.className = "pt-read sel";
   dock.innerHTML =
-    `<div class="sd-id">${specGlyph(m)}` +
-    `<div class="sd-idtext"><div class="panel-label sd-name">${esc(m.name)}</div>` +
-    `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
-    `<div class="sd-body"><p class="sp-blurb">${esc(m.blurb)}</p>` +
-    `<div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
-    `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
-    `<div class="sd-model mono">${p.belief}</div>`;
+    `<div class="pr-line"><span class="pr-name">${esc(name)}</span>` +
+    (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
+    (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
+    (isModuleLocked(mod) ? `<span class="pr-lock mono">locked</span>` : "") +
+    `</div>`;
+}
+
+// ---- the selection: plates on the canvas ----
+// One module is selected at a time: the plate the keyboard stands on, or the
+// one a press landed on (not on a knob, jack or button). It shows its ⋯ (the
+// structure menu) and its lock, and the readout names it. A press on the
+// well's bare floor clears it; so does a rebuild that took the module away.
+let plateSel = null;   // the selected module's key
+let plateHover = null; // the module under the pointer, which the readout follows
+function selectPlate(key) {
+  if (plateSel === key) return;
+  plateSel = key;
+  syncPlateSel();
+  renderSpecDock();
+}
+function syncPlateSel() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  if (plateSel != null && !wb.rack?.modules.some((x) => x.key === plateSel)) plateSel = null;
+  for (const g of svg.querySelectorAll("g[data-key].selected")) g.classList.remove("selected");
+  if (plateSel == null) return;
+  for (const g of svg.querySelectorAll(`g[data-key="${cssKey(plateSel)}"]`)) {
+    if (g.closest(".rack-plates, .rack-controls")) g.classList.add("selected");
+  }
+}
+function hoverPlate(key) {
+  if (plateHover === key) return;
+  plateHover = key;
+  renderSpecDock();
 }
 
 // ===========================================================================
@@ -18314,7 +18299,7 @@ function paintPreviewScope(target) {
 // to a button that has since been replaced — and the replacement happens on
 // pointer-leave of the socket, which is the same movement that carries the
 // pointer to the ▶.
-$("spec-dock")?.addEventListener("click", (ev) => {
+$("pt-read")?.addEventListener("click", (ev) => {
   if (!ev.target.closest(".pv-play")) return;
   playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
   requestPreview(previewTarget(), true);
