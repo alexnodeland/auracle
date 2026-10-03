@@ -559,7 +559,11 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   await expect.poll(green, { timeout: 5_000 }).toBeLessThan(sound - 40);
   await tog.click();
   await expect(tog).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(green, { timeout: 5_000 }).toBe(sound);
+  // Back to SOUND: whole again. Within a few levels of alpha, not to the
+  // level: the map redraws as the pool and the fit move on, and a redraw can
+  // land a unit off at one pixel (CI read 175 for 176). TASTE's dimming is
+  // forty-plus levels, so a few cannot hide it.
+  await expect.poll(async () => Math.abs((await green()) - sound), { timeout: 5_000 }).toBeLessThanOrEqual(3);
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
