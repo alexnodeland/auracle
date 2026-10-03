@@ -2459,8 +2459,88 @@ mod tests {
         // sound: the frontend marks it by its own tree.
         let again = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
         let tree = engine.pool[engine.find(again).unwrap()].tree.clone();
-        engine.mark_judged(&tree);
+        engine.mark_judged(&tree, u64::MAX);
         assert!(engine.unjudged().is_empty());
+    }
+
+    /// An answer given before a sound was kept as new is not a pick for it,
+    /// even when it is recorded after (PERFORM holds a Take eight seconds):
+    /// it judges only members already in the pool when it was given.
+    #[test]
+    fn an_answer_judges_only_sounds_already_in_the_pool_when_it_was_given() {
+        let mut engine = taught(0x4EEF);
+        let as_of = engine.pool.iter().map(|c| c.id).max().unwrap();
+        let kept = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
+        assert!(kept > as_of);
+        let tree = engine.pool[engine.find(kept).unwrap()].tree.clone();
+        let home = engine
+            .pool
+            .iter()
+            .find(|c| c.id != kept)
+            .unwrap()
+            .tree
+            .clone();
+        assert!(engine.record_tree_duel_as_of(
+            &home,
+            &tree,
+            false,
+            auracle_taste::Provenance::PerformOffer,
+            as_of
+        ));
+        engine.mark_judged(&tree, as_of);
+        assert_eq!(
+            engine.unjudged(),
+            vec![kept],
+            "an answer given before the keep judged the kept sound"
+        );
+        assert!(engine.record_tree_duel_as_of(
+            &home,
+            &tree,
+            true,
+            auracle_taste::Provenance::PerformOffer,
+            kept
+        ));
+        assert!(engine.unjudged().is_empty());
+    }
+
+    /// A cut is an answer about the sound: a sound kept as new and cut
+    /// competes like any cut sound. A star is not a pick and leaves it safe.
+    #[test]
+    fn a_cut_ends_the_protection_and_a_star_does_not() {
+        let mut engine = taught(0x4EF0);
+        let kept = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
+        engine.record_stars(engine.find(kept).unwrap(), 1);
+        assert_eq!(engine.unjudged(), vec![kept], "a star ended the protection");
+        engine.record_keep(engine.find(kept).unwrap(), false);
+        assert!(engine.unjudged().is_empty(), "a cut left it protected");
+        assert_eq!(engine.may_replace().first(), Some(&kept));
+    }
+
+    /// A saved sound is protected by its save, so a sound kept as new and
+    /// then saved does not count toward the cap: keeping another past it
+    /// clears nothing. Unsaved, it counts again, and the oldest unsaved mark
+    /// past the cap goes.
+    #[test]
+    fn saved_sounds_do_not_count_toward_the_cap_on_sounds_kept_as_new() {
+        let mut engine = taught(0x4EF1);
+        let cap = engine.unjudged_cap();
+        let mut kept = Vec::new();
+        for _ in 0..cap {
+            kept.push(keep_lowest_as_new(&mut engine, None, EditOutcome::Untold));
+        }
+        assert!(engine.set_pinned(kept[0], true));
+        kept.push(keep_lowest_as_new(&mut engine, None, EditOutcome::Untold));
+        assert_eq!(
+            engine.unjudged(),
+            kept,
+            "a saved sound counted toward the cap"
+        );
+        assert!(engine.set_pinned(kept[0], false));
+        assert_eq!(
+            engine.unjudged(),
+            kept[1..].to_vec(),
+            "unsaved, the oldest past the cap kept its mark"
+        );
     }
 
     /// The bound: at most `unjudged_cap` sounds kept as new are protected at

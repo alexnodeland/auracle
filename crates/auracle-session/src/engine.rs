@@ -3176,10 +3176,11 @@ impl Engine {
     /// saved ([`Engine::pin_cap`]), and apart from that budget.
     ///
     /// The bound is what keeps the pool from being protected solid: with at
-    /// most a quarter saved and a quarter kept as new, at least half the pool
-    /// can always be replaced (less the seeds of ⚡ walks in flight), so an
-    /// insert always lands and a generation's end always brings the pool back
-    /// to size. Keeping one more past the cap hands the oldest kept sound back
+    /// most a quarter saved and a quarter kept as new and unsaved (a saved
+    /// one is not counted twice), at least half of a pool of four or more can
+    /// always be replaced (less the seeds of ⚡ walks in flight), so an insert
+    /// always lands and a generation's end always brings the pool back to
+    /// size. Below four the `max(1)` floors can protect more than half. Keeping one more past the cap hands the oldest kept sound back
     /// to normal eviction rather than refusing the keep: the newest is the one
     /// a player is still working with.
     pub fn unjudged_cap(&self) -> usize {
@@ -3209,9 +3210,15 @@ impl Engine {
     }
 
     /// Clear the oldest marks past [`Engine::unjudged_cap`]. Ids are issued
-    /// in order, so the lowest ids are the oldest keeps.
+    /// in order, so the lowest ids are the oldest keeps. A saved sound is
+    /// protected by its save and is not counted: its mark stays, for the day
+    /// it is unsaved ([`Engine::set_pinned`] bounds the marks again then).
     fn bound_unjudged(&mut self) {
-        let ids = self.unjudged();
+        let ids: Vec<u64> = self
+            .unjudged()
+            .into_iter()
+            .filter(|id| self.find(*id).is_some_and(|i| !self.pool[i].pinned))
+            .collect();
         let over = ids.len().saturating_sub(self.unjudged_cap());
         for id in &ids[..over] {
             if let Some(i) = self.find(*id) {
@@ -3222,12 +3229,15 @@ impl Engine {
 
     /// The pool member whose tree is `tree`, if any, has now been in a pick:
     /// it competes like any member from here on ([`Candidate::unjudged`]).
-    /// [`Engine::record_tree_duel`] calls it for both sides it records; a
-    /// frontend calls it for a sound that was in the pick under another
+    /// Only a member already in the pool when the pick was made counts, one
+    /// with an id at most `as_of` (`u64::MAX` for a pick made now): one kept
+    /// as new after it was not in it.
+    /// [`Engine::record_tree_duel_as_of`] calls it for both sides it records;
+    /// a frontend calls it for a sound that was in the pick under another
     /// form, as PERFORM's sound in hand is heard with its controls moved.
-    pub fn mark_judged(&mut self, tree: &PatchTree) {
+    pub fn mark_judged(&mut self, tree: &PatchTree, as_of: u64) {
         for c in &mut self.pool {
-            if c.unjudged && c.tree == *tree {
+            if c.unjudged && c.id <= as_of && c.tree == *tree {
                 c.unjudged = false;
             }
         }
@@ -3723,12 +3733,36 @@ impl Engine {
     ///
     /// A recorded answer is a pick for a pool member whose tree is either
     /// side: one kept as new competes from then on ([`Engine::mark_judged`]).
+    /// For an answer given a while before it is recorded, see
+    /// [`Engine::record_tree_duel_as_of`].
     pub fn record_tree_duel(
         &mut self,
         a: &PatchTree,
         b: &PatchTree,
         chose_a: bool,
         provenance: Provenance,
+    ) -> bool {
+        self.record_tree_duel_as_of(a, b, chose_a, provenance, u64::MAX)
+    }
+
+    /// [`Engine::record_tree_duel`] for an answer given when `as_of` was the
+    /// newest pool id the player could have seen, and recorded later: it is
+    /// a pick only for members that were already in the pool then (id at
+    /// most `as_of`; ids are issued in order).
+    ///
+    /// PERFORM holds a Take for eight seconds before recording it, so that
+    /// DON'T COUNT IT can drop it. In that window the player can take the
+    /// offer onto the bench and keep it as new; the answer, recorded after,
+    /// has the kept sound on its B side, and without the bound it would end
+    /// the protection that sound was given after the answer was made
+    /// ([`Candidate::unjudged`]).
+    pub fn record_tree_duel_as_of(
+        &mut self,
+        a: &PatchTree,
+        b: &PatchTree,
+        chose_a: bool,
+        provenance: Provenance,
+        as_of: u64,
     ) -> bool {
         if a == b {
             return false;
@@ -3745,9 +3779,10 @@ impl Engine {
             return false;
         };
         let (sa, sb) = (sz.transform(&ra), sz.transform(&rb));
-        // A sound of the pool's on either side has been in a pick.
-        self.mark_judged(a);
-        self.mark_judged(b);
+        // A sound of the pool's on either side has been in a pick, if it was
+        // in the pool when the answer was given.
+        self.mark_judged(a, as_of);
+        self.mark_judged(b, as_of);
         if let Some(p) = &self.posterior {
             self.forecasts.push(Forecast {
                 p_a: p.prob_prefers(&sa, &sb),
@@ -3773,7 +3808,13 @@ impl Engine {
     }
 
     /// Record a keep/kill decision on a pool member (by pool index).
+    ///
+    /// A cut (`kept: false`) is an answer about the sound: one kept as new
+    /// competes from then on, like any cut sound ([`Candidate::unjudged`]).
     pub fn record_keep(&mut self, idx: usize, kept: bool) {
+        if !kept {
+            self.pool[idx].unjudged = false;
+        }
         let raw = Feedback::KeepKill {
             x: self.pool[idx].features.phi(),
             kept,
@@ -4006,6 +4047,10 @@ impl Engine {
             return false;
         }
         self.pool[i].pinned = pinned;
+        if !pinned {
+            // Unsaved, a sound kept as new counts toward the cap again.
+            self.bound_unjudged();
+        }
         true
     }
 
