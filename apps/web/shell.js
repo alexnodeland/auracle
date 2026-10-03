@@ -176,7 +176,9 @@ export function createShell(host = {}) {
       show("perform", { chosen: true });
     });
   }
-  // A link to a level ("…/play/#taste"), or the address edited by hand.
+  // A link to a level ("…/play/#taste"), or the address edited by hand. The
+  // wordmark's href is "./#perform", a route into this page rather than an
+  // anchor on it, which is how the site's link check reads it too.
   window.addEventListener("hashchange", () => {
     const level = hashLevel(location.hash);
     if (level) show(level, { chosen: true });
