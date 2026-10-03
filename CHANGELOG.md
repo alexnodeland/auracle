@@ -24,8 +24,9 @@ changelog that edits its own past is not a record.
   child's second line still says which seed it grew from and what changed.
   Ids and signatures show only with Show measurements. Presets are grouped
   by family with a count, and a preset's description is its name's tooltip.
-  Double-clicking the name of a sound you aren't playing renames it now: the
-  first click's redraw used to swallow the second.
+  Double-clicking the name of a sound you aren't playing renames it now: its
+  second click used to open the sound again, and that redraw swallowed the
+  rename.
 - **Hold ⌥ (Alt) for the model view.** Every row shows the model's guess, a
   percentage and a bar, and once it has fitted the pool glides into the order
   it rates the sounds, and back when you let go. At rest the pool stands in

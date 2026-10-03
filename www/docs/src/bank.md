@@ -10,7 +10,10 @@ a generation may replace.</p>
 <figure>
 <img src="./img/bank.webp" alt="The bank: three tabs, POOL, SAVED and PRESETS, each with its count; a Find a sound field; and a list of rows, each a small face, a glyph and a name." loading="eager" width="280" height="766">
 <figcaption><strong>The bank.</strong> Three tabs, Find a sound, and a row
-for each sound: its face, a mark for where it came from, and its name.</figcaption>
+for each sound: its face, a mark for where it came from, and its name. The
+green rail marks the sound you’re playing, a silk rail a saved sound, and an
+amber name is one it was given (a preset’s, or one you typed) rather than one
+drawn from the sound.</figcaption>
 </figure>
 
 | Tab | What it holds |

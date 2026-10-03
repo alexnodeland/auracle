@@ -85,7 +85,10 @@ test("Find a sound survives the bank redrawing under it: a rating, a cut and a r
   const narrowed = (await names(page)).length;
   expect(narrowed).toBeLessThan(all.length);
   // A rating redraws the bank (`rateRow` → `renderBank`).
-  const row = page.locator("#bank-list .bank-item[data-id]").first();
+  // A row that is not the sound you're playing: its first click opens it,
+  // which redraws the bank under the second.
+  const rowId = await page.locator("#bank-list .bank-item[data-id]:not(.live)").first().getAttribute("data-id");
+  const row = page.locator(`#bank-list .bank-item[data-id="${rowId}"]`);
   await row.hover();
   await row.locator(".bi-star").click();
   await row.locator('.star[data-s="3"]').click();

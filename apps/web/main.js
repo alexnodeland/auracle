@@ -8139,9 +8139,10 @@ function cutRow(r) {
 
 function wireRename(nameEl, r) {
   // A double-click on the name. The first click opens the row, and opening a
-  // row redraws the bank at once (it says "opening…"), so the second click
-  // lands on a new name element and `dblclick` may never reach this one: the
-  // second click's own count (`detail` 2) starts the rename too.
+  // row redraws the bank at once (it says "opening…"). The row ignores the
+  // second click (`detail` 2, see `bankRow`): opening again redrew the bank
+  // under the rename and swallowed it. And should the second click land on
+  // the redrawn name, its own count starts the rename there.
   nameEl.addEventListener("click", (ev) => {
     if (ev.detail === 2) startRename(ev);
   });
