@@ -162,7 +162,8 @@ at whatever job count its walk finished on. The engine keeps a ⚡ seed out of
 every eviction until its walk is absorbed or stopped.
 
 Replacement waits for the end: children join the pool as they are absorbed,
-and `refine_finish` retires the weakest unpinned members once, when the last
+and `refine_finish` retires the weakest members not kept (saved, or kept as
+new and not yet in a pick) once, when the last
 job lands or the player stops the generation. Weakest is judged under the
 posterior the generation opened with, as admission is, so picks made while it
 breeds (they reweight the posterior for the next pair) do not change which

@@ -84,8 +84,9 @@ you didn’t choose them.
 
 One round of breeding. **EVOLVE POOL** walks a short way from each of the ten
 sounds the model rates highest, and adds each child that rates above the sound
-it would replace. When the generation ends (or you stop it), the lowest-rated
-unsaved sounds are replaced, and the toast names them. There is no crossover:
+it would replace. When the generation ends (or you stop it), it replaces the
+lowest-rated sounds it can (not saved, nor kept as new and still waiting for a
+pick), and the toast names them. There is no crossover:
 every child grows from one seed.
 
 **⚡ evolve from this** is one walk from the sound you’re playing, and counts
@@ -111,7 +112,12 @@ exactly while it shows.
 
 PATCH’s way to keep an edit: it joins the pool as a new sound, and the
 original stays as it was. It asks first, **WHICH WOULD YOU REACH FOR?**, and
-your answer teaches the model. **PICK THE EDIT** skips the question once.
+your answer teaches the model. **PICK THE EDIT** skips the question once. The
+sound you keep isn’t replaced until it has been in a pick after that: a pair
+with it in EVOLVE, a PERFORM offer you heard and answered while playing it,
+keeping an edit of it as new with an answer (the card, or PICK THE EDIT), or
+a cut. Its own card doesn’t count, nor do stars
+([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
 ### Leans
 
@@ -220,8 +226,9 @@ EVOLVE’s line says *● learning from your last 6 picks…* until it lands, th
 
 ### Replaced
 
-What happens to the pool’s lowest-rated unsaved sounds when a generation ends,
-or when a preset joins the pool. The toast names them, and **REPLACED ·
+What happens to the pool’s lowest-rated sounds when a generation ends, or
+when a preset joins the pool: the lowest it can replace, which leaves out a
+saved sound and one kept as new that hasn’t been in a pick yet. The toast names them, and **REPLACED ·
 GENERATION 3** at the foot of the pool lists what the latest generation
 replaced. Only their names are kept.
 

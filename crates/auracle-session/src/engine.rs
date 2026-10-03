@@ -631,6 +631,33 @@ pub struct Candidate {
     /// Capped by [`Engine::pin_cap`]; see there for why the pool cannot be
     /// pinned solid.
     pub pinned: bool,
+    /// Kept as new and not yet in a pick: no eviction takes it.
+    ///
+    /// Set by [`Engine::commit_edit`] on the sound it admits (keep as new,
+    /// and a shared patch imported through it), *after* the comparison that
+    /// kept it is recorded: that comparison is part of keeping it, not a
+    /// judgment of it. Cleared the first time the sound is one of the two in
+    /// a recorded pick ([`Engine::record_duel`] and every other path through
+    /// it, or a PERFORM offer answered, [`Engine::record_tree_duel`]),
+    /// whichever side was picked. From then on it competes like any member.
+    ///
+    /// The other half of "the player made this": without it, a preset opened
+    /// on a full pool replaced the sound just kept whenever the model rated
+    /// it lowest, before the model had heard a single answer about it.
+    ///
+    /// Not a pin: it does not count against [`Engine::pin_cap`], it is not
+    /// shown as saved, and at most [`Engine::unjudged_cap`] members carry it
+    /// (a keep past the cap hands the oldest back to normal eviction).
+    pub unjudged: bool,
+}
+
+impl Candidate {
+    /// Whether no eviction may take this member on its own account: saved
+    /// (pinned), or kept as new and not yet in a pick. The one rule
+    /// [`Engine::insert_candidate`] and every eviction order apply.
+    pub fn kept(&self) -> bool {
+        self.pinned || self.unjudged
+    }
 }
 
 /// One recorded evolution/edit step, for the lineage display.
@@ -753,6 +780,12 @@ pub struct BankEntry {
     /// kept; those are named once, on restore ([`Engine::finish_restore`]).
     #[serde(default)]
     pub auto_name: Option<String>,
+    /// Kept as new and not yet in a pick ([`Candidate::unjudged`]). Absent
+    /// from sessions saved before it existed, which load as judged, and left
+    /// out of the file when false, so a session with no such sound saves
+    /// exactly as it did.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unjudged: bool,
 }
 
 /// An implicit preference signal, logged but (for now) not modeled: promote
@@ -1784,6 +1817,7 @@ impl Engine {
             name: None,
             auto_name: None,
             pinned: false,
+            unjudged: false,
         });
         id
     }
@@ -2349,8 +2383,9 @@ impl Engine {
     }
 
     /// Insert a hand-made candidate — an edit or a preset — evicting the worst
-    /// member at once if the pool is full (never `protect`, never a pinned
-    /// one, never the seed of a ⚡ walk in flight). It always lands when anything is evictable: the player asked for
+    /// member at once if the pool is full (never `protect`, never a kept one,
+    /// [`Candidate::kept`]: saved, or kept as new and not yet in a pick; never
+    /// the seed of a ⚡ walk in flight). It always lands when anything is evictable: the player asked for
     /// it. Refined children do not come here; they must earn their slot and
     /// wait for the generation's end ([`Engine::admit_refined`]).
     fn insert_candidate(
@@ -2381,7 +2416,7 @@ impl Engine {
                 .iter()
                 .enumerate()
                 .filter(|(_, c)| {
-                    Some(c.id) != protect && !c.pinned && !self.evolving.contains_key(&c.id)
+                    Some(c.id) != protect && !c.kept() && !self.evolving.contains_key(&c.id)
                 })
                 .min_by(|(_, x), (_, y)| {
                     let (sx, ux) = rank(x);
@@ -2412,13 +2447,15 @@ impl Engine {
             name: None,
             auto_name: None,
             pinned: false,
+            unjudged: false,
         });
         self.fix_names();
         Some(id)
     }
 
     /// The pool members an eviction takes first, lowest first: every member
-    /// that is neither pinned nor in `protect`, ranked by `(standardized,
+    /// that is neither kept ([`Candidate::kept`]: saved, or kept as new and
+    /// not yet in a pick) nor in `protect`, ranked by `(standardized,
     /// utility)` ascending, utility under `judge` — a member without φ_std
     /// ranks worst explicitly, for the reason [`Engine::insert_candidate`]
     /// gives. Ties keep pool order, so the first of equals goes first, which
@@ -2443,7 +2480,7 @@ impl Engine {
             .iter()
             .enumerate()
             .filter(|(_, c)| {
-                !c.pinned && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
+                !c.kept() && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
             })
             .map(|(i, c)| (i, !c.phi_std.is_empty(), utility(i)))
             .collect();
@@ -2518,6 +2555,7 @@ impl Engine {
             name: None,
             auto_name: None,
             pinned: false,
+            unjudged: false,
         });
         self.fix_names();
         Some(id)
@@ -2693,8 +2731,8 @@ impl Engine {
         child
     }
 
-    /// Close the open generation, if any, and retire the lowest unpinned
-    /// members until the pool is back to [`SessionConfig::pool_size`].
+    /// Close the open generation, if any, and retire the lowest members not
+    /// kept ([`Candidate::kept`]) until the pool is back to [`SessionConfig::pool_size`].
     /// Returns the retired ids, lowest first.
     ///
     /// This is **stop**: the children absorbed so far stay, results still in
@@ -2705,7 +2743,9 @@ impl Engine {
     /// reloads over size, and is trimmed here).
     ///
     /// Pins are read **now**, not when a child was admitted: a patch saved at
-    /// any point before the finish is never retired by it.
+    /// any point before the finish is never retired by it. So is the mark of
+    /// a sound kept as new: one kept while the generation ran is spared, and
+    /// one that has since been in a pick competes.
     ///
     /// The retirees are ranked under the posterior the generation opened
     /// with, as its admissions were: picks made while it ran reweight the
@@ -2819,7 +2859,8 @@ impl Engine {
     /// one). A member with that many evictable members below it is never
     /// reached, so the rest of the list is the lowest `pool + w − pool_size`
     /// evictable members (`w` of them when the pool is at size, fewer while
-    /// it fills): unpinned, and not the seed of a ⚡ in flight.
+    /// it fills): not kept ([`Candidate::kept`]: saved, or kept as new and not
+    /// yet in a pick), and not the seed of a ⚡ in flight.
     ///
     /// The engine does not know what the app has cut: a cut member is in the
     /// pool, ranks low, and is in this list like any other.
@@ -3123,7 +3164,83 @@ impl Engine {
                 }
             }
         }
+        // Marked after the comparison above, which judged the original if
+        // anything: the pick that keeps a sound is not a judgment of it, or
+        // the protection would be gone the moment it was given.
+        self.mark_unjudged(child_id);
         Some(child_id)
+    }
+
+    /// How many sounds kept as new may be protected at once
+    /// ([`Candidate::unjudged`]): a quarter of the pool, as many as may be
+    /// saved ([`Engine::pin_cap`]), and apart from that budget.
+    ///
+    /// The bound is what keeps the pool from being protected solid: with at
+    /// most a quarter saved and a quarter kept as new and unsaved (a saved
+    /// one is not counted twice), at least half of a pool of four or more can
+    /// always be replaced (less the seeds of ⚡ walks in flight), so an insert
+    /// always lands and a generation's end always brings the pool back to
+    /// size. Below four the `max(1)` floors can protect more than half. Keeping one more past the cap hands the oldest kept sound back
+    /// to normal eviction rather than refusing the keep: the newest is the one
+    /// a player is still working with.
+    pub fn unjudged_cap(&self) -> usize {
+        (self.cfg.pool_size / 4).max(1)
+    }
+
+    /// The ids of the members kept as new and not yet in a pick, ascending
+    /// (oldest keep first: ids are issued in order).
+    pub fn unjudged(&self) -> Vec<u64> {
+        let mut ids: Vec<u64> = self
+            .pool
+            .iter()
+            .filter(|c| c.unjudged)
+            .map(|c| c.id)
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// Protect `id` until it is in a pick, then hold the marks to
+    /// [`Engine::unjudged_cap`].
+    fn mark_unjudged(&mut self, id: u64) {
+        if let Some(i) = self.find(id) {
+            self.pool[i].unjudged = true;
+        }
+        self.bound_unjudged();
+    }
+
+    /// Clear the oldest marks past [`Engine::unjudged_cap`]. Ids are issued
+    /// in order, so the lowest ids are the oldest keeps. A saved sound is
+    /// protected by its save and is not counted: its mark stays, for the day
+    /// it is unsaved ([`Engine::set_pinned`] bounds the marks again then).
+    fn bound_unjudged(&mut self) {
+        let ids: Vec<u64> = self
+            .unjudged()
+            .into_iter()
+            .filter(|id| self.find(*id).is_some_and(|i| !self.pool[i].pinned))
+            .collect();
+        let over = ids.len().saturating_sub(self.unjudged_cap());
+        for id in &ids[..over] {
+            if let Some(i) = self.find(*id) {
+                self.pool[i].unjudged = false;
+            }
+        }
+    }
+
+    /// The pool member whose tree is `tree`, if any, has now been in a pick:
+    /// it competes like any member from here on ([`Candidate::unjudged`]).
+    /// Only a member already in the pool when the pick was made counts, one
+    /// with an id at most `as_of` (`u64::MAX` for a pick made now): one kept
+    /// as new after it was not in it.
+    /// [`Engine::record_tree_duel_as_of`] calls it for both sides it records;
+    /// a frontend calls it for a sound that was in the pick under another
+    /// form, as PERFORM's sound in hand is heard with its controls moved.
+    pub fn mark_judged(&mut self, tree: &PatchTree, as_of: u64) {
+        for c in &mut self.pool {
+            if c.unjudged && c.id <= as_of && c.tree == *tree {
+                c.unjudged = false;
+            }
+        }
     }
 
     fn record_child(
@@ -3567,6 +3684,11 @@ impl Engine {
         // chosen pair, after the fit) its answer was scored as that old
         // check: one check too many, on a pair the model had chosen.
         let key = pair_key(self.pool[a].id, self.pool[b].id);
+        // Both sides have been in a pick now, whichever was picked
+        // ([`Candidate::unjudged`]); the comparison that keeps a sound as new
+        // marks it only after this has run ([`Engine::commit_edit`]).
+        self.pool[a].unjudged = false;
+        self.pool[b].unjudged = false;
         let random_check = match self.pending_checks.iter().position(|k| *k == key) {
             Some(i) => {
                 self.pending_checks.remove(i);
@@ -3608,12 +3730,39 @@ impl Engine {
     /// exists, when either patch fails vetting, or when the two are the same
     /// patch: an answer to "which of these identical sounds is better" is a
     /// row of noise.
+    ///
+    /// A recorded answer is a pick for a pool member whose tree is either
+    /// side: one kept as new competes from then on ([`Engine::mark_judged`]).
+    /// For an answer given a while before it is recorded, see
+    /// [`Engine::record_tree_duel_as_of`].
     pub fn record_tree_duel(
         &mut self,
         a: &PatchTree,
         b: &PatchTree,
         chose_a: bool,
         provenance: Provenance,
+    ) -> bool {
+        self.record_tree_duel_as_of(a, b, chose_a, provenance, u64::MAX)
+    }
+
+    /// [`Engine::record_tree_duel`] for an answer given when `as_of` was the
+    /// newest pool id the player could have seen, and recorded later: it is
+    /// a pick only for members that were already in the pool then (id at
+    /// most `as_of`; ids are issued in order).
+    ///
+    /// PERFORM holds a Take for eight seconds before recording it, so that
+    /// DON'T COUNT IT can drop it. In that window the player can take the
+    /// offer onto the bench and keep it as new; the answer, recorded after,
+    /// has the kept sound on its B side, and without the bound it would end
+    /// the protection that sound was given after the answer was made
+    /// ([`Candidate::unjudged`]).
+    pub fn record_tree_duel_as_of(
+        &mut self,
+        a: &PatchTree,
+        b: &PatchTree,
+        chose_a: bool,
+        provenance: Provenance,
+        as_of: u64,
     ) -> bool {
         if a == b {
             return false;
@@ -3630,6 +3779,10 @@ impl Engine {
             return false;
         };
         let (sa, sb) = (sz.transform(&ra), sz.transform(&rb));
+        // A sound of the pool's on either side has been in a pick, if it was
+        // in the pool when the answer was given.
+        self.mark_judged(a, as_of);
+        self.mark_judged(b, as_of);
         if let Some(p) = &self.posterior {
             self.forecasts.push(Forecast {
                 p_a: p.prob_prefers(&sa, &sb),
@@ -3655,7 +3808,13 @@ impl Engine {
     }
 
     /// Record a keep/kill decision on a pool member (by pool index).
+    ///
+    /// A cut (`kept: false`) is an answer about the sound: one kept as new
+    /// competes from then on, like any cut sound ([`Candidate::unjudged`]).
     pub fn record_keep(&mut self, idx: usize, kept: bool) {
+        if !kept {
+            self.pool[idx].unjudged = false;
+        }
         let raw = Feedback::KeepKill {
             x: self.pool[idx].features.phi(),
             kept,
@@ -3888,11 +4047,16 @@ impl Engine {
             return false;
         }
         self.pool[i].pinned = pinned;
+        if !pinned {
+            // Unsaved, a sound kept as new counts toward the cap again.
+            self.bound_unjudged();
+        }
         true
     }
 
     /// Insert a named preset into the pool (protected from immediate
-    /// eviction pressure only by its utility, like any candidate). Returns
+    /// eviction pressure only by its utility, like any candidate; the member
+    /// it displaces is the lowest one not kept, [`Candidate::kept`]). Returns
     /// the new id.
     pub fn insert_preset(&mut self, tree: PatchTree, name: &str) -> Option<u64> {
         if let Some(existing) = self.pool.iter().find(|c| c.tree == tree) {
@@ -3928,6 +4092,7 @@ impl Engine {
                     name: c.name.clone(),
                     pinned: c.pinned,
                     auto_name: c.auto_name.clone(),
+                    unjudged: c.unjudged,
                 })
                 // Held sounds go back as they came, after the pool: a restore
                 // holds them again until their take is replaced.
@@ -4209,6 +4374,7 @@ impl Engine {
             name: entry.name,
             auto_name: entry.auto_name,
             pinned: entry.pinned,
+            unjudged: entry.unjudged,
         });
     }
 
@@ -4248,6 +4414,9 @@ impl Engine {
         // A session saved before names were kept is named here, once,
         // against the bank it restored.
         self.fix_names();
+        // A file can claim more sounds kept as new than the cap allows (an
+        // engine with a smaller pool, or a hand edit): the bound holds anyway.
+        self.bound_unjudged();
         self.pool.len()
     }
 
@@ -4290,6 +4459,7 @@ impl Engine {
         };
         self.absorb_bank_entry(entry, pre);
         self.fix_names();
+        self.bound_unjudged();
         Ok(id)
     }
 

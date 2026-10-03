@@ -8,7 +8,7 @@ saying so is what makes migration tractable.</p>
 | Object | Contains |
 |---|---|
 | `SessionState` | The whole session: pool, bank, names, log, posterior, generation, forecasts, and the [audition clip](./audition/clips.md#stored-with-the-session) |
-| `BankEntry` | A patch’s **tree** (with any [CAPTURE take](./genome/grammar.md#capture-a-recorded-take-as-a-source) in it), id, origin, name, pinned flag. Renders and features are **re-derived** on import. A sound kept aside because its only take couldn’t be read is a bank entry too, written back JSON-equal to what was loaded |
+| `BankEntry` | A patch’s **tree** (with any [CAPTURE take](./genome/grammar.md#capture-a-recorded-take-as-a-source) in it), id, origin, name, pinned flag, and `unjudged` when it was kept as new and has not been in a pick yet (left out when false). Renders and features are **re-derived** on import. A sound kept aside because its only take couldn’t be read is a bank entry too, written back JSON-equal to what was loaded |
 | `ObservationLog` | Every `Feedback` with its session index and raw $\varphi$ **by name** |
 | `Profile` | The log **plus the standardizer**: the portable unit |
 | `TastePosterior` | A snapshot. Recomputable from the log |
@@ -109,6 +109,7 @@ Individual fields use `#[serde(default)]` where a default is honest:
 | Field | Default | Reads as |
 |---|---|---|
 | `BankEntry::pinned` | `false` | Sessions saved before pinning existed had no pins |
+| `BankEntry::unjudged` | `false` | Sessions saved before it existed held no sound protected until its first pick; every sound in them competes, as it did. Written only when `true`, so a session with no such sound saves byte for byte as before |
 | `TastePosterior::weights` | empty | Uniform: posteriors written before reweighting existed were uniform |
 | `Forecast::provenance` | `Duel` | Every forecast already on disk was a dealt duel, which is what `Duel` means |
 | `TasteConfig::recency_half_life` | `None` | No forgetting |
@@ -209,3 +210,43 @@ no honest report, because it surfaces as `insert_candidate` returning `None`,
 which the app reports as children that did not rate above the sounds they
 would replace (*3 were bred, but none rated above the sounds they would
 replace*).
+
+## Kept as new, protected until a pick
+
+`Candidate::unjudged` and `BankEntry::unjudged`: the other engine-side
+exemption, and not a pin. `commit_edit` (keep as new, and a shared patch
+imported through it) sets it on the sound it admits, *after* recording the
+comparison that kept it, which judges the original: the pick that keeps a
+sound is not a judgment of it. It clears the first time the sound is one of
+the two in a recorded pick: `record_duel_as` (every dealt pair, the warm
+start's, and a later kept edit's comparison with it as the original) clears
+both sides, and `record_tree_duel` (a PERFORM offer heard and answered)
+clears any member whose tree is either side; the app's `perform_record` also
+clears the sound in hand as it is in the bank, since PERFORM plays it with its
+controls moved (`Engine::mark_judged`). A cut (`record_keep(false)`) is an
+answer about the sound and clears it too; stars leave it set.
+
+A PERFORM answer is recorded a window after it is given (eight seconds for a
+Take, so DON'T COUNT IT can drop it), and in that window the player can take
+the offer onto the bench and keep it as new. So the answer carries `asOf`,
+the newest pool id the page had shown when it was given, and
+`record_tree_duel_as_of` and `mark_judged` clear only members with an id at
+most `asOf` (ids are issued in order). A sound kept after the answer was
+given is not judged by it. The page's knowledge can only lag the engine's,
+which errs toward keeping a protection a little longer.
+
+The rule is `Candidate::kept()` (`pinned || unjudged`), and it is the one
+`insert_candidate` and `eviction_order_by` both apply, so `retiring()`,
+`may_replace()`, `refine_finish`, a ⚡ child's trim and a preset's insert all
+pass over it alike. It is not charged to `pin_cap` and the app shows no mark
+for it.
+
+Bounded at `pool_size / 4` (`Engine::unjudged_cap`) on the flags of unsaved
+members: a keep that would put one more past the cap clears the oldest (lowest
+id; ids are issued in order), which stays in the pool as an ordinary member. A
+saved member is protected by its pin and is not counted; unsaving it bounds
+the flags again. With pins capped the same, at least half of a pool of four or
+more is always evictable, less any ⚡ seed in flight, so an insert always lands
+and a generation's end always brings the pool back to size (below four, the
+caps' floor of one each can protect more than half). A restore applies the cap
+again, for a file written under a larger one.

@@ -23,7 +23,8 @@ live while you edit it.</figcaption>
 2. Play it from the keybed. Hold a chord, or run the arpeggiator.
 3. Drag a knob, and hear it change.
 4. Press **KEEP AS NEW** to add your edit to the pool as a new sound. The
-   original stays as it was.
+   original stays as it was, and the new sound is safe until it has been in a
+   pick ([the bank](../bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
 You can also open a sound with **OPEN IN PATCH** on either side of a pair in
 [EVOLVE](./evolve.md), or by clicking a sound on the [TASTE map](./taste.md#a-sounds-card).

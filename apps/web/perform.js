@@ -1582,7 +1582,10 @@ export function createPerform(host) {
     const o = state.offer;
     if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return null;
     commitAnswer();
-    const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
+    // `asOf`: the newest sound the bank had shown when you answered. The
+    // answer is recorded a window later, and a sound kept as new in that
+    // window (B taken onto the bench and kept) was not in this pick.
+    const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took, asOf: host.newestId?.() ?? null };
     const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null, windowMs: took ? TAKE_SETTLE_MS : PASS_WINDOW_MS };
     return pt;
   }

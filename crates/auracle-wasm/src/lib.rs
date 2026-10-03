@@ -1704,7 +1704,8 @@ impl WasmEngine {
     }
 
     /// Stop (or close) the open generation: the children absorbed so far stay,
-    /// the lowest unpinned members are retired until the pool is back to size,
+    /// the lowest members not kept (`Candidate::kept`: saved, or kept as new
+    /// and not yet in a pick) are retired until the pool is back to size,
     /// and results still in flight will read `"stale"`. Returns the retired
     /// ids as a JSON array, lowest first. Idempotent.
     pub fn refine_finish(&mut self) -> String {
@@ -2130,12 +2131,23 @@ impl WasmEngine {
     /// `took_offer` saying which the player kept. Recorded as a duel tagged
     /// `perform_offer` ([`auracle_session::Engine::record_tree_duel`]; A is
     /// the performed sound). Returns whether it was recorded.
+    ///
+    /// A recorded answer is a pick for the sound in hand, `tree` as it is in
+    /// the bank, whatever its controls were moved to: a sound kept as new and
+    /// played in PERFORM competes like any other once it has been in one
+    /// ([`auracle_session::Engine::mark_judged`]).
+    ///
+    /// `as_of` is the newest pool id the page had seen when the answer was
+    /// given (`u32::MAX` for no bound): a Take waits eight seconds before it
+    /// is recorded, and a sound kept as new in that window is not judged by
+    /// it ([`auracle_session::Engine::record_tree_duel_as_of`]).
     pub fn perform_record(
         &mut self,
         tree_json: &str,
         overrides_json: &str,
         offer_json: &str,
         took_offer: bool,
+        as_of: u32,
     ) -> bool {
         let (Some(home), Ok(offer)) = (
             performed_tree(tree_json, overrides_json),
@@ -2143,12 +2155,24 @@ impl WasmEngine {
         ) else {
             return false;
         };
-        self.engine.record_tree_duel(
+        let as_of = if as_of == u32::MAX {
+            u64::MAX
+        } else {
+            as_of as u64
+        };
+        let recorded = self.engine.record_tree_duel_as_of(
             &home,
             &offer,
             !took_offer,
             auracle_taste::Provenance::PerformOffer,
-        )
+            as_of,
+        );
+        if recorded {
+            if let Ok(held) = serde_json::from_str::<PatchTree>(tree_json) {
+                self.engine.mark_judged(&held, as_of);
+            }
+        }
+        recorded
     }
 
     /// `tree` with knob `overrides` (`[[addr, value], …]`) written into its
@@ -4331,6 +4355,74 @@ mod tests {
         );
     }
 
+    /// **A sound kept as new is protected until a pick, and a PERFORM offer
+    /// is one.** Kept, it is marked; played in PERFORM with a control moved
+    /// (so the performed sound is not its tree) and an offer answered, it
+    /// competes like any other.
+    #[test]
+    fn a_perform_offer_judges_the_sound_in_hand() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids = pool_ids(&engine);
+        assert!(engine.edit_begin(ids[0]));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert_eq!(engine.engine.unjudged(), vec![kept as u64]);
+        let tree = engine.tree_json_of(kept);
+        let moved = r#"[["amp#attack",0.37]]"#; // voice: name
+        assert_ne!(
+            engine.perform_apply(&tree, moved),
+            engine.perform_apply(&tree, "[]"),
+            "the control did not move the sound"
+        );
+        // Any other sound will do as the offer: one the commit left in.
+        let other = pool_ids(&engine)
+            .into_iter()
+            .find(|&id| id != kept)
+            .unwrap();
+        let offer = engine.tree_json_of(other);
+        assert!(engine.perform_record(&tree, moved, &offer, false, u32::MAX));
+        assert!(
+            engine.engine.unjudged().is_empty(),
+            "an answered offer left the sound in hand protected"
+        );
+    }
+
+    /// **A Take held over a keep does not judge the kept sound.** PERFORM
+    /// records a Take eight seconds after it is made. Taken onto the bench
+    /// and kept as new in that window, the sound is the answer's B side; the
+    /// answer carries the newest id the page had seen when it was made, and
+    /// does not end the protection of a sound kept after it. An answer made
+    /// once the kept sound was in the bank does.
+    #[test]
+    fn a_take_held_over_a_keep_does_not_judge_the_kept_sound() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids = pool_ids(&engine);
+        // The Take, made now: the bank shows these ids.
+        let as_of = *ids.iter().max().unwrap();
+        let home = engine.tree_json_of(ids[0]);
+        // B on the bench, kept as new inside the window.
+        assert!(engine.edit_begin(ids[0]));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let offer = engine.edit_tree_json();
+        let kept = engine.edit_commit("none");
+        assert!(kept > as_of, "the kept sound is newer than the Take");
+        // The window closes, and the Take is recorded.
+        assert!(engine.perform_record(&home, "[]", &offer, true, as_of));
+        assert_eq!(
+            engine.engine.unjudged(),
+            vec![kept as u64],
+            "a Take made before the keep judged the kept sound"
+        );
+        // A later answer, with the kept sound in the bank, is its pick.
+        assert!(engine.perform_record(&home, "[]", &offer, false, kept));
+        assert!(engine.engine.unjudged().is_empty());
+    }
+
     /// **A new patch keeps its own skips.** NEW PATCH empties the sound in
     /// hand into a patch of its own (`guess_patch_as(0)`): a skip made there
     /// is not the sound's when the player goes back to it, the sound's are
@@ -5172,7 +5264,8 @@ mod tests {
                 // pick against).
                 let v: serde_json::Value = serde_json::from_str(&want).unwrap();
                 if steps == 1 && !picked && v.get("tree").is_some() {
-                    picked = stepped.perform_record(&tree, "[]", &v["tree"].to_string(), true);
+                    picked =
+                        stepped.perform_record(&tree, "[]", &v["tree"].to_string(), true, u32::MAX);
                     assert!(picked, "the pick was not recorded");
                 }
             }

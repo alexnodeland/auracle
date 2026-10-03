@@ -160,7 +160,10 @@ by side on the render farm, as many at once as your machine has workers to
 spare. The same seeds give the same children however many workers walk them.
 
 A child joins the pool only if the model rates it above the sound it would
-replace: the lowest-rated unsaved one. When the generation ends, those sounds
+replace: the lowest-rated one it can, not saved, nor kept as new and still
+waiting for its first pick
+([the bank](../bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
+When the generation ends, those sounds
 are replaced to bring the pool back to its size, and the toast names them
 (the first three, then *and N more*). A sound you save before then is never
 among them, even while the generation is still running. A child bred early

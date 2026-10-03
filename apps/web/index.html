@@ -608,7 +608,7 @@
                the button is disabled). -->
           <span class="evolve-wrap" id="evolve-wrap">
             <button class="hw-btn small" id="evolve-btn" title="Breed a generation from the seeds it marks">evolve pool</button>
-            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, the lowest unsaved sounds are replaced to bring the pool back to its size, and that can be a child bred early.">stop</button>
+            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation’s end, it replaces the lowest-rated sounds it can (not saved, nor just kept as new) to bring the pool back to its size, and that can be a child bred early.">stop</button>
           </span>
         </div>
         <div class="duel-row">
@@ -940,7 +940,7 @@
         <div class="help-h">teaching it</div>
         <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The bank’s <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
-        a bred sound that joins it replaces the unsaved one the model rates <i>lowest</i>.
+        a bred sound that joins it replaces the <i>lowest</i>-rated one it can (not saved, nor just kept as new).
         <b>presets</b> is the hand-made library that came with the instrument.
         <b>saved</b> is what you saved.</p>
         <p><b>★</b> and <b>save</b> are different questions. Stars tell the

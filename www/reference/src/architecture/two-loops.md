@@ -53,7 +53,9 @@ Machine-paced. No human in it.
 3. **Inject.** Each child is admitted only if it beats the member it would
    displace. When the generation ends, the lowest-utility members are replaced
    to bring the pool back to size. Pinned (saved) candidates are exempt,
-   including ones pinned while the generation runs.
+   including ones pinned while the generation runs, and so is a sound kept as
+   new until its first pick (at most `pool_size / 4` of them,
+   [persistence](../persistence.md#kept-as-new-protected-until-a-pick)).
 
 The 10 × 40 split is
 [measured](../search/refinement.md#the-split-is-measured); moving in either

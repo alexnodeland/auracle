@@ -194,12 +194,12 @@ test("a stopped generation counts only the walks that came back, never \"every w
 test("a stopped generation that bred nothing says the pool is as it was, unless something was replaced", () => {
   assert.equal(emptyGeneration(8, [], { stopped: true }),
     "Generation 8 stopped before it bred anything. The pool is as it was.");
-  assert.equal(emptyGeneration(8, [], { stopped: true, replaced: " The sound it rated lowest was replaced: Bell Jar." }),
-    "Generation 8 stopped before it bred anything. The sound it rated lowest was replaced: Bell Jar.");
+  assert.equal(emptyGeneration(8, [], { stopped: true, replaced: " It replaced the lowest-rated sound it could: Bell Jar." }),
+    "Generation 8 stopped before it bred anything. It replaced the lowest-rated sound it could: Bell Jar.");
 });
 
 test("what a generation replaced takes the second sentence's place", () => {
-  const replaced = " The 2 it rated lowest were replaced: Bell Jar and Glass Pad.";
+  const replaced = " It replaced the 2 lowest-rated sounds it could: Bell Jar and Glass Pad.";
   assert.equal(emptyGeneration(4, Array(10).fill("no_move"), { replaced }),
     `Generation 4: every walk came back unchanged.${replaced}`);
   assert.equal(emptyGeneration(4, ["no_move", "duplicate"], { stopped: true, replaced }),
@@ -213,7 +213,7 @@ test("every generation outcome is at most two sentences, in the voice", () => {
   ];
   for (const r of cases) {
     for (const stopped of [false, true]) {
-      for (const replaced of ["", " The 3 it rated lowest were replaced: A, B, and C."]) {
+      for (const replaced of ["", " It replaced the 3 lowest-rated sounds it could: A, B, and C."]) {
         const s = emptyGeneration(9, r, { stopped, replaced });
         voiced(s);
         assert.ok(/^[A-Z]/.test(s), `a sentence: ${s}`);

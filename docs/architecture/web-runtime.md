@@ -149,7 +149,11 @@ on replies that already exist. (`ratings`, not `belief`, on the web side:
 - **On a pick's reply:** the `status` that answers `record_duel`,
   `record_keep` and `record_stars` (`null` when `recorded` is false: the
   engine took nothing, so nothing moved), and the `status` that follows
-  `perform_record`. These are `now`-lane replies. In wasm at five lenses
+  `perform_record`. These are `now`-lane replies. A `perform_record`
+  request carries `asOf`, the newest pool id main had shown when the answer
+  was given (`newestSeenId` in `main.js`, via PERFORM's `host.newestId`): a
+  Take waits eight seconds before it is sent, and a sound kept as new in
+  that window is not judged by it (`Engine::record_tree_duel_as_of`). In wasm at five lenses
   the ratings add under 2 ms at rest, and about 4 ms while a generation is
   open with the pool over size, when what its end would retire is ranked
   too (`crates/auracle-wasm/examples/pick_belief.mjs`; its native twin is
@@ -220,8 +224,8 @@ generation is open or a ⚡ walk is out, a press would wait its turn (see
 started. What the running generation will replace is `refine_child`'s
 `retiring` (said *will be replaced*: it only grows, one per child admitted).
 A save, a preset or a kept edit joining the pool can change it too
-(`eviction_order` passes over saved sounds, and a new member moves the
-lowest), so while a generation is open the `pinned`, `preset_loaded` and
+(`eviction_order` passes over saved sounds and sounds kept as new before
+their first pick, and a new member moves the lowest), so while a generation is open the `pinned`, `preset_loaded` and
 `committed` replies carry `retiring` as well (`openRetiring` in
 `worker.js`), and main repaints the marks from it.
 Its seeds come with its progress: every `refine_progress` carries `seeds`,
@@ -460,8 +464,8 @@ first.
   not the one picks made meanwhile have reweighted, so which children are
   kept does not depend on when those picks landed.
 - **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
-  generation ends with the children absorbed so far, the lowest unpinned
-  members are retired (a child bred early can be among them), and
+  generation ends with the children absorbed so far, the lowest members
+  not kept (saved, or kept as new and not yet in a pick) are retired (a child bred early can be among them), and
   walks still running are dropped (the crew is reaped at once if nothing else
   is walking, which gives the cores back).
 - **Fallback.** With no crew (width 0, a spawn that failed, every worker

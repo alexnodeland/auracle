@@ -111,7 +111,8 @@ Either answer teaches the model, and picking the original teaches it most. The
 receipt names the new sound and says which side was yours: *Kept Warm Wash 2
 as new: A was your edit, and you picked it.* The new sound is named for what it
 now is, so its name can differ from the original’s, and the original stays in
-the bank as it was.
+the bank as it was. Nothing replaces the new sound until it has been in a pick
+after this one ([the bank](./bank.md#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
 
 - **CANCEL**, or <kbd>Esc</kbd>, closes the card and keeps nothing. Your edit
   stays open.

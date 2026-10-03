@@ -39,9 +39,14 @@ const INIT = `(() => {
     if (/worker\\.js/.test(String(url))) {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
-        if (m && m.type === "perform_record") records.push({ took: !!m.took });
+        if (m && m.type === "perform_record") records.push({ took: !!m.took, asOf: m.asOf, at: performance.now() });
         return post(m, t);
       };
+      // Each sound kept as new, and when its reply landed.
+      w.addEventListener("message", (e) => {
+        const d = e.data;
+        if (d && d.type === "committed") (window.__committed = window.__committed || []).push({ id: d.id, at: performance.now() });
+      });
     }
     return w;
   }
@@ -183,5 +188,46 @@ test("an offer taken unheard becomes the sound but records no pick; heard, it re
   await expect.poll(records, { timeout: 30_000 }).toBe(1);
   await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
   await page.keyboard.up("a");
+  expect(errs).toEqual([]);
+});
+
+// A Take waits out its eight seconds before it is recorded (DON'T COUNT IT
+// can drop it). Taken onto the bench and kept as new inside that window, the
+// sound is on the answer's B side, but it was not in the pick when the pick
+// was made, so the answer must not end its protection (a sound kept as new is
+// safe until it has been in a pick). The page sends the newest id it had seen
+// when the answer was given (`asOf`), and the engine judges only sounds at or
+// below it (`Engine::record_tree_duel_as_of`, proven natively by
+// `a_take_held_over_a_keep_does_not_judge_the_kept_sound`).
+test("a sound kept as new while a Take waits out its window is not judged by that Take", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(360_000);
+  const errs = await boot(page);
+  const OFFER_MS = await openOnPerform(page, "Glass Pad", 1);
+  const name = await page.locator(".pf-name").textContent();
+  await page.keyboard.down("a");
+  await grow(page, OFFER_MS);
+  await peek(page, 1600);
+  await page.locator(".pf-pad", { hasText: "Take" }).click();
+  await page.keyboard.up("a");
+  await expect(page.locator(".pf-name")).not.toHaveText(name, { timeout: 60_000 });
+  // Inside the window: PATCH, KEEP AS NEW, and the comparison skipped.
+  await page.locator('.viewtab[data-view="play"]').click();
+  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
+  await page.locator("#rack-commit").click();
+  const skip = page.locator("#cd-skip");
+  await Promise.race([
+    skip.waitFor({ state: "visible", timeout: 20_000 }).then(() => skip.click()).catch(() => {}),
+    page.waitForFunction(() => (window.__committed || []).length > 0, null, { timeout: 20_000 }).catch(() => {}),
+  ]);
+  await page.waitForFunction(() => (window.__committed || []).length > 0, null, { timeout: 30_000 });
+  const kept = await page.evaluate(() => window.__committed[0]);
+  expect(kept.id, "the taken sound was not kept as new").toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__records.length), { timeout: 30_000 }).toBe(1);
+  const rec = await page.evaluate(() => window.__records[0]);
+  console.log(`kept ${kept.id} at ${Math.round(kept.at)}; Take recorded at ${Math.round(rec.at)} as of ${rec.asOf}`);
+  expect(rec.took).toBe(true);
+  expect(rec.at, "the Take was recorded before the keep: no race to test").toBeGreaterThan(kept.at);
+  expect(typeof rec.asOf, "the answer carries no bound").toBe("number");
+  expect(rec.asOf, "the answer's bound takes in the sound kept after it").toBeLessThan(kept.id);
   expect(errs).toEqual([]);
 });
