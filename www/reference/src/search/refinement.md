@@ -103,12 +103,15 @@ the seed is exempt from eviction like a pinned patch.
 ### Who leaves, and when
 
 A child is admitted only if it beats the member it would displace: the
-lowest-utility unpinned member, counting the displacements the generation
-already owes. Nobody leaves while the generation runs. At its end the pool is
-trimmed back to `pool_size`: its lowest-utility unpinned members are replaced,
+lowest-utility member not kept, counting the displacements the generation
+already owes. Kept (`Candidate::kept`) is saved (pinned), or kept as new and
+not yet in a pick
+([persistence](../persistence.md#kept-as-new-protected-until-a-pick)).
+Nobody leaves while the generation runs. At its end the pool is
+trimmed back to `pool_size`: its lowest-utility members not kept are replaced,
 so the patches that leave are exactly the ones evicting one child at a time
 would have removed, but a patch saved (pinned) at any point before the end is
-never among them. Pinned candidates are always exempt.
+never among them. Kept candidates are always exempt.
 
 Both the bar a child must beat and the trim at the end are judged under the
 posterior the generation **opened** with, the one in its context and the one
@@ -131,7 +134,7 @@ Both are stated by the engine before EVOLVE POOL is pressed.
 - **`may_replace()`** is the members that generation could retire, lowest
   first. Each walk admits at most one child, and the trim takes only as many
   members as the children put the pool over size, lowest first. So with the
-  pool at size, nothing outside its `refine_seeds` lowest unpinned members can
+  pool at size, nothing outside its `refine_seeds` lowest members not kept can
   leave, unless something else changes the pool meanwhile (a save, an edit, a
   preset). A patch the app has cut is in the pool and ranks low, so it is on
   this list too: the engine does not know about cuts.
@@ -146,8 +149,8 @@ each absorbed walk's message carries with the job's `parent_id`, as does the
 reply to a save, a preset or a kept edit while the generation is open: a
 saved member drops out of `eviction_order` and the next lowest takes its
 place, and a new member can move the lowest. The app says
-*will be replaced* for `retiring()`, not *may be*: it is the lowest unpinned
-members, as many as the children put the pool over size, under the posterior
+*will be replaced* for `retiring()`, not *may be*: it is the lowest members
+not kept, as many as the children put the pool over size, under the posterior
 the generation opened with, so each child admitted adds one member and removes
 none, and the end replaces them whether it is stopped or runs out. Each child
 still to come can add one more.

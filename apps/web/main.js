@@ -8421,7 +8421,8 @@ const TOUR = [
       `The pool is a fixed size, so every child that joins <b>replaces</b> the ` +
       `unsaved sound the model rates lowest. That is deliberate: the pool is what the ` +
       `model works with, not a hard drive. But a sound you loved can be ` +
-      `replaced before the model has learned why you loved it.`,
+      `replaced before the model has learned why you loved it. A sound you ` +
+      `<b>keep as new</b> is safe until it has been in a pick.`,
   },
   {
     bank: "mine",

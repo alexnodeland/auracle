@@ -111,7 +111,9 @@ exactly while it shows.
 
 PATCH’s way to keep an edit: it joins the pool as a new sound, and the
 original stays as it was. It asks first, **WHICH WOULD YOU REACH FOR?**, and
-your answer teaches the model. **PICK THE EDIT** skips the question once.
+your answer teaches the model. **PICK THE EDIT** skips the question once. The
+sound you keep isn’t replaced until it has been in a pick after that, a pair
+or a PERFORM offer.
 
 ### Leans
 

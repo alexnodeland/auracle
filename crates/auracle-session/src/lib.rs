@@ -2310,6 +2310,244 @@ mod tests {
         );
     }
 
+    /// Take the lowest-rated member that is not an edit out of a taught pool
+    /// and keep its tree as new, so the sound kept is, by construction, the
+    /// one the model rates lowest among the rest (every earlier keep aside):
+    /// the case that motivated protecting it. Returns its id. `original` is
+    /// passed to `commit_edit` with `outcome`.
+    fn keep_lowest_as_new(engine: &mut Engine, original: Option<u64>, outcome: EditOutcome) -> u64 {
+        let lowest = |e: &Engine| {
+            e.ranked()
+                .into_iter()
+                .rev()
+                .map(|(i, _, _)| i)
+                .find(|&i| e.pool[i].origin != Origin::Edited)
+        };
+        let worst = lowest(engine).expect("a ranked pool");
+        let gone = engine.pool.remove(worst);
+        let id = engine
+            .commit_edit(original, gone.tree, outcome)
+            .expect("kept as new");
+        let rest = engine
+            .ranked()
+            .into_iter()
+            .rev()
+            .map(|(i, _, _)| &engine.pool[i])
+            .find(|c| c.origin != Origin::Edited || c.id == id)
+            .map(|c| c.id);
+        assert_eq!(
+            rest,
+            Some(id),
+            "the precondition: the sound kept as new rates lowest"
+        );
+        id
+    }
+
+    /// A preset's tree with one knob moved: a sound no pool holds yet, so
+    /// inserting it always takes a place.
+    fn fresh_preset(i: usize) -> auracle_grammar::PatchTree {
+        let (_, tree) = auracle_grammar::presets().remove(i);
+        auracle_grammar::set_param(
+            &tree,
+            "amp#attack",
+            auracle_grammar::ParamValue::Continuous(0.0123),
+        )
+        .expect("every preset has an amp")
+    }
+
+    /// The maintainer's rule: a sound kept as new is not replaced until it
+    /// has been through a pick. Before, a preset opened on a full pool
+    /// replaced the sound just kept whenever the model rated it lowest; here
+    /// it rates lowest, more presets are opened than the pool holds, and a
+    /// generation runs, and it is still there, outside every "may be
+    /// replaced" list, and not charged to the Saved budget. One pick later
+    /// (it is A of a recorded pair, and loses) it is the first sound the
+    /// next generation may replace, and the next preset replaces it.
+    #[test]
+    fn a_sound_kept_as_new_is_not_replaced_until_its_first_pick() {
+        let mut engine = taught(0x4EE9);
+        let size = engine.cfg.pool_size;
+        let kept = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
+        assert_eq!(engine.unjudged(), vec![kept]);
+        assert_eq!(
+            engine.pinned_count(),
+            0,
+            "a kept sound spent the Saved budget"
+        );
+        assert!(
+            !engine.may_replace().contains(&kept),
+            "EVOLVE marks the kept sound \"may be replaced\""
+        );
+        assert!(!engine.belief().may_replace.contains(&kept));
+
+        let mut opened = 0;
+        for (name, tree) in auracle_grammar::presets() {
+            if engine.insert_preset(tree, name).is_some() {
+                opened += 1;
+            }
+        }
+        assert!(opened > size, "only {opened} presets opened");
+        assert_eq!(engine.pool.len(), size);
+        assert!(
+            engine.find(kept).is_some(),
+            "a preset replaced the sound kept as new"
+        );
+        engine.refine(&mut StdRng::seed_from_u64(0x4EEA));
+        assert!(engine.find(kept).is_some(), "a generation replaced it");
+        assert!(!engine.retired().contains(&kept));
+
+        // One pick: it is A, and the other side wins.
+        let k = engine.find(kept).unwrap();
+        let other = (0..engine.pool.len()).find(|&i| i != k).unwrap();
+        engine.record_duel(k, other, false);
+        assert!(engine.unjudged().is_empty(), "a pick left it protected");
+        assert!(!engine.pool[engine.find(kept).unwrap()].kept());
+        assert_eq!(
+            engine.pool[engine.ranked().last().unwrap().0].id,
+            kept,
+            "the precondition: it still rates lowest"
+        );
+        assert_eq!(
+            engine.may_replace().first(),
+            Some(&kept),
+            "judged and lowest, yet not the first that may be replaced"
+        );
+        assert!(engine.insert_preset(fresh_preset(0), "Fresh").is_some());
+        assert!(
+            engine.find(kept).is_none(),
+            "a judged sound rated lowest was not replaced"
+        );
+    }
+
+    /// The comparison that keeps a sound as new does not count as its pick
+    /// (it judges the original), or the protection would be gone the moment
+    /// it was given on KEEP AS NEW's usual path. An answered PERFORM offer
+    /// is a pick, on either side, by tree.
+    #[test]
+    fn the_keep_is_not_the_pick_but_a_perform_offer_is() {
+        let mut engine = taught(0x4EEB);
+        let original = engine.pool[0].id;
+        let kept = keep_lowest_as_new(
+            &mut engine,
+            Some(original),
+            EditOutcome::Heard { edited_won: false },
+        );
+        assert_eq!(
+            engine.unjudged(),
+            vec![kept],
+            "the keep's own pick cleared it"
+        );
+        let tree = engine.pool[engine.find(kept).unwrap()].tree.clone();
+        let offer = auracle_grammar::set_param(
+            &tree,
+            "amp#attack",
+            auracle_grammar::ParamValue::Continuous(0.0321),
+        )
+        .unwrap();
+        assert!(engine.record_tree_duel(
+            &offer,
+            &tree,
+            true,
+            auracle_taste::Provenance::PerformOffer
+        ));
+        assert!(
+            engine.unjudged().is_empty(),
+            "an answered offer left it protected"
+        );
+
+        // The sound in hand heard with its controls moved is still that
+        // sound: the frontend marks it by its own tree.
+        let again = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
+        let tree = engine.pool[engine.find(again).unwrap()].tree.clone();
+        engine.mark_judged(&tree);
+        assert!(engine.unjudged().is_empty());
+    }
+
+    /// The bound: at most `unjudged_cap` sounds kept as new are protected at
+    /// once, the newest, so the pool can never be protected solid. With the
+    /// Saved budget spent as well, every preset still lands and the pool
+    /// keeps its size, and a keep past the cap hands the oldest back to
+    /// normal eviction rather than removing it.
+    #[test]
+    fn sounds_kept_as_new_are_protected_up_to_a_cap_newest_first() {
+        let mut engine = taught(0x4EEC);
+        let size = engine.cfg.pool_size;
+        let cap = engine.unjudged_cap();
+        assert!(cap >= 1 && 2 * cap < size, "cap {cap} is not a real bound");
+        let mut kept = Vec::new();
+        for _ in 0..cap + 2 {
+            kept.push(keep_lowest_as_new(&mut engine, None, EditOutcome::Untold));
+        }
+        assert_eq!(engine.unjudged(), kept[2..].to_vec(), "not the newest");
+        assert!(
+            kept[..2].iter().all(|id| engine.find(*id).is_some()),
+            "the cap removed a sound instead of its protection"
+        );
+        // Spend the Saved budget on members not kept as new.
+        let free: Vec<u64> = engine
+            .pool
+            .iter()
+            .filter(|c| !c.unjudged)
+            .map(|c| c.id)
+            .take(engine.pin_cap())
+            .collect();
+        for id in &free {
+            assert!(engine.set_pinned(*id, true));
+        }
+        assert_eq!(engine.pinned_count(), engine.pin_cap());
+        for i in 0..auracle_grammar::presets().len() {
+            assert!(
+                engine.insert_preset(fresh_preset(i), "Fresh").is_some(),
+                "a preset found nothing it could replace"
+            );
+            assert_eq!(engine.pool.len(), size, "the pool overflowed");
+        }
+        assert!(
+            kept[2..].iter().all(|id| engine.find(*id).is_some()),
+            "a protected sound was replaced"
+        );
+        assert!(
+            kept[..2].iter().all(|id| engine.find(*id).is_none()),
+            "the oldest keeps, past the cap, were never replaced"
+        );
+        assert!(free.iter().all(|id| engine.find(*id).is_some()));
+    }
+
+    /// The mark survives a save and a reload; a session with no sound kept
+    /// as new saves without the key, exactly as before; and an entry saved
+    /// before the mark existed loads judged.
+    #[test]
+    fn a_sound_kept_as_new_is_still_protected_after_a_reload() {
+        let mut engine = taught(0x4EED);
+        let quiet = serde_json::to_value(engine.export_state()).unwrap();
+        assert!(
+            quiet["bank"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| e.get("unjudged").is_none()),
+            "a session with nothing kept as new saved a new key"
+        );
+        let kept = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
+        let json = serde_json::to_string(&engine.export_state()).unwrap();
+        let mut restored = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        restored.begin_session();
+        restored.import_state(serde_json::from_str(&json).unwrap());
+        assert_eq!(restored.unjudged(), vec![kept]);
+
+        let mut legacy: serde_json::Value = serde_json::from_str(&json).unwrap();
+        for e in legacy["bank"].as_array_mut().unwrap() {
+            e.as_object_mut().unwrap().remove("unjudged");
+        }
+        let mut old = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
+        old.begin_session();
+        old.import_state(serde_json::from_value(legacy).unwrap());
+        assert!(
+            old.unjudged().is_empty(),
+            "an old session loaded a sound as unjudged"
+        );
+    }
+
     /// Hand edits: `commit_edit` inserts the edited tree, links lineage, and
     /// (when flagged) records the improvement duel.
     #[test]

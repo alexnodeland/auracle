@@ -147,19 +147,46 @@ unsaved sounds. A sound you starred but didn’t save can be replaced. Stars are
 for teaching; **save** is what keeps.
 ```
 
+## A sound you keep as new is safe until it’s been in a pick
+
+A sound you make in PATCH and [keep as new](./views/play.md) isn’t replaced
+until it has been in a pick: a pair in EVOLVE, or an offer in PERFORM you
+[heard and answered](./views/perform.md#what-perform-teaches-the-model) while
+playing it, with it on either side, whichever you picked. Until then
+nothing replaces it, not a generation, not a preset you open, not a ⚡ child,
+even when the model rates it lowest of all: it hasn’t heard a single answer
+about it yet. After its first pick it’s an ordinary pool sound, rated and
+replaced like any other, so save it if you want to keep it for good.
+
+The pick KEEP AS NEW asks itself (**WHICH WOULD YOU REACH FOR?**) doesn’t
+count: that one is about the sound you edited from, and the sound you keep is
+safe whatever you answer. Nor do stars or a cut: they teach the model, but
+they aren’t picks.
+
+It isn’t a save. The row carries no mark, it doesn’t count toward your saves,
+and it isn’t listed in **SAVED**. A quarter of the pool, 10 of 40, can be safe
+this way at once: keep an eleventh as new before any of them has been in a
+pick, and the oldest of them goes back to being an ordinary pool sound (it
+stays in the pool; it can be replaced again). Saves and these together never
+take more than half the pool, so there is always room for what a generation
+breeds.
+
 ## Which sounds a generation breeds from, and replaces
 
 The pool holds 40 sounds. A generation’s children join it as they are bred,
 and when the generation ends (or you stop it), the lowest-rated unsaved sounds
-are replaced to bring it back to 40. The toast names them: *Generation 3: 4
+are replaced to bring it back to 40 (a sound you kept as new waits for its
+first pick, [above](#a-sound-you-keep-as-new-is-safe-until-its-been-in-a-pick)).
+The toast names them: *Generation 3: 4
 new sounds in the pool. The 4 it rated lowest were replaced: Bell Jar, Soft
 Wash, Glass Rain, and 1 more.*
 
 1. Hover **EVOLVE POOL** in EVOLVE (or move the focus to it). The ten sounds
    the next generation would breed from get a solid amber rail and **SEED**;
    the sounds it may replace get a dashed rail and **MAY BE REPLACED**. No
-   other sound can be replaced when it ends. The words sit where the stars
-   are, so no name moves.
+   other sound can be replaced when it ends. A saved sound is never marked,
+   and nor is a sound you kept as new that hasn’t been in a pick yet. The
+   words sit where the stars are, so no name moves.
 2. Save any you want to keep before you press it.
 
 The marks are the engine’s own lists, and they move as your picks move the
@@ -198,7 +225,8 @@ perc, and weird), browsed in place.
 
 The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the unsaved sound the model rates lowest. The toast names
-what it replaced, and saved sounds are never among them. From then on the row
+what it replaced, and saved sounds are never among them, nor is a sound you
+kept as new that hasn’t been in a pick yet. From then on the row
 reads **IN POOL**, and a second click opens the same copy.
 
 The presets are worth playing through early. They are what the [warm

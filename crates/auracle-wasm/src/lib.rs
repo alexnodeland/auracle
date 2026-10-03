@@ -2130,6 +2130,11 @@ impl WasmEngine {
     /// `took_offer` saying which the player kept. Recorded as a duel tagged
     /// `perform_offer` ([`auracle_session::Engine::record_tree_duel`]; A is
     /// the performed sound). Returns whether it was recorded.
+    ///
+    /// A recorded answer is a pick for the sound in hand, `tree` as it is in
+    /// the bank, whatever its controls were moved to: a sound kept as new and
+    /// played in PERFORM competes like any other once it has been in one
+    /// ([`auracle_session::Engine::mark_judged`]).
     pub fn perform_record(
         &mut self,
         tree_json: &str,
@@ -2143,12 +2148,18 @@ impl WasmEngine {
         ) else {
             return false;
         };
-        self.engine.record_tree_duel(
+        let recorded = self.engine.record_tree_duel(
             &home,
             &offer,
             !took_offer,
             auracle_taste::Provenance::PerformOffer,
-        )
+        );
+        if recorded {
+            if let Ok(held) = serde_json::from_str::<PatchTree>(tree_json) {
+                self.engine.mark_judged(&held);
+            }
+        }
+        recorded
     }
 
     /// `tree` with knob `overrides` (`[[addr, value], …]`) written into its
@@ -4328,6 +4339,41 @@ mod tests {
         assert!(
             !engine.guess_skip(&reverb),
             "the skip stayed with the old id"
+        );
+    }
+
+    /// **A sound kept as new is protected until a pick, and a PERFORM offer
+    /// is one.** Kept, it is marked; played in PERFORM with a control moved
+    /// (so the performed sound is not its tree) and an offer answered, it
+    /// competes like any other.
+    #[test]
+    fn a_perform_offer_judges_the_sound_in_hand() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids = pool_ids(&engine);
+        assert!(engine.edit_begin(ids[0]));
+        let edit = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+        assert_eq!(engine.edit_structure(edit), "");
+        let kept = engine.edit_commit("none");
+        assert!(kept > 0, "the edit was not kept");
+        assert_eq!(engine.engine.unjudged(), vec![kept as u64]);
+        let tree = engine.tree_json_of(kept);
+        let moved = r#"[["amp#attack",0.37]]"#; // voice: name
+        assert_ne!(
+            engine.perform_apply(&tree, moved),
+            engine.perform_apply(&tree, "[]"),
+            "the control did not move the sound"
+        );
+        // Any other sound will do as the offer: one the commit left in.
+        let other = pool_ids(&engine)
+            .into_iter()
+            .find(|&id| id != kept)
+            .unwrap();
+        let offer = engine.tree_json_of(other);
+        assert!(engine.perform_record(&tree, moved, &offer, false));
+        assert!(
+            engine.engine.unjudged().is_empty(),
+            "an answered offer left the sound in hand protected"
         );
     }
 

@@ -235,9 +235,10 @@ test("a guess skipped after keep as new is still skipped when the kept sound is 
   // Another sound, then the kept one again: the skip is its own. The other
   // sound comes from the pool, not the presets: opening a preset puts it in
   // the pool, and a full pool (40) makes room by replacing the sound it rates
-  // lowest. A sound just kept as new often is that sound: on a CI runner the
+  // lowest. A sound just kept as new often was that sound: on a CI runner the
   // kept sound rated 24%, opening Reese replaced it, and its row was never
-  // there to click.
+  // there to click. A sound kept as new is now safe until it has been in a
+  // pick (bank_kept.spec.js), but this test is about the skip, not that.
   await page.locator('.bf[data-f="pool"]').click();
   const other = await page.locator(`#bank-list .bank-item:not([data-id="${kept}"])`).first().getAttribute("data-id");
   const tOther = await now(page);

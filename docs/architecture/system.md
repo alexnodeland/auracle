@@ -65,8 +65,10 @@ Two loops share one pool of patches.
    render-farm worker (`farm_walk`); `refine_absorb` folds results in **job
    order** (novelty, admission, lineage) and refuses one out of turn as
    `stale`; `refine_finish` ends it (or stops it early) and only then
-   retires the lowest unpinned members, so a patch saved mid-generation is
-   never retired. `refine` is that loop run serially, and `refine_begin` +
+   retires the lowest members not kept (`Candidate::kept`: saved, or kept as
+   new by `commit_edit` and not yet in a recorded pick, at most
+   `unjudged_cap` of those), so a patch saved mid-generation is never
+   retired. `refine` is that loop run serially, and `refine_begin` +
    `refine_seed` the same loop one walk per call. ⚡ *evolve from this* is one
    job over the same path (`refine_from`, or `refine_from_job` +
    `refine_from_absorb` / `refine_from_walk`), with locks; its seed is

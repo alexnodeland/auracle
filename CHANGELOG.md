@@ -8,6 +8,24 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: a sound you keep as new is safe until it has been in a pick
+
+- **A sound you make in PATCH and keep as new is no longer replaced before
+  the model has heard a single answer about it.** The pool has a fixed size,
+  so anything that joins it (a preset you open, a generation's children, a ⚡
+  child) replaces the sound the model rates lowest. A sound you had just kept
+  as new was often that sound: open a preset straight after, and the toast
+  said your new sound had been replaced. Now it waits for its first pick: a
+  pair in EVOLVE, or an offer in PERFORM you heard and took or passed, with it
+  on either side, whatever you picked. The question KEEP AS NEW asks itself
+  doesn't count, since that one is about the sound you edited from. After its
+  first pick it's an ordinary pool sound; save it to keep it for good.
+- It isn't a save: no mark, no charge to your saves, and EVOLVE POOL never
+  marks it *may be replaced* while it waits. Up to a quarter of the pool (10
+  of 40) can wait at once; keep one more as new and the oldest goes back to
+  being an ordinary pool sound. It survives a reload, and sessions saved
+  before this load as they did.
+
 ### Added: ask a control what it does, and a lesson on filters
 
 - **Every control on PERFORM answers with a figure of what it does to the

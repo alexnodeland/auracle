@@ -220,8 +220,8 @@ generation is open or a ⚡ walk is out, a press would wait its turn (see
 started. What the running generation will replace is `refine_child`'s
 `retiring` (said *will be replaced*: it only grows, one per child admitted).
 A save, a preset or a kept edit joining the pool can change it too
-(`eviction_order` passes over saved sounds, and a new member moves the
-lowest), so while a generation is open the `pinned`, `preset_loaded` and
+(`eviction_order` passes over saved sounds and sounds kept as new before
+their first pick, and a new member moves the lowest), so while a generation is open the `pinned`, `preset_loaded` and
 `committed` replies carry `retiring` as well (`openRetiring` in
 `worker.js`), and main repaints the marks from it.
 Its seeds come with its progress: every `refine_progress` carries `seeds`,
@@ -460,8 +460,8 @@ first.
   not the one picks made meanwhile have reweighted, so which children are
   kept does not depend on when those picks landed.
 - **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
-  generation ends with the children absorbed so far, the lowest unpinned
-  members are retired (a child bred early can be among them), and
+  generation ends with the children absorbed so far, the lowest members
+  not kept (saved, or kept as new and not yet in a pick) are retired (a child bred early can be among them), and
   walks still running are dropped (the crew is reaped at once if nothing else
   is walking, which gives the cores back).
 - **Fallback.** With no crew (width 0, a spawn that failed, every worker
