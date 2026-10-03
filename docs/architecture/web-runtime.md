@@ -306,8 +306,9 @@ it drops a stale pre-placement audition.
   - `guessCrewPhase`, detached from the pump (one guess's at a time): it plans first, and a refusal (`no_taste`, `full`) or
     a guess the memo already holds raises no crew. Otherwise, where a walk
     crew can be had
-    (`crewUp`; not while boot's crew is filling, nor while a generation or ⚡
-    walks), it plans every candidate (`guess_plan` with limit 0) and hands
+    (`crewUp`; not while a generation or ⚡ walks; while boot's crew is
+    filling the pool the guess waits for it to finish, `blocked`, as a
+    generation does, rather than rank only the floor's eight), it plans every candidate (`guess_plan` with limit 0) and hands
     them out one `farm_render` per idle worker (the farm's `job`, its `done`
     routed by `guessDone`; a lost worker gives its job back, `guessLost`),
     absorbing each with `memo_absorb` as it lands, for at most

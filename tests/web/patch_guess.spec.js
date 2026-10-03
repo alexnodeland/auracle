@@ -9,6 +9,7 @@
 // skips made after it.
 const { test, expect } = require("@playwright/test");
 const { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess } = require("./patch_page.js");
+const { SLOW_ENGINE } = require("./perform_budget.js");
 
 const SURE = "(a hunch|leaning|fairly sure)";
 const LINE = new RegExp(`· \\d+%( over your pool’s average)? · ${SURE}( · it may not help)?$`);
@@ -197,6 +198,44 @@ test("with no render crew, the guess renders the likeliest eight on the engine's
   expect(r.data.planned).toBe(8);
   expect(r.data.rendered).toBeLessThanOrEqual(8);
   await expect(page.locator("#rack-svg .guess-plate")).toHaveAttribute("data-kind", r.data.guesses[0].kind, { timeout: 15_000 });
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+// While boot's own crew is still filling the pool no walk crew can be raised,
+// and a guess started then ranked only the floor's eight. It used to start
+// late enough by accident, behind PERFORM's background measurements; once
+// those went last (`idleOnly` in worker.js) a guess asked straight after the
+// warm start's fit started with the bank still arriving (pool 27 of 40 on a
+// CI runner) and ranked eight. It waits for boot's crew now, as a generation
+// does. Here boot's crew is made slow (its wasm calls 12 times as long, as
+// perform_budget.js slows the engine), so the bank is still arriving when
+// the guess is asked; the walk crew raised afterwards is not slowed.
+test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(600_000);
+  const t0 = Date.now();
+  await page.route(/\/farm\.js(\?|$)/, async (route) => {
+    const resp = await route.fetch();
+    const body = await resp.text();
+    // Boot's crew is spawned as the page loads; a walk crew, much later.
+    const slow = Date.now() - t0 < 5_000;
+    await route.fulfill({ response: resp, body: (slow ? SLOW_ENGINE(12) : "") + body, contentType: "text/javascript" });
+  });
+  const errors = await boot(page, { warmed: false });
+  await page.evaluate(() => {
+    window.__filledAt = null;
+    window.__pwEngine().addEventListener("message", (e) => {
+      if (e.data && e.data.type === "filled" && window.__filledAt == null) window.__filledAt = performance.now();
+    });
+  });
+  await warmStartAndFit(page);
+  await openPreset(page, "Sub & Sparkle");
+  await expect.poll(() => page.evaluate(() => window.__pwPosted.some((p) => p.type === "guess")), { timeout: 60_000 }).toBe(true);
+  const asked = await page.evaluate(() => ({ t: window.__pwPosted.find((p) => p.type === "guess").t, filled: window.__filledAt }));
+  expect(asked.filled, "the bank had finished arriving before the guess was asked").toBeNull();
+  const r = await rankedGuess(page, 0, 300_000);
+  expect(r.data.planned, "ranked on the floor's eight, not on a crew").toBe(r.data.total);
+  expect(r.data.total).toBeGreaterThan(8);
+  expect(await page.evaluate(() => window.__filledAt)).not.toBeNull();
   expect(errors, errors.join("\n")).toEqual([]);
 });
 

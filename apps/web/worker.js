@@ -2427,6 +2427,13 @@ function blocked(m) {
     case "refine":
     case "refine_from":
       return walking() || bootCrewLive();
+    // The guess's crew phase waits for boot's crew the same way: started
+    // while the bank is still arriving, it can raise no crew of its own and
+    // ranks only the floor's eight candidates, where a few seconds later a
+    // crew ranks every one. It used to start late enough by accident,
+    // queued behind PERFORM's background measurements (see `idleOnly`).
+    case "guess":
+      return !m.crewed && bootCrewLive();
     default:
       return false;
   }
