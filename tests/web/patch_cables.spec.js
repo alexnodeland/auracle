@@ -183,7 +183,7 @@ test("sounds opened right after arriving in PATCH are not kept waiting behind a 
 // probe is answered and the cables lit while it still runs, and it still
 // finishes after.
 test("a knob turned in PATCH lights its cables again while a measurement nobody is waiting on runs", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(300_000 + FLOOR_MS);
+  test.setTimeout(300_000 + 2 * FLOOR_MS);
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Reese");
   const settled = async () => {
@@ -191,6 +191,12 @@ test("a knob turned in PATCH lights its cables again while a measurement nobody 
     return d.marks.length > 0 && d.marks.every((m) => !m.unknown);
   };
   await expect.poll(settled, { timeout: 60_000 }).toBe(true);
+  // PERFORM's own measurement of the sound the app opened with, demoted when
+  // PATCH came into view, finishes first: the one sent below then waits for
+  // nothing of PERFORM's, and the wait for it to finish is its renders alone.
+  await expect
+    .poll(() => page.evaluate(() => (window.__pwCounts.perform_wired || 0) >= window.__pwPosted.filter((p) => p.type === "perform_wire").length), { timeout: FLOOR_MS })
+    .toBe(true);
   await page.evaluate(() => {
     const w = window.__pwEngine();
     const post = w.postMessage.bind(w);

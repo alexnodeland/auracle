@@ -201,6 +201,14 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
   // Its input is open (the sound listens), so RECORD records the tone.
   await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  // When RECORD and STOP were pressed, by the page's clock: the take is as
+  // long as the time between them. Playwright's own steps between the two
+  // clicks took half a second on a loaded CI runner, so a fixed "1.x s" read
+  // the runner, not the take.
+  await page.evaluate(() => {
+    window.__recClicks = [];
+    document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".take-rec")) window.__recClicks.push(performance.now()); }, true);
+  });
   await lane.locator(".take-rec").click();
   await expect(lane.locator(".take-rec")).toHaveClass(/\bon\b/);
   await expect(lane.locator(".take-line")).toHaveText("recording…");
@@ -208,7 +216,12 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await lane.locator(".take-rec").click();
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
     .toMatch(/Recorded \d\.\d s into CAPTURE\./);
-  await expect(lane.locator(".take-line")).toHaveText(/^take · 1\.\d s$/, { timeout: 30_000 });
+  const [recAt, stopAt] = await page.evaluate(() => window.__recClicks);
+  const held = (stopAt - recAt) / 1000;
+  await expect(lane.locator(".take-line")).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
+  const said = Number((await lane.locator(".take-line").textContent()).match(/(\d\.\d) s/)[1]);
+  console.log(`RECORD held ${held.toFixed(2)} s; the take says ${said} s`);
+  expect(Math.abs(said - held), `a take of ${said} s for RECORD held ${held.toFixed(2)} s`).toBeLessThanOrEqual(0.15);
   await shotOf(page, "capture-plate", [plate(page, "capture"), plate(page, "audio_in")]);
   const len = await page.evaluate(() => {
     const t = window.__aur.wb.tree.root.Capture.take;
