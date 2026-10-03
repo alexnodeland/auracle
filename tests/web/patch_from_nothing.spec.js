@@ -5,6 +5,7 @@
 // player sees: the rack's modules, the name and caption, and the toasts.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset } = require("./patch_page.js");
+const { openCatalogue } = require("./shell");
 
 /** The rack's modules by kind, the amp and empty sockets included, sorted. */
 const kinds = (page) =>
@@ -22,6 +23,7 @@ async function undoToast(page) {
 /** A module from the rail, placed at the socket it starts on (an empty
  *  socket first), or at the socket named. */
 async function place(page, kind, childKey) {
+  await openCatalogue(page);
   await page.locator(`#nb-groups .nb-item[data-kind="${kind}"]`).click();
   if (childKey) await page.locator(`#rack-svg .jack[data-childkey="${childKey}"]`).click();
   else await page.keyboard.press("Enter");

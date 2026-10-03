@@ -32,7 +32,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+const { goLevel, bankTab, openCatalogue } = require("./shell");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
@@ -129,6 +129,7 @@ test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an in
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+  await openCatalogue(page);
   for (const kind of ["track", "capture"]) {
     await expect(page.locator(`.nb-item[data-kind="${kind}"]`)).toHaveCount(1);
   }

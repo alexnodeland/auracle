@@ -10,7 +10,7 @@
 const { test, expect } = require("@playwright/test");
 const { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess } = require("./patch_page.js");
 const { SLOW_ENGINE } = require("./perform_budget.js");
-const { bankTab } = require("./shell");
+const { bankTab, openCatalogue } = require("./shell");
 
 const SURE = "(a hunch|leaning|fairly sure)";
 const LINE = new RegExp(`· \\d+%( over your pool’s average)? · ${SURE}( · it may not help)?$`);
@@ -28,7 +28,8 @@ test("the model's guess is drawn at its socket with its reason and forecast, and
   const errors = await boot(page, { warmed: false });
   await warmStartAndFit(page);
   await openPreset(page, "Sub & Sparkle");
-  // Before any guess is drawn: where each rail row's name sits.
+  // Before any guess is drawn: where each catalogue row's name sits.
+  await openCatalogue(page);
   const xBefore = await railNameX(page);
 
   // The newest ranking for this patch, and what PATCH draws from it.
@@ -160,6 +161,7 @@ test("a new patch's skips are its own: the sound it was started from does not in
   // A new patch that sounds, so its guesses are at the output, as Reese's are.
   await page.locator("#patch-new-btn").click();
   await expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout: 30_000 });
+  await openCatalogue(page);
   await page.locator('#nb-groups .nb-item[data-kind="vco"]').click();
   await page.keyboard.press("Enter");
   await expect(page.locator('#rack-svg g.mod-group[data-kind="vco"]')).toHaveCount(1, { timeout: 30_000 });
@@ -318,6 +320,7 @@ test("a guess added after its socket was filled is refused, and the refusal says
   // after the socket is full.
   await slowWorker(page, { edit_structure: 2500 });
   const kind = g.data.guesses[0].kind === "pluck" ? "noise" : "pluck";
+  await openCatalogue(page);
   await page.locator(`#nb-groups .nb-item[data-kind="${kind}"]`).click();
   await page.keyboard.press("Enter");
   await expect

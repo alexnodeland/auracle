@@ -1,5 +1,5 @@
 // The shell's ways in, for the specs (Plan-008): the level rail, KEYS ⋯, the
-// bank's tabs and the model view. They use the app's own hooks (the rail's
+// bank's tabs, the model view and PATCH's catalogue. They use the app's own hooks (the rail's
 // `aria-current`, KEYS ⋯'s popover, the tabs' `aria-selected`,
 // `body.model-view`), never a test-only attribute.
 const { expect } = require("@playwright/test");
@@ -39,4 +39,12 @@ async function modelView(page, on = true) {
   else await expect(body).not.toHaveClass(/\bmodel-view\b/);
 }
 
-module.exports = { goLevel, openKeys, bankTab, modelView };
+/** Open PATCH's catalogue (ADD MODULE), where every module is added from;
+ *  a no-op when it is open (a new patch opens it). */
+async function openCatalogue(page) {
+  const cat = page.locator("#nodebank");
+  if (await cat.isHidden()) await page.locator("#pt-add").click();
+  await expect(cat).toBeVisible();
+}
+
+module.exports = { goLevel, openKeys, bankTab, modelView, openCatalogue };

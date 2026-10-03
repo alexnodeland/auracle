@@ -2947,91 +2947,48 @@ input, textarea, .bi-rename {
 .mod-menu-btn { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); cursor: pointer; }
 .mod-menu-btn:hover { fill: var(--phos-a); }
 
-/* ---- play canvas + node bank ---- */
-/* The rail runs to the window edge, mirroring .bank on the left. Two rails of
-   the same material in two different form factors read as an accident. */
-.play-body { flex: 1; min-height: 0; display: flex; gap: var(--s2); margin-right: calc(-1 * var(--s3)); }
+/* ---- the play body: the well, and the shelf under it ---- */
+.play-body { flex: 1; min-height: 0; display: flex; gap: var(--s2); }
 .play-canvas { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .play-canvas .rack-frame { flex: 1; }
 
-/* ================= the node bank — the instrument's catalogue =================
-   It was the only panel in the app made of nothing: no lift, no cast, no
-   screws, one type size, and both phosphors dark until hover. It is hardware
-   now, and it holds nineteen modules without becoming a spreadsheet.
-
-   The rail goes flush to the window edge with a single hairline, mirroring
-   .bank on the left — two rails of the same material in two different form
-   factors read as an accident, not as a decision. */
+/* ================= the catalogue (C2a: `pt-cat`, on demand in the well) =================
+   Over the well's left, from under its top line to over its foot: the
+   search, what is in this patch, the groups, the legend. Opened by ADD
+   MODULE and /, closed by × and Esc. */
 .nodebank {
-  position: relative;
-  flex: 0 0 auto;
+  position: absolute;
+  left: var(--s3);
+  top: var(--s3);
+  bottom: calc(var(--s3) + 40px);
+  z-index: 11;
+  width: 248px;
   display: flex;
   align-items: stretch;
-  border-left: 1px solid var(--hairline);
-  background: linear-gradient(180deg, var(--recess-hi), var(--recess-lo));
-  /* 1fr -> 0fr, because display:none cannot animate and made the whole panel
-     teleport out of the layout. */
-  transition: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
 }
+.nodebank[hidden] { display: none; }
+.nodebank .nb-body { width: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .nb-collapse {
-  width: 20px;
-  border: none;
-  border-right: 1px solid var(--hairline);
-  background: var(--bezel);
+  margin-left: var(--s1);
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: none;
   color: var(--silk-dim);
   cursor: pointer;
   font-size: var(--t-label);
   transition: color var(--d-press) ease-out;
 }
-.nb-collapse:hover { color: var(--phos-a); }
-
-/* ---- collapsed: a 34px rail that keeps its name and its held count ---- */
-.nb-rail {
-  display: none;
-  width: 34px;
-  border: none;
-  background: transparent;
-  color: var(--silk-dim);
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s2);
-  flex-direction: column;
-  padding: var(--s3) 0;
-}
-.nodebank.collapsed .nb-rail { display: flex; }
-.nodebank.collapsed .nb-body,
-.nodebank.collapsed .nb-resize,
-.nodebank.collapsed .nb-collapse,
-.nodebank.collapsed .nb-status { display: none; }
-.nb-rail .rail-word {
-  writing-mode: vertical-lr;
-  transform: rotate(180deg);
-  font-family: var(--font-silk);
-  font-size: var(--t-label);
-  font-weight: 700;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-}
-.nb-rail .rail-n { font-size: var(--t-value); color: var(--silk-dim); }
-.nb-rail .rail-held {
-  font-size: var(--t-value);
-  color: var(--phos-a);
-  border: 1px solid var(--phos-a-deep);
-  border-radius: 999px;
-  padding: 1px var(--s1);
-}
-.nb-rail:hover { color: var(--phos-a); }
-
-/* ---- the drag handle on the inboard edge ---- */
-.nb-resize {
-  position: absolute;
-  left: -3px; top: 0; bottom: 0;
-  width: 7px;
-  cursor: col-resize;
-  z-index: 2;
-}
-.nb-resize:hover { background: linear-gradient(90deg, transparent, var(--phos-a-18)); }
+.nb-collapse:hover, .nb-collapse:focus-visible { color: var(--silk); border-color: var(--hairline); }
+@media (pointer: coarse) { .nb-collapse { width: 40px; height: 40px; } }
+/* θ, what the model thinks of a module, is the model view's (⌥). */
+body:not(.model-view) #nodebank .ni-theta { display: none; }
 
 /* The header is a bezel band, so the catalogue reads as an instrument's
    silkscreen rather than as a sidebar title. */
@@ -3802,8 +3759,10 @@ input, textarea, .bi-rename {
 
 .pick-chip {
   position: absolute;
-  z-index: 6;
-  transform: translate(-50%, -100%);
+  z-index: 10;
+  left: var(--s4);
+  top: var(--s3);
+  max-width: calc(100% - var(--s7));
   display: flex;
   align-items: center;
   gap: var(--s1);
@@ -3966,9 +3925,6 @@ input, textarea, .bi-rename {
 @media (max-height: 940px) {
   /* (The dock is the prototype's 78 px at every height now; it gave ground
      here when it was 128.) */
-  /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
-     rail folds itself to the 34px group tab rather than squeezing the canvas. */
-  .nb-body { width: clamp(180px, 15vw, 220px); }
   /* A truncated hint is worse than no hint — the group word already carries
      the meaning, and the note is the part that can be dropped. */
   .nb-note { display: none; }
@@ -4227,7 +4183,6 @@ kbd { font-family: var(--font-mono); }
 .nb-item:focus-visible,
 .nb-fold:focus-visible,
 .nb-chip:focus-visible,
-.nb-rail:focus-visible,
 .nb-inline:focus-visible,
 .nb-collapse:focus-visible,
 .cm-item:focus-visible,
@@ -7507,3 +7462,20 @@ html.xl-on .alarm { z-index: 62; }
 #rack-svg .rack-plates g.selected .mod-title { fill: var(--phos-a); }
 /* A finger has no hover: ⋯ and the lock show on every plate. */
 @media (pointer: coarse) { #rack-svg .mod-menu-btn, #rack-svg .mod-lock { opacity: 1; } }
+/* The well's top line while something is in hand: over the guess's line,
+   which steps aside for it. */
+.pick-chip { gap: var(--s2); padding: var(--s1) var(--s1) var(--s1) var(--s3); }
+.pick-chip.hidden { display: none; }
+.pick-armed { display: inline-flex; align-items: center; gap: var(--s2); min-width: 0; }
+.pick-armed:empty { display: none; }
+.pick-armed b { font-family: var(--font-silk); font-size: var(--t-body); color: var(--phos-a); letter-spacing: 0.02em; text-transform: none; }
+.pick-chip .pick-chip-text { color: var(--silk-dim); }
+.pick-chip .pick-chip-text:empty { display: none; }
+.guess-read.held { visibility: hidden; }
+@media (pointer: coarse) { .pick-chip-x { width: 40px; height: 40px; } }
+/* With the catalogue open, the well's top line starts past it. */
+.rack-frame.cat-open .pick-chip,
+.rack-frame.cat-open .guess-read { left: calc(248px + var(--s3) + var(--s3)); }
+.pick-armed { overflow: hidden; }
+.pick-armed .sd-hint { margin-left: 0; }
+.pick-chip .pick-chip-text { flex: none; }

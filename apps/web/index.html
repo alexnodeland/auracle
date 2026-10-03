@@ -438,6 +438,54 @@
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
               </div>
+              <!-- The catalogue, on demand over the well's left (the
+                   specimen's `pt-cat`): ADD MODULE or / opens it, Esc or ×
+                   closes it. Every entry says what it does to a signal (the
+                   glyph) and where it can legally go (the port pips); under
+                   the model view, what the model thinks of it (the θ bar). -->
+              <aside class="nodebank pt-cat" id="nodebank" aria-label="Catalog of modules" hidden>
+            <div class="nb-body" id="nb-body">
+              <header class="nb-head">
+                <span class="panel-label">add a module</span>
+                <span class="mono" id="nb-count"></span>
+                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalog works" aria-label="How the catalog works">?</button>
+                <button class="nb-collapse" id="nb-collapse" type="button" title="Close the catalog · Esc" aria-label="Close the catalog" aria-controls="nodebank">✕</button>
+              </header>
+              <div class="nb-search">
+                <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
+                       placeholder="search: grit, vowel" aria-label="Search modules">
+                <kbd class="nb-slash" aria-hidden="true">/</kbd>
+              </div>
+              <p class="nb-empty hidden" id="nb-empty">No sound open. Pick one from the bank on the left, and the modules wake up.</p>
+              <!-- What the patch on the bench is actually made of. The rail is
+                   a legend for the canvas beside it, so it should be able to
+                   answer "what am I looking at" as well as "what can I add". -->
+              <section class="nb-inpatch hidden" id="nb-inpatch" aria-labelledby="nb-inpatch-h">
+                <h3 class="nb-sect"><span id="nb-inpatch-h">in this patch</span><span class="nb-n mono" id="nb-inpatch-n"></span></h3>
+                <div class="nb-chips" id="nb-inpatch-list"></div>
+              </section>
+              <div id="nb-groups"></div>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes: it is one voice you play.</p>
+              <div class="nb-legend">
+                <span class="lg-row"><i class="lg-swatch"></i>audio</span>
+                <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
+              </div>
+              <p class="nb-status mono" id="nb-status"></p>
+            </div>
+            <!-- The catalogue's own walkthrough, anchored to the rail rather
+                 than centred in a modal, for the same reason the bank's is:
+                 every step points at something in the rail. -->
+            <div class="bank-tour nb-tour hidden" id="nb-tour" role="dialog" aria-modal="false" aria-labelledby="nbt-title">
+              <div class="tour-step mono" id="nbt-step"></div>
+              <div class="tour-title" id="nbt-title"></div>
+              <div class="tour-body" id="nbt-body"></div>
+              <div class="tour-nav">
+                <button class="util-btn" id="nbt-skip">skip</button>
+                <button class="util-btn" id="nbt-back">back</button>
+                <button class="hw-btn small" id="nbt-next">next</button>
+              </div>
+            </div>
+          </aside>
               <!-- The well's foot: the camera's corner on the left, then the
                    readout (`pt-read`): the selected module's name and what it
                    does in one sentence; pointed at in the catalogue, a longer
@@ -505,11 +553,17 @@
                    (φ counts modules, it does not record cables), so the chip
                    carries the caveat as its tooltip and the strip under the
                    rack says it in words. -->
+              <!-- The well's top line while something is in hand (the pick
+                   chip, Plan-008 C2a): the module, its price ("prices what,
+                   not where"), ▶ to hear it at the socket with the socket's
+                   scope, what happens at the socket under the pointer, and
+                   Esc to put it down. -->
               <div class="pick-chip hidden" id="pick-chip" role="status">
+                <span class="pick-armed" id="pick-armed"></span>
                 <span class="pick-chip-text"></span>
                 <span class="pick-chip-price mono hidden"></span>
                 <kbd>esc</kbd>
-                <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
+                <button class="pick-chip-x" type="button" aria-label="Put it down (Esc)">✕</button>
               </div>
               <!-- The frame's own way out of a stranded freeform layout. It
                    appears only when the fit has genuinely failed — under 0.3×
@@ -534,57 +588,6 @@
               <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span></div>
             </div>
           </div>
-          <!-- The node bank: the instrument's catalogue, not a shelf. Every
-               entry says what it does to a signal (the glyph), where it can
-               legally go (the port pips), and — only once the pool carries
-               enough evidence — what the model thinks of it (the θ bar). -->
-          <aside class="nodebank" id="nodebank" aria-label="Module rail">
-            <button class="nb-collapse" id="nb-collapse" title="Fold the module rail away" aria-label="Fold the module rail away" aria-expanded="true" aria-controls="nb-body">▸</button>
-            <!-- Collapsed, the rail keeps its name and its held-count. A drawer
-                 that can hide staged work without saying so is a trap. -->
-            <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the module rail"></button>
-            <div class="nb-resize" id="nb-resize" title="Drag to resize" aria-hidden="true"></div>
-            <div class="nb-body" id="nb-body">
-              <header class="nb-head">
-                <span class="panel-label">modules</span>
-                <span class="mono" id="nb-count"></span>
-                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalog works" aria-label="How the module rail works">?</button>
-              </header>
-              <div class="nb-search">
-                <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
-                       placeholder="search: grit, vowel" aria-label="Search modules">
-                <kbd class="nb-slash" aria-hidden="true">/</kbd>
-              </div>
-              <p class="nb-empty hidden" id="nb-empty">No sound open. Pick one from the bank on the left, and the modules wake up.</p>
-              <!-- What the patch on the bench is actually made of. The rail is
-                   a legend for the canvas beside it, so it should be able to
-                   answer "what am I looking at" as well as "what can I add". -->
-              <section class="nb-inpatch hidden" id="nb-inpatch" aria-labelledby="nb-inpatch-h">
-                <h3 class="nb-sect"><span id="nb-inpatch-h">in this patch</span><span class="nb-n mono" id="nb-inpatch-n"></span></h3>
-                <div class="nb-chips" id="nb-inpatch-list"></div>
-              </section>
-              <div id="nb-groups"></div>
-              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes: it is one voice you play.</p>
-              <div class="nb-legend">
-                <span class="lg-row"><i class="lg-swatch"></i>audio</span>
-                <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
-              </div>
-              <p class="nb-status mono" id="nb-status"></p>
-            </div>
-            <!-- The catalogue's own walkthrough, anchored to the rail rather
-                 than centred in a modal, for the same reason the bank's is:
-                 every step points at something in the rail. -->
-            <div class="bank-tour nb-tour hidden" id="nb-tour" role="dialog" aria-modal="false" aria-labelledby="nbt-title">
-              <div class="tour-step mono" id="nbt-step"></div>
-              <div class="tour-title" id="nbt-title"></div>
-              <div class="tour-body" id="nbt-body"></div>
-              <div class="tour-nav">
-                <button class="util-btn" id="nbt-skip">skip</button>
-                <button class="util-btn" id="nbt-back">back</button>
-                <button class="hw-btn small" id="nbt-next">next</button>
-              </div>
-            </div>
-          </aside>
         </div>
         <!-- Teaching without leaving the instrument. This carries the same
              pips and the same forecast line as EVOLVE — a stripped-down copy

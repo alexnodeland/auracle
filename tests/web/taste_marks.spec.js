@@ -18,7 +18,7 @@
 // and in the bars, on a fit whose two coefficients the spec chooses — one
 // settled, one a guess — delivered as the worker would.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, openCatalogue, modelView } = require("./shell");
 
 const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
@@ -148,6 +148,8 @@ test("a guess is drawn hollow with a ?, in LEARNING's weights and the module rai
   // PATCH's node bank draws the same two marks: the vco a hollow bar whose
   // whisker crosses the zero rule, the filter a solid one clear of it.
   await goLevel(page, "patch");
+  await openCatalogue(page);
+  await modelView(page, true); // θ shows under the model view (⌥)
   const cell = (kind) => page.locator(`#nb-groups .nb-item[data-kind="${kind}"] .ni-theta`);
   await expect(cell("vco")).toHaveClass(/\bguess\b/, { timeout: 15_000 });
   await expect(cell("filter")).not.toHaveClass(/\bguess\b|\bthin\b/);

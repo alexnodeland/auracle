@@ -1873,8 +1873,12 @@ const patchView = createPatch({
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
   // Esc has another job first: something floating, a module in hand, a cable
   // half made, or a rack knob or plate button (`data-stop`) it backs out of.
+  // A new patch opens the catalogue (the specimen's `np-desk`), and leaving
+  // it closes it.
+  openCatalogue: () => openCatalogue(false),
+  closeCatalogue: () => closeCatalogue(false),
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null) ||
+    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogueOpen() ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"),
@@ -5601,6 +5605,7 @@ document.addEventListener("keydown", (e) => {
       if (inside) $("keys-btn").focus();
     }
     if (evolveMenuOpen()) setEvolveMenu(false);
+    else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) closeCatalogue(false);
     closeMenu();
     return;
   }
@@ -5610,9 +5615,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "/" && currentView === "patch" &&
       !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
     e.preventDefault();
-    if (nbState.collapsed) nbSetCollapsed(false);
-    $("nb-q").focus();
-    $("nb-q").select();
+    openCatalogue(true);
     return;
   }
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -13005,10 +13008,18 @@ function scheduleScopeDuck() {
   }, 110);
 }
 
+// What the well's top line and foot take, in px (style.css `.pt-foot`).
+const PT_TOP_LINE = 30;
+const PT_FOOT = 40;
 function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve(box);
+  // The well's own chrome: the line along its top (the guess, the thing in
+  // hand), the foot (the camera, the readout), and the catalogue while open.
+  ins.t = Math.max(ins.t, PT_TOP_LINE);
+  ins.b = Math.max(ins.b, PT_FOOT);
+  ins.l = Math.max(ins.l, catalogueReserve());
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   // No floor on the way down. Whatever it takes to hold the box is what the
@@ -13292,6 +13303,7 @@ $("pick-chip").querySelector(".pick-chip-x").onclick = () => {
   cancelPending();
   endConnectPick();
   disarm();
+  $("pick-chip").classList.add("hidden");
 };
 $("rack-map-btn").onclick = () => {
   mapOn = !mapOn;
@@ -15888,9 +15900,10 @@ function setLegend(open) {
   $("pt-how").setAttribute("aria-expanded", String(open));
 }
 $("pt-how").onclick = () => setLegend($("pt-legend").hidden);
-$("pt-add").onclick = () => {
-  if (nbState.collapsed) nbSetCollapsed(false);
-  $("nb-q").focus();
+// ADD MODULE toggles the catalogue; from the keyboard it lands in the search.
+$("pt-add").onclick = (e) => {
+  if (catalogueOpen()) closeCatalogue(false);
+  else openCatalogue(e.detail === 0);
 };
 
 // ⚡'s ▾: the locks that prepare it (lock knobs, lock wiring, clear locks),
@@ -16983,7 +16996,6 @@ function fragParamStrip(frag) {
 function renderTray() {
   const holder = $("tray-items");
   holder.innerHTML = "";
-  nbRenderRail();
   // HELD is level three: it appears once something is held. At rest it was a
   // 64 px row of instructions taken out of the rack's height, and height is
   // what decides whether a patch is drawn with its knobs or as a diagram.
@@ -17181,6 +17193,9 @@ function nbChip(m) {
 
 function buildNodeBank() {
   nbLoad();
+  // On demand (Plan-008 C2a): closed at every start, whatever a rail that
+  // used to stay open remembered.
+  nbState.collapsed = true;
   const groups = $("nb-groups");
   groups.innerHTML = "";
   for (const g of NB_GROUPS) {
@@ -17307,52 +17322,62 @@ function buildNodeBank() {
   );
   if (headH > 0) $("nodebank").style.setProperty("--nb-head-h", `${headH}px`);
 
-  $("nb-collapse").onclick = () => nbSetCollapsed(!nbState.collapsed);
-  $("nb-rail").onclick = () => nbSetCollapsed(false);
-  nbSetCollapsed(nbState.collapsed, true);
-  nbInitResize();
+  $("nb-collapse").onclick = () => closeCatalogue(true);
+  nbSetCollapsed(true, true);
   renderNodeBank();
   renderSpecDock();
 }
 
-// ---- collapse: a drawer with an identity and a memory ----
+// ---- the catalogue: on demand, over the well's left ----
+// Open (ADD MODULE, /, a new patch) and closed (×, Esc). Closing it puts down
+// whatever was in hand from it. Not remembered: it opens when asked.
 function nbSetCollapsed(shut, silent) {
   nbState.collapsed = !!shut;
   const nb = $("nodebank");
+  nb.hidden = nbState.collapsed;
   nb.classList.toggle("collapsed", nbState.collapsed);
-  const btn = $("nb-collapse");
-  btn.textContent = nbState.collapsed ? "◂" : "▸";
-  btn.title = nbState.collapsed ? "Show the module rail" : "Fold the module rail away";
-  btn.setAttribute("aria-label", btn.title);
-  btn.setAttribute("aria-expanded", String(!nbState.collapsed));
-  if (nbState.collapsed) disarm();
-  if (!silent) nbSave();
+  $("rack-frame").classList.toggle("cat-open", !nbState.collapsed);
+  $("pt-add")?.setAttribute("aria-expanded", String(!nbState.collapsed));
+  if (nbState.collapsed) { disarm(); nbSpecHide(); specRest(); if (nbTourAt >= 0) endNbTour(); }
+  void silent;
   renderNodeBank();
+  // Opened over plates, the camera makes room for it (`fitBox` keeps its
+  // width clear while it is open): a jump, not a glide, as for any layout.
+  if (!nbState.collapsed && wb.rack && catalogueCovers()) fitBox(contentBox(), false);
 }
-
-// ---- the rail can be dragged wider; the width is remembered ----
-function nbInitResize() {
-  const h = $("nb-resize");
-  if (!h) return;
-  if (nbState.width) $("nb-body").style.width = `${nbState.width}px`;
-  h.addEventListener("pointerdown", (ev) => {
-    ev.preventDefault();
-    const body = $("nb-body");
-    const startX = ev.clientX;
-    const startW = body.getBoundingClientRect().width;
-    const move = (mv) => {
-      const w = Math.round(Math.max(196, Math.min(320, startW + (startX - mv.clientX))));
-      body.style.width = `${w}px`;
-      nbState.width = w;
-    };
-    const up = () => {
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", up);
-      nbSave();
-    };
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", up);
-  });
+const catalogueOpen = () => !nbState.collapsed;
+function openCatalogue(focusSearch) {
+  if (!catalogueOpen()) nbSetCollapsed(false);
+  if (focusSearch) { $("nb-q").focus(); $("nb-q").select(); }
+}
+/** Close it; the focus, if it was inside, goes back to ADD MODULE. */
+function closeCatalogue(returnFocus) {
+  if (!catalogueOpen()) return false;
+  const inside = $("nodebank").contains(document.activeElement);
+  nbSetCollapsed(true);
+  if (inside || returnFocus) $("pt-add")?.focus();
+  return true;
+}
+/** Does the open catalogue stand over any plate? */
+function catalogueCovers() {
+  const nb = $("nodebank");
+  if (!nb || nb.hidden) return false;
+  const r = nb.getBoundingClientRect();
+  const f = $("rack-svg").getBoundingClientRect();
+  for (const b of rackBoxes.values()) {
+    const x = f.left + (b.x - view.x) * view.zoom;
+    const y = f.top + (b.y - view.y) * view.zoom;
+    if (x < r.right && x + b.w * view.zoom > r.left && y < r.bottom && y + b.h * view.zoom > r.top) return true;
+  }
+  return false;
+}
+/** The width a fit keeps clear on the well's left while the catalogue is open. */
+function catalogueReserve() {
+  const nb = $("nodebank");
+  if (!nb || nb.hidden) return 0;
+  const r = nb.getBoundingClientRect();
+  const fr = $("rack-frame").getBoundingClientRect();
+  return r.width ? r.right - fr.left + 8 : 0;
 }
 
 /** While something is in your hand the group headers stop being controls
@@ -17535,7 +17560,6 @@ function renderNodeBank() {
   const none = $("nb-none");
   none.classList.toggle("hidden", shown > 0 || !q);
   $("nb-empty").classList.toggle("hidden", hasRack);
-  nbRenderRail();
 }
 
 /** What the bench patch is made of, as glyph chips. Clicking one puts the
@@ -17614,16 +17638,6 @@ function nbSync() {
   if (!wb.rack) return disarm();
   lightSockets();
   if (armedSockets.length === 0) disarm();
-}
-
-function nbRenderRail() {
-  const rail = $("nb-rail");
-  const held = tray.length;
-  rail.innerHTML =
-    `<span class="rail-word">modules</span>` +
-    `<span class="rail-n mono">${MODULES.length}</span>` +
-    (held ? `<span class="rail-held mono" title="${held} module${held > 1 ? "s" : ""} set aside below">${held}</span>` : "");
-  rail.title = "Show the module rail";
 }
 
 // ---- the spec card ----
@@ -17779,32 +17793,39 @@ function renderSpecDock() {
     // about the socket the pointer is on, so both move with it.
     const target = previewTarget();
     const p = target ? socketPrice(held.kind, target.mode, target.key) : socketPrice(held.kind, "insert", null);
-    dock.className = "pt-read armed";
+    const line = $("pick-armed");
     const html =
-      `<div class="sd-line">${specGlyph(held, " small")}` +
+      `${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
       `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}">${priceHTML(p, true)}</span>` +
       previewStripHTML(target) +
-      `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit` +
-      ` · click one, or <kbd>esc</kbd> to put it down</span></div>`;
+      `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit</span>`;
     // Rewritten only when it actually changed: this line re-renders on every
     // socket enter and leave, and an unconditional `innerHTML =` there would
     // destroy and rebuild the ▶ *while the pointer is travelling to it*.
-    if (dock.dataset.armedHtml !== html) {
-      dock.innerHTML = html;
-      dock.dataset.armedHtml = html;
+    if (line.dataset.armedHtml !== html) {
+      line.innerHTML = html;
+      line.dataset.armedHtml = html;
     }
+    $("pick-chip").classList.remove("hidden");
+    $("pick-chip").classList.add("armed");
+    $("guess-read").classList.add("held");
     paintPreviewScope(target);
-    return;
-  }
-  delete dock.dataset.armedHtml;
-  if (pendingTarget) {
-    dock.className = "pt-read armed";
-    dock.innerHTML =
-      `<div class="sd-line"><b>${esc(pendingTarget.prompt || "pick a module")}</b>` +
-      `<span class="sd-hint mono">the socket is already chosen, and anything dimmed can’t go in it` +
-      ` · <kbd>esc</kbd> to cancel</span></div>`;
-    return;
+  } else if (pendingTarget) {
+    const line = $("pick-armed");
+    delete line.dataset.armedHtml;
+    line.innerHTML =
+      `<b>${esc(pendingTarget.prompt || "pick a module")}</b>` +
+      `<span class="sd-hint mono">the socket is chosen; anything dimmed can’t go in it</span>`;
+    $("pick-chip").classList.remove("hidden", "armed");
+    $("guess-read").classList.add("held");
+  } else {
+    const line = $("pick-armed");
+    delete line.dataset.armedHtml;
+    line.innerHTML = "";
+    if (!connectPick) $("pick-chip").classList.add("hidden");
+    $("pick-chip").classList.remove("armed");
+    $("guess-read").classList.remove("held");
   }
   const m = specSubject ? MOD_BY_KIND[specSubject] : null;
   if (m) {
@@ -18299,7 +18320,7 @@ function paintPreviewScope(target) {
 // to a button that has since been replaced — and the replacement happens on
 // pointer-leave of the socket, which is the same movement that carries the
 // pointer to the ▶.
-$("pt-read")?.addEventListener("click", (ev) => {
+$("pick-chip")?.addEventListener("click", (ev) => {
   if (!ev.target.closest(".pv-play")) return;
   playWaitCancel(); // the latest ▶ wins (see `awaitRender`)
   requestPreview(previewTarget(), true);
@@ -18555,7 +18576,7 @@ const NB_TOUR = [
     lit: () => $("nb-groups"),
     title: "which way your taste leans",
     body:
-      `The bar on the right of a row is which way your taste leans on that module, with ` +
+      `Hold <kbd>⌥</kbd> (the model view) and the bar on the right of a row is which way your taste leans on that module, with ` +
       `how unsure the model is. It is <b>a dash until there is evidence for it</b>, ` +
       `<b>hollow while it is still a guess</b> (the thin line, how far it could ` +
       `be off, crosses zero), and solid once it is sure. A short bar and ` +
@@ -18569,6 +18590,7 @@ function showNbTourStep() {
   const el = $("nb-tour");
   if (nbTourAt < 0 || nbTourAt >= NB_TOUR.length) return endNbTour();
   if (nbState.collapsed) nbSetCollapsed(false);
+  // The θ step is about the model view's bars: the view comes up with it.
   const step = NB_TOUR[nbTourAt];
   document.querySelectorAll(".nb-tour-lit").forEach((e) => e.classList.remove("nb-tour-lit"));
   // The tour is a pointer, not a pamphlet: light the thing each step is about,
@@ -19202,7 +19224,8 @@ function pickFeedback() {
   svg.querySelectorAll("g[data-key].dimmed").forEach((g) => g.classList.remove("dimmed"));
   svg.querySelectorAll(".pick-caret, .pick-halo, .pick-ghost").forEach((e) => e.remove());
   svg.classList.remove("picking");
-  chip.classList.add("hidden");
+  chip.querySelector(".pick-chip-text").textContent = "";
+  if (!armed && !pendingTarget && !connectPick) chip.classList.add("hidden");
   if (!wb.rack) return;
 
   // Three ways to be armed, one vocabulary:
@@ -19312,15 +19335,8 @@ function pickFeedback() {
   // being made rather than only in a rail across the room (WS-2 §5). The chip
   // has no room for the caveat, so it carries it as the tooltip — and the
   // strip below the rack carries it in words.
-  const priceEl = chip.querySelector(".pick-chip-price");
-  if (priceEl) {
-    const p = armed && aimKey ? socketPrice(armed.kind, armed.sort === "source" ? "replace" : "insert", aimKey) : null;
-    priceEl.innerHTML = p ? priceHTML(p, false) : "";
-    priceEl.classList.toggle("hidden", !p);
-    chip.title = p ? priceWhatNotWhere(p) : "";
-  }
-  chip.classList.remove("hidden");
-  positionPickChip();
+  // A cable half made has the line to itself.
+  if (connectPick) chip.classList.remove("hidden");
 }
 
 // ---------- the ghost plate ----------
@@ -19437,25 +19453,9 @@ function drawPickGhost(svg, hand, b, caretPt) {
   svg.querySelector(".rack-controls")?.appendChild(g);
 }
 
-/** The chip lives in the frame, not the scroller, so it is re-aimed whenever
- *  the camera moves rather than riding away with the patch. */
-function positionPickChip() {
-  const chip = $("pick-chip");
-  if (!chip || chip.classList.contains("hidden")) return;
-  const b = pickChipKey && rackBoxes.get(pickChipKey);
-  if (!b) return chip.classList.add("hidden");
-  const fr = $("rack-frame").getBoundingClientRect();
-  const p = rackToClient(b.x + b.w / 2, b.y);
-  // Clamped into the frame. The chip is centre-anchored on the plate, so a
-  // plate near an edge used to push half the sentence out of the frame and the
-  // frame clipped it — "…RT AFTER SUPERSAW". It got worse when the chip
-  // started carrying the price as well, which is what made it worth fixing:
-  // sliding sideways breaks the exact centring and keeps every word.
-  const half = chip.offsetWidth / 2 + 6;
-  const x = Math.max(half, Math.min(fr.width - half, p.x - fr.left));
-  chip.style.left = `${Math.round(x)}px`;
-  chip.style.top = `${Math.round(p.y - fr.top - 8)}px`;
-}
+/** The pick chip is the well's top line now (Plan-008 C2a), placed by CSS;
+ *  kept for the camera's call. */
+function positionPickChip() {}
 
 // ---- keyboard ----
 function nbGridKeys(ev) {

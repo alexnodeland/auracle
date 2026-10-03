@@ -486,6 +486,7 @@ export function createPatch(host) {
     host.noteOnLanding(resume ? "Back to your new patch." : "A new patch: nothing in it yet.", { undo: host.doUndo });
     renderTools();
     host.renderSubject();
+    host.openCatalogue?.();
   }
 
   function clearNew() {
@@ -515,6 +516,7 @@ export function createPatch(host) {
     renderTools();
     host.renderSubject();
     closeSheet();
+    host.closeCatalogue?.();
   }
 
   /** Modules in the patch, as the rack counts them: not the amp, not an
