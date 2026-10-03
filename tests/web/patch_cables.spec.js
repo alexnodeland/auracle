@@ -75,8 +75,12 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.up();
   // While the change is unmeasured, the marks are hollow.
   await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
-  await expect.poll(asked, { timeout: 30_000 }).toBe(before + 1);
+  await expect.poll(asked, { timeout: 30_000 }).toBeGreaterThan(before);
   await expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout: 30_000 }).toBe(true);
+  // Not one per step. At most one probe at the engine and one owed
+  // (patch.js `askProbe`): on a slow runner the drag's last step can land
+  // after the first probe went out, and is measured by one more (CI asked 2).
+  expect(await asked(), "a ten-step drag asks once, or once more for its last step").toBeLessThanOrEqual(before + 2);
 
   // Probes are slow from here (4 s each at the engine). A source placed in a
   // new patch while the empty patch's probe is still out: the page holds the
