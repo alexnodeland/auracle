@@ -536,8 +536,9 @@ export function createPatch(host) {
   function subject() {
     if (!fresh.on) return null;
     const { a, c } = counts();
+    // "from nothing" is the cap's (PATCH · FROM NOTHING), as the specimen
+    // sets it; the subtitle counts.
     const parts = [
-      "from nothing",
       W.count(a, "module"),
       c ? W.count(c, "modulator") : "",
       host.vetSilent() ? "nothing to hear yet" : "",
@@ -566,13 +567,13 @@ export function createPatch(host) {
     // (the toolbar keeps its rows), and the button is named by its
     // aria-label and its tooltip.
     const btn = (id, glyph, label, title, on, extra) => {
-      const b = el("button", { class: "util-btn seg-item", id, type: "button", title, "aria-label": title, ...extra });
+      const b = el("button", { class: "pt-act", id, type: "button", title, "aria-label": title, ...extra });
       const svg = document.createElementNS(SVG_NS, "svg");
       svg.setAttribute("viewBox", "0 0 24 24");
       svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("class", "pn-ic");
+      svg.setAttribute("class", "pt-ic");
       svg.innerHTML = GLYPHS[glyph];
-      b.append(svg, el("span", { class: "pn-label", text: label }));
+      b.append(svg, el("span", { class: "pt-act-l", text: label }));
       b.disabled = !on;
       return b;
     };
@@ -1107,6 +1108,8 @@ export function createPatch(host) {
     shown,
     hidden,
     renderTools,
+    counts,
+    isNew: () => fresh.on,
     openSheet,
     closeSheet,
     // For the debugging handle (`window.__aur`), never for a test to drive.

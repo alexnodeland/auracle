@@ -36,7 +36,8 @@ test("a new patch starts empty, a module comes out with an undo, and the patch c
 
   await page.locator("#patch-new-btn").click();
   await expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout: 30_000 });
-  await expect(page.locator("#rack-meta")).toHaveText(/^from nothing · 0 modules · nothing to hear yet/);
+  await expect(page.locator("#pt-family")).toHaveText("· from nothing");
+  await expect(page.locator("#rack-meta")).toHaveText(/^0 modules · nothing to hear yet/);
   await expect.poll(() => kinds(page)).toEqual(["amp", "silence"]);
   await expect(page.locator("#patch-clear")).toBeDisabled();
   await expect(page.locator("#patch-back")).toContainText("back to Reese");
@@ -46,7 +47,7 @@ test("a new patch starts empty, a module comes out with an undo, and the patch c
   await expect.poll(() => kinds(page), { timeout: 30_000 }).toEqual(["amp", "vco"]);
   await place(page, "filter", "node");
   await expect.poll(() => kinds(page), { timeout: 30_000 }).toEqual(["amp", "filter", "vco"]);
-  await expect(page.locator("#rack-meta")).toHaveText(/^from nothing · 2 modules/);
+  await expect(page.locator("#rack-meta")).toHaveText(/^2 modules/);
 
   // The filter out, and back with the toast's undo.
   await page.locator('#rack-svg g.mod-group[data-kind="filter"] .mod-menu-btn').click();

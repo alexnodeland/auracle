@@ -1386,6 +1386,9 @@ function restorePositions(saved) {
 // makes ⌘Z a partial inverse, which is the worst kind: it looks like it worked.
 const undoStack = [];
 const redoStack = [];
+// The stack keeps 60 steps; past that its bottom is no longer the sound as it
+// was opened, so the edit bar's count and "undo to as opened" say so.
+let undoTrimmed = false;
 let restoreInFlight = false;
 /** The bench as a step: everything one edit can change and ⌘Z has to answer
  *  for, except what the shelf owes — which only the edit itself knows. */
@@ -1429,7 +1432,7 @@ function takeUndoStep() {
   const step = benchStep();
   landedOver(undoStack[undoStack.length - 1]);
   undoStack.push(step);
-  if (undoStack.length > 60) undoStack.shift();
+  if (undoStack.length > 60) { undoStack.shift(); undoTrimmed = true; }
   redoStack.length = 0;
 }
 
@@ -1476,7 +1479,7 @@ function commitStagedUndo() {
     .filter(Boolean);
   landedOver(undoStack[undoStack.length - 1]);
   undoStack.push(openEdit.snap);
-  if (undoStack.length > 60) undoStack.shift();
+  if (undoStack.length > 60) { undoStack.shift(); undoTrimmed = true; }
   redoStack.length = 0;
   const step = openEdit.snap;
   openEdit = null;
@@ -1715,6 +1718,28 @@ function performRestore(kind, burst) {
   // at the makeup it was measured at, never the tree being left's.
   send({ type: "edit_set_tree", json: stack[stack.length - 1].json, restore: true });
 }
+/** The edit bar's "undo to as opened": the bench back to the bottom of the
+ *  undo stack (the sound as it was opened, the stack starting empty at every
+ *  open) in one `edit_set_tree`, one render, settled as every undo at once
+ *  (`settleRestore`). Waits for nothing: it is offered only while the lane is
+ *  free and the stack still reaches the open (`syncEditBar`). */
+function revertToOpened() {
+  const n = undoStack.length;
+  if (!n || undoTrimmed || !wb.tree || !laneFree() || restoreInFlight) return false;
+  nudge = null;
+  restorePending = { kind: "undo", cur: benchStep(), all: n };
+  restoreInFlight = true;
+  structInFlight = true;
+  beliefStale();
+  send({ type: "edit_set_tree", json: undoStack[0].json, restore: true });
+  // Its UNDO brings the changes back, one redo at a time through the lane.
+  note(`Back as it was opened: ${words.count(n, "change")} undone.`, {
+    replace: "revert",
+    undo: () => { for (let i = 0; i < n; i++) requestRestore("redo"); },
+  });
+  syncEditBar();
+  return true;
+}
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
 // that — an undo and a redo are the same message on the wire.
@@ -1732,6 +1757,20 @@ let lastSettledRestore = null;
 function settleRestore() {
   lastSettledRestore = restorePending ? restorePending.kind : null;
   if (!restorePending) return;
+  // "Undo to as opened" (`revertToOpened`): every step at once, settled as
+  // that many undos in a row would be, newest first, so the redo stack holds
+  // them in order and ⇧⌘Z brings them back one at a time. The states between
+  // are the undo stack's own records (S0…S(n−1), then the bench as it was).
+  if (restorePending.all > 1) {
+    const { all, cur: top, toggles = [] } = restorePending;
+    const chain = undoStack.slice(-all);
+    for (let k = all - 1; k >= 0; k--) {
+      restorePending = { kind: "undo", cur: k === all - 1 ? top : chain[k + 1], toggles: k === 0 ? toggles : [] };
+      settleRestore();
+    }
+    lastSettledRestore = "undo";
+    return;
+  }
   const undoing = restorePending.kind === "undo";
   const from = undoing ? undoStack : redoStack;
   const to = undoing ? redoStack : undoStack;
@@ -2505,6 +2544,7 @@ worker.onmessage = (e) => {
         placeholderPending = null;
         holesRestoreFor(m.subject);
         undoStack.length = 0;
+        undoTrimmed = false;
         redoStack.length = 0;
         // ⚡'s child is announced here, where it is true (see `evolved_from`);
         // `replace` lets it take over from "⚡ evolving around…" if that is
@@ -5557,6 +5597,7 @@ document.addEventListener("keydown", (e) => {
       setKeysPop(false);
       if (inside) $("keys-btn").focus();
     }
+    if (evolveMenuOpen()) setEvolveMenu(false);
     closeMenu();
     return;
   }
@@ -9136,6 +9177,7 @@ function syncCommitBtn() {
   }
   b.title = b.disabled ? ""
     : "Plays your edit against the original and asks which you’d reach for (with “pick the edit” ticked, it takes your word for it). Either answer teaches the model, and picking the original teaches it most.";
+  syncEditBar();
 }
 
 /** A knob write. `id` is the knob's identity as the gesture saw it (a drag
@@ -10892,31 +10934,39 @@ function renderRack(rebuild = false) {
   patchView.rackBuilt();
 }
 
-// The patch is the headline; its provenance is the caption. While a TEACH
-// candidate sounds, the header says so where the eye already is.
+// The head, to the specimen (Plan-008 C2a): the cap (PATCH, and the family
+// where the engine has one), the patch's name at the display size, and the
+// subtitle the rack counts. While a TEACH candidate sounds, the head says so
+// where the eye already is.
+const LAYOUT_SAYS = { chain: "in signal order", compact: "packed tight", freeform: "placed by hand" };
 function renderSubject() {
   const nameEl = $("rack-subject");
   const metaEl = $("rack-meta");
+  const famEl = $("pt-family");
   if (!nameEl || !metaEl) return;
+  const fam = (t) => { if (famEl) famEl.textContent = t ? `· ${t}` : ""; };
+  // The face at OUT is the bench's: its latest render's, an edit's once its
+  // render lands (the same target as the header's chip).
+  const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  const outTarget = !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId };
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
-    setFaceSlot($("subject-face"), "subject", { id });
+    setFaceSlot($("out-face"), "out", { id });
     nameEl.classList.add("hearing");
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
+    fam("");
     metaEl.textContent =
       benchBeforeAudition != null ? `← back returns to ${nameOf(benchBeforeAudition)}` : "";
     return;
   }
   nameEl.classList.remove("hearing");
-  const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
-  // The face of the bench's latest render: an edit's, once its render lands.
-  setFaceSlot($("subject-face"), "subject",
-    !hasRack || wb.subjectId == null ? null : benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId });
+  setFaceSlot($("out-face"), "out", outTarget);
   if (!hasRack || wb.subjectId == null) {
     nameEl.textContent = "no sound open";
     nameEl.title = "";
-    metaEl.textContent = "";
+    fam("");
+    metaEl.textContent = "Pick a sound";
     return;
   }
   // A patch started from nothing is named for that (patch.js `subject`).
@@ -10924,31 +10974,60 @@ function renderSubject() {
   if (fresh) {
     nameEl.textContent = fresh.name;
     nameEl.title = fresh.name;
+    fam("from nothing");
     metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
     return;
   }
-  // "(edited)", the same words the keybar and PERFORM use for the same fact —
-  // the header said "· edited" while the dock under it said "(edited)".
-  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}`;
-  // The name's column is fixed and ellipsizes (`.patch-head`); the whole of
-  // it is one hover away.
-  nameEl.title = nameEl.textContent;
-  // The id and the topology signature ("#30 · ssaw-lp-cho") are the engine's
-  // bookkeeping, not the patch's name: on request only (⋯ › Show
-  // measurements). What the caption keeps is what the player did to it.
-  metaEl.textContent = [
+  // The rack's own counts: modules in the audio path (not the amp, not an
+  // empty socket) and the modulators hanging from them (patch.js `counts`).
+  const { a, c } = patchView.counts();
+  const made = `${words.count(a, "module")} · ${c ? words.count(c, "modulator") : "no modulators"}`;
+  const states = [
     // The rack is still this patch; the one asked for is on its way.
     benchPending != null && benchPending !== wb.subjectId && rowOf(benchPending)
       ? `opening ${nameOf(benchPending)}…`
       : "",
+    // The id and the topology signature ("#30 · ssaw-lp-cho") are the
+    // engine's bookkeeping, on request only (⋯ › Show measurements).
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
     wb.vetOk ? "" : wb.vetSilent ? "silent: nothing reaches the output" : "⚠ muted",
     laneWaitingText(),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  ].filter(Boolean);
+  // "(edited)", the same words the keybar and PERFORM use for the same fact.
+  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}`;
+  nameEl.title = nameEl.textContent;
+  // The family only where the engine has one: a preset's category, and only
+  // as it was made (a bred or edited sound has none, plan §6).
+  fam(wb.dirty ? "" : presetOfId(wb.subjectId)?.category || "");
+  metaEl.textContent = [`${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`, ...states].join(" · ");
+  syncEditBar();
+}
+
+/** The edit bar (`#pt-editbar`): shown once the bench has been edited, as
+ *  KEEP AS NEW is lit. "N changes" is the undo steps since the sound was
+ *  opened (the stack starts empty at every open), so it is the number ⌘Z
+ *  would take back; "undo to as opened" takes them all back at once. */
+function syncEditBar() {
+  const bar = $("pt-editbar");
+  if (!bar) return;
+  const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+  const edited = hasRack && (wb.dirty || editPending);
+  bar.hidden = !edited;
+  if (!edited) return;
+  const n = undoStack.length;
+  $("pt-ed-n").textContent = n === 0 ? "as opened" : `${words.count(n, "change")}${undoTrimmed ? "+" : ""}`;
+  const rv = $("pt-revert");
+  rv.disabled = n === 0 || undoTrimmed || restoreInFlight || !laneFree();
+  const wrap = rv.closest(".tt");
+  if (wrap) {
+    wrap.title = !rv.disabled ? ""
+      : n === 0 ? "Already as it was opened"
+      : undoTrimmed ? "More changes than undo keeps: ⌘Z takes them back one at a time"
+      : "Waiting for the last undo to land";
+  }
+  rv.title = rv.disabled ? "" : "Take back every change since you opened it (⌘Z brings them back one at a time with ⇧⌘Z)";
 }
 
 // Shared rack renderer: the interactive workbench and the read-only duel
@@ -15390,6 +15469,8 @@ function renderEvolveFrom() {
   btn.disabled = !!evolvingFrom || !!breeding || !hasRack;
   const wrap = btn.closest(".tt");
   if (wrap) wrap.title = btn.disabled ? evolveFromWhy() || "Pick a sound from the bank first" : "";
+  // ▾'s stop, while a stoppable ⚡ runs.
+  $("pt-evolve-stop")?.classList.toggle("hidden", !(evolvingFrom && evolvingFrom.stoppable));
 }
 
 /** Why ⚡ cannot be pressed now for a job, or null. */
@@ -15637,6 +15718,57 @@ $("lock-clear").onclick = () => {
   locksRemember(); // clearing is a decision too, and it has to survive a reload
   renderRack();
 };
+$("pt-revert").onclick = () => revertToOpened();
+// HOW TO READ THIS: the legend over the well's foot, toggled.
+function setLegend(open) {
+  $("pt-legend").hidden = !open;
+  $("pt-how").setAttribute("aria-expanded", String(open));
+}
+$("pt-how").onclick = () => setLegend($("pt-legend").hidden);
+$("pt-add").onclick = () => {
+  if (nbState.collapsed) nbSetCollapsed(false);
+  $("nb-q").focus();
+};
+
+// ⚡'s ▾: the locks that prepare it (lock knobs, lock wiring, clear locks),
+// and stop while it runs. A menu: the arrows walk it, Esc or a press outside
+// folds it and gives the focus back to ▾.
+function setEvolveMenu(open, focusFirst) {
+  const menu = $("pt-evmenu");
+  const btn = $("pt-evolve-more");
+  if (!menu || !btn) return;
+  const stop = $("pt-evolve-stop");
+  stop.classList.toggle("hidden", !(evolvingFrom && evolvingFrom.stoppable));
+  menu.classList.toggle("hidden", !open);
+  btn.setAttribute("aria-expanded", String(open));
+  if (open && focusFirst) {
+    const first = [...menu.querySelectorAll(".pt-mi")].find((b) => !b.disabled && !b.classList.contains("hidden"));
+    first?.focus();
+  }
+}
+const evolveMenuOpen = () => !$("pt-evmenu").classList.contains("hidden");
+$("pt-evolve-more").onclick = (e) => setEvolveMenu(!evolveMenuOpen(), e.detail === 0);
+$("pt-evolve-stop").onclick = () => { stopEvolveFrom(); setEvolveMenu(false); };
+$("pt-evmenu").addEventListener("click", (e) => {
+  if (e.target.closest(".pt-mi:not(:disabled)")) setEvolveMenu(false);
+});
+$("pt-evmenu").addEventListener("keydown", (e) => {
+  const items = [...$("pt-evmenu").querySelectorAll(".pt-mi")].filter((b) => !b.disabled && !b.classList.contains("hidden"));
+  const i = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    e.stopPropagation();
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    setEvolveMenu(false);
+    $("pt-evolve-more").focus();
+  }
+});
+document.addEventListener("pointerdown", (e) => {
+  if (evolveMenuOpen() && !e.target.closest?.(".pt-evolve")) setEvolveMenu(false);
+}, true);
 // The arrangement switch. Deliberately a plain cycle rather than a menu: three
 // modes is not a menu's worth of choice, and the label says which one you are
 // in rather than which one you would get, because the rack in front of you is

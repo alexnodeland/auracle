@@ -1448,53 +1448,6 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
   gap: var(--s3);
   flex-wrap: wrap;
 }
-/* Four ranked groups with a 20px gutter between them (§10), not one run of
-   equal pills. The gutter is what does the ranking work — inside a group the
-   buttons touch, so they read as one control with several positions. */
-.rack-tools { margin-left: auto; display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
-/* PATCH's header is two rows at every width, and neither depends on the name.
-   As one wrapping run it did: a long name pushed the tools onto a second row
-   and a short one ("#43") let them back up, so the rack and everything under
-   it jumped 47px on a patch change — and at 1280 the tools broke onto a third
-   row of their own, with the callout on a fourth. Now the name has a fixed
-   column and ellipsizes, the callout starts where that column ends (the same
-   x for every patch), ⚡ ends the first row, and the three tool groups have the
-   second row to themselves, right-aligned so the locks sit under ⚡. Merging
-   the callout into the name's row is also 40px given back to the rack. */
-.patch-head {
-  display: grid;
-  /* The subject's column is wider by its face (20 px and the 8 px gap), so
-     the name keeps the width it had before faces; 26% of a stage 28 px
-     narrower (the bank is wider by the faces' column) is 7 px less again. */
-  grid-template-columns: clamp(208px, calc(26% + 35px), 348px) minmax(0, 1fr) auto;
-  grid-template-areas: "subject callout evolve" "tools tools tools";
-  align-items: center;
-  column-gap: var(--s4);
-  row-gap: var(--s2);
-}
-/* At 1080 px and under, faces cost the callout its last words: the bank is
-   28 px wider and the subject column 35, so at 1000 px "Breed a generation ▸"
-   showed as "Breed a gener…", and the first-step callouts and "see what it
-   learned" lost their ▸ (measured: a 309 px cell, 344 before faces). The
-   gaps and the chip's own padding give 28 px of it back, so the name keeps
-   its width (text_fits.spec.js). */
-@media (max-width: 1080px) {
-  .patch-head { column-gap: var(--s2); }
-  .patch-head .nextstep { padding-inline: var(--s2); }
-  .patch-head .callout-row .seg-new { padding-left: var(--s2); }
-}
-/* Under 1180 px, with the levels at the stage's edge, the cell between the
-   name and ⚡ is narrower than the longest callout ("It’s learned something.
-   Breed a generation ▸" needs 277 px; it had 215 at 1081 and 208 at 1000),
-   so the callout takes a row of its own under the name, at the same x for
-   every patch, and the whole width (text_fits.spec.js). */
-@media (max-width: 1180px) {
-  .patch-head { grid-template-areas: "subject subject evolve" "callout callout callout" "tools tools tools"; }
-}
-.patch-head .subject-block { grid-area: subject; }
-.patch-head .callout-row { grid-area: callout; }
-.patch-head .evolve-slot { grid-area: evolve; margin-left: 0; }
-.patch-head .rack-tools { grid-area: tools; margin-left: 0; justify-content: flex-end; }
 .seg { display: flex; align-items: center; }
 .seg > * { display: flex; }
 /* A segmented control: shared border, square inner corners, no gaps. */
@@ -1509,27 +1462,9 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
 .seg > :last-child .seg-item, .seg > .seg-item:last-child {
   border-top-right-radius: 3px; border-bottom-right-radius: 3px;
 }
-/* The teach group's checkbox is a label, not a button: give it the same
-   height and the same well so the pair reads as one control. */
-.seg-teach .toggle.seg-item {
-  border: 1px solid var(--hairline);
-  background: var(--bezel);
-  padding: var(--s1) var(--s2);
-  height: 24px;
-}
 .seg .seg-item:hover:not(:disabled) { position: relative; z-index: 1; }
-/* Locks are a preparation, not an act: quiet, so they sit below the teaching
-   pair and far below EVOLVE without needing to be hidden. Quiet by colour,
-   not by size: at 90% they fell under the 10px floor and could not be read. */
-.seg-locks .seg-item {
-  font-size: var(--t-label);
-  padding: var(--s1) var(--s2);
-  color: var(--silk-dim);
-}
-.seg-locks .seg-item:hover:not(:disabled) { color: var(--silk); }
-/* The only filled amber button in the view. Everything else in this row is a
-   dark pill; this is the act the whole app exists to perform. */
-.evolve-slot { margin-left: auto; }
+/* The only filled amber button in the view. Everything else in the head is
+   quiet; this is the act the whole app exists to perform. */
 #rack-evolve:not(:disabled) {
   color: var(--evolve-ink);
   background: linear-gradient(180deg, var(--evolve-hi), var(--phos-b) 62%, var(--evolve-lo));
@@ -4129,17 +4064,12 @@ input, textarea, .bi-rename {
    interaction. The previous rule dropped B onto a third grid row inside an
    `overflow: hidden` view, so the cards overprinted the controls. */
 @media (max-width: 1280px) {
-  /* The toolbar tightens, so PATCH's three tool groups still share one row
-     (`.patch-head`) at 1280. */
-  .stage-toolbar { row-gap: var(--s1); }
-  .rack-tools { gap: var(--s1); }
   .util-btn { padding: var(--s1) var(--s2); }
 }
 @media (max-width: 1080px) {
   .bank { width: 228px; flex-basis: 228px; } /* 200px of rows and the faces' column */
   .bank-head { padding: var(--s3) var(--s2) var(--s2); }
   .btab { letter-spacing: 0.08em; }
-  .rack-tools { gap: var(--s1); }
   .duel-mid { gap: var(--s3); }
 }
 /* Short laptops: the deck is the elastic part, so give the fixed chrome less.
@@ -4489,23 +4419,9 @@ select:focus-visible,
 .ovf-sep { height: 1px; background: var(--hairline); margin: var(--s1); }
 
 /* ---------- next step ----------
-   Nothing in the app ever answered "what now?". This always does.
-
-   It gets a RESERVED CELL of its own, and that cell keeps its place whether or
-   not there is a callout in it. It used to sit inline after the patch name,
-   so its x was decided by the character count of whatever patch was on the
-   bench — "Gritty Swell" and "Noisy Pad 2" put the app's one piece of guidance
-   in two different places — and at some widths it wrapped to a second row and
-   pushed the canvas down. It then had a whole row to itself, which fixed its x
-   and cost the rack 40px. Now it is the cell after the name's fixed column in
-   `.patch-head`: a fixed x again, and no row of its own. A chip that moves
-   when the content behind it changes is a chip nobody learns the position of. */
-.callout-row {
-  min-width: 0;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-}
+   Nothing in the app ever answered "what now?". This always does: over
+   PATCH's acts, at the head's top right, in a line the head always keeps
+   (empty, it holds its height), so nothing moves when it changes. */
 .nextstep {
   /* One line in a cell that can be narrower than the longest callout; an
      ellipsis, never a two-line pill that grows the header. */
@@ -7036,29 +6952,6 @@ html.xl-on .alarm { z-index: 62; }
    measured level, a patch from nothing, and the module sheet on touch.
    ===================================================================== */
 
-/* ---------- a patch from nothing ----------
-   At the right of the name's row, as the specimen puts NEW PATCH beside the
-   title: the callout before it ellipsizes to make room, so the header keeps
-   its two rows at every width (in the toolbar row it broke the tools onto a
-   third from 1200 to 1279 px). The specimen's glyph beside each label; under
-   1280 px only the glyph, the button named by its aria-label and tooltip. */
-.callout-row .seg-new { margin-left: auto; flex: none; padding-left: var(--s3); }
-.callout-row .seg-new:empty { display: none; }
-.seg-new .seg-item { display: inline-flex; align-items: center; gap: var(--s1); }
-.seg-new .pn-ic { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-@media (max-width: 1279px) {
-  .seg-new .pn-label, .seg-new kbd { display: none; }
-}
-.seg-new kbd {
-  margin-left: var(--s1);
-  font-family: var(--font-mono);
-  font-size: var(--t-label);
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--silk-mute);
-}
-@media (pointer: coarse) { .seg-new kbd { display: none; } }
-
 /* ---------- the guess ----------
    A guess looks like a guess (voice.md, ADR-012): dashed amber, and the
    model's italic for its reason. The line sits over the rack's top left, as
@@ -7270,4 +7163,262 @@ html.xl-on .alarm { z-index: 62; }
 
 @media (prefers-reduced-motion: reduce) {
   #rack-svg:not(.flowing) .wire.audio, .guess-plate .gp-body { transition: none; }
+}
+
+/* =====================================================================
+   PATCH, Plan-008 C2a: the mock's canvas (`z-desk-patch.png`). The head
+   (cap, name, subtitle; the acts on the right), the well (the rack on its
+   rounded canvas, the face at OUT, the camera's corner, the catalogue on
+   demand), and the readout at the well's foot.
+   ===================================================================== */
+#view-patch { padding: var(--s5) var(--s5) var(--s3); gap: var(--s3); }
+.pt-head {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "cap next" "title acts" "sub edit";
+  align-items: center;
+  column-gap: var(--s4);
+  row-gap: var(--s1);
+  min-width: 0;
+}
+.pt-cap-row { grid-area: cap; display: flex; align-items: baseline; gap: var(--s2); min-height: 24px; }
+.pt-head .nextstep { grid-area: next; justify-self: end; font-size: var(--t-value); padding: 2px var(--s3); }
+.pt-head .nextstep:empty { visibility: hidden; }
+.pt-cap {
+  white-space: nowrap;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.pt-family { color: var(--silk-mute); }
+/* The name at the level's display size, as PERFORM's (one line, the whole
+   name in its title when a long one is cut). */
+#view-patch .pt-title {
+  grid-area: title;
+  margin: 0;
+  min-width: 0;
+  max-width: none;
+  font-family: var(--font-silk);
+  font-size: clamp(var(--t-title), 3.5vw, var(--t-display));
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: var(--silk);
+}
+#view-patch .pt-title.hearing { color: var(--phos-b); }
+.pt-sub {
+  grid-area: sub;
+  margin: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+#view-patch .pt-sub .subject-meta {
+  min-width: 0;
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  line-height: 1.45;
+  color: var(--silk-dim);
+}
+.pt-sub .budget:empty { display: none; }
+.pt-headacts { grid-area: acts; display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); }
+.pt-editbar { grid-area: edit; justify-self: end; }
+/* The head's acts: silk caps, a glyph, quiet until approached. */
+.pt-act {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 32px;
+  padding: 0 var(--s3);
+  border: 1px solid transparent;
+  border-radius: var(--r2);
+  background: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--d-press) ease, border-color var(--d-press) ease, background var(--d-press) ease;
+}
+.pt-act:hover:not(:disabled) { color: var(--silk); border-color: var(--hairline); background: var(--panel-hi); }
+.pt-act:disabled { color: var(--silk-mute); cursor: default; }
+.pt-act[aria-expanded="true"] { color: var(--phos-a); }
+.pt-act:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+.pt-ic { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pt-act kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--silk-mute);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
+  padding: 0 var(--s1);
+}
+@media (pointer: coarse) { .pt-act kbd { display: none; } .pt-act { height: 40px; } }
+.seg-new { gap: var(--s1); }
+.seg-new:empty { display: none; }
+.seg-new > * { display: inline-flex; }
+#patch-clear:hover:not(:disabled) { color: var(--led-red); }
+/* Narrower, the acts keep their glyphs and give up their words (each is
+   named by its aria-label and its title); ⚡ keeps its words. */
+@media (max-width: 1399px) {
+  .pt-act .pt-act-l, .pt-act kbd { display: none; }
+  .pt-act { padding: 0 var(--s2); }
+}
+/* ⚡ EVOLVE FROM THIS and its ▾: one control, amber, the model's act. */
+.pt-evolve { position: relative; display: inline-flex; align-items: stretch; }
+.pt-evolve #rack-evolve { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pt-evolve-more {
+  width: 28px;
+  border: 1px solid var(--evolve-edge);
+  border-left-color: var(--evolve-cast);
+  border-radius: 0 var(--r1) var(--r1) 0;
+  background: linear-gradient(180deg, var(--evolve-hi), var(--phos-b) 62%, var(--evolve-lo));
+  color: var(--evolve-ink);
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+.pt-evolve-more:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+@media (pointer: coarse) { .pt-evolve-more { width: 40px; } }
+/* A menu over the head: ⚡'s locks, the camera's layout. */
+.pt-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--s1));
+  z-index: 30;
+  display: grid;
+  min-width: 180px;
+  padding: var(--s1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--surface-pop);
+  box-shadow: var(--shadow-pop);
+}
+.pt-menu.hidden { display: none; }
+.pt-menu .tt { display: grid; }
+.pt-mi {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 32px;
+  padding: 0 var(--s3);
+  border: 0;
+  border-radius: var(--r1);
+  background: none;
+  text-align: left;
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  color: var(--silk);
+  cursor: pointer;
+}
+.pt-mi:hover:not(:disabled), .pt-mi:focus-visible { background: var(--panel-hi); outline: none; }
+.pt-mi:disabled { color: var(--silk-mute); cursor: default; }
+.pt-mi.hidden { display: none; }
+.pt-mi[aria-checked="true"]::before { content: "✓"; color: var(--phos-a); }
+.pt-mi[aria-checked="false"]::before { content: ""; width: 0.8em; }
+@media (pointer: coarse) { .pt-mi { min-height: 44px; } }
+/* The edit bar: once something was edited, "N changes · KEEP AS NEW · pick
+   the edit ☐ · undo to as opened" (the specimen's `#pt-editbar`). */
+.pt-editbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 32px;
+  padding: 0 var(--s1) 0 var(--s3);
+  border: 1px solid var(--phos-a-deep);
+  border-radius: 999px;
+  background: var(--panel-hi);
+}
+.pt-editbar[hidden] { display: none; }
+.pt-ed-n { font-size: var(--t-value); color: var(--phos-a); margin-right: var(--s1); white-space: nowrap; }
+.pt-ed-sep { color: var(--silk-mute); }
+.pt-ed-btn {
+  border: 0;
+  background: none;
+  padding: var(--s1) var(--s2);
+  border-radius: 999px;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--silk);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pt-ed-btn:hover:not(:disabled) { background: var(--plate-hi); }
+.pt-ed-btn:disabled { color: var(--silk-mute); cursor: default; }
+.pt-ed-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
+.pt-editbar .toggle { gap: var(--s1); padding: 0 var(--s1); white-space: nowrap; }
+@media (pointer: coarse) { .pt-editbar { height: 40px; } .pt-ed-btn { min-height: 40px; } }
+/* Narrow, "undo to as opened" keeps its glyph (named by its aria-label). */
+.pt-ed-g { display: none; font-size: var(--t-body); }
+@media (max-width: 1399px) {
+  .pt-ed-l { display: none; }
+  .pt-ed-g { display: inline; }
+}
+
+/* HOW TO READ THIS, over the well's foot. */
+.pt-legend {
+  position: absolute;
+  left: var(--s4);
+  right: var(--s4);
+  bottom: var(--s4);
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s5);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+}
+.pt-legend[hidden] { display: none; }
+.pt-leg-cap {
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
+.pt-leg { display: inline-flex; align-items: center; gap: var(--s2); font-family: var(--font-silk); font-size: var(--t-body); color: var(--silk-dim); }
+.pt-leg svg { width: 44px; height: 22px; flex: none; fill: none; stroke-linecap: round; }
+.pt-leg .lg-plate { fill: var(--plate-lo); stroke: var(--steel); stroke-width: 1.2; }
+.pt-leg .lg-audio { stroke: var(--phos-a); stroke-width: 2; }
+.pt-leg .lg-mod { stroke: var(--phos-a-80); stroke-width: 2; stroke-dasharray: 4 4; }
+.pt-leg .lg-mark { fill: var(--well); stroke: var(--phos-a-90); stroke-width: 1; }
+.pt-leg .lg-bars { stroke: var(--phos-a-90); stroke-width: 2; }
+.pt-leg .lg-light { fill: var(--phos-a); stroke: none; }
+.pt-leg .lg-guess { stroke: var(--phos-b); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.pt-leg .lg-lock { stroke: var(--phos-b); stroke-width: 1.6; }
+.pt-leg .lg-jack { fill: var(--jack-bore); stroke: var(--phos-a); stroke-width: 1.6; }
+.pt-leg .lg-face { stroke: var(--phos-a); stroke-width: 1.4; fill: var(--phos-a-15); }
+
+/* The camera's corner, bottom left of the well (C2a). */
+.pt-corner {
+  position: absolute;
+  left: var(--s3);
+  bottom: var(--s3);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+.pt-play-slot { position: absolute; right: var(--s3); top: var(--s3); z-index: 8; }
+/* Under 1600 px HOW TO READ THIS keeps its glyph only, and ADD MODULE its
+   word without the printed key, so the name keeps the head's room. */
+@media (max-width: 1599px) {
+  #pt-how .pt-act-l, #pt-add kbd { display: none; }
 }
