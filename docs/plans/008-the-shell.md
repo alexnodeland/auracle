@@ -194,12 +194,27 @@ and C3; round 2's decisions govern PERFORM):
 into C2a and C2b; round 2's decisions govern PATCH):
 - **The canvas is the rack.** The specimen's plates are drawn by the same SVG
   renderer (`buildRack`), restyled (flat plates with a hairline edge, names in
-  silk caps, knobs as travel and value arcs; no bevel, screws or pocket), so
-  every hook stays on its node: `#rack-svg`, `g.mod-group[data-key]`,
-  `[data-addr]`, `.knob-hit`, `.jack`, `path.wire`, `.cable-mark`,
-  `.take-lane`, `#nb-q`, `.nb-item`. Every module keeps all its knobs at full
-  detail; the compact level of detail is the specimen's plate (three knobs to
-  read, not grab).
+  silk caps, knobs as travel and value arcs; no bevel or screws), so every
+  hook stays on its node: `#rack-svg`, `g.mod-group[data-key]`, `[data-addr]`,
+  `.knob-hit`, `.jack`, `path.wire`, `.cable-mark`, `.take-lane`, `#nb-q`,
+  `.nb-item`. Every module keeps all its knobs at full detail; the compact
+  level of detail is the specimen's plate (its name and setting larger, three
+  knobs to read, not grab).
+- **At the specimen's scale** (review round): plates re-sized so a
+  four-module patch opens near 1× at 1440 px (`PLATE_W` 84–240, `KNOB_R` 11,
+  `PLATE_HEAD`, `KNOB_ROW` 56, `LAYER_GAP` 56, `FIT_MAX` 1.25), the kind's
+  setting in the head as its control, each knob's value then its label, a
+  setting printed as its value (no chip), the amp's envelope drawn from its
+  knobs (it draws the knobs, not the sound), level S-curve cables with a
+  two-input module's a/b outside the plate. The setting words are the
+  engine's option names (*svf lp*, *tri*), not the mock's *lowpass*,
+  *triangle*. ⋯ and the lock moved to a pocket on the plate's top edge, as
+  the head's right end is the setting. Compact is where the readouts stop
+  reading (under 0.68×, not scaled by the frame's height); measured at 1440:
+  every stock preset opens at 0.84–1.19× (Loom 0.69×), full; with the catalog
+  open Reese fits at 0.63×, compact; at 1000 px Reese fits at 0.58×,
+  compact. Compact keeps AUDIO IN's and CAPTURE's lanes (the touch sheet's
+  buttons press them).
 - **The face at OUT is `#rack-play`,** an HTML button placed over the box the
   build leaves past the amp (`placeOutFace`), not a drawing in the SVG, so it is
   the rack's ▶ itself (its wait ring, its disabled reasons, `data-hear`), and
@@ -225,17 +240,23 @@ into C2a and C2b; round 2's decisions govern PATCH):
   its collapsed tab and width handle (rail chrome) go with the rail. It is not
   a phone sheet (the touch task). θ hides at rest and shows under
   `body.model-view` (C2b wires the rest of ⌥ in PATCH).
-- **Leans** stays a toggle, in the layout's ▾, until C2b moves it under ⌥; the
-  belief line stays above the well until C2b gives it its home in the
-  subtitle under ⌥ (a TODO in `index.html`). The budget joins the subtitle.
+- **Leans** stays a toggle, in the layout's ▾, until C2b moves it under ⌥;
+  the catalog's lean (its bars, the description's line, the keyboard card's)
+  shows under the model view only. The belief line is on the well's top line,
+  empty without a guess, until C2b gives it its home in the subtitle under ⌥
+  (a TODO in `index.html`). The budget joins the subtitle. The scope is off
+  until asked for (⋯ › Scope & analyzer…): the well's corners hold the
+  camera, the readout, TEACH and the toasts.
 - **The edit bar** sits on the subtitle's row, right-aligned, in a row the head
   always keeps: on the acts' row it pushed ⚡ off the line at 1000 px. The
   acts show their glyphs only under 1400 px (HOW TO READ THIS and ADD MODULE's
   key under 1600) so the name keeps the head's room; ⚡ keeps its words.
-- **First steps:** the bench tour becomes PATCH's three pill steps (guide.js
-  holds steps per level). *Play it first* is PERFORM's first step already, so
-  it is not repeated in PATCH; *Teach it your taste* stays the head's next
-  step, as it opens TEACH. The pill shows on PATCH under its well.
+- **First steps:** the bench tour becomes PATCH's pill steps (guide.js holds
+  steps per level, and × per level): *play it* first (done already for a
+  player who has played, so a first visit that starts on PATCH is asked to
+  play), then knob, lock, ⚡. The picks to the first refit have one home on
+  PATCH, the TEACH chip, which counts them; the head's next step leaves them
+  to it while a pair is dealt. The pill shows on PATCH under its well.
 - **TEACH and SET ASIDE** unfold over the well's foot from their chips, so the
   well never changes height for them; the toast lane stays at the bottom right
   (stepping over the foot) rather than the specimen's centred toast.
@@ -686,7 +707,7 @@ the Wave 3 re-records.
 
 - **PATCH camera:** quiet corner controls in the well's bottom-left (fit · − · + · map · layout ▾ chain/compact/by hand + snap + reset; bookmarks with the map). Signal-order flow by default.
 - **PATCH keys:** the mock's (←/→ signal order, ↑/↓ into modulators, Enter into knobs, Esc out, Home/End first/OUT; structure menu on F2/right-click; fit-all ⇧Home).
-- **Catalogue:** on demand in the well (ADD MODULE always in the head, and /); everything from today's rail kept; θ bars under ⌥; price and ▶ preview on the well's top line.
+- **Catalog:** on demand in the well (ADD MODULE always in the head, and /); everything from today's rail kept; θ bars under ⌥; price and ▶ preview on the well's top line.
 - **Locks and ⚡:** "⚡ EVOLVE FROM THIS ▾" in the head (▾: lock knobs / wiring / clear); selected module shows its lock; lock dots on knobs on hover/focus; L locks; solid edge when locked.
 - **⌥ in PATCH:** all of it (family lean edges, worth per kind, belief line in the subtitle, the guess's runners-up as fainter plates).
 - **Engine facts, all four:** measured "without this module" outline at OUT (face_of_tree on the bypassed patch); "What goes here?" on any socket (guess `at`); what a generation changed (lineage ticks + seed values as pale pointers, while unedited); which PERFORM controls turn the selected knob.

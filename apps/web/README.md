@@ -95,7 +95,7 @@ anyone who prefers it, and a missed drop now says so instead of silently doing
 nothing. Every placement is one undo step and the toast offers **take it out**.
 
 The whole path has a keyboard equivalent, which wiring did not have at all
-before: arrows walk the catalogue (one tab stop per group), `enter` arms,
+before: arrows walk the catalog (one tab stop per group), `enter` arms,
 arrows then walk the **lit sockets** with each one announced, `enter` places.
 **IN THIS PATCH** lists what the bench patch is made of; clicking a pill jumps
 to that module in the rack. **SET ASIDE** comes first: what was unplugged,

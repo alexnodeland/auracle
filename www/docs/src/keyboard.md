@@ -72,7 +72,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up. In PATCH it walks out one thing at a time: a knob, the module, the catalog, then a new patch |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first. In PATCH it walks out one thing at a time: a menu, a knob, the module, the catalog, then a new patch |
 
 ## In EVOLVE
 
@@ -87,7 +87,7 @@ you choose, unless you are stepping through them with the arrow keys.
 
 | | |
 |---|---|
-| <kbd>⇧Home</kbd> | Fit the whole patch (the corner's **FIT**) |
+| <kbd>⇧Home</kbd> | Fit the whole patch (the corner's **FIT**), with the canvas in focus or nothing in focus |
 | <kbd>.</kbd> | Fit what you’re on |
 | <kbd>⌘0</kbd> | Actual size |
 | <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out / in (the corner's **−** and **+**) |
@@ -106,7 +106,7 @@ you choose, unless you are stepping through them with the arrow keys.
 |---|---|
 | <kbd>←</kbd> / <kbd>→</kbd> | The next module in signal order, left to right as drawn; the model's guess is one of them |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Into a module's modulators, and back out (the nearest module below or above) |
-| <kbd>Home</kbd> / <kbd>End</kbd> | The first module, and the last (the amp, at OUT). From anywhere in PATCH too |
+| <kbd>Home</kbd> / <kbd>End</kbd> | The first module, and the last (the amp, at OUT); from a knob too, or with nothing in focus. A slider (**VOL**), a menu, the catalog's rows and a dialog keep their own <kbd>Home</kbd> and <kbd>End</kbd> |
 | <kbd>Enter</kbd> | Into its knobs and buttons. On the model's guess: add it |
 | <kbd>F2</kbd>, or the menu key | Its structure menu (⋯) |
 | <kbd>Delete</kbd> | Delete it; a two-input module asks which input survives. On the guess: skip it |

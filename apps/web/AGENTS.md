@@ -18,7 +18,7 @@ the long-form notes are this directory's `README.md`.
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM (the well and the panel, Plan-008 C1): named controls, the well's modes (the face, XY, How it works), offers and B, Blend, Wander and Freeze, the moved bar's Keep/Back, PASS, the pad keys (ADR-018), the hood, stage mode |
-| `guide.js` | main thread | The guide pill: each level's first-visit steps (PERFORM's, PATCH's) one at a time, bottom left of the stage, and what was done (`auracle-guide`, migrated from `auracle-perform-steps`); unit-tested in `tests/` |
+| `guide.js` | main thread | The guide pill: each level's first-visit steps (PERFORM's, PATCH's) one at a time, bottom left of the stage, what was done and which levels' × was pressed (`auracle-guide`, migrated from `auracle-perform-steps`; an old `closed: true` is PERFORM's); unit-tested in `tests/` |
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
 | `takes.js` | main thread | CAPTURE's RECORD (the worklet copies the input while it is lit, the engine worker renders the take with `render_take`, sent as `set_take`) and the sounds kept safe for a recording, listed in the pool with RECORD AGAIN |
 | `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |

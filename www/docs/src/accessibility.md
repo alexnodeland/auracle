@@ -52,7 +52,14 @@ faces while B holds an offer. **XY** in the well’s corner is a toggle button
 fills the well, and <kbd>Esc</kbd> inside it hands focus back to the button.
 The moved bar’s KEEP and BACK leave the tab order while the sound is home.
 The first-steps pill’s step is a status, read once as each new step comes up, and
-its **×** is a button named *Stop showing these*.
+its **×** is a button named *Stop showing these* (that level's steps). In PATCH,
+<kbd>Home</kbd> and <kbd>End</kbd> walk to the first and last module only from
+the canvas or with nothing in focus: on **VOL**, in a menu, in the catalog's
+rows or under a dialog they keep their own meaning. **UNDO TO AS OPENED**
+stays in the tab order when it can't go (`aria-disabled`), and pressing it
+says why. Closing the catalog or TEACH with the keyboard puts the focus back
+on the button that opened it; with the pointer, it lets the focus go, so
+<kbd>Space</kbd> plays.
 
 To place a module without a mouse:
 

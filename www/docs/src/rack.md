@@ -18,15 +18,23 @@ on.</figcaption>
 **Green is sound. Amber is modulation, and the model’s mind.** That holds
 everywhere in the instrument.
 
-- **Modules** each have a title, their setting beside it, and all their knobs.
-  A knob shows its value in its own units (`840 Hz`, `24 ms`, `−6.0 dB`,
-  `+12 ¢`, `8.23 Hz`), never as a fraction of its range, with its travel and
-  value as arcs. The selected module (the one you pressed on, or the keyboard
-  stands on) shows its **⋯** menu and its **▢** lock; any module shows them
-  under the pointer, and every module does on a touch screen.
-- **Jacks** are small rings labeled `in` and `out`. Their color is the kind of
-  signal they carry, and only matching kinds connect.
-- **Audio cables** are green, and run left to right through the signal chain.
+- **Modules** each have a title, on the right of their head the setting that
+  says which kind of it they are (`saw`, `svf lp`; a click changes it), and
+  all their knobs. Under a knob, its value in its own units (`840 Hz`,
+  `24 ms`, `−6.0 dB`, `+12 ¢`, `8.23 Hz`), never as a fraction of its range,
+  then its name; its travel and value are arcs. A setting that is not a knob
+  (an octave) prints its value in the knob's place, over a dotted rule, and a
+  click changes it. The amp's head draws its envelope from its four knobs as
+  set. The selected module (the one you pressed on, or the keyboard stands on)
+  shows its **⋯** menu and its **▢** lock on its top edge, at the right; any
+  module shows them under the pointer, and every module does on a touch
+  screen.
+- **Jacks** are small rings. Their color is the kind of signal they carry, and
+  only matching kinds connect. A module with two inputs names them beside the
+  jacks, outside the module, by the cables that arrive (*a*, *b*; *carrier*,
+  *mod*).
+- **Audio cables** are green, curve from one module's output to the next
+  one's input, and run left to right through the signal chain.
   Each carries light by its level: once an edit settles, the engine renders
   the phrase once more and measures every audio cable, and the brighter the
   cable, the louder the signal on it. A mark on its middle lights one bar per
@@ -36,7 +44,8 @@ everywhere in the instrument.
   hollow until the change is measured. While notes sound, the cables move at
   the level the live voice measures instead.
 - **Modulation cables** are dashed amber, and each one ends in a named
-  destination: `PITCH`, `THRESHOLD`, `MORPH`, `DEPTH`. A modulation cable
+  destination under its module: `PITCH`, `THRESHOLD`, `MORPH`, `DEPTH` (one
+  nothing is plugged into is drawn faintly until you point at the module). A modulation cable
   pulses at its modulator’s rate, so you can see a 0.2 Hz sweep before you
   hear it, and it says how far and how fast it moves the knob: *depth 25% ·
   0.51 Hz*, the module's mod depth and the modulator's rate as their knobs are
@@ -46,10 +55,13 @@ everywhere in the instrument.
   **OUT**, and past OUT stands the sound's [face](./faces.md), measured on its
   latest render; a click on it plays the sound.
 
-The rack is fitted to its well when it opens. Zoomed out past where a knob is
-big enough to grab, **detail: automatic** leaves each module three of its knobs
-to read, not to grab, so a large patch still shows its settings until you zoom
-in.
+The rack is fitted to its well when it opens, no larger than the size a
+four-module patch opens at on a 1440 px screen, where every name and value
+reads. Zoomed out past where its readouts would be too small to read (a wide
+patch, a narrow window, the catalog open beside it), **detail: automatic**
+shows each module's name and setting larger and leaves it three of its knobs
+to read, not to grab, so a large patch still says what it is until you zoom
+in. AUDIO IN's and CAPTURE's buttons stay.
 
 ## Getting around
 
@@ -177,7 +189,7 @@ a menu:
 | **by hand** | Yours. Drag a module by its face and it snaps to the grid; hold <kbd>Shift</kbd> to place it freely |
 | **snap to the grid** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
 | **reset positions** | Throw away the hand positions, and lay the patch out along the signal chain again |
-| **detail** | **automatic** leaves three knobs to read on modules too small to grab; or force **full** or **compact** |
+| **detail** | **automatic** leaves each module its name, its setting and three knobs to read where its labels would be too small to read; or force **full** or **compact** |
 | **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
 **snap** and **reset** act only on a layout by hand. Positions are kept for each patch,

@@ -20,14 +20,22 @@ changelog that edits its own past is not a record.
 - **An edit bar once you have edited.** *2 changes · KEEP AS NEW · PICK THE
   EDIT · UNDO TO AS OPENED.* The count is how many steps ⌘Z would take back.
   UNDO TO AS OPENED takes them all back in one go, and its toast's undo (or
-  ⇧⌘Z) brings them back. A knob you have turned shows a pale tick where it
-  was when you opened the sound.
-- **The patch sits in a rounded well,** its modules drawn flat with every knob
-  at full detail, sound flowing left to right into OUT and the sound's face.
-  The face is the patch as it stands, measured on its latest render, and a
-  click on it plays the sound, as ▶ did. Modulation cables say how far and how
-  fast they move their knob (*depth 25% · 0.51 Hz*). When the patch is wider
-  than the view, its edges count the modules past them.
+  ⇧⌘Z) brings them back; pressed while another sound is still on its way, it
+  says so and waits for nothing (⌘Z waits for it too now). A knob you have
+  turned shows a pale tick where it was when you opened the sound.
+- **The patch sits in a rounded well,** its modules drawn flat at the size
+  you can read them: each one's name, the setting that says which kind it is
+  (*vco · saw*, *filter · svf lp*) on the right of its head, and under every
+  knob its value, then its name. Settings like the octave print their value
+  in the knob's place; the amp draws its envelope from its knobs. Sound flows
+  left to right along curved cables into OUT and the sound's face, and a
+  two-input module names its inputs by the cables. The face is the patch as it
+  stands, measured on its latest render, and a click on it plays the sound, as
+  ▶ did. Modulation cables say how far and how fast they move their knob
+  (*depth 25% · 0.51 Hz*). When the patch is wider than the view, its edges
+  count the modules past them. The model's rating of the sound sits on the
+  well's top line when it has one, and the scope is put away until you ask
+  for it (⋯ › Scope & analyzer…).
 - **Select a module** by pressing on it: it shows its ⋯ (replace, insert,
   duplicate, set aside, bypass, modulate, probe, swap, delete) and its lock,
   and the line at the well's foot names it and says what it does. Press L to
@@ -36,21 +44,25 @@ changelog that edits its own past is not a record.
   the left of the well, with its search, what is set aside and what is in the
   patch; Esc or ✕ closes it. A module in hand is named along the well's top,
   with its price and a ▶ to hear it at a socket. Which way your taste leans on
-  each module now shows only while you hold ⌥. The module rail and the strip
-  that described modules under the rack are gone.
+  each module, in the catalog and its descriptions, now shows only while you
+  hold ⌥ (LEANS, which tints the modules, is still a switch in the layout's
+  ▾). The module rail and the strip that described modules under the rack are
+  gone.
 - **The camera is in the corner:** fit, −, +, map, and a menu for the layout
   (chain, compact, by hand; snap; reset; detail; leans). Zoomed out, a module
-  keeps three knobs to read. ⇧Home fits the whole patch now; Home and End go
-  to the first module and the last.
+  keeps its name, its setting and three knobs to read. ⇧Home fits the whole
+  patch now; Home and End go to the first module and the last, from the
+  canvas (VOL, menus, the catalog and dialogs keep their own).
 - **The keys follow the signal.** ←/→ walk the modules in signal order, ↑/↓
   go into a module's modulators, Enter goes into its knobs, F2 opens its
-  menu, Esc steps back out: the knob, the module, the catalog, then a new
-  patch.
+  menu, Esc steps back out one thing a press: a menu, the knob, the module,
+  the catalog, then a new patch.
 - **SET ASIDE and TEACH are chips** at the well's foot that open their shelf
-  and their strip over it, and PATCH's first steps (turn a knob, lock what you
-  love, ⚡) move into the pill. On a touch screen every module shows its ⋯,
-  and a module's sheet has AUDIO IN's and CAPTURE's buttons and the sound's
-  face.
+  and their strip over it; TEACH counts the picks to the first refit, which
+  the head no longer repeats. PATCH's first steps (play it, turn a knob, lock
+  what you love, ⚡) move into the pill, and its × stops PATCH's steps only.
+  On a touch screen every module shows its ⋯, and a module's sheet has AUDIO
+  IN's and CAPTURE's buttons and the sound's face.
 
 ### Changed: PERFORM shows the sound large, and its pads have keys
 

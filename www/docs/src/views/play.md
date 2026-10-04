@@ -52,16 +52,17 @@ ceiling has no room to grow, and a hand-built patch past one is refused.
 **What to do next,** a small amber line at the head's top right, and pressing
 it does the step it names:
 
-- *Teach it your taste: 6 quick picks ▸* before your first pick (it opens
-  [TEACH](#teach));
-- *3 more picks and it refits ▸* until the first refit;
+- *Teach it your taste: 6 quick picks ▸* before your first pick, and *3 more
+  picks and it refits ▸* until the first refit, both taking you to EVOLVE.
+  While a pair is dealt here they leave the count to **TEACH** at the well's
+  foot ([TEACH](#teach)) and say nothing;
 - *It’s learned something. Breed a generation ▸* once it has;
 - *Breeding: keep playing ▸* while the first generation breeds (this one does
   nothing when pressed);
 - *Generation 3 bred 4 new sounds: they’re at the top of the bank ▸* after one.
 
-On a fresh session it says nothing until you play a key: playing first is the
-first steps' (PERFORM's pill).
+On a fresh session it says nothing until you play: playing first is the
+[first steps'](#first-steps).
 
 **The acts,** on the name's row:
 
@@ -84,19 +85,33 @@ you'd reach for ([keep an edit as a new
 sound](../rack.md#keep-an-edit-as-a-new-sound)); **PICK THE EDIT**, ticked
 first, skips that once. **UNDO TO AS OPENED** (↺ in a narrower window) takes
 every change back at once, in one render; its toast's undo, or <kbd>⇧⌘Z</kbd>
-pressed once per change, brings them back. Past the 60 steps undo keeps it
-says so and leaves the rest to <kbd>⌘Z</kbd>.
+pressed once per change, brings them back; the toast says so once the sound
+is back as it was opened, and its undo retires as soon as anything else
+changes the patch. Pressed when it can't go, it says why: *Already as it was
+opened*, *Waiting for the last edit to land*, *Waiting for the sound you
+opened to arrive* (another sound is on its way, and these changes are the
+sound you are leaving). Past the 60 steps undo keeps it says so and leaves the
+rest to <kbd>⌘Z</kbd>.
 
 ## The well
 
-**The modules,** in signal order: each one's name in caps and its setting
-beside it (*filter · svf lp*), and every knob at full detail, its value in its
-own units. A modulator is dashed, under the module it moves. The selected
-module (the one you pressed on, or the keyboard stands on) has its edge and
-name lit, its **⋯** (its [structure menu](../rack.md#the--menu)) and its
-**▢** (its lock); the others show them under the pointer. A locked module's
-edge is solid amber. Zoomed out, each module keeps three of its knobs to read.
-See [reading and editing the rack](../rack.md).
+**The modules,** in signal order, at about the size the patch opens at on a
+1440 px screen: each one's name in caps, and on the right of its head the
+setting that says which kind of it this is (*vco · saw*, *filter · svf lp*,
+*lfo · tri*), which a click changes. Under every knob its value as set, in its
+own units, then its name (*448 Hz / cutoff*); a setting that is not a knob
+prints its value where the knob would be, over its name and a dotted rule
+(*-1 / oct*), and a click changes it too. The amp's head draws its envelope
+from its four knobs: attack, decay and release each as the share of its knob's
+travel, sustain as its level; it draws the knobs, not the sound. A modulator
+is dashed, under the module it moves. The selected module (the one you pressed
+on, or the keyboard stands on) has its edge and name lit, and its **⋯** (its
+[structure menu](../rack.md#the--menu)) and **▢** (its lock) on its top edge,
+at the right; the others show them under the pointer. A locked module's edge is
+solid amber. When the patch is too wide for the well to show its labels at a
+size you can read (a narrow window, a big patch), each module shows its name
+and setting larger and three of its knobs to read; zoom in for the rest. See
+[reading and editing the rack](../rack.md).
 
 **OUT and the face.** The amp's lead runs to **OUT**, and past it stands the
 sound's [face](../faces.md): the face of the patch as it stands, measured on
@@ -108,12 +123,16 @@ again to take that back. Space plays the same phrase from PERFORM and EVOLVE,
 and waits the same way: *▶ waiting for the edit…* stands in for the name in
 the menu bar until it lands.
 
-**The cables.** Each green cable carries light by the level the engine
-measured on it, and a mark on its middle lights a bar for each third of the
-meter's range; point at it for the number. A modulation cable is dashed amber,
+**The cables.** Each green cable curves from one module's output to the next
+one's input, carries light by the level the engine measured on it, and a mark
+on its middle lights a bar for each third of the meter's range; point at it
+for the number. A module with two inputs names them beside the cables that
+arrive (*a*, *b*, or *carrier* and *mod*). A modulation cable is dashed amber,
 pulses at its modulator's rate, and says how far and how fast it moves the
 knob, *depth 25% · 0.51 Hz*: the module's mod depth and the modulator's rate,
-as their knobs are set. [Cables and their levels](../rack.md#reading-it).
+as their knobs are set. A module's modulation input nothing is plugged into is
+drawn faintly under it until you point at the module. [Cables and their
+levels](../rack.md#reading-it).
 AUDIO IN modules that read the same input show it as one stream fanning out
 to each.
 
@@ -187,16 +206,21 @@ down. [Adding a module](../wiring.md).
 - **The readout:** the module under the pointer, or the selected one, by
   name, with its setting and what it does in one sentence. Pointed at in the
   catalog, a module's longer description opens over the well's bottom edge:
-  its ports, what it arrives set to, what is heard, and how your taste leans
-  on it.
-- **TEACH ▸,** bottom right, while a pair is dealt: see [TEACH](#teach).
+  its ports, what it arrives set to, and what is heard, and, while you hold
+  <kbd>⌥</kbd>, how your taste leans on it. Where the foot is narrow (beside
+  the catalog, or in a narrow window) its parts stack and it scrolls.
+- **TEACH · 6 PICKS ▸,** bottom right, while a pair is dealt: see
+  [TEACH](#teach).
 
-**The scope,** in a corner of the well, tracing the output while you play. Set
-it up from **⋯** › *Scope & analyzer…*: waveform or spectrum, where it
-listens, FFT size, color, corner, size, trigger, and freeze. It steps out of
-the way of any module it would cover.
+**The scope** is put away until you ask for it: **⋯** › *Scope & analyzer…*
+sets it up (waveform or spectrum, where it listens, FFT size, color, corner,
+size, trigger, and freeze) and brings it into its corner of the well, tracing
+the output while you play. It steps out of the way of any module it would
+cover.
 
-**The model's guess about the sound you're playing,** above the well for now:
+**The model's guess about the sound you're playing,** on the well's top line,
+at its left, once it has one (the module guess and the thing in hand take the
+line while they are up):
 
 ```text
 79% · fairly sure · even branches +0.39 · plucked strings +0.18 ·
@@ -209,11 +233,11 @@ that reads. The words come from one scale: *a hunch* (46–54%), *leaning*
 and the style that rates it highest, by name. While an edit is on its way, the
 line dims and ends in *· rating…*: the model rating the edited sound again.
 
-When the model has no basis for a guess, the line says so instead of printing a
-number. When nothing reaches the output (the patch’s only source socket is
-[empty](../rack.md#empty-sockets)), it says *nothing to rate: no source
-reaches the output*. [Reading what it learned](../reading-the-model.md) says how to read
-it.
+When the model has no basis for a guess, the line is empty rather than
+printing a number: before your first picks, while it fits, and when nothing
+reaches the output (the patch’s only source socket is
+[empty](../rack.md#empty-sockets)). [Reading what it learned](../reading-the-model.md)
+says how to read it.
 
 ## The catalog
 
@@ -221,23 +245,29 @@ it.
 the well's left: its search (*grit*, *vowel*), what is set aside, what is in
 this patch, then every module by group, each with what it does to a signal and
 its cables. **✕** or <kbd>Esc</kbd> closes it. While it is open the patch is
-fitted beside it. Hold <kbd>⌥</kbd> (the model view) to see which way your
-taste leans on each module. [Wiring and the catalog](../wiring.md) has the
-rest.
+fitted beside it. Hold <kbd>⌥</kbd> (the model view), or press **model**, to
+see which way your taste leans on each module: its bar in the list, a line in
+its description, and in the card that stands beside the catalog while the
+keyboard walks it. At rest they leave it out. **LEANS**, in the layout's ▾,
+is still a switch of its own for now: it tints the modules on the canvas.
+[Wiring and the catalog](../wiring.md) has the rest.
 
 ## TEACH
 
 **TEACH ▸** at the well's foot opens the same pair EVOLVE deals, over the
-well, so you can pick without leaving PATCH. **▶ A** and **▶ B** put each sound
-under your keys, and then **PICK A**, **PICK B**, or **↻** for another pair;
-**← BACK** returns to the sound you were playing. **✕** or <kbd>Esc</kbd> folds
-it.
+well, so you can pick without leaving PATCH. Until the first refit it counts
+the picks still to go (*TEACH · 3 PICKS ▸*); the head's next step leaves that
+count to it. **▶ A** and **▶ B** put each sound under your keys, and then
+**PICK A**, **PICK B**, or **↻** for another pair; **← BACK** returns to the
+sound you were playing. **✕** or <kbd>Esc</kbd> folds it.
 
 ## First steps
 
 The first time, PATCH's own first steps show one at a time in the pill under
-the well: drag a knob, lock what you love, ⚡ EVOLVE FROM THIS. Each ticks off
-when you do it; **×** stops showing them.
+the well: play it (a key, or the face at OUT; already done if you have played),
+drag a knob, lock what you love, ⚡ EVOLVE FROM THIS. Each ticks off when you
+do it; **×** stops showing PATCH's steps, and PERFORM's still show there (and
+the other way round).
 
 ## On a touch screen
 

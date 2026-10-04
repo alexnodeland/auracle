@@ -95,7 +95,8 @@ now says <em>Still a guess: it could lean either way</em>.</figcaption>
 1. **One sentence** on what it does to a sound.
 2. **Its ports.**
 3. **The settings it arrives with.**
-4. **What the model makes of it,** in one of five states, from *Not a
+4. **What the model makes of it,** under the model view only (hold
+   <kbd>⌥</kbd>, or press **model**), in one of five states, from *Not a
    coordinate the taste model measures on its own.* to *you lean toward it*.
    [Reading what it learned](./reading-the-model.md#five-states-and-what-each-means)
    quotes all five.
