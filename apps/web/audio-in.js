@@ -730,6 +730,11 @@ export function createAudioIn(host) {
     lane.appendChild(note);
     g.appendChild(lane);
     paintLane(lane);
+    // …and its level and face as they are now, so a lane drawn by a rebuild
+    // (a level of detail switching, an edit landing) is never a blank one
+    // until the meter loop next runs, which it does only while an input is
+    // open.
+    paintMeters([lane]);
   }
 
   /** What a module's lane says, from where its input stands. */
@@ -799,8 +804,8 @@ export function createAudioIn(host) {
     paintMeters();
   }
 
-  function paintMeters() {
-    for (const lane of rackLanes()) {
+  function paintMeters(lanes = rackLanes()) {
+    for (const lane of lanes) {
       const e = entry(Number(lane.dataset.slot) || 0);
       const s = e ? streams.get(e.id) : null;
       const fill = lane.querySelector(".ain-meter-fill");
