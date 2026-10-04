@@ -12948,31 +12948,30 @@ let lodMode = localStorage.getItem("auracle-lod") || "auto";
 let lodApplied = "full";
 let relodRaf = null;
 
-// The zoom `auto` gives up full detail at. On PATCH's canvas (Plan-008 C2a)
-// full detail is the specimen's plate, every name and value to read, so the
-// line is where that stops being true, not where a knob stops being a target:
-// the readouts print at 11 px at 1×, and under 0.68× they would be under the
-// silkscreen floor's 8 px, with the knobs still drawn and nothing to read on
-// them. Measured at 1440 × 900: every stock preset opens at 0.84–1.19× (full),
-// Loom, the widest, at 0.69× (full); with the catalog open a five-module
-// patch fits at 0.63× (compact). At 1000 px Reese fits at 0.58× (compact).
-// It no longer rides the frame's height: a short frame gives the patch fewer
-// pixels, and the line is about pixels.
-const LOD_LINE = 0.68;
+// The zoom `auto` gives up the knobs at: where a knob stops being something
+// a hand can grab, not where its readout stops reading (the silkscreen floor
+// below takes the readouts and labels, and the names and settings print
+// larger, while every knob stays a control). On PATCH's canvas (Plan-008 C2a)
+// a knob is 22 units, so 0.45× is a 10 px ring in a 16 px target, about
+// what the old 30-unit knob had at its floor (0.34×). Measured at 1440 × 900:
+// every stock preset opens at 0.69–1.19×, and the ten-module pool sound a
+// first visit opens at 0.51× (full: a keep-as-new comparison and an undo
+// need a knob to turn). Compact was 0.68× for a round, and it took every
+// knob off that sound, from the mouse and from the keyboard both.
+const LOD_LINE = 0.45;
 function lodThreshold() {
   return LOD_LINE;
 }
 
-// Hysteresis: a patch near the line must not flip on every small layout
-// change (opening the ARP/SYNC drawer shortens the band by 46 px). The band
-// sits above the line: full detail goes the moment its readouts would not
-// read, and comes back only once the zoom is clearly over it (8%).
+// Hysteresis: once knobs are drawn, they stay until the zoom is clearly below
+// the line, not a hair under it (opening the ARP/SYNC drawer shortens the
+// band by 46 px, and a patch near the line must not lose its knobs to that).
 const LOD_HYSTERESIS = 0.92;
 function effectiveLod() {
   if (lodMode === "full" || lodMode === "compact") return lodMode;
   const th = lodThreshold();
-  if (lodApplied === "full") return view.zoom < th ? "compact" : "full";
-  return view.zoom < th / LOD_HYSTERESIS ? "compact" : "full";
+  if (lodApplied === "full") return view.zoom < th * LOD_HYSTERESIS ? "compact" : "full";
+  return view.zoom < th ? "compact" : "full";
 }
 // Deferred by a frame on purpose: this is reached from applyView, which is
 // reached from renderRack, and a synchronous rebuild there would re-enter the
@@ -13031,7 +13030,7 @@ function syncLodBtn() {
     lodMode === "auto"
       // The number is read out of `lodThreshold`, so the tooltip and the
       // switch cannot disagree.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and under ${lodThreshold().toFixed(2)}× each module shows its name, its setting and three knobs to read, not to grab.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off and each module's name and setting print larger; under ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for compact modules."
         : "Detail: compact. Modules, titles, jacks and three knobs each to read. Click to go back to automatic.";

@@ -57,11 +57,12 @@ everywhere in the instrument.
 
 The rack is fitted to its well when it opens, no larger than the size a
 four-module patch opens at on a 1440 px screen, where every name and value
-reads. Zoomed out past where its readouts would be too small to read (a wide
-patch, a narrow window, the catalog open beside it), **detail: automatic**
-shows each module's name and setting larger and leaves it three of its knobs
-to read, not to grab, so a large patch still says what it is until you zoom
-in. AUDIO IN's and CAPTURE's buttons stay.
+reads. Where the readouts would be too small to read (a wide patch, a narrow
+window, the catalog open beside it), **detail: automatic** leaves the values
+and labels off and prints each module's name and setting larger; every knob is
+still a control. Zoomed out past where a knob is big enough to grab, it leaves
+each module three of its knobs to read, not to grab, so a large patch still
+says what it is until you zoom in. AUDIO IN's and CAPTURE's buttons stay.
 
 ## Getting around
 
@@ -189,7 +190,7 @@ a menu:
 | **by hand** | Yours. Drag a module by its face and it snaps to the grid; hold <kbd>Shift</kbd> to place it freely |
 | **snap to the grid** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
 | **reset positions** | Throw away the hand positions, and lay the patch out along the signal chain again |
-| **detail** | **automatic** leaves each module its name, its setting and three knobs to read where its labels would be too small to read; or force **full** or **compact** |
+| **detail** | **automatic** leaves off labels too small to read (names and settings print larger), and leaves three knobs to read on modules too small to grab; or force **full** or **compact** |
 | **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
 **snap** and **reset** act only on a layout by hand. Positions are kept for each patch,

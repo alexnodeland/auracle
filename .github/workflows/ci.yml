@@ -366,7 +366,10 @@ jobs:
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 25: PATCH's canvas (Plan-008 C2a) added about twenty specs, each a fresh
+    # boot of 7-17 s with no fixed waits, and the fullest shard was already at
+    # 19.6 minutes of 20 before them.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:

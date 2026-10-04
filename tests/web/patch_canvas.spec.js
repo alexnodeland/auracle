@@ -371,3 +371,44 @@ test("a module dragged by hand takes its cables along, and the modulation cable'
   await page.locator('#pt-laymenu [data-layout="chain"]').click();
   expect(errors).toEqual([]);
 });
+
+test("zoomed out past where labels read, every knob is still a control: the values go, the names and settings print larger", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  // Three steps out from the fit (about 0.48×): a ten-module patch's opening
+  // size at 1440, under the readouts' floor and over the knobs'.
+  for (let i = 0; i < 3; i++) await page.locator("#pt-zoom-out").click();
+  await knobAtRest(page, 0);
+  const got = await page.evaluate(() => {
+    const svg = document.getElementById("rack-svg");
+    const vb = svg.getAttribute("viewBox").split(/\s+/).map(Number);
+    const title = svg.querySelector(".rack-plates .mod-title");
+    const value = svg.querySelector(".rack-controls .knob-value");
+    return {
+      zoom: svg.getBoundingClientRect().width / vb[2],
+      compact: svg.classList.contains("lod-compact"),
+      hits: svg.querySelectorAll("g[data-addr] > .knob-hit").length,
+      titleShown: getComputedStyle(title).visibility,
+      titlePx: title.getBoundingClientRect().height,
+      valueShown: getComputedStyle(value).visibility,
+    };
+  });
+  expect(got.zoom).toBeLessThan(0.62);
+  expect(got.compact).toBe(false);
+  expect(got.hits).toBeGreaterThan(6);
+  expect(got.valueShown).toBe("hidden");
+  expect(got.titleShown).toBe("visible");
+  expect(got.titlePx).toBeGreaterThanOrEqual(8);
+  // …and the keyboard still turns one.
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
+  await page.keyboard.press("Enter");
+  for (let i = 0; i < 4; i++) {
+    if (await page.evaluate(() => document.activeElement.getAttribute("role")) === "slider") break;
+    await page.keyboard.press("ArrowRight");
+  }
+  const knob = page.locator(":focus");
+  const before = await knob.getAttribute("aria-valuetext");
+  for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowUp");
+  await expect(knob).not.toHaveAttribute("aria-valuetext", before);
+  expect(errors).toEqual([]);
+});

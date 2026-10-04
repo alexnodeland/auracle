@@ -209,12 +209,15 @@ into C2a and C2b; round 2's decisions govern PATCH):
   two-input module's a/b outside the plate. The setting words are the
   engine's option names (*svf lp*, *tri*), not the mock's *lowpass*,
   *triangle*. ⋯ and the lock moved to a pocket on the plate's top edge, as
-  the head's right end is the setting. Compact is where the readouts stop
-  reading (under 0.68×, not scaled by the frame's height); measured at 1440:
-  every stock preset opens at 0.84–1.19× (Loom 0.69×), full; with the catalog
-  open Reese fits at 0.63×, compact; at 1000 px Reese fits at 0.58×,
-  compact. Compact keeps AUDIO IN's and CAPTURE's lanes (the touch sheet's
-  buttons press them).
+  the head's right end is the setting. Compact is where a knob stops being a
+  target (under 0.45×, not scaled by the frame's height); above it, where
+  the readouts would not read, they are left off and names and settings
+  print larger, with every knob still a control. Measured at 1440: every
+  stock preset opens at 0.84–1.19× (Loom 0.69×); the ten-module pool sound a
+  first visit opens at 0.51×; with the catalog open Reese fits at 0.63×; at
+  1000 px Reese fits at 0.58×. (A round at 0.68× took every knob off that
+  pool sound, from the mouse and the keyboard; CI caught it.) Compact keeps
+  AUDIO IN's and CAPTURE's lanes (the touch sheet's buttons press them).
 - **The face at OUT is `#rack-play`,** an HTML button placed over the box the
   build leaves past the amp (`placeOutFace`), not a drawing in the SVG, so it is
   the rack's ▶ itself (its wait ring, its disabled reasons, `data-hear`), and

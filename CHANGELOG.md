@@ -49,8 +49,9 @@ changelog that edits its own past is not a record.
   ▾). The module rail and the strip that described modules under the rack are
   gone.
 - **The camera is in the corner:** fit, −, +, map, and a menu for the layout
-  (chain, compact, by hand; snap; reset; detail; leans). Zoomed out, a module
-  keeps its name, its setting and three knobs to read. ⇧Home fits the whole
+  (chain, compact, by hand; snap; reset; detail; leans). Zoomed out, the
+  values and labels too small to read are left off and each module's name
+  and setting print larger; further out, a module keeps three knobs to read. ⇧Home fits the whole
   patch now; Home and End go to the first module and the last, from the
   canvas (VOL, menus, the catalog and dialogs keep their own).
 - **The keys follow the signal.** ←/→ walk the modules in signal order, ↑/↓

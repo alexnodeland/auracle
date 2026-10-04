@@ -421,10 +421,12 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   amp's head draws `paintEnvFig` from its four knobs (repainted in
   `paintKnob`). ⋯ and the lock sit in a pocket on the plate's top edge
   (`WELL_Y`), which is why `STACK_GAP` is 36. Automatic detail switches to
-  compact under 0.68× (`LOD_LINE`: where the 11 px readouts would print under
-  the silkscreen floor; no longer scaled by the frame's height), with its 8%
-  band above the line, and compact draws each plate's name and setting larger
-  (`svg.lod-compact`) and keeps AUDIO IN's and CAPTURE's lanes. Audio cables
+  compact under 0.45× (`LOD_LINE`: where a 22-unit knob stops being a target;
+  no longer scaled by the frame's height), with its 8% band below the line.
+  Above it, where the silkscreen floor takes the readouts (`data-illegible`
+  `value`), the names and head settings print larger, as compact draws them
+  (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
+  IN's and CAPTURE's lanes. Audio cables
   are level S-curves (`wirePathD`); a two-input module's input labels sit
   outside the plate (`addJack`'s `outside`), and plain `in`/`out` are not
   printed (they stay the jacks' accessible names).

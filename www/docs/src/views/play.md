@@ -109,9 +109,11 @@ on, or the keyboard stands on) has its edge and name lit, and its **⋯** (its
 [structure menu](../rack.md#the--menu)) and **▢** (its lock) on its top edge,
 at the right; the others show them under the pointer. A locked module's edge is
 solid amber. When the patch is too wide for the well to show its labels at a
-size you can read (a narrow window, a big patch), each module shows its name
-and setting larger and three of its knobs to read; zoom in for the rest. See
-[reading and editing the rack](../rack.md).
+size you can read (a narrow window, a big patch, the catalog open beside it),
+the values and labels are left off and each module's name and setting print
+larger; every knob is still there to turn. Smaller still, each module keeps
+three of its knobs to read; zoom in for the rest. See [reading and editing the
+rack](../rack.md).
 
 **OUT and the face.** The amp's lead runs to **OUT**, and past it stands the
 sound's [face](../faces.md): the face of the patch as it stands, measured on
