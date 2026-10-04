@@ -17,7 +17,7 @@
 // against any build, so each test here can be run against the code before its
 // fix to watch it fail.
 const { test, expect } = require("@playwright/test");
-const { goLevel, openKeys, bankTab, openCatalogue } = require("./shell");
+const { goLevel, openKeys, bankTab, openCatalog } = require("./shell");
 
 const INIT = `(() => {
   const Orig = window.Worker;
@@ -477,7 +477,7 @@ test("the newest edit's receipt replaces the last one's, and ⌘Z takes it down"
 test("▶ plays the socket the preview was rendering, after the pointer has left it", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");
-  await openCatalogue(page);
+  await openCatalog(page);
   await page.locator('.nb-item[data-kind="distortion"]').click();
   const jacks = page.locator("#rack-svg .jack.legal[data-childkey]");
   const n = await jacks.count();

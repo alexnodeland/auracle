@@ -384,12 +384,6 @@
              already edited away, silently and with no way to tell. This one is
              recomputed from the bench on every reply and says so when it is
              waiting. -->
-        <div class="belief-row mono" id="belief-row">
-          <!-- TODO(Plan-008 C2b): the belief line moves under ⌥, into the
-               subtitle; until the model view has its PATCH home it stays
-               visible here. -->
-          <div class="belief" id="belief" role="status"></div>
-        </div>
         <div class="play-body">
           <div class="play-canvas">
             <!-- The frame and the viewport are two different things now. The
@@ -429,7 +423,7 @@
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
               </div>
-              <!-- The catalogue, on demand over the well's left (the
+              <!-- The catalog, on demand over the well's left (the
                    specimen's `pt-cat`): ADD MODULE or / opens it, Esc or ×
                    closes it. Every entry says what it does to a signal (the
                    glyph) and where it can legally go (the port pips); under
@@ -468,7 +462,7 @@
               </div>
               <p class="nb-status mono" id="nb-status"></p>
             </div>
-            <!-- The catalogue's own walkthrough, anchored to the rail rather
+            <!-- The catalog's own walkthrough, anchored to the rail rather
                  than centred in a modal, for the same reason the bank's is:
                  every step points at something in the rail. -->
             <div class="bank-tour nb-tour hidden" id="nb-tour" role="dialog" aria-modal="false" aria-labelledby="nbt-title">
@@ -484,7 +478,7 @@
           </aside>
               <!-- The well's foot: the camera's corner on the left, then the
                    readout (`pt-read`): the selected module's name and what it
-                   does in one sentence; pointed at in the catalogue, a longer
+                   does in one sentence; pointed at in the catalog, a longer
                    description opens over the well's bottom edge. -->
               <div class="pt-foot" id="pt-foot">
               <!-- The camera, quiet in the corner (Plan-008 C2a): fit, out,
@@ -592,6 +586,14 @@
                    reason in the model's italic, over the rack's top left. Its
                    module is drawn at its socket in the rack (patch.js). -->
               <div class="guess-read" id="guess-read" role="status" hidden></div>
+              <!-- What the model makes of the patch in hand, on the well's top
+                   line (the specimen's), when it has a guess; the module guess
+                   and the thing in hand take the line while they are up.
+                   TODO(Plan-008 C2b): under ⌥ it becomes the subtitle's
+                   belief line. -->
+              <div class="belief-row mono" id="belief-row">
+                <div class="belief" id="belief" role="status"></div>
+              </div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
           </div>

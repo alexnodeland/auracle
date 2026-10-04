@@ -183,8 +183,15 @@ const guide = createGuide({
   },
 });
 // PATCH's first steps (Plan-008 C2a; they were the bench's one-line tour):
-// turn a knob, lock what you love, ⚡. Each ticks off when it happens. A tour
-// already dismissed (`auracle-bench-tour`) counts them done.
+// play it, turn a knob, lock what you love, ⚡. Each ticks off when it
+// happens. A tour already dismissed (`auracle-bench-tour`) counts the last
+// three done; a sound already played (`auracle-played`, a key or ▶) the
+// first. A player whose first level is PATCH is asked to play before
+// anything else, as PERFORM's first step asks.
+guide.add({
+  id: "patch-play", levels: ["patch"],
+  text: () => (window.matchMedia("(pointer: coarse)").matches ? "Play it: tap the keybed, or the face at OUT" : "Play it: press A, or the face at OUT"),
+});
 guide.add({
   id: "patch-knob", levels: ["patch"],
   text: () => (window.matchMedia("(pointer: coarse)").matches ? "Tap a module, and turn one of its settings" : "Drag a knob up or down, and hear it change"),
@@ -196,6 +203,7 @@ guide.add({
 guide.add({ id: "patch-evolve", levels: ["patch"], text: () => "Press ⚡ EVOLVE FROM THIS: it breeds around what you locked" });
 try {
   if (localStorage.getItem("auracle-bench-tour")) guide.markDone(["patch-knob", "patch-lock", "patch-evolve"]);
+  if (localStorage.getItem("auracle-played")) guide.markDone(["patch-play"]);
 } catch (_) { /* private window: the steps show */ }
 for (const level of ["perform", "patch", "evolve", "taste", "learning"]) shell.register(level, { el: $(`view-${level}`) });
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
@@ -1460,6 +1468,7 @@ function takeUndoStep() {
   if (!wb.tree) return;
   const step = benchStep();
   landedOver(undoStack[undoStack.length - 1]);
+  retireRevertUndo();
   undoStack.push(step);
   if (undoStack.length > 60) { undoStack.shift(); undoTrimmed = true; }
   redoStack.length = 0;
@@ -1507,6 +1516,7 @@ function commitStagedUndo() {
     .map((uid) => tray.find((t) => t.uid === uid))
     .filter(Boolean);
   landedOver(undoStack[undoStack.length - 1]);
+  retireRevertUndo();
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) { undoStack.shift(); undoTrimmed = true; }
   redoStack.length = 0;
@@ -1659,7 +1669,14 @@ function doRedo() { requestRestore("redo"); }
 function requestRestore(kind) {
   const step = kind === "undo" ? 1 : -1;
   nudge = null; // a nudge after ⌘Z is a new turn, with a step of its own
-  if (laneFree()) return performRestore(kind);
+  // Any press of ⌘Z or ⇧⌘Z moves the stacks the revert's UNDO counted on.
+  retireRevertUndo();
+  // `benchSettled`, not `laneFree`: with another patch on its way to the bench
+  // the stack still holds the leaving patch's steps, and a restore posted now
+  // would land that patch's tree under the arriving one's id. Queued, it is
+  // dropped with the rest of the lane when the new patch lands (`dropLane`),
+  // as the stack is cleared then.
+  if (benchSettled()) return performRestore(kind);
   // Presses in a row are one entry, so a burst stays one place in the order.
   const tail = benchLane[benchLane.length - 1];
   if (tail && tail.t === "restore") {
@@ -1754,20 +1771,54 @@ function performRestore(kind, burst) {
  *  free and the stack still reaches the open (`syncEditBar`). */
 function revertToOpened() {
   const n = undoStack.length;
-  if (!n || undoTrimmed || !wb.tree || !laneFree() || restoreInFlight) return false;
+  const why = revertRefusal();
+  if (why) {
+    // A press that cannot be served says why, once, rather than nothing.
+    note(`${why}.`, { replace: "revert" });
+    return false;
+  }
   nudge = null;
-  restorePending = { kind: "undo", cur: benchStep(), all: n };
+  restorePending = { kind: "undo", cur: benchStep(), all: n, say: n };
   restoreInFlight = true;
   structInFlight = true;
   beliefStale();
   send({ type: "edit_set_tree", json: undoStack[0].json, restore: true });
-  // Its UNDO brings the changes back, one redo at a time through the lane.
-  note(`Back as it was opened: ${words.count(n, "change")} undone.`, {
-    replace: "revert",
-    undo: () => { for (let i = 0; i < n; i++) requestRestore("redo"); },
-  });
   syncEditBar();
   return true;
+}
+/** Why "undo to as opened" cannot go now, or "" when it can. The ↺'s
+ *  tooltip and the toast a refused press gets say the same words. */
+function revertRefusal() {
+  const n = undoStack.length;
+  if (!wb.tree) return "Nothing is open";
+  if (n === 0) return "Already as it was opened";
+  if (undoTrimmed) return "More changes than undo keeps: ⌘Z takes them back one at a time";
+  if (benchPending != null) return "Waiting for the sound you opened to arrive";
+  if (restoreInFlight || !benchSettled()) return "Waiting for the last edit to land";
+  return "";
+}
+// The revert's toast: its UNDO brings the changes back, one redo at a time
+// through the lane — true only while nothing else has moved the stacks. Any
+// new step, ⌘Z or ⇧⌘Z retires its button (`retireRevertUndo`), as a newer
+// edit retires any edit receipt's (`landedOver`).
+let revertToast = null;
+function retireRevertUndo() {
+  if (revertToast) retireToastUndo(revertToast, "not the last edit");
+  revertToast = null;
+}
+/** Said when the revert has landed, not when it was asked for: a confirmation
+ *  waits for the fact (`settleLanded`). */
+function sayReverted(n) {
+  for (const old of editReceipts) retireToast(old);
+  editReceipts = [];
+  const el = note(`Back as it was opened: ${words.count(n, "change")} undone.`, {
+    replace: "revert",
+    undo: () => {
+      revertToast = null;
+      for (let i = 0; i < n; i++) requestRestore("redo");
+    },
+  });
+  revertToast = el;
 }
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
@@ -1790,6 +1841,7 @@ function settleRestore() {
   // that many undos in a row would be, newest first, so the redo stack holds
   // them in order and ⇧⌘Z brings them back one at a time. The states between
   // are the undo stack's own records (S0…S(n−1), then the bench as it was).
+  const say = restorePending.say;
   if (restorePending.all > 1) {
     const { all, cur: top, toggles = [] } = restorePending;
     const chain = undoStack.slice(-all);
@@ -1798,8 +1850,10 @@ function settleRestore() {
       settleRestore();
     }
     lastSettledRestore = "undo";
+    sayReverted(say);
     return;
   }
+  if (say) queueMicrotask(() => sayReverted(say));
   const undoing = restorePending.kind === "undo";
   const from = undoing ? undoStack : redoStack;
   const to = undoing ? redoStack : undoStack;
@@ -1899,15 +1953,15 @@ const patchView = createPatch({
   touch: (ev) => ev.pointerType === "touch" || (COARSE && ev.pointerType !== "mouse"),
   // Esc has another job first: something floating, a module in hand, a cable
   // half made, or a rack knob or plate button (`data-stop`) it backs out of.
-  // A new patch opens the catalogue (the specimen's `np-desk`), and leaving
+  // A new patch opens the catalog (the specimen's `np-desk`), and leaving
   // it closes it.
-  openCatalogue: () => openCatalogue(false),
+  openCatalog: () => openCatalog(false),
   // The touch sheet's figure: the bench's face, as at OUT.
   paintFace: (slot) => setFaceSlot(slot, "out", wb.rack && wb.subjectId != null ? (benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId }) : null),
   benchState: () => ({ dirty: !!wb.dirty, pending: !!editPending || !laneFree() }),
-  closeCatalogue: () => closeCatalogue(false),
+  closeCatalog: () => closeCatalog(),
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogueOpen() || plateSel != null ||
+    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogOpen() || plateSel != null ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
@@ -2552,7 +2606,7 @@ worker.onmessage = (e) => {
         wb.dirty = false;
         benchDirtyWhy = null;
         // A new subject: whatever the spec strip was describing belonged to
-        // the pointer's last trip along the catalogue, not to this patch.
+        // the pointer's last trip along the catalog, not to this patch.
         specRest();
         // Pruned, not cleared. A different patch entirely shares no node
         // identities with the one that was here, so pruning empties the set
@@ -3831,12 +3885,15 @@ function renderNextStep() {
     // that is the first steps' pill now (its "play"), so nothing is said here.
     label = "";
     act = null;
+  } else if (n < FIT_EVERY && currentDuel) {
+    // The picks have one home on PATCH: the TEACH chip at the well's foot,
+    // which counts them (`renderPlayDuel`). Saying it here too was the same
+    // invitation twice.
+    label = "";
+    act = null;
   } else if (n === 0) {
     label = `Teach it your taste: ${FIT_EVERY} quick picks ▸`;
-    act = () => {
-      if (currentView === "patch" && currentDuel) setTeach(true);
-      else showView("evolve");
-    };
+    act = () => showView("evolve");
   } else if (n < FIT_EVERY) {
     label = `${FIT_EVERY - n} more pick${FIT_EVERY - n > 1 ? "s" : ""} and it refits ▸`;
     act = () => showView("evolve");
@@ -3890,6 +3947,7 @@ function showCoach() {
 
 function firstNotePlayed() {
   mark("first-sound", { via: "a key" }, { once: true });
+  guide.done("patch-play");
   if (coachEl) {
     coachEl.remove();
     coachEl = null;
@@ -5603,38 +5661,48 @@ document.addEventListener("keydown", (e) => {
   if (nbArmedKeys(e)) { e.preventDefault(); return; }
   if (e.key === "Escape") {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
-    // and hands focus back to the control that opened it.
+    // and hands focus back to the control that opened it — one thing a
+    // press: a menu or a waiting handoff closed is that press spent, and
+    // PATCH's chain (selection, then the catalog) waits for the next one.
+    const handoff = !!pendingTarget || !!connectPick;
     cancelPending();
     endConnectPick();
     foldStars(); // a bank row's ★, open
-    if (compareId != null) closeCompare();
+    let spent = handoff;
+    if (compareId != null) { closeCompare(); spent = true; }
     if (!$("lineage-pop").classList.contains("hidden")) {
       setLineageOpen(false);
       $("lineage-btn").focus();
+      spent = true;
     }
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
       $("ovf-btn").focus();
+      spent = true;
     }
     if (!$("bank-tour").classList.contains("hidden")) {
       endBankTour();
       $("bank-tour-btn").focus();
+      spent = true;
     }
     if (keysPopOpen()) {
       const inside = $("keys-pop").contains(document.activeElement);
       setKeysPop(false);
       if (inside) $("keys-btn").focus();
+      spent = true;
     }
+    if (!$("ctx-menu").classList.contains("hidden")) spent = true;
+    if (spent) { closeMenu(); return; }
     if (layoutMenuOpen()) setLayoutMenu(false);
-    if (shelfOpen()) setShelf(false);
+    else if (shelfOpen()) setShelf(false);
     else if (teachOpen && currentView === "patch") setTeach(false);
     else if (evolveMenuOpen()) setEvolveMenu(false);
     // PATCH's chain (the specimen's): a selected module, then the catalog;
     // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed && $("ctx-menu").classList.contains("hidden")) {
+    else if (currentView === "patch" && !armed) {
       if (plateSel != null) selectPlate(null);
-      else closeCatalogue(false);
+      else closeCatalog();
     }
     closeMenu();
     return;
@@ -5645,7 +5713,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "/" && currentView === "patch" &&
       !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
     e.preventDefault();
-    openCatalogue(true);
+    openCatalog(true);
     return;
   }
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -5665,11 +5733,19 @@ document.addEventListener("keydown", (e) => {
   // list you are inside of wins, and everywhere else it means the canvas.
   // `.` is the second half of the conventional pair; its partner `F` is not
   // available, being the note F on the computer keybed (see KEYMAP).
-  if (currentView === "patch" && !e.defaultPrevented) {
+  // The canvas's keys are the canvas's: taken only with focus on it (the
+  // rack, a plate, a knob) or on nothing at all, and never under a modal. A
+  // slider (VOL), a menu, the catalog's rows and a dialog keep their own
+  // Home and End (a slider's ends, a list's first and last row); End on VOL
+  // used to walk to the amp, and Home in the commit duel to a plate behind
+  // it, where Delete then edited the bench being compared.
+  const onCanvas = !e.target || e.target === document.body || e.target === document.documentElement ||
+    !!e.target.closest?.("#rack-svg, #rack-scroll");
+  if (currentView === "patch" && !e.defaultPrevented && !modalUp()) {
     // ⇧Home fits the whole patch; Home and End go to the first module and to
     // the last (the amp, at OUT), as they do from a plate.
-    if (e.key === "Home" && e.shiftKey) { e.preventDefault(); fitAll(true); return; }
-    if ((e.key === "Home" || e.key === "End") && wb.rack) {
+    if (e.key === "Home" && e.shiftKey && onCanvas) { e.preventDefault(); fitAll(true); return; }
+    if ((e.key === "Home" || e.key === "End") && wb.rack && onCanvas) {
       e.preventDefault();
       const plates = platesInOrder();
       focusPlate(e.key === "Home" ? plates[0] : plates[plates.length - 1]);
@@ -6274,7 +6350,14 @@ function setTeach(open) {
 function renderPlayDuel() {
   const strip = $("play-duel");
   $("pt-teach").hidden = !currentDuel;
+  // The chip counts the picks to the first refit, as the head's next step
+  // did (it leaves them to the chip while there is a pair to pick from).
+  const left = FIT_EVERY - picksMade();
+  $("pt-teach").textContent = left > 0 ? `teach · ${left} pick${left === 1 ? "" : "s"} ▸` : "teach ▸";
+  renderNextStep();
   if (!currentDuel) {
+    teachOpen = false;
+    $("pt-teach").setAttribute("aria-expanded", "false");
     strip.classList.add("hidden");
     return;
   }
@@ -6301,7 +6384,14 @@ function renderPlayDuel() {
   side($("pd-b"), "B", currentDuel[1]);
 }
 $("pt-teach").onclick = () => setTeach(!teachOpen);
-$("pd-fold").onclick = () => { setTeach(false); $("pt-teach").focus(); };
+// From the keyboard (`detail` 0) the focus goes back to the chip; a pointer's
+// ✕ leaves it nowhere, so Space plays again (ADR-016, as for any control a
+// pointer pressed).
+$("pd-fold").onclick = (ev) => {
+  setTeach(false);
+  if (ev.detail === 0) $("pt-teach").focus();
+  else if (document.activeElement && $("play-duel").contains(document.activeElement)) document.activeElement.blur();
+};
 $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
@@ -9151,6 +9241,9 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  // ↺ cannot go while a sound is on its way (`revertRefusal`): its state
+  // says so now, not at the next render.
+  syncEditBar();
   // Its row comes into view (`renderBank`, "nearest": a row in view stays
   // put): the pool stands in the order it joined at rest, so the sound boot
   // opens, or one opened from elsewhere, can be anywhere in the list. A
@@ -9302,6 +9395,7 @@ function sendEdit(addr, value, isIndex, id) {
     benchLane.push({ t: "param", id: who, addr, value, isIndex, seq, held });
   }
   pumpLane();
+  syncEditBar();
 }
 
 /** The hand came off the knob: what it settled on may go to the engine. */
@@ -9392,6 +9486,7 @@ function playBench() {
   playWaitCancel();
   if (wb.buffer) {
     markHeard();
+    guide.done("patch-play");
     // "inhand": the header's ▶ lights with the rack's (`data-hear`).
     playBuffer(wb.buffer, $("rack-play"), "inhand");
     // A child on the bench as it was bred, heard: its unheard dot goes. An
@@ -9434,23 +9529,35 @@ function settlePlay() {
 // rather than as gear — real racks have a wide/narrow HP rhythm you can see
 // from across the room. Three steps, because two is not a rhythm and four is
 // noise at this plate count.
-const PLATE_W = [96, 168, 240];
-// Knobs per row, indexed the same as PLATE_W: the pitch stays ~56-80 units at
-// every step, which is what the 10px silkscreen label was measured against.
-const PLATE_COLS = [1, 2, 3];
-const KNOB_R = 15;
-
-// Row pitch has to clear the knob's tick ring plus its label and its unit
-// readout — the readout grew from "0.41" to "24 ms".
-const KNOB_ROW = 64;
+//
+// PATCH's canvas (Plan-008 C2a) draws them at the specimen's scale: a plate
+// about as wide as the mock's at the fit a four-module patch opens at, so its
+// name, its setting and every knob's value and label print at their tokens'
+// sizes there rather than under the silkscreen floor. Widths step with the
+// knobs a plate carries (one row of up to four); a plate with a lane (steps,
+// AUDIO IN, CAPTURE) takes the widest, which its lane was drawn against.
+const PLATE_W = [84, 128, 172, 204, 240];
+// Knobs per row, indexed the same as PLATE_W: about 50-64 units a knob, what
+// a 10px label and an 11px readout ("-0.9 dB") need side by side.
+const PLATE_COLS = [1, 2, 3, 4, 3];
+const KNOB_R = 11;
+// The plate's head: its name on the left, its setting on the right.
+const PLATE_HEAD = 30;
+// Row pitch: the knob and its travel ring, its readout, then its label.
+const KNOB_ROW = 56;
+const PLATE_FOOT = 4;
+// The horizontal space between layers: room for a cable to curve and carry
+// its level mark between two plates.
+const LAYER_GAP = 56;
 
 // One gutter serves two jobs: the horizontal space between layers, and the
 // vertical clearance a branch input departs the spine by. Keeping them the
 // same number is what makes the arrangement read as a grid rather than as two
 // unrelated spacings that happen to be near each other.
-const GUTTER = 28;
-// Two plates stacked inside one layer.
-const STACK_GAP = 16;
+const GUTTER = 30;
+// Two plates stacked inside one layer: clear of the lower one's ⋯ and lock,
+// which sit above its top edge.
+const STACK_GAP = 36;
 
 // An enum chip is a 62-unit plate, not a 30-unit knob, so it costs two slots.
 // Without that a vco's `wave` and `octave` chips sat on a 56-unit pitch and
@@ -9459,13 +9566,15 @@ const STACK_GAP = 16;
 function plateStep(mod) {
   // A step lane is eight bars wide, and eight bars want the widest plate: at
   // 240 units each bar gets a 26-unit slot, about the pitch of a fingertip.
-  if (hasStepLane(mod)) return PLATE_W.length - 1;
-  const slots =
-    mod.knobs.length + mod.knobs.filter((k) => k.kind.t !== "continuous").length;
-  const step = slots <= 1 ? 0 : slots <= 4 ? 1 : 2;
-  // A binary node's two input labels are content too: `carrier` and `mod`
-  // printed inside a 96-unit plate land on top of the one knob it has. Two
-  // named sockets buy a step, the same way a chip does.
+  if (hasStepLane(mod) || mod.kind === "audio_in" || mod.kind === "capture") return PLATE_W.length - 1;
+  // One slot a knob, a setting printed as its value included; the setting
+  // that names the module's kind (`plateSetting`) is in the head instead.
+  const head = plateSetting(mod);
+  const slots = mod.knobs.filter((k) => k !== head).length;
+  const step = Math.max(0, Math.min(3, slots - 1));
+  // A binary node's two input labels are content too: `a` and `b` printed
+  // inside the narrowest plate land on top of the one knob it has. Two named
+  // sockets buy a step.
   return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
@@ -9475,6 +9584,19 @@ function plateStep(mod) {
  *  included: it is silent there too). `placeholders` is a set of **uids** (see
  *  `placeholderUids`) for the stand-ins older saves recorded; the amp is not a
  *  node and modulators are never holes. */
+/** The setting that says which kind of this module it is (a VCO's wave, a
+ *  filter's mode): the specimen prints it in the plate's head, right of the
+ *  name, and it is the control there. The sheet and the readout name it the
+ *  same way (patch.js `renderSheet`, `renderSpecDock`). */
+function plateSetting(mod) {
+  return (mod.knobs || []).find((k) => k.kind.t === "enum" && /^(mode|wave|kind|color|table|type)$/i.test(k.label)) || null;
+}
+/** The knobs a plate's body draws, in order: all of them but the head's. */
+function bodyKnobs(mod) {
+  const head = plateSetting(mod);
+  return mod.knobs.map((k, i) => ({ k, i })).filter(({ k, i }) => k !== head && !isLaneKnob(mod, i));
+}
+
 function isEmptySocket(mod, placeholders) {
   if (!mod || mod.is_mod || mod.kind === "amp") return false;
   if (mod.kind === "silence") return true;
@@ -9490,17 +9612,17 @@ function isEmptySocket(mod, placeholders) {
  *  hint, so it takes the narrowest plate in the set and one row's height. The
  *  socket still reads as a socket; it just stops shouting. */
 function moduleBox(mod, isEmpty) {
-  if (isEmpty) return { w: PLATE_W[0], h: 36 + KNOB_ROW, perRow: 1 };
+  if (isEmpty) return { w: PLATE_W[0], h: PLATE_HEAD + KNOB_ROW + PLATE_FOOT, perRow: 1 };
   const step = plateStep(mod);
   const perRow = PLATE_COLS[step];
-  const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
+  const rows = Math.max(1, Math.ceil(bodyKnobs(mod).length / perRow));
   // AUDIO IN's lane (audio-in.js `drawLane`): its input, meter, MONITOR and
   // NEW CLIP, under its three settings; CAPTURE's (takes.js): RECORD and the
   // length of its recording.
   const lane = hasStepLane(mod) ? STEP_LANE_H
     : mod.kind === "audio_in" ? INPUT_LANE_H
     : mod.kind === "capture" ? TAKE_LANE_H : 0;
-  return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
+  return { w: PLATE_W[step], h: PLATE_HEAD + rows * KNOB_ROW + PLATE_FOOT + lane, perRow };
 }
 
 // ---- the step lane ----
@@ -9519,9 +9641,9 @@ const STEP_BAR_H = 44;
 function hasStepLane(mod) {
   return !!mod.lane || mod.kind === "steps";
 }
-/** How many of this module's knobs are dials rather than lane bars. */
-function dialCount(mod) {
-  return mod.lane ? mod.lane.first : mod.knobs.length;
+/** Where a plate's knob rows end and its lane (if any) begins. */
+function bodyBottom(mod, box) {
+  return PLATE_HEAD + Math.max(1, Math.ceil(bodyKnobs(mod).length / box.perRow)) * KNOB_ROW + 2;
 }
 /** Is knob `i` one of the lane's bars? */
 function isLaneKnob(mod, i) {
@@ -9530,7 +9652,7 @@ function isLaneKnob(mod, i) {
 /** Where the lane sits on its plate, and each bar's slot within it. */
 function laneGeom(mod, box) {
   const count = mod.lane ? mod.lane.count : 8;
-  const top = 36 + Math.max(1, Math.ceil(dialCount(mod) / box.perRow)) * KNOB_ROW + 2;
+  const top = bodyBottom(mod, box);
   const inset = 14;
   const slot = (box.w - 2 * inset) / count;
   return { top, inset, slot, barW: Math.max(8, slot - 7), count };
@@ -9664,20 +9786,24 @@ function attachStepDrag(el, kg, knob) {
   });
 }
 
-// Knob pitch for the row `i` lands in — a short last row centres itself, so a
-// four-knob module on a three-wide plate puts its orphan knob in the middle
-// instead of hard against the left edge.
+// Knob pitch: the plate's width shared by a full row. A short last row
+// centres itself, so a four-knob module on a three-wide plate puts its orphan
+// knob in the middle instead of hard against the left edge. `i` is the knob's
+// index in `mod.knobs`; its slot is its place among the body's knobs.
 function knobPitch(mod, i, box) {
-  const row = Math.floor(i / box.perRow);
-  const inRow = Math.min(box.perRow, dialCount(mod) - row * box.perRow);
-  return box.w / (inRow + 1);
+  return box.w / box.perRow;
 }
 
 function knobPos(mod, i, box) {
-  const row = Math.floor(i / box.perRow);
+  const body = bodyKnobs(mod);
+  const slot = Math.max(0, body.findIndex((b) => b.i === i));
+  const row = Math.floor(slot / box.perRow);
+  const inRow = Math.min(box.perRow, body.length - row * box.perRow);
+  const pitch = box.w / box.perRow;
+  const off = (box.w - inRow * pitch) / 2;
   return {
-    x: knobPitch(mod, i, box) * ((i % box.perRow) + 1),
-    y: 50 + row * KNOB_ROW,
+    x: off + pitch * ((slot % box.perRow) + 0.5),
+    y: PLATE_HEAD + 17 + row * KNOB_ROW,
   };
 }
 
@@ -9913,7 +10039,7 @@ function layoutFlow(rack, mode, holes) {
   let x = 0;
   for (let l = 0; l < layers.length; l++) {
     xs[l] = x;
-    x += bandW[l] + GUTTER;
+    x += bandW[l] + LAYER_GAP;
   }
   let minY = Infinity;
   let maxY = -Infinity;
@@ -9934,7 +10060,7 @@ function layoutFlow(rack, mode, holes) {
       perRow: b.perRow,
     });
   }
-  return { pos, natW: x - GUTTER, natH: maxY - minY };
+  return { pos, natW: x - LAYER_GAP, natH: maxY - minY };
 }
 
 // ---------- freeform ----------
@@ -10605,8 +10731,8 @@ function repaintMeasuredFlow() {
 // One function, because `wirePathD` has to land the cable in the jack and the
 // renderer has to draw the jack in the tab, and a housing whose cable arrives
 // somewhere else is worse than no housing.
-const MOD_TAB_W = 96;
-const MOD_TAB_H = 22;
+const MOD_TAB_W = 88;
+const MOD_TAB_H = 16;
 // How far below the plate's bottom edge the tab's centre line sits. Not zero:
 // a tab centred exactly on the edge is half over the last knob row, and the
 // bottom row's readout — the one piece of text on the plate that had just
@@ -10614,7 +10740,11 @@ const MOD_TAB_H = 22;
 // top edge 4 below the deepest descender and still leaves a third of the
 // housing inside the panel, which is what makes it read as notched in rather
 // than as a badge stuck on.
-const MOD_TAB_DY = 7;
+//
+// On the canvas (Plan-008 C2a) the plate's last row carries its knobs' names,
+// and the tab hangs wholly under the edge (its top one unit below it) so it
+// never sits on them.
+const MOD_TAB_DY = 9;
 function modTab(w) {
   const tw = Math.min(MOD_TAB_W, w - 8);
   const x = (w - tw) / 2;
@@ -10721,9 +10851,13 @@ function wirePathD(w, pos, modByKey) {
   // between adjacent columns — so short runs kinked into a V instead of
   // hanging. A constant sag was also 40% of a short span and 4% of a long
   // one, so cables never read as the same kind of object.
+  //
+  // On the canvas (Plan-008 C2a) the cable is the specimen's: it leaves and
+  // arrives level, an S between the two jacks, with a little sag only on a
+  // long level run so it still reads as a lead and not a rule.
   const span = Math.max(1, x2 - x1);
-  const dx = Math.min(span * 0.42, 90);
-  const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
+  const dx = Math.min(Math.max(span * 0.5, 18), 120);
+  const sag = Math.abs(y2 - y1) < 2 ? Math.min(span * 0.08, 14) : 0;
   return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
 }
 
@@ -10746,6 +10880,31 @@ function modCableText(w, modByKey, wires) {
   if (depth) parts.push(`depth ${heardUnit(depth.addr, depth.value, host.kind, null)}`);
   if (rate && src) parts.push(heardUnit(rate.addr, rate.value, src.kind, null));
   return parts.join(" · ");
+}
+
+// The amp's envelope figure, in the plate's head.
+const ENV_FIG_W = 52;
+const ENV_FIG_H = 14;
+/** The envelope's shape from the amp's four knobs as set: attack, decay and
+ *  release each as the share of its knob's travel, sustain as its level. It
+ *  draws the knobs, not a measurement of the sound. */
+function paintEnvFig(fig, m) {
+  const v = (label) => {
+    const k = m.knobs.find((x) => x.label === label);
+    return k ? Math.min(1, Math.max(0, k.value)) : 0;
+  };
+  const W = ENV_FIG_W;
+  const H = ENV_FIG_H;
+  const a = 2 + v("attack") * 12;
+  const d = 2 + v("decay") * 12;
+  const r = 2 + v("release") * 12;
+  const hold = Math.max(6, W - a - d - r);
+  const sy = H - v("sustain") * H;
+  const x1 = a;
+  const x2 = x1 + d;
+  const x3 = x2 + hold;
+  const x4 = Math.min(W, x3 + r);
+  fig.setAttribute("d", `M 0 ${H} L ${x1.toFixed(1)} 0 L ${x2.toFixed(1)} ${sy.toFixed(1)} L ${x3.toFixed(1)} ${sy.toFixed(1)} L ${x4.toFixed(1)} ${H}`);
 }
 
 /** A module's identity as the motion system spells it. `uid` is the real
@@ -10909,7 +11068,7 @@ function renderRack(rebuild = false) {
   reason("rack-evolve", evolveFromWhy() || "Pick a sound from the bank first");
   reason("lock-knobs", "Pick a sound from the bank first");
   reason("lock-structure", "Pick a sound from the bank first");
-  reason("lock-clear", !hasRack ? "Pick a sound from the bank first" : "No locks set: click a lock dot or ▢ on a module first");
+  reason("lock-clear", !hasRack ? "Pick a sound from the bank first" : "No locks set: select a module and press L, or click a knob’s lock dot");
   // Locking the wiring now *teaches* as well as pins, and the copy is allowed
   // to say so. WS-8 §4 sequenced this deliberately: until φ_struct carried an
   // arrangement coordinate the model had no column in which "this branch is
@@ -11106,19 +11265,18 @@ function syncEditBar() {
   const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
   const edited = hasRack && (wb.dirty || editPending);
   bar.hidden = !edited;
+  // ↺'s state is kept whether or not the bar is up, so it is never stale
+  // the moment the bar shows. Not `disabled`: a press it cannot serve says
+  // why (`revertToOpened`), and a disabled button takes no press at all.
+  const rv = $("pt-revert");
+  const why = revertRefusal();
+  rv.setAttribute("aria-disabled", String(!!why));
+  const wrap = rv.closest(".tt");
+  if (wrap) wrap.title = why;
+  rv.title = why ? "" : "Take back every change since you opened it (⇧⌘Z brings them back one at a time)";
   if (!edited) return;
   const n = undoStack.length;
   $("pt-ed-n").textContent = n === 0 ? "as opened" : `${words.count(n, "change")}${undoTrimmed ? "+" : ""}`;
-  const rv = $("pt-revert");
-  rv.disabled = n === 0 || undoTrimmed || restoreInFlight || !laneFree();
-  const wrap = rv.closest(".tt");
-  if (wrap) {
-    wrap.title = !rv.disabled ? ""
-      : n === 0 ? "Already as it was opened"
-      : undoTrimmed ? "More changes than undo keeps: ⌘Z takes them back one at a time"
-      : "Waiting for the last undo to land";
-  }
-  rv.title = rv.disabled ? "" : "Take back every change since you opened it (⌘Z brings them back one at a time with ⇧⌘Z)";
 }
 
 // Shared rack renderer: the interactive workbench and the read-only duel
@@ -11149,6 +11307,9 @@ function buildRack(svg, rack, opts) {
   // than once per module.
   const beliefSup = interactive && beliefOverlay && !compact ? nbSupport() : null;
   svg.innerHTML = "";
+  // Compact draws each plate's name and setting larger, to read at the zoom
+  // that chose it (style.css `.lod-compact`).
+  if (interactive) svg.classList.toggle("lod-compact", !!compact);
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
   // screw head and jack nut all agree, so the panel reads as one object under
@@ -11473,10 +11634,14 @@ function buildRack(svg, rack, opts) {
     // floating on bare panel, which is why "the only two entry points to all
     // structure editing" read as decoration — nothing said they were
     // controls. The well says it at rest, and it is where bypass and solo go
-    // when they land. Narrow plates get a shorter pocket: 56 units on a
-    // 96-unit plate would leave the silkscreen nowhere to be.
-    const wellW = interactive ? (p.w >= 168 ? 56 : 44) : 0;
+    // when they land.
+    // On the canvas the pocket sits on the plate's top edge at its right,
+    // above the head (whose right end is the plate's setting), and shows on
+    // hover, selection or focus (style.css).
+    // A finger's two 44-unit pads need the pocket twice as wide.
+    const wellW = interactive ? (COARSE ? 96 : 48) : 0;
     const wellX = p.w - wellW - 4;
+    const WELL_Y = -17;
     const lockedIn = isModuleLockedIn(m);
     // …except on a hole, which has no controls to recess. The pocket was the
     // heaviest thing on the EMPTY plate and it advertised two verbs, one of
@@ -11485,7 +11650,7 @@ function buildRack(svg, rack, opts) {
     // the panel saying "there is apparatus here", and there is not.
     if (interactive && !compact && !isEmpty) {
       plateG.appendChild(svgEl("rect", {
-        x: wellX, y: 5, width: wellW, height: 20, rx: 3,
+        x: wellX, y: WELL_Y, width: wellW, height: 18, rx: 3,
       }, `ctrl-well${lockedIn ? " locked" : ""}`));
     }
     // Title: 13px at 500 in `--silk-mute`. A silkscreened panel name is large
@@ -11495,15 +11660,25 @@ function buildRack(svg, rack, opts) {
     // hang from. A 96-unit plate takes the same type one step down: with a
     // control well beside it there is not room for 13px without condensing
     // the glyphs, and a squeezed title is worse than a small one.
-    const narrow = p.w < 168;
-    const title = svgEl("text", { x: 14, y: 18 },
-      `mod-title${narrow ? " narrow" : ""}${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
+    const title = svgEl("text", { x: 12, y: 19 },
+      `mod-title${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
     title.textContent = isEmpty ? "empty" : m.title;
     // A title is silkscreened onto the panel, so it belongs under the cables
     // — but it must not be *squeezed* by them: the fit pass measures against
-    // the room left between the left edge and the control well.
-    title.dataset.fit = String(Math.max(30, (interactive ? wellX : p.w - 8) - 20));
+    // the room left between the left edge and what the head's right holds
+    // (the setting, or the envelope's shape).
+    const setW = !isEmpty && plateSetting(m) ? enumShown(plateSetting(m)).length * 6.6 + 14 : 0;
+    const envW = !isEmpty && m.kind === "amp" ? ENV_FIG_W + 8 : 0;
+    title.dataset.fit = String(Math.max(30, p.w - 24 - Math.max(setW, envW)));
     plateG.appendChild(title);
+    // The amp's head draws its envelope: attack, decay, sustain and release
+    // as their knobs are set (each time as the share of its travel, the
+    // sustain as the level), repainted as they turn (`paintEnvFig`).
+    if (!isEmpty && m.kind === "amp") {
+      const fig = svgEl("path", { transform: `translate(${p.w - 12 - ENV_FIG_W},8)`, "data-envfig": m.key }, "env-fig");
+      paintEnvFig(fig, m);
+      plateG.appendChild(fig);
+    }
     if (!compact && !isEmpty) {
       plateG.appendChild(svgEl("rect", {
         x: 14, y: 25, width: Math.max(20, p.w - 26), height: 1,
@@ -11543,10 +11718,10 @@ function buildRack(svg, rack, opts) {
       // than the 10px ellipsis itself. Both glyphs sit in the well now: the
       // amp has no lock, so its ⋯ takes the whole pocket.
       const hasLock = m.kind !== "amp" && !isEmpty;
-      const menuX = wellX + (hasLock ? wellW * 0.3 : wellW / 2);
-      const lockX = wellX + wellW * 0.72;
+      const menuX = wellX + (hasLock ? wellW * 0.27 : wellW / 2);
+      const lockX = wellX + wellW * 0.73;
       const menuG = svgEl("g", {}, "mod-menu-btn");
-      const menuBtn = svgEl("text", { x: menuX, y: 19 });
+      const menuBtn = svgEl("text", { x: menuX, y: WELL_Y + 13 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
@@ -11555,7 +11730,7 @@ function buildRack(svg, rack, opts) {
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
       // A finger gets a wider pad (the plate is a few hundred units wide).
-      hitPad(menuG, menuX, 15, COARSE ? 44 : 24, COARSE ? 44 : 26);
+      hitPad(menuG, menuX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -11565,7 +11740,7 @@ function buildRack(svg, rack, opts) {
       if (hasLock) {
         const lockOn = lockedIn;
         const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
-        const mlock = svgEl("text", { x: lockX, y: 19 });
+        const mlock = svgEl("text", { x: lockX, y: WELL_Y + 13 });
         mlock.textContent = lockOn ? "▣" : "▢";
         const mtitle = svgEl("title", {});
         mtitle.textContent = lockOn
@@ -11573,7 +11748,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (breeding keeps it exactly as it is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, lockX, 15, COARSE ? 44 : 24, COARSE ? 44 : 26);
+        hitPad(lockG, lockX, WELL_Y + 9, COARSE ? 44 : 24, COARSE ? 44 : 22);
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -11600,7 +11775,14 @@ function buildRack(svg, rack, opts) {
       // 0.4× it is two more rects per jack and no information at all.
       if (plugRot != null && !compact) jg.appendChild(plugArt(plugRot));
       jg.appendChild(svgEl("circle", { r: 5.5 }));
+      // On the canvas a plain `in` or `out` is not printed (the cable says
+      // which way it runs, as the specimen's plates do; the socket's name is
+      // still its accessible name), and a named input of two (a / b, a key)
+      // is printed outside the plate, by the cable that arrives at it.
+      const plain = label === "in" || label === "out";
       const attrs =
+        plain && labelSide !== "none" && labelSide !== "below" ? null :
+        labelSide === "outside" ? { x: -8, y: -7, "text-anchor": "end" } :
         labelSide === "right" ? { x: 9, y: 3 } :
         labelSide === "left" ? { x: -9, y: 3, "text-anchor": "end" } :
         labelSide === "none" ? null :
@@ -11671,7 +11853,7 @@ function buildRack(svg, rack, opts) {
           ? [[p.h * 0.38, names[0], `${m.key}/0`], [p.h * 0.68, names[1], `${m.key}/1`]]
           : [[p.h / 2, names[0], `${m.key}/0`]];
         for (const [jy, lbl, ck] of ins) {
-          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck }, cabled.has(ck) ? 180 : null);
+          const j = addJack(0, jy, "", lbl, "outside", { "data-childkey": ck }, cabled.has(ck) ? 180 : null);
           if (interactive) {
             claimGesture(j);
             j.addEventListener("pointerdown", (ev) => {
@@ -11760,12 +11942,18 @@ function buildRack(svg, rack, opts) {
       modPort != null && (k.label === modPort || k.label === "mod depth");
     // The knob detail is the whole of the difference between the two levels
     // of detail, so it is one conditional rather than a second renderer.
+    // The setting that names the module's kind sits in the head, right of
+    // the name (`plateSetting`): the specimen's "vco saw", "filter ladder".
+    // It is the control itself, not a copy of it.
+    const headSet = !isEmpty ? plateSetting(m) : null;
     if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
       // A step value is drawn as a bar in the lane below, not as a dial.
       if (isLaneKnob(m, i)) return;
-      const { x, y } = knobPos(m, i, box);
+      const inHead = k === headSet;
+      const { x, y } = inHead ? { x: p.w - 12, y: 19 } : knobPos(m, i, box);
       const pitch = knobPitch(m, i, box);
-      const kg = svgEl("g", { transform: `translate(${x},${y})` });
+      const kg = svgEl("g", { transform: `translate(${x},${y})` }, inHead ? "plate-set" : "");
+      let headW = 0;
       const locked = locks.has(k.addr);
 
       if (k.kind.t === "continuous") {
@@ -11824,7 +12012,8 @@ function buildRack(svg, rack, opts) {
           // One transparent target covers the whole face. It goes on last so
           // it sits above the decoration, and the lock dot is appended after
           // it so the dot still wins its own corner.
-          const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
+          // A finger gets a 44-unit face; the pitch (50+) still clears it.
+          const hit = svgEl("circle", { r: KNOB_R + (COARSE ? 11 : 7) }, "knob-hit");
           const tt = svgEl("title", {});
           tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} · drag up or down`;
           hit.appendChild(tt);
@@ -11832,12 +12021,19 @@ function buildRack(svg, rack, opts) {
           attachKnobDrag(hit, m, k);
         }
       } else {
-        // The chip is as wide as its slot allows, capped at the 62 units the
-        // longest option name ("triangle", "notch out") was drawn against.
-        const bw = Math.max(40, Math.min(62, pitch - 4));
-        const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
-        const txt = svgEl("text", { y: 4 }, "enum-text");
-        txt.textContent = enumDisplay(k);
+        // A setting prints its value where a knob would be (the specimen's
+        // "-1 / oct"), or in the head, right-aligned, for the one that names
+        // the module's kind. The rect is what takes the press: as wide as the
+        // value, a little more, never past its slot.
+        const shownText = enumShown(k);
+        const tw = shownText.length * 6.6 + 10;
+        const bw = inHead ? Math.max(28, tw) : Math.max(30, Math.min(pitch - 4, tw + 6));
+        const body = inHead
+          ? svgEl("rect", { x: -bw + 4, y: -13, width: bw, height: 18, rx: 3 }, "enum-body")
+          : svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
+        if (inHead) headW = bw;
+        const txt = svgEl("text", inHead ? { y: 0 } : { y: 4 }, `enum-text${inHead ? " head" : ""}`);
+        txt.textContent = shownText;
         if (interactive) {
           const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
@@ -11852,7 +12048,7 @@ function buildRack(svg, rack, opts) {
             const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
             k.value = next;
-            txt.textContent = enumDisplay(k);
+            txt.textContent = enumShown(k);
             nameSetting(kg, k);
             sendEdit(k.addr, next, true);
           });
@@ -11866,8 +12062,11 @@ function buildRack(svg, rack, opts) {
         }
         kg.appendChild(body);
         kg.appendChild(txt);
+        if (!inHead) kg.appendChild(svgEl("line", { x1: -tw / 2 + 5, x2: tw / 2 - 5, y1: 8, y2: 8 }, "enum-line"));
         if (locked) {
-          kg.appendChild(svgEl("rect", { x: -bw / 2 - 3, y: -14, width: bw + 6, height: 28, rx: 5 }, "knob-locked-halo"));
+          kg.appendChild(inHead
+            ? svgEl("rect", { x: -bw + 1, y: -16, width: bw + 6, height: 24, rx: 5 }, "knob-locked-halo")
+            : svgEl("rect", { x: -bw / 2 - 3, y: -14, width: bw + 6, height: 28, rx: 5 }, "knob-locked-halo"));
         }
       }
 
@@ -11875,7 +12074,7 @@ function buildRack(svg, rack, opts) {
         // Ten knobs meant ten amber dots glowing at all times, competing with
         // the amber-means-the-model law for no reason. They appear on hover,
         // on focus, or once anything is actually locked.
-        const dot = svgEl("g", { transform: `translate(${KNOB_R + 8},${-KNOB_R - 4})` },
+        const dot = svgEl("g", { transform: inHead ? `translate(${-headW - 2},-4)` : `translate(${KNOB_R + 7},${-KNOB_R - 3})` },
           `lock-dot${locked ? " on" : ""}`);
         dot.appendChild(svgEl("circle", { r: 3.4 }, ""));
         const dt = svgEl("title", {});
@@ -11913,15 +12112,18 @@ function buildRack(svg, rack, opts) {
         }
       }
 
-      const lbl = svgEl("text", { y: KNOB_R + 15 }, "knob-label");
-      lbl.textContent = silkLabel(k.label);
-      // Available width is the knob pitch less a hair of breathing room.
-      lbl.dataset.fit = String(
-        Math.max(24, pitch - 6)
-      );
-      kg.appendChild(lbl);
+      // Under the knob, its value as set and then its name (the specimen's
+      // "0.45 / cutoff"). The head's setting is named by the plate.
+      if (!inHead) {
+        const lbl = svgEl("text", { y: KNOB_R + 25 }, "knob-label");
+        lbl.textContent = silkLabel(k.label);
+        // Available width is the knob pitch less a hair of breathing room.
+        lbl.dataset.fit = String(Math.max(24, pitch - 6));
+        kg.appendChild(lbl);
+      }
       if (k.kind.t === "continuous") {
-        const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
+        const val = svgEl("text", { y: KNOB_R + 14 }, "knob-value");
+        val.dataset.fit = String(Math.max(24, pitch - 4));
         val.textContent = interactive
           ? heardUnit(k.addr, k.value, m.kind, variant)
           : knobUnit(k.addr, k.value, m.kind, variant);
@@ -11942,6 +12144,12 @@ function buildRack(svg, rack, opts) {
     // three dials, their value arcs and pointers, as set), not to grab: at the
     // zoom that chose compact a knob is too small for a hand, and the plate's
     // ⋯, a tap's sheet or zooming in reach every setting.
+    if (compact && !isEmpty && headSet) {
+      // The setting, to read: the control is a zoom, a tap or ⋯ away.
+      const ht = svgEl("text", { x: p.w - 12, y: 19 }, "enum-text head");
+      ht.textContent = enumShown(headSet);
+      g.appendChild(ht);
+    }
     if (compact && !isEmpty) {
       let shown = 0;
       m.knobs.forEach((k, i) => {
@@ -11958,12 +12166,14 @@ function buildRack(svg, rack, opts) {
     }
     if (!compact && !isEmpty && m.lane) drawStepLane(g, m, box, interactive, locks);
     // AUDIO IN's lane belongs to the player's inputs, so only the bench draws
-    // it; a picture of another patch leaves the space plain.
-    if (!compact && !isEmpty && m.kind === "audio_in" && interactive) {
-      audioIn.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2, true);
+    // it; a picture of another patch leaves the space plain. Drawn in compact
+    // too: its buttons (MONITOR, NEW CLIP, RECORD) are the ones a touch
+    // sheet's press, and a plate in compact keeps its height for them.
+    if (!isEmpty && m.kind === "audio_in" && interactive) {
+      audioIn.drawLane(g, m, box.w, bodyBottom(m, box), true);
     }
-    if (!compact && !isEmpty && m.kind === "capture" && interactive) {
-      takes.drawLane(g, m, box.w, 36 + Math.max(1, Math.ceil(dialCount(m) / box.perRow)) * KNOB_ROW + 2);
+    if (!isEmpty && m.kind === "capture" && interactive) {
+      takes.drawLane(g, m, box.w, bodyBottom(m, box));
     }
   }
 
@@ -12521,7 +12731,10 @@ function restoreRackFocus(mark) {
 // else kept hitting.
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.5;
-const FIT_MAX = 2.2;
+// A fit opens a small patch at the specimen's scale, not blown up to fill the
+// well: plates read the same size from patch to patch (the wheel and + go on
+// to ZOOM_MAX).
+const FIT_MAX = 1.25;
 // …and the floor a *fit* may reach past it. "Home shows you the whole patch"
 // is the promise the key makes, and 0.3× could not keep it: fourteen modules
 // in a 787×295 frame need 0.28×, so Home clipped three plates by six pixels
@@ -12641,9 +12854,6 @@ function applyView() {
   // A cable in flight is anchored in rack space, so anything that moves the
   // world has to redraw it or the cable detaches from the jack it came out of.
   if (wire) redrawWireBand();
-  // Same argument for the pick chip: it is pinned to a plate, and the plate
-  // is in the world.
-  positionPickChip();
   placeOutFace();
   syncEdges();
   // The model's guess is kept in sight of the camera (patch.js `inView`).
@@ -12738,53 +12948,31 @@ let lodMode = localStorage.getItem("auracle-lod") || "auto";
 let lodApplied = "full";
 let relodRaf = null;
 
-// The threshold `auto` switches at in a *tall* frame. 0.55× is where a 30-unit
-// knob stops being something you could put a finger on, which is the right
-// number and is not changing.
-const LOD_AUTO = 0.55;
-// The frame height that number is *for*, and the floor the scaling stops at.
-// Both are measured rather than chosen. 500 px is the rack band on a full-size
-// window, where 0.55 was calibrated and where nothing about this changes. The
-// number that fixed it is the other end: at 1280×900 the band is 364 px and
-// five stock presets fit at 0.44–0.67, so the threshold has to be under 0.44
-// for the gate's own target to be met. 500 puts it at 0.400 — 9% of headroom
-// under the worst preset rather than 3% — and the floor keeps it from chasing
-// a genuinely tiny window down to where a knob really is four pixels of ring.
-const LOD_REF_H = 500;
-const LOD_MIN_SCALE = 0.62; // → 0.341× at or below a 310px band
-
-/** The zoom `auto` gives up knobs at, for the frame we actually have.
- *
- *  A fixed threshold punishes a short frame twice. At 1280×900 the rack band is
- *  ~395 px even after the dock collapses, so *every* stock preset fits at
- *  0.4–0.7× — and a constant 0.55 turned the whole 1280 experience into block
- *  diagrams, which is M4's visible half. But the knob is not unreadable at
- *  0.45× in a 300 px frame and readable at 0.56× in a 700 px one: what changed
- *  is how much of the frame the patch was allowed to have, not how big a knob
- *  came out.
- *
- *  So the threshold rides with the frame, floored: a knob at 0.34× is genuinely
- *  four pixels of ring and no amount of arithmetic makes it a control. The
- *  floor is where "compact" starts being the honest answer rather than a
- *  punishment for owning a laptop. */
+// The zoom `auto` gives up full detail at. On PATCH's canvas (Plan-008 C2a)
+// full detail is the specimen's plate, every name and value to read, so the
+// line is where that stops being true, not where a knob stops being a target:
+// the readouts print at 11 px at 1×, and under 0.68× they would be under the
+// silkscreen floor's 8 px, with the knobs still drawn and nothing to read on
+// them. Measured at 1440 × 900: every stock preset opens at 0.84–1.19× (full),
+// Loom, the widest, at 0.69× (full); with the catalog open a five-module
+// patch fits at 0.63× (compact). At 1000 px Reese fits at 0.58× (compact).
+// It no longer rides the frame's height: a short frame gives the patch fewer
+// pixels, and the line is about pixels.
+const LOD_LINE = 0.68;
 function lodThreshold() {
-  const h = frameSize().h;
-  return LOD_AUTO * clamp(h / LOD_REF_H, LOD_MIN_SCALE, 1);
+  return LOD_LINE;
 }
 
-// Hysteresis: once knobs are drawn, they stay until the zoom is clearly below
-// the line, not a hair under it. Measured on Loom, the tallest stock preset:
-// opening the ARP/SYNC drawer shortens the rack band by 46 px, which moved its
-// zoom from 0.488 to 0.4265 against a threshold that moved to 0.4268 — so
-// turning the arp on stripped every knob and step bar from the patch you were
-// about to play with. Both numbers ride the frame height, so a patch near the
-// line flips on any small layout change; an 8% band ends that.
+// Hysteresis: a patch near the line must not flip on every small layout
+// change (opening the ARP/SYNC drawer shortens the band by 46 px). The band
+// sits above the line: full detail goes the moment its readouts would not
+// read, and comes back only once the zoom is clearly over it (8%).
 const LOD_HYSTERESIS = 0.92;
 function effectiveLod() {
   if (lodMode === "full" || lodMode === "compact") return lodMode;
   const th = lodThreshold();
-  if (lodApplied === "full") return view.zoom < th * LOD_HYSTERESIS ? "compact" : "full";
-  return view.zoom < th ? "compact" : "full";
+  if (lodApplied === "full") return view.zoom < th ? "compact" : "full";
+  return view.zoom < th / LOD_HYSTERESIS ? "compact" : "full";
 }
 // Deferred by a frame on purpose: this is reached from applyView, which is
 // reached from renderRack, and a synchronous rebuild there would re-enter the
@@ -12841,10 +13029,9 @@ function syncLodBtn() {
   b.setAttribute("aria-pressed", String(lodMode !== "auto"));
   b.closest(".tt").title =
     lodMode === "auto"
-      // The number is read out rather than written in, because it is a
-      // function of the frame now (`lodThreshold`) and a tooltip that says
-      // 0.55 in a frame that switches at 0.34 is a tooltip that lies.
-      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and past ${lodThreshold().toFixed(2)}× each module shows three knobs to read, not to grab.`
+      // The number is read out of `lodThreshold`, so the tooltip and the
+      // switch cannot disagree.
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX} px) are left off, and under ${lodThreshold().toFixed(2)}× each module shows its name, its setting and three knobs to read, not to grab.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for compact modules."
         : "Detail: compact. Modules, titles, jacks and three knobs each to read. Click to go back to automatic.";
@@ -13141,10 +13328,10 @@ function fitBox(box, animate, coMotion) {
   const pad = 20;
   const ins = scopeReserve(box);
   // The well's own chrome: the line along its top (the guess, the thing in
-  // hand), the foot (the camera, the readout), and the catalogue while open.
+  // hand), the foot (the camera, the readout), and the catalog while open.
   ins.t = Math.max(ins.t, PT_TOP_LINE);
   ins.b = Math.max(ins.b, PT_FOOT);
-  ins.l = Math.max(ins.l, catalogueReserve());
+  ins.l = Math.max(ins.l, catalogReserve());
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   // No floor on the way down. Whatever it takes to hold the box is what the
@@ -15080,6 +15267,7 @@ $("promote-b").onclick = () => {
 // printed as `RESONANCMOD DEPTH` on the filter. Hardware panels abbreviate for
 // the same reason; these are the conventional forms.
 const SILK = {
+  octave: "oct",
   resonance: "res",
   "mod depth": "mod",
   feedback: "fb",
@@ -15387,6 +15575,15 @@ function enumDisplay(k) {
   }
   return k.kind.options[Math.round(k.value)] ?? "?";
 }
+/** A setting as its plate prints it: the octave's number alone, as its label
+ *  ("oct") already says what it counts; anything else as `enumDisplay`. */
+function enumShown(k) {
+  if (k.kind.t === "octave") {
+    const v = Math.round(k.value) - 2;
+    return (v > 0 ? "+" : "") + v;
+  }
+  return enumDisplay(k);
+}
 
 // Repaint one knob in place, without rebuilding the rack — used by both the
 // drag gesture and the keyboard, so a sweep stays at 60fps and the filter and
@@ -15413,6 +15610,12 @@ function paintKnob(kg, knob) {
   const valText = kg.querySelector(".knob-value");
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
+  // The amp's envelope figure follows its four knobs.
+  if (kind === "amp") {
+    const amp = wb.rack?.modules.find((x) => x.kind === "amp");
+    const fig = kg.ownerSVGElement?.querySelector(".env-fig");
+    if (amp && fig) paintEnvFig(fig, amp);
+  }
   if (valText) {
     const next = heardUnit(knob.addr, v, kind, variant);
     // Only on a *change*. A drag emits a move per pixel and the readout
@@ -15541,7 +15744,7 @@ function attachEnumSweep(el, txt, knob) {
       }
       last = next;
       knob.value = next;
-      txt.textContent = enumDisplay(knob);
+      txt.textContent = enumShown(knob);
       const g = el.closest("[data-addr]");
       if (g) nameSetting(g, knob);
       sendEdit(knob.addr, next, true, id);
@@ -15839,7 +16042,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
     knob.value = (Math.round(knob.value) + (e.shiftKey ? n - 1 : 1)) % n;
     const shown = kg.querySelector(".enum-text");
-    if (shown) shown.textContent = enumDisplay(knob);
+    if (shown) shown.textContent = enumShown(knob);
     nameSetting(kg, knob);
     // A focused element's new name is not always read out: the rack's live
     // region says it.
@@ -16150,10 +16353,10 @@ function setLegend(open) {
   $("pt-how").setAttribute("aria-expanded", String(open));
 }
 $("pt-how").onclick = () => setLegend($("pt-legend").hidden);
-// ADD MODULE toggles the catalogue; from the keyboard it lands in the search.
+// ADD MODULE toggles the catalog; from the keyboard it lands in the search.
 $("pt-add").onclick = (e) => {
-  if (catalogueOpen()) closeCatalogue(false);
-  else openCatalogue(e.detail === 0);
+  if (catalogOpen()) closeCatalog(e.detail === 0 ? undefined : false);
+  else openCatalog(e.detail === 0);
 };
 
 // ⚡'s ▾: the locks that prepare it (lock knobs, lock wiring, clear locks),
@@ -17353,11 +17556,11 @@ const shelfOpen = () => !$("tray").hidden;
 $("tray-chip").onclick = () => setShelf(!shelfOpen());
 
 // ===========================================================================
-// THE NODE BANK — the instrument's catalogue
+// THE NODE BANK — the instrument's catalog
 // ===========================================================================
 // It was twelve mono words in a 168px column with one tooltip repeated twelve
 // times, and the only route out of it ran through the tray. It is now an
-// indexed catalogue: it says what each module *does to a signal*, where it can
+// indexed catalog: it says what each module *does to a signal*, where it can
 // legally go, and — where the model has enough evidence to be honest about it —
 // what the model currently thinks of it.
 //
@@ -17551,7 +17754,7 @@ function buildNodeBank() {
     groups.appendChild(sec);
   }
 
-  // One delegated listener for the whole catalogue — nineteen chips today, and
+  // One delegated listener for the whole catalog — nineteen chips today, and
   // the count is the thing most likely to change.
   groups.addEventListener("click", (ev) => {
     const chip = ev.target.closest(".nb-item");
@@ -17586,7 +17789,7 @@ function buildNodeBank() {
   });
   groups.addEventListener("focusout", nbSpecHide);
   groups.addEventListener("keydown", nbGridKeys);
-  // The strip describes what the hand is on in the catalogue, and only while
+  // The strip describes what the hand is on in the catalog, and only while
   // it is there. It used to keep its last subject for good, so minutes later —
   // pointer long gone, patch changed — it was still describing a PLUCK that
   // was in nobody's patch. Leaving the whole rail (not just a chip: moving
@@ -17635,44 +17838,51 @@ function buildNodeBank() {
   );
   if (headH > 0) $("nodebank").style.setProperty("--nb-head-h", `${headH}px`);
 
-  $("nb-collapse").onclick = () => closeCatalogue(true);
+  // The keyboard's ✕ (`detail` 0) hands the focus back to ADD MODULE; a
+  // pointer's leaves it nowhere, so Space plays (ADR-016).
+  $("nb-collapse").onclick = (ev) => closeCatalog(ev.detail === 0);
   nbSetCollapsed(true, true);
   renderNodeBank();
   renderSpecDock();
 }
 
-// ---- the catalogue: on demand, over the well's left ----
+// ---- the catalog: on demand, over the well's left ----
 // Open (ADD MODULE, /, a new patch) and closed (×, Esc). Closing it puts down
 // whatever was in hand from it. Not remembered: it opens when asked.
-function nbSetCollapsed(shut, silent) {
+function nbSetCollapsed(shut) {
   nbState.collapsed = !!shut;
   const nb = $("nodebank");
   nb.hidden = nbState.collapsed;
   nb.classList.toggle("collapsed", nbState.collapsed);
   $("rack-frame").classList.toggle("cat-open", !nbState.collapsed);
   $("pt-add")?.setAttribute("aria-expanded", String(!nbState.collapsed));
-  if (nbState.collapsed) { disarm(); nbSpecHide(); specRest(); if (nbTourAt >= 0) endNbTour(); }
-  void silent;
+  // Closed, nothing it was holding outlives it: the module in hand, a socket
+  // ⋯ handed it waiting for a module (`cancelPending`), the tour.
+  if (nbState.collapsed) { disarm(); cancelPending(); nbSpecHide(); specRest(); if (nbTourAt >= 0) endNbTour(); }
   renderNodeBank();
   // Opened over plates, the camera makes room for it (`fitBox` keeps its
   // width clear while it is open): a jump, not a glide, as for any layout.
-  if (!nbState.collapsed && wb.rack && catalogueCovers()) fitBox(contentBox(), false);
+  if (!nbState.collapsed && wb.rack && catalogCovers()) fitBox(contentBox(), false);
 }
-const catalogueOpen = () => !nbState.collapsed;
-function openCatalogue(focusSearch) {
-  if (!catalogueOpen()) nbSetCollapsed(false);
+const catalogOpen = () => !nbState.collapsed;
+function openCatalog(focusSearch) {
+  if (!catalogOpen()) nbSetCollapsed(false);
   if (focusSearch) { $("nb-q").focus(); $("nb-q").select(); }
 }
-/** Close it; the focus, if it was inside, goes back to ADD MODULE. */
-function closeCatalogue(returnFocus) {
-  if (!catalogueOpen()) return false;
+/** Close it. `returnFocus` true: the focus goes to ADD MODULE; false (a
+ *  pointer's ✕): it is let go; left out (Esc, a toggle): it goes back to ADD
+ *  MODULE if it was inside. */
+function closeCatalog(returnFocus) {
+  if (!catalogOpen()) return false;
   const inside = $("nodebank").contains(document.activeElement);
   nbSetCollapsed(true);
-  if (inside || returnFocus) $("pt-add")?.focus();
+  if (returnFocus === false) {
+    if (inside) document.activeElement.blur();
+  } else if (inside || returnFocus) $("pt-add")?.focus();
   return true;
 }
-/** Does the open catalogue stand over any plate? */
-function catalogueCovers() {
+/** Does the open catalog stand over any plate? */
+function catalogCovers() {
   const nb = $("nodebank");
   if (!nb || nb.hidden) return false;
   const r = nb.getBoundingClientRect();
@@ -17684,8 +17894,8 @@ function catalogueCovers() {
   }
   return false;
 }
-/** The width a fit keeps clear on the well's left while the catalogue is open. */
-function catalogueReserve() {
+/** The width a fit keeps clear on the well's left while the catalog is open. */
+function catalogReserve() {
   const nb = $("nodebank");
   if (!nb || nb.hidden) return 0;
   const r = nb.getBoundingClientRect();
@@ -17738,7 +17948,7 @@ function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
 
 /** The belief cell. A bar without evidence is a lie with a shape, so anything
  *  short of a fitted coefficient with enough patches behind it draws a dash,
- *  not a bar. Shared by the catalogue chips and the in-patch chips: the model
+ *  not a bar. Shared by the catalog chips and the in-patch chips: the model
  *  must not speak loudest about the modules you are merely browsing and go
  *  silent about the ones you actually built with (WS-2 §7).
  *
@@ -17765,7 +17975,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
       : `Too little to go on: ${sup} of ${total} sounds carry this.`;
     return;
   }
-  // The catalogue cell is 34 px with the zero rule at 17; the in-patch pill's
+  // The catalog cell is 34 px with the zero rule at 17; the in-patch pill's
   // is 24 px with it at 12 (style.css, .ni-theta).
   const inPatch = !!cell.closest(".nb-chips");
   const zero = inPatch ? 12 : 17;
@@ -17830,7 +18040,7 @@ function renderNodeBank() {
     if (why) chip.title = why;
     else if (chip.title) chip.title = "";
     // Roving tab stop, set per group below: nineteen tab stops in a sidebar
-    // would put the whole catalogue between the search field and the rack.
+    // would put the whole catalog between the search field and the rack.
     chip.tabIndex = -1;
 
     nbPaintTheta(chip.querySelector(".ni-theta"), m, byPhi, total);
@@ -17889,7 +18099,7 @@ function nbRenderInPatch() {
   sec.classList.toggle("hidden", real.length === 0);
   if (real.length === 0) { list.innerHTML = ""; return; }
   $("nb-inpatch-n").textContent = String(real.length);
-  // The same three columns the catalogue chip has, including the belief cell:
+  // The same three columns the catalog chip has, including the belief cell:
   // the model was speaking loudest about modules you were merely shopping for
   // and going silent about the ones you had actually built with (WS-2 §7).
   list.innerHTML = real
@@ -17979,7 +18189,7 @@ function nbSpecShow(chip, opts) {
 function nbSpecHide() {
   clearTimeout(specTimer);
   $("nb-spec").classList.add("hidden");
-  // The dock keeps its subject while the pointer is still in the catalogue —
+  // The dock keeps its subject while the pointer is still in the catalog —
   // between chips, on a group header — so reading along the rail does not
   // flicker it. Leaving the rail is what returns it to rest (`specRestSoon`):
   // the description now opens over the rack's bottom edge, and once the hand
@@ -17994,7 +18204,7 @@ function specRestSoon() {
   clearTimeout(specRestTimer);
   specRestTimer = setTimeout(specRest, 300);
 }
-/** Back to the resting line: the pointer left the catalogue, or the bench
+/** Back to the resting line: the pointer left the catalog, or the bench
  *  changed patch under a description of something it no longer holds. */
 function specRest() {
   clearTimeout(specRestTimer);
@@ -18069,9 +18279,10 @@ function nbSpecPaint(kind, chip) {
   specSubject = kind;
   renderSpecDock();
   if (!chip) return;
-  // The keyboard's card. Compact — the dock already carries the long form —
-  // and pinned to the right edge, over the rail it came from rather than over
-  // the canvas the player is about to place into.
+  // The keyboard's card. Compact — the readout already carries the long form
+  // — and beside the catalog, level with the row it describes (it was pinned
+  // to the window's right edge, a screen away from the row, when the catalog
+  // was a rail on that side).
   const p = specParts(m);
   const card = $("nb-spec");
   card.innerHTML =
@@ -18079,17 +18290,20 @@ function nbSpecPaint(kind, chip) {
     `<div class="sp-ports mono">${esc(p.ports)}</div>` +
     `<div class="sp-model mono">${p.belief}</div>`;
   const r = chip.getBoundingClientRect();
+  const cat = $("nodebank").getBoundingClientRect();
   card.classList.remove("hidden");
   const ch = card.offsetHeight;
+  const cw = card.offsetWidth;
   card.style.top = `${Math.max(8, Math.min(window.innerHeight - ch - 8, r.top - 6))}px`;
-  card.style.right = `8px`;
+  card.style.right = "";
+  card.style.left = `${Math.max(8, Math.min(window.innerWidth - cw - 8, (cat.width ? cat.right : r.right) + 8))}px`;
 }
 
 /** The well's readout (`#pt-read`, at its foot). Four states:
  *  - something in your hand: what it is, its price and ▶ preview (the armed
  *    line, until it moves to the well's top line);
  *  - a socket chosen from the rack, waiting for a module;
- *  - a module pointed at in the catalogue: its name and what it does, and
+ *  - a module pointed at in the catalog: its name and what it does, and
  *    the longer description (ports, settings, what is heard, how your taste
  *    leans) opened over the well's bottom edge;
  *  - a module on the canvas selected or under the pointer: its name and what
@@ -18183,18 +18397,27 @@ function renderSpecDock() {
 // one a press landed on (not on a knob, jack or button). It shows its ⋯ (the
 // structure menu) and its lock, and the readout names it. A press on the
 // well's bare floor clears it; so does a rebuild that took the module away.
-let plateSel = null;   // the selected module's key
+// It follows the module, not its address: an insert before it moves its key
+// (`node/0` becomes `node/0/0`), and the selection goes with it (`uid`, as
+// locks and the motion system name a module).
+let plateSel = null;   // the selected module's key, as of the last build
+let plateSelUid = null; // …and its identity, which survives a rebuild
 let plateHover = null; // the module under the pointer, which the readout follows
 function selectPlate(key) {
   if (plateSel === key) return;
   plateSel = key;
+  plateSelUid = key != null ? wb.rack?.modules.find((x) => x.key === key)?.uid || null : null;
   syncPlateSel();
   renderSpecDock();
 }
 function syncPlateSel() {
   const svg = $("rack-svg");
   if (!svg) return;
-  if (plateSel != null && !wb.rack?.modules.some((x) => x.key === plateSel)) plateSel = null;
+  if (plateSelUid != null) {
+    const m = wb.rack?.modules.find((x) => x.uid === plateSelUid);
+    plateSel = m ? m.key : null;
+    if (!m) plateSelUid = null;
+  } else if (plateSel != null && !wb.rack?.modules.some((x) => x.key === plateSel)) plateSel = null;
   for (const g of svg.querySelectorAll("g[data-key].selected")) g.classList.remove("selected");
   if (plateSel == null) return;
   for (const g of svg.querySelectorAll(`g[data-key="${cssKey(plateSel)}"]`)) {
@@ -18838,7 +19061,7 @@ function disarm() {
   pickFeedback();
 }
 
-// ---------- the catalogue's walkthrough ----------
+// ---------- the catalog's walkthrough ----------
 // Mirrors the bank's, for the same reason it exists: at 41 modules across ten
 // groups, the two things that are not guessable — that clicking a module puts
 // it in your hand, and that the θ column stays blank until there is evidence
@@ -18886,10 +19109,12 @@ const NB_TOUR = [
       `gets built: three clicks, nothing lost.`,
   },
   {
-    lit: () => $("nb-groups"),
+    // The bars are the model view's (hidden at rest), so the step points at
+    // what brings them up, not at bars that are not there.
+    lit: () => $("model-btn"),
     title: "which way your taste leans",
     body:
-      `Hold <kbd>⌥</kbd> (the model view) and the bar on the right of a row is which way your taste leans on that module, with ` +
+      `Hold <kbd>⌥</kbd>, or press <b>model</b>, and the bar on the right of a row is which way your taste leans on that module, with ` +
       `how unsure the model is. It is <b>a dash until there is evidence for it</b>, ` +
       `<b>hollow while it is still a guess</b> (the thin line, how far it could ` +
       `be off, crosses zero), and solid once it is sure. A short bar and ` +
@@ -18903,7 +19128,6 @@ function showNbTourStep() {
   const el = $("nb-tour");
   if (nbTourAt < 0 || nbTourAt >= NB_TOUR.length) return endNbTour();
   if (nbState.collapsed) nbSetCollapsed(false);
-  // The θ step is about the model view's bars: the view comes up with it.
   const step = NB_TOUR[nbTourAt];
   document.querySelectorAll(".nb-tour-lit").forEach((e) => e.classList.remove("nb-tour-lit"));
   // The tour is a pointer, not a pamphlet: light the thing each step is about,
@@ -19527,13 +19751,11 @@ function cssKey(k) {
 // will be cut, an amber halo on a plate that will be replaced, and a chip on
 // the target plate naming it by the title silkscreened on it.
 let pickHoverKey = null;  // the plate under the pointer while sockets are lit
-let pickChipKey = null;   // the plate the chip is currently pinned to
 
 function pickFeedback() {
   const svg = $("rack-svg");
   const chip = $("pick-chip");
   if (!svg || !chip) return;
-  pickChipKey = null;
   svg.querySelectorAll("g[data-key].dimmed").forEach((g) => g.classList.remove("dimmed"));
   svg.querySelectorAll(".pick-caret, .pick-halo, .pick-ghost").forEach((e) => e.remove());
   svg.classList.remove("picking");
@@ -19606,7 +19828,6 @@ function pickFeedback() {
     if (!targets.has(g.getAttribute("data-key"))) g.classList.add("dimmed");
   }
   if (!aimKey) return;
-  pickChipKey = aimKey;
 
   // The caret goes on the run that is about to be cut, measured off the path
   // itself so it sits *on* the curve rather than near it. A patch routinely
@@ -19729,11 +19950,19 @@ function drawPickGhost(svg, hand, b, caretPt) {
     { transform: `translate(${(cx - box.w / 2).toFixed(1)},${(cy - box.h / 2).toFixed(1)})` },
     `pick-ghost${mod.is_mod ? " modside" : ""}`,
   );
-  g.appendChild(svgEl("rect", { width: box.w, height: box.h, rx: 5 }, "mod-plate"));
-  const title = svgEl("text", { x: 14, y: 18 }, `mod-title${mod.is_mod ? " modside" : ""}`);
+  g.appendChild(svgEl("rect", { width: box.w, height: box.h, rx: 8 }, "mod-plate"));
+  const title = svgEl("text", { x: 12, y: 19 }, `mod-title${mod.is_mod ? " modside" : ""}`);
   title.textContent = mod.title;
   g.appendChild(title);
-  mod.knobs.forEach((k, i) => {
+  // Drawn as its plate will be: the kind's setting in the head, then each
+  // knob with its value and its name.
+  const head = plateSetting(mod);
+  if (head) {
+    const ht = svgEl("text", { x: box.w - 12, y: 19, "text-anchor": "end" }, "enum-text head");
+    ht.textContent = String(head.value);
+    g.appendChild(ht);
+  }
+  bodyKnobs(mod).forEach(({ k, i }) => {
     const { x, y } = knobPos(mod, i, box);
     const pitch = knobPitch(mod, i, box);
     const kg = svgEl("g", { transform: `translate(${x},${y})` });
@@ -19752,23 +19981,18 @@ function drawPickGhost(svg, hand, b, caretPt) {
         y2: (-Math.cos(ang) * (KNOB_R - 3)).toFixed(2),
       }, `knob-ind${mod.is_mod ? " modside" : ""}`));
     } else {
-      const bw = Math.max(40, Math.min(62, pitch - 4));
-      kg.appendChild(svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body"));
       const txt = svgEl("text", { y: 4 }, "enum-text");
       txt.textContent = String(k.value);
+      txt.dataset.fit = String(Math.max(24, pitch - 6));
       kg.appendChild(txt);
     }
-    const lbl = svgEl("text", { y: KNOB_R + 15 }, "knob-label");
+    const lbl = svgEl("text", { y: KNOB_R + 25 }, "knob-label");
     lbl.textContent = silkLabel(k.label);
     kg.appendChild(lbl);
     g.appendChild(kg);
   });
   svg.querySelector(".rack-controls")?.appendChild(g);
 }
-
-/** The pick chip is the well's top line now (Plan-008 C2a), placed by CSS;
- *  kept for the camera's call. */
-function positionPickChip() {}
 
 // ---- keyboard ----
 function nbGridKeys(ev) {
@@ -20353,7 +20577,10 @@ let scopeLast = 0;
 // without stranding anyone's saved settings.
 const SCOPE_STORE = "auracle-scope";
 const scopeState = {
-  mode: "scope",     // off | scope | spectrum
+  // Off until asked for (⋯ → Scope & analyzer…): on PATCH's canvas the well's
+  // corners hold the camera, the readout, TEACH and the toasts, and a CRT
+  // that is always up sat over the last of them (Plan-008 C2a).
+  mode: "off",       // off | scope | spectrum
   tap: "pre",        // pre | post  — the instrument, or what you hear
   fft: 2048,
   smooth: 0.6,       // the analyser's own window

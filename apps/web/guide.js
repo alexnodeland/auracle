@@ -8,9 +8,12 @@
 // (Plan-008 PR C3).
 //
 // What has been done is the player's, kept in localStorage as
-// `auracle-guide` ({done: [ids], closed}), JS-owned. The first steps kept
-// their ticks as `auracle-perform-steps` (an array of ids) before the pill:
-// read once into the new key and removed (`readGuide`).
+// `auracle-guide` ({done: [ids], closed: [levels]}), JS-owned. × stops one
+// level's steps: PERFORM's × leaves PATCH's to show. A `closed: true` from
+// before the levels had their own (C1, when PERFORM's were the only steps)
+// reads as PERFORM's. The first steps kept their ticks as
+// `auracle-perform-steps` (an array of ids) before the pill: read once into
+// the new key and removed (`readGuide`).
 
 export const GUIDE_KEY = "auracle-guide";
 export const OLD_STEPS_KEY = "auracle-perform-steps";
@@ -20,7 +23,7 @@ export const OLD_STEPS_KEY = "auracle-perform-steps";
  *  (`migrated` true: the caller writes the new key and removes the old).
  *  Anything unreadable is a fresh start. Pure, for the unit tests. */
 export function readGuide(get) {
-  const fresh = { done: [], closed: false, migrated: false };
+  const fresh = { done: [], closed: [], migrated: false };
   let raw = null;
   try {
     raw = get(GUIDE_KEY);
@@ -31,7 +34,9 @@ export function readGuide(get) {
     try {
       const v = JSON.parse(raw);
       const done = Array.isArray(v?.done) ? v.done.filter((x) => typeof x === "string") : [];
-      return { done: [...new Set(done)], closed: v?.closed === true, migrated: false };
+      const closed = v?.closed === true ? ["perform"]
+        : Array.isArray(v?.closed) ? [...new Set(v.closed.filter((x) => typeof x === "string"))] : [];
+      return { done: [...new Set(done)], closed, migrated: false };
     } catch {
       return fresh;
     }
@@ -46,7 +51,7 @@ export function readGuide(get) {
   try {
     const v = JSON.parse(old);
     const done = Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-    return { done: [...new Set(done)], closed: false, migrated: true };
+    return { done: [...new Set(done)], closed: [], migrated: true };
   } catch {
     return { ...fresh, migrated: true };
   }
@@ -64,10 +69,10 @@ export function createGuide({ el, ends = {} }) {
   let ending = 0; // the closing line's timer
   const st = readGuide((k) => localStorage.getItem(k));
   const done = new Set(st.done);
-  let closed = st.closed;
+  const closed = new Set(st.closed); // the levels whose × was pressed
   const save = () => {
     try {
-      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed }));
+      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed: [...closed] }));
     } catch {
       /* a per-viewer convenience; in memory is enough for this visit */
     }
@@ -100,7 +105,7 @@ export function createGuide({ el, ends = {} }) {
     const here = stepsOn(level);
     const now = here.find((s) => !done.has(s.id));
     el.dataset.level = level;
-    if (closed || !now) {
+    if (closed.has(level) || !now) {
       el.classList.add("hidden");
       return;
     }
@@ -119,8 +124,10 @@ export function createGuide({ el, ends = {} }) {
     x.type = "button";
     x.setAttribute("aria-label", "Stop showing these");
     x.title = "Stop showing these";
+    // This level's steps stop; another level's still show there.
+    const at = level;
     x.onclick = () => {
-      closed = true;
+      closed.add(at);
       save();
       render();
     };
@@ -147,7 +154,7 @@ export function createGuide({ el, ends = {} }) {
     },
     done(id) {
       if (done.has(id) || !steps.some((s) => s.id === id)) return;
-      const wasOpen = !closed && !allDoneOn(level);
+      const wasOpen = !closed.has(level) && !allDoneOn(level);
       done.add(id);
       save();
       if (!allDoneOn(level) || !wasOpen || !ends[level]) return render();

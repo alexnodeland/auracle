@@ -177,7 +177,9 @@ for (const width of [1000, 1080]) {
       await page.goto("/");
       await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
       await goLevel(page, "patch");
-      await expect(page.locator("#nextstep")).toBeVisible();
+      // Attached, not visible: with a pair to pick from, the picks are the
+      // TEACH chip's to count, and the callout is empty until a later step.
+      await expect(page.locator("#nextstep")).toBeAttached();
       const cut = await page.evaluate((labels) => {
         const el = document.getElementById("nextstep");
         const was = el.textContent;

@@ -2871,7 +2871,7 @@ input, textarea, .bi-rename {
 .bank-tour .tour-nav #tour-next { margin-left: auto; }
 .bank-tour .tour-nav button:disabled { opacity: 0.35; cursor: default; }
 /* The chip the current step is about. */
-/* The catalogue's walkthrough reuses the bank tour's panel wholesale — same
+/* The catalog's walkthrough reuses the bank tour's panel wholesale — same
    component, same rules, anchored to its own rail. Only the highlight differs,
    because what it points at is a group or a row rather than a chip. */
 .nb-tour { left: 10px; right: 10px; max-height: 52%; }
@@ -2952,7 +2952,7 @@ input, textarea, .bi-rename {
 .play-canvas { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .play-canvas .rack-frame { flex: 1; }
 
-/* ================= the catalogue (C2a: `pt-cat`, on demand in the well) =================
+/* ================= the catalog (C2a: `pt-cat`, on demand in the well) =================
    Over the well's left, from under its top line to over its foot: the
    search, what is in this patch, the groups, the legend. Opened by ADD
    MODULE and /, closed by × and Esc. */
@@ -2990,7 +2990,7 @@ input, textarea, .bi-rename {
 /* θ, what the model thinks of a module, is the model view's (⌥). */
 body:not(.model-view) #nodebank .ni-theta { display: none; }
 
-/* The header is a bezel band, so the catalogue reads as an instrument's
+/* The header is a bezel band, so the catalog reads as an instrument's
    silkscreen rather than as a sidebar title. */
 .nb-head {
   position: sticky;
@@ -3038,7 +3038,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
 .nb-group.empty { display: none; }
 /* At 41 modules the rail is three viewports tall, so the group you are inside
    has to stay named while you scroll it — otherwise the only landmarks in the
-   catalogue are the ones that have just left the screen. Parks directly under
+   catalog are the ones that have just left the screen. Parks directly under
    the header band, which is sticky at 0.
    
    The offset is measured from the header at build time rather than written
@@ -3115,7 +3115,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   display: grid;
   /* glyph · name · port signature · belief — one 30px row. A second row for
      the belief bar would be honest but 19 modules × 44px is 836px of scroll,
-     and the catalogue has to be scannable in one look. */
+     and the catalog has to be scannable in one look. */
   grid-template-columns: 22px minmax(0, 1fr) auto 34px;
   align-items: center;
   gap: var(--s1);
@@ -3137,7 +3137,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
 .ni-name {
   /* The silk face at body size. Law 2 (tracking) applies to case, not to face:
      this is lowercase, so it gets none. The rail was set in a single 10px role
-     throughout, which put the catalogue's headline below the rack's own
+     throughout, which put the catalog's headline below the rack's own
      silkscreen of the same word in size, weight and face. */
   font-family: var(--font-silk);
   font-size: var(--t-body);
@@ -3378,7 +3378,7 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
 .nb-chip.empty:hover { color: var(--silk-dim); border-color: var(--silk-mute); }
 .nb-chip.empty .ni-theta { display: none; }
 /* The belief cell rides on the in-patch chip too — narrower, because the chip
-   is a pill in a wrapping row rather than a full-width catalogue row, but the
+   is a pill in a wrapping row rather than a full-width catalog row, but the
    same three marks and the same refusal to draw a bar without evidence. */
 .nb-chips.has-belief .ni-theta { width: 24px; margin-left: 2px; }
 .nb-chips.has-belief .ni-theta:not(.thin)::before { left: 12px; }
@@ -5063,6 +5063,24 @@ html:not(.engineer) .dn-sig { display: none; }
   min-height: 22px;
   padding: 0 var(--s1);
 }
+/* On PATCH's canvas the line is the well's top line, at its top left, as the
+   guess's is; with no guess it says nothing, and the module guess and the
+   thing in hand take the line while they are up. */
+#rack-frame .belief-row {
+  position: absolute;
+  z-index: 5;
+  left: var(--s4);
+  top: var(--s3);
+  right: var(--s7);
+  min-height: 0;
+  padding: 0;
+  pointer-events: none;
+}
+#rack-frame .belief-row .belief { pointer-events: auto; padding: 0; font-size: var(--t-value); }
+#rack-frame .belief .bl-none { display: none; }
+.rack-frame.cat-open .belief-row { left: calc(248px + var(--s3) + var(--s3)); }
+.rack-frame:has(#guess-read:not([hidden])) .belief-row,
+.rack-frame:has(#pick-chip:not(.hidden)) .belief-row { visibility: hidden; }
 .belief {
   display: flex;
   align-items: baseline;
@@ -6980,7 +6998,7 @@ html.xl-on .alarm { z-index: 62; }
 /* =====================================================================
    PATCH, Plan-008 C2a: the mock's canvas (`z-desk-patch.png`). The head
    (cap, name, subtitle; the acts on the right), the well (the rack on its
-   rounded canvas, the face at OUT, the camera's corner, the catalogue on
+   rounded canvas, the face at OUT, the camera's corner, the catalog on
    demand), and the readout at the well's foot.
    ===================================================================== */
 #view-patch { padding: var(--s5) var(--s5) var(--s3); gap: var(--s3); }
@@ -7168,8 +7186,9 @@ html.xl-on .alarm { z-index: 62; }
   cursor: pointer;
   white-space: nowrap;
 }
-.pt-ed-btn:hover:not(:disabled) { background: var(--plate-hi); }
-.pt-ed-btn:disabled { color: var(--silk-mute); cursor: default; }
+.pt-ed-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--plate-hi); }
+.pt-ed-btn:disabled,
+.pt-ed-btn[aria-disabled="true"] { color: var(--silk-mute); cursor: default; }
 .pt-ed-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 1px; }
 .pt-editbar .toggle { gap: var(--s1); padding: 0 var(--s1); white-space: nowrap; }
 @media (pointer: coarse) { .pt-editbar { height: 40px; } .pt-ed-btn { min-height: 40px; } }
@@ -7261,14 +7280,43 @@ html.xl-on .alarm { z-index: 62; }
 #rack-svg .plate-lit,
 #rack-svg .plate-shade,
 #rack-svg .plate-edge,
-#rack-svg .plate-rule,
-#rack-svg .ctrl-well { display: none; }
+#rack-svg .plate-rule { display: none; }
+/* ⋯ and the lock in their pocket on the plate's top edge: shown with them
+   (on hover, selection or focus; always to a finger). */
+#rack-svg .ctrl-well { fill: var(--panel-lo); stroke: var(--steel); stroke-width: 1; opacity: 0; transition: opacity var(--d-state) ease; }
+#rack-svg .plate-hot .ctrl-well,
+#rack-svg .rack-plates g.selected .ctrl-well,
+#rack-svg .ctrl-well.locked { opacity: 1; }
+@media (pointer: coarse) { #rack-svg .ctrl-well { opacity: 1; } }
 #rack-svg .mod-title {
-  font-size: var(--t-rack-label);
+  font-size: var(--t-rack-value);
   font-weight: 600;
   letter-spacing: 0.18em;
   fill: var(--silk);
 }
+/* A setting, printed as its value where a knob would be ("-1" over "oct"),
+   with a dotted rule under it that says it changes on a click; the one that
+   names the module's kind sits in the head, right of the name. */
+#rack-svg .enum-body { fill: transparent; stroke: none; }
+#rack-svg .enum-body:hover { fill: var(--white-04); }
+#rack-svg .enum-text { fill: var(--silk); }
+#rack-svg .enum-text.head { text-anchor: end; fill: var(--silk-dim); }
+#rack-svg .enum-line { stroke: var(--silk-mute); stroke-width: 1; stroke-dasharray: 1.5 2; pointer-events: none; }
+#rack-svg .knob-value { fill: var(--silk); }
+/* A modulation socket nothing is plugged into is there, quietly, until the
+   plate is pointed at or a cable is out looking for one. */
+#rack-svg .mod-tab:not(.filled),
+#rack-svg .mod-tab-name:not(.filled) { opacity: 0.45; }
+#rack-svg .plate-hot .mod-tab,
+#rack-svg .plate-hot .mod-tab-name { opacity: 1; }
+/* Compact: the name and the setting larger, to read at the zoom that chose
+   compact (the knobs are three to read, not to grab). */
+#rack-svg.lod-compact .mod-title { font-size: calc(var(--t-rack-title) * 1.3); }
+#rack-svg.lod-compact .enum-text.head { font-size: calc(var(--t-rack-value) * 1.3); }
+#rack-svg.lod-compact.silk-floor .mod-title,
+#rack-svg.lod-compact.silk-floor .enum-text.head { visibility: visible; }
+/* The amp's envelope, drawn from its four knobs as set. */
+#rack-svg .env-fig { fill: var(--phos-a-12); stroke: var(--phos-a-60); stroke-width: 1.2; stroke-linejoin: round; pointer-events: none; }
 #rack-svg .mod-title.modside { fill: var(--silk-dim); }
 #rack-svg .mod-title.empty { fill: var(--silk-mute); }
 /* A knob, as the specimen draws one: its travel and its value as arcs, and a
@@ -7322,6 +7370,9 @@ html.xl-on .alarm { z-index: 62; }
   pointer-events: none;
 }
 #rack-svg.silk-floor[data-illegible~="value"] .mod-cable-label { visibility: hidden; }
+/* A plate in the hand moves its cables every frame; the words beside them
+   are placed at the build, so they step aside until the plate is put down. */
+#rack-scroll.moving-plate .mod-cable-label { visibility: hidden; }
 /* The well's edges: modules past the view, and a press to go to them. */
 .pt-edge {
   position: absolute;
@@ -7391,7 +7442,7 @@ html.xl-on .alarm { z-index: 62; }
   color: var(--silk);
 }
 .pr-lock { flex: none; font-size: var(--t-value); color: var(--phos-b); }
-/* Pointed at in the catalogue: the longer description opens over the well's
+/* Pointed at in the catalog: the longer description opens over the well's
    bottom edge, above the line, and never resizes the well. */
 .pr-more { display: none; }
 .pt-read.open .pr-more {
@@ -7409,12 +7460,19 @@ html.xl-on .alarm { z-index: 62; }
   background: var(--panel-94);
   box-shadow: var(--shadow-pop);
 }
+/* Which way your taste leans on a module is the model view's (⌥, or MODEL):
+   at rest the longer description and the keyboard's card leave it out, and
+   the description takes two columns. */
+body:not(.model-view) .sd-model,
+body:not(.model-view) .sp-model { display: none; }
+body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150px, 0.8fr) minmax(0, 2fr); }
 /* Where the line is narrow (a narrow window, or beside the open catalog) the
    three columns would be a word wide each: they stack, and the card scrolls
    rather than rising past the well's top. */
 .pt-read { container-type: inline-size; }
 @container (max-width: 560px) {
-  .pt-read.open .pr-more {
+  .pt-read.open .pr-more,
+  body:not(.model-view) .pt-read.open .pr-more {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s2);
     max-height: 300px;
@@ -7462,11 +7520,16 @@ html.xl-on .alarm { z-index: 62; }
 .pick-chip .pick-chip-text:empty { display: none; }
 .guess-read.held { visibility: hidden; }
 @media (pointer: coarse) { .pick-chip-x { width: 40px; height: 40px; } }
-/* With the catalogue open, the well's top line starts past it. */
+/* With the catalog open, the well's top line starts past it. */
 .rack-frame.cat-open .pick-chip,
 .rack-frame.cat-open .guess-read { left: calc(248px + var(--s3) + var(--s3)); }
 .pick-armed { overflow: hidden; flex-wrap: wrap; row-gap: 2px; }
 .pick-armed > * { white-space: nowrap; }
+/* The line stands over the well's top: a pointer goes through it to the
+   plates and sockets under it, except on what it can press (▶, ✕) or read
+   on hover (the price). */
+#pick-chip { pointer-events: none; }
+#pick-chip button, #pick-chip .sd-price, #pick-chip .pv-strip { pointer-events: auto; }
 .pick-armed .sd-hint { margin-left: 0; }
 /* Beside the open catalog the line has less room than the well: its width
    is what is left, and the price and ▶ go to a second line rather than past

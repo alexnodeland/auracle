@@ -24,14 +24,14 @@ const { STUB, INIT } = require("./audio_in_stub.js");
 test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true });
 
 /** Tap a module's plate on bare panel, clear of every control on it, once
- *  the rack has stopped moving (patch_sheet.spec.js's way). */
+ *  the rack has stopped moving: its plate in the same place across three
+ *  frames, read in the page. */
 async function tapPlate(page, kind) {
-  const where = () => page.evaluate((k) => JSON.stringify(document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`).getBoundingClientRect()), kind);
-  await expect.poll(async () => {
-    const a = await where();
-    await page.waitForTimeout(400);
-    return a === (await where());
-  }, { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => page.evaluate((k) => new Promise((done) => {
+    const rect = () => JSON.stringify(document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`)?.getBoundingClientRect() || null);
+    const a = rect();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done(a !== "null" && a === rect()))));
+  }), kind), { timeout: 30_000 }).toBe(true);
   const at = await page.evaluate((k) => {
     const plate = document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`);
     const b = plate.getBoundingClientRect();
@@ -153,7 +153,11 @@ test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press
   await expect(rec).toBeVisible();
   await rec.tap();
   await expect(page.locator("#rack-svg .take-rec").first()).toHaveClass(/\bon\b/, { timeout: 15_000 });
-  await page.waitForTimeout(800);
+  // Rolling, not still opening the input: then STOP has something to keep.
+  await expect.poll(() => page.evaluate(() => {
+    const r = window.__aur.takes().rolling;
+    return !!r && !r.waiting;
+  }), { timeout: 15_000 }).toBe(true);
   await sheet.locator('.ms-lane-btn[data-stop="take-rec"]').tap();
   await expect(page.locator("#rack-svg .take-rec").first()).not.toHaveClass(/\bon\b/, { timeout: 15_000 });
   expect(errors).toEqual([]);

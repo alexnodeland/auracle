@@ -61,11 +61,12 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await k.focus();
   for (let i = 0; i < 6; i++) await page.keyboard.press(/half-hi/.test(await k.getAttribute("class")) ? "ArrowDown" : "ArrowUp");
   await expect(page.locator("#guide .pf-step.now")).toContainText("Press OFFER");
-  // PATCH shows its own steps; back on PERFORM, PERFORM's.
+  // PATCH shows its own steps (its first, play it, done by the note above);
+  // back on PERFORM, PERFORM's.
   await goLevel(page, "patch");
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^(Drag a knob|Tap a module)/);
-  await expect(pips(page)).toHaveCount(3);
-  await expect(page.locator("#guide .pips i.done")).toHaveCount(0);
+  await expect(pips(page)).toHaveCount(4);
+  await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   await goLevel(page, "perform");
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step.now")).toContainText("Press OFFER");
@@ -74,7 +75,8 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   await expect(page.locator("#guide .pf-step.all")).toContainText("That is the loop");
   await expect(pill(page)).toBeHidden({ timeout: 15_000 });
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")));
-  expect(kept.done.sort()).toEqual(["offer", "play", "turn"]);
+  // The note ticked PATCH's first step (play it) too.
+  expect(kept.done.sort()).toEqual(["offer", "patch-play", "play", "turn"]);
   expect(errs).toEqual([]);
 });
 
@@ -84,7 +86,7 @@ test("× stops the pill, and a reload keeps it stopped", async ({ page }) => {
   await expect(pill(page)).toBeVisible();
   await page.locator("#guide .x").click();
   await expect(pill(page)).toBeHidden();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")).closed)).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")).closed)).toEqual(["perform"]);
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await goLevel(page, "perform");
@@ -101,6 +103,41 @@ test("the first steps' old ticks carry over into the pill, and the old key goes"
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   const store = await page.evaluate(() => ({ old: localStorage.getItem("auracle-perform-steps"), now: JSON.parse(localStorage.getItem("auracle-guide")) }));
   expect(store.old).toBeNull();
-  expect(store.now).toEqual({ done: ["play"], closed: false });
+  expect(store.now).toEqual({ done: ["play"], closed: [] });
+  expect(errs).toEqual([]);
+});
+
+test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errs = await boot(page);
+  await expect(pill(page)).toBeVisible();
+  await page.locator("#guide .x").click();
+  await expect(pill(page)).toBeHidden();
+  await goLevel(page, "patch");
+  await expect(pill(page)).toBeVisible();
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^Play it/);
+  // × there stops PATCH's too, and PERFORM's stay stopped.
+  await page.locator("#guide .x").click();
+  await expect(pill(page)).toBeHidden();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")).closed.sort())).toEqual(["patch", "perform"]);
+  await goLevel(page, "perform");
+  await expect(pill(page)).toBeHidden();
+  expect(errs).toEqual([]);
+});
+
+test("a first visit that starts on PATCH is asked to play before anything else, and a note ticks it off", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errs = [];
+  page.on("pageerror", (e) => errs.push(e.message));
+  // Straight to PATCH by its address: PERFORM, and its first step, never seen.
+  await page.goto("/#patch");
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await page.locator("#warm-skip").click();
+  await expect(page.locator("#view-patch")).toBeVisible();
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^Play it: (press A|tap the keybed)/);
+  await expect(pips(page)).toHaveCount(4);
+  await page.keyboard.press("a");
+  await expect(page.locator("#guide .pf-step.now")).toContainText(/^(Drag a knob|Tap a module)/);
+  await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   expect(errs).toEqual([]);
 });

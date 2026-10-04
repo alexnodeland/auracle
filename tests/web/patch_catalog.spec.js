@@ -13,9 +13,13 @@
 // - θ, what the model thinks of a module, shows only under the model view.
 // - What is set aside is the catalog's first group, and SET ASIDE n at the
 //   well's foot opens the shelf it can be dragged back from.
+// - A pointer's ✕ (on the catalog, on TEACH) leaves the focus nowhere, so
+//   Space plays; the keyboard's goes back to the chip that opened it.
+// - Which way your taste leans on a module shows under the model view only:
+//   the longer description and the keyboard's card leave it out at rest.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, now, replied, warmStartAndFit } = require("./patch_page");
-const { modelView } = require("./shell");
+const { modelView, openCatalog } = require("./shell");
 
 const cat = (page) => page.locator("#nodebank");
 
@@ -73,9 +77,20 @@ test("a module in hand is priced on the well's top line, can be heard at a socke
   const c = await cat(page).boundingBox();
   const l = await line.boundingBox();
   expect(l.x).toBeGreaterThanOrEqual(c.x + c.width);
-  // At a socket: what happens there, and ▶ hears it there.
-  const jack = page.locator("#rack-svg .jack.legal[data-childkey]").last();
-  await jack.hover();
+  // At a socket: what happens there, and ▶ hears it there. The pointer goes
+  // to a lit socket's ring where nothing stands over it (the catalog covers
+  // the well's left).
+  const at = await page.evaluate(() => {
+    for (const j of [...document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")].reverse()) {
+      const r = [...j.querySelectorAll(":scope > circle")].pop().getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      if (j.contains(document.elementFromPoint(x, y))) return { x, y };
+    }
+    return null;
+  });
+  expect(at).not.toBeNull();
+  await page.mouse.move(at.x, at.y);
   await expect(line.locator(".pick-chip-text")).toHaveText(/^insert after /i);
   await line.locator("#pv-play").click();
   await expect(page.locator(".pv-label")).toContainText(/rendering|hear it/, { timeout: 30_000 });
@@ -157,5 +172,62 @@ test("θ shows under the model view only, and what is set aside is the catalog's
   await expect(page.locator("#tray-items .tray-item .t-jack")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(page.locator("#tray")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("a pointer's ✕ on the catalog or on TEACH leaves the focus nowhere, so Space plays; the keyboard's goes back to the chip", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await page.locator("#pt-add").click();
+  await expect(page.locator("#nodebank")).toBeVisible();
+  await page.locator("#nb-collapse").click();
+  await expect(page.locator("#nodebank")).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  // Space, with the focus nowhere, is the transport: the face at OUT plays
+  // (or waits for the lane, lit at once), and the catalog stays shut.
+  await page.keyboard.press(" ");
+  await expect.poll(() => page.evaluate(() => {
+    const b = document.querySelector("#rack-play");
+    return b.classList.contains("playing") || b.classList.contains("pending");
+  })).toBe(true);
+  await expect(page.locator("#nodebank")).toBeHidden();
+  // The keyboard: ADD MODULE, then ✕ from the keyboard, and the focus is back.
+  await page.locator("#pt-add").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#nb-q")).toBeFocused();
+  await page.locator("#nb-collapse").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#pt-add")).toBeFocused();
+  // TEACH, once a pair is dealt: the pointer's ✕ lets the focus go too.
+  await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
+  await page.locator("#pt-teach").click();
+  await expect(page.locator("#play-duel")).toBeVisible();
+  await page.locator("#pd-fold").click();
+  await expect(page.locator("#play-duel")).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("which way your taste leans on a module shows under the model view only, in the description and the keyboard's card", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await openCatalog(page);
+  await page.locator('#nb-groups .nb-item[data-kind="chorus"]').hover();
+  await expect(page.locator("#pt-read.open .pr-more")).toBeVisible();
+  await expect(page.locator("#pt-read .sd-model")).toBeHidden();
+  await page.locator('#nb-groups .nb-item[data-kind="chorus"]').focus();
+  await expect(page.locator("#nb-spec")).toBeVisible();
+  await expect(page.locator("#nb-spec .sp-model")).toBeHidden();
+  // The card stands beside the catalog, not at the window's edge.
+  const card = await page.locator("#nb-spec").boundingBox();
+  const cat = await page.locator("#nodebank").boundingBox();
+  expect(card.x).toBeGreaterThanOrEqual(cat.x + cat.width);
+  expect(card.x).toBeLessThan(cat.x + cat.width + 40);
+  // MODEL on: the lean is there.
+  await page.locator("#model-btn").click();
+  await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
+  await page.locator('#nb-groups .nb-item[data-kind="chorus"]').hover();
+  await expect(page.locator("#pt-read .sd-model")).toBeVisible();
   expect(errors).toEqual([]);
 });

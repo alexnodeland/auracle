@@ -486,7 +486,7 @@ export function createPatch(host) {
     host.noteOnLanding(resume ? "Back to your new patch." : "A new patch: nothing in it yet.", { undo: host.doUndo });
     renderTools();
     host.renderSubject();
-    host.openCatalogue?.();
+    host.openCatalog?.();
   }
 
   function clearNew() {
@@ -516,7 +516,7 @@ export function createPatch(host) {
     renderTools();
     host.renderSubject();
     closeSheet();
-    host.closeCatalogue?.();
+    host.closeCatalog?.();
   }
 
   /** Modules in the patch, as the rack counts them: not the amp, not an
@@ -1138,8 +1138,11 @@ export function createPatch(host) {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !host.visible()) return;
     if (sheet.el && sheet.el.classList.contains("on")) {
+      // One thing a press: the sheet closes, and the rack's chain (the
+      // selection, the catalog) waits for the next Esc.
       closeSheet();
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     if (fresh.on && !host.escBusy() && !e.defaultPrevented) {

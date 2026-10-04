@@ -5,7 +5,7 @@
 // - On a module, ←/→ walk the modules in signal order (left to right as the
 //   layout draws them), ↑/↓ go into a module's modulator and back out, and
 //   Home/End reach the first module and the last (the amp, at OUT), from a
-//   module or from anywhere in PATCH.
+//   module or with nothing in focus.
 // - Enter goes into a module's knobs, ↑/↓ turn one, Esc goes back to the
 //   module, and Esc again leaves it; ⇧Home fits the whole patch.
 // - F2 opens the structure menu, and Delete on a two-input module asks which
@@ -15,9 +15,15 @@
 // - With a module in hand the arrows choose a socket and Enter places it.
 // - The keys yield to a text field (the catalog's search), and the note keys
 //   still play on a module.
+// - Home and End are the canvas's: on VOL they are the slider's, and under
+//   the keep-as-new comparison nothing behind it moves.
+// - One Esc closes one thing: an open menu goes, and the selection and the
+//   catalog wait for the next press.
+// - The selection follows the module, not its address: an insert before it
+//   moves its key, and it stays selected.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, now, replied } = require("./patch_page");
-const { openCatalogue } = require("./shell");
+const { openCatalog } = require("./shell");
 
 const active = (page) => page.evaluate(() => {
   const a = document.activeElement;
@@ -35,8 +41,8 @@ test("←/→ walk the modules in signal order, ↑/↓ go into a modulator and 
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Reese");
   const order = await signalOrder(page);
-  // Home, from anywhere in PATCH: the first module.
-  await page.locator("#rack-subject").click();
+  // Home, with nothing in focus: the first module.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Home");
   expect((await active(page)).key).toBe(order[0]);
   for (let i = 1; i < order.length; i++) {
@@ -145,9 +151,16 @@ test("a module in hand: the arrows choose a socket and Enter places it", async (
   test.setTimeout(180_000);
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Glass Pad");
-  await openCatalogue(page);
+  await openCatalog(page);
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
   await expect(page.locator("#rack-svg .jack.legal").first()).toBeVisible();
+  // The rack at rest first: the open catalog refits the patch, and the level
+  // of detail it lands at redraws it a frame later.
+  await expect.poll(() => page.evaluate(() => new Promise((done) => {
+    const at = () => JSON.stringify([...document.querySelectorAll("#rack-svg .jack.legal")].map((j) => j.getBoundingClientRect()));
+    const a = at();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done(a === at()))));
+  })), { timeout: 30_000 }).toBe(true);
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#rack-svg .jack.legal.hot")).toHaveCount(1);
   await expect(page.locator("#pick-chip .pick-chip-text")).toHaveText(/^insert after /i);
@@ -174,5 +187,82 @@ test("the keys yield to the catalog's search, and the note keys still play on a 
   await page.keyboard.down("a");
   await expect(page.locator('.pkey[data-note="60"]')).toHaveClass(/\bdown\b/);
   await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
+test("Home and End are the canvas's: on VOL they stay the slider's, and under the comparison nothing behind it moves", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  // VOL: End is the slider's top, and the focus stays on it.
+  await page.locator("#vol").focus();
+  await page.keyboard.press("End");
+  await expect(page.locator("#vol")).toBeFocused();
+  expect(Number(await page.locator("#vol").inputValue())).toBe(1);
+  await page.keyboard.press("Home");
+  await expect(page.locator("#vol")).toBeFocused();
+  expect((await active(page)).key).toBeNull();
+  // An edit, then KEEP AS NEW's comparison (a modal): Home and Delete reach
+  // nothing behind it.
+  const knob = page.locator("#rack-svg [data-addr]").first();
+  await knob.focus();
+  const before = await knob.getAttribute("aria-valuetext");
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
+  await expect(knob).not.toHaveAttribute("aria-valuetext", before, { timeout: 10_000 });
+  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 15_000 });
+  await page.locator("#rack-commit").click();
+  await expect(page.locator("#cduel")).toBeVisible({ timeout: 30_000 });
+  const modules = await page.locator("#rack-svg .rack-plates g[data-key]").count();
+  const structs = () => page.evaluate(() => window.__pwPosted.filter((p) => /edit_structure|edit_set_tree/.test(p.type)).length);
+  const s0 = await structs();
+  await page.keyboard.press("Home");
+  expect((await active(page)).plate).toBe(false);
+  await page.keyboard.press("Delete");
+  expect(await structs()).toBe(s0);
+  await expect(page.locator("#rack-svg .rack-plates g[data-key]")).toHaveCount(modules);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#cduel")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("one Esc closes one thing: an open menu goes first, and the selection waits for the next press", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
+  await openCatalog(page);
+  await page.locator("#rack-layout").click();
+  await expect(page.locator("#pt-laymenu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#pt-laymenu")).toBeHidden();
+  await expect(page.locator("#nodebank")).toBeVisible();
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator('#rack-svg .rack-plates g.selected')).toHaveCount(0);
+  await expect(page.locator("#nodebank")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#nodebank")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("the selection follows the module: an insert before it moves its key, and it stays selected", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  const filter = page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]');
+  await filter.focus();
+  const key0 = await filter.getAttribute("data-key");
+  // F2's "insert after…" (the new module takes the filter's place in the
+  // tree, and the filter moves down one), then a distortion from the catalog.
+  await page.keyboard.press("F2");
+  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^insert after/ }).click();
+  const t0 = await now(page);
+  await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
+  await replied(page, "bench", t0);
+  await expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout: 30_000 });
+  const key1 = await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').getAttribute("data-key");
+  expect(key1).not.toBe(key0);
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
+  await expect(page.locator("#pt-read .pr-name")).toHaveText(/filter|ladder|svf/i);
   expect(errors).toEqual([]);
 });

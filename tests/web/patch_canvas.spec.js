@@ -18,8 +18,20 @@
 //   every verb; the others show theirs only under the pointer.
 // - L on the selected module locks it and its edge goes solid amber; ⚡'s ▾
 //   holds lock knobs, lock wiring and clear locks.
+// - At 1440 the fit a four-module patch opens at prints every module's name,
+//   the setting that names its kind (in its head, as set) and each knob's
+//   value and name at a size you can read; a setting is printed as its value,
+//   never an empty chip; the amp's head draws its envelope from its knobs.
+// - Audio cables are curves between the jacks; a two-input module names its
+//   inputs (a, b) outside the plate, by the cables; the modulation cable's
+//   words ("depth 25% · 0.51 Hz") show at that fit.
+// - The scope is folded until asked for; the belief line is on the well's
+//   top line and says nothing without a guess; TEACH counts the picks in one
+//   place, the chip at the well's foot.
+// - "Undo to as opened" waits for a sound on its way: pressed while another
+//   opens, it posts nothing and says why (so does ⌘Z, which waits).
 const { test, expect } = require("@playwright/test");
-const { boot, openPreset, now, replied } = require("./patch_page");
+const { boot, openPreset, now, replied, slowWorker } = require("./patch_page");
 
 /** The rack's counts, as the head should say them. */
 const counts = (page) => page.evaluate(() => {
@@ -34,8 +46,20 @@ const counts = (page) => page.evaluate(() => {
 });
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
+/** The rack at rest: the `i`th knob in the same place across three frames
+ *  (an open fits the patch with a tween, and a press aimed mid-tween lands
+ *  beside the knob). */
+async function knobAtRest(page, i) {
+  await expect.poll(() => page.evaluate((n) => new Promise((done) => {
+    const at = () => JSON.stringify(document.querySelectorAll("#rack-svg g[data-addr] > .knob-hit")[n]?.getBoundingClientRect() || null);
+    const a = at();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done(a !== "null" && a === at()))));
+  }), i), { timeout: 30_000 }).toBe(true);
+}
+
 /** Drag the `i`th continuous knob up by `dy` px, and wait for its reply. */
 async function turnKnob(page, i = 0, dy = 30) {
+  await knobAtRest(page, i);
   const hit = page.locator("#rack-svg g[data-addr] > .knob-hit").nth(i);
   const b = await hit.boundingBox();
   const t0 = await now(page);
@@ -129,6 +153,14 @@ test("undo to as opened takes every change back in one restore, and ⇧⌘Z brin
   expect(await sets()).toBe(before + 1);
   await expect.poll(() => page.evaluate(() => window.__pwLast.bench.treeJson)).toBe(opened);
   await expect(page.locator("#pt-ed-n")).toHaveText("as opened");
+  // The lane shows one toast at a time: it may wait behind the open's.
+  await expect(page.locator("#toasts")).toContainText("Back as it was opened: 2 changes undone.", { timeout: 20_000 });
+  // Nothing left to take back: a press says so, and posts nothing.
+  await expect(page.locator("#pt-revert")).toHaveAttribute("aria-disabled", "true");
+  // (aria-disabled: in reach, so the press arrives; Playwright would wait.)
+  await page.locator("#pt-revert").click({ force: true });
+  await expect(page.locator("#toasts")).toContainText("Already as it was opened.", { timeout: 20_000 });
+  expect(await sets()).toBe(before + 1);
   // ⇧⌘Z: the first change again.
   const t1 = await now(page);
   await page.keyboard.press("Shift+Control+z");
@@ -195,5 +227,124 @@ test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clea
   await page.locator("#pt-evolve-more").click();
   await evmenu.locator("#lock-clear").click();
   await expect(page.locator("#rack-meta")).not.toContainText("locked");
+  expect(errors).toEqual([]);
+});
+
+test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await expect(page.locator("#rack-svg .rack-plates g[data-key]").first()).toBeVisible();
+  const read = await page.evaluate(() => {
+    const svg = document.getElementById("rack-svg");
+    const px = (el) => el.getBoundingClientRect().height;
+    const shown = (el) => getComputedStyle(el).visibility !== "hidden" && getComputedStyle(el).display !== "none";
+    const titles = [...svg.querySelectorAll(".rack-plates .mod-title")];
+    const values = [...svg.querySelectorAll(".rack-controls .knob-value")];
+    const labels = [...svg.querySelectorAll(".rack-controls .knob-label")];
+    const heads = [...svg.querySelectorAll(".rack-controls .plate-set .enum-text")].map((t) => t.textContent);
+    const settings = [...svg.querySelectorAll(".rack-controls g[data-addr]:not(.plate-set) .enum-text")];
+    const plates = [...svg.querySelectorAll(".rack-plates g[data-key] .mod-plate")].map((p) => p.getBoundingClientRect().width);
+    return {
+      lod: svg.classList.contains("lod-compact"),
+      titles: titles.map((t) => [shown(t), px(t)]),
+      values: values.map((t) => [shown(t), px(t), t.textContent]),
+      labels: labels.map((t) => [shown(t), px(t)]),
+      heads,
+      settings: settings.map((t) => [shown(t), t.textContent]),
+      plates,
+      env: !!svg.querySelector(".env-fig")?.getAttribute("d"),
+    };
+  });
+  expect(read.lod).toBe(false);
+  // Every name, value and label is drawn, and none smaller than 8 px.
+  for (const [s, h] of read.titles) { expect(s).toBe(true); expect(h).toBeGreaterThanOrEqual(8); }
+  expect(read.values.length).toBeGreaterThan(6);
+  for (const [s, h, t] of read.values) { expect(s).toBe(true); expect(h).toBeGreaterThanOrEqual(8); expect(t).not.toBe(""); }
+  for (const [s, h] of read.labels) { expect(s).toBe(true); expect(h).toBeGreaterThanOrEqual(7.5); }
+  // The kinds' settings in the heads: two VCOs' waves, the filter's mode, the LFO's wave.
+  expect(read.heads.length).toBe(4);
+  for (const t of read.heads) expect(t).toMatch(/^(sin|tri|saw|sqr|svf lp|svf bp|svf hp|ladder)$/);
+  // The octaves, printed as their values.
+  expect(read.settings.length).toBeGreaterThan(0);
+  for (const [s, t] of read.settings) { expect(s).toBe(true); expect(t).toMatch(/^[+-]?\d$/); }
+  // Plates at the specimen's scale: about 80 to 210 px wide.
+  for (const w of read.plates) { expect(w).toBeGreaterThan(70); expect(w).toBeLessThan(215); }
+  expect(read.env).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("the amp's envelope figure follows its knobs", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  const fig = page.locator("#rack-svg .env-fig");
+  const d0 = await fig.getAttribute("d");
+  const attack = page.locator('#rack-svg g.mod-group[data-kind="amp"] [data-addr$="#attack"], #rack-svg g.mod-group[data-kind="amp"] [role="slider"]').first();
+  await attack.focus();
+  for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowUp");
+  await expect.poll(() => fig.getAttribute("d")).not.toBe(d0);
+  expect(errors).toEqual([]);
+});
+
+test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  const got = await page.evaluate(() => {
+    const svg = document.getElementById("rack-svg");
+    const audio = [...svg.querySelectorAll("path.wire.audio")].map((p) => p.getAttribute("d"));
+    const mix = svg.querySelector('g.mod-group[data-kind="mix"]');
+    const ins = [...(mix?.querySelectorAll(".jack[data-childkey] text") || [])].map((t) => ({ text: t.textContent, x: Number(t.getAttribute("x")) }));
+    const label = svg.querySelector(".mod-cable-label");
+    return { audio, ins, label: label ? { text: label.textContent, shown: getComputedStyle(label).visibility !== "hidden" } : null };
+  });
+  expect(got.audio.length).toBeGreaterThan(2);
+  for (const d of got.audio) expect(d).toMatch(/ C /);
+  expect(got.ins.map((i) => i.text).sort()).toEqual(["a", "b"]);
+  for (const i of got.ins) expect(i.x).toBeLessThan(0);
+  expect(got.label).not.toBeNull();
+  expect(got.label.shown).toBe(true);
+  expect(got.label.text).toMatch(/^depth \S+ · \S+ Hz$/);
+  expect(errors).toEqual([]);
+});
+
+test("the scope is folded until asked for, the belief line says nothing without a guess, and TEACH counts the picks in one place", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await expect(page.locator("#scope-shell")).toBeHidden();
+  // The belief line: inside the well, quiet with no picks.
+  expect(await page.locator("#rack-frame #belief-row").count()).toBe(1);
+  await expect(page.locator("#belief .bl-u")).toHaveCount(0);
+  const quiet = await page.evaluate(() => [...document.querySelectorAll("#belief > *")].every((e) => getComputedStyle(e).display === "none"));
+  expect(quiet).toBe(true);
+  // A pair dealt: the chip counts the picks, and the head says nothing more.
+  await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator("#pt-teach")).toHaveText("teach · 6 picks ▸");
+  await expect(page.locator("#nextstep")).toHaveText("");
+  expect(errors).toEqual([]);
+});
+
+test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed while another opens, post nothing", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await boot(page, { warmed: true, slow: true });
+  await openPreset(page, "Reese");
+  await turnKnob(page, 0);
+  await expect(page.locator("#pt-ed-n")).toHaveText("1 change");
+  const sets = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_set_tree").length);
+  const before = await sets();
+  // The next sound takes its time arriving.
+  await slowWorker(page, { edit_begin: 4000 });
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
+  // ↺ cannot go while it is on its way (and says why, where it is shown).
+  await expect.poll(() => page.evaluate(() => {
+    const b = document.getElementById("pt-revert");
+    return b.getAttribute("aria-disabled") === "true" && b.parentElement.title === "Waiting for the sound you opened to arrive";
+  }), { timeout: 3_000 }).toBe(true);
+  // ⌘Z waits, and is dropped with the patch it was aimed at.
+  await page.keyboard.press("Control+z");
+  await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+  await slowWorker(page, {});
+  await page.waitForFunction(() => window.__aur.wb.subjectId != null);
+  expect(await sets()).toBe(before);
+  await expect(page.locator("#pt-editbar")).toBeHidden();
   expect(errors).toEqual([]);
 });
