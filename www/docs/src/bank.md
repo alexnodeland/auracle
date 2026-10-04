@@ -197,7 +197,7 @@ not a ⚡ child, even when the model rates it lowest of all: it hasn’t heard a
 answer about it yet. These end the wait, with the sound on either side,
 whatever you picked:
 
-- **a pair in EVOLVE** (or PATCH’s quick-pick strip) with it in it;
+- **a pair in EVOLVE** (or PATCH’s TEACH) with it in it;
 - **an offer in PERFORM** you [heard and answered](./views/perform.md#what-perform-teaches-the-model)
   while playing it, TAKE or NEXT, counted when the answer is (after its
   window), and only if you had kept the sound before you answered;

@@ -11,13 +11,14 @@ the long-form notes are this directory's `README.md`.
 | File | Runs on | Holds |
 | --- | --- | --- |
 | `index.html` | page | Markup for every level, the menu bar, the levels' rail, the keys bar, the dialogs |
-| `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, the rack SVG, toasts (`note`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
+| `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, PATCH's canvas (the head and edit bar, the rack SVG in its well, the face at OUT, the catalog, the camera's corner, the keys), toasts (`note`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
+| `patch.js` | main thread | PATCH's parts beside the rack, through its host: the model's guess at its socket, each cable's measured level, a patch from nothing (NEW PATCH, CLEAR, BACK TO), and the module sheet on touch (every setting, the lane's buttons, the bench's face) |
 | `shell.js` | main thread | Where you are (Plan-008): the level registry, `show`, `#where`, the rail and its `aria-current`, the level keys (⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, ADR-017), the saved level and the hash; the model view (hold ⌥ or MODEL: `body.model-view`, the tag; what it shows is main.js's `modelViewChanged`) |
 | `levels.js` | main thread | Pure rules for the levels: the axis, `step`, `dirOf`, `railPath`, `levelForKey`, `startLevel`; unit-tested in `tests/` |
 | `worker.js` | Web Worker | Owns `WasmEngine`: fills, duels, fits, refinement, the bench, PERFORM measurement. Serves requests in lanes, the player first. |
 | `farm.js` | Web Workers | The render farm: stateless workers rendering pool draws in parallel |
 | `perform.js` | main thread | PERFORM (the well and the panel, Plan-008 C1): named controls, the well's modes (the face, XY, How it works), offers and B, Blend, Wander and Freeze, the moved bar's Keep/Back, PASS, the pad keys (ADR-018), the hood, stage mode |
-| `guide.js` | main thread | The guide pill: the first-visit steps one at a time, bottom left of the stage, and what was done (`auracle-guide`, migrated from `auracle-perform-steps`); unit-tested in `tests/` |
+| `guide.js` | main thread | The guide pill: each level's first-visit steps (PERFORM's, PATCH's) one at a time, bottom left of the stage, what was done and which levels' × was pressed (`auracle-guide`, migrated from `auracle-perform-steps`; an old `closed: true` is PERFORM's); unit-tested in `tests/` |
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator; the voices' input and the open voice while AUDIO IN is monitored |
 | `takes.js` | main thread | CAPTURE's RECORD (the worklet copies the input while it is lit, the engine worker renders the take with `render_take`, sent as `set_take`) and the sounds kept safe for a recording, listed in the pool with RECORD AGAIN |
 | `audio-in.js` | main thread | AUDIO IN: the permission (asked only when the module is added), the inputs (one stream per device, fanned out), monitoring (never saved), the clip on first listen, the module's lane on the rack |

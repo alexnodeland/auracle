@@ -45,7 +45,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+const { goLevel, bankTab, openCatalog } = require("./shell");
 
 const SHOTS = process.env.AURACLE_SHOTS || null;
 
@@ -82,6 +82,7 @@ async function openPreset(page, name) {
 
 /** Place AUDIO IN from the module rail into the first socket it lights. */
 async function placeAudioIn(page) {
+  await openCatalog(page);
   const chip = page.locator('.nb-item[data-kind="audio_in"]');
   await chip.scrollIntoViewIfNeeded();
   await chip.click();
@@ -134,6 +135,7 @@ test("the browser is asked for an input only when AUDIO IN is added", async ({ p
   await page.keyboard.down("a");
   await page.waitForTimeout(300);
   await page.keyboard.up("a");
+  await openCatalog(page);
   await page.locator('.nb-item[data-kind="distortion"]').click();
   await page.locator("#rack-svg .jack.legal[data-childkey]").first().click();
   await expect(page.locator("#rack-svg g.mod-group[data-kind='distortion']").first()).toBeVisible({ timeout: 30_000 });

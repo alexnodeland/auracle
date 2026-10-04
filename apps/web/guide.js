@@ -1,14 +1,19 @@
 // The guide pill (Plan-008 §1, "First-visit guide"; ADR-009's one onboarding
 // surface): bottom left of the stage, one step at a time, with pips for how
 // far along the steps are and × to stop showing them. A step ticks off when
-// it happens, not when it is read. PERFORM's three first steps (play, turn a
-// control, ask for an offer) are its steps today; the zoom and the model
-// view's join it with the levels' zoom (Plan-008 PR C3).
+// it happens, not when it is read. Each level shows its own steps: PERFORM's
+// three (play, turn a control, ask for an offer), and PATCH's (turn a knob,
+// lock what you love, ⚡; Plan-008 C2a). A step may belong to more than one
+// level. The zoom and the model view's join it with the levels' zoom
+// (Plan-008 PR C3).
 //
 // What has been done is the player's, kept in localStorage as
-// `auracle-guide` ({done: [ids], closed}), JS-owned. The first steps kept
-// their ticks as `auracle-perform-steps` (an array of ids) before the pill:
-// read once into the new key and removed (`readGuide`).
+// `auracle-guide` ({done: [ids], closed: [levels]}), JS-owned. × stops one
+// level's steps: PERFORM's × leaves PATCH's to show. A `closed: true` from
+// before the levels had their own (C1, when PERFORM's were the only steps)
+// reads as PERFORM's. The first steps kept their ticks as
+// `auracle-perform-steps` (an array of ids) before the pill: read once into
+// the new key and removed (`readGuide`).
 
 export const GUIDE_KEY = "auracle-guide";
 export const OLD_STEPS_KEY = "auracle-perform-steps";
@@ -18,7 +23,7 @@ export const OLD_STEPS_KEY = "auracle-perform-steps";
  *  (`migrated` true: the caller writes the new key and removes the old).
  *  Anything unreadable is a fresh start. Pure, for the unit tests. */
 export function readGuide(get) {
-  const fresh = { done: [], closed: false, migrated: false };
+  const fresh = { done: [], closed: [], migrated: false };
   let raw = null;
   try {
     raw = get(GUIDE_KEY);
@@ -29,7 +34,9 @@ export function readGuide(get) {
     try {
       const v = JSON.parse(raw);
       const done = Array.isArray(v?.done) ? v.done.filter((x) => typeof x === "string") : [];
-      return { done: [...new Set(done)], closed: v?.closed === true, migrated: false };
+      const closed = v?.closed === true ? ["perform"]
+        : Array.isArray(v?.closed) ? [...new Set(v.closed.filter((x) => typeof x === "string"))] : [];
+      return { done: [...new Set(done)], closed, migrated: false };
     } catch {
       return fresh;
     }
@@ -44,24 +51,28 @@ export function readGuide(get) {
   try {
     const v = JSON.parse(old);
     const done = Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-    return { done: [...new Set(done)], closed: false, migrated: true };
+    return { done: [...new Set(done)], closed: [], migrated: true };
   } catch {
     return { ...fresh, migrated: true };
   }
 }
 
 /** The pill. `el` is its slot (`#guide`, in the stage). Steps are added in
- *  order with `add({id, text})`, `text()` giving the step's words now (a
- *  step may name what this sound can do). `done(id)` ticks one off. */
-export function createGuide({ el }) {
+ *  order with `add({id, text, levels})`, `text()` giving the step's words now
+ *  (a step may name what this sound can do) and `levels` the levels it shows
+ *  on (PERFORM's when none). `setLevel(level)` says which level is up;
+ *  `done(id)` ticks one off; `ends` is each level's closing line, said once
+ *  when its last step is done. */
+export function createGuide({ el, ends = {} }) {
   const steps = [];
+  let level = "perform";
   let ending = 0; // the closing line's timer
   const st = readGuide((k) => localStorage.getItem(k));
   const done = new Set(st.done);
-  let closed = st.closed;
+  const closed = new Set(st.closed); // the levels whose × was pressed
   const save = () => {
     try {
-      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed }));
+      localStorage.setItem(GUIDE_KEY, JSON.stringify({ done: [...done], closed: [...closed] }));
     } catch {
       /* a per-viewer convenience; in memory is enough for this visit */
     }
@@ -80,14 +91,21 @@ export function createGuide({ el }) {
     if (text != null) e.textContent = text;
     return e;
   };
-  const allDone = () => steps.length > 0 && steps.every((s) => done.has(s.id));
+  const levelsOf = (s) => s.levels || ["perform"];
+  const stepsOn = (l) => steps.filter((s) => levelsOf(s).includes(l));
+  const allDoneOn = (l) => {
+    const here = stepsOn(l);
+    return here.length > 0 && here.every((s) => done.has(s.id));
+  };
   // The pill: pips, the step, ×. A status, so a screen reader hears each new
   // step once.
   function render() {
     if (ending) return;
     el.innerHTML = "";
-    const now = steps.find((s) => !done.has(s.id));
-    if (closed || !now) {
+    const here = stepsOn(level);
+    const now = here.find((s) => !done.has(s.id));
+    el.dataset.level = level;
+    if (closed.has(level) || !now) {
       el.classList.add("hidden");
       return;
     }
@@ -96,18 +114,20 @@ export function createGuide({ el }) {
     pill.setAttribute("role", "status");
     const pips = make("span", "pips");
     pips.setAttribute("aria-hidden", "true");
-    for (const s of steps) pips.append(make("i", done.has(s.id) ? "done" : ""));
-    const i = steps.indexOf(now);
+    for (const s of here) pips.append(make("i", done.has(s.id) ? "done" : ""));
+    const i = here.indexOf(now);
     const text = make("span", "pf-step now", now.text());
     text.dataset.step = now.id;
     // The whole step where a narrow pill cuts it, and how far along it is.
-    text.title = `${now.text()} (step ${i + 1} of ${steps.length})`;
+    text.title = `${now.text()} (step ${i + 1} of ${here.length})`;
     const x = make("button", "x", "×");
     x.type = "button";
     x.setAttribute("aria-label", "Stop showing these");
     x.title = "Stop showing these";
+    // This level's steps stop; another level's still show there.
+    const at = level;
     x.onclick = () => {
-      closed = true;
+      closed.add(at);
       save();
       render();
     };
@@ -115,26 +135,39 @@ export function createGuide({ el }) {
     el.append(pill);
   }
   return {
+    /** Which level is up: the pill shows that level's steps. */
+    setLevel(l) {
+      if (level === l) return;
+      level = l;
+      render();
+    },
+    /** Ticks off what was done before these steps existed (a walkthrough the
+     *  player already dismissed), without a word. */
+    markDone(ids) {
+      let changed = false;
+      for (const id of ids) if (!done.has(id)) { done.add(id); changed = true; }
+      if (changed) { save(); render(); }
+    },
     add(step) {
       if (!steps.some((s) => s.id === step.id)) steps.push(step);
       render();
     },
     done(id) {
       if (done.has(id) || !steps.some((s) => s.id === id)) return;
-      const wasOpen = !closed && !allDone();
+      const wasOpen = !closed.has(level) && !allDoneOn(level);
       done.add(id);
       save();
-      if (!allDone() || !wasOpen) return render();
-      // The last step: its pip fills and one line says what the loop was,
-      // for a few seconds, then the pill goes.
+      if (!allDoneOn(level) || !wasOpen || !ends[level]) return render();
+      // The level's last step: its pip fills and one line says what the loop
+      // was, for a few seconds, then the pill goes.
       el.innerHTML = "";
       el.classList.remove("hidden");
       const pill = make("div", "next pf-steps");
       pill.setAttribute("role", "status");
       const pips = make("span", "pips");
       pips.setAttribute("aria-hidden", "true");
-      for (const s of steps) pips.append(make("i", "done"));
-      pill.append(pips, make("span", "pf-step done all", "That is the loop. Every offer you take or pass teaches it what you like."));
+      for (const s of stepsOn(level)) pips.append(make("i", "done"));
+      pill.append(pips, make("span", "pf-step done all", ends[level]));
       el.append(pill);
       ending = setTimeout(() => {
         ending = 0;

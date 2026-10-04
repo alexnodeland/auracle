@@ -55,8 +55,8 @@ Note letters stop only while a text field or a drop-down has focus, so typing
 a name doesn’t play a melody. Everywhere else they play, even with a button or
 knob focused, which is why the save key is <kbd>m</kbd> rather than
 <kbd>s</kbd>. Two letters are the exception, where something focused uses
-them: <kbd>p</kbd> in the presets list plays the preset, and <kbd>L</kbd> in
-the rack locks; neither plays its note then. PERFORM’s drop-downs (the XY
+them: <kbd>p</kbd> in the presets list plays the preset, and <kbd>L</kbd> on a
+module or a knob in PATCH locks; neither plays its note then. PERFORM’s drop-downs (the XY
 pad’s axes, and **Velocity plays** in ARRANGE) hand the keys back as soon as
 you choose, unless you are stepping through them with the arrow keys.
 ```
@@ -72,7 +72,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first. In PATCH it walks out one thing at a time: a menu, a knob, the module, the catalog, then a new patch |
 
 ## In EVOLVE
 
@@ -83,32 +83,52 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>n</kbd> | Another pair: N means next, as it does in PERFORM |
 | <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
 
-## The rack canvas
+## PATCH's canvas
 
 | | |
 |---|---|
-| <kbd>Home</kbd> | Fit the whole patch |
+| <kbd>⇧Home</kbd> | Fit the whole patch (the corner's **FIT**), with the canvas in focus or nothing in focus |
 | <kbd>.</kbd> | Fit what you’re on |
 | <kbd>⌘0</kbd> | Actual size |
-| <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out / in |
+| <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out / in (the corner's **−** and **+**) |
 | <kbd>Ctrl</kbd> and the wheel, or pinch | Zoom at the pointer |
 | The wheel, or a drag on bare canvas | Pan |
 | <kbd>Space</kbd> and drag, or a middle-button drag | Pan from anywhere |
 | <kbd>Shift</kbd>-click the minimap | Bookmark this spot |
 | <kbd>⇧1</kbd>–<kbd>⇧9</kbd> | Jump to a bookmark |
+| <kbd>/</kbd> | Open the catalog, in its search (**ADD MODULE**) |
 
-## Inside the rack
+## PATCH's modules
 
-<kbd>Tab</kbd> reaches the rack as a single stop, then:
+<kbd>Tab</kbd> reaches the patch as a single stop. On a module:
 
 | | |
 |---|---|
-| <kbd>←</kbd> <kbd>→</kbd> | Move between controls: a module’s knobs, then its buttons (AUDIO IN’s input, **MONITOR** and **NEW CLIP**; CAPTURE’s **RECORD**) |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | Turn the focused knob |
+| <kbd>←</kbd> / <kbd>→</kbd> | The next module in signal order, left to right as drawn; the model's guess is one of them |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Into a module's modulators, and back out (the nearest module below or above) |
+| <kbd>Home</kbd> / <kbd>End</kbd> | The first module, and the last (the amp, at OUT); from a knob too, or with nothing in focus. A slider (**VOL**), a menu, the catalog's rows and a dialog keep their own <kbd>Home</kbd> and <kbd>End</kbd> |
+| <kbd>Enter</kbd> | Into its knobs and buttons. On the model's guess: add it |
+| <kbd>F2</kbd>, or the menu key | Its structure menu (⋯) |
+| <kbd>Delete</kbd> | Delete it; a two-input module asks which input survives. On the guess: skip it |
+| <kbd>L</kbd> | Lock it, or unlock it |
+| <kbd>/</kbd> | A module after it, from the catalog |
+| <kbd>Esc</kbd> | Out of it |
+
+Inside a module:
+
+| | |
+|---|---|
+| <kbd>←</kbd> <kbd>→</kbd> | Move between its controls: its knobs, then its buttons (AUDIO IN’s input, **MONITOR** and **NEW CLIP**; CAPTURE’s **RECORD**). They stop at the module's ends |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Turn the focused knob; a run of presses is one undo step |
 | <kbd>Shift</kbd> and <kbd>↑</kbd> / <kbd>↓</kbd> | Fine |
 | <kbd>Space</kbd> or <kbd>Enter</kbd> / <kbd>⇧</kbd> and either | Cycle the focused setting (a wave, a filter mode) forward / back. A click leaves no focus on a setting, so Space after a click plays. |
 | <kbd>Space</kbd> or <kbd>Enter</kbd> on a button | Press it (AUDIO IN’s input opens its menu) |
 | <kbd>L</kbd> | Lock the focused control |
+| <kbd>Esc</kbd> | Back to the module |
+
+Elsewhere on the page <kbd>Space</kbd> plays the sound, a knob or a module
+focused included. The menus in PATCH's head and corner (⚡'s ▾, the layout's
+▾) walk with <kbd>↑</kbd> <kbd>↓</kbd> and close with <kbd>Esc</kbd>.
 
 ## The bank
 
@@ -130,17 +150,17 @@ In **PRESETS** the cursor keys work the same, <kbd>Home</kbd> and
 <kbd>End</kbd> jump to the first and last row, <kbd>Enter</kbd> opens the
 preset, and <kbd>p</kbd> plays it.
 
-## The module rail
+## The catalog
 
 | | |
 |---|---|
-| <kbd>/</kbd> | Search the modules |
-| <kbd>Tab</kbd> | Reach the rail: one stop per group |
+| <kbd>/</kbd> | Open the catalog in its search |
+| <kbd>Tab</kbd> | Reach its groups: one stop per group |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Walk the modules |
 | <kbd>Enter</kbd> | Pick one up. It is now in your hand |
-| <kbd>↑</kbd> <kbd>↓</kbd> | Then walk the lit sockets, each one announced |
+| <kbd>↑</kbd> <kbd>↓</kbd> (or <kbd>←</kbd> <kbd>→</kbd>) | Then walk the lit sockets, each one announced |
 | <kbd>Enter</kbd> | Place it |
-| <kbd>Esc</kbd> | Put it down |
+| <kbd>Esc</kbd> | Put it down; again, close the catalog (in the search, it clears it first) |
 
 The search finds a module by sound as well as by name: *grit*, *vowel*,
 *sidechain*, *wander*.
@@ -152,12 +172,14 @@ The search finds a module by sound as well as by name: *grit*, *vowel*,
 | Drag a knob | Change it; you hear it at once |
 | Click a named setting | Cycle it (`saw`, `square`, `−2 oct`) |
 | Drag from an **out** jack | Pull a cable; every input it can go into lights up |
-| Drag a wired **in** jack off its socket | Unplug it. The chain goes to **SET ASIDE**, and the socket goes quiet |
-| Drag from **SET ASIDE** onto a lit ○ | Put it back |
-| Click **⋯** on a module | replace with…, insert before…, insert after…, duplicate, set aside, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
-| Click **▢** on a module | Lock the module, so breeding can’t touch it |
+| Drag a wired **in** jack off its socket | Unplug it. The chain is set aside (**SET ASIDE n** at the well's foot), and the socket goes quiet |
+| Drag from the **SET ASIDE** shelf (or the catalog) onto a lit ○ | Put it back |
+| Press on a module's bare panel | Select it: its ⋯ and ▢ show, and the readout names it |
+| Click **⋯** on the selected module, or right-click any | replace with…, insert before…, insert after…, duplicate, set aside, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
+| Click **▢** on the selected module | Lock the module, so breeding can’t touch it |
 | Click a knob’s lock dot | Lock that knob |
-| Drag a module by its face | Move it (in freeform); <kbd>Shift</kbd> to ignore the grid |
+| Drag a module by its face | Move it (on a layout by hand); <kbd>Shift</kbd> to ignore the grid |
+| Click the face at OUT | Play the sound |
 
 ## In PERFORM
 

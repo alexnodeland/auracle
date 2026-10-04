@@ -26,7 +26,7 @@ rack of 45 modules with typed cables. You can play it without teaching it
 anything.
 
 <figure>
-<img src="./img/play.webp" alt="The PATCH view: the bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the module rail on the right, and a keybed along the bottom." loading="eager" width="1440" height="900">
+<img src="./img/play.webp" alt="The PATCH view: the bank on the left, the patch's modules in signal order across its well, wired with green audio cables and amber modulation cables into OUT and the sound's face, and a keybed along the bottom." loading="eager" width="1440" height="900">
 <figcaption><strong>PATCH.</strong> The sound you’re playing, opened as a rack
 you can turn, rewire, and lock, live while you edit it.</figcaption>
 </figure>

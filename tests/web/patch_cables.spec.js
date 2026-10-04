@@ -6,7 +6,7 @@
 // a structure not measured yet drawn unlit, not estimated; and the probe
 // asked once an edit settles, not per knob step.
 const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { goLevel, openCatalog } = require("./shell");
 const { boot, openPreset, slowWorker } = require("./patch_page.js");
 const { FLOOR_MS } = require("./perform_budget.js");
 
@@ -91,6 +91,7 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.locator("#patch-new-btn").click();
   // The empty socket is on the rack before a source is put in it.
   await expect(page.locator('#rack-svg g.mod-group[data-kind="silence"]')).toHaveCount(1, { timeout: 30_000 });
+  await openCatalog(page); // open already: a new patch opens it
   await page.locator('#nb-groups .nb-item[data-kind="supersaw"]').click();
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="supersaw"]').length), { timeout: 30_000 }).toBe(1);
@@ -118,6 +119,7 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
       });
     }).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class"] });
   });
+  await openCatalog(page);
   await page.locator('#nb-groups .nb-item[data-kind="filter"]').click();
   await page.locator('#rack-svg .jack[data-childkey="node"]').click();
   await expect.poll(() => page.evaluate(() => document.querySelectorAll('#rack-svg g.mod-group[data-kind="filter"]').length), { timeout: 30_000 }).toBe(1);

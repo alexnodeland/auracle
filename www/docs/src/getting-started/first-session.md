@@ -66,7 +66,10 @@ your 10 save slots; release any of them from its row if you want the room.
 At the bottom left, a pill shows the first things to try in PERFORM,
 one step at a time: *Play a key*, then a control to turn on this sound, then
 *Press OFFER*. Each ticks off (a pip fills) when you do it, not when you read
-it, and **×** stops it showing. It is the one place first steps are shown.
+it, and **×** stops PERFORM's showing. PATCH has four of its own, in the same
+pill under its well: *Play it* (done already if you have played), *Drag a
+knob*, *Lock what you love*, and *Press ⚡ EVOLVE FROM THIS*; its **×** stops
+those. It is the one place first steps are shown.
 
 ```admonish info collapsible=true title="How it works: why three picks are worth 18"
 Each of your three picks is recorded as a pick over each of the six you passed
@@ -199,7 +202,7 @@ which.
 ## What to try next
 
 - Turn some knobs: [reading and editing the rack](../rack.md).
-- Rewire it: [wiring and the module rail](../wiring.md).
+- Rewire it: [wiring and the catalog](../wiring.md).
 - Play it: [playing it](../playing.md) and [PERFORM](../views/perform.md).
 - Lock what you love and breed around it: [⚡ evolve from this](../rack.md#locks-and-evolving-from-here).
 - See what the model learns from: [what the model learns from](../teaching.md).

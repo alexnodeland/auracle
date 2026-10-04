@@ -149,7 +149,7 @@ The [reference](../../reference/taste/utility.html) goes further.
 ## What to try next
 
 - Name your largest style for what it leans on, then find the name in PATCH’s
-  module rail.
+  catalog (point at a module).
 - Make six picks, and watch a hollow row turn solid at the refit.
 - Copy the JSON and look at a forecast: the chance it gave, and what you
   picked.

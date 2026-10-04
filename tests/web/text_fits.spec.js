@@ -158,9 +158,9 @@ for (const [width, height] of [[1000, 800], [1280, 800]]) {
 // wider by their faces, each of its short states is whole. (A generation's
 // "bred N new sounds: they're at the top of the bank" was cut here before
 // faces too; its words up to the count still show.)
+// (Playing first is the first steps' pill's now, Plan-008 C2a.)
 const CALLOUTS = [
-  "Play it first: press A, or tap a key below ▸",
-  "Teach it your taste: 6 quick picks below ▸",
+  "Teach it your taste: 6 quick picks ▸",
   "3 more picks and it refits ▸",
   "It’s learned something. Breed a generation ▸",
   "Breeding: keep playing ▸",
@@ -177,7 +177,9 @@ for (const width of [1000, 1080]) {
       await page.goto("/");
       await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 180_000 });
       await goLevel(page, "patch");
-      await expect(page.locator("#nextstep")).toBeVisible();
+      // Attached, not visible: with a pair to pick from, the picks are the
+      // TEACH chip's to count, and the callout is empty until a later step.
+      await expect(page.locator("#nextstep")).toBeAttached();
       const cut = await page.evaluate((labels) => {
         const el = document.getElementById("nextstep");
         const was = el.textContent;

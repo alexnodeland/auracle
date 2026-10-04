@@ -11,7 +11,9 @@ included.
 
 Each region is one tab stop, and the arrows move inside it. Tabbing through
 several hundred rack controls would be unusable, so the bank’s list is one
-stop, the rack is one stop, and the module rail is one stop per group. The
+stop, the patch is one stop (its modules walked with <kbd>←</kbd> and
+<kbd>→</kbd> in signal order, <kbd>Enter</kbd> into one, <kbd>Esc</kbd> out),
+and the catalog is one stop per group. The
 bank’s three tabs are a tab list, one stop, whose <kbd>←</kbd> and
 <kbd>→</kbd> show the next bank as they move; **Find a sound** and the
 walkthrough’s **?** are a stop each between the tabs and the list.
@@ -50,11 +52,19 @@ faces while B holds an offer. **XY** in the well’s corner is a toggle button
 fills the well, and <kbd>Esc</kbd> inside it hands focus back to the button.
 The moved bar’s KEEP and BACK leave the tab order while the sound is home.
 The first-steps pill’s step is a status, read once as each new step comes up, and
-its **×** is a button named *Stop showing these*.
+its **×** is a button named *Stop showing these* (that level's steps). In PATCH,
+<kbd>Home</kbd> and <kbd>End</kbd> walk to the first and last module only from
+the canvas or with nothing in focus: on **VOL**, in a menu, in the catalog's
+rows or under a dialog they keep their own meaning. **UNDO TO AS OPENED**
+stays in the tab order when it can't go (`aria-disabled`), and pressing it
+says why. Closing the catalog or TEACH with the keyboard puts the focus back
+on the button that opened it; with the pointer, it lets the focus go, so
+<kbd>Space</kbd> plays.
 
 To place a module without a mouse:
 
-1. Press <kbd>Tab</kbd> until you reach the module rail.
+1. Press <kbd>/</kbd> (or **ADD MODULE**) to open the catalog, and
+   <kbd>Tab</kbd> to its groups.
 2. Press <kbd>↑</kbd> and <kbd>↓</kbd> to choose a module.
 3. Press <kbd>Enter</kbd> to pick it up.
 4. Press <kbd>↑</kbd> and <kbd>↓</kbd> to walk the sockets it can go into.
@@ -66,6 +76,13 @@ keyboard, <kbd>Space</kbd> or <kbd>Enter</kbd> cycles it, and with
 <kbd>Shift</kbd> it goes back. A click leaves no focus on it, so Space after a
 click plays the sound you’re playing, as it does with a knob focused. Its name
 says what it is set to (*VCO wave, sin*), and each change is read out.
+
+PATCH's modules are announced as you walk them (*filter, module 3 of 5*);
+the selected one's name and what it does are in the readout at the well's
+foot, a live region. Every control in PATCH is a button or a knob a keyboard
+reaches, the face at OUT included (it plays the sound), and on a touch screen
+each is 40 px or more: the head's acts, the camera's corner, the menus, and a
+module's sheet with its lane's buttons.
 
 Focus is always visible, and a dialog returns focus to whatever opened it.
 [Keyboard and MIDI](./keyboard.md) has the full map.

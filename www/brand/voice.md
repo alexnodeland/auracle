@@ -465,7 +465,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **the sound you're playing** | In help and tooltips; toasts name it | bench, workbench, current patch, #ids |
 | **another pair** | Deal a new pair without picking | skip, in a pair |
 | **PASS** | PERFORM's pad: pass on the offer in B without growing another; heard, a pick for what you had, with UNDO | skip, reject, discard |
-| **first steps** | PERFORM's first-visit steps, one at a time in a pill bottom left; its × is *Stop showing these* | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
+| **first steps** | Each level's first-visit steps, one at a time in a pill bottom left (PERFORM's: play, turn, offer; PATCH's: play it, a knob, a lock, ⚡); its × is *Stop showing these*, for that level's | guide (that is the site), tutorial, tips, coach (that is the keybed's) |
 | **▶ PLAY** | An EVOLVE card's button: its phrase | SAMPLE, audition |
 | **↓ patch** | An EVOLVE card's corner: open its sound in PATCH without picking | open in patch, promote |
 | **⇄ face** | An EVOLVE card's corner, flipped to its circuit: back to its face | wave |
@@ -499,7 +499,18 @@ banned-words check in `make dev-check` reads the list after it.
 | **clip** | The seconds of your input the model hears a sound with AUDIO IN through | sample; *recording* or *take* for the clip (a take is CAPTURE’s) |
 | **take**, RECORD | A CAPTURE’s recorded audio: RECORD makes a new take, and the module shows its length. PERFORM’s **TAKE** pad is the verb (take the offer), always its name in capitals | recording (for the take itself), sample, loop |
 | **kept safe** | A sound whose take couldn’t be read, out of the pool until RECORD AGAIN makes a new take | held, HELD, quarantined |
-| **the module rail**, MODULES | The list of modules on PATCH's right, the ones you add from | the node bank |
+| **the catalog**, ADD MODULE, ADD A MODULE | The list of modules PATCH opens over the left of its well, the ones you add from | the module rail, MODULES, the node bank, catalogue, palette (that is PERFORM's) |
+| **N changes** | The edit bar's count: the undo steps since the sound was opened | N edits, unsaved changes |
+| **undo to as opened** | ↺: every change since opening taken back at once | revert, reset, discard |
+| **as opened** | A knob's or the sound's state when it was opened (the pale tick; the bar at zero) | original, before, previous |
+| **HOW TO READ THIS** | The well's legend | help, legend, key |
+| **the face at OUT** | The bench's face past the amp, measured; a click plays the sound | preview, thumbnail |
+| **the well** | PATCH's canvas, the rounded frame the patch sits in | canvas, stage, board |
+| **fit · − · + · map · layout ▾** | The camera corner's words | zoom to fit, overview |
+| **by hand** | The layout you arrange yourself | freeform, manual, custom |
+| **detail: automatic / full / compact** | How much of each module is drawn | LOD, zoom level |
+| **TEACH ▸**, **TEACH · N PICKS ▸** | The folded quick picks at the well's foot, counting to the first refit | train, rate, vote |
+| **SET ASIDE n** | The chip for modules unplugged or deleted, waiting to go back; it opens the shelf | tray, HELD, trash |
 | **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |

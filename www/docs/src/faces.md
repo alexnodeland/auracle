@@ -49,10 +49,11 @@ the face.
   lines. Preset rows draw theirs as you scroll to them, since a preset you
   haven’t heard may need a render first.
 - **[EVOLVE](./views/evolve.md)**, beside each card’s name.
-- **[PATCH](./views/play.md)**, beside the sound’s name in the header, on
-  **A** and **B** in the teach strip under the rack, and beside the model’s
-  guess for the next module: the patch as it is, and the patch with that
-  module, from the render the guess made of it.
+- **[PATCH](./views/play.md)**, at OUT past the amp (a click on it plays the
+  sound), on **A** and **B** in TEACH at the well's foot, in a module's sheet
+  on a touch screen, and beside the model’s guess for the next module: the
+  patch as it is, and the patch with that module, from the render the guess
+  made of it.
 - **[PERFORM](./views/perform.md)**, beside the sound in your hands, and
   beside **B** once an offer has grown. B grows out of the face, and goes
   back into it. In stage mode (<kbd>⇧F</kbd>) the face fills the screen,
@@ -67,8 +68,8 @@ the face.
   how unsure the model is about it.
 
 A face sits in space its place always keeps, so a name never moves when the
-face arrives. Where a name could be cut short (the bank, PATCH’s header, A
-and B under the rack), the column is wider by the face; EVOLVE’s and
+face arrives. Where a name could be cut short (the bank, A and B in PATCH's
+TEACH), the column is wider by the face; EVOLVE’s and
 PERFORM’s names wrap rather than cut.
 
 An empty space means one of three things:

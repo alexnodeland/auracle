@@ -952,16 +952,18 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
   await clickWave(page);
   await play.click();
   await expect(play).toHaveClass(/\bpending\b/);
-  // Playing and waiting at once, the glyph keeps the playing ink on the
-  // green face (amber on it was 1.28:1).
+  // Playing and waiting at once, the face at OUT (the rack's ▶, Plan-008
+  // C2a) says both: lit, and wearing the waiting ▶'s dotted amber ring.
   await expect(play).toHaveClass(/\bplaying\b/);
-  // Read after the button's colour transition has run, not at its start
-  // (where it still shows the colour it is leaving).
-  const ink = await play.evaluate((el) => {
+  // Read after any transition has run, not at its start.
+  const look = await play.evaluate((el) => {
     for (const a of el.getAnimations()) a.finish();
-    return getComputedStyle(el).color;
+    const cs = getComputedStyle(el);
+    return { ring: cs.outlineStyle, ringInk: cs.outlineColor, lit: cs.boxShadow };
   });
-  expect(ink, "the glyph's ink while playing and waiting").toBe(await tokenRgb(page, "--xport-lo"));
+  expect(look.ring, "the waiting ring while playing").toBe("dotted");
+  expect(look.ringInk, "the ring is amber").toBe(await tokenRgb(page, "--phos-b"));
+  expect(look.lit, "the face is lit while it plays").not.toBe("none");
   await page.locator("#rack-subject").click();
   t0 = await pageNow(page);
   await page.keyboard.press(" ");

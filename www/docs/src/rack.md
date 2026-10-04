@@ -1,8 +1,8 @@
 # Reading and editing the rack
 
-<p class="lede">The rack in PATCH is the patch itself. This page is about
-reading it, turning its knobs, keeping an edit as a new sound, and locking what
-you like before you breed from it.</p>
+<p class="lede">The rack in PATCH's well is the patch itself, in signal order.
+This page is about reading it, getting around it, turning its knobs, keeping an
+edit as a new sound, and locking what you like before you breed from it.</p>
 
 <!-- film:sounddesign --><!-- /film:sounddesign -->
 
@@ -18,12 +18,23 @@ on.</figcaption>
 **Green is sound. Amber is modulation, and the model’s mind.** That holds
 everywhere in the instrument.
 
-- **Modules** each have a title, a **⋯** menu, and their knobs. A knob shows
-  its value in its own units (`840 Hz`, `24 ms`, `−6.0 dB`, `+12 ¢`, `8.23 Hz`),
-  never as a fraction of its range.
-- **Jacks** are small rings labeled `in` and `out`. Their color is the kind of
-  signal they carry, and only matching kinds connect.
-- **Audio cables** are green, and run left to right through the signal chain.
+- **Modules** each have a title, on the right of their head the setting that
+  says which kind of it they are (`saw`, `svf lp`; a click changes it), and
+  all their knobs. Under a knob, its value in its own units (`840 Hz`,
+  `24 ms`, `−6.0 dB`, `+12 ¢`, `8.23 Hz`), never as a fraction of its range,
+  then its name; its travel and value are arcs. A setting that is not a knob
+  (an octave) prints its value in the knob's place, over a dotted rule, and a
+  click changes it. The amp's head draws its envelope from its four knobs as
+  set. The selected module (the one you pressed on, or the keyboard stands on)
+  shows its **⋯** menu and its **▢** lock on its top edge, at the right; any
+  module shows them under the pointer, and every module does on a touch
+  screen.
+- **Jacks** are small rings. Their color is the kind of signal they carry, and
+  only matching kinds connect. A module with two inputs names them beside the
+  jacks, outside the module, by the cables that arrive (*a*, *b*; *carrier*,
+  *mod*).
+- **Audio cables** are green, curve from one module's output to the next
+  one's input, and run left to right through the signal chain.
   Each carries light by its level: once an edit settles, the engine renders
   the phrase once more and measures every audio cable, and the brighter the
   cable, the louder the signal on it. A mark on its middle lights one bar per
@@ -32,35 +43,69 @@ everywhere in the instrument.
   cables sit dim and its marks hollow, and after a knob turn the marks go
   hollow until the change is measured. While notes sound, the cables move at
   the level the live voice measures instead.
-- **Modulation cables** are amber, and each one ends in a named destination:
-  `PITCH`, `THRESHOLD`, `MORPH`, `DEPTH`. A modulation cable pulses at its
-  modulator’s rate, so you can see a 0.2 Hz sweep before you hear it. It is
-  not measured, so it has no level mark and carries no light.
-- **The last module** is always `ENV / OUT`: the amp envelope and the output.
-  Every patch has one, with a limiter before it that you can’t remove.
+- **Modulation cables** are dashed amber, and each one ends in a named
+  destination under its module: `PITCH`, `THRESHOLD`, `MORPH`, `DEPTH` (one
+  nothing is plugged into is drawn faintly until you point at the module). A modulation cable
+  pulses at its modulator’s rate, so you can see a 0.2 Hz sweep before you
+  hear it, and it says how far and how fast it moves the knob: *depth 25% ·
+  0.51 Hz*, the module's mod depth and the modulator's rate as their knobs are
+  set. It is not measured, so it has no level mark and carries no light.
+- **The last module** is always `ENV / OUT`: the amp envelope. Every patch has
+  one, with a limiter before it that you can’t remove. Its lead runs to
+  **OUT**, and past OUT stands the sound's [face](./faces.md), measured on its
+  latest render; a click on it plays the sound.
 
-The rack scales to fill its frame. At small sizes, **DETAIL AUTO** drops the
-knobs from modules too small to grab, so a large patch shows as bare modules
-until you zoom in.
+The rack is fitted to its well when it opens, no larger than the size a
+four-module patch opens at on a 1440 px screen, where every name and value
+reads. Where the readouts would be too small to read (a wide patch, a narrow
+window, the catalog open beside it), **detail: automatic** leaves the values
+and labels off and prints each module's name and setting larger; every knob is
+still a control. Zoomed out past where a knob is big enough to grab, it leaves
+each module three of its knobs to read, not to grab, so a large patch still
+says what it is until you zoom in. AUDIO IN's and CAPTURE's buttons stay.
 
 ## Getting around
 
+The camera's controls sit quietly in the well's bottom-left corner: **FIT**,
+**−**, **+**, **MAP**, and the [layout's **▾**](#layout).
+
 | | |
 |---|---|
-| <kbd>Home</kbd> | Fit the whole patch |
+| **FIT**, or <kbd>⇧Home</kbd> | Fit the whole patch |
 | <kbd>.</kbd> | Fit what you’re on |
 | <kbd>⌘0</kbd> (Ctrl 0) | Actual size |
-| <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out or in |
+| **−** / **+**, or <kbd>⌘−</kbd> / <kbd>⌘=</kbd> | Zoom out or in |
 | <kbd>Ctrl</kbd> and the wheel, or pinch | Zoom at the pointer |
 | The wheel, or a drag on bare canvas | Pan |
 | <kbd>Space</kbd> and drag, or a middle-button drag | Pan from anywhere on the canvas |
-| **MAP** | Show the minimap, at the bottom left |
+| ‹ *n* and *n* › at the well's edges | How many modules lie past each side; a press brings the nearest in |
+| **MAP** | Show the minimap, over the corner |
 | <kbd>Shift</kbd>-click the minimap | Bookmark a spot |
 | <kbd>⇧1</kbd>–<kbd>⇧9</kbd> | Jump to a bookmark |
 
-Zoom runs from 0.30× to 2.50× by hand, and the rack fits its frame when it
-opens (up to 2.2×). <kbd>Home</kbd> and the other fits go below 0.30× when
-that’s what it takes to show a large patch whole.
+Zoom runs from 0.30× to 2.50× by hand, and the rack fits its well when it
+opens (up to 2.2×), clear of the well's top line, its foot, and the catalog
+while it is open. The fits go below 0.30× when that’s what it takes to show a
+large patch whole.
+
+### With the keyboard
+
+<kbd>Tab</kbd> into the patch, then:
+
+| | |
+|---|---|
+| <kbd>←</kbd> / <kbd>→</kbd> | The next module in signal order (the model's guess is one of them) |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Into a module's modulators, and back out |
+| <kbd>Home</kbd> / <kbd>End</kbd> | The first module, and the last (the amp, at OUT); from anywhere in PATCH |
+| <kbd>Enter</kbd> | Into the module's knobs (on the guess: add it) |
+| <kbd>F2</kbd>, or the menu key | Its [⋯ menu](#the--menu) |
+| <kbd>Delete</kbd> | Delete it (a two-input module asks which input survives) |
+| <kbd>L</kbd> | Lock it, or unlock it |
+| <kbd>/</kbd> | A module after it, from the catalog |
+| <kbd>Esc</kbd> | Out of it |
+
+Inside a module the arrows walk its knobs and buttons, <kbd>↑</kbd> /
+<kbd>↓</kbd> turn a knob, and <kbd>Esc</kbd> goes back to the module.
 
 ## Turning knobs
 
@@ -75,7 +120,8 @@ While you drag, you hear every value the knob passes through. A step
 sequencer’s bars are knobs too: press one where you want the step and drag
 ([the step sequencer](./wiring.md#the-step-sequencer)).
 
-A knob always shows the value you last set. Once you turn it here, PERFORM
+A knob always shows the value you last set, and a mark where it was when the
+sound was kept, once you have turned it. Once you turn it here, PERFORM
 plays from your value too ([opening the
 circuit](./views/perform.md#opening-the-circuit)).
 
@@ -134,24 +180,20 @@ a jack’s ring answers across its full diameter.
 
 ## Layout
 
-The first button cycles three layouts, and its label shows the one you’re in:
+The layout's **▾**, in the well's corner, names the layout you’re in and opens
+a menu:
 
 | | |
 |---|---|
-| **CHAIN** | The signal path on one baseline |
-| **COMPACT** | The same path, packed tight |
-| **FREEFORM** | Yours. Drag a module by its face and it snaps to the grid; hold <kbd>Shift</kbd> to place it freely |
+| **chain** | The signal path on one baseline (the subtitle says *in signal order*) |
+| **compact** | The same path, packed tight |
+| **by hand** | Yours. Drag a module by its face and it snaps to the grid; hold <kbd>Shift</kbd> to place it freely |
+| **snap to the grid** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
+| **reset positions** | Throw away the hand positions, and lay the patch out along the signal chain again |
+| **detail** | **automatic** leaves off labels too small to read (names and settings print larger), and leaves three knobs to read on modules too small to grab; or force **full** or **compact** |
+| **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
-Then:
-
-| | |
-|---|---|
-| **SNAP** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
-| **RESET** | Throw away the hand positions, and lay the patch out along the signal chain again |
-| **DETAIL** | **AUTO** drops knobs from modules too small to grab; or force them on or off |
-| **LEANS** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
-
-**SNAP** and **RESET** act only in freeform. Positions are kept for each patch,
+**snap** and **reset** act only on a layout by hand. Positions are kept for each patch,
 survive a reload and a ⚡ generation, and travel in a downloaded patch file. If
 a hand layout has spread past what the frame can show, **SNAP** lays it out
 again from the signal chain instead.
@@ -159,18 +201,21 @@ again from the signal chain instead.
 ## Locks, and evolving from here
 
 1. Lock what you like:
-   - click a knob’s **lock dot** to lock that knob;
-   - click a module’s **▢** to lock the whole module;
-   - press **LOCK KNOBS** or **LOCK WIRING** to lock every knob, or the whole
-     structure.
+   - click a knob’s **lock dot** (it shows on hover and focus) to lock that
+     knob, or press <kbd>L</kbd> on it;
+   - select a module and press <kbd>L</kbd>, or click its **▢**, to lock the
+     whole module; a locked module's edge is solid amber;
+   - in **⚡ EVOLVE FROM THIS**'s **▾**, press **LOCK KNOBS** or **LOCK
+     WIRING** to lock every knob, or the whole structure.
 2. Press **⚡ EVOLVE FROM THIS**.
 3. Play the child when it lands at the top of the bank.
 
-Breeding then changes everything except what you locked. **CLEAR LOCKS**
-releases them all.
+Breeding then changes everything except what you locked. **CLEAR LOCKS**, in
+the same ▾, releases them all.
 
 The button reads **⚡ EVOLVING…**, and the job slot in the menu bar shows
-*⚡ evolving Soft Pad* with **STOP**, which drops the walk and adds nothing.
+*⚡ evolving Soft Pad* with **STOP**, which drops the walk and adds nothing;
+⚡'s ▾ has **STOP EVOLVING** too.
 The rack, the bank, and the pairs go on answering while it walks. If you go on
 editing, the child waits in the bank rather than replacing your edits, and its
 toast has an **OPEN IT** button.
@@ -198,7 +243,8 @@ in the reference has the rule.
 
 ## The ⋯ menu
 
-Each module’s **⋯** menu:
+The selected module’s **⋯** (or right-click any module, hold a finger on it,
+or press <kbd>F2</kbd> on it):
 
 | | |
 |---|---|
@@ -208,18 +254,18 @@ Each module’s **⋯** menu:
 | **duplicate** | A second one in series, with the same settings. Grayed on a source |
 | **set aside** | Leaves the socket [empty and silent](#empty-sockets). Drag it back any time |
 | **bypass** | The input passes straight through. Grayed on a source |
-| **modulate → *destination*** | Arms the module rail at the modulators, for this module’s modulation input. Only on a module that has one |
+| **modulate → *destination*** | Opens the catalog at the modulators, for this module’s modulation input. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
 | **swap the two inputs** | On the six two-input modules only |
 | **delete** | Below a rule, in red. A source leaves its socket empty |
 
-**replace with…**, **insert…**, and **modulate** hand off to the [module
-rail](./wiring.md) with the socket already chosen and lit, so there is one
+**replace with…**, **insert…**, and **modulate** hand off to the
+[catalog](./wiring.md) with the socket already chosen and lit, so there is one
 list of modules in one place. A modulator’s own ⋯ has two rows: **replace
 with…** and **unplug this modulator**.
 
-Anything you bypass or delete goes to **SET ASIDE** rather than disappearing,
-and stays there across a reload.
+Anything you bypass or delete is set aside rather than disappearing (**SET
+ASIDE n** at the well's foot), and stays there across a reload.
 
 ## Empty sockets
 
@@ -229,11 +275,11 @@ another socket, and the socket it leaves is **empty**. It shows as a small dashe
 one side of a mix, only that side goes quiet.
 
 If the empty socket was the patch’s only source, the whole patch is silent.
-The caption under its name says *silent: nothing reaches the output*, ▶ and
-**KEEP AS NEW** wait for a source, and the line above the rack says *nothing
-to rate: no source reaches the output*.
+The subtitle under its name says *silent: nothing reaches the output*, the
+face at OUT and **KEEP AS NEW** wait for a source, and the line above the well
+says *nothing to rate: no source reaches the output*.
 
-1. Pick any source in the module rail. The empty socket is the one already
+1. Pick any source in the catalog. The empty socket is the one already
    chosen.
 2. Place it, or press <kbd>⌘Z</kbd>, and you hear the patch again.
 
@@ -250,5 +296,6 @@ The picture carries the patch inside it: open an Auracle PNG or SVG with
 ## What to try next
 
 - Lock a module you like and press ⚡ EVOLVE FROM THIS a few times.
-- Turn **LEANS** on, and see which kinds of module your taste leans toward.
-- [Wiring and the module rail](./wiring.md): add a module, or rewire one.
+- Turn **leans** on (in the layout's ▾), and see which kinds of module your
+  taste leans toward.
+- [Wiring and the catalog](./wiring.md): add a module, or rewire one.

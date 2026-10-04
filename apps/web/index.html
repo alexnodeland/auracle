@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=74">
+<link rel="stylesheet" href="style.css?b=75">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -48,7 +48,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=138";
+    s.src = "main.js?b=139";
     document.head.appendChild(s);
   }
 })();
@@ -316,116 +316,62 @@
 
       <!-- ------------- PATCH: what the sound is made of ------------- -->
       <section id="view-patch" class="view hidden" aria-label="Patch">
-        <!-- Two rows, always, whatever the patch is called: the name, the
-             callout and ⚡ on the first; teaching, the camera and the locks on
-             the second. This row used to wrap or unwrap with the length of the
-             name, which moved the rack and everything under it by 47px on a
-             patch change. -->
-        <div class="stage-toolbar patch-head">
-          <!-- Transport belongs to the patch, not to the verb row: it plays
-               *this* thing, so it sits against this thing's name as a round
-               button the eye finds without reading. Out of the row, seven
-               equal pills become six, and the six that remain can be ranked. -->
-          <div class="subject-block">
-            <span class="tt" title="Pick a sound from the bank first"><button class="xport" id="rack-play" aria-label="Play this sound" disabled>▶</button></span>
-            <span id="subject-face"></span>
-            <div class="subject-id">
-              <div class="subject-name" id="rack-subject">no sound open</div>
-              <div class="subject-meta" id="rack-meta"></div>
+        <!-- The head, to the specimen (Plan-008 C2a, `z-desk-patch.png`):
+             the cap (PATCH, and the family where the engine has one), the
+             name at the display size, and the subtitle the rack counts
+             ("4 modules · 1 modulator, in signal order"). On the right, what
+             to do next above the acts: the edit bar once something was
+             edited, ⚡ EVOLVE FROM THIS with its locks under ▾, ADD MODULE,
+             NEW PATCH (CLEAR and BACK TO ‹name› in a new patch) and HOW TO
+             READ THIS. Every line keeps its height, so the well under it
+             never moves from one sound to the next. -->
+        <div class="pt-head" id="pt-head">
+            <div class="pt-cap-row">
+              <span class="pt-cap">patch</span>
+              <span class="pt-cap pt-family" id="pt-family"></span>
             </div>
-          </div>
-          <!-- A reserved cell, not an inline chip: the callout's position must
-               not be a function of how long the patch's name happens to be.
-               The name's column is fixed, so the callout starts at the same x
-               for every patch, and the cell keeps its place when empty. -->
-          <div class="callout-row">
+            <!-- What to do next: refit, breed a generation, what a generation
+                 bred. -->
             <button class="nextstep" id="nextstep" title="What to do next"></button>
-            <!-- A patch from nothing, at the right of the name's row as the
-                 specimen has it: NEW PATCH, then CLEAR and BACK TO ‹name›
-                 while one is open. Filled by patch.js (`renderTools`). The
-                 callout gives way to it (it ellipsizes), so neither row of
-                 the header grows. -->
-            <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
-          </div>
-          <!-- The act the whole app is for, on the name's row: beside the
-               thing it breeds from, and above the locks that prepare it. -->
-          <span class="tt evolve-slot" title="Pick a sound from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
-          <!-- Four groups, ranked, with real gutters between them. Seven
-               equal pills in one run is zero hierarchy: teaching the model,
-               aiming the camera, pinning what you like and breeding the next
-               generation are four different kinds of act, and the last of
-               them is the one the whole app is for — which is why it has the
-               row above to itself. -->
-          <div class="rack-tools">
-            <div class="seg seg-teach" role="group" aria-label="Teach the model">
-              <!-- The express path. Commit normally plays both versions and asks;
-                   tick this when you already know, and it commits straight away.
-                   The two answers are logged distinguishably, because an
-                   assertion and a heard comparison are not the same evidence.
-                   One-shot: it unticks after the commit it skipped, because a
-                   tick that stayed turned every later commit (and every ⚡ on an
-                   edited patch) into a claim, without a word. -->
-              <label class="toggle seg-item" title="Skip the comparison once: the next keep as new tells the model you’d pick the edit, without hearing both, and this unticks itself">
-                <input type="checkbox" id="improve-check"><span>pick the edit</span>
-              </label>
-              <span class="tt" title="Nothing to keep yet: turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>keep as new</button></span>
+            <h1 class="pt-title subject-name" id="rack-subject">no sound open</h1>
+            <!-- The subtitle: what the rack is made of, and what is happening
+                 to it (opening, waiting, silent, locks). The budget joins it
+                 near a ceiling, or under Show measurements. -->
+            <p class="pt-sub"><span class="subject-meta" id="rack-meta"></span><span class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></span></p>
+              <!-- The edit bar: shown only once something was edited (its slot
+                   is kept, so nothing beside it moves). KEEP AS NEW plays your
+                   edit against the original and asks; with "pick the edit"
+                   ticked it takes your word for it, once. -->
+              <div class="pt-editbar" id="pt-editbar" role="group" aria-label="Your edits" hidden>
+                <span class="pt-ed-n mono" id="pt-ed-n"></span>
+                <span class="tt" title="Nothing to keep yet: turn a knob first"><button class="pt-ed-btn" id="rack-commit" type="button" disabled>keep as new</button></span>
+                <span class="pt-ed-sep" aria-hidden="true">·</span>
+                <label class="toggle pt-ed-pick" title="Skip the comparison once: the next keep as new tells the model you’d pick the edit, without hearing both, and this unticks itself">
+                  <span>pick the edit</span><input type="checkbox" id="improve-check">
+                </label>
+                <span class="pt-ed-sep" aria-hidden="true">·</span>
+                <span class="tt"><button class="pt-ed-btn" id="pt-revert" type="button" aria-label="Undo to as opened"><span class="pt-ed-l">undo to as opened</span><span class="pt-ed-g" aria-hidden="true">↺</span></button></span>
+              </div>
+            <div class="pt-headacts">
+              <!-- The act the whole app is for: amber, the model's. Its ▾ holds
+                   the locks that prepare it, and stop while it runs. -->
+              <div class="pt-evolve">
+                <span class="tt evolve-slot" title="Pick a sound from the bank first"><button class="hw-btn small" id="rack-evolve" type="button" disabled>⚡ evolve from this</button></span>
+                <button class="pt-evolve-more" id="pt-evolve-more" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="pt-evmenu" aria-label="Locks for evolving" title="Locks for evolving">▾</button>
+                <div class="pt-menu pt-evmenu hidden" id="pt-evmenu" role="menu" aria-label="Locks for evolving">
+                  <span class="tt" title="Pick a sound from the bank first"><button class="pt-mi" id="lock-knobs" type="button" role="menuitem" disabled>lock knobs</button></span>
+                  <span class="tt" title="Pick a sound from the bank first"><button class="pt-mi" id="lock-structure" type="button" role="menuitem" disabled>lock wiring</button></span>
+                  <span class="tt" title="No locks set: select a module and press L, or click a knob’s lock dot"><button class="pt-mi" id="lock-clear" type="button" role="menuitem" disabled>clear locks</button></span>
+                  <button class="pt-mi hidden" id="pt-evolve-stop" type="button" role="menuitem">stop evolving</button>
+                </div>
+              </div>
+              <button class="pt-act" id="pt-add" type="button" aria-expanded="false" aria-controls="nodebank" title="Add a module · /" aria-label="Add a module (/)"><svg class="pt-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="pt-act-l">add module</span><kbd>/</kbd></button>
+              <!-- A patch from nothing: NEW PATCH, then CLEAR and BACK TO
+                   ‹name› while one is open. Filled by patch.js
+                   (`renderTools`). -->
+              <div class="seg seg-new" id="patch-new" role="group" aria-label="A patch from nothing"></div>
+              <button class="pt-act" id="pt-how" type="button" aria-expanded="false" aria-controls="pt-legend" title="How to read this patch" aria-label="How to read this patch"><svg class="pt-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span class="pt-act-l">how to read this</span></button>
             </div>
-            <!-- Three camera controls in one group: which shape the rack is
-                 drawn in, how much of each plate is drawn, and whether the
-                 map is up. Arrangement and detail are different questions and
-                 stay different buttons — Reaktor's mistake is folding them. -->
-            <div class="seg seg-view" role="group" aria-label="How the rack is drawn">
-              <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn seg-item" id="rack-layout" aria-pressed="false">chain</button></span>
-              <!-- Two verbs that only *act* in freeform, and hold their slots
-                   everywhere else (see `.tt.held`): a control that appears
-                   moves the control beside it, and the control beside this one
-                   is the mode toggle you just pressed.
-
-                   One word each, because two of them at "apply grid" /
-                   "reset positions" wrapped this group onto a second row at
-                   1280 — 35px out of the same vertical budget M4 is fighting
-                   for. The tooltip carries the sentence.
-
-                   `snap` pins whatever is currently on screen to the 24px grid,
-                   so a patch that arrived from evolution with no layout has one
-                   to start dragging from. -->
-              <span class="tt held" title="Snap every module to the 24 px grid and pin it there. If the hand layout has spread past anything the frame can show, this lays it out again from the signal chain instead."><button class="util-btn seg-item" id="rack-grid" disabled>snap</button></span>
-              <!-- The way back. Freeform never rearranges your plates — that is
-                   its contract and the reason a recovery *verb* has to exist:
-                   a persisted layout can strand the view completely, and
-                   cycling the mode (which does work) is not a thing anything
-                   on screen said. -->
-              <span class="tt held" title="Throw away the hand positions for this patch and lay it back out along the signal chain."><button class="util-btn seg-item" id="rack-reseed" disabled>reset</button></span>
-              <!-- The tooltip is rewritten by `syncLodBtn` on boot and on every
-                   frame resize: the threshold is a function of the frame's
-                   height now, so the only honest number is the live one. -->
-              <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
-              <!-- A fourth way of reading the rack, and the only one that
-                   draws the model onto it. Off by default: it is a second
-                   colour law over the first, and it speaks about families of
-                   module rather than about any one plate — its tooltip says
-                   so, and so does every plate's. -->
-              <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">leans</button></span>
-              <span class="tt" title="Show the minimap (bottom left of the rack). Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
-            </div>
-            <!-- Quieter and smaller than the rest on purpose: locking is a
-                 preparation for evolving, not an act of its own. -->
-            <div class="seg seg-locks" role="group" aria-label="Locks">
-              <span class="tt" title="Pick a sound from the bank first"><button class="util-btn seg-item" id="lock-knobs" disabled>lock knobs</button></span>
-              <span class="tt" title="Pick a sound from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
-              <span class="tt" title="No locks set: click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
-            </div>
-          </div>
-        </div>
-        <!-- One line, not three: at 77px this card was the second-largest
-             thing between the rack and the menubar on a first visit, and it
-             explained COMMIT and the node bank, which explain themselves (the
-             commit button's tooltip; the rail's own ?). What is left is the
-             three gestures nothing else on screen teaches. -->
-        <div class="bench-tour hidden" id="bench-tour">
-          <span class="bt-copy">Live under your fingers: <b>drag a knob</b> and hear it change.
-            <b>Lock</b> what you love (a knob’s dot, or a module’s <b>▢</b>), then <b>⚡ evolve from this</b>.</span>
-          <button class="util-btn" id="bt-close">got it</button>
         </div>
         <!-- What the model currently believes about the patch under your
              hands, and how much room that patch has left. Above the rack
@@ -438,10 +384,6 @@
              already edited away, silently and with no way to tell. This one is
              recomputed from the bench on every reply and says so when it is
              waiting. -->
-        <div class="belief-row mono" id="belief-row">
-          <div class="belief" id="belief" role="status"></div>
-          <div class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></div>
-        </div>
         <div class="play-body">
           <div class="play-canvas">
             <!-- The frame and the viewport are two different things now. The
@@ -453,7 +395,7 @@
                  scrolled with the patch and rode over modules. -->
             <div class="rack-frame" id="rack-frame">
               <div class="rack-scroll" id="rack-scroll">
-                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack: arrow keys move between controls, and up or down adjusts"></svg>
+                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="The patch: left and right walk the modules in signal order, Enter goes into one, and up or down turns a knob"></svg>
               </div>
               <!-- The scope, in a CRT bezel. A trace floating on the panel
                    with no housing reads as a decal; the bezel, the graticule
@@ -466,80 +408,33 @@
               </div>
               <!-- Where you are in the patch, and the fastest way to be
                    somewhere else. Bottom-left, out of the scope's corner. -->
-              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
-              <!-- What is about to happen, pinned to the plate it will happen
-                   to, named by the title silkscreened on that plate. The rail
-                   1000px away used to be the only place this was said, and it
-                   said it with the trace id. -->
-              <!-- Second cell: what the model expects this placement to be
-                   worth. It is a property of the module, not of the socket
-                   (φ counts modules, it does not record cables), so the chip
-                   carries the caveat as its tooltip and the strip under the
-                   rack says it in words. -->
-              <div class="pick-chip hidden" id="pick-chip" role="status">
-                <span class="pick-chip-text"></span>
-                <span class="pick-chip-price mono hidden"></span>
-                <kbd>esc</kbd>
-                <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
+              <!-- HOW TO READ THIS: what each mark on the canvas is, over the
+                   well's foot while it is open (the head's toggle). -->
+              <div class="pt-legend" id="pt-legend" role="region" aria-label="How to read this patch" hidden>
+                <span class="pt-leg-cap">how to read this</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-plate" x="4" y="3" width="36" height="16" rx="4"/></svg>A module: its name and all its knobs</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-audio" d="M3 16C20 16 24 6 41 6"/></svg>A cable: sound, flowing right to OUT</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-mod" d="M22 20V2"/></svg>Dashed: a modulator, with its depth and rate as set</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-arc" d="M15.3 16.7A8 8 0 1 1 28.7 16.7"/><path class="lg-was" d="M28 5L31 2"/></svg>A pale tick on a knob: where it was when you opened the sound</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-mark" x="14" y="4" width="16" height="14" rx="3"/><path class="lg-bars" d="M18 15v-3M22 15v-5M26 15v-7"/></svg>A level: each cable's, measured on one render (hollow until it is)</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-light" cx="8" cy="11" r="2.2"/><circle class="lg-light" cx="22" cy="11" r="2.2"/><circle class="lg-light" cx="36" cy="11" r="2.2"/></svg>Lit while notes sound: the live meter</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-guess" x="4" y="3" width="36" height="16" rx="4"/></svg>Amber, dashed: the model's guess</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-lock" x="4" y="3" width="36" height="16" rx="4"/></svg>An amber edge: locked, so breeding keeps it (L)</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
               </div>
-              <!-- The frame's own way out of a stranded freeform layout. It
-                   appears only when the fit has genuinely failed — under 0.3×
-                   *and* an arrangement measurably larger than the chain — so
-                   it is never advice about a patch that is merely big. -->
-              <div class="fit-hint hidden" id="fit-hint" role="status">
-                <span class="fh-copy">This layout has spread past the frame.</span>
-                <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
-              </div>
-              <!-- The model's guess for the next module: GUESS · FILTER and its
-                   reason in the model's italic, over the rack's top left. Its
-                   module is drawn at its socket in the rack (patch.js). -->
-              <div class="guess-read" id="guess-read" role="status" hidden></div>
-              <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
-            </div>
-            <!-- The final say on the split below, and the in-house pattern for
-                 it: the node bank's rail is dragged the same way, on the other
-                 axis. The strip takes one line out of the patcher, always; a
-                 description opens over the rack's bottom edge rather than
-                 shrinking it, and this is how tall it opens. -->
-            <div class="dock-resize" id="dock-resize" role="separator"
-                 aria-orientation="horizontal" tabindex="0"
-                 aria-label="Resize the spec strip: drag, or press up and down"
-                 title="Drag to set how tall the spec strip opens when it describes a module. It opens over the rack, so the rack never resizes under the pointer."></div>
-            <!-- The spec card, docked. It used to float over the graph it was
-                 describing — you could read what a module does or look at
-                 where it would go, never both — while the bench's lower band
-                 sat empty. Reading left to right: what it is, what it does,
-                 what the model thinks of it. Its box is one line, so nothing
-                 under the pointer moves as its content changes (M4: 120px of
-                 "point at a module" was the difference between a patch with
-                 knobs on it and a block diagram at 1280×900), and a
-                 description opens upward over the rack instead of taking the
-                 rack's height — see `.spec-dock` in style.css. -->
-            <div class="spec-dock" id="spec-dock"></div>
-            <!-- Held, not "tray". Placement goes direct from the node bank
-                 now, so the only thing that lands here is what you unplugged —
-                 and the strip says its own terms rather than implying they
-                 are safe. -->
-            <div class="tray" id="tray">
-              <span class="tray-label">set aside</span>
-              <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint">Anything you unplug, delete, or bypass is set aside here, and stays across a reload. Drag it back onto a ○ to put it in.</span></div>
-            </div>
-          </div>
-          <!-- The node bank: the instrument's catalogue, not a shelf. Every
-               entry says what it does to a signal (the glyph), where it can
-               legally go (the port pips), and — only once the pool carries
-               enough evidence — what the model thinks of it (the θ bar). -->
-          <aside class="nodebank" id="nodebank" aria-label="Module rail">
-            <button class="nb-collapse" id="nb-collapse" title="Fold the module rail away" aria-label="Fold the module rail away" aria-expanded="true" aria-controls="nb-body">▸</button>
-            <!-- Collapsed, the rail keeps its name and its held-count. A drawer
-                 that can hide staged work without saying so is a trap. -->
-            <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the module rail"></button>
-            <div class="nb-resize" id="nb-resize" title="Drag to resize" aria-hidden="true"></div>
+              <!-- The catalog, on demand over the well's left (the
+                   specimen's `pt-cat`): ADD MODULE or / opens it, Esc or ×
+                   closes it. Every entry says what it does to a signal (the
+                   glyph) and where it can legally go (the port pips); under
+                   the model view, what the model thinks of it (the θ bar). -->
+              <aside class="nodebank pt-cat" id="nodebank" aria-label="Catalog of modules" hidden>
             <div class="nb-body" id="nb-body">
               <header class="nb-head">
-                <span class="panel-label">modules</span>
+                <span class="panel-label">add a module</span>
                 <span class="mono" id="nb-count"></span>
-                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalog works" aria-label="How the module rail works">?</button>
+                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalog works" aria-label="How the catalog works">?</button>
+                <button class="nb-collapse" id="nb-collapse" type="button" title="Close the catalog · Esc" aria-label="Close the catalog" aria-controls="nodebank">✕</button>
               </header>
               <div class="nb-search">
                 <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
@@ -550,6 +445,11 @@
               <!-- What the patch on the bench is actually made of. The rail is
                    a legend for the canvas beside it, so it should be able to
                    answer "what am I looking at" as well as "what can I add". -->
+              <!-- What is set aside, first: the same shelf, to drag from. -->
+              <section class="nb-aside hidden" id="nb-aside" aria-labelledby="nb-aside-h">
+                <h3 class="nb-sect"><span id="nb-aside-h">set aside</span><span class="nb-n mono" id="nb-aside-n"></span></h3>
+                <div class="nb-aside-list" id="nb-aside-list"></div>
+              </section>
               <section class="nb-inpatch hidden" id="nb-inpatch" aria-labelledby="nb-inpatch-h">
                 <h3 class="nb-sect"><span id="nb-inpatch-h">in this patch</span><span class="nb-n mono" id="nb-inpatch-n"></span></h3>
                 <div class="nb-chips" id="nb-inpatch-list"></div>
@@ -562,7 +462,7 @@
               </div>
               <p class="nb-status mono" id="nb-status"></p>
             </div>
-            <!-- The catalogue's own walkthrough, anchored to the rail rather
+            <!-- The catalog's own walkthrough, anchored to the rail rather
                  than centred in a modal, for the same reason the bank's is:
                  every step points at something in the rail. -->
             <div class="bank-tour nb-tour hidden" id="nb-tour" role="dialog" aria-modal="false" aria-labelledby="nbt-title">
@@ -576,11 +476,54 @@
               </div>
             </div>
           </aside>
-        </div>
-        <!-- Teaching without leaving the instrument. This carries the same
-             pips and the same forecast line as EVOLVE — a stripped-down copy
-             of the loop teaches the user there is nothing here. -->
-        <div class="play-duel mono hidden" id="play-duel">
+              <!-- The well's foot: the camera's corner on the left, then the
+                   readout (`pt-read`): the selected module's name and what it
+                   does in one sentence; pointed at in the catalog, a longer
+                   description opens over the well's bottom edge. -->
+              <div class="pt-foot" id="pt-foot">
+              <!-- The camera, quiet in the corner (Plan-008 C2a): fit, out,
+                   in, the map (where its bookmarks are), and the layout's ▾
+                   (chain, compact, by hand; snap and reset for by hand; the
+                   level of detail; leans). Every gesture stays on the canvas:
+                   the wheel and a drag pan, ctrl-wheel or a pinch zooms at the
+                   pointer, Space+drag and a middle drag pan, ⌘0 ⌘− ⌘=. -->
+              <div class="pt-corner" id="pt-corner" role="toolbar" aria-label="The camera">
+                <button class="pt-cam" id="pt-fit" type="button" title="Fit the whole patch · ⇧Home" aria-label="Fit the whole patch">fit</button>
+                <button class="pt-cam" id="pt-zoom-out" type="button" title="Zoom out · ⌘−" aria-label="Zoom out">−</button>
+                <button class="pt-cam" id="pt-zoom-in" type="button" title="Zoom in · ⌘=" aria-label="Zoom in">+</button>
+                <span class="tt" title="Show the minimap. Shift-click it to bookmark a spot, and ⇧1–9 jumps to one."><button class="pt-cam" id="rack-map-btn" type="button" aria-pressed="false">map</button></span>
+                <div class="pt-layout">
+                  <span class="tt" title="Chain: the signal path on one baseline."><button class="pt-cam" id="rack-layout" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="pt-laymenu">chain</button></span>
+                  <div class="pt-menu pt-laymenu hidden" id="pt-laymenu" role="menu" aria-label="Layout and detail">
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="chain" aria-checked="true">chain: in signal order</button>
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="compact" aria-checked="false">compact: packed tight</button>
+                    <button class="pt-mi" type="button" role="menuitemradio" data-layout="freeform" aria-checked="false">by hand: drag them where you like</button>
+                    <i class="pt-msep" aria-hidden="true"></i>
+                    <!-- Snap pins whatever is on screen to the 24 px grid; reset
+                         lays it back out along the chain. Both act on a layout
+                         by hand only. -->
+                    <span class="tt" title="Snap every module to the 24 px grid and pin it there. If the hand layout has spread past anything the frame can show, this lays it out again from the signal chain instead."><button class="pt-mi" id="rack-grid" type="button" role="menuitem" disabled>snap to the grid</button></span>
+                    <span class="tt" title="Throw away the hand positions for this patch and lay it back out along the signal chain."><button class="pt-mi" id="rack-reseed" type="button" role="menuitem" disabled>reset positions</button></span>
+                    <i class="pt-msep" aria-hidden="true"></i>
+                    <!-- Rewritten by `syncLodBtn`: the threshold is a function of
+                         the frame's height. -->
+                    <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="pt-mi" id="rack-lod" type="button" role="menuitem" aria-pressed="false">detail auto</button></span>
+                    <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="pt-mi" id="rack-belief" type="button" role="menuitemcheckbox" aria-checked="false" aria-pressed="false">leans</button></span>
+                  </div>
+                </div>
+              </div>
+              <!-- SET ASIDE n: what was unplugged, deleted or bypassed, kept
+                   across a reload; it opens the shelf to drag from. Shown
+                   only while something is set aside. -->
+              <button class="pt-cam pt-aside" id="tray-chip" type="button" aria-expanded="false" aria-controls="tray" hidden>set aside <b id="tray-n">0</b></button>
+              <div class="pt-read" id="pt-read" aria-live="polite"></div>
+              <!-- TEACH: picks between two sounds without leaving PATCH. -->
+              <button class="pt-cam pt-teach" id="pt-teach" type="button" aria-expanded="false" aria-controls="play-duel" title="Teach it your taste: pick between two sounds" hidden>teach ▸</button>
+              </div>
+              <!-- TEACH, unfolded from its chip over the well's foot: the same
+                   pips and forecast line as EVOLVE, A and B, pick, another
+                   pair, back to the sound you were playing, and ✕ to fold. -->
+              <div class="play-duel mono hidden" id="play-duel" role="region" aria-label="Teach">
           <span class="pd-label amber">teach</span>
           <span class="teach-pips" id="pd-pips" aria-hidden="true"></span>
           <button class="pd-side" id="pd-a" title="Play sound A on the keys below"></button>
@@ -591,6 +534,69 @@
           <button class="util-btn" id="pd-skip" title="Another pair" aria-label="Another pair">↻</button>
           <button class="util-btn" id="pd-back" title="Back to the sound you were playing">← back</button>
           <span class="pd-pred" id="pd-pred"></span>
+          <button class="util-btn pd-fold" id="pd-fold" type="button" title="Fold TEACH away · Esc" aria-label="Fold TEACH away">✕</button>
+        </div>
+              <!-- The shelf the chip opens: each thing set aside, its jack to
+                   drag back onto a ○, what it brings with it, and ✕. -->
+              <div class="tray pt-shelf" id="tray" role="region" aria-label="Set aside" hidden>
+                <span class="tray-label">set aside</span>
+                <div class="tray-items" id="tray-items" aria-live="polite"></div>
+              </div>
+              <!-- The well's edges when the patch is wider than the view: how
+                   many modules lie past each side, and a press brings the
+                   nearest in (main.js `syncEdges`). -->
+              <button class="pt-edge l" id="pt-edge-l" type="button" hidden><span aria-hidden="true">‹</span><b></b></button>
+              <button class="pt-edge r" id="pt-edge-r" type="button" hidden><b></b><span aria-hidden="true">›</span></button>
+              <!-- The face at OUT: the bench's measured face, the same as the
+                   menu bar's chip, past the amp's OUT jack and moved with the
+                   camera (main.js `placeOutFace`). It is the rack's ▶: a
+                   press plays the sound. -->
+              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button></span>
+              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
+              <!-- What is about to happen, pinned to the plate it will happen
+                   to, named by the title silkscreened on that plate. The rail
+                   1000px away used to be the only place this was said, and it
+                   said it with the trace id. -->
+              <!-- Second cell: what the model expects this placement to be
+                   worth. It is a property of the module, not of the socket
+                   (φ counts modules, it does not record cables), so the chip
+                   carries the caveat as its tooltip and the strip under the
+                   rack says it in words. -->
+              <!-- The well's top line while something is in hand (the pick
+                   chip, Plan-008 C2a): the module, its price ("prices what,
+                   not where"), ▶ to hear it at the socket with the socket's
+                   scope, what happens at the socket under the pointer, and
+                   Esc to put it down. -->
+              <div class="pick-chip hidden" id="pick-chip" role="status">
+                <span class="pick-armed" id="pick-armed"></span>
+                <span class="pick-chip-text"></span>
+                <span class="pick-chip-price mono hidden"></span>
+                <kbd>esc</kbd>
+                <button class="pick-chip-x" type="button" aria-label="Put it down (Esc)">✕</button>
+              </div>
+              <!-- The frame's own way out of a stranded freeform layout. It
+                   appears only when the fit has genuinely failed — under 0.3×
+                   *and* an arrangement measurably larger than the chain — so
+                   it is never advice about a patch that is merely big. -->
+              <div class="fit-hint hidden" id="fit-hint" role="status">
+                <span class="fh-copy">This layout has spread past the frame.</span>
+                <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
+              </div>
+              <!-- The model's guess for the next module: GUESS · FILTER and its
+                   reason in the model's italic, over the rack's top left. Its
+                   module is drawn at its socket in the rack (patch.js). -->
+              <div class="guess-read" id="guess-read" role="status" hidden></div>
+              <!-- What the model makes of the patch in hand, on the well's top
+                   line (the specimen's), when it has a guess; the module guess
+                   and the thing in hand take the line while they are up.
+                   TODO(Plan-008 C2b): under ⌥ it becomes the subtitle's
+                   belief line. -->
+              <div class="belief-row mono" id="belief-row">
+                <div class="belief" id="belief" role="status"></div>
+              </div>
+              <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1031,25 +1037,25 @@
         <p><kbd>a w s e d f t g y h u j k</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo an edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>Space</kbd> hear the sound you’re playing · in PERFORM, <kbd>n</kbd> offer, hold <kbd>b</kbd> to peek, <kbd>⇧↵</kbd> take, <kbd>↵</kbd> keep, <kbd>⇧⌫</kbd> back, <kbd>⇧F</kbd> stage mode, and <kbd>?</kbd> on a control shows what it does to this sound, measured (BRIGHT’s has a lesson on filters) · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the sound you’re on · <kbd>m</kbd> save it · in the bank, <kbd>c</kbd> compares a bred sound with its seed · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> hear A or B · <kbd>←</kbd>/<kbd>→</kbd> pick · <kbd>n</kbd> another pair · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
-        <div class="help-h">the rack canvas</div>
-        <p><kbd>Home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
-        <p><kbd>Ctrl</kbd> and the wheel, or a pinch, zooms at the pointer · the wheel or a drag on bare canvas pans · <kbd>Space</kbd> and a drag, or a middle-button drag, pans from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
-        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>Shift</kbd> to place it freely. <b>snap</b> pins everything where it sits now, on the grid, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file.</p>
+        <div class="help-h">the patch's canvas</div>
+        <p><kbd>⇧Home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in · the same in the well’s corner: <b>fit</b>, <b>−</b>, <b>+</b></p>
+        <p><kbd>Ctrl</kbd> and the wheel, or a pinch, zooms at the pointer · the wheel or a drag on bare canvas pans · <kbd>Space</kbd> and a drag, or a middle-button drag, pans from anywhere on it. <b>map</b> shows where you are (<kbd>Shift</kbd>-click it to bookmark a spot, <kbd>⇧1–9</kbd> to go back); at the edges, ‹ and › say how many modules lie past them.</p>
+        <p>The layout’s <b>▾</b>: <b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>by hand</b> is yours: drag a module by its face and it snaps to the grid, or hold <kbd>Shift</kbd> to place it freely. <b>snap to the grid</b> pins everything where it sits now, which is how you start from a bred patch. Positions are kept per patch, survive a reload and a ⚡ generation, and travel with a downloaded patch file. <b>detail</b> leaves each module three knobs to read when you zoom out.</p>
         <div class="help-h">the keybed</div>
         <p><b>vol</b>, <b>midi</b> and <b>● rec</b> sit at the dock's right end: <b>● rec</b> bounces your playing to a WAV. <b>keys ⋯</b> holds the rest, and is lit while any of hold, uni, arp or sync is on: <b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate, and swing · <b>uni</b> stacks all 4 voices detuned · <b>glide</b> slides one note into the next when you play a line (chords stay clean) · <b>◼ silence</b> stops every voice</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>span</b> sets how many octaves it shows: fewer octaves, wider keys. Both are for playing with your fingers.</p>
         <p>A MIDI keyboard plays it, with velocity, pitch bend, and the sustain pedal.</p>
       </div>
       <div>
-        <div class="help-h">the rack</div>
-        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. ⋯ restructures a module; ▢ locks it so breeding can’t touch it. <kbd>Tab</kbd> into the rack, then arrows to move, <kbd>↑</kbd>/<kbd>↓</kbd> to turn, and <kbd>Space</kbd> or <kbd>Enter</kbd> to cycle a setting (<kbd>Shift</kbd> goes back).</p>
-        <div class="help-h">the module rail</div>
-        <p>The rail on the right is the catalog. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>Esc</kbd> puts it down.</p>
-        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and which way your taste leans on it. Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>
+        <div class="help-h">the patch</div>
+        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. The selected module shows <b>⋯</b>, its structure menu (or right-click it, or <kbd>F2</kbd>), and <b>▢</b>, which locks it so breeding can’t touch it (<kbd>l</kbd>). <kbd>Tab</kbd> into the patch, then <kbd>←</kbd>/<kbd>→</kbd> walk the modules in signal order, <kbd>↑</kbd>/<kbd>↓</kbd> go into a module’s modulators and back, <kbd>Home</kbd>/<kbd>End</kbd> the first and the last, <kbd>Enter</kbd> into its knobs: <kbd>↑</kbd>/<kbd>↓</kbd> turn (<kbd>Shift</kbd> finely), <kbd>Space</kbd> or <kbd>Enter</kbd> cycles a setting (<kbd>Shift</kbd> goes back), <kbd>Esc</kbd> back out. A click on the face at OUT plays the sound.</p>
+        <div class="help-h">the catalog</div>
+        <p><b>add module</b> (or <kbd>/</kbd>) opens the catalog over the well. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it, or <b>▶</b> on the line along the well’s top to hear it there first. <kbd>Esc</kbd> puts it down, and closes the catalog.</p>
+        <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Point at any module for a sentence on what it does and its ports (hold <kbd>⌥</kbd> to see which way your taste leans on it). Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module (quantize, slew, rectify, hold) on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill, replace, or shape it is about to do.</p>
-        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
+        <p>Drag a wired <b>in</b> jack off its socket to unplug: the chain is <b>set aside</b>, even across a reload. <b>set aside</b> at the well’s foot opens the shelf (the catalog lists it first too), and dragging its ● onto a ○ puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or <b>teach</b> at the foot of PATCH’s well). Star and cut sounds in the bank: point at a row for its actions. <b>keep as new</b> plays your edit against the original and asks which you’d reach for (tick “pick the edit” to skip that, once). TASTE draws each pick as it learns from it, and LEARNING shows what it weighs: name your styles there. The <b>?</b> beside <i>Find a sound</i> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>pool</b> is the 40 sounds the model weighs and breeds from:
         a bred sound that joins it replaces the <i>lowest</i>-rated one it can (not saved, nor just kept as new).
         <b>presets</b> is the hand-made library that came with the instrument.

@@ -386,7 +386,7 @@ export function createPatch(host) {
       "data-kind": g.kind, "data-family": g.family, "data-socket": g.socket,
       "aria-label": `The model's guess: ${name}. ${W.guessLine(g, guess.data.against, host.niceName)}. Press Enter to add it.`,
     }, `guess-plate${at.over ? " over" : ""}`);
-    plate.appendChild(svgEl("rect", { x: 0, y: 0, width: at.w, height: at.h, rx: 5 }, "gp-body"));
+    plate.appendChild(svgEl("rect", { x: 0, y: 0, width: at.w, height: at.h, rx: 8 }, "gp-body"));
     const t1 = svgEl("text", { x: 14, y: 22 }, "gp-name");
     t1.textContent = name;
     const t2 = svgEl("text", { x: 14, y: 40 }, "gp-word");
@@ -486,6 +486,7 @@ export function createPatch(host) {
     host.noteOnLanding(resume ? "Back to your new patch." : "A new patch: nothing in it yet.", { undo: host.doUndo });
     renderTools();
     host.renderSubject();
+    host.openCatalog?.();
   }
 
   function clearNew() {
@@ -515,6 +516,7 @@ export function createPatch(host) {
     renderTools();
     host.renderSubject();
     closeSheet();
+    host.closeCatalog?.();
   }
 
   /** Modules in the patch, as the rack counts them: not the amp, not an
@@ -536,8 +538,9 @@ export function createPatch(host) {
   function subject() {
     if (!fresh.on) return null;
     const { a, c } = counts();
+    // "from nothing" is the cap's (PATCH · FROM NOTHING), as the specimen
+    // sets it; the subtitle counts.
     const parts = [
-      "from nothing",
       W.count(a, "module"),
       c ? W.count(c, "modulator") : "",
       host.vetSilent() ? "nothing to hear yet" : "",
@@ -566,13 +569,13 @@ export function createPatch(host) {
     // (the toolbar keeps its rows), and the button is named by its
     // aria-label and its tooltip.
     const btn = (id, glyph, label, title, on, extra) => {
-      const b = el("button", { class: "util-btn seg-item", id, type: "button", title, "aria-label": title, ...extra });
+      const b = el("button", { class: "pt-act", id, type: "button", title, "aria-label": title, ...extra });
       const svg = document.createElementNS(SVG_NS, "svg");
       svg.setAttribute("viewBox", "0 0 24 24");
       svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("class", "pn-ic");
+      svg.setAttribute("class", "pt-ic");
       svg.innerHTML = GLYPHS[glyph];
-      b.append(svg, el("span", { class: "pn-label", text: label }));
+      b.append(svg, el("span", { class: "pt-act-l", text: label }));
       b.disabled = !on;
       return b;
     };
@@ -685,6 +688,15 @@ export function createPatch(host) {
     sheet.rows = [];
     const rows = el("div", { class: "ms-rows" });
     for (const k of m.knobs || []) rows.append(rowFor(m, k));
+    // AUDIO IN's and CAPTURE's lane buttons (the input line, MONITOR, NEW
+    // CLIP, ALLOW INPUT; RECORD) are in the sheet too, a finger's size: each
+    // presses the lane's own button on the rack, so there is one of each.
+    sheet.lane = null;
+    if (m.kind === "audio_in" || m.kind === "capture") {
+      const box = el("div", { class: "ms-lane", role: "group", "aria-label": m.kind === "capture" ? "Recording" : "Your input" });
+      sheet.lane = { box, key: m.key, buttons: [] };
+      rows.append(box);
+    }
     const head = el("div", { class: "ms-head" },
       el("div", { class: "ms-title" },
         el("span", { class: "ms-name", text: name }),
@@ -706,10 +718,20 @@ export function createPatch(host) {
         }, "remove module"))
       : null;
     s.setAttribute("aria-label", `${name} settings`);
+    // The sound's face beside the settings (the specimen's `.ms` figure): the
+    // bench's measured face, the same as the one at OUT, never an estimate;
+    // "as made" until it is edited, "measured" after, "measuring…" while an
+    // edit is on its way to its render.
+    const face = el("span", { class: "ms-face" });
+    const cap = el("figcaption", { class: "ms-cap" });
+    sheet.face = face;
+    sheet.cap = cap;
     s.replaceChildren(
       el("div", { class: "ms-grab", "aria-hidden": "true" }),
       head,
-      el("div", { class: "ms-body" }, says ? el("p", { class: "ms-says", text: says }) : null, rows),
+      el("div", { class: "ms-body" },
+        el("div", { class: "ms-left" }, says ? el("p", { class: "ms-says", text: says }) : null, rows),
+        el("figure", { class: "ms-fig", "aria-label": "The sound's face" }, face, cap)),
       foot,
     );
     paintSheet(m);
@@ -874,8 +896,43 @@ export function createPatch(host) {
     if (m) paintSheet(m);
   }
 
+  /** The sheet's lane buttons, read off the lane on the rack as it is now. */
+  function paintLane() {
+    const L = sheet.lane;
+    if (!L) return;
+    const svg = host.rackSvg();
+    const plate = svg && svg.querySelector(`g.mod-group[data-key="${CSS.escape(L.key)}"]`);
+    const stops = plate ? [...plate.querySelectorAll("[data-stop]")] : [];
+    L.box.replaceChildren();
+    for (const s of stops) {
+      if (s.closest(".hidden")) continue;
+      const word = (s.querySelector(".ain-btn-text, .ain-dev-text")?.textContent || s.getAttribute("aria-label") || "").trim();
+      const on = s.getAttribute("aria-pressed") === "true" || s.classList.contains("on");
+      const b = el("button", {
+        class: `ms-lane-btn${on ? " on" : ""}`, type: "button", "data-stop": s.dataset.stop,
+        "aria-label": s.getAttribute("aria-label") || word,
+        "aria-pressed": s.hasAttribute("aria-pressed") ? String(on) : null,
+        text: word,
+      });
+      b.addEventListener("click", () => {
+        const now = plate.isConnected ? s : host.rackSvg()?.querySelector(`g.mod-group[data-key="${CSS.escape(L.key)}"] [data-stop="${s.dataset.stop}"]`);
+        now?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+        // What the press changed (MONITOR lit, RECORD rolling), said back.
+        setTimeout(paintLane, 60);
+        setTimeout(paintLane, 600);
+      });
+      L.box.append(b);
+    }
+  }
+
   function paintSheet(m) {
     if (!sheet.el) return;
+    paintLane();
+    if (sheet.face) {
+      host.paintFace?.(sheet.face);
+      const st = host.benchState?.() || {};
+      sheet.cap.textContent = st.pending ? "measuring…" : st.dirty ? "measured" : "as made";
+    }
     const variant = knobVariant(m);
     for (const r of sheet.rows) {
       const k = (m.knobs || []).find((x) => x.addr === r.addr) || host.knobByAddr(r.addr);
@@ -1081,8 +1138,11 @@ export function createPatch(host) {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !host.visible()) return;
     if (sheet.el && sheet.el.classList.contains("on")) {
+      // One thing a press: the sheet closes, and the rack's chain (the
+      // selection, the catalog) waits for the next Esc.
       closeSheet();
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     if (fresh.on && !host.escBusy() && !e.defaultPrevented) {
@@ -1107,6 +1167,8 @@ export function createPatch(host) {
     shown,
     hidden,
     renderTools,
+    counts,
+    isNew: () => fresh.on,
     openSheet,
     closeSheet,
     // For the debugging handle (`window.__aur`), never for a test to drive.

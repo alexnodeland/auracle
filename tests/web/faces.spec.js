@@ -120,7 +120,7 @@ test("a face appears on every row, card and chip once its render lands", async (
   await expect(page.locator("#face-b.face-slot img.face")).toHaveCount(1);
   // PATCH: the header and the teach strip's A and B.
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
-  await expect(page.locator("#subject-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout: 60_000 });
   await expect(page.locator("#pd-a .face-slot img.face")).toHaveCount(1, { timeout: 30_000 });
   await expect(page.locator("#pd-b .face-slot img.face")).toHaveCount(1);
   // PERFORM: the sound in hand, and B once an offer has grown.
@@ -222,7 +222,7 @@ test("the sound's card downloads with its face, its name and its patch", async (
   await booted(page);
   await bankDrawn(page);
   await page.locator("#bank-list .bank-item[data-id] .bi-name").first().click();
-  await expect(page.locator("#subject-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.locator("#out-face img.face")).toHaveCount(1, { timeout: 60_000 });
   const name = (await page.locator("#rack-subject").textContent()).trim();
   await page.locator("#ovf-btn").click();
   await page.locator("#image-btn").click();

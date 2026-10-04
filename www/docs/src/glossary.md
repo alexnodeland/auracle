@@ -177,11 +177,12 @@ order the model rates it, TASTE’s halos, and EVOLVE’s guess for the pair
 before you pick. A tap on **MODEL** keeps it up. See [reading what it
 learned](./reading-the-model.md#the-model-view).
 
-### Module, module rail
+### Module, catalog
 
-A module is one part of a patch: a VCO, a filter, a reverb. The module rail,
-headed **MODULES**, is the list on PATCH’s right that you add them from. See
-[wiring and the module rail](./wiring.md).
+A module is one part of a patch: a VCO, a filter, a reverb. The catalog,
+headed **ADD A MODULE**, is the list you add them from: **ADD MODULE** (or
+<kbd>/</kbd>) opens it over the left of PATCH's well. See [wiring and the
+catalog](./wiring.md).
 
 ### Named control
 
@@ -285,8 +286,9 @@ random number generator’s seed is always called a random seed.)
 
 ### Set aside
 
-The strip under the rack, labeled **SET ASIDE**. Anything you unplug, delete,
-or bypass goes there instead of vanishing, and stays across a reload.
+Anything you unplug, delete, or bypass is set aside instead of vanishing, and
+stays across a reload: **SET ASIDE n** at the foot of PATCH's well opens the
+shelf you drag it back from, and the catalog lists it first.
 
 ### Stage mode
 

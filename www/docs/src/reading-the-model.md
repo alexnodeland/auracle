@@ -20,7 +20,7 @@ show. This page is about reading them well.
 ## Five states, and what each means
 
 The app tells five states apart, and never lets two of them look alike. A
-module’s spec card in the module rail says them in these words:
+module’s spec card in PATCH's catalog says them in these words:
 
 | The card says | It means |
 |---|---|
@@ -34,8 +34,9 @@ A dash is not zero. “The model isn’t sure yet” and “the model has had no
 chance to form a view” are different statements, and one gray bar can’t say
 both.
 
-On the module rail, *still a guess* is a hollow bar whose whisker crosses
-zero, and a lean it’s sure of is a solid bar. The three silences before them
+In the catalog, under the model view (hold <kbd>⌥</kbd>), *still a guess* is
+a hollow bar whose whisker crosses zero, and a lean it’s sure of is a solid
+bar. The three silences before them
 are a dash. LEARNING’s weights draw the same two marks.
 
 ## Read the whisker, not the bar
@@ -63,7 +64,7 @@ drawn as the app draws them.
 </figcaption>
 </figure>
 
-The module rail’s bars follow the same logic, which is why they draw a dash
+The catalog's bars follow the same logic, which is why they draw a dash
 below five sounds that use the module. A lean learned from three examples
 would otherwise look the same as one learned from three hundred.
 

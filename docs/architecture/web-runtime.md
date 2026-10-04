@@ -396,7 +396,112 @@ lane, holding `knobDragging` while a finger is down so no knob is rebuilt
 under it. It reaches main.js only through the host it is handed, and main
 calls it back at a handful of points: `onWorker` (its three replies),
 `benchLanded`, `rackBuilt` and `platesMoved`, `rejected`, `refit`,
-`committed`, and `shown`/`hidden`.
+`committed`, and `shown`/`hidden`. A new patch opens the catalog and leaving
+it closes it (`host.openCatalog`/`closeCatalog`); the sheet's figure is the
+bench's face (`host.paintFace`, captioned from `host.benchState`), and AUDIO
+IN's and CAPTURE's lane buttons are in the sheet as buttons that press the
+lane's own on the rack, so there is one of each.
+
+### PATCH's canvas
+
+PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
+(`buildRack`), so every hook on it (`g.mod-group[data-key]`, `[data-addr]`,
+`.jack`, the motion system's records) is unchanged:
+
+- **The plates** are drawn at the specimen's scale: `PLATE_W` steps 84–240
+  with one row of up to four knobs (`PLATE_COLS`), a 30-unit head
+  (`PLATE_HEAD`), 56-unit rows (`KNOB_ROW`), 22-unit knobs (`KNOB_R` 11),
+  56 units between layers (`LAYER_GAP`), and a fit that stops at 1.25×
+  (`FIT_MAX`), so a four-module patch opens near 1× at 1440 px and its rack
+  type prints at its tokens' sizes. The setting that names a module's kind
+  (`plateSetting`: a `mode`/`wave`/`kind`/`table`/`type` enum) is the control
+  in the head (`.plate-set`); the body draws the rest (`bodyKnobs`, which
+  `moduleBox`, `knobPos` and `bodyBottom` share), each knob's value then its
+  label, a setting as its printed value (`enumShown`) over a dotted rule. The
+  amp's head draws `paintEnvFig` from its four knobs (repainted in
+  `paintKnob`). ⋯ and the lock sit in a pocket on the plate's top edge
+  (`WELL_Y`), which is why `STACK_GAP` is 36. Automatic detail switches to
+  compact under 0.45× (`LOD_LINE`: where a 22-unit knob stops being a target;
+  no longer scaled by the frame's height), with its 8% band below the line.
+  Above it, where the silkscreen floor takes the readouts (`data-illegible`
+  `value`), the names and head settings print larger, as compact draws them
+  (`svg.lod-compact`), and every knob stays a control. Compact keeps AUDIO
+  IN's and CAPTURE's lanes. Audio cables
+  are level S-curves (`wirePathD`); a two-input module's input labels sit
+  outside the plate (`addJack`'s `outside`), and plain `in`/`out` are not
+  printed (they stay the jacks' accessible names).
+
+- **The head** is `renderSubject`: the cap's family (a preset's category, only
+  while unedited), the name, and the subtitle the rack counts (patch.js
+  `counts`: not the amp, not an empty socket; modulators apart) with the
+  layout's words and the states the caption carried. The edit bar
+  (`syncEditBar`) shows while the bench is edited (`wb.dirty` or an edit in
+  the lane); its count is `undoStack.length`, the stack being emptied at every
+  open, so it is what ⌘Z would take back. **Undo to as opened**
+  (`revertToOpened`) is one `edit_set_tree` to `undoStack[0]` with `restore`,
+  offered only while the bench is settled and the stack still reaches the
+  open (`undoTrimmed`); `settleRestore` settles it as that many undos in a row
+  (`restorePending.all`), newest first, so the redo stack holds them in order,
+  and only then says so (`sayReverted`; the toast's UNDO retires on the next
+  step or restore, `retireRevertUndo`). It waits for `benchSettled`, not just
+  the lane: with an open on its way the stack is the leaving sound's, and a
+  restore then would land that tree under the arriving id. `revertRefusal`
+  is the reason, shown as ↺'s tooltip (`aria-disabled`, so a press still
+  arrives and says it). `requestRestore` (⌘Z) waits the same way; a restore
+  queued during an open is dropped with the lane (`dropLane`).
+  Each continuous knob's value as opened is kept by node identity
+  (`openedKnobs`, `lockIdOf`) for its pale pointer (`paintWas`).
+- **The face at OUT** is `#rack-play` itself, an HTML button the camera places
+  (`placeOutFace`, from `applyView`) over the box `buildRack` leaves past the
+  amp (`rackOut`; the layout's width grows by `OUT_ZONE`, and `contentBox`
+  counts it, so every fit shows it). Its slot is the bench's face
+  (`setFaceSlot(..., "out", {tree: benchTreeJson})`), so it is never an
+  estimate, and its press is the rack's ▶ (`playBench`, `playWaitCancel`).
+- **Fits** keep the well's own chrome clear (`fitBox`): the top line
+  (`PT_TOP_LINE`), the foot (`PT_FOOT`) and, while open, the catalog
+  (`catalogReserve`), as they keep the scope's corner (`scopeReserve`).
+- **The selection** (`plateSel`, set by a press on bare panel in the rack's
+  pan handler, by the focus arriving on a plate, and by `focusPlate`) marks
+  both of a module's groups `.selected`; the readout (`renderSpecDock` into
+  `#pt-read`) follows the plate under the pointer (`plateHover`) or the
+  selected one, and a module pointed at in the catalog (`specSubject`). The
+  thing in hand renders into the well's top line (`#pick-chip`'s
+  `#pick-armed`), with `pickFeedback` naming the socket under the pointer.
+  The selection follows the module across rebuilds (`plateSelUid`), not its
+  key. The belief line (`#belief-row`) is on the same top line, empty without
+  a guess, and yields to the module guess and the thing in hand (CSS `:has`).
+  The scope is off until asked for (`scopeState.mode` defaults to `off`).
+- **The catalog** is `#nodebank` inside the frame: `nbSetCollapsed` is its
+  open and closed, never saved (`buildNodeBank` closes it at every start);
+  `openCatalog`/`closeCatalog`; closing it puts down a module in hand and a
+  ⋯ handoff (`cancelPending`). A pointer's ✕ lets the focus go
+  (`closeCatalog(false)`); the keyboard's returns it to ADD MODULE. The lean
+  (`.sd-model`, `.sp-model`) shows under `body.model-view` only; the
+  keyboard's card stands beside the catalog.
+- **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
+  y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
+  plate's controls (which walk only that plate's), F2 or the menu key for
+  `openStructMenu`. Esc closes one thing a press: a menu, a handoff or the
+  touch sheet spends it (the sheet stops the event in patch.js), then the
+  selection, then the catalog (`escBusy` holds a new patch's Esc while either
+  is up). The global Home/End focus the first and last plate only with the
+  focus on the canvas or nowhere, and never under a modal (`modalUp`);
+  ⇧Home is `fitAll`.
+- **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
+  `#rack-map-btn`, the layout's menu `#pt-laymenu` with `setLayoutMode`),
+  SET ASIDE (`renderTray` fills the shelf `#tray` and the catalog's
+  `#nb-aside` from one `trayItemEl`), and TEACH (`setTeach` folds or unfolds
+  `#play-duel` over the well; `renderPlayDuel` shows its chip while a pair is
+  dealt). The well's edges (`syncEdges`, `nudgeRack`) count the plates whose
+  middles lie past the view.
+- **First steps** are per level (guide.js `levels`, `setLevel` from
+  `levelChanged`), and so is ×: `auracle-guide` keeps `closed` as the levels
+  closed (an old `closed: true` reads as PERFORM's). PATCH's four tick in
+  `playBench` and `firstNotePlayed` (play it), `sendEdit`, `setLock` and
+  `startEvolveFrom`; a dismissed bench tour (`auracle-bench-tour`) counts the
+  last three done and a sound already played (`auracle-played`) the first
+  (`markDone`). TEACH's chip counts the picks to the first refit, and
+  `renderNextStep` says nothing about them while a pair is dealt.
 
 ## Faces
 
@@ -980,7 +1085,7 @@ and when the window closes its button is removed. Read the comment above
 
 ## ⌘Z
 
-A teaching act with an undo window (a pick from EVOLVE or PATCH's strip, a
+A teaching act with an undo window (a pick from EVOLVE or PATCH's TEACH, a
 cut) registers how to take itself back (`holdTakeBack` in `main.js`) and
 leaves when its window closes. ⌘Z takes back the newest one at any level; only
 with none left does it reach the bench's edit undo, and only in PATCH.

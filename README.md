@@ -93,9 +93,9 @@ it keeps what you teach it, across sessions, and breeds toward it.
   included, where it bends pitch.
 - **Modulation chains.** A cable can carry `s&h rand → quantize → slew` before
   it reaches a cutoff, with a depth bound so the grammar's parsimony still
-  applies. The module rail shows what each module does to a signal, where it can
-  go, and, only where the evidence supports it, what the model has learned
-  about it.
+  applies. PATCH's catalog shows what each module does to a signal, where it can
+  go, and, only where the evidence supports it (under the model view), what the
+  model has learned about it.
 
 ### The model
 

@@ -26,13 +26,14 @@
 //   (while the bench reads another), and says so when the browser refuses it.
 // - The bank's cursor reaches a sound kept safe past the pool's last row, and
 //   Enter presses RECORD AGAIN.
-// - AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk: the
-//   arrows reach them after a module's knobs, Enter or Space presses them,
-//   and the focus stays on a button the press redrew.
+// - AUDIO IN's and CAPTURE's buttons are on the rack's keyboard walk: Enter
+//   goes into a module's controls and the arrows reach them after its knobs,
+//   Enter or Space presses them, and the focus stays on a button the press
+//   redrew.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+const { goLevel, bankTab, openCatalog } = require("./shell");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
@@ -129,6 +130,7 @@ test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an in
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+  await openCatalog(page);
   for (const kind of ["track", "capture"]) {
     await expect(page.locator(`.nb-item[data-kind="${kind}"]`)).toHaveCount(1);
   }
@@ -484,9 +486,10 @@ test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed
   await expect(take).toBeVisible({ timeout: 60_000 });
   await expect(input).toHaveAttribute("data-state", "live", { timeout: 30_000 });
 
-  // CAPTURE: from its plate, past its knob, to RECORD; Enter rolls, Enter
-  // stops, and the take lands.
+  // CAPTURE: from its plate, Enter into its controls, past its knob, to
+  // RECORD; Enter rolls, Enter stops, and the take lands.
   await plate(page, "capture").focus();
+  await page.keyboard.press("Enter");
   const toRec = await walkTo(page, "take-rec");
   expect((await focused(page)).tab).toBe("0");
   await page.keyboard.press("Enter");
@@ -504,6 +507,7 @@ test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed
   // arrows go on to NEW CLIP. ALLOW INPUT is hidden while the input is open,
   // so the walk passes it by.
   await plate(page, "audio_in").focus();
+  await page.keyboard.press("Enter");
   const toLine = await walkTo(page, "ain-dev");
   await page.keyboard.press("ArrowRight");
   expect((await focused(page)).stop).toBe("ain-monitor");

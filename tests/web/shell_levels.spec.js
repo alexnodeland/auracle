@@ -28,7 +28,7 @@
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
 const { test, expect } = require("@playwright/test");
-const { goLevel, openKeys, bankTab } = require("./shell");
+const { goLevel, openKeys, bankTab, openCatalog } = require("./shell");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -156,6 +156,7 @@ test("a text field and a modal dialog keep ⌥ and the arrows", async ({ page })
   const errors = await boot(page);
   // PATCH's module search: ⌥↑ and ⌥← move by word there, never a level.
   await goLevel(page, "patch");
+  await openCatalog(page);
   const search = page.locator("#nb-q");
   await search.click();
   await search.fill("grit vowel");
