@@ -146,14 +146,15 @@ jobs:
   # registers (CONTRIBUTING § Sharp edges). Its own job rather than a step in
   # `lint`, because `lint` is gated on Rust having changed and a JS-only PR is
   # exactly the PR this check exists for. It also runs `make dev-check`, whose
-  # film tools' tests need numpy and scipy (installed below): about a minute
-  # in all, with no Rust toolchain.
+  # film tools' tests need numpy and scipy (installed below), with no Rust
+  # toolchain. It has grown to four and a half to five minutes as web-check and
+  # dev-check took on more, and went over 5 on main at #117, so it has 10.
   web:
     name: Web
     needs: changes
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
