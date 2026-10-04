@@ -231,3 +231,25 @@ test("which way your taste leans on a module shows under the model view only, in
   await expect(page.locator("#pt-read .sd-model")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("closing the catalog puts down a socket ⋯ handed it: the line goes, and the next module is only in hand", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
+  await page.keyboard.press("F2");
+  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^insert after/ }).click();
+  await expect(cat(page)).toBeVisible();
+  await expect(page.locator("#pick-armed")).toContainText("the socket is chosen");
+  await page.locator("#nb-collapse").click();
+  await expect(cat(page)).toBeHidden();
+  await expect(page.locator("#pick-chip")).toBeHidden();
+  // Open again: a module clicked is in hand, its sockets lit, not placed.
+  const posted = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_structure").length);
+  const before = await posted();
+  await openCatalog(page);
+  await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
+  await expect(page.locator("#pick-armed b")).toHaveText(/distortion/i);
+  await expect(page.locator("#rack-svg .jack.legal").first()).toBeVisible();
+  expect(await posted()).toBe(before);
+  expect(errors).toEqual([]);
+});

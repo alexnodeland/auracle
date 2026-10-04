@@ -348,3 +348,26 @@ test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed whi
   await expect(page.locator("#pt-editbar")).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test("a module dragged by hand takes its cables along, and the modulation cable's words step aside until it is put down", async ({ page }) => {
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="freeform"]').click();
+  await expect(page.locator("#rack-layout")).toHaveText(/^by hand/);
+  const label = page.locator("#rack-svg .mod-cable-label").first();
+  await expect(label).toBeVisible();
+  const plate = page.locator('#rack-svg .rack-plates g[data-kind="mix"] .mod-plate').first();
+  const b = await plate.boundingBox();
+  await page.mouse.move(b.x + 10, b.y + b.height - 6);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 40, b.y + b.height + 30, { steps: 6 });
+  await expect(page.locator("#rack-scroll")).toHaveClass(/\bmoving-plate\b/);
+  expect(await label.evaluate((t) => getComputedStyle(t).visibility)).toBe("hidden");
+  await page.mouse.up();
+  await expect(page.locator("#rack-svg .mod-cable-label").first()).toBeVisible();
+  // Put back as it was.
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="chain"]').click();
+  expect(errors).toEqual([]);
+});
