@@ -135,7 +135,11 @@ A hidden PERFORM's measurement drops to `later`, and goes last there
 (`idleOnly` in `worker.js`): a measurement nobody is waiting on (that one, one
 of a patch PERFORM has left, a re-check, a pre-warm) starts only when nothing
 else in `later` is ready, and at each breath gives way to anything that has
-arrived there, resuming from the memo. The app opens at PERFORM, so the
+arrived there, resuming from the memo. Back in sight, PERFORM gives the player
+back what was theirs (`promote`, to `soon`): a first measurement, a Take's
+(its controls play on the wiring carried over and the ones it lost read
+listening… until it lands) and a control just placed; one asked in the
+background (a re-check, a pre-warm) stays there. The app opens at PERFORM, so the
 sound it boots with is being measured when the player first goes to PATCH or
 opens another sound; held on the floor, that measurement kept PATCH's cable
 probe, the model's guess and every face lookup waiting for all of its thirty-odd

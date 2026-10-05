@@ -171,6 +171,42 @@ changelog that edits its own past is not a record.
   and the faces in the bank and on the stage appear as they did before,
   instead of after that measurement (up to a minute on a slow machine).
 
+### Fixed: PERFORM says when the engine couldn't measure a sound
+
+- **When the engine has crashed, or cannot run a measurement PERFORM asks
+  for, PERFORM's status line says so** (*couldn’t measure this patch*, or
+  *couldn’t re-check this patch* when the controls still play on their last
+  measurement), next to the engine's own error. A measurement asked for
+  after the engine had crashed, or still waiting its turn when it did, used
+  to leave the line on *listening to this sound…* or *re-checking* for the
+  rest of the session, with the controls it was measuring reading
+  *listening…*.
+- **After a crash PERFORM asks the engine nothing more.** An offer it would
+  have to grow says *the engine crashed: reload to continue*, as the alarm
+  does, where B used to say *growing an offer…* for good (one grown ahead
+  before the crash still comes into B). So does an offer whose own walk
+  crashed the engine, which said *the walk failed on this sound: try
+  again*.
+- **A control that asks for a module the engine fails to add says so.**
+  Turning BRIGHT, BODY or SPACE past its notch on a sound that can't reach
+  it gives the sound a module to turn; when the engine failed to add one,
+  PERFORM said *nothing to add here, so it’s growing an offer instead* and
+  grew one. It now says *the engine couldn’t add the tone EQ, so nothing
+  changed* (the longer release, for SPACE), and grows nothing.
+
+### Fixed: a taken offer is measured first when you come back to PERFORM
+
+- **Take an offer, look at PATCH, come back, and the taken sound's
+  measurement carries on first.** Going to another level hands PERFORM's
+  measurements to the engine's background work, and coming back hands back
+  the ones you are waiting on. A Take's measurement was left there: it waited
+  behind anything else in the background (a cable probe, the model's guess),
+  and the controls the taken sound had lost said *listening…*, with
+  *re-checking* on the status line, for longer than they needed to. The same
+  happened to a control you had just placed on the panel, which says
+  *listening…* until it is measured. Now both are yours again the moment
+  PERFORM shows, as a sound's first measurement already was.
+
 ### Fixed: a sound you keep as new is safe until it has been in a pick
 
 - **A sound you make in PATCH and keep as new is no longer replaced before

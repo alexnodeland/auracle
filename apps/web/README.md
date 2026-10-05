@@ -274,16 +274,23 @@ to a pinned `role="alert"` strip that stays until resolved.
 
 - **Worker replies are load-bearing, so a request that throws must still
   reply.** `worker.js` runs every request through one `dispatch` under a
-  `try/catch` that answers `{type: "engine_error", request, id, message,
+  `try/catch` that answers `{type: "engine_error", request, id, req, message,
   fatal}`; `main.js` releases exactly the state that request was holding
   (`releaseRequest`: `editInFlight`, `fitting`, `dealing`, the evolve buttons,
-  a preview slot, …). `fatal` means the engine is gone — the wasm build has
+  a preview slot, …). PERFORM's requests are named by their `req`, and
+  `perform.requestFailed` answers that one as an empty reply carrying the
+  error, so a measurement stops saying *listening…* or *re-checking* and the
+  status says it couldn't measure (or re-check) the patch. Once the engine
+  is down (a `fatal` one, or `perform.failAll`) PERFORM sends nothing more:
+  a request it makes is answered as failed at once, and a spare and Wander
+  stop asking. `fatal` means the engine is gone — the wasm build has
   `panic = "abort"`, so a Rust panic traps out of a `&mut self` call and every
   later call fails with wasm-bindgen's "recursive use of an object" — and the
   worker latches `poisoned`, answering everything after with the same fatal
   error rather than calling into the binary again. On the main thread
   `worker.onerror`, `worker.onmessageerror` and a fatal `engine_error` all
-  reach `engineCrashed`: every in-flight flag is released, autosave stops (the
+  reach `engineCrashed`: every in-flight flag is released (PERFORM's
+  requests still out with `perform.failAll`), autosave stops (the
   record on disk is the last good session), and the pinned `role="alert"`
   says to reload. Non-fatal errors release their request and toast.
 

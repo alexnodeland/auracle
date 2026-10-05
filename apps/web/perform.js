@@ -261,6 +261,18 @@ export function createPerform(host) {
     // echo is not mistaken for a new patch.
     keeping: null,
     measuring: false,
+    // The words for the last measurement of this patch that failed ("couldn’t
+    // measure this patch"), said on the status line until another lands or
+    // the patch changes; null when none has.
+    wireError: null,
+    // The engine crashed (main's `engineCrashed`, or a fatal `engine_error`):
+    // its words, or null. Nothing more is asked of it (see `request`), and
+    // nothing asks by itself (a spare, Wander), until the page is reloaded.
+    engineDown: null,
+    // The last walk whose failure is on screen ({req, where, said}: B, or
+    // the status line, and the words), so a crash that turns out to have
+    // caused it can be said there instead (see `requestFailed`).
+    failedWalk: null,
     // A measurement not started because another patch is on its way to the
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
@@ -1372,10 +1384,26 @@ export function createPerform(host) {
   // ---------- worker plumbing ----------
   function request(kind, msg) {
     const req = ++state.req;
-    state.pending.set(req, { kind, gen: state.gen, at: performance.now() });
+    // `bg`: asked in the engine's background lane, nobody waiting on it (see
+    // `show`, which gives the player back only what was theirs).
+    state.pending.set(req, { kind, gen: state.gen, at: performance.now(), bg: !!msg.bg });
     // A measurement carries the set it asked for (no `controls` is the six),
     // so its reply is laid on the panel it belongs to (`forPanel`).
     if (kind === "perform_wire") state.pending.get(req).set = setOf(msg.controls || PANEL_DEFAULT);
+    // The engine is down: nothing is sent, and the request is answered as
+    // failed straight after the caller has set it up, as one the engine
+    // could not run is (`requestFailed`). Sent, each came back as another
+    // crash, and a spare or Wander asked again a second later, for good.
+    if (state.engineDown) {
+      queueMicrotask(() => {
+        try {
+          requestFailed(req, state.engineDown);
+        } catch (err) {
+          console.error("[perform] could not answer a request the engine is down for:", err);
+        }
+      });
+      return req;
+    }
     host.send({ ...msg, type: kind, req });
     return req;
   }
@@ -1822,7 +1850,7 @@ export function createPerform(host) {
   }
   function growSpare() {
     const now = performance.now();
-    if (!state.visible || !state.cur || !state.wire || state.spare) return;
+    if (state.engineDown || !state.visible || !state.cur || !state.wire || state.spare) return;
     if (state.pending.size > 0 || state.glide) return;
     // No spare for a patch on its way out, either (see `heldForOpen`).
     if (host.opening?.()) return;
@@ -2230,6 +2258,7 @@ export function createPerform(host) {
   function applyWired(data) {
     state.measuring = false;
     state.carried = false;
+    state.wireError = null;
     // Where the sound is *now* becomes the new centre and the controls
     // return to zero there, so nothing audibly moves. Now, not when the
     // measurement was asked for: the player may have kept turning while
@@ -2329,9 +2358,57 @@ export function createPerform(host) {
     state.wire = fresh;
     state.carried = false;
     state.measuring = false;
+    state.wireError = null;
     push();
     sendTouch();
     renderStatus();
+  }
+
+  // A request the engine will never answer: it threw before it could reply,
+  // or the engine is down (main's `engine_error`, which names it by `req`).
+  // Answered here as the reply its kind would have had, empty and carrying
+  // the error, so each lets go of what it held as it does for an error reply
+  // of its own: a measurement's "listening…" and "re-checking", an offer
+  // growing, a pre-warm's caller. It used to stay pending for good, and the
+  // status said "re-checking" (or "listening to this sound…") ever after.
+  const REPLY = {
+    perform_wire: ["perform_wired", "data"],
+    perform_offer: ["perform_offered", "offer"],
+    perform_drift: ["perform_drifted", "drift"],
+    perform_graft: ["perform_grafted", "graft"],
+    perform_apply: ["perform_applied", "json"],
+    perform_record: ["perform_recorded", "recorded"],
+  };
+  // `fatal`: the engine is gone, and is asked nothing more (`engineDown`).
+  function requestFailed(req, message, fatal = false) {
+    if (fatal) state.engineDown = message || "the engine crashed";
+    const p = state.pending.get(req);
+    if (!p) {
+      // Answered already, or never PERFORM's. A walk answered as failed and
+      // then named by the crash (a worker from before the worker answered a
+      // trap only with the crash) said "try again" where its failure is
+      // still showing: it says the engine crashed now.
+      const f = state.failedWalk;
+      if (fatal && f && f.req === req) {
+        state.failedWalk = null;
+        const said = whyNot({ error: true }, null, "");
+        if (f.where === "offer" && !state.offer && offerCard.textContent.includes(f.said)) renderOffer(said);
+        if (f.where === "status" && statusEl.textContent.includes(f.said)) renderStatus(said);
+      }
+      return false;
+    }
+    const [type, field] = REPLY[p.kind] || [];
+    if (!type) {
+      state.pending.delete(req);
+      state.applyThen.delete(req);
+      return true;
+    }
+    return onWorker({ type, req, [field]: null, error: message || "the engine failed" });
+  }
+  // The engine is gone (main's `engineCrashed`): nothing still out is coming.
+  function failAll(message) {
+    state.engineDown = message || state.engineDown || "the engine crashed";
+    for (const req of [...state.pending.keys()]) requestFailed(req, message);
   }
 
   function onWorker(m) {
@@ -2385,7 +2462,10 @@ export function createPerform(host) {
           // measurement to replace it, it goes rather than lingering.
           state.wire = null;
           state.carried = false;
-          renderStatus("couldn’t measure this patch");
+          state.wireError = "couldn’t measure this patch";
+        } else if (m.error) {
+          // The wiring in hand still plays; it just wasn't re-checked.
+          state.wireError = "couldn’t re-check this patch";
         }
         knobs.forEach(paintKnob);
         renderHood();
@@ -2394,10 +2474,18 @@ export function createPerform(host) {
         renderPalette();
         return true;
       }
+      // As a re-check's reply does: re-checking while another measurement
+      // of this patch is still out, and not once none is. This branch used
+      // to leave the flag as it found it, so a re-check that had landed first
+      // (and kept it on for this one) left "re-checking" on for good.
+      state.revalidating = inFlight("perform_wire");
       if (!m.data) {
         state.measuring = false;
         state.wire = null;
-        renderStatus(m.error ? "couldn’t measure this patch" : "the model hasn’t heard enough sounds to measure against yet");
+        state.wireError = m.error ? "couldn’t measure this patch" : null;
+        // Not a failure: said once, as it always was, until the line is
+        // next drawn.
+        renderStatus(m.error ? undefined : "the model hasn’t heard enough sounds to measure against yet");
       } else {
         applyWired(m.data);
         markWired("measured");
@@ -2421,7 +2509,11 @@ export function createPerform(host) {
       if (!m.drift || !m.drift.tree) {
         // Staying is Wander's news, said on Wander; a walk that cannot start
         // from this patch at all is the patch's, and goes on the status line.
-        if (m.error || (m.drift && m.drift.reason === "outside_support")) renderStatus(whyNot(m, m.drift, ""));
+        if (m.error || (m.drift && m.drift.reason === "outside_support")) {
+          const said = whyNot(m, m.drift, "");
+          renderStatus(said);
+          if (m.error) state.failedWalk = { req: m.req, where: "status", said };
+        }
         else state.wanderStay = performance.now();
         renderWander();
         return true;
@@ -2445,7 +2537,9 @@ export function createPerform(host) {
           requestOffer(state.offerWhy);
           return true;
         }
-        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "the walk came back unchanged: try again, or loosen a lock"));
+        const said = whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "the walk came back unchanged: try again, or loosen a lock");
+        renderOffer(said);
+        if (m.error) state.failedWalk = { req: m.req, where: "offer", said };
         return true;
       }
       if (p.aim) m.offer.aim = p.aim;
@@ -2459,7 +2553,14 @@ export function createPerform(host) {
         const dir = state.intent ? state.intent.dir : 1;
         state.intent = null;
         const w = state.wire && state.wire[i];
-        if (w) {
+        if (w && m.error) {
+          // The engine failed, which is not "nothing to add": said so, and
+          // nothing grows in its place.
+          const said = state.engineDown
+            ? `${w.name}: nothing changed. The engine crashed: reload to continue.`
+            : `${w.name}: the engine couldn’t add the ${GRAFTS[w.name] || "module"}, so nothing changed.`;
+          host.note(said, { replace: `pf-graft:${w.name}`, urgent: true });
+        } else if (w) {
           host.note(`${w.name}: nothing to add here, so it’s growing an offer instead.`, { replace: `pf-graft:${w.name}`, urgent: true });
           requestOffer(`${w.name.toLowerCase()} ${dir > 0 ? "up" : "down"}`, aimAt(i, dir));
         }
@@ -2553,6 +2654,7 @@ export function createPerform(host) {
     state.changedAt = performance.now();
     state.revalidating = false;
     state.carried = false;
+    state.wireError = null;
     // An offer still growing for the old patch is consumed when it lands (its
     // generation is stale), so B must say so now: it used to keep "growing an
     // offer…" for ever when the patch changed under a growing offer.
@@ -2633,6 +2735,7 @@ export function createPerform(host) {
   // the one that no retry fixes: the patch has a value the grammar gives no
   // mass, so evolution cannot start from it at all.
   function whyNot(m, r, otherwise) {
+    if (m.error && state.engineDown) return "the engine crashed: reload to continue";
     if (m.error) return "the walk failed on this sound: try again";
     if (r && r.reason === "outside_support")
       return "a walk can’t start from this sound: nudge any knob off its stop and try again";
@@ -3012,7 +3115,10 @@ export function createPerform(host) {
       const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length && !state.carried).map((w) => w.name);
       if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
       else if (state.revalidating || state.measuring) parts.push("re-checking");
-    }
+      // The last measurement asked of it failed (the engine's own words are
+      // its toast), and none is out now.
+      else if (state.wireError) parts.push(state.wireError);
+    } else if (state.wireError && !state.revalidating && !state.measuring) parts.push(state.wireError);
     // Written only when the words change.
     const text = parts.join(" · ");
     if (statusEl.textContent !== text) statusEl.textContent = text;
@@ -4065,6 +4171,9 @@ export function createPerform(host) {
     const left = [...state.pending.entries()]
       .filter(([, p]) => p.kind === "perform_wire" && p.gen === state.gen && p.cacheAs && p.cacheAs.set && !same(p))
       .map(([req]) => req);
+    // Background from here (a Take's too, if the panel changed under it), so
+    // `show` does not promote them ahead of the set the panel holds now.
+    for (const req of left) state.pending.get(req).bg = true;
     if (left.length) host.send({ type: "retire", reqs: left });
     revalidate(!hit && state.wire.some((w) => w.pending));
     knobs.forEach(paintKnob);
@@ -4095,7 +4204,7 @@ export function createPerform(host) {
 
   // ---------- the wander clock ----------
   function wanderTick() {
-    if (!state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
+    if (state.engineDown || !state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
     const now = performance.now();
     if (now < wanderDue()[1]) return;
     const z = wanderZone(state.wander);
@@ -4309,11 +4418,16 @@ export function createPerform(host) {
     },
     show() {
       state.visible = true;
-      // Back in sight: a first measurement of this patch that `hide` let drop
-      // into the engine's background lane is the player's again. (A re-check
-      // is background by nature, and stays there.)
+      // Back in sight: a measurement of this patch the player was waiting on,
+      // which `hide` let drop into the engine's background lane, is theirs
+      // again: a first one, a Take's (its controls read listening… until it
+      // lands), a control just placed. One asked in the background (a
+      // re-check, a pre-warm) stays there. A Take's and a placed control's
+      // used to be left there, because they are quiet like a re-check: after
+      // a look at PATCH and back, they started only when nothing else in
+      // `later` was waiting, and gave way to whatever arrived there.
       for (const [req, p] of state.pending) {
-        if (p.kind === "perform_wire" && p.gen === state.gen && !(p.cacheAs && p.cacheAs.quiet)) {
+        if (p.kind === "perform_wire" && p.gen === state.gen && !p.bg) {
           host.send({ type: "promote", kind: "perform_wire", req });
         }
       }
@@ -4362,6 +4476,8 @@ export function createPerform(host) {
       renderHeadWords();
     },
     onWorker,
+    requestFailed,
+    failAll,
     // For MIDI and the keyboard: set a named control (0..5), Blend (6) or
     // Wander (7) from a normalized 0..1 value.
     setControl(i, v01) {
