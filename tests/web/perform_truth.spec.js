@@ -28,7 +28,9 @@
 //   crash PERFORM asks the engine nothing more: no spare grows by itself,
 //   and an Offer says the engine crashed. A turn whose module the engine
 //   failed to add says so, and grows no offer in its place (it said there
-//   was "nothing to add here"). The errors are injected,
+//   was "nothing to add here"). An offer whose own walk crashed the engine
+//   says the engine crashed, even when its failure was answered before the
+//   crash was. The errors are injected,
 //   dispatched on the worker as the worker posts them, because the shipped
 //   engine answers every measurement it runs and cannot be made to trap.
 //
@@ -544,5 +546,36 @@ test("a module the engine fails to add is said to have failed, and no offer grow
   expect((await page.evaluate(() => window.__pfToasts)).join("\n")).not.toMatch(/nothing to add here/);
   // An offer in its place was asked for in the same breath as its toast.
   expect(await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_offer" && p.t > t).length, turnedAt), "an offer grown in its place").toBe(0);
+  expect(errs).toEqual([]);
+});
+
+// A walk that traps answers with the crash alone now (worker.js, unit-tested
+// in apps/web/tests/worker-perform-replies.test.mjs). A worker from before
+// answered the walk first, empty with the error, and the crash second, by
+// then about a request no longer pending: B said "try again" under the
+// alarm. Both replies are dispatched here, in that order.
+test("an offer whose walk crashed the engine says the engine crashed, even answered before the crash", async ({ page }) => {
+  test.setTimeout(240_000);
+  // Slowed, so the offer is still growing when its replies are dispatched.
+  const errs = await boot(page, { slow: 4 });
+  await openOnPerform(page, "Glass Pad");
+  await wired(page);
+  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  // The offer growing for B: this press's, or a spare it claimed.
+  const req = await page.evaluate(() => {
+    const o = window.__pfPosts.filter((p) => p.type === "perform_offer");
+    return o.length ? o[o.length - 1].req : null;
+  });
+  expect(req, "an offer is growing").not.toBeNull();
+  await page.evaluate((r) => {
+    const w = window.__pbEngine;
+    const say = (data) => w.dispatchEvent(new MessageEvent("message", { data }));
+    say({ type: "perform_offered", req: r, offer: null, error: "RuntimeError: unreachable" });
+    say({ type: "engine_error", request: "perform_offer", id: null, req: r, message: "RuntimeError: unreachable", fatal: true });
+  }, req);
+  await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
+  const b = page.locator(".pf-offer");
+  await expect(b).toContainText("the engine crashed: reload to continue", { timeout: 5_000 });
+  await expect(b).not.toContainText("try again");
   expect(errs).toEqual([]);
 });

@@ -269,6 +269,10 @@ export function createPerform(host) {
     // its words, or null. Nothing more is asked of it (see `request`), and
     // nothing asks by itself (a spare, Wander), until the page is reloaded.
     engineDown: null,
+    // The last walk whose failure is on screen ({req, where, said}: B, or
+    // the status line, and the words), so a crash that turns out to have
+    // caused it can be said there instead (see `requestFailed`).
+    failedWalk: null,
     // A measurement not started because another patch is on its way to the
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
@@ -1391,7 +1395,13 @@ export function createPerform(host) {
     // could not run is (`requestFailed`). Sent, each came back as another
     // crash, and a spare or Wander asked again a second later, for good.
     if (state.engineDown) {
-      queueMicrotask(() => requestFailed(req, state.engineDown));
+      queueMicrotask(() => {
+        try {
+          requestFailed(req, state.engineDown);
+        } catch (err) {
+          console.error("[perform] could not answer a request the engine is down for:", err);
+        }
+      });
       return req;
     }
     host.send({ ...msg, type: kind, req });
@@ -2373,7 +2383,20 @@ export function createPerform(host) {
   function requestFailed(req, message, fatal = false) {
     if (fatal) state.engineDown = message || "the engine crashed";
     const p = state.pending.get(req);
-    if (!p) return false; // answered already, or never PERFORM's
+    if (!p) {
+      // Answered already, or never PERFORM's. A walk answered as failed and
+      // then named by the crash (a worker from before the worker answered a
+      // trap only with the crash) said "try again" where its failure is
+      // still showing: it says the engine crashed now.
+      const f = state.failedWalk;
+      if (fatal && f && f.req === req) {
+        state.failedWalk = null;
+        const said = whyNot({ error: true }, null, "");
+        if (f.where === "offer" && !state.offer && offerCard.textContent.includes(f.said)) renderOffer(said);
+        if (f.where === "status" && statusEl.textContent.includes(f.said)) renderStatus(said);
+      }
+      return false;
+    }
     const [type, field] = REPLY[p.kind] || [];
     if (!type) {
       state.pending.delete(req);
@@ -2486,7 +2509,11 @@ export function createPerform(host) {
       if (!m.drift || !m.drift.tree) {
         // Staying is Wander's news, said on Wander; a walk that cannot start
         // from this patch at all is the patch's, and goes on the status line.
-        if (m.error || (m.drift && m.drift.reason === "outside_support")) renderStatus(whyNot(m, m.drift, ""));
+        if (m.error || (m.drift && m.drift.reason === "outside_support")) {
+          const said = whyNot(m, m.drift, "");
+          renderStatus(said);
+          if (m.error) state.failedWalk = { req: m.req, where: "status", said };
+        }
         else state.wanderStay = performance.now();
         renderWander();
         return true;
@@ -2510,7 +2537,9 @@ export function createPerform(host) {
           requestOffer(state.offerWhy);
           return true;
         }
-        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "the walk came back unchanged: try again, or loosen a lock"));
+        const said = whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time: turn it again, or loosen a lock` : "the walk came back unchanged: try again, or loosen a lock");
+        renderOffer(said);
+        if (m.error) state.failedWalk = { req: m.req, where: "offer", said };
         return true;
       }
       if (p.aim) m.offer.aim = p.aim;

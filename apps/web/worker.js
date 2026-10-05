@@ -71,12 +71,19 @@ function endLongOp() {
 }
 
 // One PERFORM reply: `field` carries the answer, or null with `error` set.
+// A trap is not answered here: it is rethrown, and `runMessage` answers it
+// with the fatal `engine_error` (carrying `req`) that also latches
+// `poisoned`, so the page hears that the engine is down before it hears
+// anything about this request. Answered here first, it said "try again"
+// about a request no engine would ever run again.
 function performReply(m, type, field, long, fn) {
   if (long) beginLongOp();
   try {
     post({ type, req: m.req, [field]: fn() });
   } catch (err) {
-    post({ type, req: m.req, [field]: null, error: String((err && err.message) || err) });
+    const message = String((err && err.message) || err);
+    if (isFatal(err, message)) throw err;
+    post({ type, req: m.req, [field]: null, error: message });
   } finally {
     if (long) endLongOp();
   }
@@ -1438,11 +1445,11 @@ async function measure(m) {
     }
   } catch (err) {
     // Answered, as every PERFORM request is (see `performReply`): the page
-    // holds the request open until its reply lands. A trap still poisons the
-    // engine, through `dispatch`'s catch.
+    // holds the request open until its reply lands. A trap is answered by
+    // `runMessage`'s fatal `engine_error` instead, as in `performReply`.
     const message = String((err && err.message) || err);
-    post({ type: "perform_wired", req: m.req, data: null, error: message });
     if (isFatal(err, message)) throw err;
+    post({ type: "perform_wired", req: m.req, data: null, error: message });
     return;
   }
   performReply(m, "perform_wired", "data", false, () =>
@@ -1529,14 +1536,20 @@ async function walkRun(m) {
     post({ type, req: m.req, [field]: JSON.parse(engine.perform_job_finish(job)) });
   } catch (err) {
     const message = String((err && err.message) || err);
+    // A trap: the engine is not called again (its job goes with it), and
+    // the request is answered by `runMessage`'s fatal `engine_error`, as in
+    // `performReply`.
+    if (isFatal(err, message)) {
+      m.job = null;
+      throw err;
+    }
     try {
       if (m.job != null) engine.perform_job_drop(m.job);
     } catch (_) {
-      /* a poisoned engine: reported below */
+      /* reported by the next request that reaches the engine */
     }
     m.job = null;
     post({ type, req: m.req, [field]: null, error: message });
-    if (isFatal(err, message)) throw err;
   } finally {
     endLongOp();
   }

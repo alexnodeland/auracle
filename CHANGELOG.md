@@ -181,9 +181,18 @@ changelog that edits its own past is not a record.
   to leave the line on *listening to this sound…* or *re-checking* for the
   rest of the session, with the controls it was measuring reading
   *listening…*.
-- **After a crash PERFORM asks the engine nothing more.** An offer you ask
-  for says *the engine crashed: reload to continue*, as the alarm does,
-  where B used to say *growing an offer…* for good.
+- **After a crash PERFORM asks the engine nothing more.** An offer it would
+  have to grow says *the engine crashed: reload to continue*, as the alarm
+  does, where B used to say *growing an offer…* for good (one grown ahead
+  before the crash still comes into B). So does an offer whose own walk
+  crashed the engine, which said *the walk failed on this sound: try
+  again*.
+- **A control that asks for a module the engine fails to add says so.**
+  Turning BRIGHT, BODY or SPACE past its notch on a sound that can't reach
+  it gives the sound a module to turn; when the engine failed to add one,
+  PERFORM said *nothing to add here, so it’s growing an offer instead* and
+  grew one. It now says *the engine couldn’t add the tone EQ, so nothing
+  changed* (the longer release, for SPACE), and grows nothing.
 
 ### Fixed: a taken offer is measured first when you come back to PERFORM
 
