@@ -8,6 +8,9 @@ It follows the [principled](https://github.com/alexnodeland/principled)
 documentation layout, so the `principled-docs` and `principled-architecture`
 plugins work on it.
 
+How a change moves from an issue to `main` (issues, branches, review, PRs,
+CI, merging, flakes, approvals) is [`process.md`](process.md).
+
 | Directory | Holds | Changes |
 | --- | --- | --- |
 | [`architecture/`](architecture/) | How the system fits together, as it is now | Living: kept current with the code |
@@ -31,6 +34,8 @@ plugins work on it.
   decision and a plan breaks it down.
 - **Something that went wrong and will again** (the disk filled mid-render,
   the wasm engine panicked): a runbook.
+- **Work still to do** (a plan task, a bug, a flaky test, a follow-up a review
+  raised): a GitHub issue ([`process.md` § Issues](process.md#issues)).
 
 ## Architecture
 
@@ -63,6 +68,8 @@ plugins work on it.
 | [015](decisions/015-audio-in.md) | Audio in: one source node, its uses by patching, measured with an audition clip |
 | [016](decisions/016-space-plays-everywhere.md) | Space plays the sound you're playing, in every view (supersedes ADR-009's Space for PERFORM's pads) |
 | [017](decisions/017-the-levels-keys.md) | The levels' keys: ⌥ and an arrow, ⌥1–5, hold ⌥, ⌘K (amends ADR-009's ⌥1–4 for views) |
+| [018](decisions/018-the-pad-keys.md) | The pad keys: N, hold B, ⇧↵, ↵ and ⇧⌫ (supersedes ADR-009's pad row) |
+| [019](decisions/019-work-flows-through-issues-and-prs.md) | Work flows through issues and reviewed PRs, merged on a green check |
 
 ## Proposals
 
@@ -76,6 +83,7 @@ plugins work on it.
 | [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
 | [007](proposals/007-the-sound-of-the-films.md) | accepted | The sound of the films: one key, one room, the instrument on top |
 | [008](proposals/008-audio-in.md) | accepted | Audio in: your own signal in the patch, measured and bred like any other |
+| [009](proposals/009-how-work-flows.md) | accepted | How work flows: from an issue to main, written down once |
 
 ## Plans
 
