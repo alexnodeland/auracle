@@ -1,6 +1,7 @@
 // PATCH's own helpers for the patch_* specs: the rack, the bench lane and the
 // model's guess, read through the fixture's tap (fixtures.js). Each takes the
-// test's `app`. Not a spec: `playwright.config.js` matches `*.spec.js` only.
+// test's `app`, but `rackAtRest`, which reads only the page. Not a spec:
+// `playwright.config.js` matches `*.spec.js` only.
 //
 // The rest is the fixture's: the seeded boot (`app.boot`, with `busy` for a
 // worker made slow on demand by `app.busy`), the warm start (`app.warmStart`),

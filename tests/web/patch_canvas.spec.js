@@ -282,18 +282,18 @@ test("the amp's envelope figure follows its knobs", async ({ page, app }) => {
   await expect.poll(() => fig.getAttribute("d")).not.toBe(d0);
 });
 
-// Reese's own cables (`[data-from]`: the sound before's fade out beside
-// them), once the open's motion is over (`openPreset` waits for the rack at
-// rest). On the way the amp, the one plate kept from the sound before,
-// slides from where that sound had it to Reese's; from a sound narrower
-// than Reese it passes Reese's last module, and for those frames the cable
-// into it is routed around the plates.
+// Read once the open's motion is over (`openPreset` waits for the rack at
+// rest), when the cables on the rack are Reese's own: the sound before's
+// have faded out with its plates. On the way the amp, the one plate kept
+// from the sound before, slides from where that sound had it to Reese's;
+// from a sound narrower than Reese it passes Reese's last module, and for
+// those frames the cable into it is routed around the plates.
 test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page, app }) => {
   await app.boot();
   await openPreset(app, "Reese");
   const got = await page.evaluate(() => {
     const svg = document.getElementById("rack-svg");
-    const audio = [...svg.querySelectorAll("path.wire.audio[data-from]")].map((p) => p.getAttribute("d"));
+    const audio = [...svg.querySelectorAll("path.wire.audio")].map((p) => p.getAttribute("d"));
     const mix = svg.querySelector('g.mod-group[data-kind="mix"]');
     const ins = [...(mix?.querySelectorAll(".jack[data-childkey] text") || [])].map((t) => ({ text: t.textContent, x: Number(t.getAttribute("x")) }));
     const label = svg.querySelector(".mod-cable-label");
