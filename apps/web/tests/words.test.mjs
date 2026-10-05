@@ -51,6 +51,8 @@ import {
   belowNote,
   fromLine,
   bredLine,
+  turnedBy,
+  turnsItsKnobs,
   grownFrom,
   bredRatings,
   changeParts,
@@ -705,4 +707,13 @@ test("before a pick, the model view says on the card it favours how sure it is, 
   assert.equal(pairGuess(0.5), "it guesses this · 50% · a hunch");
   voiced(pairGuess(0.6));
   assert.ok(!/\blens\b/.test(pairGuess(0.6)));
+});
+
+test("PATCH's readout names the PERFORM controls that turn a knob, from the measured wiring", () => {
+  assert.equal(turnedBy(["Bright", "Space"], "cutoff"), "BRIGHT and SPACE turn this cutoff");
+  assert.equal(turnedBy(["Bright"], "cutoff"), "BRIGHT turns this cutoff");
+  assert.equal(turnedBy([], "cutoff"), "");
+  assert.equal(turnsItsKnobs([["Bright", ["cutoff", "res"]], ["Space", ["decay"]], ["Snap", []]]), "BRIGHT turns its cutoff and res; SPACE turns its decay");
+  assert.equal(turnsItsKnobs([]), "");
+  voiced(turnedBy(["Bright", "Space", "Motion"], "cutoff"));
 });

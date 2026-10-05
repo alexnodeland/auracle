@@ -24,7 +24,7 @@ const init = ({ warmed }) => `(() => {
     if (/worker\\.js/.test(w.__pwUrl)) {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
-        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null, at: m.at ?? null, trees: m.type === "faces" ? (m.trees || []).map((x) => ({ ref: x.ref, tree: x.tree || null })) : null });
+        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null, at: m.at ?? null, trees: m.type === "faces" ? (m.trees || []).map((x) => ({ ref: x.ref, tree: x.tree || null })) : null, req: m.req ?? null, ptree: m.type === "perform_wire" ? m.tree || null : null });
         // A crew's ports held back while __pwHoldCrew is set (holdCrew).
         if (m && m.type === "farm_ports" && window.__pwHoldCrew) {
           window.__pwHeld.push([m, t, performance.now()]);
@@ -48,6 +48,8 @@ const init = ({ warmed }) => `(() => {
         if (["guess", "guess_skipped", "cable_levels", "edit_rejected", "bench", "committed"].includes(d.type)) {
           replies.push({ type: d.type, t: performance.now(), data: d.data || null, error: d.error || null, tree: d.tree || d.treeJson || null, token: d.token ?? null, edited: d.edited ?? null, subject: d.subject ?? null });
         }
+        // PERFORM's measurements, by the request they answer.
+        if (d.type === "perform_wired" && d.data) replies.push({ type: "perform_wired", t: performance.now(), req: d.req ?? null, data: d.data });
         // Every face the worker hands back, by the ref it was asked under.
         if (d.type === "faces") {
           for (const it of d.items || []) if (it.ref) replies.push({ type: "face", t: performance.now(), ref: it.ref, key: it.key });

@@ -7493,7 +7493,10 @@ html.xl-on .alarm { z-index: 62; }
 .pr-lock { flex: none; font-size: var(--t-value); color: var(--phos-b); }
 /* A measurement about the selected module: what the patch is without it,
    when there is no face to draw (silent, or failing the vet). */
-.pr-without { flex: none; order: 2; font-size: var(--t-value); color: var(--silk-dim); }
+.pr-without { flex: none; font-size: var(--t-value); color: var(--silk-dim); }
+/* Which of PERFORM's controls turn it, as measured: the controls' names are
+   silk labels, so caps; kept whole, the description gives way. */
+.pr-wired { flex: none; font-family: var(--font-silk); font-size: var(--t-label); letter-spacing: 0.06em; color: var(--silk); }
 /* Pointed at in the catalog: the longer description opens over the well's
    bottom edge, above the line, and never resizes the well. */
 .pr-more { display: none; }

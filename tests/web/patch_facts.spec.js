@@ -17,10 +17,16 @@
 //   tick and each changed knob a pale pointer at the seed's value, from its
 //   `LineageEvent`; gone after an edit, back after undo to as opened.
 //
+// - Which PERFORM controls turn a knob: the readout names them for the knob
+//   under the pointer ("BRIGHT and SPACE turn this cutoff"), and for a
+//   module each control with its knobs, from PERFORM's measured wiring
+//   (`perform_wire`).
+//
 // The worker is reached as every PATCH spec reaches it (patch_page.js): the
 // faces a page asks for, with their trees, and every face it is handed back.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, warmStartAndFit, now, replied } = require("./patch_page.js");
+const { goLevel } = require("./shell");
 
 /** Select a module on the canvas by its kind, as a press on its plate does. */
 async function selectPlate(page, kind, nth = 0) {
@@ -215,5 +221,54 @@ test("a bred sound shows what its generation changed: from its seed and how many
   await expect(page.locator("#rack-meta .pt-from")).toHaveText(at.from);
   await expect.poll(async () => (await marks()).ticked).toEqual(want.ticked);
   await expect(page.locator("#rack-svg .knob-seed")).toHaveCount(want.pointers.length);
+  expect(errors).toEqual([]);
+});
+
+test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await boot(page, { warmed: true });
+  // PERFORM measures the sound it plays at boot; that is the patch on the
+  // bench. Its measurement, as the worker answered it: for each control on
+  // the panel, the knobs it turns.
+  await expect.poll(() => page.evaluate(() => {
+    const bench = window.__pwLast.bench && window.__pwLast.bench.treeJson;
+    if (!bench) return false;
+    const sh = (j) => j.replace(/-?\d+(\.\d+)?(e-?\d+)?/g, "#");
+    const reqs = new Set(window.__pwPosted.filter((p) => p.type === "perform_wire" && p.ptree && sh(p.ptree) === sh(bench)).map((p) => p.req));
+    return window.__pwReplies.some((r) => r.type === "perform_wired" && reqs.has(r.req));
+  }), { timeout: 120_000 }).toBe(true);
+  await goLevel(page, "patch");
+  await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
+  const m = await page.evaluate(() => {
+    const bench = window.__pwLast.bench.treeJson;
+    const sh = (j) => j.replace(/-?\d+(\.\d+)?(e-?\d+)?/g, "#");
+    const reqs = new Set(window.__pwPosted.filter((p) => p.type === "perform_wire" && p.ptree && sh(p.ptree) === sh(bench)).map((p) => p.req));
+    const wired = window.__pwReplies.filter((r) => r.type === "perform_wired" && reqs.has(r.req)).pop();
+    const turning = wired.data.wiring.filter((w) => !w.search && (w.knobs || []).length);
+    // A knob on the canvas some control turns, and the module it is on.
+    for (const mod of window.__aur.wb.rack.modules) {
+      for (const k of mod.knobs) {
+        const names = turning.filter((w) => w.knobs.some(([a]) => a === k.addr)).map((w) => w.name);
+        if (names.length && document.querySelector(`#rack-svg .rack-controls [data-addr="${CSS.escape(k.addr)}"] .knob-hit`)) {
+          const byControl = turning.map((w) => [w.name, mod.knobs.filter((x) => w.knobs.some(([a]) => a === x.addr)).map((x) => x.label)]).filter(([, ks]) => ks.length);
+          return { addr: k.addr, label: k.label, names, key: mod.key, kind: mod.kind, byControl };
+        }
+      }
+    }
+    return null;
+  });
+  expect(m, "PERFORM turns some knob of the sound it plays").not.toBeNull();
+  const caps = (n) => n.toUpperCase();
+  const series = (p) => (p.length <= 1 ? p.join("") : p.length === 2 ? `${p[0]} and ${p[1]}` : `${p.slice(0, -1).join(", ")}, and ${p[p.length - 1]}`);
+  // The knob under the pointer: the controls that turn it, by name.
+  const hit = page.locator(`#rack-svg .rack-controls [data-addr="${m.addr}"] .knob-hit`);
+  await hit.hover();
+  await expect(page.locator("#pt-read .pr-wired")).toHaveText(`${series(m.names.map(caps))} ${m.names.length === 1 ? "turns" : "turn"} this ${m.label}`);
+  // The module selected, nothing under the pointer: each control with its knobs.
+  const plate = page.locator(`#rack-svg .rack-plates g[data-key="${m.key}"] .mod-plate`);
+  const b = await plate.boundingBox();
+  await page.mouse.click(b.x + 10, b.y + b.height - 6);
+  await page.mouse.move(4, 400);
+  await expect(page.locator("#pt-read .pr-wired")).toHaveText(m.byControl.map(([n, ks]) => `${caps(n)} turns its ${series(ks)}`).join("; "));
   expect(errors).toEqual([]);
 });

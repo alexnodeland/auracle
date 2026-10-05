@@ -244,7 +244,13 @@ down. [Adding a module](../wiring.md).
   in. The catalog lists them first too. The socket a module left reads
   *empty* and makes no sound.
 - **The readout:** the module under the pointer, or the selected one, by
-  name, with its setting and what it does in one sentence. Pointed at in the
+  name, with its setting and what it does in one sentence. Where
+  [PERFORM](./perform.md)'s named controls turn its knobs, it says which, as
+  PERFORM measured them: for the knob under the pointer (or the one the
+  keyboard is on) *BRIGHT and SPACE turn this cutoff*, and for the module
+  *BRIGHT turns its cutoff and res; SPACE turns its decay*. PERFORM measures
+  the sound it plays, so a sound opened here that PERFORM hasn't measured yet
+  says nothing of it. Pointed at in the
   catalog, a module's longer description opens over the well's bottom edge:
   its ports, what it arrives set to, and what is heard, and, while you hold
   <kbd>⌥</kbd>, how your taste leans on it. Where the foot is narrow (beside

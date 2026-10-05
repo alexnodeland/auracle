@@ -4360,6 +4360,21 @@ export function createPerform(host) {
         turned: turns(w) && at !== 0 ? over(at) : null,
       };
     },
+    // Which named controls on the panel turn the knob at `addr` of the patch
+    // `json`, from PERFORM's measured wiring (`perform_wire`: each control's
+    // `knobs`, `[addr, gain]`): [{name, gain}], [] when none does, or null
+    // while PERFORM has not measured this patch (another structure, or still
+    // measuring). PATCH's readout names them (Plan-008 C2b).
+    wiredTo(addr, json) {
+      if (!state.cur || !state.wire || !json || structureDiffers(state.cur.json, json)) return null;
+      const out = [];
+      state.wire.forEach((w, i) => {
+        if (!knobs[i] || knobs[i].spec.kind !== "named" || !turns(w)) return;
+        const hit = w.knobs.find(([a]) => a === addr);
+        if (hit) out.push({ name: w.name, gain: hit[1] });
+      });
+      return out;
+    },
     // The control at panel position `i` explains itself by ear: its sweep
     // through both ends and back (`hearIt`), as a long press does.
     hear(i) {

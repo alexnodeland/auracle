@@ -128,7 +128,7 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
 } = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
@@ -1978,6 +1978,8 @@ worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
     if (perform) perform.onWorker(m);
+    // A measurement landed: PATCH's readout may name its controls now.
+    if (m.type === "perform_wired" && currentView === "patch") renderSpecDock();
     return;
   }
   // A control's figure and the lesson on filters (explain.js).
@@ -18733,17 +18735,73 @@ function renderSpecDock() {
     : mod.kind === "amp" ? "Every voice ends here: an envelope shapes each note’s loudness, then OUT."
     : MOD_BY_KIND[mod.kind]?.blurb || "";
   const model = modelOn && !empty ? moduleModelHTML(mod) : "";
+  const wired = empty ? "" : wiredSentence(mod);
   dock.className = `pt-read sel${model ? " model" : ""}`;
   dock.innerHTML =
     `<div class="pr-line"><span class="pr-name">${esc(name)}</span>` +
     (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
     (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
     (isModuleLocked(mod) ? `<span class="pr-lock mono">locked</span>` : "") +
+    (wired ? `<span class="pr-wired">${esc(wired)}</span>` : "") +
     (without.why && without.key === mod.key ? `<span class="pr-without mono">${esc(without.why)}</span>` : "") +
     (!$("out-without").hidden && without.key === mod.key ? `<span class="sr-only">Dashed at OUT: the sound without it, measured.</span>` : "") +
     `</div>` +
     model;
 }
+
+// ---------- which PERFORM controls turn a knob (Plan-008 C2b, the fourth engine fact) ----------
+// The knob under the pointer, else the one the keyboard is on, for the
+// readout (it follows the module otherwise).
+let knobHover = null;
+let knobFocus = null;
+/** In the readout, at rest (a measurement, not a belief): which of
+ *  PERFORM's named controls turn the knob in hand, or, for the module, each
+ *  control with the knobs of it that it turns, from PERFORM's measured
+ *  wiring (perform.js `wiredTo`, `perform_wire`'s `knobs`). Nothing while
+ *  PERFORM has not measured this patch (it measures the sound PERFORM
+ *  plays), and nothing when no control turns it. */
+function wiredSentence(mod) {
+  if (!perform || !perform.wiredTo || !benchTreeJson) return "";
+  const addr = [knobHover, knobFocus].find((a) => a && mod.knobs.some((k) => k.addr === a));
+  if (addr) {
+    const hits = perform.wiredTo(addr, benchTreeJson);
+    const k = mod.knobs.find((x) => x.addr === addr);
+    return hits && k ? turnedBy(hits.map((h) => h.name), k.label) : "";
+  }
+  const by = new Map(); // control -> its knobs here, in the panel's order
+  let measured = false;
+  for (const k of mod.knobs) {
+    const hits = perform.wiredTo(k.addr, benchTreeJson);
+    if (!hits) continue;
+    measured = true;
+    for (const h of hits) {
+      if (!by.has(h.name)) by.set(h.name, []);
+      by.get(h.name).push(k.label);
+    }
+  }
+  return measured ? turnsItsKnobs([...by]) : "";
+}
+function setKnobAt(which, addr) {
+  if (which === "hover" ? knobHover === addr : knobFocus === addr) return;
+  if (which === "hover") knobHover = addr;
+  else knobFocus = addr;
+  renderSpecDock();
+}
+$("rack-svg").addEventListener("pointerover", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  if (kg) setKnobAt("hover", kg.dataset.addr);
+});
+$("rack-svg").addEventListener("pointerout", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  if (kg && !kg.contains(e.relatedTarget)) setKnobAt("hover", null);
+});
+$("rack-svg").addEventListener("focusin", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  setKnobAt("focus", kg ? kg.dataset.addr : null);
+});
+$("rack-svg").addEventListener("focusout", (e) => {
+  if (!$("rack-svg").contains(e.relatedTarget)) setKnobAt("focus", null);
+});
 
 /** What the model makes of a module on the canvas, for the readout under
  *  the model view (what the spec dock said of a module before Plan-008):
