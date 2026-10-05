@@ -53,8 +53,9 @@ changelog that edits its own past is not a record.
   window ▶ fell off the end.
 - The gray module drawn at a socket stands clear of the modules around it,
   with a dashed lead to its place, where it used to sit on top of the next
-  one. It also stays put under a still pointer: it used to flicker out of
-  sight.
+  one. It also stays put under a pointer resting on a socket's edge: the
+  socket used to take and drop the pointer as its ring changed, redrawing the
+  module in hand each time.
 
 ### Changed: PATCH is a canvas that reads in signal order
 

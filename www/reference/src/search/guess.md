@@ -34,7 +34,9 @@ measured (three of them in the table below) have 20 to 30 such candidates,
 and an empty patch has six. A deeper wire is ranked only when asked for by
 its module's key (`at`); the note found that deeper sockets add
 candidates the model rates highly by extrapolating, not ones a listener
-likes more.
+likes more, so the guess PATCH shows unasked looks at the output, and a
+deeper place is ranked only when the player asks *what goes here?* of a
+module (its ⋯, or <kbd>Q</kbd>).
 
 At the grammar's ceiling there is no candidate, and the guess says so
 (`full`).

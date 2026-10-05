@@ -19,7 +19,8 @@
 //   the longer description and the keyboard's card leave it out at rest.
 // - Beside the open catalog, at 1000 and 1440 px, the line is one line: the
 //   price and ▶ whole, the reasons cut short; and the module in hand is drawn
-//   at a socket clear of every module (C2a drew it over the MIX).
+//   at a socket clear of every module (C2a drew it over the MIX), and stays
+//   drawn under a still pointer, even on a socket's edge.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, now, replied, warmStartAndFit } = require("./patch_page");
 const { modelView, openCatalog } = require("./shell");
@@ -319,6 +320,35 @@ for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog a
       expect(got.over, `${w}: the ghost at ${at.key} covers no module`).toBe(0);
     }
     expect(reached, `${w}: a lit socket to point at`).toBeGreaterThan(0);
+    // A still pointer anywhere on a lit socket keeps it (and the module in
+    // hand drawn once): resting on the ring's edge used to enter and leave
+    // it about thirty times a second as its stroke changed with its state.
+    const edge = await page.evaluate(() => {
+      // Between the ring's outer edge at rest (stroke 1.6) and lit (2): r + 0.9
+      // rack units from its centre.
+      for (const j of document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")) {
+        const el = [...j.querySelectorAll(":scope > circle")].pop();
+        const c = el.getBoundingClientRect();
+        const r = Number(el.getAttribute("r")) || 0;
+        if (!r || !c.width) continue;
+        const k = c.width / (2 * r);
+        const x = c.left + c.width / 2 + (r + 0.9) * k;
+        const y = c.top + c.height / 2;
+        const at = document.elementFromPoint(x, y);
+        if (at && at.closest("#rack-svg") && !at.closest(".nodebank")) return { x, y };
+      }
+      return null;
+    });
+    if (edge) {
+      await page.mouse.move(edge.x, edge.y);
+      const drawn = await page.evaluate(() => new Promise((resolve) => {
+        let n = 0;
+        const mo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost")) n++; });
+        mo.observe(document.getElementById("rack-svg"), { childList: true, subtree: true });
+        setTimeout(() => { mo.disconnect(); resolve(n); }, 1500);
+      }));
+      expect(drawn, `${w}: the module in hand drawn again under a still pointer`).toBeLessThanOrEqual(2);
+    }
     await page.keyboard.press("Escape");
     await expect(line).toBeHidden();
   }

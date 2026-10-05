@@ -3647,6 +3647,11 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   fill: var(--silk-dim);
   pointer-events: none;
 }
+/* A lit socket takes the pointer by its circles' boxes, not their strokes: the
+   stroke changes with the socket's state (hot, previewed, dashed), and a
+   pointer resting on the ring's edge went in and out with it, about thirty
+   times a second, redrawing the module in hand each time. */
+.jack.legal circle { pointer-events: bounding-box; }
 .jack.legal circle {
   stroke: var(--phos-a);
   filter: drop-shadow(0 0 4px var(--phos-a-90));
@@ -3706,9 +3711,8 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
    painting a highlight over half the rack. */
 #rack-svg.picking g[data-key].dimmed { opacity: 0.28; }
 #rack-svg.picking g[data-key] { transition: opacity var(--d-state) cubic-bezier(0.2, 0, 0.6, 1); }
-/* Not a target: drawn over the socket's cable, it took the pointer off the
-   socket, which took it away, which gave the socket the pointer back, about
-   thirty times a second, and the ghost never stayed long enough to see. */
+/* Not a target: it is drawn over the cable the socket cuts, and must never
+   take the pointer off the socket under it. */
 .pick-caret { pointer-events: none; }
 .pick-caret path {
   stroke: var(--phos-a);

@@ -355,8 +355,12 @@ into C2a and C2b; round 2's decisions govern PATCH):
   trace, the count and IN HAND step out); the module in hand stands clear of
   every plate, with a lead. Two faults found on the way: its fade animated
   `transform` (which on an SVG group replaces the attribute while it runs),
-  and the socket's caret took the pointer, so a still pointer entered and
-  left the socket about thirty times a second.
+  and a lit socket took the pointer by its ring's stroke, which changes with
+  its state (hot, previewed, dashed), so a pointer resting on the ring's edge
+  entered and left it about thirty times a second, redrawing the module in
+  hand each time; it now takes the pointer by its circles' boxes. (The
+  caret over the socket's cable was made to take no pointer too, which
+  85508ab's message credits with the fix; it was not the cause.)
 - **Specs:** `patch_model_view.spec.js` and `patch_facts.spec.js` are new;
   `patch_canvas.spec.js`'s belief-line test changed meaning (the subtitle
   under ⌥, not the well's top line); `taste_marks.spec.js` reads the belief
