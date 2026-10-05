@@ -5094,6 +5094,15 @@ html:not(.engineer) .dn-sig { display: none; }
 .pt-worth-chip.down .pw-fig { color: var(--silk-dim); }
 .pt-worth-chip.guess .pw-fig { color: var(--phos-b-dim); }
 .pt-worth-chip .pw-note { color: var(--silk-mute); }
+/* No family settled, so no edge drawn: the model says so, in its voice. */
+.pt-worth-none {
+  pointer-events: auto;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  color: var(--silk-dim);
+  white-space: nowrap;
+}
 
 /* ---------- the belief line: PATCH's subtitle under the model view ---------- */
 /* What the model makes of the patch in hand, in its voice (`renderBelief`):
@@ -5102,8 +5111,13 @@ html:not(.engineer) .dn-sig { display: none; }
    MODEL) the subtitle becomes it. One line, always: the head keeps its
    height, so the well under it never moves. */
 .pt-sub .belief { display: none; }
-body.model-view .pt-sub .belief { display: flex; }
-body.model-view #view-patch .pt-sub .subject-meta { display: none; }
+/* It stands in for the counts (4 modules · 1 modulator, in signal order)
+   and nothing else: a bred sound's seed, opening…, 1 edit waiting, 2 locked
+   and silent stay in sight after it. */
+body.model-view .pt-sub .belief { display: flex; order: -1; flex: none; max-width: 70%; }
+body.model-view #view-patch #rack-meta .pt-made { display: none; }
+body.model-view #view-patch #rack-meta .pm:first-child:not(.pt-made)::before { content: "· "; }
+#rack-meta .pm-sep { font-style: normal; }
 .belief {
   align-items: baseline;
   gap: var(--s2);

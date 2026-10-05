@@ -26,7 +26,7 @@ const SURE = "(a hunch|leaning|fairly sure)";
 async function atRest(page) {
   await expect(page.locator("body")).not.toHaveClass(/\bmodel-view\b/);
   await expect(page.locator("#belief")).toBeHidden();
-  await expect(page.locator("#rack-meta")).toBeVisible();
+  await expect(page.locator("#rack-meta .pt-made")).toBeVisible();
   await expect(page.locator("#rack-svg .belief-edge")).toHaveCount(0);
   await expect(page.locator("#pt-worth .pt-worth-chip")).toHaveCount(0);
   await expect(page.locator("#pt-worth")).toBeHidden();
@@ -39,10 +39,14 @@ async function atRest(page) {
 /** Every mark of the model view, for the ranking `ranked`. */
 async function modelMarks(page, ranked) {
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
-  // The subtitle is the belief line.
-  await expect(page.locator("#rack-meta")).toBeHidden();
+  // The belief line stands in for the subtitle's counts; its states stay.
+  await expect(page.locator("#rack-meta .pt-made")).toBeHidden();
+  await expect(page.locator("#rack-meta")).toContainText(/\d+ locked/);
+  await expect(page.locator("#rack-meta")).toBeVisible();
   await expect(page.locator("#belief")).toBeVisible();
   await expect(page.locator("#belief")).toHaveText(new RegExp(`^it’d like this \\d+% · ${SURE}`));
+  // A settled family has its edge, so no note says nothing is settled.
+  await expect(page.locator("#pt-worth .pt-worth-none")).toHaveCount(0);
   // The filter's family is settled: its plate has an edge, toward. The VCOs'
   // is a guess: neither of their plates has one.
   await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"] .belief-edge.pos')).toHaveCount(1);
@@ -92,6 +96,12 @@ test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL
   // The ranking on screen, with two runners-up in it.
   const ranked = await drawnGuess(page, { timeout: 120_000 });
   expect(ranked.data.guesses.length).toBeGreaterThanOrEqual(3);
+  // A state the subtitle carries (a module locked), which the view keeps.
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="mix"]').focus();
+  await page.keyboard.press("l");
+  await expect(page.locator("#rack-meta")).toContainText(/\d+ locked/);
+  await page.keyboard.press("Escape"); // out of the module: nothing selected
+  await expect(page.locator("#rack-svg .guess-plate")).toHaveCount(1, { timeout: 60_000 });
   await atRest(page);
 
   // The plates as built, to tell a rebuild from a repaint.

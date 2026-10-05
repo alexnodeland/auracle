@@ -5,8 +5,11 @@
 // rates it (letting go puts the order back); TASTE's side of its toggle;
 // EVOLVE's guess for the pair before you pick, on the card it favours.
 // Another key during the hold cancels it, so ⌥↑ never flashes it; a text
-// field and a modal dialog keep ⌥; Esc and the window's blur end it. Its
-// words say "the model view", never "lens" (www/brand/voice.md).
+// field and a modal dialog keep ⌥; the window's blur ends it, and Esc does
+// when nothing nearer takes the press (in PATCH: the selection, the catalog
+// first). A tapped view is remembered across a reload, and PATCH's old LEANS
+// switch, left on, comes back as one. Its words say "the model view", never
+// "lens" (www/brand/voice.md).
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab, modelView } = require("./shell");
 const fs = require("fs");
@@ -252,5 +255,65 @@ test("the model view's words say what it is, never a lens", async ({ page }) => 
   ].join("\n"));
   expect(copy).not.toMatch(/\blens\b/i);
   await expect(page.locator("#model-btn")).toHaveAttribute("title", /the model view/i);
+  expect(errors).toEqual([]);
+});
+
+test("in PATCH Esc closes what is nearer before it ends a tapped model view, and a tapped view is remembered across a reload", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await boot(page);
+  await page.locator("#warm-skip").click();
+  await goLevel(page, "patch");
+  await bankTab(page, "presets");
+  await page.locator(".bank-item", { hasText: "Reese" }).first().click();
+  await expect(page.locator("#rack-subject")).toContainText("Reese", { timeout: 60_000 });
+  const btn = page.locator("#model-btn");
+  await btn.click();
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  // The selection goes first, the view stays.
+  const plate = page.locator('#rack-svg .rack-plates g[data-kind="filter"] .mod-plate').first();
+  const b = await plate.boundingBox();
+  await page.mouse.click(b.x + 10, b.y + b.height - 6);
+  await page.mouse.move(4, 400);
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rack-svg .rack-plates g.selected")).toHaveCount(0);
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  // Then the catalog, the view still up.
+  await page.locator("#pt-add").click();
+  await expect(page.locator("#nodebank")).toBeVisible();
+  await page.mouse.move(4, 400);
+  await page.locator("#rack-subject").click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#nodebank")).toBeHidden();
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  // With nothing nearer, Esc ends it, and that is remembered too.
+  await page.keyboard.press("Escape");
+  await expect(body(page)).not.toHaveClass(/\bmodel-view\b/);
+  expect(await page.evaluate(() => localStorage.getItem("auracle-model-view"))).toBe("0");
+  // Tapped on, and the page reloaded: still up, as a tap (MODEL pressed).
+  await btn.click();
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await page.reload();
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await expect(btn).toHaveAttribute("aria-pressed", "true");
+  expect(errors).toEqual([]);
+});
+
+test("PATCH's old LEANS switch, left on, comes back as a tapped model view, once", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    try {
+      if (!sessionStorage.getItem("pw-seeded")) {
+        sessionStorage.setItem("pw-seeded", "1");
+        localStorage.setItem("auracle-belief", "1");
+      }
+    } catch (_) {}
+  });
+  const errors = await boot(page);
+  await expect(body(page)).toHaveClass(/\bmodel-view\b/);
+  await expect(page.locator("#model-btn")).toHaveAttribute("aria-pressed", "true");
+  const keys = await page.evaluate(() => ({ old: localStorage.getItem("auracle-belief"), now: localStorage.getItem("auracle-model-view") }));
+  expect(keys).toEqual({ old: null, now: "1" });
   expect(errors).toEqual([]);
 });

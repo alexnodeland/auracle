@@ -273,12 +273,17 @@ cover.
 
 Hold <kbd>⌥</kbd> (Alt off Apple platforms), or press and hold **MODEL** in
 the menu bar, and PATCH shows what the model believes about the patch; let go
-and the canvas is exactly as it was. Tap **MODEL** to keep it up (that is how
-it stays on while you work; a tap again or <kbd>Esc</kbd> ends it). On a touch
-screen, MODEL's press and hold is the model view. Nothing here is shown at
-rest, and every mark is the model's own data:
+and the canvas is exactly as it was. Tap **MODEL** to keep it up: that is
+how it stays on while you work, and it is still up after a reload. A tap again
+ends it, and so does <kbd>Esc</kbd> once nothing nearer is waiting for it: in
+PATCH a press first walks out one thing (a menu, a module in hand, the guess
+for a place, the selected module, the catalog), and the view stays. On a
+touch screen, MODEL's press and hold is the model view. Nothing here is shown
+at rest, and every mark is the model's own data:
 
-**The belief line,** in place of the subtitle, in the model's voice:
+**The belief line,** in place of the subtitle's counts, in the model's voice;
+what is happening to the patch (*opening…*, *1 edit waiting*, *2 locked*, a
+bred sound's seed) stays after it:
 
 ```text
 it’d like this 79% · fairly sure · was 74% ▲
@@ -314,7 +319,9 @@ one), and says so.
 
 **Each module's edge** is tinted by which way your taste leans on its family:
 amber toward, red away, stronger where the model is surer. A family it has
-only a guess about, or too little evidence for, gets no tint.
+only a guess about, or too little evidence for, gets no tint, and when no
+module's family is settled the model says so in the well's top right: *no
+settled lean on anything in this patch yet*.
 
 **What each kind is worth,** in the well's top right: one chip for each family
 of module the patch holds, with what one more of that family is worth to the

@@ -10,16 +10,21 @@ changelog that edits its own past is not a record.
 
 ### Added: hold ⌥ in PATCH to see what the model believes about the patch
 
-- **The belief line.** Hold ⌥ (or tap MODEL to keep it up) and the subtitle
-  under the sound's name becomes what the model makes of it, in its voice:
-  *it'd like this 62% · leaning · was 58% ▲*, or why it can't say yet. The
+- **The belief line.** Hold ⌥ (or tap MODEL to keep it up) and the subtitle's
+  counts under the sound's name become what the model makes of it, in its
+  voice: *it'd like this 62% · leaning · was 58% ▲*, or why it can't say yet;
+  what is happening to the patch (*opening…*, *2 locked*) stays beside it. The
   readout at the well's foot says what adds up to that number (the qualities
   that count most, the style judging it, the utility), and with a module
   selected, what that kind of module adds and which way your taste leans on
   it. At rest the subtitle is as it was.
 - **Each module's edge** is tinted by which way your taste leans on its kind,
-  amber toward and red away, stronger where the model is surer. This was the
-  LEANS switch in the layout's menu, which is gone: ⌥ is its home now.
+  amber toward and red away, stronger where the model is surer, and when
+  nothing in the patch is settled the model says so. This was the LEANS
+  switch in the layout's menu, which is gone: ⌥ is its home now. Tap MODEL to
+  keep the view up: it stays up after a reload (a LEANS switch left on comes
+  back as it), and Esc ends it only once nothing nearer is open, so in PATCH
+  Esc still deselects a module or closes the catalog first.
 - **What each kind is worth:** a chip for each kind of module in the patch,
   with what one more of it is worth to the model (*filtering +0.12*). Two
   filters share one figure, and the chip says so (*shared by 2*): the model

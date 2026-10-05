@@ -33,7 +33,8 @@ live region, so a level key is announced where it went.
 
 **The model view.** Holding <kbd>⌥</kbd> (Alt) shows it, under the same
 rules; **MODEL** in the menu bar is a button whose <kbd>Enter</kbd> or
-<kbd>Space</kbd> keeps it up (`aria-pressed`), and <kbd>Esc</kbd> ends it. Its
+<kbd>Space</kbd> keeps it up (`aria-pressed`, and remembered across a reload),
+and <kbd>Esc</kbd> ends it once nothing nearer takes the press. Its
 tag, saying what the model believes and from how many picks, is a status, read
 once as the view comes up. In PATCH, the belief line in the subtitle is a
 status too, and the readout at the well's foot (a polite live region) reads

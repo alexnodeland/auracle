@@ -26,8 +26,9 @@
 //   inputs (a, b) outside the plate, by the cables; the modulation cable's
 //   words ("depth 25% · 0.51 Hz") show at that fit.
 // - The scope is folded until asked for; the belief line is the subtitle's
-//   under the model view only, and without a guess says why; TEACH counts
-//   the picks in one place, the chip at the well's foot.
+//   under the model view only, standing in for its counts, and without a
+//   guess says why (and that nothing is settled); TEACH counts the picks in
+//   one place, the chip at the well's foot.
 // - "Undo to as opened" waits for a sound on its way: pressed while another
 //   opens, it posts nothing and says why (so does ⌘Z, which waits).
 const { test, expect } = require("@playwright/test");
@@ -318,14 +319,20 @@ test("the scope is folded until asked for, the belief line is the model view's a
   expect(await page.locator(".pt-sub #belief").count()).toBe(1);
   await expect(page.locator("#belief")).toBeHidden();
   await expect(page.locator("#rack-meta")).toBeVisible();
-  // Under the model view the subtitle becomes it: with no picks, its limit.
+  // Under the model view it stands in for the counts: with no picks, its
+  // limit; and with nothing settled no module's edge is tinted, which the
+  // model says.
   await modelView(page, true);
   await expect(page.locator("#belief")).toBeVisible();
-  await expect(page.locator("#rack-meta")).toBeHidden();
+  await expect(page.locator("#rack-meta .pt-made")).toBeHidden();
   await expect(page.locator("#belief .bl-u")).toHaveCount(0);
   await expect(page.locator("#belief .bl-none")).toHaveText("no guess yet: it needs a few picks first");
+  await expect(page.locator("#rack-svg .belief-edge")).toHaveCount(0);
+  await expect(page.locator("#pt-worth .pt-worth-none")).toHaveText("no settled lean on anything in this patch yet");
   await modelView(page, false);
   await expect(page.locator("#belief")).toBeHidden();
+  await expect(page.locator("#rack-meta .pt-made")).toBeVisible();
+  await expect(page.locator("#pt-worth")).toBeHidden();
   // A pair dealt: the chip counts the picks, and the head says nothing more.
   await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
   await expect(page.locator("#pt-teach")).toHaveText("teach · 6 picks ▸");

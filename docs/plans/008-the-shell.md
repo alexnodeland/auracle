@@ -296,8 +296,9 @@ into C2a and C2b; round 2's decisions govern PATCH):
   every one is posterior data or a measurement. Nothing new shows at rest but
   the three measurements (without this module, what a generation changed,
   PERFORM's controls).
-- **The belief line** is the subtitle under the model view, in the model's
-  italic at its size: *it'd like this 62% · leaning · was 58% ▲*, or its limit
+- **The belief line** stands in for the subtitle's counts under the model
+  view (the subtitle's states, the bred line, *opening…*, *1 edit waiting*,
+  *N locked*, stay after it), in the model's italic at its size: *it'd like this 62% · leaning · was 58% ▲*, or its limit
   (*no guess yet: it needs a few picks first*, which C2a hid). What else the
   old line said has the readout at the well's foot as its home under the view:
   with nothing selected, the three largest parts of the utility, the style
@@ -305,8 +306,14 @@ into C2a and C2b; round 2's decisions govern PATCH):
   with its family's part of the utility (`edit_explain`, a structural
   coordinate) and the lean sentence the spec dock gave (`specParts`). The
   budget keeps C2a's rule beside it.
-- **The leans toggle retired**; its localStorage key is no longer read. The
-  edges are drawn only under the view, as an overlay on the plates the build
+- **The leans toggle retired**, and nothing it did is lost: a tapped MODEL
+  is remembered across a reload (`auracle-model-view`, seeded once from the
+  toggle's `auracle-belief` and then retiring it), Esc ends a tapped view only
+  when nothing nearer took the press (shell.js listens on the window after
+  everything else and yields to `defaultPrevented`; PATCH's Esc chain marks
+  what it closed), and with nothing settled the model says *no settled lean
+  on anything in this patch yet*, as the toggle's toast did. The edges are
+  drawn only under the view, as an overlay on the plates the build
   left (`paintRackFacts`, after every build and every repaint in place), never
   a rebuild, so letting go of ⌥ restores the canvas exactly and no knob is
   replaced under a held pointer. The overlay left `rackShapeOf` and the
@@ -317,9 +324,12 @@ into C2a and C2b; round 2's decisions govern PATCH):
   (`socketPrice`, θ/scale under the bench's style), so the two never disagree;
   a family too thin to price, or before a fit, has no chip.
 - **The runners-up** are chips smaller and fainter than the guess (132 × 44
-  rack units), ranks 2 and 3 with *lower bound ±x.xx*: at their own place
-  where that is clear, else beside or above the top guess, never over a
-  plate, with a faint lead when their place is not the top guess's. They are
+  rack units), ranks 2 and 3 with *lower bound ±x.xx*: the first of their own
+  place, left of the top guess (level with it, then below), above it, above
+  the last one placed, or under the patch that covers no plate and no other
+  guess and stays in the camera's view; if none does, their own place even
+  over a plate. A faint lead goes to their place when it is not the top
+  guess's. They are
   to read, not to take: the top guess is what Enter adds.
 - **Without this module** is drawn for the selected module, not the one under
   the pointer (the mock's): a measurement takes a render. It is asked as a

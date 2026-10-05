@@ -5300,7 +5300,8 @@ async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
   // The guide pill's steps (`auracle-guide`), and the key they had before it.
-  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps"])
+  // A model view the last visitor left up by a tap (`auracle-model-view`) goes too.
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps", "auracle-model-view", "auracle-belief"])
     localStorage.removeItem(k);
   // The next visitor starts at PERFORM, not at the level the address names,
   // and on a new pool.
@@ -5733,17 +5734,21 @@ document.addEventListener("keydown", (e) => {
       spent = true;
     }
     if (!$("ctx-menu").classList.contains("hidden")) spent = true;
-    if (spent) { closeMenu(); return; }
+    // What this press closed is said with `preventDefault`, so the model
+    // view (shell.js, which takes Esc last) stays up for it and goes on the
+    // press that has nothing nearer left to close.
+    if (spent) { e.preventDefault(); closeMenu(); return; }
+    let closed = true;
     if (layoutMenuOpen()) setLayoutMenu(false);
     else if (shelfOpen()) setShelf(false);
     else if (teachOpen && currentView === "patch") setTeach(false);
     else if (evolveMenuOpen()) setEvolveMenu(false);
     // PATCH's chain (the specimen's): a selected module, then the catalog;
     // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed) {
-      if (plateSel != null) selectPlate(null);
-      else closeCatalog();
-    }
+    else if (currentView === "patch" && !armed && plateSel != null) selectPlate(null);
+    else if (currentView === "patch" && !armed) closed = closeCatalog();
+    else closed = false;
+    if (closed) e.preventDefault();
     closeMenu();
     return;
   }
@@ -11314,12 +11319,18 @@ function renderSubject() {
   // as it was made (a bred or edited sound has none, plan §6).
   fam(wb.dirty ? "" : presetOfId(wb.subjectId)?.category || "");
   // A bred sound as it was bred: its seed and how many changes, first
-  // (`lineageFacts`).
+  // (`lineageFacts`). Each part its own span with its separator, so the
+  // model view's belief line can stand in for the counts alone (`pt-made`,
+  // style.css) and every state stays in sight beside it.
   const lf = lineageFacts();
-  const rest = [`${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`, ...states].join(" · ");
-  metaEl.innerHTML = lf
-    ? `<span class="pt-from">${esc(bredLine(lf.seedName, lf.changes))}</span> · ${esc(rest)}`
-    : esc(rest);
+  const parts = [
+    ...(lf ? [["pt-from", bredLine(lf.seedName, lf.changes)]] : []),
+    ["pt-made", `${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`],
+    ...states.map((t) => ["", t]),
+  ];
+  metaEl.innerHTML = parts
+    .map(([cls, t], i) => `<span class="pm${cls ? ` ${cls}` : ""}">${i ? `<i class="pm-sep"> · </i>` : ""}${esc(t)}</span>`)
+    .join("");
   syncEditBar();
 }
 
@@ -13283,8 +13294,8 @@ function beliefEdge(m, p, sup) {
 function paintRackFacts() {
   const svg = $("rack-svg");
   if (!svg) return;
-  paintLeans(svg);
-  paintWorth();
+  const leans = paintLeans(svg);
+  paintWorth(leans);
   paintLineage(svg);
   syncWithout();
 }
@@ -13365,7 +13376,7 @@ function paintLineage(svg) {
  *  where"). A settled lean is drawn solid; one still crossing zero dashed
  *  and called a guess; a family too thin to price, or before the first fit,
  *  gets no chip (the belief line says why). In the well's top right. */
-function paintWorth() {
+function paintWorth(leans = null) {
   const box = $("pt-worth");
   if (!box) return;
   const fams = new Map(); // phi -> {kind, n}
@@ -13386,25 +13397,31 @@ function paintWorth() {
     chips.push({ phi, n: f.n, p });
   }
   chips.sort((a, b) => Math.abs(b.p.du) - Math.abs(a.p.du));
-  box.hidden = chips.length === 0;
+  // No edge drawn because nothing here is settled: said, not left to look
+  // like nothing happened (what the LEANS switch said when it found none).
+  const unsettled = leans === 0 && modelOn && !!wb.rack;
+  box.hidden = chips.length === 0 && !unsettled;
   box.innerHTML = chips
     .map(({ phi, n, p }) => {
       const guess = p.state === "flat";
       const fig = guess ? `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}` : PRICE_SIGN(p.du);
       return `<span class="pt-worth-chip${guess ? " guess" : p.du >= 0 ? " up" : " down"}" data-phi="${esc(phi)}" data-n="${n}" ` +
-        `title="What one more of these is worth to it">` +
+        `title="Worth per kind">` +
         `<span class="pw-fam">${esc(niceName(phi))}</span> <b class="pw-fig mono">${fig}</b>` +
         (guess ? ` <span class="pw-note">a guess</span>` : "") +
         (n > 1 ? ` <span class="pw-note">· shared by ${n}</span>` : "") +
         `</span>`;
     })
-    .join("");
+    .join("") +
+    (unsettled ? `<span class="pt-worth-none">no settled lean on anything in this patch yet</span>` : "");
 }
 
-/** The family lean on each plate, under the model view only. */
+/** The family lean on each plate, under the model view only. How many it
+ *  drew, or null where it draws none at all (no view, no rack, compact). */
 function paintLeans(svg) {
   for (const e of svg.querySelectorAll(".rack-plates .belief-edge")) e.remove();
-  if (!modelOn || !wb.rack || effectiveLod() === "compact") return;
+  if (!modelOn || !wb.rack || effectiveLod() === "compact") return null;
+  let drawn = 0;
   const sup = nbSupport();
   for (const g of svg.querySelectorAll(".rack-plates > g[data-key]")) {
     const m = wb.rack.modules.find((x) => x.key === g.getAttribute("data-key"));
@@ -13416,8 +13433,12 @@ function paintLeans(svg) {
     // Immediately over the panel and under everything printed on it: an
     // edge, the way a coloured band on a resistor is an edge, rather than a
     // wash that would fight the silkscreen.
-    if (edge) plate.after(edge);
+    if (edge) {
+      plate.after(edge);
+      drawn += 1;
+    }
   }
+  return drawn;
 }
 const isEmptySocketMod = (m) => isPlaceholderKey(m.key) || m.kind === "silence";
 
