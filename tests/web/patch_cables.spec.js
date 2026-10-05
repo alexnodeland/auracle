@@ -153,11 +153,40 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   expect(most, "probes piled up at the engine").toBe(1);
 });
 
-// A player's pace between two opens, right after arriving.
-const CLICK_PACE_MS = 300;
 // How long the bench is quiet, after PATCH comes into view or a sound lands,
 // before the probe and the guess are asked (patch.js `ARRIVE_MS`).
 const ARRIVE_MS = 1_200;
+
+/** Mark, in the page, when the next press on PATCH's stop on the rail lands,
+ *  before the app's own handler sees it: the arrival, or a moment before. */
+const markArrival = (page) => page.evaluate(() => {
+  window.__pwArrived = null;
+  const mark = (e) => {
+    if (window.__pwArrived == null && e.target.closest && e.target.closest('.rail-stop[data-level="patch"]')) window.__pwArrived = performance.now();
+  };
+  document.addEventListener("pointerdown", mark, true);
+  document.addEventListener("click", mark, true);
+});
+
+/** Every cable probe and guess the page sent since `arrived` kept the quiet
+ *  window: none went out with an open on its way (asked and not landed), and
+ *  each went out at least ARRIVE_MS (less 5 ms for the grain of the page's
+ *  clock) after the later of arriving and the last open to land before it.
+ *  The window's promise, which holds at any pace the opens are made at. */
+async function keptQuiet(app, arrived) {
+  const log = await app.log({ after: arrived });
+  const opens = log.filter((e) => e.type === "sent:edit_begin");
+  const landings = log.filter((e) => e.type === "bench" && e.subject != null);
+  const asks = log.filter((e) => e.type === "sent:cable_levels" || e.type === "sent:guess");
+  for (const p of asks) {
+    const what = `the ${p.type.slice(5)} asked ${Math.round(p.at - arrived)} ms after arriving`;
+    const onItsWay = opens.filter((o) => o.at < p.at && !landings.some((l) => l.subject === o.id && l.at > o.at && l.at < p.at));
+    expect(onItsWay.map((o) => o.id), `${what}, with an open on its way`).toEqual([]);
+    const from = Math.max(arrived, ...landings.filter((l) => l.at < p.at).map((l) => l.at));
+    expect(p.at - from, `${what}, ${Math.round(p.at - from)} ms after it arrived or the last open landed`).toBeGreaterThanOrEqual(ARRIVE_MS - 5);
+  }
+  return asks;
+}
 
 // The probe is a render on the engine's one thread, so one started the moment
 // PATCH comes into view is one the player's next click waits behind. It is
@@ -167,44 +196,40 @@ const ARRIVE_MS = 1_200;
 // it. Both are made as slow as a CI runner's render here, so either, gone
 // out early, would hold an open up.
 //
-// What is checked is that window, from what the page sent and heard: both
-// opens asked, and landed, before the first probe or guess went out, and
-// that one at least ARRIVE_MS after the last open landed. Not "Opened …":
-// the page says that of any open slower than a second, and on a loaded
-// machine an open takes that long by itself (with AURACLE_CPU_THROTTLE=4 the
-// first open took 1.1 to 1.2 s, with the probe going out 1.3 s after the
-// second landed; #120).
+// What is checked is that promise, for every probe and guess the page sends
+// (`keptQuiet`), whatever pace the test opens its two sounds at (each as soon
+// as it can: the second when the first has landed), and at least one probe
+// after the last open landed. Not "Opened …": the page says that of any open
+// slower than a second, and on a loaded machine an open takes that long by
+// itself (with AURACLE_CPU_THROTTLE=4 the first open took 1.1 to 1.2 s, with
+// the probe going out 1.3 s after the second landed; #120).
 test("sounds opened right after arriving in PATCH are not kept waiting behind a cable probe", async ({ page, app }) => {
   await app.boot({ busy: true });
   await app.level("evolve");
   await expect(page.locator("#view-evolve")).toBeVisible();
   await app.busy({ cable_levels: 900, guess: 900 });
-  const arrived = await app.now();
+  await markArrival(page);
   await app.level("patch");
+  const arrived = await page.evaluate(() => window.__pwArrived);
+  expect(arrived, "the press on PATCH's stop was seen").not.toBeNull();
   const rows = page.locator("#bank-list .bank-item");
   const ids = [];
   for (const i of [1, 2]) {
-    await page.waitForTimeout(CLICK_PACE_MS);
     const id = Number(await rows.nth(i).getAttribute("data-id"));
     ids.push(id);
     await rows.nth(i).locator(".bi-name").click();
     await app.engine((timeout) => page.waitForFunction((x) => window.__aur.wb.subjectId === x, id, { timeout }), { ms: 30_000 });
   }
-  // The window closes, and the probe goes out.
+  // The window after the last open closes, and a probe goes out.
+  const landed = (await app.log({ after: arrived })).filter((e) => e.type === "bench" && e.subject === ids[1]).pop().at;
   const probe = { type: ["cable_levels", "guess"] };
-  await app.engine((timeout) => expect.poll(async () => (await app.sent(probe, { after: arrived })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
-  const [first] = await app.sent(probe, { after: arrived });
+  await app.engine((timeout) => expect.poll(async () => (await app.sent(probe, { after: landed })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
+  const asks = await keptQuiet(app, arrived);
+  // For the record: how soon after the window opened the harness asked.
   const log = await app.log({ after: arrived });
-  let lastLanded = arrived;
-  for (const id of ids) {
-    const asked = log.find((e) => e.type === "sent:edit_begin" && e.id === id);
-    const landed = log.find((e) => e.type === "bench" && e.subject === id && e.at > asked.at);
-    expect(asked.at, `sound ${id} was asked inside the quiet window, before any probe`).toBeLessThan(first._at);
-    expect(landed.at, `sound ${id} landed before any probe went out`).toBeLessThan(first._at);
-    lastLanded = Math.max(lastLanded, landed.at);
-  }
-  // (Less 5 ms for the grain of the page's clock.)
-  expect(first._at - lastLanded, "the probe waited out the quiet window after the last open landed").toBeGreaterThanOrEqual(ARRIVE_MS - 5);
+  const asked = ids.map((id) => log.find((e) => e.type === "sent:edit_begin" && e.id === id).at);
+  const first = log.find((e) => e.type === "bench" && e.subject === ids[0]).at;
+  console.log(`[patch_cables] opens asked ${Math.round(asked[0] - arrived)} ms after arriving and ${Math.round(asked[1] - first)} ms after the first landed; ${asks.length} probes and guesses, the first ${Math.round(asks[0].at - arrived)} ms after arriving`);
   await app.busy({});
 });
 
