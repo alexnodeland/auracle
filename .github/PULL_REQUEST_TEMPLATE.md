@@ -1,20 +1,30 @@
+<!-- How a change lands: docs/process.md. Delete what doesn't apply. -->
+
 ## What
 
-<!-- What does this PR change, from a user's / player's perspective? -->
+<!-- What is true now, for a player, a reader of the site or a contributor. -->
 
 ## Why
 
-<!-- Motivation and context. Link issues if applicable. -->
+<!-- What was wrong or missing. -->
+
+Closes #
 
 ## How
 
-<!-- Notable implementation decisions, trade-offs, anything reviewers should
-     look at closely. -->
+<!-- The decisions a reviewer should look at closely; anything moved or
+     retired, with where it lives now (by mouse, keyboard and touch). -->
 
-## Checklist
+## Checks
 
-- [ ] `make check` passes (fmt, clippy `-D warnings`, release tests)
-- [ ] New behavior is covered by a test (gate/property style preferred)
-- [ ] Docs updated where relevant (`www/reference/` / `www/docs/` / `CONTRIBUTING.md` / `CHANGELOG.md`)
-- [ ] If Rust used by the web app changed: rebuilt with `make wasm` and
-      smoke-tested the instrument in a browser (no console errors)
+<!-- The gates and specs you ran, with counts; the review before this PR and
+     what it found. -->
+
+- [ ] Reviewed before this PR (the `reviewer` agent or a person); its findings are fixed, or declined here with the reason
+- [ ] The fast gates for what changed pass (the `check` skill), and the specs it reaches (`make browser-changed`); CI runs the rest
+- [ ] A test that fails without this change, named for the behaviour (a browser spec for what a player sees; a unit test for logic)
+- [ ] Descriptions are true in this change: guide, reference, in-app copy, films' claims, the plan's as-built, `CHANGELOG.md` for anything a player notices (ADR-004)
+- [ ] Nothing dropped: everything moved or retired still works by mouse, keyboard and touch
+- [ ] New player-facing words are in `www/brand/voice.md`, approved by the maintainer (ADR-013)
+- [ ] Rust the app calls changed: `make wasm` rebuilt it; `style.css` or `main.js` changed: its `?b=` is bumped
+- [ ] No test was retried to pass; a flaky one is fixed or quarantined with an issue (`docs/process.md` § Flakes)

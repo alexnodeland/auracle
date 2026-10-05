@@ -1,0 +1,7 @@
+# Blank issues stay open for anything the templates don't fit. How issues
+# are labelled and used: docs/process.md § Issues.
+blank_issues_enabled: true
+contact_links:
+  - name: How work flows (issues, review, PRs, CI)
+    url: https://github.com/alexnodeland/auracle/blob/main/docs/process.md
+    about: The labels, milestones and templates an issue here uses, and what happens after.
