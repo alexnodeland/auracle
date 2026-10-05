@@ -31,9 +31,8 @@
 //   one place, the chip at the well's foot.
 // - "Undo to as opened" waits for a sound on its way: pressed while another
 //   opens, it posts nothing and says why (so does ⌘Z, which waits).
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset, now, replied, slowWorker } = require("./patch_page");
-const { modelView } = require("./shell");
+const { test, expect, modelView } = require("./fixtures");
+const { openPreset, benchTree } = require("./patch_page");
 
 /** The rack's counts, as the head should say them. */
 const counts = (page) => page.evaluate(() => {
@@ -60,16 +59,17 @@ async function knobAtRest(page, i) {
 }
 
 /** Drag the `i`th continuous knob up by `dy` px, and wait for its reply. */
-async function turnKnob(page, i = 0, dy = 30) {
+async function turnKnob(app, i = 0, dy = 30) {
+  const { page } = app;
   await knobAtRest(page, i);
   const hit = page.locator("#rack-svg g[data-addr] > .knob-hit").nth(i);
   const b = await hit.boundingBox();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - dy, { steps: 5 });
   await page.mouse.up();
-  await replied(page, "bench", t0);
+  await app.reply("bench", { after: t0 });
 }
 
 /** A press on a module's bare panel (its title's corner), which selects it. */
@@ -79,9 +79,9 @@ async function selectPlate(page, kind) {
   await page.mouse.click(b.x + 10, b.y + b.height - 6);
 }
 
-test("the head names the patch and counts what the rack is made of, in signal order", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the head names the patch and counts what the rack is made of, in signal order", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await expect(page.locator("#rack-subject")).toHaveText("Reese");
   await expect(page.locator("#pt-family")).toHaveText("· bass");
   const { a, c } = await counts(page);
@@ -89,24 +89,23 @@ test("the head names the patch and counts what the rack is made of, in signal or
     new RegExp(`^${plural(a, "module")} · ${c ? plural(c, "modulator") : "no modulators"}, in signal order`));
   // The edit bar keeps its place at rest, and says nothing.
   await expect(page.locator("#pt-editbar")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
-test("the face at OUT is the bench's face, past the amp, and a click on it plays the sound", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("the face at OUT is the bench's face, past the amp, and a click on it plays the sound", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   const face = page.locator("#out-face img.face");
-  await expect(face).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(face).toHaveCount(1, { timeout }), { ms: 60_000 });
   // The bench's face: its target is the bench's tree (main.js `treeRef`,
   // FNV-1a over the tree's text), never an estimate drawn from its knobs.
-  await expect.poll(() => page.evaluate(() => {
-    const json = window.__pwLast.bench && window.__pwLast.bench.treeJson;
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => {
+    const json = window.__tap.last.bench && window.__tap.last.bench.treeJson;
     if (!json) return null;
     let h = 0x811c9dc5;
     for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
     const ref = `r${(h >>> 0).toString(36)}${json.length.toString(36)}`;
     return document.getElementById("out-face").dataset.face === ref;
-  }), { timeout: 30_000 }).toBe(true);
+  }), { timeout }).toBe(true), { ms: 30_000 });
   // Past the amp, on its right.
   const amp = await page.locator('#rack-svg .rack-plates g[data-kind="amp"] .mod-plate').boundingBox();
   const play = page.locator("#rack-play");
@@ -114,46 +113,42 @@ test("the face at OUT is the bench's face, past the amp, and a click on it plays
   expect(at.x).toBeGreaterThan(amp.x + amp.width);
   await expect(play).toBeEnabled();
   await play.click();
-  await expect(play).toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(play).toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
   await expect(page.locator("#inhand-play")).toHaveClass(/\bplaying\b/);
-  expect(errors).toEqual([]);
 });
 
-test("the edit bar appears after an edit, counts it, and KEEP AS NEW keeps it as a new sound", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("the edit bar appears after an edit, counts it, and KEEP AS NEW keeps it as a new sound", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   const bar = page.locator("#pt-editbar");
   await expect(bar).toBeHidden();
-  await turnKnob(page, 0);
+  await turnKnob(app, 0);
   await expect(bar).toBeVisible();
   await expect(page.locator("#pt-ed-n")).toHaveText("1 change");
   await page.locator("#improve-check").check();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.locator("#rack-commit").click();
-  await replied(page, "committed", t0);
-  expect(await page.evaluate(() => window.__pwLast.committed.outcome)).toBe("self_edited");
+  const committed = await app.reply("committed", { after: t0 });
+  expect(committed.outcome).toBe("self_edited");
   // A new sound, as it was made: nothing edited, so no bar.
-  await expect(bar).toBeHidden({ timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await app.engine((timeout) => expect(bar).toBeHidden({ timeout }), { ms: 30_000 });
 });
 
-test("undo to as opened takes every change back in one restore, and ⇧⌘Z brings them back one at a time", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
-  const opened = await page.evaluate(() => window.__pwLast.bench.treeJson);
-  await turnKnob(page, 0);
-  await turnKnob(page, 1);
+test("undo to as opened takes every change back in one restore, and ⇧⌘Z brings them back one at a time", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
+  const opened = await benchTree(app);
+  await turnKnob(app, 0);
+  await turnKnob(app, 1);
   await expect(page.locator("#pt-ed-n")).toHaveText("2 changes");
-  const sets = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_set_tree").length);
+  const sets = () => app.sentCount("edit_set_tree");
   const before = await sets();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.locator("#pt-revert").click();
-  await replied(page, "bench", t0);
+  await app.reply("bench", { after: t0 });
   // One restore, to the tree as it was opened.
   expect(await sets()).toBe(before + 1);
-  await expect.poll(() => page.evaluate(() => window.__pwLast.bench.treeJson)).toBe(opened);
+  await expect.poll(() => benchTree(app)).toBe(opened);
   await expect(page.locator("#pt-ed-n")).toHaveText("as opened");
   // The lane shows one toast at a time: it may wait behind the open's.
   await expect(page.locator("#toasts")).toContainText("Back as it was opened: 2 changes undone.", { timeout: 20_000 });
@@ -164,16 +159,15 @@ test("undo to as opened takes every change back in one restore, and ⇧⌘Z brin
   await expect(page.locator("#toasts")).toContainText("Already as it was opened.", { timeout: 20_000 });
   expect(await sets()).toBe(before + 1);
   // ⇧⌘Z: the first change again.
-  const t1 = await now(page);
+  const t1 = await app.now();
   await page.keyboard.press("Shift+Control+z");
-  await replied(page, "bench", t1);
+  await app.reply("bench", { after: t1 });
   await expect(page.locator("#pt-ed-n")).toHaveText("1 change");
-  expect(errors).toEqual([]);
 });
 
-test("the selected module shows its ⋯, which reaches every verb of the structure menu", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the selected module shows its ⋯, which reaches every verb of the structure menu", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // At rest no ⋯ shows; the selected module's does.
   const menu = (kind) => page.locator(`#rack-svg .rack-controls g[data-kind="${kind}"] .mod-menu-btn`).first();
   await page.mouse.move(5, 5);
@@ -200,12 +194,11 @@ test("the selected module shows its ⋯, which reaches every verb of the structu
   await menu("filter").click({ force: true });
   await expect(items.filter({ hasText: /^modulate →/ })).toHaveCount(1);
   await page.keyboard.press("Escape");
-  expect(errors).toEqual([]);
 });
 
-test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clears it", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clears it", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const plate = page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]');
   await plate.focus();
   await page.keyboard.press("l");
@@ -230,14 +223,15 @@ test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clea
   await page.locator("#pt-evolve-more").click();
   await evmenu.locator("#lock-clear").click();
   await expect(page.locator("#rack-meta")).not.toContainText("locked");
-  expect(errors).toEqual([]);
 });
 
-// Quarantined (#150): about 1 run in 4 a label in the dealt sound's opening
-// fit falls under the 7.5 px floor.
-test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", { tag: "@quarantine" }, async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+// Read once the open has landed on its fit (`openPreset` waits for the rack
+// at rest): the camera travels there from the sound before's fit, and mid-way
+// its zoom is between the two's. From a sound before larger than Reese (the
+// seeded boot's has fifteen modules) every label is under the floor there.
+test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await expect(page.locator("#rack-svg .rack-plates g[data-key]").first()).toBeVisible();
   const read = await page.evaluate(() => {
     const svg = document.getElementById("rack-svg");
@@ -275,24 +269,28 @@ test("at 1440 the opening fit prints every module's name, its setting and each k
   // Plates at the specimen's scale: about 80 to 210 px wide.
   for (const w of read.plates) { expect(w).toBeGreaterThan(70); expect(w).toBeLessThan(215); }
   expect(read.env).toBe(true);
-  expect(errors).toEqual([]);
 });
 
-test("the amp's envelope figure follows its knobs", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the amp's envelope figure follows its knobs", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const fig = page.locator("#rack-svg .env-fig");
   const d0 = await fig.getAttribute("d");
   const attack = page.locator('#rack-svg g.mod-group[data-kind="amp"] [data-addr$="#attack"], #rack-svg g.mod-group[data-kind="amp"] [role="slider"]').first();
   await attack.focus();
   for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowUp");
   await expect.poll(() => fig.getAttribute("d")).not.toBe(d0);
-  expect(errors).toEqual([]);
 });
 
-test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+// Read once the open's motion is over (`openPreset` waits for the rack at
+// rest), when the cables on the rack are Reese's own: the sound before's
+// have faded out with its plates. On the way the amp, the one plate kept
+// from the sound before, slides from where that sound had it to Reese's;
+// from a sound narrower than Reese it passes Reese's last module, and for
+// those frames the cable into it is routed around the plates.
+test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const got = await page.evaluate(() => {
     const svg = document.getElementById("rack-svg");
     const audio = [...svg.querySelectorAll("path.wire.audio")].map((p) => p.getAttribute("d"));
@@ -308,13 +306,11 @@ test("audio cables curve between the jacks, a two-input module names its inputs 
   expect(got.label).not.toBeNull();
   expect(got.label.shown).toBe(true);
   expect(got.label.text).toMatch(/^depth \S+ · \S+ Hz$/);
-  expect(errors).toEqual([]);
 });
 
-test("the scope is folded until asked for, the belief line is the model view's and says why it has no guess, and TEACH counts the picks in one place", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the scope is folded until asked for, the belief line is the model view's and says why it has no guess, and TEACH counts the picks in one place", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await expect(page.locator("#scope-shell")).toBeHidden();
   // The belief line: in the subtitle, hidden at rest, where the subtitle
   // says what the patch is made of.
@@ -336,22 +332,20 @@ test("the scope is folded until asked for, the belief line is the model view's a
   await expect(page.locator("#rack-meta .pt-made")).toBeVisible();
   await expect(page.locator("#pt-worth")).toBeHidden();
   // A pair dealt: the chip counts the picks, and the head says nothing more.
-  await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
+  await app.engine((timeout) => expect(page.locator("#pt-teach")).toBeVisible({ timeout }), { ms: 90_000 });
   await expect(page.locator("#pt-teach")).toHaveText("teach · 6 picks ▸");
   await expect(page.locator("#nextstep")).toHaveText("");
-  expect(errors).toEqual([]);
 });
 
-test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed while another opens, post nothing", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page, { warmed: true, slow: true });
-  await openPreset(page, "Reese");
-  await turnKnob(page, 0);
+test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed while another opens, post nothing", async ({ page, app }) => {
+  await app.boot({ busy: true });
+  await openPreset(app, "Reese");
+  await turnKnob(app, 0);
   await expect(page.locator("#pt-ed-n")).toHaveText("1 change");
-  const sets = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_set_tree").length);
+  const sets = () => app.sentCount("edit_set_tree");
   const before = await sets();
   // The next sound takes its time arriving.
-  await slowWorker(page, { edit_begin: 4000 });
+  await app.busy({ edit_begin: 4000 });
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   // ↺ cannot go while it is on its way (and says why, where it is shown).
   await expect.poll(() => page.evaluate(() => {
@@ -360,17 +354,16 @@ test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed whi
   }), { timeout: 3_000 }).toBe(true);
   // ⌘Z waits, and is dropped with the patch it was aimed at.
   await page.keyboard.press("Control+z");
-  await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
-  await slowWorker(page, {});
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
+  await app.busy({});
   await page.waitForFunction(() => window.__aur.wb.subjectId != null);
   expect(await sets()).toBe(before);
   await expect(page.locator("#pt-editbar")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
-test("a module dragged by hand takes its cables along, and the modulation cable's words step aside until it is put down", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("a module dragged by hand takes its cables along, and the modulation cable's words step aside until it is put down", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator("#rack-layout").click();
   await page.locator('#pt-laymenu [data-layout="freeform"]').click();
   await expect(page.locator("#rack-layout")).toHaveText(/^by hand/);
@@ -388,12 +381,11 @@ test("a module dragged by hand takes its cables along, and the modulation cable'
   // Put back as it was.
   await page.locator("#rack-layout").click();
   await page.locator('#pt-laymenu [data-layout="chain"]').click();
-  expect(errors).toEqual([]);
 });
 
-test("zoomed out past where labels read, every knob is still a control: the values go, the names and settings print larger", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("zoomed out past where labels read, every knob is still a control: the values go, the names and settings print larger", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // Three steps out from the fit (about 0.48×): a ten-module patch's opening
   // size at 1440, under the readouts' floor and over the knobs'.
   for (let i = 0; i < 3; i++) await page.locator("#pt-zoom-out").click();
@@ -429,5 +421,4 @@ test("zoomed out past where labels read, every knob is still a control: the valu
   const before = await knob.getAttribute("aria-valuetext");
   for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowUp");
   await expect(knob).not.toHaveAttribute("aria-valuetext", before);
-  expect(errors).toEqual([]);
 });

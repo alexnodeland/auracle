@@ -1,15 +1,196 @@
-// Shared by the PATCH specs of Plan-005 task 7 (patch_guess, patch_cables,
-// patch_from_nothing, patch_sheet): boot the instrument with the engine
-// worker wrapped, as every spec here reaches it, and the two ways in (with and
-// without the warm start's fit). Not a spec: `playwright.config.js` matches
-// `*.spec.js` only.
+// PATCH's own helpers for the patch_* specs: the rack, the bench lane and the
+// model's guess, read through the fixture's tap (fixtures.js). Each takes the
+// test's `app`, but `rackAtRest`, which reads only the page. Not a spec:
+// `playwright.config.js` matches `*.spec.js` only.
+//
+// The rest is the fixture's: the seeded boot (`app.boot`, with `busy` for a
+// worker made slow on demand by `app.busy`), the warm start (`app.warmStart`),
+// a reply (`app.reply`), what was sent (`app.sent`), a toast (`app.toast`),
+// "nothing happens" (`app.quiet`), and a crew's ports held back from the
+// engine (`app.holdRequests("farm_ports")`, `app.releaseRequests()`).
 const { expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
 
+/** Whether `x` is the fixture's `app`, not a bare page (see the end). */
+const isApp = (x) => !!x && typeof x.engine === "function" && !!x.page;
+
+/** PATCH, with the preset `name` opened from PRESETS and its rack drawn and
+ *  at rest (`rackAtRest`): the camera travels from the last sound's fit to
+ *  this one's, and the seeded boot's sound has fifteen modules, so a press
+ *  aimed at a plate, or a size read, mid-way is aimed or read at a zoom
+ *  between the two. The open is a render behind whatever the engine is
+ *  doing: an engine wait. */
+async function openPreset(app, name) {
+  const page = isApp(app) ? app.page : app;
+  const engine = isApp(app) ? (fn) => app.engine(fn, { ms: 60_000 }) : (fn) => fn(60_000);
+  await goLevel(page, "patch");
+  await bankTab(page, "presets");
+  await page.locator(".bank-item", { hasText: name }).first().click();
+  await engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }));
+  await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
+  if (isApp(app)) await rackAtRest(page);
+}
+
+/** The rack at rest: whatever an open or an edit set moving has stopped.
+ *  The camera's fit and the plates' moves are tweens drawn a frame at a time,
+ *  so the view box and every plate are where they were three frames ago; a
+ *  departing patch's plates and cables (`.rack-exit`) are gone; and no
+ *  animation that ends (an arrival's fade) is still running. */
+async function rackAtRest(page) {
+  await expect.poll(() => page.evaluate(() => new Promise((done) => {
+    const svg = document.getElementById("rack-svg");
+    const look = () => `${svg.getAttribute("viewBox")}|${[...svg.querySelectorAll(".rack-plates g[data-key]")].map((g) => `${g.getAttribute("transform")};${g.style.transform}`).join(",")}`;
+    const a = look();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ending = svg.getAnimations({ subtree: true }).filter((x) => x.playState === "running" && x.effect && x.effect.getComputedTiming().endTime !== Infinity);
+      done(a === look() && !svg.querySelector(".rack-exit") && ending.length === 0);
+    })));
+  })), { message: "the rack came to rest" }).toBe(true);
+}
+
+/** The tree on the bench, as the engine last described it (its `bench`). */
+const benchTree = (app) => app.page.evaluate(() => (window.__tap.last.bench ? window.__tap.last.bench.treeJson : null));
+
+// The bench lane's requests, counted out: a knob write, an op, a whole tree.
+const EDITS = ["edit_param", "edit_structure", "edit_set_tree"];
+/** How long the lane's counts must stay agreed before it has settled: long
+ *  enough for whatever the test's last gesture set going to have reached
+ *  the lane. */
+const LANE_QUIET_MS = 700;
+
+/** The bench lane's edits so far, [sent, answered]: an answer is a `bench`
+ *  reply to an edit, or `edit_rejected`. */
+const laneCounts = (app) => app.page.evaluate((edits) => {
+  const T = window.__tap;
+  const out = T.sent.filter((s) => edits.includes(s.type)).length;
+  const back = T.replies.filter((r) => !r.injected && ((r.type === "bench" && r.d.edited !== undefined) || r.type === "edit_rejected")).length;
+  return [out, back];
+}, EDITS);
+
+/** Every edit the page has sent is answered, and stays that way for
+ *  LANE_QUIET_MS: the lane has nothing at the engine and nothing it is about
+ *  to send. An engine wait. */
+async function settled(app, { timeout = 90_000 } = {}) {
+  const counts = () => laneCounts(app);
+  await app.engine((ms) => expect.poll(async () => {
+    const a = await counts();
+    if (a[0] !== a[1]) return false;
+    await app.page.waitForTimeout(LANE_QUIET_MS);
+    const b = await counts();
+    return a[0] === b[0] && a[1] === b[1];
+  }, { timeout: ms, intervals: [250], message: "the bench lane settled" }).toBe(true), { ms: timeout });
+}
+
+/** The newest `guess` reply with a ranking in it for the tree on the bench,
+ *  once one has landed after `after` (the page's clock): an earlier request
+ *  can answer for a sound the page has since left, and the page drops it; an
+ *  empty ranking (its time ran out before any candidate was heard) is asked
+ *  again, and a refusal is said. An engine wait. */
+async function rankedGuess(app, { after = -Infinity, timeout = 60_000 } = {}) {
+  const pick = (t) => {
+    const T = window.__tap;
+    const bench = T.last.bench && T.last.bench.treeJson;
+    const r = T.replies.filter((x) => x.type === "guess" && !x.injected && x.at > t && x.d.data && x.d.data.guesses && x.d.data.guesses.length && x.d.tree === bench).pop();
+    return r ? { ...r.d, _at: r.at } : null;
+  };
+  const t = after === -Infinity ? -1e15 : after;
+  let found = null;
+  try {
+    await app.engine((ms) => expect.poll(async () => (found = await app.page.evaluate(pick, t)) != null, { timeout: ms }).toBe(true), { ms: timeout });
+  } catch (err) {
+    const seen = await app.page.evaluate((s) => window.__tap.replies
+      .filter((r) => r.type === "guess" && r.at > s)
+      .map((r) => r.d.error || (r.d.data && (r.d.data.reason || `${(r.d.data.guesses || []).length} of ${r.d.data.rendered}/${r.d.data.planned}/${r.d.data.total}`))), t);
+    throw new Error(`no ranking with a guess in it: ${JSON.stringify(seen)}\n${err.message}`);
+  }
+  return found;
+}
+
+/** The ranking for the first guess the page asked for at or after `after` (a
+ *  skip's answer, an undo's reply): an answer computed before it may still
+ *  land in between, and is not this one. An empty ranking is asked again by
+ *  the page: the answer is then the next one with a guess in it. An engine
+ *  wait. */
+async function guessAfter(app, after, { timeout = 90_000 } = {}) {
+  const find = (t) => {
+    const T = window.__tap;
+    const ask = T.sent.find((s) => s.type === "guess" && s.at >= t);
+    if (!ask) return null;
+    const r = T.replies.find((x) => x.type === "guess" && !x.injected && x.d.token === ask.m.token && x.d.data);
+    if (!r) return null;
+    const d = r.d.data;
+    if (d.guesses && !d.guesses.length && d.rendered < d.planned) {
+      const later = T.replies.find((x) => x.type === "guess" && !x.injected && x.at > r.at && x.d.data && x.d.data.guesses && x.d.data.guesses.length);
+      return later ? { ...later.d, _at: later.at } : null;
+    }
+    return { ...r.d, _at: r.at };
+  };
+  let found = null;
+  try {
+    await app.engine((ms) => expect.poll(async () => (found = await app.page.evaluate(find, after)) != null, { timeout: ms }).toBe(true), { ms: timeout });
+  } catch (err) {
+    // Say what the page asked for and heard since, which is the whole story.
+    const seen = await app.page.evaluate((t) => ({
+      asked: window.__tap.sent.filter((s) => s.at > t - 2000 && /guess/.test(s.type)).map((s) => `${Math.round(s.at)} ${s.type} ${s.m.token}`),
+      heard: window.__tap.replies.filter((r) => r.at > t - 2000 && /guess/.test(r.type)).map((r) => `${Math.round(r.at)} ${r.type} ${r.d.token} ${r.d.error || (r.d.data ? r.d.data.reason || (r.d.data.guesses || []).length : "")}`),
+      patch: window.__aur.patch().guess,
+    }), after);
+    throw new Error(`no guess asked after ${Math.round(after)} was answered: ${JSON.stringify(seen)}\n${err.message}`);
+  }
+  return found;
+}
+
+/** The guess PATCH draws, once it is the top of the newest ranking for the
+ *  tree on the bench (a refit can rank it again while the page waits), and
+ *  that ranking. `anyTree`: the newest ranking whatever its knob values (a
+ *  knob turned since is not asked about again). An engine wait. */
+async function drawnGuess(app, { timeout = 90_000, anyTree = false } = {}) {
+  if (!isApp(app)) return drawnGuessOnPage(app, { timeout, anyTree });
+  const agree = (any) => {
+    const T = window.__tap;
+    const bench = T.last.bench && T.last.bench.treeJson;
+    const r = T.replies.filter((x) => x.type === "guess" && !x.injected && x.d.data && x.d.data.guesses && (any || x.d.tree === bench)).pop();
+    const g = document.querySelector("#rack-svg .guess-plate");
+    if (!r || !g || !r.d.data.guesses.length) return null;
+    const top = r.d.data.guesses[0];
+    return g.getAttribute("data-kind") === top.kind && g.getAttribute("data-socket") === top.socket ? { ...r.d, _at: r.at } : null;
+  };
+  let found = null;
+  await app.engine((ms) => expect.poll(async () => (found = await app.page.evaluate(agree, anyTree)) != null, {
+    timeout: ms, message: "the guess drawn is the top of the newest ranking",
+  }).toBe(true), { ms: timeout });
+  return found;
+}
+
+/** Hand main.js a fit whose every style carries exactly two coefficients, a
+ *  settled one on `sure` (0.5 ± 0.1) and a guess on `unsure` (0.4 ± 0.6, an
+ *  interval across zero), as the worker would post it (`fitted`), with the
+ *  first style holding the whole pool. Pinned: every engine reply carrying
+ *  views has its styles rewritten to these before main reads it (`app.amend`),
+ *  so a real refit that lands later keeps them (taste_marks.spec.js's
+ *  method). */
+async function pinPulls(app, sure, unsure) {
+  const f = await app.page.evaluate(() => {
+    const fit = window.__tap.last.fitted;
+    return { views: fit.views, status: fit.status };
+  });
+  const theta = [{ name: sure, mean: 0.5, std: 0.1 }, { name: unsure, mean: 0.4, std: 0.6 }];
+  const styles = f.views.styles.map((s, k) => ({ ...s, share: k === 0 ? 1 : 0, theta }));
+  await app.amend({ views: true }, { "views.styles": styles });
+  await app.inject({ type: "fitted", views: { ...f.views, styles }, status: f.status });
+}
+
+// ---------------------------------------------------------------------------
+// Until perform_offer_latency.spec.js is on the fixture (#135), it boots
+// through this file's old tap and reads its globals (`__pwEngine`, `__pwLast`,
+// `__pwCounts`, `__pwReplies`), with `boot`, `warmStartAndFit`, `now`,
+// `holdCrew` and `releaseCrew`, and `openPreset` and `drawnGuess` handed a
+// page. Kept as they were, for it alone: no PATCH spec uses them, and they go
+// when it moves.
+
 // The worker wrapped before main.js runs: the last reply of each type, a count
 // of each, every request posted, and every toast said. `__pw_slow` makes chosen
-// requests busy-wait in the worker, so a race the player can lose on a slow
-// machine is lost every time (patch_editing.spec.js's method).
+// requests busy-wait in the worker.
 const init = ({ warmed }) => `(() => {
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
@@ -124,87 +305,18 @@ async function warmStartAndFit(page) {
   await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
 }
 
-/** PATCH, with a preset open on it and its rack drawn. */
-async function openPreset(page, name) {
-  await goLevel(page, "patch");
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
-  await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
-}
-
-const slowWorker = (page, map) =>
-  page.evaluate((m) => window.__pwEngine().postMessage({ type: "__pw_slow", slow: m }), map);
-
-/** The newest `guess` reply with a ranking in it for the tree on the bench,
- *  once one lands after `after` (an earlier request can answer for a sound
- *  the page has since left, and the page drops it). */
-async function rankedGuess(page, after = 0, timeout = 60_000) {
-  // A ranking with a guess in it: an empty one (its time ran out before any
-  // candidate was heard) is asked again by the page, and a refusal is said.
-  const pick = (t) => {
-    const bench = window.__pwLast.bench && window.__pwLast.bench.treeJson;
-    return window.__pwReplies.filter((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses && r.data.guesses.length && r.tree === bench).pop() || null;
-  };
-  try {
-    await expect.poll(() => page.evaluate(pick, after), { timeout }).not.toBeNull();
-  } catch (err) {
-    const seen = await page.evaluate((t) => window.__pwReplies
-      .filter((r) => r.type === "guess" && r.t > t)
-      .map((r) => r.error || (r.data && (r.data.reason || `${(r.data.guesses || []).length} of ${r.data.rendered}/${r.data.planned}/${r.data.total}`))), after);
-    throw new Error(`no ranking with a guess in it: ${JSON.stringify(seen)}\n${err.message}`);
-  }
-  return page.evaluate(pick, after);
-}
-
 const now = (page) => page.evaluate(() => performance.now());
 
-/** When the first reply of `type` after `after` landed (matching `match`, a
- *  partial reply), once it has. */
-async function replied(page, type, after, match = {}, timeout = 60_000) {
-  const find = ([ty, t, mt]) => {
-    const r = window.__pwReplies.find((x) => x.type === ty && x.t > t && Object.entries(mt).every(([k, v]) => x[k] === v));
-    return r ? r.t : null;
-  };
-  await expect.poll(() => page.evaluate(find, [type, after, match]), { timeout }).not.toBeNull();
-  return page.evaluate(find, [type, after, match]);
-}
+/** Hold every crew main raises from here on: its ports (`farm_ports`) are
+ *  kept from the engine worker until `releaseCrew`, so whatever waits for a
+ *  crew (a guess's crew phase) is still waiting. The worker gives up on a
+ *  crew `CREW_SPAWN_MS` (10 s) after asking for it. */
+const holdCrew = (page) => page.evaluate(() => { window.__pwHoldCrew = true; });
+/** Hand the held ports over; how many crews were held. */
+const releaseCrew = (page) => page.evaluate(() => { const n = window.__pwHeld.length; window.__pwReleaseCrew(); return n; });
 
-/** The ranking for the first guess the page asked for after `after` (a
- *  skip's answer, an undo's reply): an answer computed before it may still
- *  land in between, and is not this one. */
-async function guessAfter(page, after, timeout = 90_000) {
-  const find = (t) => {
-    const ask = window.__pwPosted.find((p) => p.type === "guess" && p.t >= t);
-    if (!ask) return null;
-    const r = window.__pwReplies.find((x) => x.type === "guess" && x.token === ask.token && x.data);
-    if (!r) return null;
-    // An empty ranking is asked again by the page: the answer is the next one.
-    if (r.data.guesses && !r.data.guesses.length && r.data.rendered < r.data.planned) {
-      const later = window.__pwReplies.filter((x) => x.type === "guess" && x.t > r.t && x.data && x.data.guesses && x.data.guesses.length);
-      return later[0] || null;
-    }
-    return r;
-  };
-  try {
-    await expect.poll(() => page.evaluate(find, after), { timeout }).not.toBeNull();
-  } catch (err) {
-    // Say what the page asked for and heard since, which is the whole story.
-    const seen = await page.evaluate((t) => ({
-      posted: window.__pwPosted.filter((p) => p.t > t - 2000 && /guess/.test(p.type)).map((p) => `${Math.round(p.t)} ${p.type} ${p.token}`),
-      heard: window.__pwReplies.filter((r) => r.t > t - 2000 && /guess/.test(r.type)).map((r) => `${Math.round(r.t)} ${r.type} ${r.token} ${r.error || (r.data ? r.data.reason || (r.data.guesses || []).length : "")}`),
-      patch: window.__aur.patch().guess,
-    }), after);
-    throw new Error(`no guess asked after ${Math.round(after)} was answered: ${JSON.stringify(seen)}\n${err.message}`);
-  }
-  return page.evaluate(find, after);
-}
-
-/** The guess PATCH draws, once it is the top of the newest ranking for the
- *  tree on the bench (a refit can rank it again while the page waits), and
- *  that ranking. `anyTree`: the newest ranking whatever its knob values (a
- *  knob turned since is not asked about again). */
-async function drawnGuess(page, { timeout = 90_000, anyTree = false } = {}) {
+/** `drawnGuess` on a page booted with `boot`. */
+async function drawnGuessOnPage(page, { timeout = 90_000, anyTree = false } = {}) {
   const agree = (any) => {
     const bench = window.__pwLast.bench && window.__pwLast.bench.treeJson;
     const r = window.__pwReplies.filter((x) => x.type === "guess" && x.data && x.data.guesses && (any || x.tree === bench)).pop();
@@ -217,28 +329,8 @@ async function drawnGuess(page, { timeout = 90_000, anyTree = false } = {}) {
   return page.evaluate(agree, anyTree);
 }
 
-/** Hold every crew main raises from here on: its ports (`farm_ports`) are
- *  kept from the engine worker until `releaseCrew`, so whatever waits for a
- *  crew (a guess's crew phase) is still waiting. The worker gives up on a
- *  crew `CREW_SPAWN_MS` (10 s) after asking for it. */
-const holdCrew = (page) => page.evaluate(() => { window.__pwHoldCrew = true; });
-/** Hand the held ports over; how many crews were held. */
-const releaseCrew = (page) => page.evaluate(() => { const n = window.__pwHeld.length; window.__pwReleaseCrew(); return n; });
-
-/** Hand main.js a fit whose every style carries exactly two coefficients, a
- *  settled one on `sure` (0.5 ± 0.1) and a guess on `unsure` (0.4 ± 0.6, an
- *  interval across zero), as the worker would post it (`fitted`), with the
- *  first style holding the whole pool. Pinned: a real refit or views post
- *  that lands later keeps them (taste_marks.spec.js's method). */
-async function pinPulls(page, sure, unsure) {
-  await page.evaluate(([a, b]) => {
-    const f = window.__pwLast.fitted;
-    const v = JSON.parse(JSON.stringify(f.views));
-    const theta = [{ name: a, mean: 0.5, std: 0.1 }, { name: b, mean: 0.4, std: 0.6 }];
-    v.styles = v.styles.map((s, k) => ({ ...s, share: k === 0 ? 1 : 0, theta }));
-    window.__pwPinStyles = v.styles;
-    window.__pwEngine().dispatchEvent(new MessageEvent("message", { data: { type: "fitted", views: v, status: f.status } }));
-  }, [sure, unsure]);
-}
-
-module.exports = { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess, holdCrew, releaseCrew, pinPulls };
+module.exports = {
+  openPreset, rackAtRest, benchTree, laneCounts, settled, rankedGuess, guessAfter, drawnGuess, pinPulls,
+  // perform_offer_latency.spec.js's, until it is on the fixture (#135).
+  boot, warmStartAndFit, now, holdCrew, releaseCrew,
+};

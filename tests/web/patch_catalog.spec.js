@@ -21,15 +21,14 @@
 //   price and ▶ whole, the reasons cut short; and the module in hand is drawn
 //   at a socket clear of every module (C2a drew it over the MIX), and stays
 //   drawn under a still pointer, even on a socket's edge.
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset, now, replied, warmStartAndFit } = require("./patch_page");
-const { modelView, openCatalog } = require("./shell");
+const { test, expect, modelView, openCatalog } = require("./fixtures");
+const { openPreset } = require("./patch_page");
 
 const cat = (page) => page.locator("#nodebank");
 
-test("ADD MODULE and / open the catalog, and ✕ and Esc close it", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("ADD MODULE and / open the catalog, and ✕ and Esc close it", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   await expect(cat(page)).toBeHidden();
   await page.locator("#pt-add").click();
   await expect(cat(page)).toBeVisible();
@@ -60,16 +59,14 @@ test("ADD MODULE and / open the catalog, and ✕ and Esc close it", async ({ pag
   await expect(cat(page)).toBeHidden();
   // A new patch opens it, and leaving the new patch closes it.
   await page.locator("#patch-new-btn").click();
-  await expect(cat(page)).toBeVisible({ timeout: 30_000 });
+  await app.engine((timeout) => expect(cat(page)).toBeVisible({ timeout }), { ms: 30_000 });
   await page.locator("#patch-back").click();
-  await expect(cat(page)).toBeHidden({ timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await app.engine((timeout) => expect(cat(page)).toBeHidden({ timeout }), { ms: 30_000 });
 });
 
-test("a module in hand is priced on the well's top line, can be heard at a socket, and Esc puts it down", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("a module in hand is priced on the well's top line, can be heard at a socket, and Esc puts it down", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   await page.locator("#pt-add").click();
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
   const line = page.locator("#pick-chip");
@@ -97,23 +94,21 @@ test("a module in hand is priced on the well's top line, can be heard at a socke
   await page.mouse.move(at.x, at.y);
   await expect(line.locator(".pick-chip-text")).toHaveText(/^insert after /i);
   await line.locator("#pv-play").click();
-  await expect(page.locator(".pv-label")).toContainText(/rendering|hear it/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator(".pv-label")).toContainText(/rendering|hear it/, { timeout }), { ms: 30_000 });
   await page.keyboard.press("Escape");
   await expect(line).toBeHidden();
   await expect(page.locator("#rack-svg .jack.legal")).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
-test("a module dragged from the catalog onto a socket is placed there", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("a module dragged from the catalog onto a socket is placed there", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   await page.locator("#pt-add").click();
   const before = await page.locator('#rack-svg g.mod-group[data-kind="distortion"]').count();
   const item = page.locator('#nb-groups .nb-item[data-kind="distortion"]');
   await item.scrollIntoViewIfNeeded(); // the catalog scrolls
   const chip = await item.boundingBox();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.mouse.move(chip.x + 20, chip.y + chip.height / 2);
   await page.mouse.down();
   await page.mouse.move(chip.x + 40, chip.y + chip.height / 2, { steps: 4 });
@@ -139,17 +134,15 @@ test("a module dragged from the catalog onto a socket is placed there", async ({
   expect(target).not.toBeNull();
   await page.mouse.move(target.x, target.y, { steps: 12 });
   await page.mouse.up();
-  await replied(page, "bench", t0);
-  await expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(before + 1, { timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await app.reply("bench", { after: t0 });
+  await expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(before + 1);
 });
 
-test("θ shows under the model view only, and what is set aside is the catalog's first group", async ({ page }) => {
-  test.setTimeout(240_000);
+test("θ shows under the model view only, and what is set aside is the catalog's first group", async ({ page, app }) => {
   // θ needs a fitted model: the warm start's three picks and the fit.
-  const errors = await boot(page, { warmed: false });
-  await warmStartAndFit(page);
-  await openPreset(page, "Reese");
+  await app.boot({ warmed: false });
+  await app.warmStart();
+  await openPreset(app, "Reese");
   await page.locator("#pt-add").click();
   const theta = page.locator('#nb-groups .nb-item[data-kind="filter"] .ni-theta');
   await expect(theta).toBeHidden();
@@ -162,10 +155,10 @@ test("θ shows under the model view only, and what is set aside is the catalog's
   await expect(page.locator("#tray-chip")).toBeHidden();
   const filter = page.locator('#rack-svg .rack-controls g[data-kind="filter"] .mod-menu-btn').first();
   await filter.click({ force: true });
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^set aside/ }).click();
-  await replied(page, "bench", t0);
-  await expect(page.locator("#tray-chip")).toBeVisible({ timeout: 30_000 });
+  await app.reply("bench", { after: t0 });
+  await expect(page.locator("#tray-chip")).toBeVisible();
   await expect(page.locator("#tray-n")).toHaveText("1");
   const first = await page.evaluate(() => [...document.querySelectorAll("#nb-body > section:not(.hidden), #nb-body > #nb-groups")][0]?.id);
   expect(first).toBe("nb-aside");
@@ -176,13 +169,11 @@ test("θ shows under the model view only, and what is set aside is the catalog's
   await expect(page.locator("#tray-items .tray-item .t-jack")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(page.locator("#tray")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
-test("a pointer's ✕ on the catalog or on TEACH leaves the focus nowhere, so Space plays; the keyboard's goes back to the chip", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("a pointer's ✕ on the catalog or on TEACH leaves the focus nowhere, so Space plays; the keyboard's goes back to the chip", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator("#pt-add").click();
   await expect(page.locator("#nodebank")).toBeVisible();
   await page.locator("#nb-collapse").click();
@@ -204,18 +195,17 @@ test("a pointer's ✕ on the catalog or on TEACH leaves the focus nowhere, so Sp
   await page.keyboard.press("Enter");
   await expect(page.locator("#pt-add")).toBeFocused();
   // TEACH, once a pair is dealt: the pointer's ✕ lets the focus go too.
-  await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
+  await app.engine((timeout) => expect(page.locator("#pt-teach")).toBeVisible({ timeout }), { ms: 90_000 });
   await page.locator("#pt-teach").click();
   await expect(page.locator("#play-duel")).toBeVisible();
   await page.locator("#pd-fold").click();
   await expect(page.locator("#play-duel")).toBeHidden();
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
-  expect(errors).toEqual([]);
 });
 
-test("which way your taste leans on a module shows under the model view only, in the description and the keyboard's card", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("which way your taste leans on a module shows under the model view only, in the description and the keyboard's card", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await openCatalog(page);
   await page.locator('#nb-groups .nb-item[data-kind="chorus"]').hover();
   await expect(page.locator("#pt-read.open .pr-more")).toBeVisible();
@@ -233,12 +223,11 @@ test("which way your taste leans on a module shows under the model view only, in
   await expect(page.locator("body")).toHaveClass(/\bmodel-view\b/);
   await page.locator('#nb-groups .nb-item[data-kind="chorus"]').hover();
   await expect(page.locator("#pt-read .sd-model")).toBeVisible();
-  expect(errors).toEqual([]);
 });
 
-test("closing the catalog puts down a socket ⋯ handed it: the line goes, and the next module is only in hand", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("closing the catalog puts down a socket ⋯ handed it: the line goes, and the next module is only in hand", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
   await page.keyboard.press("F2");
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^insert after/ }).click();
@@ -248,47 +237,50 @@ test("closing the catalog puts down a socket ⋯ handed it: the line goes, and t
   await expect(cat(page)).toBeHidden();
   await expect(page.locator("#pick-chip")).toBeHidden();
   // Open again: a module clicked is in hand, its sockets lit, not placed.
-  const posted = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_structure").length);
+  const posted = () => app.sentCount("edit_structure");
   const before = await posted();
   await openCatalog(page);
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
   await expect(page.locator("#pick-armed b")).toHaveText(/distortion/i);
   await expect(page.locator("#rack-svg .jack.legal").first()).toBeVisible();
   expect(await posted()).toBe(before);
-  expect(errors).toEqual([]);
 });
 
-for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog at ${w} px the armed line stays one line with its price and ▶ whole, and the module in hand is drawn clear of every module`, async ({ page }) => {
-  test.setTimeout(240_000);
+for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog at ${w} px the armed line stays one line with its price and ▶ whole, and the module in hand is drawn clear of every module`, async ({ page, app }) => {
   await page.setViewportSize({ width: w, height: h });
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+  await app.boot();
+  await openPreset(app, "Reese");
   {
     await openCatalog(page);
     await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
     const line = page.locator("#pick-chip");
     await expect(line).toBeVisible();
     // Every lit socket a pointer can reach (the catalog covers the well's
-    // left), found where it is now: the camera refits after a resize.
-    const reach = (key) => page.evaluate((k) => {
-      for (const j of document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")) {
-        if (k != null && j.getAttribute("data-childkey") !== k) continue;
-        const r = [...j.querySelectorAll(":scope > circle")].pop().getBoundingClientRect();
-        const x = r.left + r.width / 2;
-        const y = r.top + r.height / 2;
-        if (j.contains(document.elementFromPoint(x, y))) return { x, y, key: j.getAttribute("data-childkey") };
-      }
-      return null;
-    }, key);
+    // left), found where it is now (the camera refits after a resize), and
+    // where it is three frames later.
+    const reach = (key) => page.evaluate((k) => new Promise((done) => {
+      const find = () => {
+        for (const j of document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")) {
+          if (k != null && j.getAttribute("data-childkey") !== k) continue;
+          const r = [...j.querySelectorAll(":scope > circle")].pop().getBoundingClientRect();
+          const x = r.left + r.width / 2;
+          const y = r.top + r.height / 2;
+          if (j.contains(document.elementFromPoint(x, y))) return { x, y, key: j.getAttribute("data-childkey") };
+        }
+        return null;
+      };
+      const a = find();
+      requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done([a, find()]))));
+    }), key);
     const keys = await page.evaluate(() => [...document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")].map((j) => j.getAttribute("data-childkey")));
     let reached = 0;
     for (const key of keys) {
       // Wait for the camera to be still (the catalog opening refits it, on
-      // its tween): the socket where it is twice running is where it stays.
+      // its tween): the socket where it is across three frames is where it
+      // stays.
       let at = null;
       await expect.poll(async () => {
-        const a = await reach(key);
-        const b = await new Promise((r) => setTimeout(r, 250)).then(() => reach(key));
+        const [a, b] = await reach(key);
         at = b;
         return !a || !b ? "gone" : Math.abs(a.x - b.x) + Math.abs(a.y - b.y) < 0.5 ? "still" : "moving";
       }, { timeout: 15_000 }).not.toBe("moving");
@@ -342,16 +334,16 @@ for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog a
     });
     if (edge) {
       await page.mouse.move(edge.x, edge.y);
-      const drawn = await page.evaluate(() => new Promise((resolve) => {
-        let n = 0;
-        const mo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost") && !x.classList.contains("pick-lead")) n++; });
-        mo.observe(document.getElementById("rack-svg"), { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); resolve(n); }, 1500);
-      }));
+      await page.evaluate(() => {
+        window.__pwDrawn = 0;
+        window.__pwDrawnMo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost") && !x.classList.contains("pick-lead")) window.__pwDrawn++; });
+        window.__pwDrawnMo.observe(document.getElementById("rack-svg"), { childList: true, subtree: true });
+      });
+      await app.quiet();
+      const drawn = await page.evaluate(() => { window.__pwDrawnMo.disconnect(); return window.__pwDrawn; });
       expect(drawn, `${w}: the module in hand drawn again under a still pointer`).toBeLessThanOrEqual(1);
     }
     await page.keyboard.press("Escape");
     await expect(line).toBeHidden();
   }
-  expect(errors).toEqual([]);
 });

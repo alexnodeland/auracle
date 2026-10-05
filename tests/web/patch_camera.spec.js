@@ -13,8 +13,8 @@
 //   level.
 // - When the patch is wider than the view, its edges count the modules past
 //   them, and a press brings the nearest one in.
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset } = require("./patch_page");
+const { test, expect } = require("./fixtures");
+const { openPreset } = require("./patch_page");
 
 const viewBox = (page) => page.evaluate(() => document.getElementById("rack-svg").getAttribute("viewBox").split(/\s+/).map(Number));
 // The camera at rest: two reads a quarter second apart agree (opening a
@@ -29,9 +29,9 @@ const restingView = async (page) => {
   }, { timeout: 10_000, intervals: [250] }).toBe(true);
 };
 
-test("−, + and fit in the corner zoom the camera and frame the patch again", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("−, + and fit in the corner zoom the camera and frame the patch again", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await restingView(page);
   const fitted = await viewBox(page);
   await page.locator("#pt-zoom-in").click();
@@ -50,12 +50,11 @@ test("−, + and fit in the corner zoom the camera and frame the patch again", a
     });
   }), { timeout: 5_000 }).toBe(true);
   expect((await viewBox(page))[2]).toBeLessThan(fitted[2] * 1.5);
-  expect(errors).toEqual([]);
 });
 
-test("the layout's ▾ switches chain, compact and by hand, and snap and reset act by hand only", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the layout's ▾ switches chain, compact and by hand, and snap and reset act by hand only", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const btn = page.locator("#rack-layout");
   const menu = page.locator("#pt-laymenu");
   await expect(btn).toHaveText(/^chain/);
@@ -86,12 +85,11 @@ test("the layout's ▾ switches chain, compact and by hand, and snap and reset a
   await btn.click();
   await menu.locator('[data-layout="chain"]').click();
   await expect(page.locator("#rack-meta")).toContainText("in signal order");
-  expect(errors).toEqual([]);
 });
 
-test("map shows the minimap, a shift-click bookmarks a spot, and ⇧1 goes back to it", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("map shows the minimap, a shift-click bookmarks a spot, and ⇧1 goes back to it", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator("#rack-map-btn").click();
   const map = page.locator("#rack-map");
   await expect(map).toBeVisible();
@@ -113,12 +111,11 @@ test("map shows the minimap, a shift-click bookmarks a spot, and ⇧1 goes back 
     const v = await viewBox(page);
     return Math.abs(v[2] - marked[2]) < 2;
   }, { timeout: 5_000 }).toBe(true);
-  expect(errors).toEqual([]);
 });
 
-test("ctrl-wheel over the well zooms the camera, not the level", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("ctrl-wheel over the well zooms the camera, not the level", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await restingView(page);
   const before = await viewBox(page);
   const f = await page.locator("#rack-scroll").boundingBox();
@@ -129,12 +126,11 @@ test("ctrl-wheel over the well zooms the camera, not the level", async ({ page }
   await expect.poll(async () => (await viewBox(page))[2]).toBeLessThan(before[2]);
   await expect(page.locator("body")).toHaveAttribute("data-level", "patch");
   await expect(page.locator('.rail-stop[data-level="patch"]')).toHaveAttribute("aria-current", "location");
-  expect(errors).toEqual([]);
 });
 
-test("zoomed in, the well's edges count the modules past them, and a press brings the nearest in", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("zoomed in, the well's edges count the modules past them, and a press brings the nearest in", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await expect(page.locator("#pt-edge-l")).toBeHidden();
   await expect(page.locator("#pt-edge-r")).toBeHidden();
   for (let i = 0; i < 5; i++) await page.locator("#pt-zoom-in").click();
@@ -150,5 +146,4 @@ test("zoomed in, the well's edges count the modules past them, and a press bring
   const x0 = (await viewBox(page))[0];
   await edge.click();
   await expect.poll(async () => (await viewBox(page))[0], { timeout: 5_000 }).not.toBeCloseTo(x0, 0);
-  expect(errors).toEqual([]);
 });

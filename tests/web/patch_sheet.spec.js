@@ -2,8 +2,8 @@
 // 7), and an AUDIO IN module is drawn as the engine describes it. A touch
 // screen here is a tablet in landscape (1024 × 768, a coarse pointer): wide
 // enough for both of index.html's gates, which a phone still meets.
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset } = require("./patch_page.js");
+const { test, expect } = require("./fixtures");
+const { openPreset } = require("./patch_page.js");
 
 test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true });
 
@@ -14,17 +14,23 @@ const knobsOf = (page, kind) =>
     return m.knobs.map((x) => ({ addr: x.addr, t: x.kind.t, n: x.kind.t === "octave" ? 5 : (x.kind.options || []).length, value: x.value }));
   }, kind);
 
+/** An element's place on screen is the same across three frames: the
+ *  camera has stopped moving (an open, or an edit, fits the patch to the
+ *  frame on a tween). */
+const stillAt = (page, selector) =>
+  expect.poll(() => page.evaluate((sel) => new Promise((done) => {
+    const rect = () => JSON.stringify(document.querySelector(sel)?.getBoundingClientRect() || null);
+    const a = rect();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done(a !== "null" && a === rect()))));
+  }), selector), { timeout: 30_000 }).toBe(true);
+
 /** Tap a module's plate by its title, clear of its knobs and jacks, once the
  *  rack has settled (its cables measured, so nothing is rebuilding it). */
-async function tapPlate(page, kind) {
-  await expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout: 60_000 });
-  // …and the camera has stopped moving (an open fits the patch to the frame).
-  const where = () => page.evaluate((k) => JSON.stringify(document.querySelector(`#rack-svg g[data-kind="${k}"]:not(.mod-group) .mod-plate`).getBoundingClientRect()), kind);
-  await expect.poll(async () => {
-    const a = await where();
-    await page.waitForTimeout(400);
-    return a === (await where());
-  }, { timeout: 30_000 }).toBe(true);
+async function tapPlate(app, kind) {
+  const { page } = app;
+  await app.engine((timeout) => expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout }), { ms: 60_000 });
+  // …and the camera has stopped moving.
+  await stillAt(page, `#rack-svg g[data-kind="${kind}"]:not(.mod-group) .mod-plate`);
   // The point of bare panel farthest from every control on the plate: a
   // touch screen moves a tap onto anything that answers one nearby (a knob's
   // lock dot, a plate button), and a tap there is that control's.
@@ -48,14 +54,13 @@ async function tapPlate(page, kind) {
   await page.touchscreen.tap(at.x, at.y);
 }
 
-test("on touch, a tapped module opens a sheet with every setting, and its steps edit the patch", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { warmed: true });
+test("on touch, a tapped module opens a sheet with every setting, and its steps edit the patch", async ({ page, app }) => {
+  await app.boot();
   expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
-  await openPreset(page, "Reese");
+  await openPreset(app, "Reese");
 
   const knobs = await knobsOf(page, "filter");
-  await tapPlate(page, "filter");
+  await tapPlate(app, "filter");
   const sheet = page.locator("#module-sheet");
   await expect(sheet).toHaveClass(/\bon\b/);
   // Focus goes into the sheet when it opens.
@@ -82,24 +87,24 @@ test("on touch, a tapped module opens a sheet with every setting, and its steps 
   const cont = knobs.find((k) => k.t === "continuous" && k.value < 0.9);
   const row = sheet.locator(`.ms-row[data-addr="${cont.addr}"]`);
   await row.locator(".ms-step").last().tap();
-  await expect.poll(() => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "edit_param").length), { timeout: 15_000 }).toBeGreaterThan(0);
-  await expect
-    .poll(() => page.evaluate((a) => window.__aur.wb.rack.modules.flatMap((m) => m.knobs).find((k) => k.addr === a).value, cont.addr), { timeout: 30_000 })
-    .toBeGreaterThan(cont.value);
+  await expect.poll(() => app.sentCount("edit_param"), { timeout: 15_000 }).toBeGreaterThan(0);
+  await app.engine((timeout) => expect
+    .poll(() => page.evaluate((a) => window.__aur.wb.rack.modules.flatMap((m) => m.knobs).find((k) => k.addr === a).value, cont.addr), { timeout })
+    .toBeGreaterThan(cont.value), { ms: 30_000 });
   // A named setting's choice.
   const named = knobs.find((k) => k.t !== "continuous");
   if (named) {
     const seg = sheet.locator(`.ms-row[data-addr="${named.addr}"] .ms-seg button`);
     const pick = Math.round(named.value) === 0 ? 1 : 0;
     await seg.nth(pick).tap();
-    await expect(seg.nth(pick)).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+    await app.engine((timeout) => expect(seg.nth(pick)).toHaveAttribute("aria-checked", "true", { timeout }), { ms: 30_000 });
     // A radio group: the checked choice is its one Tab stop, and an arrow
     // key moves to the next choice and chooses it.
     await expect(seg.nth(pick)).toHaveAttribute("tabindex", "0");
     await seg.nth(pick).focus();
     await page.keyboard.press("ArrowRight");
     const after = (pick + 1) % (await seg.count());
-    await expect(seg.nth(after)).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+    await app.engine((timeout) => expect(seg.nth(after)).toHaveAttribute("aria-checked", "true", { timeout }), { ms: 30_000 });
     await expect(seg.nth(after)).toBeFocused();
   }
 
@@ -108,16 +113,14 @@ test("on touch, a tapped module opens a sheet with every setting, and its steps 
   await expect(sheet).not.toHaveClass(/\bon\b/);
   // …and leaves it when it closes.
   expect(await page.evaluate(() => document.getElementById("module-sheet").contains(document.activeElement))).toBe(false);
-  await tapPlate(page, "lfo");
+  await tapPlate(app, "lfo");
   await expect(sheet).toHaveClass(/\bon\b/);
   await expect(sheet.locator(".ms-name")).toHaveText("lfo");
-  expect(errors, errors.join("\n")).toEqual([]);
 });
 
-test("an AUDIO IN module is drawn as the engine describes it, and its sheet has its settings", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("an AUDIO IN module is drawn as the engine describes it, and its sheet has its settings", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // The patch with an AUDIO IN in its first socket, as an edit the engine
   // takes (the module rail has no AUDIO IN yet).
   await page.evaluate(() => {
@@ -125,24 +128,22 @@ test("an AUDIO IN module is drawn as the engine describes it, and its sheet has 
     const body = Object.values(t.root)[0];
     const field = ["input", "a", "carrier"].find((f) => body[f] && typeof body[f] === "object");
     body[field] = { AudioIn: { input: 0, gain: 0.66, channel: "Both" } };
-    window.__pwEngine().postMessage({ type: "edit_set_tree", json: JSON.stringify(t) });
+    window.__tap.engine.postMessage({ type: "edit_set_tree", json: JSON.stringify(t) });
   });
   const plate = page.locator('#rack-svg g.mod-group[data-kind="audio_in"]');
-  await expect(plate).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(plate).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(page.locator('#rack-svg g[data-kind="audio_in"] .mod-title')).toHaveText("audio in");
   const knobs = await knobsOf(page, "audio_in");
   expect(knobs.map((k) => k.addr.split("#").pop()).sort()).toEqual(["channel", "gain", "input"]);
-  await tapPlate(page, "audio_in");
+  await tapPlate(app, "audio_in");
   const sheet = page.locator("#module-sheet");
   await expect(sheet).toHaveClass(/\bon\b/);
   await expect(sheet.locator(".ms-row")).toHaveCount(3);
-  expect(errors, errors.join("\n")).toEqual([]);
 });
 
-test("on touch, a tap on a plate button presses it and opens no sheet", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("on touch, a tap on a plate button presses it and opens no sheet", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // A CAPTURE around the first socket's branch, as an edit the engine takes:
   // RECORD records that branch, with no input to ask for.
   await page.evaluate(() => {
@@ -151,18 +152,18 @@ test("on touch, a tap on a plate button presses it and opens no sheet", async ({
     const field = ["input", "a", "carrier"].find((f) => body[f] && typeof body[f] === "object");
     const take = { format: "f32le-base64", sample_rate: 44100, length: 0, data: "" };
     body[field] = { Capture: { play: "hold", input: body[field], take } };
-    window.__pwEngine().postMessage({ type: "edit_set_tree", json: JSON.stringify(t) });
+    window.__tap.engine.postMessage({ type: "edit_set_tree", json: JSON.stringify(t) });
   });
   const rec = page.locator('#rack-svg [data-stop="take-rec"]');
-  await expect(rec).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout: 60_000 });
-  await page.waitForTimeout(1500); // the camera settles after the edit
+  await app.engine((timeout) => expect(rec).toBeVisible({ timeout }), { ms: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout }), { ms: 60_000 });
+  // The camera settles after the edit.
+  await stillAt(page, '#rack-svg [data-stop="take-rec"]');
   await rec.evaluate((b) => b.addEventListener("click", () => { window.__pwRecTapped = true; }));
   const box = await rec.boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   // RECORD took the tap (it records), and no sheet came up over it.
   await expect.poll(() => page.evaluate(() => !!window.__pwRecTapped), { timeout: 5_000 }).toBe(true);
-  await page.waitForTimeout(800);
+  await app.quiet();
   await expect(page.locator("#module-sheet.on")).toHaveCount(0);
-  expect(errors, errors.join("\n")).toEqual([]);
 });

@@ -21,9 +21,8 @@
 //   catalog wait for the next press.
 // - The selection follows the module, not its address: an insert before it
 //   moves its key, and it stays selected.
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset, now, replied } = require("./patch_page");
-const { openCatalog } = require("./shell");
+const { test, expect, openCatalog } = require("./fixtures");
+const { openPreset } = require("./patch_page");
 
 const active = (page) => page.evaluate(() => {
   const a = document.activeElement;
@@ -37,9 +36,9 @@ const signalOrder = (page) => page.evaluate(() =>
     .sort((a, b) => a.r.left - b.r.left || a.r.top - b.r.top)
     .map((x) => x.key));
 
-test("←/→ walk the modules in signal order, ↑/↓ go into a modulator and back, and Home/End reach the ends", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("←/→ walk the modules in signal order, ↑/↓ go into a modulator and back, and Home/End reach the ends", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const order = await signalOrder(page);
   // Home, with nothing in focus: the first module.
   await page.evaluate(() => document.activeElement?.blur());
@@ -61,12 +60,11 @@ test("←/→ walk the modules in signal order, ↑/↓ go into a modulator and 
   expect((await active(page)).kind).toBe("lfo");
   await page.keyboard.press("ArrowUp");
   expect((await active(page)).kind).not.toBe("lfo");
-  expect(errors).toEqual([]);
 });
 
-test("Enter goes into a module's knobs, ↑/↓ turn one, Esc backs out, and ⇧Home fits the patch", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("Enter goes into a module's knobs, ↑/↓ turn one, Esc backs out, and ⇧Home fits the patch", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const plate = page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]');
   await plate.focus();
   await page.keyboard.press("Enter");
@@ -81,10 +79,10 @@ test("Enter goes into a module's knobs, ↑/↓ turn one, Esc backs out, and ⇧
   }
   const knob = await active(page);
   const was = Number(await page.locator(`#rack-svg g[data-addr="${knob.addr}"]`).getAttribute("aria-valuenow"));
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowUp");
-  await replied(page, "bench", t0);
+  await app.reply("bench", { after: t0 });
   await expect.poll(async () => Number(await page.locator(`#rack-svg g[data-addr="${knob.addr}"]`).getAttribute("aria-valuenow"))).toBeGreaterThan(was);
   // The arrows stay inside the module.
   for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowRight");
@@ -104,12 +102,11 @@ test("Enter goes into a module's knobs, ↑/↓ turn one, Esc backs out, and ⇧
   await expect.poll(async () => near(await vb(), fitted)).toBe(false);
   await page.keyboard.press("Shift+Home");
   await expect.poll(async () => near(await vb(), fitted), { timeout: 5_000 }).toBe(true);
-  expect(errors).toEqual([]);
 });
 
-test("F2 opens the structure menu, and Delete on a two-input module asks which input survives", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("F2 opens the structure menu, and Delete on a two-input module asks which input survives", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
   await page.keyboard.press("F2");
   await expect(page.locator("#ctx-menu")).toBeVisible();
@@ -123,15 +120,13 @@ test("F2 opens the structure menu, and Delete on a two-input module asks which i
   await page.keyboard.press("Escape");
   // Nothing was deleted.
   await expect(page.locator('#rack-svg g.mod-group[data-kind="mix"]')).toHaveCount(1);
-  expect(errors).toEqual([]);
 });
 
-test("Esc walks out one thing at a time: the module, the catalog, then a new patch", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("Esc walks out one thing at a time: the module, the catalog, then a new patch", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator("#patch-new-btn").click();
-  await expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout }), { ms: 30_000 });
   await expect(page.locator("#nodebank")).toBeVisible();
   await expect(page.locator('#rack-svg g.mod-group[data-kind="amp"]')).toHaveCount(1);
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="amp"]').focus();
@@ -143,14 +138,12 @@ test("Esc walks out one thing at a time: the module, the catalog, then a new pat
   await expect(page.locator("#nodebank")).toBeHidden();
   await expect(page.locator("#rack-subject")).toHaveText("New patch");
   await page.keyboard.press("Escape");
-  await expect(page.locator("#rack-subject")).toContainText("Reese", { timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Reese", { timeout }), { ms: 30_000 });
 });
 
-test("a module in hand: the arrows choose a socket and Enter places it", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Glass Pad");
+test("a module in hand: the arrows choose a socket and Enter places it", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Glass Pad");
   await openCatalog(page);
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
   await expect(page.locator("#rack-svg .jack.legal").first()).toBeVisible();
@@ -164,16 +157,15 @@ test("a module in hand: the arrows choose a socket and Enter places it", async (
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#rack-svg .jack.legal.hot")).toHaveCount(1);
   await expect(page.locator("#pick-chip .pick-chip-text")).toHaveText(/^insert after /i);
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.keyboard.press("Enter");
-  await replied(page, "bench", t0);
-  await expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await app.reply("bench", { after: t0 });
+  await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
 });
 
-test("the keys yield to the catalog's search, and the note keys still play on a module", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the keys yield to the catalog's search, and the note keys still play on a module", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // In the search, l and the arrows are text.
   await page.keyboard.press("/");
   await expect(page.locator("#nb-q")).toBeFocused();
@@ -187,13 +179,11 @@ test("the keys yield to the catalog's search, and the note keys still play on a 
   await page.keyboard.down("a");
   await expect(page.locator('.pkey[data-note="60"]')).toHaveClass(/\bdown\b/);
   await page.keyboard.up("a");
-  expect(errors).toEqual([]);
 });
 
-test("Home and End are the canvas's: on VOL they stay the slider's, and under the comparison nothing behind it moves", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("Home and End are the canvas's: on VOL they stay the slider's, and under the comparison nothing behind it moves", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   // VOL: End is the slider's top, and the focus stays on it.
   await page.locator("#vol").focus();
   await page.keyboard.press("End");
@@ -209,11 +199,11 @@ test("Home and End are the canvas's: on VOL they stay the slider's, and under th
   const before = await knob.getAttribute("aria-valuetext");
   for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowUp");
   await expect(knob).not.toHaveAttribute("aria-valuetext", before, { timeout: 10_000 });
-  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 15_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-commit")).toBeEnabled({ timeout }), { ms: 15_000 });
   await page.locator("#rack-commit").click();
-  await expect(page.locator("#cduel")).toBeVisible({ timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#cduel")).toBeVisible({ timeout }), { ms: 30_000 });
   const modules = await page.locator("#rack-svg .rack-plates g[data-key]").count();
-  const structs = () => page.evaluate(() => window.__pwPosted.filter((p) => /edit_structure|edit_set_tree/.test(p.type)).length);
+  const structs = async () => (await app.sentCount("edit_structure")) + (await app.sentCount("edit_set_tree"));
   const s0 = await structs();
   await page.keyboard.press("Home");
   expect((await active(page)).plate).toBe(false);
@@ -222,12 +212,11 @@ test("Home and End are the canvas's: on VOL they stay the slider's, and under th
   await expect(page.locator("#rack-svg .rack-plates g[data-key]")).toHaveCount(modules);
   await page.keyboard.press("Escape");
   await expect(page.locator("#cduel")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
-test("one Esc closes one thing: an open menu goes first, and the selection waits for the next press", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("one Esc closes one thing: an open menu goes first, and the selection waits for the next press", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
   await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
   await openCatalog(page);
@@ -242,13 +231,11 @@ test("one Esc closes one thing: an open menu goes first, and the selection waits
   await expect(page.locator("#nodebank")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("#nodebank")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
-test("the selection follows the module: an insert before it moves its key, and it stays selected", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("the selection follows the module: an insert before it moves its key, and it stays selected", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const filter = page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]');
   await filter.focus();
   const key0 = await filter.getAttribute("data-key");
@@ -256,13 +243,12 @@ test("the selection follows the module: an insert before it moves its key, and i
   // tree, and the filter moves down one), then a distortion from the catalog.
   await page.keyboard.press("F2");
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^insert after/ }).click();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
-  await replied(page, "bench", t0);
-  await expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout: 30_000 });
+  await app.reply("bench", { after: t0 });
+  await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
   const key1 = await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').getAttribute("data-key");
   expect(key1).not.toBe(key0);
   await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected')).toHaveCount(1);
   await expect(page.locator("#pt-read .pr-name")).toHaveText(/filter|ladder|svf/i);
-  expect(errors).toEqual([]);
 });

@@ -160,9 +160,15 @@ runs. No retries anywhere
   (Plan-008), so a spec about PATCH goes there first, and waits for the
   state it needs (the rack drawn, a pair named), not for a name or a time:
   PERFORM's first measurement runs at boot and moves when the rest lands.
+- **PATCH's specs share `patch_page.js`**: a preset opened with its rack
+  drawn and at rest (`openPreset`, and `rackAtRest` on a page: the camera's
+  fit and the plates' moves are tweens, and a size read or a press aimed
+  mid-way is at another zoom), the bench lane settled (`settled`,
+  `laneCounts`), the model's guess as drawn and as asked (`drawnGuess`,
+  `rankedGuess`, `guessAfter`), and a pinned fit (`pinPulls`). Every helper
+  but `rackAtRest` takes the test's `app`.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
-- Not yet on the fixture: the `patch_*` specs (`patch_page.js`), `perform_*`,
-  `responsive`, `audio_in*` and the rest of the views' specs. A spec moved
-  onto it keeps every test's title (the timings and `testing.md` key on
-  them).
+- Not yet on the fixture: `perform_*`, `responsive`, `audio_in*` and the rest
+  of the views' specs. A spec moved onto it keeps every test's title (the
+  timings and `testing.md` key on them).

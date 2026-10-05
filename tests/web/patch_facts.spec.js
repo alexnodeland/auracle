@@ -25,11 +25,10 @@
 //   module each control with its knobs, from PERFORM's measured wiring
 //   (`perform_wire`).
 //
-// The worker is reached as every PATCH spec reaches it (patch_page.js): the
-// faces a page asks for, with their trees, and every face it is handed back.
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset, warmStartAndFit, now, replied } = require("./patch_page.js");
-const { goLevel } = require("./shell");
+// The worker is reached through the fixture's tap (fixtures.js): the faces
+// a page asks for, with their trees, and every face it is handed back.
+const { test, expect, goLevel } = require("./fixtures");
+const { openPreset } = require("./patch_page.js");
 const { FLOOR_MS } = require("./perform_budget.js");
 
 /** Select a module on the canvas by its kind, as a press on its plate does. */
@@ -40,14 +39,13 @@ async function selectPlate(page, kind, nth = 0) {
   await page.mouse.move(4, 400);
 }
 
-test("the face of the patch without the selected module is drawn at OUT, measured by the worker, and a patch silent without it says so", async ({ page }) => {
-  test.setTimeout(FLOOR_MS * 2 + 60_000);
-  const errors = await boot(page, { warmed: true });
+test("the face of the patch without the selected module is drawn at OUT, measured by the worker, and a patch silent without it says so", async ({ page, app }) => {
+  await app.boot();
   // Hornet: a square VCO into a bandpass filter, a S&H modulating the cutoff.
   // The app opens at PERFORM, whose measurement of the sound it boots with
   // goes on in the background once PATCH shows: the outline does not wait
   // for it (a face the player is looking at goes first, `seen`).
-  await openPreset(page, "Hornet");
+  await openPreset(app, "Hornet");
   const out = page.locator("#out-without");
   const img = page.locator("#out-without img");
   await expect(out).toBeHidden();
@@ -55,18 +53,19 @@ test("the face of the patch without the selected module is drawn at OUT, measure
   // The filter: bypassed, the VCO goes straight to the amp.
   await selectPlate(page, "filter");
   const key = await page.locator('#rack-svg .rack-plates g[data-kind="filter"]').getAttribute("data-key");
-  await expect(out).toBeVisible({ timeout: FLOOR_MS });
+  await app.engine((timeout) => expect(out).toBeVisible({ timeout }), { ms: FLOOR_MS });
   await expect(img).toHaveCount(1);
   await expect(out).toHaveAttribute("data-of", key);
   const drawn = { ref: await out.getAttribute("data-face"), key: await out.getAttribute("data-key") };
   const got = await page.evaluate(({ ref, key: k }) => {
-    const ask = window.__pwPosted.filter((p) => p.type === "faces" && p.trees).flatMap((p) => p.trees).find((t) => t.ref === ref);
-    const reply = window.__pwReplies.find((r) => r.type === "face" && r.ref === ref);
-    const bench = JSON.parse(window.__pwLast.bench.treeJson);
+    const T = window.__tap;
+    const ask = T.sent.filter((s) => s.type === "faces" && s.m.trees).flatMap((s) => s.m.trees).find((t) => t.ref === ref);
+    const reply = T.replies.filter((r) => r.type === "faces" && !r.injected).flatMap((r) => r.d.items || []).find((it) => it.ref === ref);
+    const bench = JSON.parse(T.last.bench.treeJson);
     // The bypass the structure menu makes: the filter's input in its place.
     const node = k === "node" ? bench.root : null;
     const expected = node ? JSON.stringify({ ...bench, root: node.Filter.input }) : null;
-    return { asked: ask ? ask.tree : null, seen: ask ? ask.seen : null, replyKey: reply ? reply.key : null, expected };
+    return { asked: ask ? ask.tree || null : null, seen: ask ? !!ask.seen : null, replyKey: reply ? reply.key : null, expected };
   }, { ref: drawn.ref, key });
   expect(got.asked, "the outline's tree was asked of the worker").not.toBeNull();
   expect(got.seen, "…as a face the player is looking at").toBe(true);
@@ -83,7 +82,7 @@ test("the face of the patch without the selected module is drawn at OUT, measure
 
   // The filter again: the same face, drawn again (it was an empty box).
   await selectPlate(page, "filter");
-  await expect(out).toBeVisible({ timeout: 30_000 });
+  await app.engine((timeout) => expect(out).toBeVisible({ timeout }), { ms: 30_000 });
   await expect(img).toHaveCount(1);
   await expect(out).toHaveAttribute("data-key", drawn.key);
 
@@ -102,12 +101,12 @@ test("the face of the patch without the selected module is drawn at OUT, measure
     new MutationObserver(() => { if (el.hidden) window.__pwHid++; }).observe(el, { attributes: true, attributeFilter: ["hidden"] });
     new MutationObserver(() => { window.__pwDockWrites++; }).observe(document.getElementById("pt-read"), { childList: true });
   });
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.mouse.down();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 25, { steps: 5 });
   await page.mouse.up();
-  await replied(page, "bench", t0);
-  await page.waitForTimeout(800); // past the settle the outline is measured again after
+  await app.reply("bench", { after: t0 });
+  await app.quiet(); // past the settle the outline is measured again after
   expect(await page.evaluate(() => window.__pwHid), "the outline never hid for its own module's knob").toBe(0);
   expect(await page.evaluate(() => window.__pwDockWrites), "the readout was not rewritten with the same words").toBe(0);
   await expect(img).toHaveCount(1);
@@ -118,117 +117,119 @@ test("the face of the patch without the selected module is drawn at OUT, measure
   await page.keyboard.press("Escape");
   await expect(out).toBeHidden();
   await expect(img).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
 /** The newest ranking with a guess in it for a guess the page asked at `at`
- *  after `after` (an empty one, its time spent, is asked again). */
-async function hereRanked(page, at, after, timeout = 120_000) {
+ *  after `after` (an empty one, its time spent, is asked again). An engine
+ *  wait. */
+async function hereRanked(app, at, after, timeout = 120_000) {
   const find = ([a, t]) => {
-    const tokens = new Set(window.__pwPosted.filter((p) => p.type === "guess" && p.at === a && p.t >= t).map((p) => p.token));
-    return window.__pwReplies.filter((r) => r.type === "guess" && tokens.has(r.token) && r.data && r.data.guesses && r.data.guesses.length).pop() || null;
+    const T = window.__tap;
+    const tokens = new Set(T.sent.filter((s) => s.type === "guess" && s.m.at === a && s.at >= t).map((s) => s.m.token));
+    const r = T.replies.filter((x) => x.type === "guess" && !x.injected && tokens.has(x.d.token) && x.d.data && x.d.data.guesses && x.d.data.guesses.length).pop();
+    return r ? { ...r.d, _at: r.at } : null;
   };
-  await expect.poll(() => page.evaluate(find, [at, after]), { timeout }).not.toBeNull();
-  return page.evaluate(find, [at, after]);
+  let found = null;
+  await app.engine((ms) => expect.poll(async () => (found = await app.page.evaluate(find, [at, after])) != null, { timeout: ms }).toBe(true), { ms: timeout });
+  return found;
 }
 
-test("What goes here? asks the model's guess for a module's place, draws it there with where it goes, and Enter takes it", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errors = await boot(page, { warmed: false });
-  await warmStartAndFit(page);
+test("What goes here? asks the model's guess for a module's place, draws it there with where it goes, and Enter takes it", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 66 s on CI: the warm start, and three places ranked
+  await app.boot({ warmed: false });
+  await app.warmStart();
   // Reese: two VCOs into a mix, a filter, the amp; the mix is mid-chain.
-  await openPreset(page, "Reese");
+  await openPreset(app, "Reese");
   const keyOf = (kind) => page.locator(`#rack-svg .rack-plates g[data-kind="${kind}"]`).first().getAttribute("data-key");
   const mixKey = await keyOf("mix");
 
   // The pointer: the mix's ⋯ › what goes here?
   await selectPlate(page, "mix");
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.locator('#rack-svg .rack-controls g[data-kind="mix"] .mod-menu-btn').first().click();
   await page.locator("#ctx-menu .cm-item", { hasText: /^what goes here/ }).click();
   // Asked for the mix's place: at once, or once a ranking for the output
   // already out comes back (one guess is out at a time).
-  await expect.poll(() => page.evaluate(([t, k]) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at === k), [t0, mixKey]),
-    { timeout: 60_000, message: "the guess is asked for the mix's place" }).toBe(true);
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "guess", at: mixKey }, { after: t0 })).length,
+    { timeout, message: "the guess is asked for the mix's place" }).toBeGreaterThan(0), { ms: 60_000 });
   // While it is ranked, the top line says what it is doing (or, on a fast
   // machine, the ranking is in already).
   await expect(page.locator("#guess-read")).toHaveText(/hearing the modules that fit at the mix…|^guess · /);
-  const atMix = await hereRanked(page, mixKey, t0);
+  const atMix = await hereRanked(app, mixKey, t0);
   const top = atMix.data.guesses[0];
   // Every guess it ranked is for that place: after the mix, or its slot.
   for (const g of atMix.data.guesses) expect(g.op.key, `${g.kind} ${g.op.op}`).toBe(mixKey);
   const ghost = page.locator("#rack-svg .guess-plate");
-  await expect(ghost).toHaveAttribute("data-at", mixKey, { timeout: 30_000 });
+  await app.engine((timeout) => expect(ghost).toHaveAttribute("data-at", mixKey, { timeout }), { ms: 30_000 });
   await expect(ghost).toHaveAttribute("data-kind", top.kind);
   await expect(ghost).toHaveAttribute("data-socket", top.socket);
   await expect(page.locator("#guess-read .gr-chip")).toHaveText(/^guess · \S/);
   await expect(page.locator("#guess-read .gr-at")).toHaveText(top.op.op === "set_mod" ? /^on the mix’s / : /^after the mix$/);
   // Esc on the ghost goes back to the output's guess.
   await ghost.focus();
-  const t1 = await now(page);
+  const t1 = await app.now();
   await page.keyboard.press("Escape");
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
-  await expect.poll(() => page.evaluate((t) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at == null), t1), { timeout: 30_000 }).toBe(true);
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "guess", at: false }, { after: t1 })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
 
   // Q on a VCO, then straight into its knobs: the ghost lands without taking
   // the focus from the knob. The pointer's way back is the line's ✕ (the
   // ghost's own × skips that kind of module for the place).
   const vcoKey = await keyOf("vco");
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="vco"]').first().focus();
-  const tv = await now(page);
+  const tv = await app.now();
   await page.keyboard.press("q");
   await page.keyboard.press("Enter");
   const onKnob = () => page.evaluate(() => !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"));
   await expect.poll(onKnob).toBe(true);
-  await hereRanked(page, vcoKey, tv);
-  await expect(ghost).toHaveAttribute("data-at", vcoKey, { timeout: 30_000 });
+  await hereRanked(app, vcoKey, tv);
+  await app.engine((timeout) => expect(ghost).toHaveAttribute("data-at", vcoKey, { timeout }), { ms: 30_000 });
   expect(await onKnob(), "the focus stayed on the knob").toBe(true);
-  const t4 = await now(page);
+  const t4 = await app.now();
   await page.locator("#guess-read .gr-back").click();
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
-  await expect.poll(() => page.evaluate((t) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at == null), t4), { timeout: 30_000 }).toBe(true);
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: "guess", at: false }, { after: t4 })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
 
   // The keyboard: Q on the filter asks for its place; the ghost takes the
   // focus when it lands, and Enter adds it, through the edit lane.
   const filterKey = await keyOf("filter");
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]').focus();
-  const t2 = await now(page);
+  const t2 = await app.now();
   await page.keyboard.press("q");
-  const atFilter = await hereRanked(page, filterKey, t2);
+  const atFilter = await hereRanked(app, filterKey, t2);
   const g = atFilter.data.guesses[0];
-  await expect(ghost).toHaveAttribute("data-at", filterKey, { timeout: 30_000 });
+  await app.engine((timeout) => expect(ghost).toHaveAttribute("data-at", filterKey, { timeout }), { ms: 30_000 });
   await expect(ghost).toHaveAttribute("data-kind", g.kind);
   await expect(ghost).toBeFocused();
-  const t3 = await now(page);
+  const t3 = await app.now();
   await page.keyboard.press("Enter");
-  const landed = await replied(page, "bench", t3, { edited: "structure" }, 60_000);
-  const took = await page.evaluate((t) => window.__pwPosted.find((p) => p.type === "edit_structure" && p.t >= t), t3);
+  const landed = (await app.reply("bench", { where: { edited: "structure" }, after: t3, timeout: 60_000 }))._at;
+  const [took] = await app.sent("edit_structure", { after: t3 });
   expect(took.op).toEqual(g.op);
   expect(took.guess && took.guess.socket).toBe(g.socket);
   expect(landed).toBeGreaterThan(t3);
   await expect(page.locator(`#rack-svg .rack-plates g[data-kind="${g.kind}"]`).first()).toBeVisible();
   // The structure changed: the guess is the output's again.
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
-test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errors = await boot(page, { warmed: false });
-  await warmStartAndFit(page);
-  await openPreset(page, "Reese");
+test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 45 s on CI, most of it ⚡'s walk
+  await app.boot({ warmed: false });
+  await app.warmStart();
+  await openPreset(app, "Reese");
   const seedId = await page.evaluate(() => window.__aur.wb.subjectId);
   // ⚡ breeds a child from Reese and opens it.
   await page.locator("#rack-evolve").click();
-  await expect.poll(() => page.evaluate((s) => {
+  await app.engine((timeout) => expect.poll(() => page.evaluate((s) => {
     const id = window.__aur.wb.subjectId;
-    return id !== s && window.__pwLast.bench && window.__pwLast.bench.subject === id ? id : null;
-  }, seedId), { timeout: 240_000 }).not.toBeNull();
+    return id !== s && window.__tap.last.bench && window.__tap.last.bench.subject === id ? id : null;
+  }, seedId), { timeout }).not.toBeNull(), { ms: 240_000 });
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
   // What the engine recorded of it, and what the canvas should mark.
   const want = await page.evaluate(() => {
     const id = window.__aur.wb.subjectId;
-    const ev = (window.__pwLast.evolved_from.views.lineage || []).find((e) => e.child_id === id && e.kind === "refine");
+    const ev = (window.__tap.last.evolved_from.views.lineage || []).find((e) => e.child_id === id && e.kind === "refine");
     const keys = new Set();
     const seeds = {};
     const latent = (v) => v != null && /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
@@ -268,44 +269,44 @@ test("a bred sound shows what its generation changed: from its seed and how many
   // An edit: the bench is no longer the child as bred, and the marks go.
   const hit = page.locator("#rack-svg g[data-addr] > .knob-hit").first();
   const b = await hit.boundingBox();
-  const t0 = await now(page);
+  const t0 = await app.now();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 30, { steps: 5 });
   await page.mouse.up();
-  await replied(page, "bench", t0);
+  await app.reply("bench", { after: t0 });
   await expect(page.locator("#rack-meta .pt-from")).toHaveCount(0);
   await expect(page.locator("#rack-svg .lineage-tick, #rack-svg .knob-seed")).toHaveCount(0);
   // Undo to as opened: the child as bred again, and its marks with it.
-  const t1 = await now(page);
+  const t1 = await app.now();
   await page.locator("#pt-revert").click();
-  await replied(page, "bench", t1);
+  await app.reply("bench", { after: t1 });
   await expect(page.locator("#rack-meta .pt-from")).toHaveText(at.from);
   await expect.poll(async () => (await marks()).ticked).toEqual(want.ticked);
   await expect(page.locator("#rack-svg .knob-seed")).toHaveCount(want.pointers.length);
-  expect(errors).toEqual([]);
 });
 
-test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page }) => {
-  test.setTimeout(FLOOR_MS + 120_000);
-  const errors = await boot(page, { warmed: true });
+test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page, app }) => {
+  await app.boot();
   // PERFORM measures the sound it plays at boot; that is the patch on the
   // bench. Its measurement, as the worker answered it: for each control on
   // the panel, the knobs it turns.
-  await expect.poll(() => page.evaluate(() => {
-    const bench = window.__pwLast.bench && window.__pwLast.bench.treeJson;
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => {
+    const T = window.__tap;
+    const bench = T.last.bench && T.last.bench.treeJson;
     if (!bench) return false;
     const sh = (j) => j.replace(/-?\d+(\.\d+)?(e-?\d+)?/g, "#");
-    const reqs = new Set(window.__pwPosted.filter((p) => p.type === "perform_wire" && p.ptree && sh(p.ptree) === sh(bench)).map((p) => p.req));
-    return window.__pwReplies.some((r) => r.type === "perform_wired" && reqs.has(r.req));
-  }), { timeout: FLOOR_MS }).toBe(true);
+    const reqs = new Set(T.sent.filter((s) => s.type === "perform_wire" && s.m.tree && sh(s.m.tree) === sh(bench)).map((s) => s.m.req));
+    return T.replies.some((r) => r.type === "perform_wired" && !r.injected && r.d.data && reqs.has(r.d.req));
+  }), { timeout }).toBe(true), { ms: FLOOR_MS });
   await goLevel(page, "patch");
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
   const m = await page.evaluate(() => {
-    const bench = window.__pwLast.bench.treeJson;
+    const T = window.__tap;
+    const bench = T.last.bench.treeJson;
     const sh = (j) => j.replace(/-?\d+(\.\d+)?(e-?\d+)?/g, "#");
-    const reqs = new Set(window.__pwPosted.filter((p) => p.type === "perform_wire" && p.ptree && sh(p.ptree) === sh(bench)).map((p) => p.req));
-    const wired = window.__pwReplies.filter((r) => r.type === "perform_wired" && reqs.has(r.req)).pop();
+    const reqs = new Set(T.sent.filter((s) => s.type === "perform_wire" && s.m.tree && sh(s.m.tree) === sh(bench)).map((s) => s.m.req));
+    const wired = T.replies.filter((r) => r.type === "perform_wired" && !r.injected && r.d.data && reqs.has(r.d.req)).pop().d;
     const turning = wired.data.wiring.filter((w) => !w.search && (w.knobs || []).length);
     // A knob on the canvas some control turns, and the module it is on.
     for (const mod of window.__aur.wb.rack.modules) {
@@ -341,5 +342,4 @@ test("the readout names the PERFORM controls that turn the knob under the pointe
   // wiring need not be in: compared as a set).
   const want = m.byControl.map(([n, ks]) => `${caps(n)} turns its ${series(ks)}`).sort();
   await expect.poll(async () => ((await page.locator("#pt-read .pr-wired").textContent()) || "").split("; ").sort()).toEqual(want);
-  expect(errors).toEqual([]);
 });

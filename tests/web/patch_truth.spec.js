@@ -13,73 +13,19 @@
 //   to 7.83 kHz read "1.78 kHz"). PERFORM's copy of the knob never heard the
 //   turn, so its next move also wrote the old value back into the voices.
 //
-// A spec reaches the engine only by wrapping `Worker` before `main.js` runs,
-// to count edits out and replies back (the lane has settled when they agree).
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+// The engine is reached through the fixture's tap (fixtures.js): edits are
+// counted out and replies back, and the lane has settled when they agree
+// (patch_page.js `settled`).
+const { test, expect, goLevel } = require("./fixtures");
+const patchPage = require("./patch_page.js");
+const { settled } = patchPage;
 
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const io = (window.__pwIO = { out: 0, in: 0 });
-  const EDITS = new Set(["edit_param", "edit_structure", "edit_set_tree"]);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && EDITS.has(m.type)) io.out += 1;
-        return post(m, t);
-      };
-      w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (!d || typeof d.type !== "string") return;
-        if ((d.type === "bench" && d.edited !== undefined) || d.type === "edit_rejected") io.in += 1;
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
-})();`;
-
-async function boot(page) {
-  const errors = [];
-  page.on("pageerror", (err) => errors.push(err.message));
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  return errors;
-}
-
-/** Every edit posted has been answered, and stays that way for `quiet` ms. */
-async function settled(page, quiet = 700) {
-  await expect
-    .poll(
-      async () => {
-        const a = await page.evaluate(() => [window.__pwIO.out, window.__pwIO.in]);
-        if (a[0] !== a[1]) return false;
-        await page.waitForTimeout(quiet);
-        const b = await page.evaluate(() => [window.__pwIO.out, window.__pwIO.in]);
-        return a[0] === b[0] && a[1] === b[1];
-      },
-      { timeout: 90_000, intervals: [250] },
-    )
-    .toBe(true);
-}
-
-/** Open a library preset on the bench, and wait until the rack is its. */
-async function openPreset(page, name) {
-  // The app opens at PERFORM (Plan-008): PATCH is a level away.
-  await goLevel(page, "patch");
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
-  await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible();
-  await settled(page);
+/** Open a library preset on the bench, and wait until the rack is its and
+ *  the lane has settled. */
+async function openPreset(app, name) {
+  await patchPage.openPreset(app, name);
+  await expect(app.page.locator("#rack-svg .knob-hit").first()).toBeVisible();
+  await settled(app);
 }
 
 /** The live output's peak over ~0.3 s, in dBFS, off the worklet's own
@@ -99,15 +45,17 @@ const livePeakDb = (page) =>
   });
 
 /** Open PERFORM on the patch on the bench and wait until its controls are
- *  wired — the state in which PERFORM holds its own copy of every knob. */
-async function wirePerform(page, name) {
+ *  wired — the state in which PERFORM holds its own copy of every knob. Its
+ *  measurement is the engine's: an engine wait. */
+async function wirePerform(app, name) {
+  const { page } = app;
   await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await page.waitForFunction(
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText(name, { timeout }), { ms: 30_000 });
+  await app.engine((timeout) => page.waitForFunction(
     () => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""),
     null,
-    { timeout: 90_000 },
-  );
+    { timeout },
+  ), { ms: 90_000 });
 }
 
 /** A rack knob's centre on screen, and what it says. */
@@ -137,12 +85,11 @@ async function dragUp(page, k, dy, steps = 8) {
   await page.mouse.up();
 }
 
-test("an unplugged socket goes quiet under a held note, and its plate still reads EMPTY", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("an unplugged socket goes quiet under a held note, and its plate still reads EMPTY", async ({ page, app }) => {
+  await app.boot();
   // Glass Pad is a chorus over a filter over one supersaw: the supersaw's
   // socket is the only thing it can hear, as in the film.
-  await openPreset(page, "Glass Pad");
+  await openPreset(app, "Glass Pad");
   const key = await page.evaluate(() => window.__aur.wb.rack.modules.find((m) => m.kind === "supersaw")?.key);
   expect(key, "Glass Pad has a supersaw").toBeTruthy();
 
@@ -158,7 +105,7 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   const quietAfterMs = Date.now() - t0;
   // …and stays quiet once the swap has rebuilt the voices with the note
   // still held: the stand-in used to fade back in here.
-  await settled(page);
+  await settled(app);
   for (let i = 0; i < 4; i++) expect(await livePeakDb(page)).toBeLessThan(-60);
   await page.keyboard.up("a");
   console.log(`[patch_truth] quiet ${quietAfterMs} ms after the unplug`);
@@ -171,44 +118,40 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   // Nothing reaches the output, and the words say that — not a runaway.
   await expect(page.locator("#rack-meta")).toContainText("silent");
   await expect(page.locator("#alarm")).not.toContainText("run away");
-  expect(errors).toEqual([]);
 });
 
-test("a knob turned in PATCH keeps its value, with no ghost", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  await openPreset(page, "First Bass");
+test("a knob turned in PATCH keeps its value, with no ghost", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "First Bass");
   // PERFORM measured first, so it holds its own copy of the cutoff — the
   // state the films were in.
-  await wirePerform(page, "First Bass");
+  await wirePerform(app, "First Bass");
   await goLevel(page, "patch");
   const before = await rackKnob(page, "node#cut");
   expect(before, "First Bass has a cutoff on the rack").not.toBeNull();
 
   await dragUp(page, before, 45);
-  await settled(page);
+  await settled(app);
   // PERFORM's paint runs every 100 ms; give it twenty chances to be wrong.
-  await page.waitForTimeout(2_000);
+  await app.quiet(2_000);
   const after = await rackKnob(page, "node#cut");
   expect(after.value).toBeGreaterThan(before.value + 0.2);
   expect(after.text, "the readout says the value the knob was turned to").toBe(after.valuetext.split(" · ")[0]);
   expect(after.performed).toBe(false);
   await expect(page.locator("#rack-svg .knob-ghost")).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
-test("moving a PERFORM control after a PATCH edit plays from the new base", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  await openPreset(page, "First Bass");
-  await wirePerform(page, "First Bass");
+test("moving a PERFORM control after a PATCH edit plays from the new base", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "First Bass");
+  await wirePerform(app, "First Bass");
   await goLevel(page, "patch");
   // A big turn in PATCH (about +0.45 of the knob's travel) and a small one
   // in PERFORM (Bright to about +0.2), so "from the new base" and "from the
   // preset's" land far apart whatever Bright's gain on the cutoff is.
   const before = await rackKnob(page, "node#cut");
   await dragUp(page, before, 63);
-  await settled(page);
+  await settled(app);
   const edited = (await rackKnob(page, "node#cut")).value;
   expect(edited).toBeGreaterThan(before.value + 0.3);
 
@@ -231,5 +174,4 @@ test("moving a PERFORM control after a PATCH edit plays from the new base", asyn
   const said = `played ${played}, edited ${edited}, preset ${before.value}`;
   expect(Math.abs(played - edited), said).toBeLessThan(0.12);
   expect(played - before.value, said).toBeGreaterThan(0.25);
-  expect(errors).toEqual([]);
 });

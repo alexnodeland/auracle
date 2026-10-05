@@ -37,7 +37,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
 | D: ⌘K, and the guide for the levels | #132 | not started |
 | Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
-| PATCH's specs on the shared fixture | #136 | not started |
+| PATCH's specs on the shared fixture | #136 | merged (#168) |
 | After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | not started |
 
 The maintainer accepted the plan with the decisions at its end, which override
