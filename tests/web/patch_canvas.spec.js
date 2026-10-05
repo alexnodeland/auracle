@@ -348,10 +348,14 @@ test("undo waits for a sound on its way: ⌘Z and undo to as opened, pressed whi
   await app.busy({ edit_begin: 4000 });
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   // ↺ cannot go while it is on its way (and says why, where it is shown).
-  await expect.poll(() => page.evaluate(() => {
+  // A preset is on its way once the engine has loaded it (`preset_loaded`
+  // opens it on the bench), and the load can wait behind a cable probe or a
+  // guess the engine is rendering: an engine wait. The open then takes 4 s
+  // more, so the state stands long enough to be seen.
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => {
     const b = document.getElementById("pt-revert");
     return b.getAttribute("aria-disabled") === "true" && b.parentElement.title === "Waiting for the sound you opened to arrive";
-  }), { timeout: 3_000 }).toBe(true);
+  }), { timeout }).toBe(true), { ms: 30_000 });
   // ⌘Z waits, and is dropped with the patch it was aimed at.
   await page.keyboard.press("Control+z");
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
