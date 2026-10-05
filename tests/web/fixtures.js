@@ -149,6 +149,7 @@ const TAP = `(() => {
   T.release = (drop) => {
     T.holds = [];
     T.holdFrom = null;
+    T.holdNext = [];
     const held = T.held.splice(0);
     if (!drop) for (const h of held) {
       const e = new MessageEvent("message", { data: h.d });
@@ -173,6 +174,7 @@ const TAP = `(() => {
     else if (op === "answer") T.answers.push({ match: a.match, reply: a.reply });
     else if (op === "delay") T.delays.push({ match: a.match, ms: a.ms });
     else if (op === "undelay") T.delays = [];
+    else if (op === "fail") (T.fails = T.fails || []).push({ match: a.match, message: a.message, fatal: !!a.fatal, once: !!a.once });
   };
   T.releaseRequests = () => {
     T.reqHolds = [];
@@ -215,6 +217,7 @@ const TAP = `(() => {
         if (m.type === "perform_wire" && m.tree) window.__pbTree = m.tree;
         if (T.holdFrom && matches(T.holdFrom, m)) {
           T.holds = T.holdNext;
+          T.holdNext = [];
           T.holdFrom = null;
         }
       }
@@ -225,6 +228,14 @@ const TAP = `(() => {
       if (typed && T.stalls.some((p) => matches(p, m))) {
         T.stalls = [];
         T.stalled.push(m);
+        return;
+      }
+      // Failed as the worker fails a request it could not run (worker.js engineError).
+      const fail = typed && (T.fails || []).find((f) => matches(f.match, m));
+      if (fail) {
+        if (fail.once) T.fails.splice(T.fails.indexOf(fail), 1);
+        const data = { type: "engine_error", request: m.type, id: m.id == null ? null : m.id, req: m.req == null ? null : m.req, message: fail.message, fatal: fail.fatal };
+        setTimeout(() => T.inject(data), 0);
         return;
       }
       const answer = typed && T.answers.find((a) => matches(a.match, m));
@@ -695,6 +706,40 @@ class App {
           .toBe(true),
       { ms: timeout },
     );
+  }
+
+  /** Answer the requests matching `match` as the worker answers one it could
+   *  not run (worker.js `engineError`): an `engine_error` naming the request
+   *  (`request`, and its `id` and `req`), injected, and the request sent no
+   *  further. It is still in `sent`. `fatal`: the engine is down, as a
+   *  poisoned worker answers everything; `once`: the next such request only.
+   *  The way to fail what the shipped engine never fails. */
+  fail(match, { message = "Error: injected for the test", fatal = false, once = false } = {}) {
+    return this.config("fail", { match: asPattern(match), message, fatal, once });
+  }
+
+  /** A preset opened as a player opens one onto PERFORM: PRESETS, its row,
+   *  and once the rack holds it, the PERFORM stop, until PERFORM names it;
+   *  then, unless `reach` is false, `reached({ wired })`. Engine waits. */
+  async openOnPerform(name, { reach = true, wired = false } = {}) {
+    const { page } = this;
+    await shell.bankTab(page, "presets");
+    await page.locator(".bank-item", { hasText: name }).first().click();
+    await this.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
+    await this.level("perform");
+    await this.engine((timeout) => expect(page.locator(".pf-name")).toHaveText(name, { timeout }), { ms: 30_000 });
+    if (reach) await this.reached({ wired });
+  }
+
+  /** PERFORM's controls reach the patch it shows (the status line's
+   *  "controls reach"), and with `wired`, at the same moment, none of the
+   *  panel's six is unwired: an engine wait (a measurement, or a kept one
+   *  read back). */
+  reached({ wired = false, ms = 120_000 } = {}) {
+    const live = (all) =>
+      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
+      (!all || ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired")));
+    return this.engine((timeout) => this.page.waitForFunction(live, wired, { timeout }), { ms });
   }
 }
 
