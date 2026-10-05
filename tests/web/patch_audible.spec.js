@@ -257,6 +257,26 @@ const LISTEN = `(() => {
     };
     step();
   });
+
+  // Every spectrum from now until the note at \`want\` has been heard for
+  // \`holdMs\` (from its level first over \`onDb\`), or \`budgetMs\` has passed:
+  // anchored to the note, wherever it lands after the press.
+  window.__pwRecordNote = (want, onDb, holdMs, budgetMs) => new Promise((resolve) => {
+    const out = [];
+    const t0 = performance.now();
+    let on = null;
+    const step = () => {
+      const t = performance.now() - t0;
+      const s = window.__pwSpectrum(want);
+      if (s) {
+        out.push({ t, at: t0 + t, rms: window.__pwRmsDb(), ...s });
+        if (on == null && s.level > onDb) on = t;
+      }
+      if ((on != null && t - on >= holdMs) || t >= budgetMs) resolve(out);
+      else setTimeout(step, 25);
+    };
+    step();
+  });
 })();`;
 
 // Prepended to worker.js (the fixture's `app.busy`, and more): a busy-wait
@@ -390,15 +410,29 @@ async function silence(page) {
     .toBeLessThan(-80);
 }
 
+// The phrase opens on a 1.8 s C4, read 0.6 to 1.6 s after its onset
+// (`replaySpectrum`). The recording runs until the note has been heard (the
+// output's level at C4 over NOTE_ON_DB, before the onset the level marks)
+// for NOTE_HOLD_MS, which covers that window and the climb to the onset,
+// however long the press waited for an edit at the engine first; for at
+// most NOTE_BUDGET_MS. A window fixed from the press missed the note on a
+// loaded runner, where the edit's reply came late (#127).
+const NOTE_ON_DB = -60;
+const NOTE_HOLD_MS = 2_200;
+const NOTE_BUDGET_MS = 30_000;
+
 /** Press something that plays the bench's phrase, and read the phrase's
  *  opening C4 at the output: onset found from the level, then the spectra
  *  whose whole window sits inside the held note (the pitch envelope settled,
- *  the C5 that follows not yet begun), medianed. */
-async function replaySpectrum(page, press, ms = 2600) {
+ *  the C5 that follows not yet begun), medianed. An engine wait: the press
+ *  may wait for an edit. */
+async function replaySpectrum(app, press) {
+  const { page } = app;
   await silence(page);
-  await page.evaluate(([w, n]) => { window.__pwRec = window.__pwRecord(n, w); }, [C4, ms]);
+  await page.evaluate(([w, on, hold, budget]) => { window.__pwRec = window.__pwRecordNote(w, on, hold, budget); },
+    [C4, NOTE_ON_DB, NOTE_HOLD_MS, NOTE_BUDGET_MS]);
   await press();
-  const snaps = await page.evaluate(() => window.__pwRec);
+  const snaps = await app.engine(() => page.evaluate(() => window.__pwRec), { ms: NOTE_BUDGET_MS });
   const top = Math.max(...snaps.map((s) => s.level).filter(Number.isFinite));
   const onset = snaps.find((s) => s.level > top - 20);
   expect(onset, "the phrase sounds at the output").toBeTruthy();
@@ -550,11 +584,11 @@ test("a VCO's wave cycled in PATCH is heard: live under a held note, and on ▶ 
   await page.keyboard.up("a");
 
   // Replay: ▶ plays the triangle, Space stops it, and Space again plays it.
-  const onPlay = await replaySpectrum(page, () => page.locator("#rack-play").click(), 2200);
+  const onPlay = await replaySpectrum(app, () => page.locator("#rack-play").click());
   console.log(`[patch_audible] ▶ tri: ${fmt(onPlay)} (${onPlay.n} reads)`);
   expectWave(onPlay, "tri", "▶");
   await stopPhrase(page);
-  const onSpace = await replaySpectrum(page, () => page.keyboard.press(" "), 2200);
+  const onSpace = await replaySpectrum(app, () => page.keyboard.press(" "));
   console.log(`[patch_audible] Space tri: ${fmt(onSpace)} (${onSpace.n} reads)`);
   expectWave(onSpace, "tri", "Space");
 });
@@ -647,7 +681,7 @@ test("an undo and a redo of a selector keep the held note's level: the voices ta
 test("a filter cutoff turned down in PATCH lowers the spectral centroid, live and on ▶", async ({ page, app }) => {
   await boot(app);
   await openPreset(app, "Falling Sign");
-  const before = await replaySpectrum(page, () => page.locator("#rack-play").click(), 2200);
+  const before = await replaySpectrum(app, () => page.locator("#rack-play").click());
   await stopPhrase(page);
   await holdC4(page);
   const liveBefore = await liveSpectrum(page);
@@ -667,7 +701,7 @@ test("a filter cutoff turned down in PATCH lowers the spectral centroid, live an
   const darker = snaps.find((x) => x.at > pressed && x.centroid < liveBefore.centroid * 0.7);
   const heardMs = darker ? Math.round(darker.at - pressed) : "over 1500";
   await page.keyboard.up("a");
-  const after = await replaySpectrum(page, () => page.locator("#rack-play").click(), 2200);
+  const after = await replaySpectrum(app, () => page.locator("#rack-play").click());
   console.log(
     `[patch_audible] cutoff ${k.value.toFixed(2)} → ${turned.value.toFixed(2)} (${turned.text}): ` +
       `live centroid ${liveBefore.centroid.toFixed(0)} → ${liveAfter.centroid.toFixed(0)} Hz (read ${heardMs} ms after the press), ` +
@@ -769,9 +803,7 @@ test("an edit's reply leaves alone the makeup of a preset opened while the edit 
   expect(Math.abs(after[after.length - 1].makeup - open.makeup), "and play it at its own makeup").toBeLessThan(1e-9);
 });
 
-// Quarantined (#127): on a loaded runner no snapshot of the fixed window can
-// fall inside the held note.
-test("▶ and Space pressed while a wave change is still at the engine play the changed patch", { tag: "@quarantine" }, async ({ page, app }) => {
+test("▶ and Space pressed while a wave change is still at the engine play the changed patch", async ({ page, app }) => {
   await boot(app, { slowable: true });
   await openPreset(app, "Falling Sign");
   // The render behind a wave change takes the engine a few hundred ms; this
@@ -781,7 +813,7 @@ test("▶ and Space pressed while a wave change is still at the engine play the 
 
   const pressedEarly = async (press, key) => {
     const n = await replies(app);
-    const s = await replaySpectrum(page, press, 4500);
+    const s = await replaySpectrum(app, press);
     const at = await page.evaluate(() => window.__pwAt);
     const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
     return { s, pressedMs: at[key] - at.chip, landedMs: landed - at.chip };
@@ -823,7 +855,7 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
   };
   for (const view of ["perform", "evolve"]) {
     await goLevel(page, view);
-    const s = await replaySpectrum(page, () => page.keyboard.press(" "), 2200);
+    const s = await replaySpectrum(app, () => page.keyboard.press(" "));
     console.log(`[patch_audible] Space in ${view}: ${fmt(s)} (${s.n} reads)`);
     expectWave(s, "sin", `Space in ${view}`);
     await stop();
@@ -837,11 +869,11 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
     await goLevel(page, "patch");
     await silence(page);
     const n = await replies(app);
-    const s = await replaySpectrum(page, async () => {
+    const s = await replaySpectrum(app, async () => {
       await clickWave(page);
       await goLevel(page, view);
       await page.keyboard.press(" ");
-    }, 4500);
+    });
     const at = await page.evaluate(() => window.__pwAt);
     const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
     // The dock says Space waits, at once, and stops saying it when the
