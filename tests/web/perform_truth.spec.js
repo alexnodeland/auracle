@@ -391,11 +391,18 @@ test("after the engine crashes, PERFORM asks it nothing more: no spare grows, an
   await app.engine((timeout) => expect(status).toContainText("controls reach", { timeout }), { ms: 30_000 });
   // The crash, during Glass Pad's re-check, and the engine poisoned from then
   // on: every PERFORM request answered as a poisoned worker answers it, with
-  // a fatal engine_error, and never run (`app.fail`).
+  // a fatal engine_error, and never run (the tap's `fail`, as `app.fail`
+  // sets it). All in one breath in the page, and the moment taken there, so
+  // a spare asked in a microtask or a timer after the crash is counted.
   const req = await lastWire(app, true);
-  await app.fail({ type: PERFORM_REQUESTS }, { message: "the engine is down (RuntimeError: unreachable)", fatal: true });
-  await app.inject({ type: "engine_error", request: "perform_wire", id: null, req, message: "RuntimeError: unreachable", fatal: true });
-  const crashAt = await app.now();
+  const crashAt = await page.evaluate(
+    ([r, types]) => {
+      window.__tap.config("fail", { match: { type: types }, message: "the engine is down (RuntimeError: unreachable)", fatal: true, once: false });
+      window.__tap.inject({ type: "engine_error", request: "perform_wire", id: null, req: r, message: "RuntimeError: unreachable", fatal: true });
+      return performance.now();
+    },
+    [req, PERFORM_REQUESTS],
+  );
   await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
   const walks = async () => (await app.sent({ type: ["perform_offer", "perform_drift"] }, { after: crashAt })).length;
   // Hands off for as long as a spare waits before it grows (`growSpare`: six
