@@ -143,6 +143,23 @@ const TAP = `(() => {
     }
     return held.length;
   };
+  // The spec's settings, by name: the same whether they are made on a live
+  // page or before boot (replayed by an init script on every load).
+  T.config = (op, a) => {
+    if (op === "hold") {
+      if (a.from) {
+        T.holdNext = a.patterns;
+        T.holdFrom = a.from;
+      } else T.holds = a.patterns;
+      if (a.inject) T.inject(a.inject);
+    } else if (op === "amend") T.amends.push({ match: a.match, set: a.set });
+    else if (op === "unamend") T.amends = [];
+    else if (op === "holdRequests") T.reqHolds = a.patterns.length ? a.patterns : ["*"];
+    else if (op === "stall") T.stalls = a.patterns;
+    else if (op === "answer") T.answers.push({ match: a.match, reply: a.reply });
+    else if (op === "delay") T.delays.push({ match: a.match, ms: a.ms });
+    else if (op === "undelay") T.delays = [];
+  };
   T.releaseRequests = () => {
     T.reqHolds = [];
     const held = T.reqHeld.splice(0);
@@ -255,6 +272,8 @@ const asPattern = (p) => (typeof p === "string" ? { type: p } : p);
 class App {
   constructor(page) {
     this.page = page;
+    // Settings made before boot, replayed on every load (`config`).
+    this.early = [];
     this.ENGINE_MS = ENGINE_MS;
     this.QUIET_MS = QUIET_MS;
   }
@@ -279,6 +298,10 @@ class App {
     const { page } = this;
     if (random != null) await page.addInitScript(RANDOM(random));
     await page.addInitScript(SEEN({ warmed, seen }));
+    if (this.early.length) {
+      await page.addInitScript(`(() => { for (const [op, a] of ${JSON.stringify(this.early)}) window.__tap.config(op, a); })();`);
+      this.early = [];
+    }
     const throttle = Number(process.env.AURACLE_CPU_THROTTLE || 0);
     const rate = Math.max(slowEngine || 0, throttle > 1 ? throttle : 0);
     if (busy || rate > 1) {
@@ -454,24 +477,22 @@ class App {
     return this.page.evaluate((d) => window.__tap.inject(d), data);
   }
 
+  /** Apply a setting to the tap: now, on a live page, or (before `boot`) by
+   *  an init script on every load, so it holds from the first message. */
+  async config(op, args = {}) {
+    const live = await this.page
+      .evaluate(([op, a]) => (window.__tap ? (window.__tap.config(op, a), true) : false), [op, args])
+      .catch(() => false);
+    if (!live) this.early.push([op, args]);
+  }
+
   /** Keep the engine's own replies matching any pattern from main until
    *  `release`, in order: an injected reply then stands until the spec lets
    *  the engine speak again. `from`: start holding only when the page posts a
    *  request matching it. `inject`: hand main this reply in the same breath,
    *  so no engine reply can land between the two. */
   hold(patterns, { from = null, inject = null } = {}) {
-    const ps = [].concat(patterns).map(asPattern);
-    return this.page.evaluate(
-      ([ps, from, inject]) => {
-        const T = window.__tap;
-        if (from) {
-          T.holdNext = ps;
-          T.holdFrom = from;
-        } else T.holds = ps;
-        if (inject) T.inject(inject);
-      },
-      [ps, from && asPattern(from), inject],
-    );
+    return this.config("hold", { patterns: [].concat(patterns).map(asPattern), from: from && asPattern(from), inject });
   }
 
   /** The replies held so far: [{ type, at }]. */
@@ -493,18 +514,18 @@ class App {
   /** Rewrite the engine's replies matching `match` before main reads them:
    *  `set` maps a dotted path to a value, set where its parent exists. */
   amend(match, set) {
-    return this.page.evaluate(([m, s]) => window.__tap.amends.push({ match: m, set: s }), [asPattern(match), set]);
+    return this.config("amend", { match: asPattern(match), set });
   }
 
   /** Stop rewriting replies. */
   unamend() {
-    return this.page.evaluate(() => { window.__tap.amends = []; });
+    return this.config("unamend");
   }
 
   /** Keep the page's requests matching any pattern (all of them with none)
    *  from the engine until `releaseRequests`. */
   holdRequests(...patterns) {
-    return this.page.evaluate((ps) => { window.__tap.reqHolds = ps.length ? ps : ["*"]; }, patterns.map(asPattern));
+    return this.config("holdRequests", { patterns: patterns.map(asPattern) });
   }
 
   /** Post the held requests, in order; how many there were. */
@@ -515,7 +536,7 @@ class App {
   /** The next request matching any pattern never reaches the engine: it is
    *  kept, and the spec answers it with `inject` when it chooses. */
   stall(...patterns) {
-    return this.page.evaluate((ps) => { window.__tap.stalls = ps; }, patterns.map(asPattern));
+    return this.config("stall", { patterns: patterns.map(asPattern) });
   }
 
   /** The request stalled most recently, once there is one (a UI-side wait:
@@ -528,18 +549,18 @@ class App {
   /** Answer every request matching `match` with `reply` ourselves, as an
    *  engine would, and send it no further. */
   answer(match, reply) {
-    return this.page.evaluate(([m, r]) => window.__tap.answers.push({ match: m, reply: r }), [asPattern(match), reply]);
+    return this.config("answer", { match: asPattern(match), reply });
   }
 
   /** Post requests matching `match` to the engine `ms` later: the stand-in
    *  for an engine busy elsewhere. */
   delay(match, ms) {
-    return this.page.evaluate(([m, t]) => window.__tap.delays.push({ match: m, ms: t }), [asPattern(match), ms]);
+    return this.config("delay", { match: asPattern(match), ms });
   }
 
   /** Post every request at once again. */
   undelay() {
-    return this.page.evaluate(() => { window.__tap.delays = []; });
+    return this.config("undelay");
   }
 
   /** Make requests of these types busy-wait in the worker for so many ms

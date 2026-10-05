@@ -24,6 +24,9 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   fails for the machine, not the app.
 - **`make smoke`** runs the pair the site job runs (`smoke.spec.js`,
   `failure_flows.spec.js`), in seconds.
+- **A failed test on the fixture** carries what its tap saw (every toast,
+  and the counts of what was sent and heard) as the attachment `tap`;
+  `AURACLE_TAP_LOG=1` prints it too.
 
 ## The two tiers
 
@@ -107,6 +110,9 @@ runs. No retries anywhere
     (`app.delay`), stalled and answered by the spec (`app.stall`,
     `app.stalled`), answered without the engine (`app.answer`), and replies
     rewritten before main reads them (`app.amend`);
+  - a setting made before `app.boot()` (`app.answer`, `app.hold`, …) is
+    replayed by an init script on every load, so it holds from the first
+    message; made after, it holds on the page as it is;
   - a spec's own instrumentation (an observer, a spy on `start()`) is an
     init script added before `app.boot()`: it wraps outside the tap, and
     sees a held reply only when it is released.
