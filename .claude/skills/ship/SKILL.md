@@ -97,16 +97,20 @@ agent, so it keeps its context), and have only those fixes looked at again:
 File every other finding as an issue and name it in the PR body. A finding
 you decline goes in the PR body with the reason.
 
-**Stack it now, before CI.** If another PR is ahead of this one in the queue,
-base this branch on that PR's head, so this branch's first run tests what
-`main` will be:
+**One PR in CI at a time.** If this branch was built on another PR that is
+still open, hold it until that one merges, then move it onto `main` before
+step 5, so its first run tests what it merges into:
 
 ```bash
 git -C "$WT" fetch -q origin
-git -C "$WT" rebase origin/claude/<the one ahead>
+git -C "$WT" rebase --onto origin/main <the one ahead's last head>
 ```
 
-Otherwise rebase only to resolve a conflict with `main`.
+Don't push it stacked on the open one: once that one squash-merges, a branch
+still carrying its commits conflicts wherever both changed the same lines
+(`CHANGELOG.md`, nearly always), and needs a new head and a second run. A PR
+whose files don't meet any open PR's goes up now, based on `main`. Otherwise
+rebase only to resolve a conflict with `main`.
 
 New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
@@ -145,9 +149,7 @@ passes.
 Green, with no blocking finding: merge now. Nothing is added to a green PR;
 a later finding is an issue or the next PR.
 
-- **It was stacked on a PR that has since merged, unchanged:** merge on this
-  run. Its tree is what `main` becomes, and `main`'s run reuses the verdict.
-- **`main` moved under it otherwise** (`git -C "$WT" merge-base --is-ancestor
+- **`main` moved under it** (`git -C "$WT" merge-base --is-ancestor
   origin/main HEAD` fails): compare its files with what merged since.
   - If none meet, merge on this run; `main`'s run verifies the merged tree
     in full. Watch that run, and fix a failure there before anything else

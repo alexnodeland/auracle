@@ -4,7 +4,7 @@ How a change gets from an idea to `main` and the live site. This is the
 canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 [ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
-[ADR-020](decisions/020-merge-at-green-stack-before-ci.md) amends it. The `ship` skill
+[ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md) amends it. The `ship` skill
 (`.claude/skills/ship/`) walks one task through it with the exact commands.
 
 ## The lifecycle
@@ -86,7 +86,7 @@ in a plan's prose, a session's notes or a conversation.
   review is split before the builder starts: two PRs that each merge on
   their first green run land sooner than one that goes round three times.
 - **Rebasing while building or in review** is only to resolve a conflict.
-  The one that matters is stacking on the PR ahead before CI
+  The one that matters is onto `main`, once the PR ahead has merged
   ([CI and merging](#ci-and-merging)).
 - **Descriptions stay true in the same change**
   ([ADR-004](decisions/004-descriptions-stay-true.md)): the guide, the
@@ -169,20 +169,25 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
 - **GitHub enforces it.** `main`'s ruleset requires the `CI` check, from
   GitHub Actions, with no bypass for anyone, admins included. It does not
   require the branch to be up to date with `main`; the rules below say when
-  a PR is stacked, rebased or merged behind. To merge anything else, the maintainer edits the
-  ruleset.
+  a PR is rebased and when it merges behind. To merge anything else, the
+  maintainer edits the ruleset.
 - **Merge at green.** A PR whose `CI` is green and that has no blocking
   finding merges then. Nothing is added to a green PR. A finding raised
   after it, or an improvement seen in passing, becomes an issue or the next
-  PR ([ADR-020](decisions/020-merge-at-green-stack-before-ci.md)).
-- **Stack before CI, not after.** A PR queued behind another is based on
-  that PR's head before its first CI run
-  (`git rebase origin/claude/<the one ahead>`).
-  - When the one ahead squash-merges, the one behind merges into exactly the
-    tree its run tested. It merges on that run, with no push, and `main`'s
-    run reuses its verdict.
-  - Rebase it again only if the PR ahead changes after the stack, or on a
-    conflict.
+  PR ([ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md)).
+- **One PR in CI at a time, unless their files don't meet.**
+  - The next PR in a line may be built on the branch of the one ahead. It is
+    pushed only once that one has merged, rebased onto `main` first:
+    `git rebase --onto origin/main <the one ahead's last head>`.
+  - Its first run then tests what it merges into, and `main`'s run reuses
+    that verdict.
+  - Don't push it stacked on the one ahead. A squash merge gives `main` one
+    new commit, and the branch behind, still carrying the old ones,
+    conflicts wherever both PRs changed the same lines (`CHANGELOG.md`'s
+    Unreleased section, nearly always). It then needs a new head and a
+    second run.
+  - Two PRs whose files don't meet may be in CI together, each based on
+    `main`.
 - **Behind `main`, when the files don't meet.** Say `main` moved since a PR's
   run, and the PR has nothing ahead of it in the queue.
   - If no PR merged since then touches the PR's files, it merges on its run.
@@ -195,9 +200,8 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   never two touching the same files.
 - **On `main`**, a job the merged PR already passed is not run again, but only
   when the merged files are exactly the files the PR's run tested (the same
-  git tree). That holds when `main` did not move, or when all that merged in
-  between is the PR it was stacked on. The site deploys from CI's
-  own build once `CI` is green. The *Slow suite* runs on every push to `main`
+  git tree): `main` did not move between the PR's run and its merge. The
+  site deploys from CI's own build once `CI` is green. The *Slow suite* runs on every push to `main`
   and nightly; the *Flake hunt* nightly. A failure there files an issue.
 
 After the merge: the issue closes (via `Closes #N`), the plan's progress table

@@ -1,5 +1,5 @@
 ---
-title: "Merge at green, stack the next PR before its CI, quarantine an unrelated failure on sight"
+title: "Merge at green, one PR in CI at a time, quarantine an unrelated failure on sight"
 number: 20
 status: accepted
 author: Claude Code
@@ -8,7 +8,7 @@ originating_proposal: null
 superseded_by: null
 ---
 
-# ADR-020: Merge at green, and stack before CI
+# ADR-020: Merge at green, one PR in CI at a time
 
 ## Status
 
@@ -41,6 +41,20 @@ The ruleset does not require a PR to be up to date with `main`
 (`strict_required_status_checks_policy: false`). Rule 5 imposed that
 requirement by hand, at the cost of a second CI run per merge.
 
+The first draft of this ADR stacked the next PR on the head of the one
+ahead before its first run, so that it would merge on that run once the one
+ahead landed. Its first use, the same day, showed why it doesn't:
+- C2b (#152) was stacked on #155's head, and both runs went green.
+- #155 squash-merged, so `main` got one new commit holding #155's changes.
+- C2b's branch still carried #155's original commits. Where both PRs had
+  changed the same lines (`CHANGELOG.md`'s Unreleased section, the page's
+  cache-busters), GitHub's squash merge of C2b found a conflict and refused.
+- C2b was rebased onto `main` with the same files, byte for byte, and the
+  new head ran CI again. The required check is per commit.
+
+Nearly every PR adds to the top of the Unreleased section, so stacked PRs
+nearly always meet there.
+
 ## Decision
 
 1. **Merge at green.** A PR whose `CI` is green and which has no blocking
@@ -55,17 +69,17 @@ requirement by hand, at the cost of a second CI run per merge.
      - a spec that can pass vacuously or that a slow runner can fail.
    - Every other finding goes into the PR body as an issue.
    - A brief too big for one round is split before the builder starts.
-3. **Stack before CI, not after.**
-   - A PR queued behind another is based on that PR's head before its first
-     CI run.
-   - When the PR ahead squash-merges, the one behind merges into exactly the
-     tree its run tested. It merges on that run, and `main`'s run reuses the
-     verdict (#121).
-   - It is rebased again only when the PR ahead changes after the stack, or
-     on a conflict.
-4. **Behind `main` is allowed when the files don't meet.** A PR with nothing
-   ahead of it in the queue, whose files no PR merged since its run touches,
-   may merge on its run even though `main` moved.
+3. **One PR in CI at a time, unless their files don't meet.**
+   - The next PR in a line may be built on the branch of the one ahead, but
+     it is pushed only once that one has merged, rebased onto `main` first
+     (`git rebase --onto origin/main <the one ahead's last head>`).
+   - Its first run then tests what it merges into, and `main`'s run reuses
+     that verdict (#121).
+   - Two PRs whose files don't meet may be in CI together, each based on
+     `main` (rule 4).
+4. **Behind `main` is allowed when the files don't meet.** A PR whose files
+   no PR merged since its run touches may merge on its run even though
+   `main` moved.
    - `main`'s own run then verifies the merged tree in full.
    - A failure there is fixed forward before anything else merges.
    - When the files meet, the PR is rebased and checked again, as before.
@@ -86,15 +100,25 @@ requirement by hand, at the cost of a second CI run per merge.
   flakes the nightly hunt is there to find.
 - **Require up-to-date branches in the ruleset** (GitHub's strict mode).
   Rejected. It enforces rule 5's double run instead of removing it.
-- **A merge queue** (GitHub's). Not available: GitHub offers it only to
-  repositories owned by an organization, and this one is owned by a person.
-  Rules 3 and 4 do by hand what it would do, at this project's volume of
-  about one PR at a time.
+- **Stack the next PR on the one ahead before its CI.** Tried and rejected,
+  as described in Context: a squash merge breaks the stack wherever the two
+  PRs meet, and they nearly always meet in `CHANGELOG.md`. Two changes would
+  make it work:
+  - CI reusing a verdict on a PR's run when an earlier run passed the same
+    tree (today only `main`'s run reuses one);
+  - one changelog file per PR, assembled at release.
+
+  Neither is built.
+- **A merge queue** (GitHub's). It does what rules 3 and 4 do by hand, and
+  it builds each PR on top of the queue ahead of it, so a squash merge
+  breaks nothing. Not available: GitHub offers it only to repositories owned
+  by an organization, and this one is owned by a person. Moving to an
+  organization is #161, after the films.
 
 ## Consequences
 
-- A PR's first green run is normally its last: the ones queued behind it
-  are stacked before theirs.
+- A PR's first green run is normally its last. In return, a line of PRs
+  goes through CI one after another, not side by side.
 - `main` can go red after a merge behind it (rule 4). The full run on `main`
   catches it, and fixing it comes first.
 - Quarantine grows faster, and each quarantined test has an issue. The
