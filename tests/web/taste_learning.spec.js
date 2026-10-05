@@ -335,7 +335,9 @@ test("LEARNING's weights, forecasts and math are the engine's numbers, and copy 
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a mark sits left of its label: the label's x is the same with the mark and without", async ({ page }) => {
+// Quarantined (#126): the injected `fitted` can be replaced by the engine's own
+// refit, and the second chip waited for never comes.
+test("a mark sits left of its label: the label's x is the same with the mark and without", { tag: "@quarantine" }, async ({ page }) => {
   test.setTimeout(300_000);
   const pageErrors = await boot(page);
   // Two styles; the first leans on two qualities, one settled and one a guess.

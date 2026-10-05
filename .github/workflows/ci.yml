@@ -509,9 +509,10 @@ jobs:
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
     runs-on: ubuntu-latest
-    # Twice the planned load: a runner that takes this long has found
-    # something (a hang, or a machine far slower than main's timings).
-    timeout-minutes: 16
+    # The planned ~9 minutes, a test's own five-minute timeout and room: a
+    # test that times out is reported as a failure, with its trace, rather
+    # than the whole runner being cancelled before it can say which.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
