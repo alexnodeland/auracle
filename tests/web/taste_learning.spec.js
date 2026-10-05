@@ -540,19 +540,21 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   await expect(tog).toHaveAttribute("aria-pressed", "false");
   // Fitted, SOUND shows the glows (the prototype's `halosOn`).
   await expect(page.locator("#taste-legend")).toHaveClass(/\bon\b/);
-  const { pos } = await mapPositions(page);
-  // The sound it likes least.
-  const least = await page.evaluate(() => {
-    const r = window.__pwViews.ratings.ranked;
-    return r[r.length - 1].id;
-  });
-  // How opaque its mark is at the centre: SOUND draws it whole, TASTE at
-  // 0.22 + 0.78 × liking.
-  const green = () => page.evaluate(([x, y]) => {
-    const cv = document.getElementById("taste-crt");
-    const d = window.devicePixelRatio || 1;
-    return cv.getContext("2d").getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data[3];
-  }, [pos[least].x, pos[least].y]);
+  // How opaque the mark of the sound it likes least is at its centre: SOUND
+  // draws it whole, TASTE at 0.22 + 0.78 × liking. Found afresh on every read:
+  // the map redraws as the pool and the fit move on, which can move the mark
+  // or change which sound is liked least, and a pixel read where the mark
+  // used to be reads the glow beside it (CI read 70 against 3).
+  const green = async () => {
+    const { pos } = await mapPositions(page);
+    return page.evaluate((pos) => {
+      const r = window.__pwViews.ratings.ranked;
+      const at = pos[r[r.length - 1].id];
+      const cv = document.getElementById("taste-crt");
+      const d = window.devicePixelRatio || 1;
+      return cv.getContext("2d").getImageData(Math.round(at.x * d), Math.round(at.y * d), 1, 1).data[3];
+    }, pos);
+  };
   const sound = await green();
   await tog.click();
   await expect(tog).toHaveAttribute("aria-pressed", "true");
