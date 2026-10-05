@@ -105,8 +105,9 @@ measured with audition clips, from quiver to the PATCH plate.
      out under one) is measured on the engine instead (`Engine::absorb_prior`),
      and a restore's falls back to `bank_render`. The farm's phrase is re-sent
      after a capture and a restore that installs one (task 4). Open: a clip
-     per input.
-4. **Web capture.** *Done* (web), except the live face
+     per input <!-- TODO(issue): the operator opens this issue and links its number here -->.
+4. **Web capture.** *Done* (web), the live face included (#104,
+   `the square draws the input's live face…` in `audio_in.spec.js`)
    (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
    `tests/web/audio_in.spec.js`):
    - the permission flow, only when a node is added; *done*: `queueStruct`
@@ -133,7 +134,8 @@ measured with audition clips, from quiver to the PATCH plate.
      load and never saved, USE HEADPHONES under it and in its toast;
    - the clip on first listen (task 3's web half); *done*: 6 s of the voices'
      input once it carries a signal, sent as `set_audition_clip`; NEW CLIP
-     captures again. One clip for every input (a clip per input stays open);
+     captures again. One clip for every input (a clip per input stays open,
+     above);
    - the farm's phrase re-sent after a capture and after a restore that
      installs a clip; *done* (`farmResendPhrase`);
    - **held sounds** (task 6); *done* (the second web PR): the pool's tab
