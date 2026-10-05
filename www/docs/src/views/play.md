@@ -369,7 +369,9 @@ each a finger's size. The sound's face stands beside them: *as made*,
 Hold **−** or **+** to keep stepping. Close it with **×**, a swipe down, a tap
 outside, or <kbd>Esc</kbd>. **REMOVE MODULE** at its foot deletes the module,
 as **delete** in its ⋯ menu does. Every module shows its **⋯** on a touch
-screen; hold a finger on a module for the same menu.
+screen; hold a finger on a module for the same menu, where **what goes here?**
+is too. Press and hold **MODEL** for [the model view](#the-model-view-in-patch)
+while your finger stays down, or tap it to keep it up.
 
 ```admonish info collapsible=true title="How it works: edits in order"
 Every knob is live, and every structural edit is a grammar operation, so you

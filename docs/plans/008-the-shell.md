@@ -32,7 +32,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | B: the bank and the model view | – | merged (#115) |
 | C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
-| C2b: PATCH's model view under ⌥ and the four engine facts | – | in review |
+| C2b: PATCH's model view under ⌥ and the four engine facts | – | in review (#152) |
 | Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | not started |
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
 | D: ⌘K, and the guide for the levels | #132 | not started |
@@ -287,6 +287,84 @@ into C2a and C2b; round 2's decisions govern PATCH):
   catalog shots (already stale since PR A's `.viewtab`) go with D's full
   re-capture, as do `play.webp`, `rack-detail.webp` and the catalog's
   `node-bank.webp` (dropped from `wiring.md`).
+
+**PR C2b, as built, where it differs from §1–§3 and round 2** (round 2's
+"⌥ in PATCH: all of it" and "Engine facts, all four"):
+- **The mock draws nothing in PATCH under its lens** (`prototype/patch.js` has
+  no lens code), so every mark of the model view in PATCH is new, drawn in the
+  mock's language (dashed amber for a guess, the pale pointer, silk caps), and
+  every one is posterior data or a measurement. Nothing new shows at rest but
+  the three measurements (without this module, what a generation changed,
+  PERFORM's controls).
+- **The belief line** is the subtitle under the model view, in the model's
+  italic at its size: *it'd like this 62% · leaning · was 58% ▲*, or its limit
+  (*no guess yet: it needs a few picks first*, which C2a hid). What else the
+  old line said has the readout at the well's foot as its home under the view:
+  with nothing selected, the three largest parts of the utility, the style
+  clause and the utility ± sd; with a module selected, a note over the line
+  with its family's part of the utility (`edit_explain`, a structural
+  coordinate) and the lean sentence the spec dock gave (`specParts`). The
+  budget keeps C2a's rule beside it.
+- **The leans toggle retired**; its localStorage key is no longer read. The
+  edges are drawn only under the view, as an overlay on the plates the build
+  left (`paintRackFacts`, after every build and every repaint in place), never
+  a rebuild, so letting go of ⌥ restores the canvas exactly and no knob is
+  replaced under a held pointer. The overlay left `rackShapeOf` and the
+  repaint fast path.
+- **Worth per kind** is a column of chips at the well's top right, under its
+  top line, one per family the patch holds: *filtering +0.12*, *VCOs −0.07 ±
+  0.21 a guess · shared by 2*. The figure is the catalog's socket price
+  (`socketPrice`, θ/scale under the bench's style), so the two never disagree;
+  a family too thin to price, or before a fit, has no chip.
+- **The runners-up** are chips smaller and fainter than the guess (132 × 44
+  rack units), ranks 2 and 3 with *lower bound ±x.xx*: at their own place
+  where that is clear, else beside or above the top guess, never over a
+  plate, with a faint lead when their place is not the top guess's. They are
+  to read, not to take: the top guess is what Enter adds.
+- **Without this module** is drawn for the selected module, not the one under
+  the pointer (the mock's): a measurement takes a render, and the faces lane
+  it runs in is below every other, the bank's faces included, so it waits
+  behind a PRESETS tab's faces (measured: over 14 s while they rendered,
+  well under a second once quiet). The patch measured is the structure
+  menu's: a processor bypassed, a source's socket empty (set aside), a
+  modulator unplugged, through rewrites the verbs now share (`bypassIn`,
+  `emptyIn`, `unplugIn`). It hides while a knob turn has made it stale. Silent
+  or failing the vet, the readout says so; the amp and an empty socket have
+  none.
+- **What goes here?** is the ⋯'s row (on a modulator, for its module's slot)
+  and **Q** on a module: Q is no note key, is in no ADR's list (016, 017,
+  018) and is taken nowhere in the app, and like L it acts only on a
+  focused module. The top line adds where it goes (*GUESS · DELAY · AFTER
+  THE MIX*); Esc on the ghost goes back to the output's guess, as does any
+  structural edit. Asked from the keyboard the ghost takes the focus when it
+  lands, and any redraw of the guess now keeps the focus on it (it used to
+  drop it when a face landed beside it).
+- **What a generation changed** prefixes the subtitle (*from Reese · 3
+  changes*, counted as the bank row lists them, `bredLine`); the tick is on
+  the plate's top edge at its left; the seed's pointer is the compare's
+  glyph (`.knob-seed`), and the two never show together. "Unedited" is the
+  bench's tree text equal to the tree as opened, which undo to as opened
+  restores exactly.
+- **PERFORM's controls** come from `wiredTo(addr, json)`, a reader at the end
+  of perform.js's API. PERFORM measures only the sound it plays, and not while
+  PATCH shows (measured: no `perform_wire` in the 8 s after a preset opened in
+  PATCH), so a sound opened in PATCH says nothing of PERFORM until PERFORM has
+  measured it, rather than "not measured yet".
+- **C2a's follow-ups:** the armed line is one line (the price's figure and ▶
+  never shrink; beside the catalog the short price, and under 1180 px the
+  trace, the count and IN HAND step out); the module in hand stands clear of
+  every plate, with a lead. Two faults found on the way: its fade animated
+  `transform` (which on an SVG group replaces the attribute while it runs),
+  and the socket's caret took the pointer, so a still pointer entered and
+  left the socket about thirty times a second.
+- **Specs:** `patch_model_view.spec.js` and `patch_facts.spec.js` are new;
+  `patch_canvas.spec.js`'s belief-line test changed meaning (the subtitle
+  under ⌥, not the well's top line); `taste_marks.spec.js` reads the belief
+  line under the view, `patch_canvas.spec.js`'s ⋯ list gains *what goes here*
+  (mechanical); `patch_catalog.spec.js` gains the armed line and ghost test.
+  No film selector goes stale: the films wait on `#belief .bl-u` being
+  attached, which it still is.
+- **Not here:** preset faces in the bank and the IN POOL clip (the next PR).
 
 ## 1. Delta inventory (mock vs app)
 

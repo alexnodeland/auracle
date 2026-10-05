@@ -8,6 +8,54 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added: hold ⌥ in PATCH to see what the model believes about the patch
+
+- **The belief line.** Hold ⌥ (or tap MODEL to keep it up) and the subtitle
+  under the sound's name becomes what the model makes of it, in its voice:
+  *it'd like this 62% · leaning · was 58% ▲*, or why it can't say yet. The
+  readout at the well's foot says what adds up to that number (the qualities
+  that count most, the style judging it, the utility), and with a module
+  selected, what that kind of module adds and which way your taste leans on
+  it. At rest the subtitle is as it was.
+- **Each module's edge** is tinted by which way your taste leans on its kind,
+  amber toward and red away, stronger where the model is surer. This was the
+  LEANS switch in the layout's menu, which is gone: ⌥ is its home now.
+- **What each kind is worth:** a chip for each kind of module in the patch,
+  with what one more of it is worth to the model (*filtering +0.12*). Two
+  filters share one figure, and the chip says so (*shared by 2*): the model
+  counts kinds, not places.
+- **The guess's runners-up:** the next two modules the model would guess,
+  fainter, each with the lower bound it is ranked by.
+
+### Added: four things the engine measures, shown on PATCH's canvas
+
+- **Without this module.** Select a module and a dashed outline over the face
+  at OUT shows the face of the patch without it: rendered, not estimated (a
+  processor bypassed, a source's socket left empty, a modulator unplugged).
+  When the patch would be silent without it, the readout says so.
+- **What goes here?** A module's ⋯ (or Q on it) asks the model's guess for
+  that place instead of the output: after the module, on its modulation
+  input, or in it if the socket is empty. The guess is drawn there, says
+  where (*GUESS · DELAY · AFTER THE MIX*), and Enter adds it.
+- **What a generation changed.** Open a bred sound as it was bred and the
+  subtitle says *from Reese · 3 changes*, each module the generation changed
+  has a tick, and each knob it moved shows the seed's value as a pale
+  pointer. Edit it and they go; UNDO TO AS OPENED brings them back.
+- **Which PERFORM controls turn a knob.** Point at a knob and the readout says
+  *BRIGHT and SPACE turn this cutoff*, from PERFORM's measurement of the
+  sound; for the module, each control with its knobs.
+
+### Fixed: the module in hand in PATCH
+
+- The line along the well's top, beside the open catalog, stays one line: the
+  module, its price and ▶ stay whole, and what happens at the socket is cut
+  short instead. It used to wrap onto two or three lines, and in a 1000 px
+  window ▶ fell off the end.
+- The gray module drawn at a socket stands clear of the modules around it,
+  with a dashed lead to its place, where it used to sit on top of the next
+  one. It also stays put under a still pointer: it used to flicker out of
+  sight.
+
 ### Changed: PATCH is a canvas that reads in signal order
 
 - **A head above the patch.** PATCH · BASS (the family, for a sound opened
@@ -33,9 +81,8 @@ changelog that edits its own past is not a record.
   stands, measured on its latest render, and a click on it plays the sound, as
   ▶ did. Modulation cables say how far and how fast they move their knob
   (*depth 25% · 0.51 Hz*). When the patch is wider than the view, its edges
-  count the modules past them. The model's rating of the sound sits on the
-  well's top line when it has one, and the scope is put away until you ask
-  for it (⋯ › Scope & analyzer…).
+  count the modules past them. The scope is put away until you ask for it
+  (⋯ › Scope & analyzer…).
 - **Select a module** by pressing on it: it shows its ⋯ (replace, insert,
   duplicate, set aside, bypass, modulate, probe, swap, delete) and its lock,
   and the line at the well's foot names it and says what it does. Press L to
@@ -45,11 +92,10 @@ changelog that edits its own past is not a record.
   patch; Esc or ✕ closes it. A module in hand is named along the well's top,
   with its price and a ▶ to hear it at a socket. Which way your taste leans on
   each module, in the catalog and its descriptions, now shows only while you
-  hold ⌥ (LEANS, which tints the modules, is still a switch in the layout's
-  ▾). The module rail and the strip that described modules under the rack are
-  gone.
+  hold ⌥. The module rail and the strip that described modules under the rack
+  are gone.
 - **The camera is in the corner:** fit, −, +, map, and a menu for the layout
-  (chain, compact, by hand; snap; reset; detail; leans). Zoomed out, the
+  (chain, compact, by hand; snap; reset; detail). Zoomed out, the
   values and labels too small to read are left off and each module's name
   and setting print larger; further out, a module keeps three knobs to read. ⇧Home fits the whole
   patch now; Home and End go to the first module and the last, from the
