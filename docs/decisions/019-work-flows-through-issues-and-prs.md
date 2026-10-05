@@ -30,24 +30,35 @@ and several rules existed only in conversation. RFC-009 has the details.
 1. **Every piece of outstanding work is a GitHub issue,** with a type label,
    area labels, a plan label and milestone where it belongs to a plan.
    Plans link their tasks' issues and PRs.
-2. **Builders commit; the operator ships.** A change is built on its own
-   branch in its own worktree. The builder (an agent or a contributor)
-   commits; the operator (the maintainer, or a lead session acting for them)
-   pushes, opens the PR, merges and removes the worktree.
+2. **Agents commit; the operator ships.** A change is built on its own
+   branch in its own worktree. An agent commits there and never pushes,
+   opens a PR or merges; the operator (the maintainer, or a lead session
+   acting for them) pushes it, opens the PR, merges and removes the worktree.
+   A human contributor pushes their own branch or fork and opens their own
+   PR, which the maintainer reviews and merges.
 3. **Every branch is reviewed before its PR,** against `process.md`'s review
    checklist, and the fixes to its findings are reviewed again.
-4. **A PR closes its issue and merges only on a green `CI` check,** squashed,
-   with `--match-head-commit`. A red check is read and then fixed or
-   quarantined, never re-run until it passes. Nothing merges red without the
-   maintainer saying so.
+4. **A PR merges only on a green `CI` check,** squashed, with
+   `--match-head-commit`, and closes the issues it finishes. Most PRs have
+   one; a Dependabot bump or a small fix seen in passing may stand alone. A
+   red check is read and then fixed or quarantined, never re-run until it
+   passes. `main`'s ruleset requires `CI` with no bypass actor, admins
+   included; only the maintainer, by editing the ruleset, can let anything
+   else merge.
 5. **The flow is linear:** one merge queue, at most two streams of work in
-   flight and never two on the same files, each branch rebased once before
-   its merge.
+   flight and never two on the same files. While building or in review a
+   branch is rebased only to resolve a conflict. Before its merge, a PR that
+   touches the app, the tests, the crates or CI is rebased on `main` if
+   `main` moved since its CI run, pushed with `--force-with-lease`, and
+   merged at the new head once its CI is green; a PR that changes only docs
+   may merge behind `main`, whose own run then verifies it in full.
 6. **A flaky test is fixed or quarantined, never retried:** the `flake` issue
    is opened, the test is tagged `@quarantine`, and the fix removes the tag.
-7. **Player-facing words wait for the maintainer:** `www/brand/voice.md` rows
-   are drafted by the builder and committed once approved
-   ([ADR-013](013-one-voice.md)).
+7. **New words wait for the maintainer:** a new term, label or phrase that
+   `www/brand/voice.md`'s word table governs gets a row, drafted by the
+   builder and committed once the maintainer approves it
+   ([ADR-013](013-one-voice.md)). Sentences written in the existing words need
+   no row.
 8. **Publishing outside this repository is confirmed each time.**
 
 ## Options Considered

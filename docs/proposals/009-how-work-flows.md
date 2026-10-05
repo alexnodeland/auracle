@@ -32,8 +32,10 @@ What it did not keep in one place is how a change moves:
   session wrote for its agents, and that session's private notes.
 - **Outstanding work lived in prose.** Plans track their tasks in progress
   tables and as-built sections; review follow-ups, unit-test candidates and
-  the order of the next PRs were in session notes. GitHub issues held only
-  flaky tests. Someone opening the repository could not see what was left.
+  the order of the next PRs were in session notes. GitHub issues held the
+  flaky tests and a few bugs and ideas (#62, open since 2026-09-27; #129), not
+  the planned work. Someone opening the repository could not see what was
+  left.
 - **Some rules existed only in conversation.** No retries, and a flaky test
   is fixed or quarantined with an issue. Every `voice.md` row is approved by
   the maintainer before it is committed. Agents commit while the operator
@@ -58,22 +60,28 @@ merged PR's verdict, the site deployed from CI's own build.
    tasks, bugs, flakes, review follow-ups and dependency bumps, each with a
    type label, area labels, plan labels and a milestone per plan. Plans keep
    the design and link each task's issue and PR; the issue tracks the work.
-3. **The roles are written down.** Builders (agents, contributors) commit on
-   their own branch in their own worktree. The operator (the maintainer, or a
-   lead session acting for them) pushes, opens the PR, merges and cleans up.
+3. **The roles are written down.** Agents commit on their own branch in
+   their own worktree; the operator (the maintainer, or a lead session acting
+   for them) pushes it, opens the PR, merges and cleans up. A human
+   contributor pushes their own branch or fork and opens their own PR.
 4. **Every branch is reviewed before its PR**, against a written checklist:
    correctness with concrete scenarios, nothing dropped by mouse, keyboard or
    touch, ADR-004 and ADR-012, and spec robustness under the no-retry policy.
    Only the fixes get a second review.
 5. **CI is the gate, and the merge is checked:**
-   - merge on green only, with `--match-head-commit`;
+   - merge on green only, with `--match-head-commit`; `main`'s ruleset
+     requires the `CI` check with no bypass;
    - one merge queue, at most two streams of work in flight, never touching
      the same files;
+   - rebase while building only to resolve a conflict; before the merge, a
+     PR that touches the app, tests, crates or CI catches up with `main` and
+     is checked again at its new head, while a docs-only PR may merge behind;
    - a red check is read, then fixed or quarantined, never re-run until it
      passes.
 6. **The rules that lived in conversation are written:**
    - the flake policy (no retries; fix, or quarantine with an issue);
-   - `voice.md` rows approved by the maintainer, batched into one question;
+   - new `voice.md` rows (a term, label or phrase its word table governs)
+     approved by the maintainer, batched into one question;
    - drop no functionality;
    - publishing outside the repository confirmed each time;
    - Dependabot PRs one at a time behind active work;
@@ -103,10 +111,14 @@ merged PR's verdict, the site deployed from CI's own build.
 
 - What is left is visible in GitHub: open issues by milestone.
 - A new session or contributor reads one page to know how a change lands.
-- Every PR closes an issue, so the CHANGELOG, the plan and the issue tell the
-  same story.
+- Most PRs close an issue, so the CHANGELOG, the plan and the issue tell the
+  same story; a Dependabot bump or a small fix seen in passing may stand
+  alone.
 - The process has a cost: an issue per task and a review per branch. Small
-  fixes start at an issue (or a failing test) and skip the proposal and plan.
+  fixes start at an issue (or a failing test) and skip the proposal, the ADR
+  and the plan.
+- This proposal makes one decision, recorded as one ADR, and needs no plan:
+  its work is this PR.
 
 ## Decided
 
