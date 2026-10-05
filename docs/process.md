@@ -171,7 +171,7 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   never two touching the same files.
 - **On `main`**, a job the merged PR already passed is not run again, but only
   when the merged files are exactly the files the PR's run tested (the same
-  git tree): a PR rebased just before its merge. The site deploys from CI's
+  git tree): `main` did not move between the PR's run and its merge. The site deploys from CI's
   own build once `CI` is green. The *Slow suite* runs on every push to `main`
   and nightly; the *Flake hunt* nightly. A failure there files an issue.
 

@@ -12,7 +12,7 @@ if [ ! -f "$wasm" ]; then
   echo "apps/web/pkg has no built engine: run \`make wasm\` before serving the app or running browser tests."
 else
   newer=$(find crates -name '*.rs' -newer "$wasm" 2>/dev/null | head -3)
-  [ -n "$newer" ] || newer=$(find Cargo.lock crates -name 'Cargo.toml' -newer "$wasm" 2>/dev/null | head -1)
+  [ -n "$newer" ] || newer=$(find Cargo.lock Cargo.toml crates \( -name Cargo.toml -o -name Cargo.lock \) -newer "$wasm" 2>/dev/null | head -1)
   if [ -n "$newer" ]; then
     echo "apps/web/pkg is older than the Rust sources (e.g. ${newer%%$'\n'*}). If the change reaches the app, run \`make wasm\` before any browser test or film rehearsal."
   fi

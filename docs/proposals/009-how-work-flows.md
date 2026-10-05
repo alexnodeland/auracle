@@ -109,7 +109,8 @@ merged PR's verdict, the site deployed from CI's own build.
 
 ## Consequences
 
-- What is left is visible in GitHub: open issues by milestone.
+- What is left is visible in GitHub: open issues by milestone, and the
+  backlog (open issues with no milestone).
 - A new session or contributor reads one page to know how a change lands.
 - Most PRs close an issue, so the CHANGELOG, the plan and the issue tell the
   same story; a Dependabot bump or a small fix seen in passing may stand

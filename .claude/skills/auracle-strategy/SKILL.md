@@ -32,7 +32,7 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 | Why is it built this way (product, for players)? | `www/reference/src/design/decisions.md` |
 | Something broke in a known way | `docs/runbooks/` |
 | How does a change get from an issue to `main`? Who pushes, reviews, merges? | `docs/process.md`, or the `ship` skill |
-| What is left to do? | GitHub issues, by milestone (`gh issue list --milestone "<plan>"`) |
+| What is left to do? | GitHub issues: by milestone (`gh issue list --milestone "<plan>"`), and the backlog (`gh issue list --search "no:milestone"`) |
 | What does the app say it does? | `www/docs/src/views/*.md`, the films, the in-app copy |
 
 ## Invariants that catch people out

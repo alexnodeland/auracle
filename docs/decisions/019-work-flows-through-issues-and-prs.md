@@ -36,8 +36,10 @@ and several rules existed only in conversation. RFC-009 has the details.
    acting for them) pushes it, opens the PR, merges and removes the worktree.
    A human contributor pushes their own branch or fork and opens their own
    PR, which the maintainer reviews and merges.
-3. **Every branch is reviewed before its PR,** against `process.md`'s review
-   checklist, and the fixes to its findings are reviewed again.
+3. **Every branch an agent builds is reviewed before its PR** (a human
+   contributor's PR is reviewed by the maintainer on the PR), against
+   `process.md`'s review checklist, and the fixes to its findings are reviewed
+   again.
 4. **A PR merges only on a green `CI` check,** squashed, with
    `--match-head-commit`, and closes the issues it finishes. Most PRs have
    one; a Dependabot bump or a small fix seen in passing may stand alone. A

@@ -81,8 +81,8 @@ contributor guide; this file does not repeat it.
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
    own worktree. An agent commits there and never pushes, opens a PR or
    merges; the operator does (a human contributor pushes their own branch).
-   Every branch is reviewed before its PR, and a PR merges only on a green
-   `CI` check, which `main` requires of everyone. A flaky test is fixed or
+   Every branch an agent builds is reviewed before its PR, and a PR merges
+   only on a green `CI` check, which `main` requires of everyone. A flaky test is fixed or
    quarantined with an issue, never retried. A new term, label or phrase that
    `www/brand/voice.md`'s word table governs waits for the maintainer's
    approval. The whole flow is [`docs/process.md`](docs/process.md); the

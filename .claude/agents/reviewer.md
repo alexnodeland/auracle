@@ -44,8 +44,10 @@ Only report findings you can support with a concrete scenario (inputs, state,
 wrong result). Rank by severity; say which you verified by running something,
 and how (a probe, a script, a read of the code at a line). A probe lives only
 in the session's scratchpad, with its own `playwright.config.js` pointing at
-the worktree under review, and runs through `one_browser.sh` on its own port;
-never in the repository. Nits are labelled as nits. End with a verdict:
+the worktree under review (run it with
+`NODE_PATH=<worktree>/tests/web/node_modules`, or `@playwright/test` is not
+found), and runs through `one_browser.sh` on its own port; never in the
+repository. Nits are labelled as nits. End with a verdict:
 which findings block the PR, which should be fixed in it, and which are the
 maintainer's call. When you are asked to review only the fixes to an earlier
 review, review that delta and say whether each earlier finding is resolved.

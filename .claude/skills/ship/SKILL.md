@@ -15,20 +15,23 @@ procedure. You are the operator: agents build and commit, you review, push,
 open the PR, merge and clean up. Keep at most two streams in flight, never two
 on the same files.
 
-Every command names the repository explicitly, so it works from any session
-directory:
+Every command names the repository explicitly (`gh -R alexnodeland/auracle`,
+`git -C <path>`), so it works from any session directory. Each Bash call is a
+fresh shell: nothing set in one call is there in the next, so set `REPO`, `WT`
+and `sha` in the same call that uses them, or write the values in. Keep a
+command whole rather than in a variable (`GH="gh -R …"; gh -R alexnodeland/auracle …` does not split
+in zsh, this environment's shell):
 
 ```bash
 REPO=/absolute/path/to/auracle          # the main checkout
 WT="$REPO/../auracle-wt-<topic>"        # this task's worktree
-GH="gh -R alexnodeland/auracle"
 ```
 
 ## 1. The issue
 
 ```bash
-$GH issue view <n>                       # the task, its plan, its brief
-$GH issue list --milestone "<milestone>" --state open
+gh -R alexnodeland/auracle issue view <n>                       # the task, its plan, its brief
+gh -R alexnodeland/auracle issue list --milestone "<milestone>" --state open
 ```
 
 No issue yet? Open one first. `gh issue create --template` does not work
@@ -36,7 +39,7 @@ non-interactively, and a template's labels aren't applied from the command
 line, so pass the body and the labels yourself:
 
 ```bash
-$GH issue create --title "<what is true when done>" \
+gh -R alexnodeland/auracle issue create --title "<what is true when done>" \
   --body-file <(sed '1,/^---$/d' "$REPO/.github/ISSUE_TEMPLATE/task.md") \
   --label task --label area:<area> --label plan-<nnn> --milestone "<milestone>"
 ```
@@ -96,7 +99,7 @@ have the builder commit the approved rows.
 
 ```bash
 git -C "$WT" push -q -u origin claude/<topic>
-$GH pr create --base main --head claude/<topic> \
+gh -R alexnodeland/auracle pr create --base main --head claude/<topic> \
   --title "<what is true now>" --body-file <scratch>/pr-<topic>.md
 ```
 
@@ -107,30 +110,33 @@ when an agent session made it, the session's link line last.
 ## 6. CI, waited on by state
 
 ```bash
-sha=$($GH pr view <n> --json headRefOid -q .headRefOid)
-until [ "$($GH run list --workflow ci.yml --branch claude/<topic> \
+sha=$(gh -R alexnodeland/auracle pr view <n> --json headRefOid -q .headRefOid)
+until [ "$(gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> \
   --json headSha,status -q "[.[] | select(.headSha==\"$sha\")][0].status")" = completed ]; do sleep 30; done
-$GH run list --workflow ci.yml --branch claude/<topic> \
+gh -R alexnodeland/auracle run list --workflow ci.yml --branch claude/<topic> \
   --json databaseId,conclusion,headSha -q "[.[] | select(.headSha==\"$sha\")][0]"
-$GH run view <run> --json jobs -q '.jobs[] | "\(.name) \(.conclusion)"'
+gh -R alexnodeland/auracle run view <run> --json jobs -q '.jobs[] | "\(.name) \(.conclusion)"'
 ```
 
 Run the wait in the background; never sleep a fixed time and assume. A red
-run: `$GH run view <run> --log-failed`, and the run summary's merged browser
+run: `gh -R alexnodeland/auracle run view <run> --log-failed`, and the run summary's merged browser
 report. The app or the test is fixed on the branch; a flake is fixed or
 quarantined (`process.md` § Flakes). Never re-run a red check until it
 passes.
 
 ## 7. Catch up, then merge
 
-If `main` moved since the PR's CI run and the PR touches the app, the tests,
-the crates or CI (`apps/`, `tests/`, `crates/`, `Cargo.*`, the `Makefile`,
-`.github/`):
+Has `main` moved since the PR's CI run? `git -C "$WT" fetch -q origin`, then
+`git -C "$WT" merge-base --is-ancestor origin/main HEAD` fails when it has. If
+it has and the PR touches the app, the tests, the crates or CI (`apps/`,
+`tests/`, `crates/`, `Cargo.*`, the `Makefile`, `.github/`), catch up. The
+lease names the head that was pushed, so a push nobody fetched is never
+overwritten:
 
 ```bash
-git -C "$WT" fetch -q origin
+pushed=$(git -C "$WT" rev-parse origin/claude/<topic>)
 git -C "$WT" rebase origin/main
-git -C "$WT" push -q --force-with-lease
+git -C "$WT" push -q --force-with-lease=claude/<topic>:"$pushed" origin claude/<topic>
 ```
 
 then wait for CI on the new head (step 6, with the new `sha`). A PR that
@@ -138,7 +144,7 @@ changes only docs may merge behind `main`; `main`'s run then verifies it in
 full.
 
 ```bash
-$GH pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
+gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
 ```
 
 Only on green, only the SHA that was checked; `main`'s ruleset refuses
@@ -153,7 +159,7 @@ and the local branch:
 ```bash
 git -C "$REPO" worktree remove "$WT"
 git -C "$REPO" branch -D claude/<topic>
-$GH issue view <n> --json state       # closed by "Closes #<n>"; close it by hand if not
+gh -R alexnodeland/auracle issue view <n> --json state       # closed by "Closes #<n>"; close it by hand if not
 ```
 
 Update the plan's progress table (the task's issue and PR) when the PR did not.
