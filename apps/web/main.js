@@ -23357,8 +23357,8 @@ function farmOverride() {
   return null;
 }
 
-/** `?seed=N`: the session's seed, a whole number from 0 to 4294967295, or
- *  null. The engine draws its pool, its pairs, its walks and its fits from
+/** `?seed=N`: the session's seed, any whole number (taken modulo 2^32, the
+ *  engine's u32), or null. The engine draws its pool, its pairs, its walks and its fits from
  *  streams of this one number (ADR-001), so a fresh session with the same seed
  *  deals the same sounds: a session can be shared, or replayed. The page's
  *  own draws (which side of the table a sound stands on, the warm start's nine
@@ -23368,7 +23368,7 @@ function seedOverride() {
   const raw = new URLSearchParams(location.search).get("seed");
   if (raw == null || !/^\d+$/.test(raw.trim())) return null;
   const n = Number(raw.trim());
-  return n <= 0xffffffff ? n : null;
+  return Number.isFinite(n) ? n % 4294967296 : null;
 }
 
 // The width of a walk crew (a generation's walks, ⚡). The same rule as boot's,

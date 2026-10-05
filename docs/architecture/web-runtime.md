@@ -1099,7 +1099,7 @@ that pick commits (`settleFit`), so it keeps its window too.
 ## Modes
 
 - `?film` hides chrome that must not be on camera (the film chip).
-- `?seed=N` (a whole number up to 4294967295) is the session's seed
+- `?seed=N` (any whole number, taken modulo 2³²) is the session's seed
   (`seedOverride` in `main.js`, read at boot beside `?farm`, never saved).
   Without it every boot draws one from `Math.random`. The engine derives
   every stream from it (fills, pairs, evolution, PERFORM; a fit from the seed

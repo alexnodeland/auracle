@@ -156,8 +156,8 @@ For when the defaults are wrong for your machine:
 
 Without `?seed`, every new session starts from a seed of its own. With it, a
 fresh session (nothing saved in this browser yet) deals the same pool of
-sounds on any machine and at any worker count, so you can send the address to
-someone and they start where you did. The pairs, refits and offers after that
+sounds on any machine running the same version, at any worker count, so you
+can send the address to someone and they start where you did. The pairs, refits and offers after that
 draw from the seed too, and repeat when the same things happen in the same
 order; a pair dealt before the pool has finished filling can still differ
 with the machine's speed. A saved session comes back as it was. Which side of
