@@ -52,9 +52,6 @@ const LAMP = `(() => {
   });
 })();`;
 
-// A player's pace between picks during a generation.
-const PICK_GAP_MS = 2_500;
-
 /** Boot, seeded, and teach it: six picks in EVOLVE and their refit, a model
  *  to breed toward, with the lamp out. */
 async function taught(page, app, query = "") {
@@ -117,10 +114,13 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   const pickFrom = await app.now();
   for (let i = 0; i < 3; i++) {
     await expect(page.locator("#choose-a")).toBeEnabled();
+    const t = await app.now();
     await page.locator(i % 2 ? "#choose-b" : "#choose-a").click();
     await expect(page.locator("#choose-a")).toBeEnabled();
-    // A player picking every couple of seconds while it breeds.
-    await page.waitForTimeout(PICK_GAP_MS);
+    // The deal this pick asked for, answered, before the next pick: each
+    // pick's deal is measured, and the picks land while the generation runs
+    // (on a fast farm it is over in seconds).
+    await expect.poll(async () => latencies(await app.log({ after: t }), "duel", "duel").length).toBeGreaterThan(0);
   }
   const midway = await page.locator("#evolve-btn").evaluate((b) => b.classList.contains("breeding"));
   const deals = latencies(await app.log(), "duel", "duel", pickFrom);
@@ -143,7 +143,9 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   const survivors = born.filter((id) => after.includes(id));
   expect(after.slice(0, survivors.length)).toEqual(survivors);
   expect(after.length, "the pool is back to size").toBeLessThanOrEqual(40);
-  const receipt = (await app.toasts(mark)).find((t) => /^Generation \d+:/.test(t));
+  // The receipt may wait its turn in the lane behind a pick's toast (on a
+  // fast farm the generation ends inside a pick's undo window).
+  const receipt = await app.toast(/^Generation \d+:/, { since: mark, timeout: 15_000 });
   const refined = await app.last("refined");
   const retired = refined.retired || [];
   console.log(`receipt: ${receipt} (retired ${JSON.stringify(retired)})`);
@@ -235,8 +237,7 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   }
   expect(ids.length, "the pool is back to size").toBeLessThanOrEqual(40);
   for (const id of refined.retired) expect(ids).not.toContain(id);
-  const said = await app.toasts(mark);
-  const receipt = said.find((t) => /^Generation \d+/.test(t));
+  const receipt = await app.toast(/^Generation \d+/, { since: mark, timeout: 15_000 });
   console.log(`receipt: ${receipt}`);
   expect(receipt, "the receipt does not say it was stopped").toMatch(/^Generation \d+ stopped/);
   // It counts what stayed: a child can rank below the rest and be retired.
