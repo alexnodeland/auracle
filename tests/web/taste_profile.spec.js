@@ -9,33 +9,14 @@
 // - Save taste profile downloaded a file and said nothing in the app.
 //
 // Downloads are Playwright's `download` event; the file is read back to check
-// it holds the picks the question counted. The engine worker is reached the
-// way failure_flows.spec.js reaches it: by wrapping `Worker` before main.js
-// runs.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+// it holds the picks the question counted. The engine's replies are read
+// through the fixture's tap (fixtures.js).
+const { test, expect, goLevel, bankTab } = require("./fixtures");
 const fs = require("fs");
-
-const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
 // The first-run marks are set once per tab, not on every load: after a reset
 // the warm start is owed again, and a spec that re-set them would hide it.
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const workers = (window.__pwWorkers = []);
-  const last = (window.__pwLast = {});
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    w.__pwUrl = String(url);
-    workers.push(w);
-    w.addEventListener("message", (e) => {
-      const d = e.data;
-      if (d && typeof d.type === "string") last[d.type] = d;
-    });
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
+const FIRST_RUN = `(() => {
   try {
     if (!sessionStorage.getItem("pw-first-run-set")) {
       sessionStorage.setItem("pw-first-run-set", "1");
@@ -45,22 +26,20 @@ const INIT = `(() => {
   } catch (_) {}
 })();`;
 
-async function boot(page) {
-  const pageErrors = [];
-  page.on("pageerror", (err) => pageErrors.push(err.message));
-  await page.addInitScript(SEED);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  return pageErrors;
+async function boot(page, app) {
+  await page.addInitScript(FIRST_RUN);
+  await app.boot({ warmed: false, seen: false, random: 20260928 });
 }
 
-async function pick(page, n) {
+// A player's pace between picks.
+const PICK_PACE_MS = 400;
+
+async function pick(page, app, n) {
   await goLevel(page, "evolve");
   for (let i = 0; i < n; i++) {
-    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
     await page.locator("#choose-a").click();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(PICK_PACE_MS);
   }
 }
 
@@ -71,11 +50,10 @@ async function menu(page, id) {
 
 const readJson = async (download) => JSON.parse(fs.readFileSync(await download.path(), "utf8"));
 
-test("Reset asks with the counts, downloads the profile first, and keeps the saved patches", async ({ page }) => {
-  test.setTimeout(360_000);
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await pick(page, 2);
+test("Reset asks with the counts, downloads the profile first, and keeps the saved patches", async ({ page, app }) => {
+  await boot(page, app);
+  await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
+  await pick(page, app, 2);
   await expect(page.locator("#duel-count")).toHaveText("2");
 
   // Save one patch from the pool.
@@ -86,7 +64,7 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   const id = await row.getAttribute("data-id");
   await row.hover();
   await row.locator(".bi-save").click();
-  await expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout: 20_000 });
+  await app.engine((timeout) => expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout }), { ms: 20_000 });
 
   // The question names what goes and what stays, and "keep it" keeps it.
   await menu(page, "taste-reset-btn");
@@ -113,24 +91,22 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   // A fresh taste on the reload: no picks, the warm start again, and the
   // saved patch still saved.
   await page.waitForEvent("load", { timeout: 60_000 });
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  await app.booted();
+  await app.engine((timeout) => expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout }), { ms: 30_000 });
   await page.locator("#warm-skip").click();
   await expect(page.locator("#duel-count")).toHaveText("0");
-  await expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout }), { ms: 60_000 });
   await bankTab(page, "saved");
   await expect(page.locator("#bank-list .bank-item[data-id]")).toHaveCount(1);
   await expect(page.locator("#bank-list .bank-item[data-id]")).toHaveAttribute("data-id", id);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("Save taste profile says what it downloaded", async ({ page }) => {
-  test.setTimeout(240_000);
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await pick(page, 1);
+test("Save taste profile says what it downloaded", async ({ page, app }) => {
+  await boot(page, app);
+  await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
+  await pick(page, app, 1);
   // The pick's undo window closes and it joins the log the file is made from.
-  await expect.poll(() => page.evaluate(() => window.__pwLast.status && window.__pwLast.status.status.observations), { timeout: 30_000 }).toBe(1);
+  await app.reply("status", { where: { status: { observations: 1 } }, timeout: 30_000 });
   const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), menu(page, "export-btn")]);
   expect(download.suggestedFilename()).toBe("auracle-profile.json");
   expect((await readJson(download)).log.observations.length).toBe(1);
@@ -138,5 +114,4 @@ test("Save taste profile says what it downloaded", async ({ page }) => {
     "Downloaded your taste (auracle-profile.json): 1 pick, 0 stars, and 0 cuts.",
     { timeout: 15_000 },
   );
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
