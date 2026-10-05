@@ -21,34 +21,9 @@
 // It logs the time from the press to the generation's receipt, when the first
 // child landed, and the bank the generation left, and requires that bank —
 // ids, names and the model's guesses — to be the same at every width.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { test, expect, openApp, goLevel } = require("./fixtures");
 
 const WIDTHS = (process.env.AURACLE_WIDTHS || "0,1,2,4").split(",").map(Number);
-
-const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
-
-const init = `(() => {
-  const Orig = window.Worker;
-  const last = (window.__pwLast = {});
-  const log = (window.__pwLog = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    w.addEventListener("message", (e) => {
-      const d = e.data;
-      if (d && typeof d.type === "string") {
-        last[d.type] = d;
-        log.push({ type: d.type, at: performance.now(), child: d.child, index: d.index });
-      }
-    });
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured", "auracle-warmed"]) localStorage.setItem(k, "1");
-  } catch (_) {}
-})();`;
 
 // The app's own store (`idbGet`/`idbPut` in main.js).
 async function idb(page, op, key, value) {
@@ -81,30 +56,30 @@ test.skip(!process.env.AURACLE_MEASURE, "a measurement harness: AURACLE_MEASURE=
 test("a generation's time at each farm width, and the same generation at every width", async ({ browser }) => {
   test.setTimeout((WIDTHS.length + 1) * 900_000);
   const use = test.info().project.use;
+  // A context of its own for each run, with the tap (its page errors kept
+  // here: the fixture watches only the test's own context).
   const fresh = async () => {
     const context = await browser.newContext({ baseURL: use.baseURL, viewport: use.viewport });
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.addInitScript(SEED);
-    await page.addInitScript(init);
-    return { context, page, errors };
+    const app = await openApp(page);
+    return { context, page, app, errors };
   };
 
   // Teach once, and keep the save.
   let saved;
   {
-    const { context, page, errors } = await fresh();
-    await page.goto("/");
-    await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 300_000 });
-    await page.waitForFunction(() => window.__pwLast.filled, null, { timeout: 300_000 });
+    const { context, page, app, errors } = await fresh();
+    await app.boot({ random: 20260928 });
+    await app.reply("filled", { timeout: 300_000 });
     await goLevel(page, "evolve");
     for (let i = 1; i <= 6; i++) {
       const side = i % 2 ? "#choose-a" : "#choose-b";
       await expect(page.locator(side)).toBeEnabled({ timeout: 30_000 });
       await page.locator(side).click();
     }
-    await page.waitForFunction(() => window.__pwLast.fitted, null, { timeout: 180_000 });
+    await app.reply("fitted", { timeout: 180_000 });
     await expect.poll(async () => {
       const s = await idb(page, "get", "state");
       const obs = s && s.session && JSON.parse(s.session).profile?.log?.observations;
@@ -117,23 +92,24 @@ test("a generation's time at each farm width, and the same generation at every w
 
   const runs = [];
   for (const width of WIDTHS) {
-    const { context, page, errors } = await fresh();
+    const { context, page, app, errors } = await fresh();
     // The same origin first, to put the save where the app will read it.
     await page.goto("/pkg/build.json");
     await idb(page, "put", "state", saved);
-    await page.goto(`/?farm=${width}`);
-    await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 300_000 });
-    await page.waitForFunction(() => window.__pwLast.filled && window.__pwLast.fitted, null, { timeout: 300_000 });
+    await app.boot({ random: 20260928, query: `?farm=${width}`, wait: false });
+    await app.engine((timeout) => expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout }), { ms: 300_000 });
+    await app.reply("filled", { timeout: 300_000 });
+    await app.reply("fitted", { timeout: 300_000 });
     await expect(page.locator("#wm-lamp")).not.toHaveClass(/\bthinking\b/, { timeout: 60_000 });
     await goLevel(page, "evolve");
-    const t0 = await page.evaluate(() => performance.now());
+    const t0 = await app.now();
     await page.locator("#evolve-btn").click();
-    await page.waitForFunction(() => window.__pwLast.refined, null, { timeout: 900_000 });
+    await app.reply("refined", { after: t0, timeout: 900_000 });
     const r = await page.evaluate((start) => {
-      const log = window.__pwLog;
+      const log = window.__tap.replies.filter((e) => !e.injected);
       const kids = log.filter((e) => e.type === "refine_child" && e.at >= start);
       const done = log.find((e) => e.type === "refined" && e.at >= start);
-      const refined = window.__pwLast.refined;
+      const refined = window.__tap.last.refined;
       return {
         seconds: Math.round((done.at - start) / 100) / 10,
         first: kids.length ? Math.round((kids[0].at - start) / 100) / 10 : null,

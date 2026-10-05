@@ -115,7 +115,9 @@ hear, or want to start a different taste from your saved sounds. It doesn’t
 clear **SAVED**: saved sounds are storage, not evidence, and they stay, with
 their layouts. So do the modules you set aside and the keybed’s settings.
 Everything else in the pool is replaced by a fresh one, and the warm start
-runs again.
+runs again. An address with `?seed=` in it loses it on the reset, so the
+fresh pool is a new one
+([Overrides](getting-started/running-locally.md#overrides)).
 
 To clear everything, clear the site’s data in your browser.
 

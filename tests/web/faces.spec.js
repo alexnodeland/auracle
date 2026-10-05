@@ -145,7 +145,10 @@ test("a face appears on every row, card and chip once its render lands", async (
   expect(errors).toEqual([]);
 });
 
-test("the warm start's cards carry their faces", async ({ page }) => {
+// About 120 to 135 s on CI, most of it the bank arriving behind the warm
+// start's renders: the slow tier's (tests/web/AGENTS.md § The two tiers).
+test("the warm start's cards carry their faces", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(180_000);
   const errors = await boot(page, { warmed: false });
   await expect(page.locator("#warmstart")).toBeVisible({ timeout: 150_000 });
   await expect(page.locator("#warm-grid .warm-item")).toHaveCount(9);

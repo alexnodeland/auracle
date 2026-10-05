@@ -9,26 +9,19 @@
 // - What each generation did is a disclosure under EVOLVE POOL, opened over
 //   the foot of the cards, and Esc folds it.
 // - EVOLVE POOL is dashed until the model has learned from your picks.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { test, expect, goLevel } = require("./fixtures");
 
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
+async function boot(page, app) {
+  await app.boot();
   await goLevel(page, "evolve");
-  await expect(page.locator("#name-a")).not.toHaveText("sound a", { timeout: 90_000 });
-  return errs;
+  await app.engine((timeout) => expect(page.locator("#name-a")).not.toHaveText("sound a", { timeout }), { ms: 90_000 });
 }
 
-test("each card's well holds its sound's face, with ⇄ circuit and ↓ patch in its corner", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("each card's well holds its sound's face, with ⇄ circuit and ↓ patch in its corner", async ({ page, app }) => {
+  await boot(page, app);
   const face = page.locator("#face-a.face-slot.face-evolve img.face");
-  await expect(face).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.locator("#face-b.face-slot.face-evolve img.face")).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(face).toHaveCount(1, { timeout }), { ms: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#face-b.face-slot.face-evolve img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   // Large: it fills the card's well, as the waveform did.
   const well = await page.locator("#duel-a .duel-well").boundingBox();
   const fb = await face.boundingBox();
@@ -49,13 +42,11 @@ test("each card's well holds its sound's face, with ⇄ circuit and ↓ patch in
   const name = (await page.locator("#name-a").evaluate((e) => e.firstChild.textContent)).trim();
   await page.locator("#promote-a").click();
   await expect(page.locator('.rail-stop[data-level="patch"]')).toHaveAttribute("aria-current", "location");
-  await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
-  expect(errs).toEqual([]);
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 60_000 });
 });
 
-test("the buttons keep their ids under the specimen's words, and the small map goes to TASTE", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("the buttons keep their ids under the specimen's words, and the small map goes to TASTE", async ({ page, app }) => {
+  await boot(page, app);
   await expect(page.locator("#view-evolve .ev-title")).toHaveText("Pick the one you’d reach for.");
   await expect(page.locator("#play-a")).toHaveText(/^▶ play\s*1$/);
   await expect(page.locator("#play-b")).toHaveText(/^▶ play\s*2$/);
@@ -70,12 +61,10 @@ test("the buttons keep their ids under the specimen's words, and the small map g
   // The small map is TASTE's, and goes there.
   await page.locator("#ev-map").click();
   await expect(page.locator('.rail-stop[data-level="taste"]')).toHaveAttribute("aria-current", "location");
-  expect(errs).toEqual([]);
 });
 
-test("what each generation did opens over the foot of the cards, and Esc folds it", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("what each generation did opens over the foot of the cards, and Esc folds it", async ({ page, app }) => {
+  await boot(page, app);
   const btn = page.locator("#lineage-btn");
   const pop = page.locator("#lineage-pop");
   await expect(pop).toBeHidden();
@@ -93,5 +82,4 @@ test("what each generation did opens over the foot of the cards, and Esc folds i
   await expect(pop).toBeHidden();
   await expect(btn).toHaveAttribute("aria-expanded", "false");
   expect(await page.evaluate(() => document.activeElement?.id)).toBe("lineage-btn");
-  expect(errs).toEqual([]);
 });

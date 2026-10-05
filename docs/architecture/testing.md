@@ -1,6 +1,6 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
-last_updated: 2026-10-02
+last_updated: 2026-10-05
 related_adrs: [3, 5]
 ---
 
@@ -114,7 +114,7 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   whole pipeline (grammar edits, rendering and φ, the taste model, the
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js`, `patch.js`, `live-audio.js` or `explain.js`, to `crates/auracle-session` or
+  `farm.js`, `perform.js`, `patch.js`, `live-audio.js`, `explain.js`, `faces.js` or `vessel.js`, to the spec fixture (`tests/web/fixtures.js`), to `crates/auracle-session` or
   `crates/auracle-wasm`, to a spec file holding an `@slow` or `@quarantine`
   test, or to the suite's config and lockfile. Not `main.js`: every view
   lives there, so it would make nearly every app PR a slow run. A `main.js`
@@ -145,8 +145,13 @@ waits run to two minutes).
 
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
-  the machine. A failure files a *Flake hunt found a flaky test* issue whose
-  run links one report naming each failed test and which of its runs failed.
+  the machine. The specs on the fixture that name no seed of their own boot
+  unseeded there (`AURACLE_SEED=random`); on the gate they boot seeded
+  (`tests/web/fixtures.js` `SEED`, the same pool and sides every run), so a
+  spec that only holds for one pool shows up here. A spec that names its own
+  `random:` seed keeps it in both. A failure files a *Flake hunt found a
+  flaky test* issue whose run links one report naming each failed test and
+  which of its runs failed.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   timing bound with no slack ([Rules](#rules)).
@@ -160,6 +165,7 @@ waits run to two minutes).
 | Spec | Pins |
 | --- | --- |
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
+| `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off in the guide pill |
@@ -224,6 +230,19 @@ waits run to two minutes).
 - **Browser jobs take a ticket (tests two at a time), own port for a worktree**
   ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)).
 - **Gate tests over mocks.** Extend the gate that covers a behaviour.
+- **Logic is unit-tested; a browser spec proves the wiring.** New logic lands
+  in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
+  which `make web-check` runs in milliseconds. A browser spec proves that the
+  module is wired in and what a player sees and hears, not its arithmetic: a
+  boot costs seconds here and tens of seconds on a CI runner.
+- **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
+  page errors fail every test by themselves; `app` boots seeded (`?seed=`)
+  through one tap on the engine worker, waits on the engine through named
+  bounds that add their time to the test's timeout (`app.engine`,
+  `app.reply`, `ENGINE_MS`), and holds the engine's own replies while an
+  injected one stands (`app.hold`). UI state waits the config's 10 s; a test
+  has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
+  1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.
 - **Timing assertions need slack** on a loaded machine (1.5 s or more), and a

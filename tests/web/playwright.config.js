@@ -18,7 +18,16 @@ const PORT = OWN_PORT || "8642";
 module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
-  timeout: 180_000,
+  // Fail fast. A test's own budget is twice the longest a fast-tier test
+  // without an explicit timeout took on CI (about 45 s at 63ec6ff); a longer
+  // test says so with `test.setTimeout` (and over about 40 s on CI is tagged
+  // @slow), and a wait on the engine through the fixture (`app.engine`,
+  // `app.reply`, `app.booted`, `app.offerBudget`) adds its own time to the
+  // test's timeout.
+  timeout: 90_000,
+  // A UI state: a wait for the engine says so with a longer bound of its own
+  // (fixtures.js ENGINE_MS, perform_budget.js `offerBudget`).
+  expect: { timeout: 10_000 },
   // One worker, no retries: a boot that only sometimes comes up clean, or a
   // flow that only sometimes rolls back, is a finding, not a flake to paper
   // over. Serial because every test boots the engine and the render farm.
@@ -49,7 +58,11 @@ module.exports = defineConfig({
       // A WebAudio context must not wait for a gesture nobody will make.
       args: ["--autoplay-policy=no-user-gesture-required"],
     },
-    trace: "retain-on-failure",
+    // A failed test's trace, kept. On a workstation without its DOM snapshots:
+    // saving them there (Playwright 1.56, macOS) hung a failed test's teardown
+    // until its timeout and left a trace that would not open. CI's traces keep
+    // them (its failures save in seconds) and are what the run's report shows.
+    trace: process.env.CI ? "retain-on-failure" : { mode: "retain-on-failure", snapshots: false },
   },
   webServer: {
     command: `python3 ../../apps/web/serve.py ${PORT}`,

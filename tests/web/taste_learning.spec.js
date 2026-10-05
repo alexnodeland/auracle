@@ -18,74 +18,28 @@
 //   pointing at a weight shades the small map by the posted z; the bars
 //   move to the styles posted after each pick; REPLAY steps through them.
 //
-// The engine worker is reached by wrapping `Worker` before main.js runs, as
-// taste_marks.spec.js does. Positions on the map are computed with the app's
-// own pure layout (taste-geom.js `mapFrame`, `mapLayout`) from the map the
-// worker posted, so a check of the canvas looks where the app drew.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+// The engine's replies are read through the fixture's tap (fixtures.js), and a
+// reply the engine would post is handed to main.js with `app.inject`.
+// Positions on the map are computed with the app's own pure layout
+// (taste-geom.js `mapFrame`, `mapLayout`) from the map the worker posted, so
+// a check of the canvas looks where the app drew.
+const { test, expect, goLevel } = require("./fixtures");
 
-const SEED = `(() => { let s = 20261001 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
-
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const workers = (window.__pwWorkers = []);
-  const counts = (window.__pwCounts = {});
-  const last = (window.__pwLast = {});
-  const sent = (window.__pwSent = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    w.__pwUrl = String(url);
-    workers.push(w);
-    const post = w.postMessage.bind(w);
-    w.postMessage = (m, t) => { if (m && m.type) sent.push(m); return t ? post(m, t) : post(m); };
-    w.addEventListener("message", (e) => {
-      const d = e.data;
-      if (!d || typeof d.type !== "string") return;
-      last[d.type] = d;
-      counts[d.type] = (counts[d.type] || 0) + 1;
-      if (d.views) window.__pwViews = d.views;
-      if (d.status && typeof d.status === "object") window.__pwStatus = d.status;
-      if (d.views && d.views.ratings) window.__pwRatings = d.views.ratings;
-      if (d.ratings) window.__pwRatings = d.ratings;
-      if (d.type === "status" && d.vote && d.vote.kind === "duel" && d.recorded) window.__pwPick = d;
-      if (d.type === "status" && d.ratings) (window.__pwStatusLog = window.__pwStatusLog || []).push(d);
-      if (d.type === "styles") (window.__pwStylesLog = window.__pwStylesLog || []).push(d);
-      const th = (window.__pwThetaLog = window.__pwThetaLog || []);
-      if (d.views && d.views.styles) th.push(d.views.styles);
-      if (d.type === "styles" && d.styles) th.push(d.styles);
-    });
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  window.__pwEngine = () => workers.find((w) => /worker\\.js/.test(w.__pwUrl)) || null;
-  window.__pwPost = (data) => window.__pwEngine().dispatchEvent(new MessageEvent("message", { data }));
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured"]) localStorage.setItem(k, "1");
-  } catch (_) {}
-})();`;
-
-async function boot(page) {
-  const pageErrors = [];
-  page.on("pageerror", (err) => pageErrors.push(err.message));
-  await page.addInitScript(SEED);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  // The warm start's three picks are eighteen, and the fit it asks for.
-  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
-  const cards = page.locator(".warm-cell .warm-item");
-  for (const i of [1, 4, 7]) await cards.nth(i).click();
-  await page.locator("#warm-go").click();
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  // …and the bank whole (`filled`). The fit can land while the pool is
-  // still arriving (on a CI runner, pool 21 of 40 at the fit and 40 ten
-  // seconds later), and each sound that joins it moves the ratings and the
-  // map these tests read twice and compare.
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.filled || 0), { timeout: 150_000 }).toBeGreaterThan(0);
-  return pageErrors;
+/** Boot, seeded; the warm start's three picks are eighteen, and the fit it
+ *  asks for; and the bank whole (`filled`). The fit can land while the pool
+ *  is still arriving (on a CI runner, pool 21 of 40 at the fit and 40 ten
+ *  seconds later), and each sound that joins it moves the ratings and the
+ *  map these tests read twice and compare. */
+async function boot(app) {
+  await app.boot({ warmed: false, random: 20261001 });
+  await app.warmStart([1, 4, 7]);
+  await app.filled();
 }
+
+/** The `status` replies that carried ratings (a pick's), in order. */
+const statusLog = (app) => app.replies("status", { where: { ratings: true } });
+/** The first pick main heard the engine take (a duel's `status`). */
+const pickTaken = (app) => app.reply("status", { where: { recorded: true, vote: { kind: "duel" } }, timeout: 30_000 });
 
 async function openView(page, view) {
   await goLevel(page, view);
@@ -99,7 +53,7 @@ function mapPositions(page, points = null) {
     const well = document.getElementById("taste-well");
     const W = Math.max(200, well.clientWidth);
     const H = Math.max(160, well.clientHeight);
-    const pts = (given || window.__pwViews.map.points).filter((p) => p.id != null);
+    const pts = (given || window.__tap.facts.views.map.points).filter((p) => p.id != null);
     // The track along the map's foot, once it shows, moves the sounds up.
     const track = document.getElementById("taste-time").classList.contains("on");
     const f = geom.mapFrame(W, H, pts.length, { track });
@@ -161,22 +115,20 @@ async function plateOf(page, q) {
 
 const pct = (mean) => Math.round(100 / (1 + Math.exp(-mean)));
 
-test("a pick draws an arrow from the sound passed to the sound picked, from the engine's reply", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("a pick draws an arrow from the sound passed to the sound picked, from the engine's reply", async ({ page, app }) => {
+  await boot(app);
 
   // A real pick in EVOLVE: the engine takes it when its undo window closes,
   // and TASTE, opened after, draws it from that reply.
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
+  await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
   await openView(page, "evolve");
-  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   await page.locator("#choose-a").click();
-  await page.waitForFunction(() => window.__pwPick, null, { timeout: 30_000 });
-  const real = await page.evaluate(() => {
-    const m = window.__pwPick;
-    const name = (id) => (window.__pwViews.ranked.find((r) => r.id === id) || {}).name;
+  const m = await pickTaken(app);
+  const real = await page.evaluate((m) => {
+    const name = (id) => (window.__tap.facts.views.ranked.find((r) => r.id === id) || {}).name;
     return { picked: name(m.choseA ? m.vote.a : m.vote.b), passed: name(m.choseA ? m.vote.b : m.vote.a) };
-  });
+  }, m);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
   await expect(page.locator("#taste-live")).toHaveText(`You picked ${real.picked} over ${real.passed}. Every rating moved.`);
@@ -197,7 +149,7 @@ test("a pick draws an arrow from the sound passed to the sound picked, from the 
   }
   const [passed, picked] = far;
   await page.evaluate(([a, b]) => {
-    window.__pwPost({ type: "status", status: window.__pwStatus, recorded: true, choseA: false, vote: { kind: "duel", a, b }, ratings: window.__pwRatings });
+    window.__tap.inject({ type: "status", status: window.__tap.facts.status, recorded: true, choseA: false, vote: { kind: "duel", a, b }, ratings: window.__tap.facts.ratings });
   }, [passed, picked]);
   const f = pos[passed], t = pos[picked];
   const L = Math.hypot(t.x - f.x, t.y - f.y);
@@ -212,12 +164,10 @@ test("a pick draws an arrow from the sound passed to the sound picked, from the 
   await expect(page.locator("#taste-live")).toHaveText(/^You picked .+ over .+\. Every rating moved\.$/);
   // It goes when its hold is over: under reduced motion too, every state is shown and then left.
   await expect.poll(() => amberAt(page, [at(L * 0.5)]), { timeout: 6_000 }).toEqual([false]);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("every halo moves to the ratings a pick posts, and a refit settles them all at once", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("every halo moves to the ratings a pick posts, and a refit settles them all at once", async ({ page, app }) => {
+  await boot(app);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
   const { s0, pos } = await mapPositions(page);
@@ -229,7 +179,7 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
   const others = ids.filter((id) => id !== lone).sort((a, b) => dist(b, lone) - dist(a, lone)).slice(0, 2);
 
   // As fitted: each card says the bank's number for it.
-  const fit = await page.evaluate(() => Object.fromEntries((window.__pwRatings || window.__pwViews.ratings).ranked.map((r) => [r.id, r.mean])));
+  const fit = await page.evaluate(() => Object.fromEntries((window.__tap.facts.ratings || window.__tap.facts.views.ratings).ranked.map((r) => [r.id, r.mean])));
   for (const id of [lone, ...others]) {
     expect((await plateOf(page, pos[id])).like).toMatch(new RegExp(`^would like: ${pct(fit[id])}% · `));
   }
@@ -242,9 +192,9 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
   const before = await haloAlpha(page, ...ring);
   const otherBefore = await haloAlpha(page, ...otherRing);
   await page.evaluate((lone) => {
-    const r = JSON.parse(JSON.stringify(window.__pwRatings || window.__pwViews.ratings));
+    const r = JSON.parse(JSON.stringify(window.__tap.facts.ratings || window.__tap.facts.views.ratings));
     for (const row of r.ranked) row.mean = row.id === lone ? 4 : -4;
-    window.__pwPost({ type: "status", status: window.__pwStatus, recorded: true, vote: { kind: "stars", id: lone, rating: 5, prev: 0 }, ratings: r });
+    window.__tap.inject({ type: "status", status: window.__tap.facts.status, recorded: true, vote: { kind: "stars", id: lone, rating: 5, prev: 0 }, ratings: r });
   }, lone);
   expect((await plateOf(page, pos[lone])).like).toMatch(/^would like: 98% · fairly sure$/);
   for (const id of others) expect((await plateOf(page, pos[id])).like).toMatch(/^would like: 2% · fairly sure$/);
@@ -255,35 +205,33 @@ test("every halo moves to the ratings a pick posts, and a refit settles them all
 
   // A refit's views: every halo settles together, and the map says so.
   await page.evaluate(() => {
-    const v = JSON.parse(JSON.stringify(window.__pwViews));
+    const v = JSON.parse(JSON.stringify(window.__tap.facts.views));
     for (const row of v.ratings.ranked) row.mean = 1;
     for (const p of v.map.points) p.utility = 1;
-    window.__pwPost({ type: "fitted", views: v, status: window.__pwStatus });
+    window.__tap.inject({ type: "fitted", views: v, status: window.__tap.facts.status });
   });
   await expect(page.locator("#taste-live")).toHaveText("It fitted your taste again. Every rating settled.");
   for (const id of [lone, ...others]) expect((await plateOf(page, pos[id])).like).toMatch(/^would like: 73% · fairly sure$/);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("LEARNING's weights, forecasts and math are the engine's numbers, and copy as JSON gives them back", async ({ page, context }) => {
-  test.setTimeout(300_000);
+test("LEARNING's weights, forecasts and math are the engine's numbers, and copy as JSON gives them back", async ({ page, app, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const pageErrors = await boot(page);
+  await boot(app);
   // One pick, so there is a forecast to score.
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
+  await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
   await openView(page, "evolve");
-  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   await page.locator("#choose-a").click();
-  await page.waitForFunction(() => window.__pwPick, null, { timeout: 30_000 });
-  await page.waitForFunction(() => {
-    const c = window.__pwLast.calibration;
+  await pickTaken(app);
+  await app.engine((timeout) => page.waitForFunction(() => {
+    const c = window.__tap.last.calibration;
     return c && Array.isArray(c.forecasts) && c.forecasts.length > 0 && c.facts;
-  }, null, { timeout: 30_000 });
+  }, null, { timeout }), { ms: 30_000 });
   await openView(page, "learning");
 
   // The math: every number is the worker's `model_facts`.
-  const facts = await page.evaluate(() => window.__pwLast.calibration.facts);
-  const theta = await page.evaluate(() => window.__pwViews.styles[0].theta.map((t) => t.name));
+  const facts = await page.evaluate(() => window.__tap.last.calibration.facts);
+  const theta = await page.evaluate(() => window.__tap.facts.views.styles[0].theta.map((t) => t.name));
   expect(facts.audio, "the audio half is the tagged names").toBe(theta.filter((n) => n.includes(":")).length);
   expect(facts.audio + facts.structural, "φ is every weight").toBe(theta.length);
   expect([facts.audio, facts.structural, facts.draws, facts.styles_max, facts.obs_per_style]).toEqual([18, 26, 500, 5, 20]);
@@ -296,7 +244,7 @@ test("LEARNING's weights, forecasts and math are the engine's numbers, and copy 
 
   // The weights: the chosen style's θ, every one, largest first.
   const shown = await page.evaluate(() => {
-    const styles = window.__pwViews.styles.map((s, k) => ({ ...s, k })).filter((s) => s.share >= 0.02);
+    const styles = window.__tap.facts.views.styles.map((s, k) => ({ ...s, k })).filter((s) => s.share >= 0.02);
     const k = Number(document.querySelector('.md-chip-pick[aria-checked="true"]').closest(".md-chip").dataset.k);
     const want = [...styles.find((s) => s.k === k).theta]
       .sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))
@@ -309,7 +257,7 @@ test("LEARNING's weights, forecasts and math are the engine's numbers, and copy 
 
   // The forecasts: hits out of the engine's forecasts, scored as it scored them.
   const score = await page.evaluate(() => {
-    const fs = window.__pwLast.calibration.forecasts.map((f) => (f.chose_a ? f.p_a : 1 - f.p_a));
+    const fs = window.__tap.last.calibration.forecasts.map((f) => (f.chose_a ? f.p_a : 1 - f.p_a));
     const hits = fs.filter((p) => p > 0.5).length;
     const expected = fs.reduce((s, p) => s + Math.max(p, 1 - p), 0) / fs.length;
     return { hits, n: fs.length, expected: Math.round(expected * 100), was: Math.round((hits / fs.length) * 100) };
@@ -323,33 +271,30 @@ test("LEARNING's weights, forecasts and math are the engine's numbers, and copy 
   const text = await page.locator("#md-json").inputValue();
   const back = JSON.parse(text);
   const posted = await page.evaluate(() => ({
-    styles: window.__pwViews.styles.map((s) => s.theta.map(({ name, mean, std }) => ({ name, mean, std }))),
-    forecasts: window.__pwLast.calibration.forecasts,
-    facts: window.__pwLast.calibration.facts,
-    ratings: window.__pwRatings.ranked.map(({ id, mean, std }) => ({ id, mean, std })),
+    styles: window.__tap.facts.views.styles.map((s) => s.theta.map(({ name, mean, std }) => ({ name, mean, std }))),
+    forecasts: window.__tap.last.calibration.forecasts,
+    facts: window.__tap.last.calibration.facts,
+    ratings: window.__tap.facts.ratings.ranked.map(({ id, mean, std }) => ({ id, mean, std })),
   }));
   expect(back.styles.map((s) => s.weights.map(({ name, mean, std }) => ({ name, mean, std })))).toEqual(posted.styles);
   expect(back.forecasts).toEqual(posted.forecasts);
   expect(back.facts).toEqual(posted.facts);
   expect(back.ratings.map(({ id, mean, std }) => ({ id, mean, std }))).toEqual(posted.ratings);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-// Quarantined (#126): the injected `fitted` can be replaced by the engine's own
-// refit, and the second chip waited for never comes.
-test("a mark sits left of its label: the label's x is the same with the mark and without", { tag: "@quarantine" }, async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("a mark sits left of its label: the label's x is the same with the mark and without", async ({ page, app }) => {
+  await boot(app);
   // Two styles; the first leans on two qualities, one settled and one a guess.
-  await page.evaluate(() => {
-    const v = JSON.parse(JSON.stringify(window.__pwViews));
-    const base = v.styles[0];
-    v.styles = [
-      { ...base, share: 0.6, theta: [{ name: "n_filter", mean: 0.5, std: 0.1 }, { name: "n_vco", mean: 0.4, std: 0.6 }] },
-      { ...base, name: "", share: 0.4, theta: [{ name: "n_reverb", mean: 0.3, std: 0.1 }] },
-    ];
-    window.__pwPost({ type: "fitted", views: v, status: window.__pwStatus });
-  });
+  // The engine is still working after boot, and its own refit (or any reply
+  // carrying views or styles) would put its styles back over these (#126):
+  // those are held from main while these stand, from the same moment.
+  const { views, status } = await app.facts();
+  const base = views.styles[0];
+  views.styles = [
+    { ...base, share: 0.6, theta: [{ name: "n_filter", mean: 0.5, std: 0.1 }, { name: "n_vco", mean: 0.4, std: 0.6 }] },
+    { ...base, name: "", share: 0.4, theta: [{ name: "n_reverb", mean: 0.3, std: 0.1 }] },
+  ];
+  await app.hold([{ views: true }, "styles"], { inject: { type: "fitted", views, status } });
   await openView(page, "learning");
   const rows = page.locator("#md-bars .md-row");
   await expect(rows).toHaveCount(2);
@@ -381,12 +326,11 @@ test("a mark sits left of its label: the label's x is the same with the mark and
   await expect(chips.nth(1).locator(".md-chip-pick")).toHaveAttribute("aria-checked", "true");
   expect(await offset(chips.nth(1))).toBe(chosen);
   await expect(rows).toHaveCount(1);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+  console.log(`held from main while the injected styles stood: ${JSON.stringify((await app.held()).map((h) => h.type))}`);
 });
 
-test("a style is named on its chip, and the chip's ▶ pressed straight after still plays", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("a style is named on its chip, and the chip's ▶ pressed straight after still plays", async ({ page, app }) => {
+  await boot(app);
   await openView(page, "learning");
   const chip = page.locator(".md-chip").first();
   await expect(chip).toBeVisible();
@@ -396,33 +340,32 @@ test("a style is named on its chip, and the chip's ▶ pressed straight after st
   // still land on the button it began on.
   const play = chip.locator(".md-chip-play");
   await play.click();
-  await expect.poll(() => page.evaluate((k) => window.__pwSent.some((m) => m.type === "set_style_name" && m.k === k && m.name === "Night Drive"), k)).toBe(true);
-  await expect(play, "the same ▶, still in the chip, plays").toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+  await expect.poll(async () => (await app.sent({ type: "set_style_name", k, name: "Night Drive" })).length).toBeGreaterThan(0);
+  await app.engine((timeout) => expect(play, "the same ▶, still in the chip, plays").toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
   await expect(chip.locator(".md-chip-name")).toHaveValue("Night Drive");
   await expect(chip.locator(".md-chip-pick")).toHaveAttribute("aria-label", /^Night Drive, \d+% of the pool$/);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
 /** Picks in EVOLVE, each taken by the engine (its `status`) and followed by
  *  its styles. */
-async function picks(page, n) {
-  const before = await page.evaluate(() => (window.__pwStatusLog || []).length);
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
+async function picks(page, app, n) {
+  const before = (await statusLog(app)).length;
+  await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
   await openView(page, "evolve");
   for (let i = 0; i < n; i++) {
-    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+    await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
     const taught = Number(await page.locator("#duel-count").textContent());
     await page.locator(i % 2 ? "#choose-b" : "#choose-a").click();
     // A pick counts the moment it is made: TAUGHT moves at once.
     await expect(page.locator("#duel-count")).toHaveText(String(taught + 1));
   }
   // Every pick taken by the engine, and a styles reply that has seen the last.
-  await page.waitForFunction((b) => {
-    const log = window.__pwStatusLog || [];
-    if (log.length < b + 3) return false;
+  await app.engine((timeout) => expect.poll(async () => {
+    const log = await statusLog(app);
+    if (log.length < before + 3) return false;
     const obs = log[log.length - 1].status.observations;
-    return (window.__pwStylesLog || []).some((x) => x.observations >= obs);
-  }, before, { timeout: 60_000 });
+    return (await app.replies("styles")).some((x) => x.observations >= obs);
+  }, { timeout }).toBe(true), { ms: 60_000 });
 }
 
 /** The means a pick's reply posted, by sound. */
@@ -439,27 +382,17 @@ async function scrubTo(page, label) {
 }
 
 /** What the saved session holds of the track. */
-function savedMoments(page) {
-  return page.evaluate(() => new Promise((done) => {
-    const req = indexedDB.open("auracle", 1);
-    req.onsuccess = () => {
-      const tx = req.result.transaction("kv", "readonly").objectStore("kv").get("state");
-      tx.onsuccess = () => done(((tx.result && tx.result.ui && tx.result.ui.taste) || { entries: [] }).entries.length);
-      tx.onerror = () => done(0);
-    };
-    req.onerror = () => done(0);
-  }));
-}
+const savedMoments = async (app) => (((await app.savedUi()) || {}).taste || { entries: [] }).entries.length;
 
-test("the track replays what the engine posted at each pick, and is still there after a reload", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("the track replays what the engine posted at each pick, and is still there after a reload", async ({ page, app }) => {
+  await boot(app);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await picks(page, 3);
-  const second = await page.evaluate(() => window.__pwStatusLog[window.__pwStatusLog.length - 2]);
+  await picks(page, app, 3);
+  const log = await statusLog(app);
+  const second = log[log.length - 2];
   const posted = meansOf(second);
   const n = second.status.picks;
-  const points = await page.evaluate(() => window.__pwViews.map.points);
+  const points = await page.evaluate(() => window.__tap.facts.views.map.points);
   await openView(page, "taste");
   await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
   await expect(page.locator("#taste-tlabel")).toHaveText(`now · after ${n + 1} picks`);
@@ -481,9 +414,8 @@ test("the track replays what the engine posted at each pick, and is still there 
 
   // Saved with the session, and read back on load.
   const kept = await page.evaluate(() => document.getElementById("taste-track").getAttribute("aria-valuemax"));
-  await expect.poll(() => savedMoments(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(Number(kept) + 1);
-  await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+  await app.engine((timeout) => expect.poll(() => savedMoments(app), { timeout }).toBeGreaterThanOrEqual(Number(kept) + 1), { ms: 30_000 });
+  await app.reload();
   await openView(page, "taste");
   await expect(page.locator("#taste-time")).toHaveClass(/\bon\b/);
   // Its end is now, with the picks the engine has: a load adds no moment
@@ -493,12 +425,10 @@ test("the track replays what the engine posted at each pick, and is still there 
   for (let i = 0; i < ids.length; i++) {
     expect((await plateOf(page, pos[ids[i]])).like, "the same moment after a reload").toBe(before[i]);
   }
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("each sound on the map is drawn as its face: taller than it is wide, in the sound's green", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("each sound on the map is drawn as its face: taller than it is wide, in the sound's green", async ({ page, app }) => {
+  await boot(app);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
   const { pos } = await mapPositions(page);
@@ -530,12 +460,10 @@ test("each sound on the map is drawn as its face: taller than it is wide, in the
     }
     return faces;
   }, { timeout: 30_000 }).toBeGreaterThanOrEqual(8);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("SOUND shows the sounds as they are, and TASTE dims each by how little it is liked", async ({ page, app }) => {
+  await boot(app);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openView(page, "taste");
   const tog = page.locator("#taste-tog");
@@ -550,7 +478,7 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   const green = async () => {
     const { pos } = await mapPositions(page);
     return page.evaluate((pos) => {
-      const r = window.__pwViews.ratings.ranked;
+      const r = window.__tap.facts.views.ratings.ranked;
       const at = pos[r[r.length - 1].id];
       const cv = document.getElementById("taste-crt");
       const d = window.devicePixelRatio || 1;
@@ -568,19 +496,17 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
   // land a unit off at one pixel (CI read 175 for 176). TASTE's dimming is
   // forty-plus levels, so a few cannot hide it.
   await expect.poll(async () => Math.abs((await green()) - sound), { timeout: 5_000 }).toBeLessThanOrEqual(3);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("pointing at a weight shades the small map by each sound's z on that feature, as the engine posted it", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
+test("pointing at a weight shades the small map by each sound's z on that feature, as the engine posted it", async ({ page, app }) => {
+  await boot(app);
   await openView(page, "learning");
   const first = page.locator("#md-bars .md-row").first();
   await first.hover();
   await expect(page.locator("#md-maplegend")).toHaveText(/^dots: /);
   const shade = await page.evaluate(async () => {
     const geom = await import("/taste-geom.js");
-    const v = window.__pwViews;
+    const v = window.__tap.facts.views;
     const style = v.styles.map((s, k) => ({ ...s, k })).filter((s) => s.share >= 0.02).sort((a, b) => b.share - a.share)[0];
     const name = [...style.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean))[0].name;
     const cv = document.getElementById("md-map-cv");
@@ -600,7 +526,6 @@ test("pointing at a weight shades the small map by each sound's z on that featur
   expect(Math.min(...shade.hi), `the highest z drawn brightest (${shade.hi} against ${shade.lo})`).toBeGreaterThan(Math.max(...shade.lo) + 60);
   await page.mouse.move(1, 1);
   await expect(page.locator("#md-maplegend")).toHaveText(/^(the arrow|no direction)/);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
 /** Each bar's weight as LEARNING shows it, by feature (two weights equal at
@@ -617,21 +542,27 @@ function expectBars(shown, theta, tol, what) {
 }
 const shownK = (page) => page.evaluate(() => Number(document.querySelector('.md-chip-pick[aria-checked="true"]').closest(".md-chip").dataset.k));
 
-test("the weights move to the styles posted after each pick, and REPLAY steps through them", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
-  await picks(page, 3);
+test("the weights move to the styles posted after each pick, and REPLAY steps through them", async ({ page, app }) => {
+  await boot(app);
+  await picks(page, app, 3);
   await openView(page, "learning");
   // Now: the styles the last pick's reply brought, not the fit's.
   const k = await shownK(page);
-  const last = await page.evaluate((k) => window.__pwStylesLog.filter((x) => x.styles).pop().styles[k].theta, k);
+  const last = (await app.replies("styles", { where: { styles: true } })).pop().styles[k].theta;
   const now = await barsShown(page);
   expect(Object.keys(now).length).toBe(44);
   expectBars(now, last, 0.006, "now");
 
   // REPLAY (R): each step shows θ as the worker posted it at a kept moment,
   // in the order it was posted. The label and the bars are read together.
-  const posted = await page.evaluate((k) => window.__pwThetaLog.map((st) => (st[k] ? st[k].theta : null)), k);
+  // Every θ the worker posted, in order: a views post's styles, or a
+  // styles reply's.
+  const posted = await page.evaluate((k) => window.__tap.replies.filter((r) => !r.injected).flatMap((r) => {
+    const out = [];
+    if (r.d.views && r.d.views.styles) out.push(r.d.views.styles);
+    if (r.type === "styles" && r.d.styles) out.push(r.d.styles);
+    return out;
+  }).map((st) => (st[k] ? st[k].theta : null)), k);
   await page.keyboard.press("r");
   await expect(page.locator("#md-replay")).toHaveClass(/\bon\b/);
   let lastAt = -1, steps = 0, label = null;
@@ -667,16 +598,14 @@ test("the weights move to the styles posted after each pick, and REPLAY steps th
   await expect(page.locator("#md-replay")).not.toHaveClass(/\bon\b/, { timeout: 10_000 });
   await expect(page.locator("#md-replay-at")).toHaveText("");
   expectBars(await barsShown(page), last, 0.006, "back to now");
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a REPLAY step across a refit is the refit's, with no pick's ghost or light", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
-  const fits = await page.evaluate(() => window.__pwCounts.fitted || 0);
+test("a REPLAY step across a refit is the refit's, with no pick's ghost or light", async ({ page, app }) => {
+  await boot(app);
+  const fits = await app.count("fitted");
   // Six picks: the sixth refits.
-  await picks(page, 6);
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(fits);
+  await picks(page, app, 6);
+  await app.engine((timeout) => expect.poll(() => app.count("fitted"), { timeout }).toBeGreaterThan(fits));
   await openView(page, "learning");
   // The refit may have grown a second style, which no earlier moment had:
   // replay the first, which every refit keeps at its index.
@@ -704,5 +633,4 @@ test("a REPLAY step across a refit is the refit's, with no pick's ghost or light
   expect(step.label).toMatch(/^refit · after \d+ picks$/);
   expect(step.ghosts, "no pick's ghost on a refit's step").toBe(0);
   expect(step.lit, "no weight lit as a pick's on a refit's step").toBe(0);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

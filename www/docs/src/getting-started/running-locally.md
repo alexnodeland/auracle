@@ -89,8 +89,9 @@ What happens:
   BLEND home. Nothing it did while playing itself is logged or counted as a
   pick.
 - **The next visitor.** <kbd>⇧Esc</kbd> (or **New visitor** in the ⋯ menu)
-  forgets the visitor’s taste and starts again with the warm start. Booth mode
-  and PERFORM’s measured controls are kept, so the set stays instant.
+  forgets the visitor’s taste and starts again with the warm start, on a new
+  pool (it takes `?seed` off the address). Booth mode and PERFORM’s measured
+  controls are kept, so the set stays instant.
 - **It measures ahead.** As soon as booth mode is on, it measures the set’s
   presets for PERFORM in the background (Glass Pad, Acid Line, Loom, Undertow,
   Sub & Sparkle, Detune Dream, Wobble Board, and Cathedral), one at a time and
@@ -146,12 +147,28 @@ hover-to-reveal means never.
 
 ## Overrides
 
-For when the defaults are wrong for your machine:
+Added to the address, these change how it runs on your machine, or what it
+deals:
 
 | | |
 |---|---|
 | `?farm=k` | Use exactly `k` render workers. `0` boots without them |
 | `localStorage["auracle-renderers"]` | The same, kept |
+| `?seed=n` | Deal the session from the random seed `n`, a whole number |
+
+Without `?seed`, every new session starts from a random seed of its own. With
+it, a fresh session (nothing saved in this browser yet) deals the same pool of
+sounds on any machine running the same version, at any worker count, so you
+can send the address to someone and they start where you did. (A sound you
+haven't named takes its name from the bank as it stood then, so the same
+sound can be named differently in another session.) The pairs,
+refits and offers after that draw from the same random seed, and repeat when
+the same things happen in the same order; a pair dealt before the pool has
+finished filling can still differ with the machine's speed. A saved session
+comes back as it was. Which side of the table a sound stands on, and the warm
+start's nine cards, are shuffled either way, so no side or card is favored.
+**Reset your taste…** and a booth's next visitor take `?seed` off the address
+as they start over, so a reset deals a new pool.
 
 ```admonish info collapsible=true title="How it works: the same pool at any worker count"
 The pool is identical at every worker count, including zero: the draws are

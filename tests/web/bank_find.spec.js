@@ -4,23 +4,12 @@
 // the page's own state, outside the list, so the bank's many redraws (a
 // rating, a cut, the rename guard's deferred one) keep both the words and the
 // filter. It is a text field: typing in it plays no note.
-const { test, expect } = require("@playwright/test");
-const { bankTab } = require("./shell");
+const { test, expect, bankTab } = require("./fixtures");
 
-const INIT = `(() => {
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured", "auracle-warmed"]) localStorage.setItem(k, "1");
-  } catch (_) {}
-})();`;
-
-async function boot(page) {
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  await expect.poll(() => names(page), { timeout: 120_000 }).toHaveLength(40);
-  return errors;
+/** Boot, and wait for the whole pool in the bank. */
+async function boot(app) {
+  await app.boot();
+  await app.poolRows(40);
 }
 const names = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item .bi-name")].map((e) => e.textContent.trim()));
@@ -31,9 +20,8 @@ const presets = (page) =>
     family: (() => { let g = r.previousElementSibling; while (g && !g.classList.contains("bank-group")) g = g.previousElementSibling; return g ? g.querySelector(".bg-label").textContent.trim() : ""; })(),
   })));
 
-test("Find a sound narrows the pool and the presets by name, family and blurb, and Esc clears it", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("Find a sound narrows the pool and the presets by name, family and blurb, and Esc clears it", async ({ page, app }) => {
+  await boot(app);
   const find = page.locator("#bank-find");
   await expect(find).toHaveAttribute("placeholder", "Find a sound");
   // The pool, by a name it holds.
@@ -47,7 +35,7 @@ test("Find a sound narrows the pool and the presets by name, family and blurb, a
   // The presets: the words carry over, and a family's name finds its sounds.
   await find.fill("");
   await bankTab(page, "presets");
-  await expect(page.locator("#bank-list .preset-item").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("#bank-list .preset-item").first()).toBeVisible();
   const library = await presets(page);
   expect(library.length).toBeGreaterThan(20);
   const family = library[0].family.toLowerCase();
@@ -70,12 +58,10 @@ test("Find a sound narrows the pool and the presets by name, family and blurb, a
   await expect(find).toHaveValue("");
   await expect(find).toBeFocused();
   await expect.poll(async () => (await presets(page)).length).toBe(library.length);
-  expect(errors).toEqual([]);
 });
 
-test("Find a sound survives the bank redrawing under it: a rating, a cut and a rename", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
+test("Find a sound survives the bank redrawing under it: a rating, a cut and a rename", async ({ page, app }) => {
+  await boot(app);
   const find = page.locator("#bank-find");
   const all = await names(page);
   const word = all[3].split(/\s+/)[0].toLowerCase();
@@ -92,7 +78,7 @@ test("Find a sound survives the bank redrawing under it: a rating, a cut and a r
   await row.hover();
   await row.locator(".bi-star").click();
   await row.locator('.star[data-s="3"]').click();
-  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 3★\./, { timeout: 10_000 });
+  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 3★\./);
   await expect(find).toHaveValue(word);
   expect(await shown()).toBe(true);
   // A rename holds the list until it ends, then the deferred redraw runs:
@@ -113,25 +99,21 @@ test("Find a sound survives the bank redrawing under it: a rating, a cut and a r
   await expect.poll(async () => (await names(page)).length).toBe(before - 1);
   await expect(find).toHaveValue(word);
   expect(await shown()).toBe(true);
-  expect(errors).toEqual([]);
 });
 
-test("typing in Find a sound plays no note, and the same key outside it does", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  await page.waitForFunction(() => window.__aur && window.__aur.getLive && window.__aur.getLive(), null, { timeout: 60_000 });
+test("typing in Find a sound plays no note, and the same key outside it does", async ({ page, app }) => {
+  await boot(app);
+  await app.engine((timeout) => page.waitForFunction(() => window.__aur && window.__aur.getLive && window.__aur.getLive(), null, { timeout }));
   const down = () => page.evaluate(() => document.querySelectorAll(".pkey.down, .bkey.down").length);
   await page.locator("#bank-find").focus();
-  for (const k of ["a", "s", "d"]) {
-    await page.keyboard.down(k);
-    await page.waitForTimeout(150);
-    expect(await down(), `${k} played a note from Find a sound`).toBe(0);
-    await page.keyboard.up(k);
-  }
+  // Each key held while nothing happens: no key lights for it.
+  for (const k of ["a", "s", "d"]) await page.keyboard.down(k);
+  await app.quiet();
+  expect(await down(), "a key played a note from Find a sound").toBe(0);
+  for (const k of ["a", "s", "d"]) await page.keyboard.up(k);
   await expect(page.locator("#bank-find")).toHaveValue("asd");
   await page.locator("#bank-find").blur();
   await page.keyboard.down("a");
   await expect.poll(down).toBe(1);
   await page.keyboard.up("a");
-  expect(errors).toEqual([]);
 });
