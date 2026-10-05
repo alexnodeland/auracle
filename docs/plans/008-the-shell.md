@@ -24,15 +24,21 @@ you move between them. It does not rebuild their internals.
 
 ## Progress
 
-| PR | Status |
-| --- | --- |
-| A: the frame, the header, the level rail, the keys bar | merged (#112) |
-| B: the bank and the model view | merged (#115) |
-| C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | merged (#116) |
-| C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | in review |
-| C2b: PATCH's model view under ⌥ and the four engine facts | not started |
-| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | not started |
-| D: ⌘K, and the guide for the levels | not started |
+Each task still to do is an issue (`docs/process.md`); the table links it.
+
+| PR | Issue | Status |
+| --- | --- | --- |
+| A: the frame, the header, the level rail, the keys bar | – | merged (#112) |
+| B: the bank and the model view | – | merged (#115) |
+| C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
+| C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
+| C2b: PATCH's model view under ⌥ and the four engine facts | – | in review |
+| Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | not started |
+| C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
+| D: ⌘K, and the guide for the levels | #132 | not started |
+| Explain a rank under ⌥ on EVOLVE cards and bank rows (inventory row 6) | #139 | not started |
+| PATCH's specs on the shared fixture | #136 | not started |
+| After the shell: the own-sound card, touch (Plan-005 tasks 11 and 8) | #133, #134 | not started |
 
 The maintainer accepted the plan with the decisions at its end, which override
 the proposals in §6 where they differ (PATCH is rebuilt to the mock's canvas,

@@ -89,7 +89,10 @@ in a plan's prose, a session's notes or a conversation.
   ([ADR-013](decisions/013-one-voice.md)). The operator batches them into one
   question.
 - **Cache-busters:** a change to `apps/web/style.css` or `main.js` bumps its
-  `?b=` in `index.html`. Two branches that both bump settle it at rebase.
+  `?b=` in `index.html`. When two branches both bump it, the one that merges
+  second takes a value above main's at its rebase: a cache-buster only has to
+  differ from what the browser last loaded, but a value that only rises reads
+  as history.
 
 ## Review
 
