@@ -485,7 +485,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **rating…** | The model rating an edited sound again, on the guess above the rack | re-measuring…, listening… (that is PERFORM's) |
 | **style** | One cluster of your taste, named for its pull ("like Warm Wash") | lens, "1st style" |
 | **the model view** | What holding ⌥ or MODEL shows: what the model believes over the level you're at (the bank's guesses and order, TASTE's halos, EVOLVE's guess before a pick) | lens |
-| **MODEL** | The menu bar's pill for the model view: held (or ⌥ held) it shows while held; tapped it stays until tapped again or Esc. Its light is lit while the view is up | LENS, the model button |
+| **MODEL** | The menu bar's pill for the model view: held (or ⌥ held) it shows while held; a tap keeps the view up, across a reload; Esc ends it once nothing nearer is open. Its light is lit while the view is up | LENS, the model button |
 | **Find a sound** | The bank's search field: it keeps the sounds whose name, family or description has what you type; Esc clears it | search, filter, Search sounds |
 | **IN THE POOL**, **RANKED BY THE MODEL** | POOL's heading for the sounds below New: at rest in the order they joined it; under the model view, once it has fitted, in the order it rates them | the rest |
 | *it guesses this · 62% · leaning* | Under the model view, EVOLVE's guess before you pick, on the card it favours; *it guessed this* is the line after |  |
@@ -511,7 +511,7 @@ banned-words check in `make dev-check` reads the list after it.
 | **detail: automatic / full / compact** | How much of each module is drawn | LOD, zoom level |
 | **TEACH ▸**, **TEACH · N PICKS ▸** | The folded quick picks at the well's foot, counting to the first refit | train, rate, vote |
 | **SET ASIDE n** | The chip for modules unplugged or deleted, waiting to go back; it opens the shelf | tray, HELD, trash |
-| **leans** | PATCH's toggle that tints each module by which way your taste leans on its kind | belief, belief tint |
+| **leans** | The lean edges: amber or red plate edges by family under the model view (⌥ / MODEL); stronger when surer | belief, belief tint |
 | **knob** | One setting of one module | parameter (outside the reference), dial |
 | **control** | A named control on PERFORM (BRIGHT, MOTION), or the WANDER control | dial, macro |
 | **figure**, **answer** | What ? on a control opens: its **answer** (BRIGHT · WHAT IT DOES), a **figure** of what the engine measured and a sentence; the guide's words, the app shows the title | tooltip, popover, explanation, help |
@@ -532,6 +532,10 @@ banned-words check in `make dev-check` reads the list after it.
 | **AFTER THE MIX** / **ON THE FILTER'S CUTOFF** / **IN THE EMPTY SOCKET** | Where a guess asked for a place goes, on the well's top line after GUESS · DELAY | |
 | *hearing the modules that fit at the mix…* | The well's top line while a What goes here? is ranked | thinking, loading |
 | **lower bound +0.03** | A runner-up guess's ranking figure under the model view: its gain's mean less one sd | at least, worst case |
+| **Runner-up guess** | The name of a runner-up chip under the model view: the guess ranked after the one drawn | alternative, other suggestion |
+| **Back to the output's guess · Esc** | The ✕ ending the line of a guess asked for a place (and its label for a screen reader): the guess goes back to the output | cancel, close |
+| **Worth per kind** | The worth chip's name (its tooltip) | price, value |
+| *no settled lean on anything in this patch yet* | The model view's note in PATCH when no family's lean is settled | no data, nothing to show |
 | *it’d like this 62% · leaning · was 58% ▲* | Under the model view, PATCH's subtitle in place of its counts: the model's guess for the sound in hand, what it said before the last edit, and the arrow when the printed number moved | MODEL'S GUESS |
 | **THE PATCH** | PATCH's readout under the model view with nothing selected, then what adds up to the belief line | |
 | **filtering +0.12 · shared by 2** (the worth chip) | Under the model view, a chip per kind of module in PATCH: what one more of that kind is worth to the model, shared by the modules of that kind; *a guess* when its interval crosses zero | the worth of this module, a per-socket price |
