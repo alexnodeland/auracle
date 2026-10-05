@@ -6828,6 +6828,17 @@ html.xl-on .alarm { z-index: 62; }
   text-overflow: ellipsis;
 }
 .guess-read .gr-why:only-child { color: var(--silk-dim); }
+/* "What goes here?": where the guess asked for a place goes (after the
+   drive, on the filter's cutoff, in the empty socket). */
+.gr-at {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
 
 .rack-guess .guess-lead { fill: none; stroke: var(--phos-b-55); stroke-width: 1.6; stroke-dasharray: 5 5; }
 .rack-guess .guess-at { fill: var(--phos-b); }

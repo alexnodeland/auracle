@@ -255,13 +255,15 @@ or press <kbd>F2</kbd> on it):
 | **bypass** | The input passes straight through. Grayed on a source |
 | **modulate → *destination*** | Opens the catalog at the modulators, for this module’s modulation input. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
+| **what goes here?** (<kbd>Q</kbd>) | The model's guess for this place: after it, on its modulation slot, or in it if the socket is empty. Drawn there, dashed amber; <kbd>Enter</kbd> adds it ([the guess](./views/play.md#the-well)) |
 | **swap the two inputs** | On the six two-input modules only |
 | **delete** | Below a rule, in red. A source leaves its socket empty |
 
 **replace with…**, **insert…**, and **modulate** hand off to the
 [catalog](./wiring.md) with the socket already chosen and lit, so there is one
-list of modules in one place. A modulator’s own ⋯ has two rows: **replace
-with…** and **unplug this modulator**.
+list of modules in one place. A modulator’s own ⋯ has three rows: **replace
+with…**, **what goes here?** (the guess for its module's slot) and **unplug
+this modulator**.
 
 Anything you bypass or delete is set aside rather than disappearing (**SET
 ASIDE n** at the well's foot), and stays there across a reload.

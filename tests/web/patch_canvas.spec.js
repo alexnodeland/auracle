@@ -186,13 +186,14 @@ test("the selected module shows its ⋯, which reaches every verb of the structu
   await expect(page.locator("#pt-read .pr-name")).toHaveText(/mix/i);
   await menu("mix").click();
   const items = page.locator("#ctx-menu .cm-item");
-  for (const verb of ["replace with", "insert before", "insert after", "duplicate", "set aside", "bypass", "probe this output", "swap the two inputs", "delete"]) {
+  for (const verb of ["replace with", "insert before", "insert after", "duplicate", "set aside", "bypass", "probe this output", "what goes here", "swap the two inputs", "delete"]) {
     await expect(items.filter({ hasText: new RegExp(`^${verb}`) }), verb).toHaveCount(1);
   }
   await page.keyboard.press("Escape");
   // A modulator's own: replace it, or unplug it.
   await menu("lfo").click({ force: true });
   await expect(items.filter({ hasText: /^unplug this modulator/ })).toHaveCount(1);
+  await expect(items.filter({ hasText: /^what goes here/ })).toHaveCount(1);
   await page.keyboard.press("Escape");
   // modulate → is on a module with a mod slot.
   await menu("filter").click({ force: true });

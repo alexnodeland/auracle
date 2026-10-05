@@ -189,7 +189,11 @@ export function createPatch(host) {
   // the engine ranks (`guess_skip`, then `guess` again).
   // `tree`: the bench's tree the ranking was made on (the reply's), which
   // the faces beside the plate describe.
-  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0 };
+  // `at`: "What goes here?" (the selection's ⋯, or Q): the module key whose
+  // place the guess is ranked for (`guess_rank`'s `at`: its wire, its
+  // modulation slot, and itself if it is an empty socket), until the
+  // structure changes or Esc goes back to the output's.
+  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0, at: null, atData: null };
 
   function askGuess() {
     if (guess.out) {
@@ -197,8 +201,8 @@ export function createPatch(host) {
       return;
     }
     guess.want = false;
-    guess.out = { token: ++seq, epoch };
-    host.send({ type: "guess", token: guess.out.token });
+    guess.out = { token: ++seq, epoch, at: guess.at };
+    host.send({ type: "guess", token: guess.out.token, ...(guess.at ? { at: guess.at } : {}) });
   }
   function onGuess(m) {
     if (!guess.out || m.token !== guess.out.token) return;
@@ -208,6 +212,14 @@ export function createPatch(host) {
       guess.again = false;
       guess.want = true;
       scheduleSettle(0);
+    }
+    // Ranked for another place than the one now asked about (a "What goes
+    // here?" asked while the output's ranking was out, or Esc since): not
+    // this answer. The place asked about now is asked for.
+    if (asked.at !== guess.at) {
+      guess.want = true;
+      scheduleSettle(0);
+      return;
     }
     if (m.error) {
       guess.data = null;
@@ -225,6 +237,7 @@ export function createPatch(host) {
     guess.tree = m.tree || null;
     guess.epoch = epoch;
     guess.skipping = false;
+    guess.atData = asked.at;
     // A ranking that came back with nothing in it because its time ran out
     // before any candidate was heard (a crew still starting, a slow machine)
     // is not an answer: what it did render is in the engine's memo, so
@@ -237,8 +250,45 @@ export function createPatch(host) {
     }
     drawGuess();
   }
+  const guessCurrent = () => guess.data && guess.epoch === epoch && guess.atData === guess.at;
   const topGuess = () =>
-    guess.data && guess.epoch === epoch && !guess.skipping && Array.isArray(guess.data.guesses) ? guess.data.guesses[0] || null : null;
+    guessCurrent() && !guess.skipping && Array.isArray(guess.data.guesses) ? guess.data.guesses[0] || null : null;
+
+  /** "What goes here?": the guess for the place of the module at `key`
+   *  (the selection's ⋯, or Q). Its ghost is drawn there with its reason on
+   *  the well's top line, Enter takes it and × skips it, as the output's. */
+  function askHere(key, { focus = false } = {}) {
+    if (!key || !host.hasRack()) return;
+    guess.at = key;
+    // Asked from the keyboard: the ghost takes the focus when it lands, so
+    // Enter takes it, if the keyboard is still on the canvas then.
+    guess.focusWhenDrawn = focus;
+    guess.retries = 0;
+    guess.skipping = false;
+    drawGuess();
+    // Asked now, not on the next settle: the player asked.
+    if (!host.benchSettled() || host.knobDragging()) {
+      guess.want = true;
+      scheduleSettle(0);
+    } else askGuess();
+  }
+  /** Back to the output's guess (Esc on the ghost, or a structural edit). */
+  function clearHere() {
+    if (!guess.at) return;
+    guess.at = null;
+    guess.focusWhenDrawn = false;
+    guess.retries = 0;
+    guess.want = true;
+    drawGuess();
+    scheduleSettle(0);
+  }
+  /** Where a guess at `g` goes, in words, for the top line ("after the drive"). */
+  function placeWords(g) {
+    const owner = host.kindName(host.kindAt(g.op.key)) || "module";
+    if (g.op.op === "set_mod") return `on the ${owner}’s ${host.kindModTarget(host.kindAt(g.op.key)) || "modulation"}`;
+    if (g.op.op === "replace") return "in the empty socket";
+    return `after the ${owner}`;
+  }
 
   function nameOfKind(kind) {
     return host.kindName(kind) || String(kind).replace(/_/g, " ");
@@ -348,12 +398,23 @@ export function createPatch(host) {
     const svg = host.rackSvg();
     const read = $("guess-read");
     const g = topGuess();
-    const say = !g && guess.data && guess.epoch === epoch && !guess.skipping ? W.guessRefusal(guess.data) : null;
+    let say = !g && guessCurrent() && !guess.skipping ? W.guessRefusal(guess.data) : null;
+    // A place asked about: before the warm start the model says so (the
+    // output's guess says nothing then, but here the player asked), and
+    // while it is ranked, what it is doing.
+    const here = guess.at ? host.kindName(host.kindAt(guess.at)) || "module" : null;
+    if (here && !g && !say) {
+      say = guessCurrent() && guess.data && (guess.data.reason === "no_taste" || guess.data.reason === "no_patch")
+        ? "no guess yet: it needs a few picks first"
+        : guessCurrent() ? null : `hearing the modules that fit at the ${here}…`;
+    }
     // The line above the rack: GUESS · FILTER and the model's reason.
     if (read) {
+      read.classList.toggle("here", !!here);
       if (g) {
         read.replaceChildren(
           el("span", { class: "gr-chip", text: `guess · ${nameOfKind(g.kind)}` }),
+          ...(here ? [el("span", { class: "gr-at", text: placeWords(g) })] : []),
           el("span", { class: "gr-why", text: W.guessLine(g, guess.data.against, host.niceName) }),
         );
         read.hidden = false;
@@ -367,7 +428,12 @@ export function createPatch(host) {
     }
     drawRailMark(g);
     if (!svg) return;
-    svg.querySelector(":scope > g.rack-guess")?.remove();
+    // A redraw (a face landing beside it, the camera moving, the model view)
+    // replaces the plate: the keyboard standing on it stays on it.
+    const old = svg.querySelector(":scope > g.rack-guess");
+    const held = old && old.contains(document.activeElement);
+    const onSkip = held && document.activeElement.classList.contains("gp-skip");
+    old?.remove();
     if (!g) return;
     const at = placeOf(g);
     if (!at) return;
@@ -383,8 +449,8 @@ export function createPatch(host) {
     const plate = svgEl("g", {
       transform: `translate(${at.x},${at.y})`,
       role: "button", tabindex: "0",
-      "data-kind": g.kind, "data-family": g.family, "data-socket": g.socket,
-      "aria-label": `The model's guess: ${name}. ${W.guessLine(g, guess.data.against, host.niceName)}. Press Enter to add it.`,
+      "data-kind": g.kind, "data-family": g.family, "data-socket": g.socket, "data-at": guess.at || null,
+      "aria-label": `The model's guess${guess.at ? ` ${placeWords(g)}` : ""}: ${name}. ${W.guessLine(g, guess.data.against, host.niceName)}. Press Enter to add it.`,
     }, `guess-plate${at.over ? " over" : ""}`);
     plate.appendChild(svgEl("rect", { x: 0, y: 0, width: at.w, height: at.h, rx: 8 }, "gp-body"));
     const t1 = svgEl("text", { x: 14, y: 22 }, "gp-name");
@@ -417,9 +483,17 @@ export function createPatch(host) {
       if (ev.target !== plate) return;
       if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); takeGuess(); }
       else if (ev.key === "Delete" || ev.key === "Backspace") { ev.preventDefault(); ev.stopPropagation(); skipGuess(); }
+      // Esc on a guess asked for a place: back to the output's guess.
+      else if (ev.key === "Escape" && guess.at) { ev.preventDefault(); ev.stopPropagation(); clearHere(); }
     });
     layer.appendChild(plate);
     svg.appendChild(layer);
+    if (held) (onSkip ? x : plate).focus({ preventScroll: true });
+    else if (guess.focusWhenDrawn && guess.at) {
+      guess.focusWhenDrawn = false;
+      const a = document.activeElement;
+      if (!a || a === document.body || svg.contains(a)) plate.focus({ preventScroll: true });
+    }
     // The faces' hook (Plan-005 task 3, #102): the guess's candidate is a
     // real render in the engine's memo (`GuessCandidate::key`), so its face
     // is a measurement, not the specimen's estimate. Once faces exist the
@@ -1095,6 +1169,9 @@ export function createPatch(host) {
     }
     if (structural) {
       epoch += 1;
+      // A place asked about was a place in the structure that just changed:
+      // the guess goes back to the output's.
+      guess.at = null;
       probe.levels = null;
       probe.tree = null;
       probe.stale = false;
@@ -1232,6 +1309,9 @@ export function createPatch(host) {
     benchLanded,
     rackBuilt,
     modelViewChanged,
+    askHere,
+    clearHere,
+    asking: () => guess.at,
     platesMoved,
     cameraMoved,
     restLevel,

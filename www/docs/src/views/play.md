@@ -193,6 +193,19 @@ module, or open another sound).
 - On an empty patch, the percentage is over your pool's average sound, and the
   line says so.
 
+**What goes here?** The guess looks at the output. To ask about another
+place, select a module and choose **what goes here?** from its **⋯** (or press
+<kbd>Q</kbd> on it): the model ranks the modules that could go after it, on
+its modulation slot, or in it if the socket is empty (on a modulator, its
+module's slot), and draws its guess there, saying where (*GUESS · DELAY ·
+AFTER THE MIX*) with its reason. While it listens, the line says *hearing the
+modules that fit at the mix…*. Click it or press <kbd>Enter</kbd> to add it,
+**×** to skip it (the next for that place shows), and <kbd>Esc</kbd> on it to
+go back to the guess for the output, which also comes back after any change to
+the patch's structure. Before the warm start it says *no guess yet: it needs
+a few picks first*. It renders within the same budget as the guess at the
+output.
+
 It is worked out again after each change to the patch's structure and after
 each refit, never per knob turn: it renders the modules that could go at the
 output, all of them on a render crew where the machine has the cores, or the

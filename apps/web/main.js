@@ -14897,6 +14897,11 @@ function openStructMenu(mod, x, y) {
         run: () => armFromRack("insert", parentKey, { accepts: ["mod"], verb: "modulate" }),
       },
       {
+        label: "what goes here?",
+        sub: `the model’s guess for ${kindName(owner)}’s slot · Q`,
+        run: () => patchView.askHere(parentKey),
+      },
+      {
         label: "unplug this modulator",
         sub: "it’s set aside, and the knob stops moving",
         danger: true,
@@ -14971,6 +14976,14 @@ function openStructMenu(mod, x, y) {
     disabled: isPlaceholderKey(key),
     why: "this socket is empty: there is nothing here to listen to",
     run: () => togglePortTrace(mod),
+  });
+  // The model's guess for this place (`guess_rank`'s `at`): after it, on its
+  // modulation slot, or in it if the socket is empty. Drawn at the place,
+  // taken with Enter and skipped with ×, as the output's guess is.
+  rows.push({
+    label: "what goes here?",
+    sub: isPlaceholderKey(key) ? "the model’s guess for this socket · Q" : "the model’s guess for after it, or its slot · Q",
+    run: () => patchView.askHere(key),
   });
   if (ins === 2) {
     rows.push({
@@ -16159,7 +16172,8 @@ $("rack-svg").addEventListener("keydown", (e) => {
   // signal order, ↑/↓ into its modulators and back out, Home/End the first
   // module and the last (the amp, at OUT), Enter into its controls, F2 (or
   // the context-menu key) its structure menu, Delete removes it through the
-  // survivor choice, L locks it, / puts a module after it, Esc leaves it.
+  // survivor choice, L locks it, / puts a module after it, Q asks what goes
+  // here (C2b), Esc leaves it.
   if (plate && !e.target.closest?.("[data-addr], [data-stop]")) {
     const plates = platesInOrder();
     const i = plates.indexOf(plate);
@@ -16207,6 +16221,18 @@ $("rack-svg").addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
       else armFromRack("insert", "node");
+    } else if (e.key.toLowerCase() === "q" && !e.shiftKey && mod) {
+      // What goes here? (the ⋯'s row): the model's guess for this place. A
+      // modulator's place is its module's slot; the amp's input is where
+      // the guess looks already.
+      e.preventDefault();
+      e.stopPropagation();
+      if (mod.kind === "amp") nbAnnounce("The model’s guess already looks at the amp’s input.");
+      else {
+        const at = mod.is_mod ? key.replace(/\/m$/, "") : key;
+        patchView.askHere(at, { focus: true });
+        nbAnnounce(`Asking what goes at the ${mod.title || kindName(mod.kind)}.`);
+      }
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
       // `l` is a note too (D, an octave up): the lock must not also play it.
       e.preventDefault();
