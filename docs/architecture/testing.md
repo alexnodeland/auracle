@@ -160,6 +160,7 @@ waits run to two minutes).
 | Spec | Pins |
 | --- | --- |
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
+| `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off in the guide pill |

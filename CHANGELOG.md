@@ -237,6 +237,16 @@ changelog that edits its own past is not a record.
   guide say the same: a generation or a preset replaces the lowest-rated
   sounds it can, never a saved one, nor one kept as new before its first pick.
 
+### Added: `?seed=` deals a session you can share
+
+- **Add `?seed=` and a whole number to the address** (for example
+  `?seed=42`) and a fresh session deals the same pool of sounds on any
+  machine, so you can send someone the address and they start where you
+  did. What follows (pairs, refits, offers) draws from the same seed and
+  repeats when the same things happen in the same order. A saved session
+  comes back as it was. Which side of the table a sound stands on, and the
+  warm start's nine cards, are still shuffled.
+
 ### Added: ask a control what it does, and a lesson on filters
 
 - **Every control on PERFORM answers with a figure of what it does to the

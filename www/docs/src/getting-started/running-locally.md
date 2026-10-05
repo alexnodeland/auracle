@@ -152,6 +152,17 @@ For when the defaults are wrong for your machine:
 |---|---|
 | `?farm=k` | Use exactly `k` render workers. `0` boots without them |
 | `localStorage["auracle-renderers"]` | The same, kept |
+| `?seed=n` | Deal the session from the seed `n`, a whole number |
+
+Without `?seed`, every new session starts from a seed of its own. With it, a
+fresh session (nothing saved in this browser yet) deals the same pool of
+sounds on any machine and at any worker count, so you can send the address to
+someone and they start where you did. The pairs, refits and offers after that
+draw from the seed too, and repeat when the same things happen in the same
+order; a pair dealt before the pool has finished filling can still differ
+with the machine's speed. A saved session comes back as it was. Which side of
+the table a sound stands on, and the warm start's nine cards, are shuffled
+either way, so no side or card is favored.
 
 ```admonish info collapsible=true title="How it works: the same pool at any worker count"
 The pool is identical at every worker count, including zero: the draws are

@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-03
+last_updated: 2026-10-05
 related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
@@ -1099,6 +1099,23 @@ that pick commits (`settleFit`), so it keeps its window too.
 ## Modes
 
 - `?film` hides chrome that must not be on camera (the film chip).
+- `?seed=N` (a whole number up to 4294967295) is the session's seed
+  (`seedOverride` in `main.js`, read at boot beside `?farm`, never saved).
+  Without it every boot draws one from `Math.random`. The engine derives
+  every stream from it (fills, pairs, evolution, PERFORM; a fit from the seed
+  and its number of picks: ADR-001), so a fresh session with the same seed
+  deals the same pool at any farm width, and what follows repeats when the
+  same requests reach the engine in the same order. Timing can still move
+  it: a deal made while the pool is filling depends on how far it has got,
+  and each PERFORM walk takes its draw when it begins. A saved session comes
+  back as it was saved; only what is dealt after boot follows the seed. The
+  page's own draws stay random on purpose: which side of the table a sound
+  stands on (`placePair`), the warm start's nine cards (`warmSample`) and the
+  sides of the keep-as-new comparison, each there against position bias.
+  Nothing on screen names the seed or says how a session began, and a seeded
+  pair is still dealt at random by the engine, so the copy holds either way.
+  The browser specs boot with one (`tests/web/fixtures.js` `SEED`), so a
+  spec starts from the same pool on every run.
 - Booth mode (the ⋯ menu) plays itself when idle and hides links out of the
   instrument.
 - `window.__aur` is the debugging handle; browser tests wrap `Worker` instead

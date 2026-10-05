@@ -48,6 +48,14 @@ tablet whose shorter side is 620 px or more starts in either orientation.
 
 Add `?farm=0` to the address to boot without the render workers.
 
+## Showing someone a problem
+
+A bug that needs a particular pool or offer is easier to report when it can be
+dealt again. Open the instrument in a fresh profile (or a private window) with
+`?seed=` and any whole number in the address, for example `?seed=42`, and
+reproduce it there. The same address deals the same session for whoever opens
+it ([Overrides](getting-started/running-locally.md#overrides)).
+
 ## A rebuild changed nothing
 
 You are almost certainly serving with a cache. Use `make serve`, which tells

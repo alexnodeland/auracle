@@ -23357,6 +23357,20 @@ function farmOverride() {
   return null;
 }
 
+/** `?seed=N`: the session's seed, a whole number from 0 to 4294967295, or
+ *  null. The engine draws its pool, its pairs, its walks and its fits from
+ *  streams of this one number (ADR-001), so a fresh session with the same seed
+ *  deals the same sounds: a session can be shared, or replayed. The page's
+ *  own draws (which side of the table a sound stands on, the warm start's nine
+ *  cards, the sides of the keep-as-new comparison) stay random: they are there
+ *  against position bias. Read at boot, never saved. */
+function seedOverride() {
+  const raw = new URLSearchParams(location.search).get("seed");
+  if (raw == null || !/^\d+$/.test(raw.trim())) return null;
+  const n = Number(raw.trim());
+  return n <= 0xffffffff ? n : null;
+}
+
 // The width of a walk crew (a generation's walks, ⚡). The same rule as boot's,
 // except that one worker is worth having here: it takes the walk off the
 // engine worker, which then answers the player while it runs.
@@ -23555,7 +23569,9 @@ bootMidi();
   send(
     {
       type: "init",
-      seed: Math.floor(Math.random() * 2 ** 31),
+      // `?seed=N` deals a session that can be shared or replayed; otherwise
+      // every boot deals a new one.
+      seed: seedOverride() ?? Math.floor(Math.random() * 2 ** 31),
       poolSize: 40,
       // Hand the app over at 8 vetted patches and let the other 32 land behind
       // it. A duel needs a bank wide enough to hold an interesting question, not
