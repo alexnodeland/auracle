@@ -114,7 +114,7 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   whole pipeline (grammar edits, rendering and φ, the taste model, the
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js`, `patch.js`, `live-audio.js` or `explain.js`, to `crates/auracle-session` or
+  `farm.js`, `perform.js`, `patch.js`, `live-audio.js`, `explain.js`, `faces.js` or `vessel.js`, to the spec fixture (`tests/web/fixtures.js`), to `crates/auracle-session` or
   `crates/auracle-wasm`, to a spec file holding an `@slow` or `@quarantine`
   test, or to the suite's config and lockfile. Not `main.js`: every view
   lives there, so it would make nearly every app PR a slow run. A `main.js`
@@ -145,10 +145,13 @@ waits run to two minutes).
 
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
-  the machine. It boots them unseeded (`AURACLE_SEED=random`): the gate's
-  boots are seeded (`tests/web/fixtures.js` `SEED`, the same pool and
-  sides every run), so a spec that only holds for one pool shows up here. A failure files a *Flake hunt found a flaky test* issue whose
-  run links one report naming each failed test and which of its runs failed.
+  the machine. The specs on the fixture that name no seed of their own boot
+  unseeded there (`AURACLE_SEED=random`); on the gate they boot seeded
+  (`tests/web/fixtures.js` `SEED`, the same pool and sides every run), so a
+  spec that only holds for one pool shows up here. A spec that names its own
+  `random:` seed keeps it in both. A failure files a *Flake hunt found a
+  flaky test* issue whose run links one report naming each failed test and
+  which of its runs failed.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   timing bound with no slack ([Rules](#rules)).

@@ -77,6 +77,7 @@ const SEED = 20261005;
 const DEFAULT_SEED = (() => {
   const v = process.env.AURACLE_SEED;
   if (v === "random") return null;
+  if (v && !/^\d+$/.test(v)) console.warn(`AURACLE_SEED=${v} is neither "random" nor a whole number; using ${SEED}`);
   return v && /^\d+$/.test(v) ? Number(v) : SEED;
 })();
 

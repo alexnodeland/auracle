@@ -57,10 +57,11 @@ jobs:
 
       - uses: ./.github/actions/playwright
 
-      # Unseeded: the gate boots every spec seeded (tests/web/fixtures.js
-      # SEED, the same pool and sides each run), so the draws a seed holds
-      # still are shaken here, where a spec meets pools and offers it has
-      # not seen before.
+      # Unseeded: on the gate, a spec on the fixture that names no seed of
+      # its own boots seeded (tests/web/fixtures.js SEED, the same pool and
+      # sides each run). Here those boot unseeded, so a spec meets pools and
+      # offers it has not seen before. A spec that names its own `random:`
+      # seed keeps it.
       - uses: ./.github/actions/browser-shard
         env:
           AURACLE_SEED: random

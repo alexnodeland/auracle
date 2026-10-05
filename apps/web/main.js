@@ -23380,8 +23380,11 @@ function seedOverride() {
  *  but not `?seed`, which dealt the session being left: a reset deals a new
  *  pool. */
 function reloadAfresh({ keepHash = true } = {}) {
-  const kept = location.search.slice(1).split("&")
-    .filter((p) => p && decodeURIComponent(p.split("=")[0]) !== "seed").join("&");
+  // URLSearchParams, not a hand split: a malformed key (`?100%=x`) must not
+  // throw here, after the reset has already written its fresh state.
+  const params = new URLSearchParams(location.search);
+  params.delete("seed");
+  const kept = params.toString();
   const url = `${location.pathname}${kept ? `?${kept}` : ""}${keepHash ? location.hash : ""}`;
   try { history.replaceState(history.state, "", url); } catch { /* ignore */ }
   location.reload();
