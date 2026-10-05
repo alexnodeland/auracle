@@ -53,6 +53,13 @@ Plan-004 keeps its tasks. This plan changes what two of them target:
 
 ## Tasks
 
+Tasks still open, each an issue (`docs/process.md`):
+
+| Task | Issue | Status |
+| --- | --- | --- |
+| 8. Touch | #134 | not started (after the shell, Plan-008) |
+| 11. A sound of your own: the card | #133 | the engine and the worker are built; the card is not started |
+
 1. **Tokens from the specimen.**
    - The prototype's values go into `tokens.json`, completing Plan-004 task 1:
      - type: Jost, Plex Mono and Newsreader; a 1.2 ratio; 11 px labels and a

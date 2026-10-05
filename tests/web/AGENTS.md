@@ -15,7 +15,8 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   npx playwright test [spec.js ...] --reporter=line
 ```
 
-- **`AURACLE_TEST_PORT`** starts a server of the suite's own on that port.
+- **`AURACLE_TEST_PORT`** starts a server of the suite's own on that port
+  (the `make browser-*` targets use it too, when it is set).
   Without it the config reuses whatever answers on `:8642`, which from a
   worktree is often the main checkout, so a green run can be the wrong app.
 - **`one_browser.sh`** queues the run behind any rehearsal, recording or other

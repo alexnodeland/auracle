@@ -64,7 +64,8 @@ and printed key hints are built here; its other contracts stay in
      and fails when a token is redefined after its block.
    - *Still to do:* move the landing page, the brand page, the 404 and the
      films onto the scale (their counts are in the baseline, listed by every
-     `--check`). Not yet checked for colour (`NOT_YET` in `tokens.py`):
+     `--check`) (#145).
+     Not yet checked for colour (`NOT_YET` in `tokens.py`) (#146):
      `www/viz/viz.js` and `viz.css` (the grammar figure's tiles glow in the
      dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
      (a literal fallback for `--bezel`, which Paper lacks) and

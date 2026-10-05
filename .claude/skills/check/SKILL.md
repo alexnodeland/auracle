@@ -12,6 +12,11 @@ Run the smallest set of gates that proves the change, then `make check` before
 committing anything that touches Rust. The full table of gates and what each
 proves is `docs/architecture/testing.md`.
 
+CI is the gate for everything else: the full browser tier runs there, dealt to
+eight runners by time, and a PR that changes only specs runs only those specs.
+Locally, run what your change reaches, never the full browser suite
+(`docs/process.md` § Building).
+
 ## 1. See what changed
 
 ```bash
@@ -28,7 +33,9 @@ git diff --stat HEAD
 | φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
-| `apps/web/*.js`, `style.css`, `index.html` | `make web-check`, then the browser specs for the behaviour (the `browser-test` skill) |
+| `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed`, or by name for `main.js` (the `browser-test` skill) |
+| `tests/web/**` | the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
+| `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
 | `www/video/tools/**` | syntax (`node --check`, `py_compile`, `bash -n`) and a rehearsal of one shot that uses the tool |
@@ -40,6 +47,7 @@ git diff --stat HEAD
   unless a string changed: then `make dev-check` too, for the voice check.
 - A user-visible change also needs its descriptions updated (`truth-pass`)
   and a `CHANGELOG.md` entry (`changelog`).
+- `apps/web/style.css` or `main.js` changed: bump its `?b=` in `index.html`.
 
 ## Reporting
 

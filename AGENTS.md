@@ -77,13 +77,23 @@ contributor guide; this file does not repeat it.
    `docs:` …), an imperative subject, a body that says what was wrong and why
    this is the fix. User-visible changes get a `CHANGELOG.md` entry under
    `[Unreleased]`, written for someone who has never seen the repo.
+9. **Work flows through issues and reviewed PRs.** Outstanding work is a
+   GitHub issue. A change is built on its own `claude/<topic>` branch in its
+   own worktree. An agent commits there and never pushes, opens a PR or
+   merges; the operator does (a human contributor pushes their own branch).
+   Every branch an agent builds is reviewed before its PR, and a PR merges
+   only on a green `CI` check, which `main` requires of everyone. A flaky test is fixed or
+   quarantined with an issue, never retried. A new term, label or phrase that
+   `www/brand/voice.md`'s word table governs waits for the maintainer's
+   approval. The whole flow is [`docs/process.md`](docs/process.md); the
+   `ship` skill walks one task through it.
 
 ## Commands
 
 | When | Run |
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
-| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, wasm32 check, all tests) |
+| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, dev-check, wasm32 check, all Rust tests) |
 | After changing Rust the app calls | `make wasm` |
 | Only JS changed | `make web-check` |
 | One crate's tests | `cargo test -p auracle-<crate> --profile test-fast` |
@@ -93,8 +103,31 @@ contributor guide; this file does not repeat it.
 | The instrument, locally | `make serve`, then <http://localhost:8642> |
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
+| A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
+| A merge, once `CI` is green | `gh pr merge <n> --squash --match-head-commit <sha>` (the operator; [`docs/process.md`](docs/process.md#ci-and-merging)) |
 
 The `check` skill picks the right subset for what changed.
+
+## Tooling (`.claude/`)
+
+Claude Code loads these files through one-line `CLAUDE.md` shims (`@AGENTS.md`)
+beside each `AGENTS.md`; the rules live here, never in a `CLAUDE.md`. The setup
+in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
+
+- **Skills:** `auracle-strategy` (background), `check`, `wasm`, `browser-test`,
+  `truth-pass`, `changelog`, `film`, and `ship` (an issue to a merged PR).
+- **Agents:** `engine-engineer`, `web-engineer`, `docs-writer`,
+  `film-producer` build in their own worktree and commit only;
+  `truth-auditor` and `reviewer` are read-only. The operator pushes, opens the
+  PR and merges on a green check ([`docs/process.md`](docs/process.md)).
+- **Agents run on Opus** (`model: opus` in each definition).
+- **Hooks:** at session start, a report of a missing or stale
+  `apps/web/pkg` and of the browser queue; no hand edits under the five
+  generated paths (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
+  `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
+  `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
+  `cargo test` without `--release`, `--profile` or `--doc` refused on any
+  crate, and `playwright test` refused outside `one_browser.sh`.
 
 ## Where to go deeper
 
@@ -105,3 +138,4 @@ The `check` skill picks the right subset for what changed.
 - Why things are the way they are: [`docs/decisions/`](docs/decisions/) and the
   published [design decisions](https://auracle.alexnodeland.com/reference/design/decisions.html)
 - When something breaks: [`docs/runbooks/`](docs/runbooks/)
+- How a change gets from an issue to `main`: [`docs/process.md`](docs/process.md)

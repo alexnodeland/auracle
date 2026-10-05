@@ -22,7 +22,9 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
 ```
 
 - **Own port** (`AURACLE_TEST_PORT`), always from a worktree, and whenever
-  another server may be on `:8642`.
+  another server may be on `:8642`. A branch's brief gives it one (8771 and
+  up); set in the environment, it reaches `make browser-changed`,
+  `browser-fast` and `browser-slow` too.
 - **Through the queue** (`one_browser.sh`). Rehearsals and recordings may be
   ahead of you. Run it in the background and wait for it; do not start a
   second browser job.
@@ -30,20 +32,49 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   assertion failed; keep the log.
 - A spec's `test-results/` folder is overwritten by the next run: read
   failures before queueing another.
+- **Run what the change reaches, not the suite:** `make browser-changed`
+  (changed specs, the specs of a changed helper, the specs named for a changed
+  app module; `BASE=` to diff against something other than `origin/main`), or
+  name them (`npx playwright test patch_ perform_layout.spec.js`). The full
+  tier is CI's job: about seventy minutes in one worker, eight runners wide
+  there.
+
+## In CI
+
+- The fast tier (every spec not tagged `@slow` or `@quarantine`) is inside the
+  required `CI` check, dealt to eight runners by main's last timings
+  (`tests/web/shard.mjs`). A PR that changes only specs runs only those specs.
+- The *Slow suite* runs `@slow` and `@quarantine`; the nightly *Flake hunt*
+  runs the fast tier three times each.
+- A failed run's summary links one HTML report of every runner, with the
+  failed tests' traces: download it, then `npx playwright show-report <dir>`
+  in `tests/web`. `gh run view <id> --log-failed` shows the failing assertion.
 
 ## Write
 
 - Name the test for the behaviour: "a bank row's cut appears on hover and can
   be pressed".
-- Assert what a player sees or hears. Collect `pageerror` and expect none.
-- Wait for states; give timing assertions 1.5 s or more of slack, and accept
-  the app being faster than when the test was written.
-- Reuse the spec helpers (`boot(page, { warmed })`, seeded sessions) rather
-  than clicking through the warm start.
+- Assert what a player sees or hears; a worker message only when the message
+  is the behaviour (a request not sent twice, a stale reply refused).
+- Use the shared fixture when `tests/web/fixtures.js` is present: `app.boot()`
+  (seeded by default), typed waits (`app.reply`, `app.toast`, `app.level`),
+  `app.quiet()` for "nothing happens", `app.hold()` so an injected reply can't
+  be overwritten by the engine's own. It fails a test on any page error, so no
+  spec collects `pageerror` itself. Without it, reuse the spec helpers
+  (`boot(page, { warmed })`) and collect `pageerror`.
+- Wait for states, never times: no `waitForTimeout` except a named pacing
+  constant inside a gesture. Engine work is bounded by `offerBudget`
+  (`perform_budget.js`), not a guess. Give timing assertions 1.5 s or more of
+  slack, and accept the app being faster than when the test was written.
+- No exact count of something a slow runner may legitimately do twice.
+- A test over about 40 s on CI is tagged `@slow` (`tests/web/AGENTS.md`).
 
 ## A failure
 
 Decide whether it is the app, the test, or the machine. "Flaky" is not a
 cause: read the error, check the build id, rerun the one spec once through the
 queue. A spec that fails only under load needs slack or a state wait, not a
-retry.
+retry: there are no retries anywhere. A test that fails in CI only sometimes is
+fixed, or quarantined while it is fixed: a `flake` issue, the `@quarantine`
+tag with a comment naming it, the issue labelled `quarantined`
+(`docs/process.md` § Flakes). The fix removes the tag.

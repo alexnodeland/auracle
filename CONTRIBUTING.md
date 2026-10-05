@@ -63,6 +63,10 @@ www/                   the site: landing page + two mdBooks + the shared theme
 
 ## Workflow
 
+How a change moves from an issue to `main` (issues and labels, review before
+the PR, CI as the gate, merging, flaky tests, approvals for new words) is
+[`docs/process.md`](docs/process.md). This section is the commands.
+
 Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 `fix/arp-gate-length`, `docs/…`), then:
 
@@ -233,8 +237,10 @@ an alias for notes written before the rename).
 ## Pull requests
 
 1. Keep PRs focused; separate refactors from behavior changes.
-2. Run `make check` locally before pushing; it is exactly what CI enforces. If
-   you changed Rust that the web app uses, rebuild with `make wasm` and
+2. Run `make check` locally before you push your branch and open the PR: it
+   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, eight runners wide;
+   locally, run the specs your change reaches (`make browser-changed`). If you
+   changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it
    works, `www/docs/` for what the instrument *does*, `CHANGELOG.md` under
@@ -247,7 +253,9 @@ an alias for notes written before the rename).
    - `make site && make site-check` before pushing a docs change. CI runs both.
 4. Add or extend a **gate test** for new behavior. Property-style tests over
    random trees / synthetic users are preferred over mocks.
-5. CI must be green.
+5. CI must be green: `main` requires it, and nobody can merge past it. A PR
+   closes the issue it finishes (`Closes #N`); a small fix seen in passing may
+   stand alone.
 
 ### Commit messages
 

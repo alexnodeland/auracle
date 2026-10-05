@@ -13,6 +13,7 @@ FILES = sorted(
     set(glob.glob("**/AGENTS.md", recursive=True) + glob.glob("**/CLAUDE.md", recursive=True))
     | set(glob.glob("docs/**/*.md", recursive=True))
     | set(glob.glob(".claude/skills/*/SKILL.md") + glob.glob(".claude/agents/*.md"))
+    | set(glob.glob(".claude/README.md"))
 )
 SKIP = ("node_modules/", "target/", ".claude/worktrees/", "www/video/out/")
 FILES = [f for f in FILES if not f.startswith(SKIP) and not any(s in f for s in SKIP)]

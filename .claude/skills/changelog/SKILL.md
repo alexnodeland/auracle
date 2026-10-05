@@ -46,3 +46,10 @@ write for a player or a newcomer, not for the diff.
 
 Add to an existing theme heading when one fits (for instance the film-found
 fixes); otherwise start a new `###` section near the top of `[Unreleased]`.
+
+## When not
+
+A change no player, listener or reader of the site can notice gets no entry:
+CI and workflows, specs, refactors, agent docs and `docs/` (the process,
+ADRs, plans). Its PR body says what changed. A fix to something a player saw
+(a stuck status, a toast that never came) gets one, even when a test found it.
