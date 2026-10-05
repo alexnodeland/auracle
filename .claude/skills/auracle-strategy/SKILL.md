@@ -14,7 +14,7 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 
 ## Start here
 
-1. The root `AGENTS.md`: the map, the eight rules, the commands.
+1. The root `AGENTS.md`: the map, the nine rules, the commands.
 2. The `AGENTS.md` of the area you are changing (Claude Code loads it with the
    directory's `CLAUDE.md`): `crates/`, each crate, `apps/web`, `tests/web`,
    `www`, `www/video`.
@@ -31,6 +31,8 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 | Why is it built this way (engineering)? | `docs/decisions/` |
 | Why is it built this way (product, for players)? | `www/reference/src/design/decisions.md` |
 | Something broke in a known way | `docs/runbooks/` |
+| How does a change get from an issue to `main`? Who pushes, reviews, merges? | `docs/process.md`, or the `ship` skill |
+| What is left to do? | GitHub issues, by milestone (`gh issue list --milestone "<plan>"`) |
 | What does the app say it does? | `www/docs/src/views/*.md`, the films, the in-app copy |
 
 ## Invariants that catch people out
@@ -44,11 +46,16 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 - One browser job at a time, through `one_browser.sh`; suites from worktrees
   on their own port (ADR-010).
 - Descriptions stay true, and the app is fixed first (ADR-004).
+- Work flows through issues and reviewed PRs (ADR-019): agents commit in their
+  own worktree, the operator pushes and merges on a green check, a flaky test
+  is fixed or quarantined with an issue (never retried), and new player-facing
+  words wait for the maintainer.
 
 ## Skills and agents
 
 Skills: `check`, `wasm`, `browser-test`, `truth-pass`, `changelog`, `film`,
-`site`. Agents: `engine-engineer`, `web-engineer`, `film-producer`,
+`ship`. Agents: `engine-engineer`, `web-engineer`, `film-producer`,
 `docs-writer`, `truth-auditor`, `reviewer`. The root `CLAUDE.md` says when to
 use each. Record a new engineering decision with `/new-adr` (principled-docs)
-and a change worth arguing about first with `/new-proposal`.
+and a change worth arguing about first with `/new-proposal`; outstanding work
+goes in a GitHub issue (`docs/process.md` § Issues).
