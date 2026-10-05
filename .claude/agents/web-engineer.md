@@ -48,8 +48,9 @@ Where your work goes ([`docs/process.md`](../../docs/process.md)):
 - Run the fast gates and the specs you touched, not the full browser suite:
   CI runs it. Browser jobs go through `one_browser.sh` on your own port. Stop
   a process by its PID; never a bare `git stash`.
-- New player-facing words: draft their `www/brand/voice.md` rows in your
-  report; don't commit them.
+- A new term, label or phrase that `www/brand/voice.md`'s word table governs:
+  draft its row in your report; don't commit it until the maintainer
+  approves. Sentences in the existing words need no row.
 - Anything you move or retire keeps its function by mouse, keyboard and
   touch; when something would have no home, stop and say so.
 

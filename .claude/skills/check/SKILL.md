@@ -35,7 +35,7 @@ git diff --stat HEAD
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
 | `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed`, or by name for `main.js` (the `browser-test` skill) |
 | `tests/web/**` | the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
-| `.github/workflows/**`, `.github/actions/**` | `actionlint`; the PR's own CI run is the test (a workflow change runs everything) |
+| `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
 | `www/video/tools/**` | syntax (`node --check`, `py_compile`, `bash -n`) and a rehearsal of one shot that uses the tool |
