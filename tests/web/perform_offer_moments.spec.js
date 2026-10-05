@@ -92,6 +92,7 @@ const faceBox = (page) => page.locator(".pf-faces > .pf-face").evaluate((e) => {
 const anims = (page) => page.evaluate(() => window.__anims.slice());
 
 test("an offer grows from the sound in hand, fills when taken, and folds back when passed", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 50 to 62 s on CI: three offers grown
   await boot(page, app);
   const OFFER_MS = await openOnPerform(app, "Glass Pad", 3);
   await page.keyboard.down("a");
@@ -156,6 +157,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
 });
 
 test("an offer taken unheard becomes the sound but records no pick; heard, it records one", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(110_000); // about 37 to 53 s on CI: two offers, and a take's window watched
   await boot(page, app);
   const OFFER_MS = await openOnPerform(app, "Glass Pad", 2);
   const recorded = async () => (await records(app)).length;

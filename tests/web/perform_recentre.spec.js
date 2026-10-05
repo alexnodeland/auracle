@@ -43,6 +43,7 @@ async function drag(page, loc, dy) {
 }
 
 test("a re-centred control glides home with a fading ghost, and a background re-check leaves it where it is", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(100_000); // about 36 to 45 s on CI: two background re-checks
   await boot(page, app);
   await app.openOnPerform("Glass Pad");
   // Two background re-checks are waited for below, each a measurement

@@ -59,6 +59,7 @@ const measured = (app) =>
   );
 
 test("the palette places, hides and orders up to eight controls, and the panel comes back after a reload", async ({ page, app }) => {
+  test.setTimeout(100_000); // about 42 to 49 s on CI: a measurement, a knob in PATCH, and a reload
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   expect(await deckNames(page)).toEqual(["Bright", "Snap", "Motion", "Body", "Grit", "Space"]);
@@ -144,6 +145,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
 });
 
 test("a placed control is measured with the panel's set, keyed by that set, and says listening… until it is", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(150_000); // about 51 to 72 s on CI: three sets measured
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   // From a settled sound: the six's background re-check is done first.

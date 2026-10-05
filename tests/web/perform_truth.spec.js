@@ -278,6 +278,7 @@ test("after a pass, Blend comes home", async ({ page, app }) => {
 });
 
 test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(100_000); // about 38 to 45 s on CI: a drift behind the shipped wiring's re-check
   await boot(page, app);
   await app.openOnPerform("Glass Pad", { wired: true });
   // A drift waits behind the shipped wiring's background re-check, then

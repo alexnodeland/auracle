@@ -32,6 +32,7 @@ async function drag(page, loc, dy) {
 }
 
 test("a search control's offer is aimed the way it was turned, and B says how far it went", async ({ page, app }) => {
+  test.setTimeout(100_000); // about 43 to 46 s on CI: an aimed offer and a plain one grown
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad", { wired: true });
   // Two offers grown below, an aimed one (up to three walks) and a plain one.

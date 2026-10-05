@@ -150,6 +150,7 @@ test("each control on the panel opens its figure, by ?, by its chip, and from th
 });
 
 test("every control in the palette opens its figure", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(190_000); // about 81 to 92 s on CI: eighteen figures, each measured
   await boot(page, app);
   await openOnPerform(app, "Glass Pad");
   const row = (name, placed) => page.locator(`.pp-row${placed ? ".on" : ":not(.on)"}`, { has: page.locator(".pp-name", { hasText: new RegExp(`^${name}$`) }) });

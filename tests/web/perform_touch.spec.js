@@ -120,6 +120,7 @@ test("on a touch screen EVOLVE's corner and what each generation did answer a ta
 // sends them (CDP touch events), with a note sounding. B was heard, so PASS
 // counts it as a pick for what you had.
 test("on a touch screen PEEK held with a finger plays B", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(110_000); // about 41 to 50 s on CI: an offer grown
   await boot(page, app);
   await glassPad(page, app);
   const OFFER_MS = await app.offerBudget({ waits: 1 });

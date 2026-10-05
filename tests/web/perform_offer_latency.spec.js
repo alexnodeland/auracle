@@ -75,6 +75,7 @@ async function pageQuiet(app) {
 const reply = (app, type, req, timeout) => app.reply(type, { where: { req }, timeout });
 
 test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 32 to 64 s on CI: the page's own work done first, and the steps measured
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const [{ tree }] = await app.sent({ type: "perform_wire", tree: true });

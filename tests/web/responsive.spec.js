@@ -189,9 +189,9 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
 // here a drift of the same patch, posted the way Wander posts one, landed
 // before it.
 test("a Take's measurement is the player's again when PERFORM comes back into sight", { tag: "@slow" }, async ({ page, app }) => {
-  // The step `app.offerBudget` measures, on an engine slowed fourfold, is
-  // seconds the engine waits add nothing for.
-  test.setTimeout(180_000);
+  // About 62 to 202 s on CI: the engine slowed fourfold, and the step
+  // `app.offerBudget` measures on it is not an engine wait the fixture credits.
+  test.setTimeout(400_000);
   // The engine slowed fourfold, so the measurement is still running when
   // PERFORM is back (AURACLE_CPU_THROTTLE takes over when it is larger).
   await boot(page, app, { slowEngine: 4 });

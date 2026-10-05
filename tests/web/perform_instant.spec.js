@@ -26,6 +26,7 @@ const acid = shipped.presets.find((p) => p.name === "Acid Line");
 const acidKey = JSON.stringify(JSON.parse(acid.tree), (k, v) => (k === "uid" ? undefined : v));
 
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 63 s on CI: two patches measured, and a reload
   await page.route("**/perform-wirings.json*", (r) => r.abort());
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
@@ -149,6 +150,7 @@ test("a preset opened before plays at once after a reload, however busy the engi
 // every message to the engine is held after each, so nothing the engine does
 // can be what plays or wires the patch.
 test("a preset opened, or a patch measured, just before a reload is remembered after it", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(100_000); // about 28 to 49 s on CI: a measurement, and two reloads
   await page.route("**/perform-wirings.json*", (r) => r.abort());
   // From the click, with the engine held: the voices play `name`, and with
   // `perform`, PERFORM's controls are wired to it.
@@ -224,6 +226,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
 });
 
 test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 36 to 61 s on CI: a spare grown behind the shipped wiring's re-check
   // Counts the offers the engine hands back, to know when the spare is here
   // (a state, not a guess at how long a loaded machine takes to grow one);
   // the page's own, not perform_budget.js's probes (ids from 8_800_000).
@@ -253,6 +256,7 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
 // before the namespace joined the tag stamped one: the bare observation count,
 // which a fresh profile matches.
 test("a kept wiring from another build's DSP plays at once and is re-measured", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(180_000); // about 23 to 88 s on CI: a re-measurement of Acid Line
   await page.addInitScript(([key, data]) => {
     localStorage.setItem("auracle-perform-wirings", JSON.stringify([[key, { data, rev: 0 }]]));
   }, [acidKey, acid.data]);

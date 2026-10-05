@@ -49,6 +49,7 @@ async function peek(page) {
 const spares = async (app) => (await app.replies("perform_offered")).filter((r) => r.req < 8_000_000 && r.offer && r.offer.tree).length;
 
 test("the second offer is as fast as the first, and a pass says what it did and can be undone", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(210_000); // about 91 to 103 s on CI: two spares grown, and 17 s of pass windows watched
   await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   // Two spares waited for: each behind whatever the engine has queued (the
