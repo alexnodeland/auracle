@@ -6825,7 +6825,9 @@ function renderBelief() {
     el.innerHTML = wb.subjectId == null
       ? ""
       : `<span class="bl-none">${why}</span>`;
-    renderSpecDock();
+    // The readout says what adds up to this only under the model view: at
+    // rest it is not redrawn (it is a live region) for a line it does not show.
+    if (modelOn) renderSpecDock();
     return;
   }
   el.classList.toggle("stale", belief.stale);
@@ -6848,7 +6850,7 @@ function renderBelief() {
   el.innerHTML =
     `<span class="bl-voice">it’d like this</span> <b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span>${was}${arrow}` +
     (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
-  renderSpecDock();
+  if (modelOn) renderSpecDock();
 }
 
 /** What adds up to the belief line, for the readout under the model view
