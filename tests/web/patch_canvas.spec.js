@@ -225,9 +225,11 @@ test("L locks the selected module, its edge goes solid amber, and ⚡'s ▾ clea
   await expect(page.locator("#rack-meta")).not.toContainText("locked");
 });
 
-// Quarantined (#150): about 1 run in 4 a label in the dealt sound's opening
-// fit falls under the 7.5 px floor.
-test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", { tag: "@quarantine" }, async ({ page, app }) => {
+// Read once the open has landed on its fit (`openPreset` waits for the rack
+// at rest): the camera travels there from the sound before's fit, and mid-way
+// its zoom is between the two's. From a sound before larger than Reese (the
+// seeded boot's has fifteen modules) every label is under the floor there.
+test("at 1440 the opening fit prints every module's name, its setting and each knob's value and name at a size you can read", async ({ page, app }) => {
   await app.boot();
   await openPreset(app, "Reese");
   await expect(page.locator("#rack-svg .rack-plates g[data-key]").first()).toBeVisible();
@@ -280,12 +282,18 @@ test("the amp's envelope figure follows its knobs", async ({ page, app }) => {
   await expect.poll(() => fig.getAttribute("d")).not.toBe(d0);
 });
 
+// Reese's own cables (`[data-from]`: the sound before's fade out beside
+// them), once the open's motion is over (`openPreset` waits for the rack at
+// rest). On the way the amp, the one plate kept from the sound before,
+// slides from where that sound had it to Reese's; from a sound narrower
+// than Reese it passes Reese's last module, and for those frames the cable
+// into it is routed around the plates.
 test("audio cables curve between the jacks, a two-input module names its inputs outside the plate, and the modulation cable's words show", async ({ page, app }) => {
   await app.boot();
   await openPreset(app, "Reese");
   const got = await page.evaluate(() => {
     const svg = document.getElementById("rack-svg");
-    const audio = [...svg.querySelectorAll("path.wire.audio")].map((p) => p.getAttribute("d"));
+    const audio = [...svg.querySelectorAll("path.wire.audio[data-from]")].map((p) => p.getAttribute("d"));
     const mix = svg.querySelector('g.mod-group[data-kind="mix"]');
     const ins = [...(mix?.querySelectorAll(".jack[data-childkey] text") || [])].map((t) => ({ text: t.textContent, x: Number(t.getAttribute("x")) }));
     const label = svg.querySelector(".mod-cable-label");
