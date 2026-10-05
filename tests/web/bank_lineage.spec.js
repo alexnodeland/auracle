@@ -18,36 +18,27 @@
 //   child the pool would not take buds beside its seed and is gone; Replaced
 //   names, and only names, what its end replaced.
 //
-// The engine worker is reached the way failure_flows.spec.js reaches it: by
-// wrapping `Worker` before main.js runs. Where a test needs a state the
-// engine reaches only by chance (a refused child, a given pair of seeds), it
-// is posted to main.js as the worker would post it. Sessions are seeded (the
-// films' own Math.random), so the pool is the same run to run.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+// The engine's replies are read through the fixture's tap (fixtures.js).
+// Where a test needs a state the engine reaches only by chance (a refused
+// child, a given pair of seeds), it is posted to main.js as the worker would
+// post it (`app.inject`). Sessions are seeded (the films' own Math.random),
+// so the pool is the same run to run.
+const { test, expect, goLevel } = require("./fixtures");
 
-const SEED = `(() => { let s = 20260928 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
-
-const init = `(() => {
-  const Orig = window.Worker;
-  const workers = (window.__pwWorkers = []);
-  const last = (window.__pwLast = {});
-  const counts = (window.__pwCounts = {});
-  const log = (window.__pwLog = []);
-  // The engine's facts as main.js last heard them: the ranked rows, the
-  // lineage, the ratings and the status, whichever message carried them.
-  // \`names\`: every sound's name as last seen in any ranked list, kept after
-  // it leaves (a seed replaced, a member the fill added after a test began).
-  const state = (window.__pwState = { ranked: null, lineage: null, ratings: null, status: null, views: null, genSeeds: null, names: {} });
-  // The bank's marks as each walk of a generation leaves them, read the moment
-  // main.js has handled the walk's \`refine_child\`, however fast the walks
-  // land: by a listener added after main.js's \`onmessage\` (at the first
-  // message, by which time main.js has set it), so it runs after it.
+// What this spec watches besides the engine's replies, wrapped outside the
+// tap: the bank's marks as each walk of a generation leaves them, every
+// phrase that starts sounding, every bud, and what EVOLVE POOL said.
+const WATCH = `(() => {
+  // The marks, read the moment main.js has handled the walk's
+  // \`refine_child\`, however fast the walks land: by a listener added after
+  // main.js's \`onmessage\` (at the first message, by which time main.js has
+  // set it), so it runs after it.
   const marks = (window.__pwMarks = []);
   const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
   const after = (e) => {
     const d = e.data;
-    if (!d || d.type !== "refine_child" || d.pwFake) return;
+    if (!d || d.type !== "refine_child" || e.__tapInjected) return;
+    const status = window.__tap.facts.status;
     marks.push({
       index: d.index,
       child: d.child,
@@ -56,7 +47,7 @@ const init = `(() => {
       // main.js was posted counted (a status predating the open generation
       // counts it out).
       gens: (document.getElementById("gen-count") || {}).textContent,
-      statusGen: state.status ? state.status.generation : null,
+      statusGen: status ? status.generation : null,
       retiring: d.retiring || [],
       breeding: !!document.querySelector("#evolve-btn.breeding"),
       rows: ids("[data-id]"),
@@ -66,48 +57,20 @@ const init = `(() => {
       words: [...new Set([...document.querySelectorAll("#bank-list .bank-item.may-go .bi-flag")].map((e) => e.textContent))],
     });
   };
+  const Orig = window.Worker;
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
-    w.__pwUrl = String(url);
-    workers.push(w);
-    w.addEventListener("message", (e) => {
-      if (!w.__pwAfter) {
-        w.__pwAfter = true;
+    if (/worker\\.js/.test(String(url))) {
+      const first = () => {
+        w.removeEventListener("message", first);
         w.addEventListener("message", after);
-      }
-      const d = e.data;
-      if (!d || typeof d.type !== "string" || d.pwFake) return;
-      // A generation's seeds, as its progress posts them (\`refine_jobs\`'
-      // parents, job i walking from seeds[i]).
-      if (d.type === "refine_progress" && !state.genSeeds && Array.isArray(d.seeds)) state.genSeeds = d.seeds.slice();
-      last[d.type] = d;
-      counts[d.type] = (counts[d.type] || 0) + 1;
-      if (d.views) {
-        state.views = d.views;
-        state.ranked = d.views.ranked;
-        state.lineage = d.views.lineage;
-        if (d.views.ratings) state.ratings = d.views.ratings;
-      }
-      if (d.ranked) state.ranked = d.ranked;
-      for (const r of (d.views && d.views.ranked) || d.ranked || []) if (r && r.name != null) state.names[r.id] = r.name;
-      if (d.lineage) state.lineage = d.lineage;
-      if (d.ratings) state.ratings = d.ratings;
-      if (d.status && typeof d.status === "object") state.status = d.status;
-      log.push({ type: d.type, at: performance.now(), index: d.index, child: d.child, reason: d.reason, seed: d.seed, retiring: d.retiring, generation: d.generation });
-    });
-    const post = w.postMessage.bind(w);
-    w.postMessage = (m, t) => {
-      if (m && m.type) {
-        counts["sent:" + m.type] = (counts["sent:" + m.type] || 0) + 1;
-        log.push({ type: "sent:" + m.type, at: performance.now(), id: m.id });
-      }
-      return post(m, t);
-    };
+      };
+      w.addEventListener("message", first);
+    }
     return w;
   }
   Wrapped.prototype = Orig.prototype;
   window.Worker = Wrapped;
-  window.__pwEngine = () => workers.find((w) => /worker\\.js/.test(w.__pwUrl)) || null;
   // Every phrase that starts sounding: what a player hears from a ▶.
   const starts = (window.__pwStarts = []);
   const start = AudioBufferSourceNode.prototype.start;
@@ -131,37 +94,23 @@ const init = `(() => {
     const btn = document.getElementById("evolve-btn");
     if (btn) new MutationObserver(() => said.push(btn.textContent.trim())).observe(btn, { childList: true, subtree: true, characterData: true });
   });
-  try {
-    for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured", "auracle-warmed"]) localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page) {
-  const pageErrors = [];
-  page.on("pageerror", (err) => pageErrors.push(err.message));
-  await page.addInitScript(SEED);
-  await page.addInitScript(init);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  return pageErrors;
+/** Boot, seeded, with the watchers on. */
+async function boot(page, app) {
+  await page.addInitScript(WATCH);
+  await app.boot({ random: 20260928 });
 }
 
 /** Boot, make six picks in EVOLVE and wait for their refit: a model with
  *  seeds to name and sounds it may replace. */
-async function taught(page) {
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await goLevel(page, "evolve");
-  for (let i = 1; i <= 6; i++) {
-    await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
-    await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
-  }
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  await expect(page.locator("#job-slot")).toBeHidden({ timeout: 30_000 });
+async function taught(page, app) {
+  await boot(page, app);
+  await app.teach(6);
   // The picks' undo windows close, and their ratings land.
-  await expect.poll(() => page.evaluate(() => (window.__pwState.ratings ? window.__pwState.ratings.seeds.length : 0)), { timeout: 30_000 }).toBe(10);
-  await fullPool(page);
-  return pageErrors;
+
+  await app.engine((timeout) => expect.poll(async () => ((await app.facts()).ratings || { seeds: [] }).seeds.length, { timeout }).toBe(10), { ms: 30_000 });
+  await fullPool(app);
 }
 
 /** The fill done: the pool at its size. The app is playable at 8 sounds and
@@ -169,19 +118,21 @@ async function taught(page) {
  *  be going after six picks and a refit. A generation or a ⚡ child replaces
  *  nothing while the pool is under size, and the ranked rows a test reads at
  *  its start would miss the members still to come. */
-async function fullPool(page) {
-  const at = await page.evaluate(() => window.__pwState.status && `${window.__pwState.status.pool}/${window.__pwState.status.pool_target}`);
-  console.log(`pool after the picks: ${at}`);
-  await expect.poll(() => page.evaluate(() => {
-    const s = window.__pwState.status;
-    return !!s && s.pool_target > 0 && s.pool >= s.pool_target;
-  }), { timeout: 300_000, message: "the pool never filled" }).toBe(true);
+async function fullPool(app) {
+  const s = (await app.facts()).status;
+  console.log(`pool after the picks: ${s && `${s.pool}/${s.pool_target}`}`);
+  await app.fullPool({ timeout: 300_000 });
 }
 
-/** Post a message to main.js as the engine worker would. */
-const inject = (page, data) =>
-  page.evaluate((d) => window.__pwEngine().dispatchEvent(new MessageEvent("message", { data: { ...d, pwFake: true } })), data);
-const state = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__pwState)));
+/** The engine's facts with the ranked list whole (40 sounds), once they are. */
+async function whole(app, what = "status") {
+  await app.engine((timeout) => expect.poll(async () => {
+    const f = await app.facts();
+    return !!(f.ranked && f.ranked.length >= 40 && f[what]);
+  }, { timeout }).toBe(true), { ms: 60_000 });
+  return app.facts();
+}
+
 const rowIds = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((e) => Number(e.dataset.id)));
 const marked = (page, cls) =>
@@ -200,9 +151,9 @@ const nameBox = (page, id) =>
     return { x: Math.round((q.left - b.left) * 10) / 10, w: Math.round(q.width * 10) / 10, cut: n.scrollWidth > n.clientWidth + 0.5 };
   }, id);
 /** A child landing as the worker posts it (`genLanded`), at the top of New. */
-async function landChild(page, child, { seed, generation, index = 0, reason = null } = {}) {
-  const s = await state(page);
-  await inject(page, {
+async function landChild(app, child, { seed, generation, index = 0, reason = null } = {}) {
+  const s = await app.facts();
+  await app.inject({
     type: "refine_child",
     generation: generation ?? (s.status.generation || 0) + 1,
     index,
@@ -221,27 +172,26 @@ async function landChild(page, child, { seed, generation, index = 0, reason = nu
 
 /** Boot to a full pool, without a fit (a state main.js reads ratings into),
  *  and go to EVOLVE, where EVOLVE POOL is. */
-async function pooled(page) {
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.status, null, { timeout: 60_000 });
+async function pooled(page, app) {
+  await boot(page, app);
+  await whole(app, "status");
   await goLevel(page, "evolve");
   await expect(page.locator("#evolve-wrap")).toBeVisible();
-  return pageErrors;
 }
 /** The ratings a pick's reply carries (`WasmEngine::belief`), naming the
  *  seeds and what may be replaced. */
-async function rate(page, { seeds = [], may = [] }) {
-  const s = await state(page);
-  await inject(page, { type: "status", status: s.status, ratings: { ranked: [], seeds, may_replace: may } });
+async function rate(app, { seeds = [], may = [] }) {
+  const s = await app.facts();
+  await app.inject({ type: "status", status: s.status, ratings: { ranked: [], seeds, may_replace: may } });
 }
 
-test("pointing at EVOLVE POOL marks the seeds the engine names, and only those", async ({ page }) => {
-  const pageErrors = await pooled(page);
+test("pointing at EVOLVE POOL marks the seeds the engine names, and only those", async ({ page, app }) => {
+  await pooled(page, app);
   const shown = await rowIds(page);
   // Three the engine names as the next generation's seeds (`ratings.seeds`):
   // from the foot of the list, where no rule of the bank's own would look.
   const chosen = shown.slice(-3);
-  await rate(page, { seeds: chosen });
+  await rate(app, { seeds: chosen });
   await page.locator("#evolve-wrap").hover();
   await expect.poll(() => marked(page, "seed")).toEqual(sorted(chosen));
   for (const id of chosen) {
@@ -251,22 +201,21 @@ test("pointing at EVOLVE POOL marks the seeds the engine names, and only those",
   }
   // A pick's ratings name others, and the marks follow them at once.
   const next = shown.slice(4, 6);
-  await rate(page, { seeds: next });
+  await rate(app, { seeds: next });
   await expect.poll(() => marked(page, "seed")).toEqual(sorted(next));
   // Away from the button, nothing is marked.
   await page.mouse.move(5, 5);
   await expect.poll(() => marked(page, "seed")).toEqual([]);
   await expect(page.locator("#bank-list .bi-flag:visible")).toHaveCount(0);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("pointing at EVOLVE POOL marks what the engine says may be replaced", async ({ page }) => {
-  const pageErrors = await pooled(page);
+test("pointing at EVOLVE POOL marks what the engine says may be replaced", async ({ page, app }) => {
+  await pooled(page, app);
   const shown = await rowIds(page);
   // Two the engine says a generation may replace (`ratings.may_replace`):
   // from the top of the list, which the ten lowest by mean never are.
   const chosen = shown.slice(1, 3);
-  await rate(page, { may: chosen });
+  await rate(app, { may: chosen });
   await page.locator("#evolve-wrap").hover();
   await expect.poll(() => marked(page, "may-go")).toEqual(sorted(chosen));
   await expect(row(page, chosen[0]).locator(".bi-flag")).toHaveText("may be replaced");
@@ -274,24 +223,23 @@ test("pointing at EVOLVE POOL marks what the engine says may be replaced", async
   // The dashed rail carries it too, not only the word.
   expect(await row(page, chosen[0]).evaluate((e) => getComputedStyle(e).borderLeftStyle)).toBe("dashed");
   const next = shown.slice(-2);
-  await rate(page, { may: next });
+  await rate(app, { may: next });
   await expect.poll(() => marked(page, "may-go")).toEqual(sorted(next));
   await page.mouse.move(5, 5);
   await expect.poll(() => marked(page, "may-go")).toEqual([]);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
 // At the widest bank (1440 px) and the narrowest it has (1080 px, 200 px).
 for (const [width, height] of [[1440, 900], [1080, 800]]) {
-test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and may be replaced (${width} px)`, async ({ page }) => {
+test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and may be replaced (${width} px)`, async ({ page, app }) => {
   await page.setViewportSize({ width, height });
-  const pageErrors = await pooled(page);
+  await pooled(page, app);
   const shown = await rowIds(page);
   const [seed, may, kid] = [shown[1], shown[2], shown[3]];
   const before = { seed: await nameBox(page, seed), may: await nameBox(page, may), kid: await nameBox(page, kid) };
 
   // Seed and may be replaced, while EVOLVE POOL is pointed at.
-  await rate(page, { seeds: [seed], may: [may] });
+  await rate(app, { seeds: [seed], may: [may] });
   await page.locator("#evolve-wrap").hover();
   await expect(row(page, seed)).toHaveClass(/\bseed\b/);
   await expect(row(page, may)).toHaveClass(/\bmay-go\b/);
@@ -299,7 +247,7 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   await page.mouse.move(5, 5);
 
   // NEW and the unheard dot: the sound lands as a child of a generation.
-  await landChild(page, kid, { seed });
+  await landChild(app, kid, { seed });
   await expect(row(page, kid).locator(".bi-new")).toHaveText("new");
   await expect(row(page, kid).locator(".bi-dot")).toBeVisible();
   const landed = await nameBox(page, kid);
@@ -316,7 +264,7 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   await row(page, kid).hover();
   await row(page, kid).locator(".bi-hear").click();
   await page.mouse.move(5, 5);
-  await expect(row(page, kid).locator(".bi-dot")).toHaveCount(0, { timeout: 30_000 });
+  await app.engine((timeout) => expect(row(page, kid).locator(".bi-dot")).toHaveCount(0, { timeout }), { ms: 30_000 });
   const heard = await nameBox(page, kid);
   console.log(`name boxes: ${JSON.stringify({ before, hovered, landed, heard, gap })}`);
 
@@ -339,7 +287,7 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   // and gives that end to the row's actions when they show: never under or
   // over save and cut. EVOLVE POOL focused marks the rows, and the pointer on
   // the row shows its actions.
-  await rate(page, { may: [may] });
+  await rate(app, { may: [may] });
   await page.locator("#evolve-btn").focus();
   await expect(row(page, may)).toHaveClass(/\bmay-go\b/);
   await expect(row(page, may).locator(".bi-flag")).toBeVisible();
@@ -359,40 +307,35 @@ test(`a mark never moves or narrows a row's name: the unheard dot, NEW, seed and
   await expect(row(page, may).locator(".bi-acts")).toHaveCSS("opacity", "1");
   await expect(row(page, may).locator(".bi-flag")).toBeHidden();
   await page.mouse.move(5, 5);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 }
 
-test("a child keeps its unheard dot across a reload, and loses it when its phrase is heard", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await pooled(page);
+test("a child keeps its unheard dot across a reload, and loses it when its phrase is heard", async ({ page, app }) => {
+  await pooled(page, app);
   const shown = await rowIds(page);
   const [seed, kid] = [shown[0], shown[5]];
-  const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
-  await landChild(page, kid, { seed });
+  await landChild(app, kid, { seed });
   await expect(row(page, kid).locator(".bi-dot")).toBeVisible();
   await expect(row(page, kid)).toHaveAttribute("aria-label", /not heard yet/);
-  // The autosave (2.5 s after a change) writes it; the page then reloads.
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
-  await page.waitForTimeout(1_000);
+  // The autosave (2.5 s after a change) writes it to this browser's storage;
+  // the page then reloads.
+  await app.engine((timeout) => expect.poll(async () => ((await app.savedUi()) || {}).unheard || [], { timeout }).toContain(kid), { ms: 30_000 });
   await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  await expect(row(page, kid).locator(".bi-dot")).toBeVisible({ timeout: 30_000 });
+
+  await app.booted();
+  await app.engine((timeout) => expect(row(page, kid).locator(".bi-dot")).toBeVisible({ timeout }), { ms: 30_000 });
   // Its phrase plays: heard.
   const starts = await page.evaluate(() => window.__pwStarts.length);
   await row(page, kid).hover();
   await row(page, kid).locator(".bi-hear").click();
-  await expect.poll(() => page.evaluate(() => window.__pwStarts.length), { timeout: 30_000 }).toBeGreaterThan(starts);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwStarts.length), { timeout }).toBeGreaterThan(starts), { ms: 30_000 });
   await expect(row(page, kid).locator(".bi-dot")).toHaveCount(0);
   await expect(row(page, kid)).not.toHaveAttribute("aria-label", /not heard yet/);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("Compare shows a child beside its seed, what changed and both ratings, and plays both while both exist", async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.views, null, { timeout: 60_000 });
-  const s = await state(page);
+test("Compare shows a child beside its seed, what changed and both ratings, and plays both while both exist", async ({ page, app }) => {
+  await boot(page, app);
+  const s = await whole(app, "views");
   const [seed, kid] = [s.ranked[1], s.ranked[3]];
   // The lineage event the engine records for a bred child (`LineageEvent`):
   // its seed, what changed, and what the model rated each when it bred them.
@@ -405,7 +348,7 @@ test("Compare shows a child beside its seed, what changed and both ratings, and 
     ],
     parent_utility: 0.4, child_utility: 0.1,
   };
-  await inject(page, { type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
+  await app.inject({ type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
   const from = row(page, kid.id).locator(".bi-from");
   await expect(from).toHaveText(new RegExp(`^from ${reEsc(seed.name)} · \\+delay, cutoff `));
   await from.click();
@@ -426,37 +369,35 @@ test("Compare shows a child beside its seed, what changed and both ratings, and 
   const hearKid = box.locator(`.cmp-hear[data-id="${kid.id}"]`);
   const n0 = await page.evaluate(() => window.__pwStarts.length);
   await hearSeed.click();
-  await expect(hearSeed).toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(hearSeed).toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
   await hearKid.click();
-  await expect(hearKid).toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(hearKid).toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
   await expect(hearSeed).not.toHaveClass(/\bplaying\b/);
   expect(await page.evaluate(() => window.__pwStarts.length)).toBeGreaterThanOrEqual(n0 + 2);
   // The figure is drawn from both phrases.
   await expect(page.locator("#compare-fig")).toHaveAttribute("aria-label", `${kid.name} grown from ${seed.name}`);
 
   // The seed replaced: its tree is gone, so it is a name with nothing to play.
-  const now = await state(page);
-  await inject(page, { type: "taste_views", views: { ...now.views, ranked: now.ranked.filter((r) => r.id !== seed.id), lineage: [...(now.lineage || []), ev] } });
+  const now = await app.facts();
+  await app.inject({ type: "taste_views", views: { ...now.views, ranked: now.ranked.filter((r) => r.id !== seed.id), lineage: [...(now.lineage || []), ev] } });
   await expect(box.locator(".cmp-gone")).toHaveText(`${seed.name} · replaced`);
   await expect(hearSeed).toHaveCount(0);
   await expect(hearKid).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(box).toBeHidden();
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("Compare opens from the keyboard: c on a bred sound in the bank, and Esc hands the keys back", async ({ page }) => {
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.views, null, { timeout: 60_000 });
-  const s = await state(page);
+test("Compare opens from the keyboard: c on a bred sound in the bank, and Esc hands the keys back", async ({ page, app }) => {
+  await boot(page, app);
+  const s = await whole(app, "views");
   const [seed, kid, plain] = [s.ranked[1], s.ranked[3], s.ranked[2]];
   const ev = {
     generation: 1, kind: "refine", parent_id: seed.id, child_id: kid.id,
     diff: [{ addr: "node/1#op", before: null, after: "delay" }],
     parent_utility: 0.4, child_utility: 0.5,
   };
-  await inject(page, { type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
+  await app.inject({ type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
   await expect(row(page, kid.id).locator(".bi-from")).toBeVisible();
   // The bank is one tab stop; the cursor walks to a row.
   const cursorTo = async (id) => {
@@ -484,18 +425,17 @@ test("Compare opens from the keyboard: c on a bred sound in the bank, and Esc ha
   await expect(page.locator("#bank-list")).toBeFocused();
   await page.keyboard.press("c");
   await expect(page.locator("#compare")).toBeVisible();
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a ⚡ child that replaced nothing leaves the last generation's Replaced as it was", async ({ page }) => {
-  const pageErrors = await pooled(page);
-  const s = await state(page);
+test("a ⚡ child that replaced nothing leaves the last generation's Replaced as it was", async ({ page, app }) => {
+  await pooled(page, app);
+  const s = await app.facts();
   const gone = s.ranked[s.ranked.length - 1];
   const left = s.ranked.filter((r) => r.id !== gone.id);
   const views = { ...s.views, ranked: left };
   // A generation's end replaced one sound (here a restored pool's trim, as
   // the worker posts it).
-  await inject(page, { type: "pool_trimmed", retired: [gone.id], views, status: { ...s.status, generation: 1 } });
+  await app.inject({ type: "pool_trimmed", retired: [gone.id], views, status: { ...s.status, generation: 1 } });
   const fold = page.locator("#bank-list .bank-group.replaced .bg-fold");
   // The bank redraws as the engine answers (the child opened below, its
   // bench), so a node can be swapped mid-scroll: the scroll is retried on
@@ -505,7 +445,7 @@ test("a ⚡ child that replaced nothing leaves the last generation's Replaced as
   await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
   await expect(fold.locator(".bg-n")).toHaveText(/^1 /);
   // Then a ⚡ child lands with the pool not full: nothing displaced.
-  await inject(page, {
+  await app.inject({
     type: "evolved_from", seedId: left[0].id, childId: left[1].id, reason: null,
     views, status: { ...s.status, generation: 2 },
   });
@@ -513,30 +453,29 @@ test("a ⚡ child that replaced nothing leaves the last generation's Replaced as
   await expect(fold.locator(".bg-label")).toHaveText("replaced · generation 1");
   await fold.click();
   await expect(page.locator("#bank-list .replaced-names span")).toHaveText([gone.name]);
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound its child would replace", { tag: "@slow" }, async ({ page }) => {
+test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound its child would replace", { tag: "@slow" }, async ({ page, app }) => {
   // With no generation open ⚡'s child replaces at once the lowest unsaved
   // sound other than its seed (\`absorb_from\`, \`evict_to_size\`), which is
   // the first of \`ratings.may_replace\` with the pool full. It marked the seed
   // and nothing else.
-  test.setTimeout(600_000);
-  const pageErrors = await taught(page);
+  test.setTimeout(240_000);
+  await taught(page, app);
   await goLevel(page, "patch");
-  await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-evolve")).toBeEnabled({ timeout }), { ms: 60_000 });
   await page.locator("#rack-evolve").click();
-  const seedId = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "sent:refine_from").pop().id);
+  const seedId = (await app.sent("refine_from")).pop().id;
   await goLevel(page, "evolve");
   await page.locator("#evolve-wrap").hover();
   // Read the marks against the ratings main.js holds as it draws them.
   const read = () => page.evaluate(() => ({
-    walking: !window.__pwLast.evolved_from,
+    walking: !window.__tap.last.evolved_from,
     seed: [...document.querySelectorAll("#bank-list .bank-item.seed")].map((e) => Number(e.dataset.id)),
     may: [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)),
     words: [...document.querySelectorAll("#bank-list .bank-item.may-go .bi-flag")].map((e) => e.textContent),
-    mayReplace: window.__pwState.ratings.may_replace,
-    status: window.__pwState.status,
+    mayReplace: window.__tap.facts.ratings.may_replace,
+    status: window.__tap.facts.status,
   }));
   await expect.poll(async () => (await read()).seed.length, { timeout: 30_000 }).toBe(1);
   const m = await read();
@@ -549,22 +488,19 @@ test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound i
   // When the child lands, what it replaced is what was marked (the model has
   // not moved: no pick since).
   await page.mouse.move(5, 5);
-  await expect.poll(() => page.evaluate(() => !!window.__pwLast.evolved_from), { timeout: 300_000 }).toBe(true);
-  const done = await page.evaluate(() => window.__pwLast.evolved_from);
+  const done = await app.reply("evolved_from", { timeout: 300_000 });
   console.log(`⚡ from ${seedId}: child ${done.childId}, reason ${done.reason}; marked ${JSON.stringify(m.may)}`);
   if (done.childId > 0) {
     const pool = new Set(done.views.ranked.map((r) => r.id));
     expect(want.filter((id) => !pool.has(id)), "what ⚡'s child replaced").toEqual(want);
   }
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("Compare lists every change a long walk made, and the list scrolls", async ({ page }) => {
+test("Compare lists every change a long walk made, and the list scrolls", async ({ page, app }) => {
   // A 40-step walk can change two dozen sites (26 in one review run). Compare
   // showed the first eight and "+18 more"; the release notes say every change.
-  const pageErrors = await boot(page);
-  await page.waitForFunction(() => window.__pwState.ranked && window.__pwState.ranked.length >= 40 && window.__pwState.views, null, { timeout: 60_000 });
-  const s = await state(page);
+  await boot(page, app);
+  const s = await whole(app, "views");
   const [seed, kid] = [s.ranked[1], s.ranked[3]];
   const mods = Array.from({ length: 14 }, (_, i) => `mod${i + 1}`);
   const ev = {
@@ -572,7 +508,7 @@ test("Compare lists every change a long walk made, and the list scrolls", async 
     diff: mods.map((m, i) => ({ addr: `node/${i}#op`, before: null, after: m })),
     parent_utility: 0.4, child_utility: 0.5,
   };
-  await inject(page, { type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
+  await app.inject({ type: "taste_views", views: { ...s.views, lineage: [...(s.lineage || []), ev] } });
   // The row's line keeps to three and a count.
   await expect(row(page, kid.id).locator(".bi-from")).toHaveText(`from ${seed.name} · +mod1, +mod2, +mod3, +11 more`);
   await row(page, kid.id).locator(".bi-from").click();
@@ -589,20 +525,19 @@ test("Compare lists every change a long walk made, and the list scrolls", async 
   expect(fit.bottom).toBeLessThanOrEqual(fit.h);
   await page.locator("#compare-diff li").last().scrollIntoViewIfNeeded();
   await expect(page.locator("#compare-diff li").last()).toBeInViewport();
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a sound saved while a generation runs loses its mark, and the one that will go instead gains it", { tag: "@slow" }, async ({ page }) => {
+test("a sound saved while a generation runs loses its mark, and the one that will go instead gains it", { tag: "@slow" }, async ({ page, app }) => {
   // A save takes a sound out of what the running generation's end will
   // replace (\`eviction_order\` passes over saved sounds), and the next lowest
   // unsaved one takes its place. Only \`refine_child\` carried \`retiring\`, so
   // the saved row kept "will be replaced" and the other went unmarked until
   // the next walk landed, or for good after the last.
-  test.setTimeout(600_000);
-  const pageErrors = await taught(page);
+  test.setTimeout(240_000);
+  await taught(page, app);
   await page.locator("#evolve-wrap").hover();
   await page.locator("#evolve-btn").click(); // the pointer stays on EVOLVE POOL
-  await expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.breeding && s.may.length > 0)), { timeout: 400_000 }).toBe(true);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.breeding && s.may.length > 0)), { timeout }).toBe(true), { ms: 400_000 });
   const snap = await page.evaluate(() => window.__pwMarks.filter((s) => s.breeding && s.may.length > 0).pop());
   const target = snap.may[0];
   // Saved from the keyboard, so the pointer stays on EVOLVE POOL.
@@ -614,17 +549,16 @@ test("a sound saved while a generation runs loses its mark, and the one that wil
   }
   const breeding = await page.evaluate(() => document.getElementById("evolve-btn").classList.contains("breeding"));
   test.skip(!breeding, "the generation ended before the save");
-  const saves = await page.evaluate(() => window.__pwCounts.pinned || 0);
+  const t0 = await app.now();
   await page.keyboard.press("m");
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.pinned || 0), { timeout: 10_000 }).toBeGreaterThan(saves);
-  const pinned = await page.evaluate(() => window.__pwLast.pinned);
+  const pinned = await app.reply("pinned", { after: t0, timeout: 10_000 });
   expect(pinned.ok, "the save was refused").toBe(true);
   expect(pinned.retiring, "a save while a generation runs carries what its end will replace").toBeTruthy();
   expect(pinned.retiring).not.toContain(target);
   // The marks follow the latest word on it: this save's, or a walk landed since.
   await expect.poll(async () => {
     const now = await page.evaluate(() => {
-      const last = window.__pwLog.filter((e) => e.type === "pinned" || e.type === "refine_child").pop();
+      const last = window.__tap.replies.filter((r) => !r.injected && (r.type === "pinned" || r.type === "refine_child")).pop().d;
       const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
       return { retiring: last.retiring || [], rows: ids("[data-id]"), may: ids(".may-go"), seed: ids(".seed") };
     });
@@ -633,26 +567,32 @@ test("a sound saved while a generation runs loses its mark, and the one that wil
   }, { timeout: 10_000 }).toBe(true);
   await expect(row(page, target)).not.toHaveClass(/\bmay-go\b/);
   // One sound not marked before is marked now: the one that will go instead.
-  const after = await page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)));
-  console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(after)}`);
+  // (Read with whether the generation still runs: on a fast farm its last
+  // walks can land in the moment after the save, and its end clears the
+  // marks, which leaves nothing to test, as above.)
+  const { after, still } = await page.evaluate(() => ({
+    after: [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)),
+    still: document.getElementById("evolve-btn").classList.contains("breeding"),
+  }));
+  console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(after)}${still ? "" : " (the generation had ended)"}`);
+  test.skip(!still, "the generation ended before the marks after the save were read");
   expect(after.some((id) => !snap.may.includes(id)), "no sound took the saved one's place").toBe(true);
   await page.mouse.move(5, 5);
   const stop = page.locator("#evolve-stop");
   if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
-  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 120_000 });
 });
 
-test("GENERATIONS counts a generation from its first child, with no pick since it opened", { tag: "@slow" }, async ({ page }) => {
+test("GENERATIONS counts a generation from its first child, with no pick since it opened", { tag: "@slow" }, async ({ page, app }) => {
   // The guide says GENERATIONS counts a generation once its first child
   // lands. With no status posted since the generation opened (no pick), it
   // went on reading the count from before it, 0 with three children in New.
-  test.setTimeout(600_000);
-  const pageErrors = await taught(page);
+  test.setTimeout(240_000);
+  await taught(page, app);
   await expect(page.locator("#gen-count")).toHaveText("0");
   await page.locator("#evolve-btn").click();
   await page.mouse.move(5, 5);
-  await expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.child > 0)), { timeout: 400_000 }).toBe(true);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__pwMarks.some((s) => s.child > 0)), { timeout }).toBe(true), { ms: 400_000 });
   const walks = await page.evaluate(() => window.__pwMarks.slice());
   const first = walks.findIndex((s) => s.child > 0);
   console.log(`walks: ${JSON.stringify(walks.map((s) => [s.index, s.child, s.breeding, s.gens, s.statusGen]))}`);
@@ -667,18 +607,15 @@ test("GENERATIONS counts a generation from its first child, with no pick since i
   for (const s of walks.slice(first).filter((w) => w.breeding)) expect(s.gens, `after walk ${s.index}`).toBe(String(s.generation));
   const stop = page.locator("#evolve-stop");
   if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
-  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
+  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 120_000 });
   await expect(page.locator("#gen-count")).toHaveText(String(walks[first].generation));
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("a child the pool would not take buds beside its seed and is gone, and EVOLVE POOL says why", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(300_000);
-  const pageErrors = await taught(page);
-  const seeds = (await state(page)).ratings.seeds;
+test("a child the pool would not take buds beside its seed and is gone, and EVOLVE POOL says why", { tag: "@slow" }, async ({ page, app }) => {
+  await taught(page, app);
+  const seeds = (await app.facts()).ratings.seeds;
   await page.locator("#evolve-btn").click();
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.refine_progress || 0), { timeout: 30_000 }).toBeGreaterThan(0);
-  const gen = await page.evaluate(() => window.__pwLast.refine_progress.generation);
+  const gen = (await app.reply("refine_progress", { timeout: 30_000 })).generation;
   const seedRow = row(page, seeds[0]);
   await seedRow.scrollIntoViewIfNeeded();
   const at = await seedRow.boundingBox();
@@ -687,7 +624,7 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
   // \`refine_child\` is handled as a real one, so it also moves main.js's
   // count of walks back (\`breeding.done\`) and of children bred and not
   // kept (\`bredBelow.n\`) beside the real walks': this test reads neither.
-  await landChild(page, 0, { seed: seeds[0], generation: gen, reason: "not_admitted" });
+  await landChild(app, 0, { seed: seeds[0], generation: gen, reason: "not_admitted" });
   // (Read from what the button said, not what it says: a real walk may land
   // a moment later and say its own.)
   await expect.poll(() => page.evaluate(() => window.__pwSaid.includes("walk 1 of 10rated below the pool"))).toBe(true);
@@ -699,28 +636,27 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
   expect(bud.top).toBeGreaterThanOrEqual(at.y - 1);
   expect(bud.bottom).toBeLessThanOrEqual(at.y + at.height + 1);
   // And gone: the engine dropped it.
-  await expect(page.locator(".bud.refused")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.locator(".bud.refused")).toHaveCount(0);
 
   // With motion reduced, nothing buds, and the button still says it.
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await landChild(page, 0, { seed: seeds[1], generation: gen, index: 1, reason: "not_admitted" });
+  await landChild(app, 0, { seed: seeds[1], generation: gen, index: 1, reason: "not_admitted" });
   await expect.poll(() => page.evaluate(() => window.__pwSaid.includes("walk 2 of 10rated below the pool"))).toBe(true);
-  await page.waitForTimeout(500);
+  await app.quiet();
   expect(await page.evaluate(() => window.__pwBuds.filter((b) => b.refused).length)).toBe(1);
 
   // Stopped, unless its real walks have already ended it.
   const stop = page.locator("#evolve-stop");
   if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
-  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 60_000 });
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 60_000 });
 });
 
-test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(600_000);
-  const pageErrors = await taught(page);
-  // Every name seen, read when it is needed (`__pwState.names`).
+test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(240_000);
+  await taught(page, app);
+  // Every name seen, read when it is needed (the tap's `facts.names`).
   const nameOf = async (id) => {
-    const n = await page.evaluate((i) => window.__pwState.names[i], id);
+    const n = (await app.facts()).names[id];
     expect(n, `no name was ever posted for sound ${id}`).toBeTruthy();
     return n;
   };
@@ -729,7 +665,7 @@ test("a generation's children land in New with their seed and what changed, and 
   // (Each read is of the ratings main.js holds now: a pick's may still land.)
   await page.locator("#evolve-wrap").hover();
   await expect.poll(async () => {
-    const r = (await state(page)).ratings;
+    const r = (await app.facts()).ratings;
     const shown = await rowIds(page);
     const want = { seed: sorted(r.seeds.filter((id) => shown.includes(id))), may: sorted(r.may_replace.filter((id) => shown.includes(id) && !r.seeds.includes(id))) };
     return JSON.stringify({ seed: await marked(page, "seed"), may: await marked(page, "may-go") }) === JSON.stringify(want);
@@ -741,15 +677,17 @@ test("a generation's children land in New with their seed and what changed, and 
   // Three walks back, then stop: the generation ends with what it bred. On a
   // fast machine the walks land in a burst and the generation may already
   // have ended, with STOP gone: either way it ends with what it bred.
-  await expect.poll(() => page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child").length), { timeout: 400_000 }).toBeGreaterThanOrEqual(3);
+  await app.engine((timeout) => expect.poll(async () => (await app.replies("refine_child")).length, { timeout }).toBeGreaterThanOrEqual(3), { ms: 400_000 });
   const stop = page.locator("#evolve-stop");
   if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
-  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
-  // The generation's own seeds: each walk's `seed` is one of them, in job
-  // order (`next_seeds` and `refine_jobs` share one rule).
-  const seeds = (await state(page)).genSeeds;
+  await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 120_000 });
+  // The generation's own seeds, as its first progress with them posted them
+  // (`refine_jobs`' parents, job i walking from seeds[i]): each walk's `seed`
+  // is one of them, in job order (`next_seeds` and `refine_jobs` share one
+  // rule).
+  const seeds = ((await app.replies("refine_progress", { where: { seeds: true } }))[0] || {}).seeds;
   expect(seeds && seeds.length, "the generation's progress posted no seeds").toBe(10);
-  const kids = await page.evaluate(() => window.__pwLog.filter((e) => e.type === "refine_child"));
+  const kids = await app.replies("refine_child");
   for (const k of kids) expect(k.seed, `walk ${k.index} came from a seed the generation did not take`).toBe(seeds[k.index]);
   // While it ran, EVOLVE POOL marked this generation's seeds, not the next
   // one's (`ratings.seeds` moves as its children land), and what its end
@@ -763,8 +701,8 @@ test("a generation's children land in New with their seed and what changed, and 
   }
   if (during.some((s) => s.child > 0)) expect(during.some((s) => s.may.length > 0), "a child was taken in and nothing was marked as may be replaced").toBe(true);
   await page.mouse.move(5, 5);
-  const refined = await page.evaluate(() => window.__pwLast.refined);
-  const after = await state(page);
+  const refined = await app.last("refined");
+  const after = await app.facts();
   const kept = refined.born.filter((id) => !refined.retired.includes(id));
   console.log(`walks ${JSON.stringify(kids.map((k) => [k.index, k.seed, k.child, k.reason]))}; kept ${JSON.stringify(kept)}; retired ${JSON.stringify(refined.retired)}`);
 
@@ -805,5 +743,5 @@ test("a generation's children land in New with their seed and what changed, and 
     await expect(page.locator("#bank-list .replaced-names button")).toHaveCount(0);
     for (const id of gone) await expect(row(page, id)).toHaveCount(0);
   }
-  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
+

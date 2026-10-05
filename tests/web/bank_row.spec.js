@@ -4,22 +4,12 @@
 // pressed either. Cut can then be pressed. Its reveal rules once lost to the
 // rule that hides it (CSS specificity), so the control could never appear.
 // ★ folds the five stars out in the actions' place, and a star rates.
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-test("a bank row's cut appears on hover and can be pressed", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errs = await boot(page);
+test("a bank row's cut appears on hover and can be pressed", async ({ page, app }) => {
+  await app.boot();
   const row = page.locator("#bank-list .bank-item:not(.saved):not(.live)").first();
-  await expect(row).toBeVisible({ timeout: 60_000 });
+  await app.engine((timeout) => expect(row).toBeVisible({ timeout }));
   const acts = row.locator(".bi-acts");
   const cut = row.locator(".bi-kill");
   // At rest: not drawn, and not live under the pointer either.
@@ -30,14 +20,12 @@ test("a bank row's cut appears on hover and can be pressed", async ({ page }) =>
   await expect(acts).toHaveCSS("opacity", "1");
   await expect(cut).toBeVisible();
   await cut.click();
-  await expect(page.locator("#toasts .toast").last()).toContainText(/^Cut /, { timeout: 10_000 });
-  expect(errs).toEqual([]);
+  await expect(page.locator("#toasts .toast").last()).toContainText(/^Cut /);
 });
 
-test("a bank row's actions show on the keyboard cursor, and its ★ folds out the five stars, which rate it", async ({ page }) => {
-  test.setTimeout(180_000);
-  const errs = await boot(page);
-  await expect(page.locator("#bank-list .bank-item[data-id]").first()).toBeVisible({ timeout: 60_000 });
+test("a bank row's actions show on the keyboard cursor, and its ★ folds out the five stars, which rate it", async ({ page, app }) => {
+  await app.boot();
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item[data-id]").first()).toBeVisible({ timeout }));
   await page.mouse.move(5, 5);
   // The list is one tab stop; ↓ puts the cursor on its first row, and the
   // row's actions show there.
@@ -55,7 +43,7 @@ test("a bank row's actions show on the keyboard cursor, and its ★ folds out th
   await expect(r).toHaveClass(/\brating\b/);
   await expect(r.locator(".bi-save")).toBeHidden();
   await r.locator('.star[data-s="4"]').click();
-  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 4★\./, { timeout: 10_000 });
+  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 4★\./);
   // Rated: the stars fold back, and ★ says it is rated.
   await expect(r).not.toHaveClass(/\brating\b/);
   await expect(r.locator(".bi-star")).toHaveAttribute("aria-pressed", "true");
@@ -63,36 +51,21 @@ test("a bank row's actions show on the keyboard cursor, and its ★ folds out th
   // 1–5 still rate the cursor row without it.
   await page.locator("#bank-list").focus();
   await page.keyboard.press("2");
-  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 2★\./, { timeout: 10_000 });
+  await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 2★\./);
   await expect(r.locator(".star.lit")).toHaveCount(2);
-  expect(errs).toEqual([]);
 });
 
 // The pool stands in the order it joined at rest, so the sound boot opens,
 // or one opened from elsewhere (here EVOLVE's OPEN IN PATCH), can be anywhere
 // in the list: its row is brought into view.
-test("a sound opened from outside the bank has its row brought into the bank's view", async ({ page }) => {
-  test.setTimeout(240_000);
+test("a sound opened from outside the bank has its row brought into the bank's view", async ({ page, app }) => {
   // Short enough that the full pool's 40 rows must scroll.
   await page.setViewportSize({ width: 1440, height: 700 });
   // The bank whole (`filled`), so the list is as long as it will be and
   // nothing still arriving moves it.
-  await page.addInitScript(() => {
-    const Orig = window.Worker;
-    window.__pwFilled = 0;
-    function Wrapped(url, opts) {
-      const w = new Orig(url, opts);
-      if (/worker\.js/.test(String(url))) {
-        w.addEventListener("message", (e) => { if (e.data && e.data.type === "filled") window.__pwFilled += 1; });
-      }
-      return w;
-    }
-    Wrapped.prototype = Orig.prototype;
-    window.Worker = Wrapped;
-  });
-  const errs = await boot(page);
-  await expect.poll(() => page.evaluate(() => window.__pwFilled), { timeout: 150_000 }).toBeGreaterThan(0);
-  await expect.poll(() => page.locator("#bank-list .bank-item[data-id]").count(), { timeout: 60_000 }).toBe(40);
+  await app.boot();
+  await app.filled();
+  await expect.poll(() => page.locator("#bank-list .bank-item[data-id]").count()).toBe(40);
   const inView = (id) => page.evaluate((i) => {
     const r = document.querySelector(`#bank-list .bank-item[data-id="${i}"]`);
     if (!r) return false;
@@ -102,7 +75,7 @@ test("a sound opened from outside the bank has its row brought into the bank's v
   }, id);
   // EVOLVE's card A, by its id, its row scrolled out of the bank's view.
   await page.locator('.rail-stop[data-level="evolve"]').click();
-  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }));
   const id = await page.evaluate(() => (document.querySelector("#name-a .dn-id")?.textContent || "").replace("#", "").trim());
   await expect(page.locator(`#bank-list .bank-item[data-id="${id}"]`), "card A's row in the pool").toHaveCount(1);
   // The scroll end that hides the row: the top if the row starts below one
@@ -122,9 +95,8 @@ test("a sound opened from outside the bank has its row brought into the bank's v
   await expect.poll(async () => {
     await page.evaluate(([to]) => document.getElementById("bank-list").scrollTo({ top: to, behavior: "instant" }), [end.to]);
     return inView(id);
-  }, { timeout: 10_000, message: "card A's row out of view before it opens" }).toBe(false);
+  }, { message: "card A's row out of view before it opens" }).toBe(false);
   await page.locator("#promote-a").click();
-  await expect(page.locator(`#bank-list .bank-item[data-id="${id}"]`)).toHaveClass(/\b(live|opening)\b/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator(`#bank-list .bank-item[data-id="${id}"]`)).toHaveClass(/\b(live|opening)\b/, { timeout }), { ms: 30_000 });
   await expect.poll(() => inView(id), { timeout: 15_000 }).toBe(true);
-  expect(errs).toEqual([]);
 });
