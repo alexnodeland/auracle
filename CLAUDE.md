@@ -22,7 +22,7 @@ override nothing above.
 | `truth-pass` | Find every description of a behaviour you changed and make it true |
 | `changelog` | Write an `[Unreleased]` entry in the house voice |
 | `film` | Make or change a film: script, voice, shots, rehearsal, recording, publishing |
-| `site` | Build and check the site, and find where a page lives |
+| `ship` | Take one task from its issue to a merged PR: worktree, brief, build, review, PR, CI, merge, clean up ([`docs/process.md`](docs/process.md)) |
 
 ### Agents (`.claude/agents/`)
 
@@ -35,8 +35,11 @@ override nothing above.
 | `truth-auditor` | Read-only: walk a view or feature against its descriptions and report every gap |
 | `reviewer` | Read-only: review a diff against this repo's invariants |
 
-Give agents that change code their own worktree. The one-browser rule applies
-to them too.
+Give agents that change code their own worktree. They commit there and hand
+back a report; they never push, open a PR or merge. The session that
+coordinates the work (the operator) reviews, pushes, opens the PR and merges
+on a green check ([`docs/process.md`](docs/process.md)). The one-browser rule
+applies to agents too.
 
 ### Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 
