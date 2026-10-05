@@ -35,8 +35,8 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   `offerBudget`; injected replies the engine's own can't overwrite.
 - **Process**: commits explain why and carry no hand-written attribution; a
   new row for `voice.md`'s word table is drafted, not committed, until
-  approved; `?b=`
-  cache-busters bumped for `style.css` and `main.js`.
+  approved; `index.html` names `style.css` and `main.js` with no `?b=` or
+  `?v=` (the build stamps them, `www/stamppage.py`).
 - **Style**: matches the surrounding code's comments, naming and idiom;
   commit bodies explain why.
 

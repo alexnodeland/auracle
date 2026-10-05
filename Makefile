@@ -106,6 +106,7 @@ dev-tokens:
 dev-voice:
 	@python3 www/checkwords.py
 	@python3 www/test_checkwords.py
+	@python3 www/test_stamppage.py
 dev-sound:
 	@python3 www/brand/sound.py --check
 	@python3 www/brand/test_sound.py
@@ -395,6 +396,7 @@ serve:
 bundle: wasm
 	rm -rf dist && mkdir -p dist/auracle-web
 	cp -r apps/web/. dist/auracle-web/
+	python3 www/stamppage.py dist/auracle-web
 	printf '# Running Auracle\n\nPrebuilt web instrument — serve statically and open the URL:\n\n    python3 serve.py    # -> http://localhost:8642\n' > dist/auracle-web/RUNNING.md
 	cd dist && zip -qr auracle-web.zip auracle-web
 
@@ -451,8 +453,10 @@ site-landing: site-fonts site-brand
 site-play: $(if $(filter 1,$(WASM_PREBUILT)),wasm-prebuilt,wasm)
 	mkdir -p site/play
 	cp -r apps/web/. site/play/
-	# serve.py is for local development; Pages is the server here.
+	# serve.py is for local development; Pages is the server here, and it
+	# caches: the page's style.css and main.js get their content hashes.
 	rm -f site/play/serve.py
+	python3 www/stamppage.py site/play
 
 ## site-docs: the product guide
 site-docs: site-fonts site-brand
