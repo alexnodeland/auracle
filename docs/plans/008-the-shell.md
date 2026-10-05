@@ -32,7 +32,7 @@ Each task still to do is an issue (`docs/process.md`); the table links it.
 | B: the bank and the model view | – | merged (#115) |
 | C1: PERFORM, EVOLVE, stage mode and the guide pill (levels still switch instantly) | – | merged (#116) |
 | C2a: PATCH rebuilt as the mock's canvas (head, edit bar, well, catalog, camera corner, keys, locks and ⚡, every PATCH function re-homed) | – | merged (#117) |
-| C2b: PATCH's model view under ⌥ and the four engine facts | – | in review (#152) |
+| C2b: PATCH's model view under ⌥ and the four engine facts | – | merged (#152) |
 | Faces on the PRESETS rows; the IN POOL tag whole (C2a follow-ups) | #130 | not started |
 | C3: the zoom (`anchor()`, the morph, the puck, pinch, ⌥-scroll, `takeUp`, `d-zoom`) | #131 | not started |
 | D: ⌘K, and the guide for the levels | #132 | not started |
