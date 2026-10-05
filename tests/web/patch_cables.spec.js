@@ -64,8 +64,11 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   }
 
   // One probe for the open, not one per knob step: a drag of ten steps asks
-  // once, after it settles.
-  const asked = () => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "cable_levels").length);
+  // once, after it settles. The probe is slow at the engine from here, so the
+  // hollow marks stand until it answers: an engine that measures fast closes
+  // that window between two polls (CI saw it never hollow).
+  await slowWorker(page, { cable_levels: 2500 });
+  const asked =() => page.evaluate(() => window.__pwPosted.filter((p) => p.type === "cable_levels").length);
   const before = await asked();
   const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
   const box = await knob.boundingBox();
