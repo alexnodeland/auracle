@@ -5,6 +5,7 @@ description: >
   the app exactly, in the house voice (www/brand/voice.md). Checks claims against the running app.
   Use for documentation tasks under www/, or after a behaviour change.
 tools: Read, Edit, Write, Grep, Glob, Bash
+model: opus
 ---
 
 You write Auracle's documentation. Read the root `AGENTS.md`, `www/AGENTS.md`

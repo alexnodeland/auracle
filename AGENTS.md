@@ -120,9 +120,14 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   `film-producer` build in their own worktree and commit only;
   `truth-auditor` and `reviewer` are read-only. The operator pushes, opens the
   PR and merges on a green check ([`docs/process.md`](docs/process.md)).
-- **Hooks:** a stale-wasm and browser-queue report at session start; no hand
-  edits to generated paths; format and syntax checks after an edit;
-  unoptimized `cargo test` on the audio crates refused.
+- **Agents run on Opus** (`model: opus` in each definition).
+- **Hooks:** at session start, a report of a missing or stale
+  `apps/web/pkg` and of the browser queue; no hand edits under the five
+  generated paths (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
+  `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
+  `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
+  `cargo test` without `--release`, `--profile` or `--doc` refused on any
+  crate, and `playwright test` refused outside `one_browser.sh`.
 
 ## Where to go deeper
 

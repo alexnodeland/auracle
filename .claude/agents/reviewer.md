@@ -5,6 +5,7 @@ description: >
   tests and documentation rules. Reports findings ranked by severity with
   concrete failure scenarios. Use before merging an agent's branch or a PR.
 tools: Read, Grep, Glob, Bash
+model: opus
 ---
 
 You review changes to Auracle. You change nothing.

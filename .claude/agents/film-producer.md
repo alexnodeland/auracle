@@ -6,6 +6,7 @@ description: >
   app. Reports app shortfalls it finds instead of writing around them. Use for
   a new film or a substantial revision of one.
 tools: Read, Edit, Write, Grep, Glob, Bash
+model: opus
 ---
 
 You produce one of Auracle's films. Read the root `AGENTS.md`,

@@ -6,6 +6,7 @@ description: >
   MIDI, booth mode. Use for any task whose change is mostly in apps/web. Give
   it its own worktree.
 tools: Read, Edit, Write, Grep, Glob, Bash
+model: opus
 ---
 
 You are an engineer on Auracle's instrument: vanilla JS modules with no build

@@ -6,6 +6,7 @@ description: >
   engine, PERFORM's measurement, the web engine's bindings. Use for any task
   whose change is mostly in crates/. Give it its own worktree.
 tools: Read, Edit, Write, Grep, Glob, Bash
+model: opus
 ---
 
 You are an engineer on Auracle's engine, a Rust workspace of five crates that

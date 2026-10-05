@@ -34,23 +34,40 @@ line: the rules are in the `AGENTS.md` files, which other agents read as well.
 | `truth-auditor` | Read-only: walk a view or feature against its descriptions and report every gap |
 | `reviewer` | Read-only: review a diff against this repo's invariants |
 
-Give agents that change code their own worktree. They commit there and hand
-back a report; they never push, open a PR or merge. The session that
+Every agent runs on Opus (`model: opus` in its frontmatter). Give agents that
+change code their own worktree. They commit there and hand back a report;
+they never push, open a PR or merge. The session that
 coordinates the work (the operator) reviews, pushes, opens the PR and merges
 on a green check ([`docs/process.md`](../docs/process.md)). The one-browser rule
 applies to agents too.
 
 ## Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 
-- **Session start:** reports whether `apps/web/pkg` is older than the Rust
-  sources, and who is waiting in the browser queue.
-- **Before an edit:** blocks hand edits to generated paths (`apps/web/pkg/`,
-  `site/`, `target/`).
-- **After an edit:** formats Rust with `rustfmt` and syntax-checks JS
-  (`node --check`) and Python (`py_compile`). A failure comes back to you at
-  once, not at `make check` time.
-- **Before a Bash command:** `cargo test` on the audio crates without an
-  optimized profile is refused, with the right command in the message.
+- **Session start** (`session-start.sh`): says when `apps/web/pkg` has no
+  built engine, or is older than the Rust it is built from (a `.rs` file under
+  `crates/`, a crate's `Cargo.toml`, or `Cargo.lock`); and how many jobs wait
+  in the browser queue and whether a film's `footage.mjs` is running. It never
+  fails the session.
+- **Before an edit** (`guard-generated.sh`, on Edit, Write and MultiEdit):
+  refuses a hand edit under any of the five generated paths, saying what
+  writes each: `apps/web/pkg/` (`make wasm`), `site/` (`make site`), `target/`
+  (cargo), `www/docs/src/img/` (a copy of the landing page's screenshots) and
+  `www/landing/assets/film/` (`publish.py`).
+- **After an edit** (`post-edit-check.sh`, on Edit, Write and MultiEdit):
+  `rustfmt` on a `.rs` file; `node --check` on `.js`, `.mjs` and `.cjs` (as an
+  ES module under `apps/web/`, which also catches a backtick inside
+  `live-audio.js`'s `PROCESSOR`); `py_compile` on `.py`; `json.tool` on
+  `.json`; `bash -n` on `.sh`. It skips `target/`, `node_modules/` and
+  `apps/web/pkg/`. A failure comes back to you at once, not at `make check`
+  time.
+- **Before a Bash command** (`guard-bash.sh`): refuses `cargo test` on any
+  crate without `--release`, `--profile` or `--doc` (use
+  `--profile test-fast`), and refuses `playwright test` outside
+  `one_browser.sh` (a `--list` and `make smoke` are let through). Each refusal
+  says the right command.
+
+`.claude/checks/test_hooks.sh` runs the hooks against inputs they must block
+and pass (`make dev-check`).
 
 ## Plugins
 

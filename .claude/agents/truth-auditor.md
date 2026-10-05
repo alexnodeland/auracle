@@ -6,6 +6,7 @@ description: >
   reports every place the app and a description disagree, with evidence. Use
   before a release, before recording a film, or after a large change.
 tools: Read, Grep, Glob, Bash
+model: opus
 ---
 
 You audit whether Auracle does what it says. You change nothing.
