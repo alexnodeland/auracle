@@ -51,6 +51,16 @@ ceiling has no room to grow, and a hand-built patch past one is refused. Under
 [the model view](#the-model-view-in-patch) the subtitle becomes the belief
 line instead: what the model makes of this sound.
 
+**What a generation changed.** On a sound a generation bred, as it was bred,
+the subtitle starts with its seed and how many changes the generation made
+(*from Reese · 3 changes*, counted as its bank row lists them), each module
+the generation changed or added has a silk tick on its top edge, and each knob
+it moved shows the seed's value as a pale pointer (the same glyph as a knob
+you have turned shows where it was when you opened the sound). It is the
+engine's record of that breeding, so it shows at rest. Edit the sound and it
+goes, since the patch is no longer the one that was bred; **undo to as
+opened** brings it back.
+
 **What to do next,** a small amber line at the head's top right, and pressing
 it does the step it names:
 

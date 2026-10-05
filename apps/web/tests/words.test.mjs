@@ -50,6 +50,7 @@ import {
   walkLabel,
   belowNote,
   fromLine,
+  bredLine,
   grownFrom,
   bredRatings,
   changeParts,
@@ -263,6 +264,10 @@ test("EVOLVE POOL narrates each walk from the engine's reason, and only a refuse
 test("the bank's lineage lines name the seed, what changed, and both ratings with their words", () => {
   assert.equal(fromLine("Soft Pad", "+reverb, cutoff 1.2 kHz → 3.4 kHz"), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz");
   assert.equal(fromLine("Soft Pad", ""), "from Soft Pad");
+  // PATCH's subtitle on a bred sound counts the same changes the row lists.
+  assert.equal(bredLine("Soft Pad", 3), "from Soft Pad · 3 changes");
+  assert.equal(bredLine("Soft Pad", 1), "from Soft Pad · 1 change");
+  assert.equal(bredLine("Soft Pad", 0), "from Soft Pad");
   assert.equal(grownFrom("Soft Pad", 3), "Grown from Soft Pad in generation 3.");
   assert.equal(belowNote(1), "1 more was bred and rated below the pool.");
   assert.equal(belowNote(3), "3 more were bred and rated below the pool.");

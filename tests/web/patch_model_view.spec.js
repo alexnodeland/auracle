@@ -83,7 +83,7 @@ async function modelMarks(page, ranked) {
   expect(copy).not.toMatch(/\blens\b/i);
 }
 
-test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL shows the leans, a worth chip per family, the belief line and the guess's runners-up; letting go restores the canvas", async ({ page }) => {
+test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL shows the leans, a worth chip per family, the belief line and the guess's runners-up; letting go restores the canvas", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(360_000);
   const errors = await boot(page, { warmed: false });
   await warmStartAndFit(page);

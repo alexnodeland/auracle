@@ -377,6 +377,13 @@ export function fromLine(seedName, changes) {
   return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
 }
 
+/** PATCH's subtitle on a bred sound, while it is as it was bred: its seed
+ *  and how many changes the generation made, counted as the bank row lists
+ *  them (`changeParts`), "from Soft Pad · 3 changes". */
+export function bredLine(seedName, n) {
+  return n > 0 ? `from ${seedName} · ${count(n, "change")}` : `from ${seedName}`;
+}
+
 /** The line under a sound's name on its card (Plan-005 task 3): where it
  *  came from. A bred sound's is its bank row's (`fromLine`, from its
  *  `LineageEvent`); any other's is its origin, as the bank's glyph says it. */

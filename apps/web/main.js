@@ -128,7 +128,7 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine,
 } = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
@@ -1428,6 +1428,9 @@ let undoTrimmed = false;
 // bar's compare, drawn on the knob as a pale pointer where it was.
 let openedKnobs = null;
 let openedKnobsWant = false;
+// The bench's tree as the sound was opened (`lineageFacts`).
+let openedTreeJson = null;
+let openedTreeWant = false;
 let restoreInFlight = false;
 /** The bench as a step: everything one edit can change and ⌘Z has to answer
  *  for, except what the shelf owes — which only the edit itself knows. */
@@ -2644,6 +2647,9 @@ worker.onmessage = (e) => {
         // rack below lands (`openedKnobsWant`).
         openedKnobs = null;
         openedKnobsWant = true;
+        // …and the tree as it was opened, which a bred sound's changes are
+        // drawn against (`lineageFacts`): taken when the tree below lands.
+        openedTreeWant = true;
         redoStack.length = 0;
         // ⚡'s child is announced here, where it is true (see `evolved_from`);
         // `replace` lets it take over from "⚡ evolving around…" if that is
@@ -2747,6 +2753,10 @@ worker.onmessage = (e) => {
         wb.tree = JSON.parse(m.treeJson);
         benchTreeJson = m.treeJson;
         benchMakeup = m.makeup;
+        if (openedTreeWant) {
+          openedTreeWant = false;
+          openedTreeJson = m.treeJson;
+        }
       }
       // Every reply, not only the structural ones, and after the tree lands
       // because the tree is the only thing that can answer either half: which
@@ -11295,7 +11305,13 @@ function renderSubject() {
   // The family only where the engine has one: a preset's category, and only
   // as it was made (a bred or edited sound has none, plan §6).
   fam(wb.dirty ? "" : presetOfId(wb.subjectId)?.category || "");
-  metaEl.textContent = [`${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`, ...states].join(" · ");
+  // A bred sound as it was bred: its seed and how many changes, first
+  // (`lineageFacts`).
+  const lf = lineageFacts();
+  const rest = [`${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`, ...states].join(" · ");
+  metaEl.innerHTML = lf
+    ? `<span class="pt-from">${esc(bredLine(lf.seedName, lf.changes))}</span> · ${esc(rest)}`
+    : esc(rest);
   syncEditBar();
 }
 
@@ -13255,7 +13271,74 @@ function paintRackFacts() {
   if (!svg) return;
   paintLeans(svg);
   paintWorth();
+  paintLineage(svg);
   syncWithout();
+}
+
+// ---------- what a generation changed (Plan-008 C2b, the third engine fact) ----------
+// On a bred sound, in place: the subtitle names its seed and counts the
+// changes (as its bank row lists them), each changed module gets a silk tick
+// on its top edge, and each changed knob a pale pointer at the seed's value.
+// From its `LineageEvent` (`lineage()`), whose `DiffEntry.addr` is
+// `key#site`, the rack's own address space. Drawn only while the bench is
+// the child's tree as it was bred (as it was opened): an edit takes it away
+// and undo to as opened brings it back. At rest: it is the engine's record,
+// not a belief.
+
+/** The bred sound's changes, keyed for the canvas, or null: not a bred
+ *  sound, not as it was opened, or a pair's sound on the bench. */
+function lineageFacts() {
+  if (wb.subjectId == null || !openedTreeJson || benchTreeJson !== openedTreeJson) return null;
+  if (hearingSide || patchView.isNew()) return null;
+  const lin = lineageOf(wb.subjectId);
+  if (!lin) return null;
+  const keys = new Set(); // modules the generation changed or added
+  const seed = new Map(); // knob address -> the seed's value (0..1)
+  const latent = (v) => v != null && /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
+  for (const d of lin.diff || []) {
+    const i = d.addr.lastIndexOf("#");
+    const key = d.addr.slice(0, i);
+    const site = d.addr.slice(i + 1);
+    // Only what is in the child: a site the generation removed has no plate.
+    if (d.after == null || SKIP_SITES.has(site)) continue;
+    keys.add(key);
+    if (latent(d.before) && latent(d.after)) seed.set(d.addr, Number(d.before));
+  }
+  return { seedName: lineageName(lin.parent_id), changes: diffParts(lin.diff).length, keys, seed };
+}
+
+/** The ticks and the seed's pointers, over what the build left. */
+function paintLineage(svg) {
+  for (const e of svg.querySelectorAll(".lineage-tick, .knob-seed")) e.remove();
+  const lf = lineageFacts();
+  if (!lf) return;
+  for (const g of svg.querySelectorAll(".rack-plates > g[data-key]")) {
+    if (!lf.keys.has(g.getAttribute("data-key"))) continue;
+    const plate = g.querySelector(".mod-plate");
+    if (!plate) continue;
+    // On the plate's top edge at its left, clear of the name under it.
+    const tick = svgEl("path", { d: "M 9 -1 L 12 2 L 19 -5" }, "lineage-tick");
+    const t = svgEl("title");
+    t.textContent = `Changed from ${lf.seedName}`;
+    tick.appendChild(t);
+    g.appendChild(tick);
+  }
+  for (const [addr, w] of lf.seed) {
+    const kg = svg.querySelector(`.rack-controls [data-addr="${CSS.escape(addr)}"]`);
+    const k = knobByAddr(addr);
+    if (!kg || !k || k.kind.t !== "continuous" || Math.abs(w - k.value) < 0.004) continue;
+    // The pale pointer, as the edit bar's compare draws it (`paintWas`), at
+    // the seed's value.
+    const a = (-135 + 270 * w) * (Math.PI / 180);
+    const line = svgEl("line", {
+      x1: (Math.sin(a) * (KNOB_R - 2)).toFixed(2), y1: (-Math.cos(a) * (KNOB_R - 2)).toFixed(2),
+      x2: (Math.sin(a) * (KNOB_R + 6)).toFixed(2), y2: (-Math.cos(a) * (KNOB_R + 6)).toFixed(2),
+      "data-seed": w.toFixed(2),
+    }, "knob-seed");
+    const was = kg.querySelector(".knob-was");
+    if (was) was.after(line);
+    else kg.insertBefore(line, kg.firstChild);
+  }
 }
 
 /** Worth per kind, under the model view: one chip per family the patch

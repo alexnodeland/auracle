@@ -7272,6 +7272,7 @@ html.xl-on .alarm { z-index: 62; }
 .pt-leg .lg-lock { stroke: var(--phos-b); stroke-width: 1.6; }
 .pt-leg .lg-lean { stroke: var(--led-red); stroke-width: 2; stroke-opacity: 0.7; }
 .pt-leg .lg-without { stroke: var(--silk); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.pt-leg .lg-tick { stroke: var(--silk); stroke-width: 1.6; stroke-linejoin: round; }
 .pt-leg .lg-jack { fill: var(--jack-bore); stroke: var(--phos-a); stroke-width: 1.6; }
 .pt-leg .lg-face { stroke: var(--phos-a); stroke-width: 1.4; fill: var(--phos-a-15); }
 
@@ -7713,6 +7714,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 /* Where a knob was as the sound was opened, once it has been turned: a pale
    pointer across its rim (`paintWas`). */
 #rack-svg .knob-was { stroke: var(--silk-mute); stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+/* A bred sound as it was bred (`paintLineage`): the same pale pointer at the
+   seed's value on each knob the generation changed, and a silk tick on the
+   top edge of each module it changed. */
+#rack-svg .knob-seed { stroke: var(--silk-mute); stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+#rack-svg .lineage-tick { fill: none; stroke: var(--silk); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#view-patch .pt-sub .pt-from { color: var(--silk); }
 .pt-leg .lg-arc { stroke: var(--phos-a); stroke-width: 2; }
 .pt-leg .lg-was { stroke: var(--silk-mute); stroke-width: 1.6; }
 /* Focused from the keyboard while it waits: the focus ring stays where it is,
