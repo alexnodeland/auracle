@@ -79,6 +79,7 @@ test("the model's guess is drawn at its socket with its reason and forecast, and
 });
 
 test("beside the guess, the patch's face and its face with the guess, each as rendered, gone after a knob turns, and only the guess's on a patch from nothing", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 49 s on CI: two rankings on a crew, and their faces
   await app.boot({ warmed: false });
   await app.warmStart();
   await openPreset(app, "Sub & Sparkle");
@@ -138,6 +139,7 @@ test("nothing is guessed before the warm start", async ({ page, app }) => {
 });
 
 test("a new patch's skips are its own: the sound it was started from does not inherit them", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 64 s on CI: a ranking after every skip
   await app.boot({ warmed: false });
   await app.warmStart();
   await openPreset(app, "Reese");
@@ -197,6 +199,7 @@ test("with no render crew, the guess renders the likeliest eight on the engine's
 // perform_budget.js slows the engine), so the bank is still arriving when
 // the guess is asked; the walk crew raised afterwards is not slowed.
 test("a guess asked while the bank is still arriving waits for it, then ranks every candidate on a crew", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(300_000); // about 168 s on CI, most of it the bank arriving on boot's slowed crew
   const t0 = Date.now();
   await page.route(/\/farm\.js(\?|$)/, async (route) => {
     const resp = await route.fetch();

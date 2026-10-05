@@ -135,6 +135,7 @@ async function hereRanked(app, at, after, timeout = 120_000) {
 }
 
 test("What goes here? asks the model's guess for a module's place, draws it there with where it goes, and Enter takes it", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 66 s on CI: the warm start, and three places ranked
   await app.boot({ warmed: false });
   await app.warmStart();
   // Reese: two VCOs into a mix, a filter, the amp; the mix is mid-chain.
@@ -213,6 +214,7 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
 });
 
 test("a bred sound shows what its generation changed: from its seed and how many changes, a tick on each module and the seed's pointer on each knob, until it is edited", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000); // about 45 s on CI, most of it ⚡'s walk
   await app.boot({ warmed: false });
   await app.warmStart();
   await openPreset(app, "Reese");
