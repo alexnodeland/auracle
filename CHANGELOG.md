@@ -242,11 +242,14 @@ changelog that edits its own past is not a record.
 - **Add `?seed=` and a whole number to the address** (for example
   `?seed=42`) and a fresh session deals the same pool of sounds on any
   machine running the same version, so you can send someone the address
-  and they start where you did. What follows (pairs, refits, offers)
-  draws from the same seed and repeats when the same things happen in the
-  same order. A saved session comes back as it was. Which side of the
-  table a sound stands on, and the warm start's nine cards, are still
-  shuffled.
+  and they start where you did. The number is the session's random seed.
+  What follows (pairs, refits, offers) draws from it too and repeats when
+  the same things happen in the same order, though a pair dealt before the
+  pool has finished filling can differ with the machine's speed. A saved
+  session comes back as it was, and **Reset your taste…** or a booth's next
+  visitor takes `?seed` off the address, so a reset deals a new pool.
+  Which side of the table a sound stands on, and the warm start's nine
+  cards, are still shuffled.
 
 ### Added: ask a control what it does, and a lesson on filters
 

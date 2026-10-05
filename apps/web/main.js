@@ -5276,9 +5276,9 @@ async function boothResetVisitor() {
   // The guide pill's steps (`auracle-guide`), and the key they had before it.
   for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps"])
     localStorage.removeItem(k);
-  // The next visitor starts at PERFORM, not at the level the address names.
-  try { history.replaceState(history.state, "", `${location.pathname}${location.search}`); } catch { /* ignore */ }
-  location.reload();
+  // The next visitor starts at PERFORM, not at the level the address names,
+  // and on a new pool.
+  reloadAfresh({ keepHash: false });
 }
 
 async function bootBooth() {
@@ -21506,7 +21506,7 @@ $("taste-reset-btn").onclick = () => {
         clearTimeout(saveTimer);
         await idbDel("state");
         clearFirstRunMarks();
-        location.reload();
+        reloadAfresh();
       },
     });
   } else {
@@ -21584,7 +21584,7 @@ async function finishReset(json) {
     await idbDel("state");
   }
   clearFirstRunMarks();
-  location.reload();
+  reloadAfresh();
 }
 
 // ---------- patch share (single-patch files) ----------
@@ -23357,8 +23357,9 @@ function farmOverride() {
   return null;
 }
 
-/** `?seed=N`: the session's seed, any whole number (taken modulo 2^32, the
- *  engine's u32), or null. The engine draws its pool, its pairs, its walks and its fits from
+/** `?seed=N`: the session's random seed, any whole number (taken modulo
+ *  2^32, exactly, as the engine's u32), or null; anything else is said in
+ *  the console and ignored. The engine draws its pool, its pairs, its walks and its fits from
  *  streams of this one number (ADR-001), so a fresh session with the same seed
  *  deals the same sounds: a session can be shared, or replayed. The page's
  *  own draws (which side of the table a sound stands on, the warm start's nine
@@ -23366,9 +23367,24 @@ function farmOverride() {
  *  against position bias. Read at boot, never saved. */
 function seedOverride() {
   const raw = new URLSearchParams(location.search).get("seed");
-  if (raw == null || !/^\d+$/.test(raw.trim())) return null;
-  const n = Number(raw.trim());
-  return Number.isFinite(n) ? n % 4294967296 : null;
+  if (raw == null) return null;
+  if (!/^\d+$/.test(raw)) {
+    console.warn(`[auracle] ?seed= takes a whole number, so "${raw}" is ignored and this session's random seed is its own.`);
+    return null;
+  }
+  return Number(BigInt(raw) % 4294967296n);
+}
+
+/** Reload as a fresh start: Reset your taste and a booth's next visitor.
+ *  The address keeps what it says, the level's hash aside (`keepHash`),
+ *  but not `?seed`, which dealt the session being left: a reset deals a new
+ *  pool. */
+function reloadAfresh({ keepHash = true } = {}) {
+  const kept = location.search.slice(1).split("&")
+    .filter((p) => p && decodeURIComponent(p.split("=")[0]) !== "seed").join("&");
+  const url = `${location.pathname}${kept ? `?${kept}` : ""}${keepHash ? location.hash : ""}`;
+  try { history.replaceState(history.state, "", url); } catch { /* ignore */ }
+  location.reload();
 }
 
 // The width of a walk crew (a generation's walks, ⚡). The same rule as boot's,

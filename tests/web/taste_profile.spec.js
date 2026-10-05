@@ -115,3 +115,23 @@ test("Save taste profile says what it downloaded", async ({ page, app }) => {
     { timeout: 15_000 },
   );
 });
+
+// A reset is a fresh start: `?seed=` dealt the session being reset, so the
+// reload leaves it off the address (main.js `reloadAfresh`) and deals a new
+// pool, while the rest of the address stays as it was.
+test("Reset takes ?seed off the address and keeps the rest of it", async ({ page, app }) => {
+  await page.addInitScript(FIRST_RUN);
+  await app.boot({ warmed: false, seen: false, seed: 4242, query: "?farm=2" });
+  expect(new URL(page.url()).searchParams.get("seed")).toBe("4242");
+  await menu(page, "taste-reset-btn");
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 30_000 }),
+    page.locator("#alarm button", { hasText: "download & reset" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("auracle-profile-before-reset.json");
+  await page.waitForEvent("load", { timeout: 60_000 });
+  await app.booted();
+  const address = new URL(page.url());
+  expect(address.searchParams.has("seed"), `the reset kept ${address.search}`).toBe(false);
+  expect(address.searchParams.get("farm"), "the rest of the address went too").toBe("2");
+});
