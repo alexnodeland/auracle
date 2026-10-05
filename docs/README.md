@@ -70,6 +70,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [017](decisions/017-the-levels-keys.md) | The levels' keys: ⌥ and an arrow, ⌥1–5, hold ⌥, ⌘K (amends ADR-009's ⌥1–4 for views) |
 | [018](decisions/018-the-pad-keys.md) | The pad keys: N, hold B, ⇧↵, ↵ and ⇧⌫ (supersedes ADR-009's pad row) |
 | [019](decisions/019-work-flows-through-issues-and-prs.md) | Work flows through issues and reviewed PRs, merged on a green check |
+| [020](decisions/020-merge-at-green-one-pr-in-ci.md) | Merge at green, one PR in CI at a time, quarantine an unrelated failure on sight (amends ADR-019's rule 5) |
 
 ## Proposals
 

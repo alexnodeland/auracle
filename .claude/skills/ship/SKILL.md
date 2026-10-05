@@ -85,11 +85,32 @@ Hand it to the area's agent (`web-engineer`, `engine-engineer`,
 
 When the builder reports, run the quick gates in `$WT`, then hand the branch to
 the `reviewer` agent: the diff (`git -C "$WT" log origin/main..HEAD`), the
-brief, and what to hunt for. Send its findings back to the builder (the same
-agent, so it keeps its context); have only the fixes re-reviewed. A finding you
-decline goes in the PR body with the reason.
+brief, and what to hunt for.
 
-Rebase now only to resolve a conflict with `main`.
+One round. Send only the **blocking** findings back to the builder (the same
+agent, so it keeps its context), and have only those fixes looked at again:
+- a wrong result;
+- a dropped capability;
+- an untrue description;
+- a spec that can pass vacuously or that a slow runner can fail.
+
+File every other finding as an issue and name it in the PR body. A finding
+you decline goes in the PR body with the reason.
+
+**One PR in CI at a time.** If this branch was built on another PR that is
+still open, hold it until that one merges, then move it onto `main` before
+step 5, so its first run tests what it merges into:
+
+```bash
+git -C "$WT" fetch -q origin
+git -C "$WT" rebase --onto origin/main <the one ahead's last head>
+```
+
+Don't push it stacked on the open one: once that one squash-merges, a branch
+still carrying its commits conflicts wherever both changed the same lines
+(`CHANGELOG.md`, nearly always), and needs a new head and a second run. A PR
+whose files don't meet any open PR's goes up now, based on `main`. Otherwise
+rebase only to resolve a conflict with `main`.
 
 New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
@@ -123,14 +144,18 @@ report. The app or the test is fixed on the branch; a flake is fixed or
 quarantined (`process.md` § Flakes). Never re-run a red check until it
 passes.
 
-## 7. Catch up, then merge
+## 7. Merge at green
 
-Has `main` moved since the PR's CI run? `git -C "$WT" fetch -q origin`, then
-`git -C "$WT" merge-base --is-ancestor origin/main HEAD` fails when it has. If
-it has and the PR touches the app, the tests, the crates or CI (`apps/`,
-`tests/`, `crates/`, `Cargo.*`, the `Makefile`, `.github/`), catch up. The
-lease names the head that was pushed, so a push nobody fetched is never
-overwritten:
+Green, with no blocking finding: merge now. Nothing is added to a green PR;
+a later finding is an issue or the next PR.
+
+- **`main` moved under it** (`git -C "$WT" merge-base --is-ancestor
+  origin/main HEAD` fails): compare its files with what merged since.
+  - If none meet, merge on this run; `main`'s run verifies the merged tree
+    in full. Watch that run, and fix a failure there before anything else
+    merges.
+  - If they meet, catch up. The lease names the head that was pushed, so a
+    push nobody fetched is never overwritten:
 
 ```bash
 pushed=$(git -C "$WT" rev-parse origin/claude/<topic>)
@@ -138,9 +163,10 @@ git -C "$WT" rebase origin/main
 git -C "$WT" push -q --force-with-lease=claude/<topic>:"$pushed" origin claude/<topic>
 ```
 
-then wait for CI on the new head (step 6, with the new `sha`). A PR that
-changes only docs may merge behind `main`; `main`'s run then verifies it in
-full.
+  Then wait for CI on the new head (step 6, with the new `sha`).
+- **Red on a test the PR doesn't touch, for a cause outside it**
+  (`process.md` § Flakes, step 4): one commit that quarantines it with its
+  `flake` issue, push, and wait for that run. Don't root-cause it here.
 
 ```bash
 gh -R alexnodeland/auracle pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
