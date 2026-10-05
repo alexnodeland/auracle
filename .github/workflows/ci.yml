@@ -200,8 +200,10 @@ jobs:
           cat verified/verified.json
           # Lint and the Rust tests hold for the compiler they ran on: reused
           # only while stable is still that release (the lint job pins none).
-          stable="$(curl -sSf https://static.rust-lang.org/dist/channel-rust-stable.toml \
-            | awk '/^\[pkg\.rustc\]/{f=1} f && /^version = /{gsub(/^version = "|"$/, ""); print; exit}')"
+          # Read whole, then parsed: awk stopping at its match would close the
+          # pipe on curl mid-write, which pipefail turns into a failed step.
+          channel="$(curl -sSf https://static.rust-lang.org/dist/channel-rust-stable.toml)"
+          stable="$(awk '/^\[pkg\.rustc\]/{f=1} f && /^version = /{gsub(/^version = "|"$/, ""); print; exit}' <<<"$channel")"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
           echo "rustc: recorded '$recorded', stable now '$stable'"
           for job in lint web test; do
