@@ -2936,7 +2936,7 @@ worker.onmessage = (e) => {
     // so once, in the strip that stays.
     case "engine_error": {
       console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
-      releaseRequest(m.request, m.id);
+      releaseRequest(m.request, m.id, m.req, m.message);
       if (m.request === "faces" || m.request === "face_render") facesUnanswered();
       if (m.fatal) {
         engineCrashed(m.message);
@@ -3419,8 +3419,15 @@ worker.onmessage = (e) => {
 // "thinking", edits queued behind one that would never return, the evolve
 // button reading "breeding 2/3…" forever. The worker answers those with
 // `engine_error` now; this releases what each request was holding.
-function releaseRequest(request, id) {
+function releaseRequest(request, id, req, message) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
+  // PERFORM's questions are matched to their replies by `req`: it answers
+  // that one as failed, and what it was holding (a measurement's "listening…"
+  // or "re-checking", an offer growing) is let go there.
+  if (typeof request === "string" && request.startsWith("perform_")) {
+    if (perform && req != null) perform.requestFailed(req, message);
+    return;
+  }
   switch (request) {
     case "render_take":
       // The recording it carried is lost: say so, rather than wait forever.
@@ -3535,7 +3542,9 @@ function releaseRequest(request, id) {
 }
 
 // Everything at once: the engine is not coming back.
-function releaseEverything() {
+function releaseEverything(message) {
+  // PERFORM's questions still out will get no reply from a dead engine.
+  try { if (perform) perform.failAll(message); } catch (_) {}
   for (const r of [
     "edit_param", "edit_structure", "fit", "refine", "refine_from",
     "edit_commit", "duel", "preview_render", "import_patch", // voice: name
@@ -3551,7 +3560,7 @@ function releaseEverything() {
 // into, so autosave stops here; the record on disk is the last good one.
 let engineDown = false;
 function engineCrashed(message) {
-  releaseEverything();
+  releaseEverything(message);
   saveBlocked = "crashed";
   clearTimeout(saveTimer);
   if (engineDown) return; // said once; the strip is already up

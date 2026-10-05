@@ -1136,12 +1136,15 @@ function isFatal(err, message) {
   );
 }
 
-function engineError(request, id, err) {
+// `req`: the request's own number, for the requests that carry one (PERFORM's
+// questions, matched to their reply by it), so main can answer the right one
+// when this is the only reply it will get (a poisoned engine never runs it).
+function engineError(request, id, err, req) {
   const message = poisoned ? `the engine is down (${poisoned})` : String((err && err.message) || err);
   const fatal = !!poisoned || isFatal(err, message);
   if (fatal && !poisoned) poisoned = message;
   console.error(`[auracle] engine error handling ${request}:`, err);
-  post({ type: "engine_error", request, id: id == null ? null : id, message, fatal });
+  post({ type: "engine_error", request, id: id == null ? null : id, req: req == null ? null : req, message, fatal });
 }
 
 // A rejection nothing awaited. Not a request's own failure — `dispatch`
@@ -2516,13 +2519,13 @@ async function pump() {
 
 async function runMessage(m) {
   if (poisoned) {
-    engineError(m.type, m.id, null);
+    engineError(m.type, m.id, null, m.req);
     return;
   }
   try {
     await dispatch(m);
   } catch (err) {
-    engineError(m.type, m.id, err);
+    engineError(m.type, m.id, err, m.req);
   }
 }
 

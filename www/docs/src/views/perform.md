@@ -63,7 +63,10 @@ On the right, what you turn:
   saying what PERFORM is doing with the sound: *listening to this sound…*
   while it measures a new one, then *4 of 6 controls reach this patch*, with
   *re-checking* after it while it measures again in the background, or
-  *listening to Bite…* while it measures a control you just placed.
+  *listening to Bite…* while it measures a control you just placed. If the
+  engine fails partway, it says so instead: *couldn’t measure this patch*,
+  or, after the count, *couldn’t re-check this patch* when the controls
+  still play on their last measurement.
 - **Your controls**, three to a row: to start, **BRIGHT**, **SNAP**,
   **MOTION**, **BODY**, **GRIT**, and **SPACE** (a longer panel takes four to
   a row). The line under each says what it turns, or what state it’s in. A

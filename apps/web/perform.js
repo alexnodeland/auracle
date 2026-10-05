@@ -261,6 +261,10 @@ export function createPerform(host) {
     // echo is not mistaken for a new patch.
     keeping: null,
     measuring: false,
+    // The words for the last measurement of this patch that failed ("couldn’t
+    // measure this patch"), said on the status line until another lands or
+    // the patch changes; null when none has.
+    wireError: null,
     // A measurement not started because another patch is on its way to the
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
@@ -2232,6 +2236,7 @@ export function createPerform(host) {
   function applyWired(data) {
     state.measuring = false;
     state.carried = false;
+    state.wireError = null;
     // Where the sound is *now* becomes the new centre and the controls
     // return to zero there, so nothing audibly moves. Now, not when the
     // measurement was asked for: the player may have kept turning while
@@ -2331,9 +2336,41 @@ export function createPerform(host) {
     state.wire = fresh;
     state.carried = false;
     state.measuring = false;
+    state.wireError = null;
     push();
     sendTouch();
     renderStatus();
+  }
+
+  // A request the engine will never answer: it threw before it could reply,
+  // or the engine is down (main's `engine_error`, which names it by `req`).
+  // Answered here as the reply its kind would have had, empty and carrying
+  // the error, so each lets go of what it held as it does for an error reply
+  // of its own: a measurement's "listening…" and "re-checking", an offer
+  // growing, a pre-warm's caller. It used to stay pending for good, and the
+  // status said "re-checking" (or "listening to this sound…") ever after.
+  const REPLY = {
+    perform_wire: ["perform_wired", "data"],
+    perform_offer: ["perform_offered", "offer"],
+    perform_drift: ["perform_drifted", "drift"],
+    perform_graft: ["perform_grafted", "graft"],
+    perform_apply: ["perform_applied", "json"],
+    perform_record: ["perform_recorded", "recorded"],
+  };
+  function requestFailed(req, message) {
+    const p = state.pending.get(req);
+    if (!p) return false; // answered already, or never PERFORM's
+    const [type, field] = REPLY[p.kind] || [];
+    if (!type) {
+      state.pending.delete(req);
+      state.applyThen.delete(req);
+      return true;
+    }
+    return onWorker({ type, req, [field]: null, error: message || "the engine failed" });
+  }
+  // The engine is gone (main's `engineCrashed`): nothing still out is coming.
+  function failAll(message) {
+    for (const req of [...state.pending.keys()]) requestFailed(req, message);
   }
 
   function onWorker(m) {
@@ -2387,7 +2424,10 @@ export function createPerform(host) {
           // measurement to replace it, it goes rather than lingering.
           state.wire = null;
           state.carried = false;
-          renderStatus("couldn’t measure this patch");
+          state.wireError = "couldn’t measure this patch";
+        } else if (m.error) {
+          // The wiring in hand still plays; it just wasn't re-checked.
+          state.wireError = "couldn’t re-check this patch";
         }
         knobs.forEach(paintKnob);
         renderHood();
@@ -2396,10 +2436,16 @@ export function createPerform(host) {
         renderPalette();
         return true;
       }
+      // As a re-check's reply does: re-checking while another measurement
+      // of this patch is still out, and not once none is. This branch used
+      // to leave the flag as it found it, so a re-check that had landed first
+      // (and kept it on for this one) left "re-checking" on for good.
+      state.revalidating = inFlight("perform_wire");
       if (!m.data) {
         state.measuring = false;
         state.wire = null;
-        renderStatus(m.error ? "couldn’t measure this patch" : "the model hasn’t heard enough sounds to measure against yet");
+        state.wireError = m.error ? "couldn’t measure this patch" : "the model hasn’t heard enough sounds to measure against yet";
+        renderStatus();
       } else {
         applyWired(m.data);
         markWired("measured");
@@ -2555,6 +2601,7 @@ export function createPerform(host) {
     state.changedAt = performance.now();
     state.revalidating = false;
     state.carried = false;
+    state.wireError = null;
     // An offer still growing for the old patch is consumed when it lands (its
     // generation is stale), so B must say so now: it used to keep "growing an
     // offer…" for ever when the patch changed under a growing offer.
@@ -3014,7 +3061,10 @@ export function createPerform(host) {
       const unheard = state.wire.filter((w) => w && w.pending && w.knobs && !w.knobs.length && !state.carried).map((w) => w.name);
       if ((state.revalidating || state.measuring) && unheard.length) parts.push(`listening to ${unheard.join(", ")}…`);
       else if (state.revalidating || state.measuring) parts.push("re-checking");
-    }
+      // The last measurement asked of it failed (the engine's own words are
+      // its toast), and none is out now.
+      else if (state.wireError) parts.push(state.wireError);
+    } else if (state.wireError) parts.push(state.wireError);
     // Written only when the words change.
     const text = parts.join(" · ");
     if (statusEl.textContent !== text) statusEl.textContent = text;
@@ -4369,6 +4419,8 @@ export function createPerform(host) {
       renderHeadWords();
     },
     onWorker,
+    requestFailed,
+    failAll,
     // For MIDI and the keyboard: set a named control (0..5), Blend (6) or
     // Wander (7) from a normalized 0..1 value.
     setControl(i, v01) {

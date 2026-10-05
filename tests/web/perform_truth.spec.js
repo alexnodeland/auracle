@@ -21,6 +21,12 @@
 //   "listening…": after a few seconds it is measured as any other patch is.
 // - A drift is not a new patch: the status never says "listening", and the
 //   re-measure after it waits in the engine's background lane.
+// - A measurement the engine never answers (it threw before it could, or it
+//   is down: `engine_error`, naming the request by `req`) is let go: the
+//   status stops saying "re-checking" or "listening…" and says it couldn't,
+//   and the engine's own error is still its toast or its alarm. The error is
+//   injected, dispatched on the worker as the worker posts it, because the
+//   shipped engine answers every measurement it runs.
 //
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
@@ -37,7 +43,7 @@ const INIT = `(() => {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
         if (m && typeof m.type === "string" && /^perform_/.test(m.type))
-          posts.push({ type: m.type, bg: !!m.bg, t: performance.now() });
+          posts.push({ type: m.type, req: m.req, bg: !!m.bg, t: performance.now() });
         return post(m, t);
       };
     }
@@ -51,12 +57,20 @@ const INIT = `(() => {
 // measured as a patch never seen before is: the only way to watch a
 // measurement in progress on a known patch.
 // `stalled: true` holds the file's fetch open for good, as a stuck connection
-// does.
-async function boot(page, { shipped = true, stalled = false } = {}) {
+// does. `slow`: the engine worker's wasm calls slowed that many times
+// (`SLOW_ENGINE`), so a measurement is still out when the test acts on it
+// (AURACLE_CPU_THROTTLE, through `watch`, takes over when it is set).
+async function boot(page, { shipped = true, stalled = false, slow = 0 } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   if (stalled) await page.route("**/perform-wirings.json*", () => {});
+  if (slow > 1) {
+    await page.route(/\/worker\.js(\?|$)/, async (route) => {
+      const resp = await route.fetch();
+      await route.fulfill({ response: resp, body: budget.SLOW_ENGINE(slow) + (await resp.text()), contentType: "text/javascript" });
+    });
+  }
   await budget.watch(page);
   await page.addInitScript(INIT);
   await page.goto("/");
@@ -378,5 +392,59 @@ test("a shipped-wirings fetch that never answers does not hold a patch on listen
   const how = await page.evaluate(() => window.__aur.marks().filter((m) => m.name === "perform-wired").map((m) => m.detail && m.detail.how));
   expect(how).toContain("measured");
   expect(await page.evaluate(() => window.__pfPosts.some((p) => p.type === "perform_wire"))).toBe(true);
+  expect(errs).toEqual([]);
+});
+
+// What the worker posts for a request it could not run (`engineError`).
+async function failMeasurement(page, req, { fatal = false } = {}) {
+  await page.evaluate(
+    ([r, f]) =>
+      window.__pbEngine.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "engine_error", request: "perform_wire", id: null, req: r, message: "RuntimeError: injected for the test", fatal: f },
+        }),
+      ),
+    [req, fatal],
+  );
+}
+const lastWire = (page, bg) =>
+  page.evaluate((b) => {
+    const w = window.__pfPosts.filter((p) => p.type === "perform_wire" && p.bg === b);
+    return w.length ? w[w.length - 1].req : null;
+  }, bg);
+
+test("a re-check the engine never answers is let go: the status leaves re-checking and says it couldn't", async ({ page }) => {
+  test.setTimeout(240_000);
+  // Slowed, so Glass Pad's re-check of its shipped wiring is still out.
+  const errs = await boot(page, { slow: 4 });
+  await openOnPerform(page, "Glass Pad");
+  const status = page.locator(".pf-status");
+  await expect(status).toContainText("re-checking", { timeout: 30_000 });
+  const req = await lastWire(page, true);
+  expect(req, "the re-check was asked for").not.toBeNull();
+  await failMeasurement(page, req);
+  await expect(page.locator("#toasts")).toContainText("The engine couldn’t finish", { timeout: 5_000 });
+  await expect(status).not.toContainText("re-checking", { timeout: 5_000 });
+  // The shipped wiring still plays; it just wasn't re-checked.
+  await expect(status).toContainText("controls reach this patch · couldn’t re-check this patch");
+  expect(await page.locator(".pf-knob.waiting").count(), "no control still says listening…").toBe(0);
+  expect(errs).toEqual([]);
+});
+
+test("a first measurement a crashed engine never answers is let go: the status stops listening and says it couldn't", async ({ page }) => {
+  test.setTimeout(240_000);
+  // No shipped wiring: Glass Pad is measured from nothing, slowed so it is
+  // still running.
+  const errs = await boot(page, { shipped: false, slow: 4 });
+  await openOnPerform(page, "Glass Pad");
+  const status = page.locator(".pf-status");
+  await expect(status).toContainText("listening to this sound", { timeout: 30_000 });
+  const req = await lastWire(page, false);
+  expect(req, "the measurement was asked for").not.toBeNull();
+  // The engine is down (a poisoned engine answers each request so).
+  await failMeasurement(page, req, { fatal: true });
+  await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
+  await expect(status).toHaveText("couldn’t measure this patch", { timeout: 5_000 });
+  expect(await page.locator(".pf-knob.waiting").count(), "no control still says listening…").toBe(0);
   expect(errs).toEqual([]);
 });
