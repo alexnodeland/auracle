@@ -7,41 +7,13 @@
 // sound in hand through the grammar's lowpass (`explain_lesson`,
 // `WasmEngine::lesson_filter`).
 //
-// The spec reaches the engine worker by wrapping `Worker` before `main.js`
-// runs, as the other PERFORM specs do, and keeps every explain request and
-// reply, so what a figure says can be held against what the worker posted.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+// Every explain request and reply is read through the fixture's tap, so what
+// a figure says can be held against what the worker posted; a lesson reply
+// is rewritten there when a test asks (`app.amend`), so a render that fails
+// can be met on any sound.
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const INIT = `(() => {
-  const Orig = window.Worker;
-  const sent = (window.__xsent = []);
-  const got = (window.__xgot = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && /^explain/.test(m.type)) sent.push(JSON.parse(JSON.stringify(m)));
-        return post(m, t);
-      };
-      // The page's handler, called with each reply after it is kept, and
-      // with a lesson reply rewritten when a test asks (window.__xinject: a
-      // function from a reply to the one the page should see), so a render
-      // that fails can be met on any sound.
-      let handler = null;
-      Object.defineProperty(w, "onmessage", { configurable: true, get: () => handler, set: (h) => { handler = h; } });
-      w.addEventListener("message", (e) => {
-        let d = e.data;
-        if (d && d.type === "explain_lesson" && window.__xinject) d = window.__xinject(d);
-        if (d && /^explain/.test(d.type)) got.push(JSON.parse(JSON.stringify({ ...d, buffer: d.buffer ? d.buffer.length : null })));
-        if (handler) handler({ data: d });
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
   // The output level, read through an analyser on everything the app
   // connects to the destination (space_after_a_click.spec.js's tap).
   const connect = AudioNode.prototype.connect;
@@ -71,32 +43,27 @@ const INIT = `(() => {
 })();`;
 const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
 const sounds = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeGreaterThan(-50);
-const quiet = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeLessThan(-80);
+const silent = (page, message) => expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100], message }).toBeLessThan(-80);
+
+// What the page asks the engine for a figure or the lesson (and to cancel
+// one): every request a type of which starts "explain".
+const EXPLAIN = ["explain", "explain_lesson", "explain_cancel"];
+
+// A finger held still long enough to be a long press, and a drag's pace.
+const LONG_PRESS_MS = 900;
+const DRAG_STEP_MS = 50;
 
 // AURACLE_CPU_THROTTLE=4 runs the page and the engine worker at a quarter of
-// the machine's speed (perform_budget.js's `watch`), the slow laptop the
-// figures must still answer on.
-const budget = require("./perform_budget.js");
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
+// the machine's speed (the fixture's boot), the slow laptop the figures must
+// still answer on.
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
 }
 
-async function openOnPerform(page, name) {
-  await goLevel(page, "patch");
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
+async function openOnPerform(app, name) {
+  await app.level("patch");
+  await app.openOnPerform(name);
 }
 
 const knob = (page, j) => page.locator(`.pf-knob[data-i="${j}"]`);
@@ -104,48 +71,64 @@ const say = (page) => page.locator(".xp.on .xp-say");
 
 // The figure has its measurement: it is drawn (a drawn figure plays again
 // when clicked), not measuring, and not waiting for the control's own.
-async function settled(page, timeout = 120_000) {
-  await page.waitForFunction(() => {
-    const s = document.querySelector(".xp.on .xp-say")?.textContent || "";
-    return s && !/measuring…|hasn’t been measured/.test(s) && !!document.querySelector(".xp.on .xp-fig[title]");
-  }, null, { timeout });
+function settled(page, app, timeout = 120_000) {
+  return app.engine(
+    (ms) =>
+      page.waitForFunction(() => {
+        const s = document.querySelector(".xp.on .xp-say")?.textContent || "";
+        return s && !/measuring…|hasn’t been measured/.test(s) && !!document.querySelector(".xp.on .xp-fig[title]");
+      }, null, { timeout: ms }),
+    { ms: timeout },
+  );
 }
 
-async function askAbout(page, j) {
+async function askAbout(page, app, j) {
   await knob(page, j).hover();
   await page.keyboard.press("?");
   await expect(page.locator(".xp.on")).toBeVisible();
-  await settled(page);
+  await settled(page, app);
 }
 
-// What the page says, held against what it was posted: the sentence words.js
-// builds from the last reply for the control at panel position `j`.
-async function expectedSay(page, j) {
-  return page.evaluate(async (j) => {
-    const words = await import("/words.js");
-    const knob = document.querySelector(`.pf-knob[data-i="${j}"]`);
-    const k = Number(knob.dataset.index);
-    const got = window.__xgot.filter((m) => m.type === "explain" && m.k === k);
-    const reply = got[got.length - 1];
-    const req = window.__xsent.find((m) => m.type === "explain" && m.token === reply.token);
-    return { k, reply, req, words: { PALETTE: words.PALETTE } };
-  }, j);
+// What the page says, held against what it was posted: the last reply for the
+// control at panel position `j`, and the request it answers.
+async function expectedSay(page, app, j) {
+  const k = Number(await knob(page, j).getAttribute("data-index"));
+  const reply = (await app.replies("explain", { where: { k } })).pop();
+  const [req] = await app.sent({ type: "explain", token: reply.token });
+  return { k, reply, req };
 }
 
-test("each control on the panel opens its figure, by ?, by its chip, and from the next one's", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+// The newest lesson request's token, and its reply once it has landed.
+const lastLessonToken = async (app) => Math.max(...(await app.sent({ type: "explain_lesson" })).map((s) => s.token));
+async function lessonReply(app, where, timeout) {
+  let found = null;
+  await app.engine(
+    (ms) =>
+      expect
+        .poll(async () => {
+          const token = await lastLessonToken(app);
+          found = (await app.replies("explain_lesson", { where: { ...where, token } })).pop() || null;
+          return found != null;
+        }, { timeout: ms })
+        .toBe(true),
+    { ms: timeout },
+  );
+  return found;
+}
+
+test("each control on the panel opens its figure, by ?, by its chip, and from the next one's", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   const names = ["Bright", "Snap", "Motion", "Body", "Grit", "Space"];
   for (const [j, name] of names.entries()) {
-    await askAbout(page, j);
+    await askAbout(page, app, j);
     await expect(page.locator(".xp.on .xp-title")).toHaveText(`${name} · what it does`);
     await expect(page.locator(".xp.on .xp-sw button[aria-pressed='true']")).toHaveText(name);
     const fig = page.locator(".xp.on .xp-fig");
     await expect(fig).toHaveAttribute("role", "img");
     expect(await fig.getAttribute("aria-label")).toContain(`${name.toUpperCase()} on Reese`);
     // The figure was asked of the engine for this control, on this sound.
-    const { req, reply } = await expectedSay(page, j);
+    const { req, reply } = await expectedSay(page, app, j);
     expect(req.k).toBe(j);
     expect(reply.made.portrait.bands.length).toBe(40);
     await page.keyboard.press("Escape");
@@ -162,15 +145,14 @@ test("each control on the panel opens its figure, by ?, by its chip, and from th
   await page.keyboard.press("ArrowRight");
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Bright · what it does");
   // A view change puts it away: it belongs to where it was asked.
-  await goLevel(page, "evolve");
+  await app.level("evolve");
   await expect(page.locator(".xp.on")).toHaveCount(0);
-  expect(errs).toEqual([]);
 });
 
-test("every control in the palette opens its figure", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(900_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("every control in the palette opens its figure", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(190_000); // about 81 to 92 s on CI: eighteen figures, each measured
+  await boot(page, app);
+  await openOnPerform(app, "Glass Pad");
   const row = (name, placed) => page.locator(`.pp-row${placed ? ".on" : ":not(.on)"}`, { has: page.locator(".pp-name", { hasText: new RegExp(`^${name}$`) }) });
   const arrange = async (hide, place) => {
     await page.locator(".pf-arrange").click();
@@ -183,7 +165,7 @@ test("every control in the palette opens its figure", { tag: "@slow" }, async ({
     for (const name of names) {
       const j = await page.evaluate((n) => [...document.querySelectorAll(".pf-knob[data-index]")].findIndex((k) => k.getAttribute("aria-label") === n), name);
       expect(j).toBeGreaterThanOrEqual(0);
-      await askAbout(page, j);
+      await askAbout(page, app, j);
       await expect(page.locator(".xp.on .xp-title")).toHaveText(`${name} · what it does`);
       await page.keyboard.press("Escape");
     }
@@ -195,13 +177,11 @@ test("every control in the palette opens its figure", { tag: "@slow" }, async ({
   const third = ["Sway", "Distance", "Haze", "Bite", "Lo-fi"];
   await arrange(second, third);
   await askAll(third);
-  expect(errs).toEqual([]);
 });
 
-test("a control asked about before it is measured answers once it is, a search control too", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("a control asked about before it is measured answers once it is, a search control too", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Glass Pad");
   // Placed now, asked at once: their measurement lands with the figure open.
   // On Glass Pad, with these five beside BRIGHT, nothing turns SWAY: a
   // measurement that changes no knob still changes what is said.
@@ -210,23 +190,21 @@ test("a control asked about before it is measured answers once it is, a search c
   for (const n of ["Snap", "Motion", "Body", "Grit", "Space"]) await row(n, true).locator(".pp-hide").click();
   for (const n of ["Sway", "Distance", "Haze", "Bite", "Lo-fi"]) await row(n, false).locator(".pp-place").click();
   await page.keyboard.press("Escape");
-  await askAbout(page, 1);
+  await askAbout(page, app, 1);
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Sway · what it does");
   // Whatever the measurement found (it turns, or nothing here does), the
   // answer says it, from the wiring that landed and the engine's render.
   const said = await say(page).textContent();
   expect(said).toMatch(/^(Turned (to|\d+% toward) (fixed|swaying), |Nothing here turns SWAY: )/);
   expect(said).toMatch(/between 0\.5 and 2\sHz/);
-  expect(errs).toEqual([]);
 });
 
-test("a figure says what the worker posted, and follows its control", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
-  await askAbout(page, 0);
+test("a figure says what the worker posted, and follows its control", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
   const check = async () => {
-    const { reply, req } = await expectedSay(page, 0);
+    const { reply, req } = await expectedSay(page, app, 0);
     // The sentence's measurement, built by the app's own words from the
     // reply alone (the turn it names is the page's: the request's).
     const text = (await say(page).textContent()).replace(/\u00a0/g, " ");
@@ -255,37 +233,32 @@ test("a figure says what the worker posted, and follows its control", async ({ p
   expect(await say(page).textContent()).toMatch(/^Turned to bright,/);
   // Asked about the sound in hand: the performed state, BRIGHT at its center
   // and at a full turn.
-  const sounding = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain").pop());
+  const sounding = (await app.sent({ type: "explain" })).pop();
   expect(sounding.tree).toBe(first.req.tree);
   expect(first.req.turned).not.toEqual(first.req.made);
   // Turn BRIGHT with the keys: the open figure follows, measured again.
-  const before = await page.evaluate(() => window.__xgot.length);
+  const turned = await app.now();
   await knob(page, 0).focus();
   for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowUp");
-  await page.waitForFunction((n) => window.__xgot.length > n, before, { timeout: 60_000 });
-  await expect(say(page)).toHaveText(/^Turned 20% toward bright,/, { timeout: 60_000 });
+  await app.reply("explain", { after: turned, timeout: 60_000 });
+  await app.engine((timeout) => expect(say(page)).toHaveText(/^Turned 20% toward bright,/, { timeout }), { ms: 60_000 });
   const second = await check();
   expect(second.req.token).toBeGreaterThan(first.req.token);
   expect(second.req.turned).not.toEqual(first.req.turned);
-  expect(errs).toEqual([]);
 });
 
-test("the lesson on filters is the sound in hand: another sound, another lesson", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
+test("the lesson on filters is the sound in hand: another sound, another lesson", async ({ page, app }) => {
+  await boot(page, app);
   const lessonOf = async (name) => {
-    await openOnPerform(page, name);
-    await askAbout(page, 0);
+    await openOnPerform(app, name);
+    await askAbout(page, app, 0);
     await page.locator(".xp.on .xp-learn").click();
     await expect(page.locator(".xl.on")).toBeVisible();
     await expect(page.locator(".xl.on .xl-h")).toHaveText("A sound has a shape");
     await expect(page.locator(".xl.on .xl-body p").first()).toContainText(`This is ${name},`);
-    await page.waitForFunction(() => window.__xgot.some((m) => m.type === "explain_lesson" && m.cutoff == null && m.token === Math.max(...window.__xsent.filter((s) => s.type === "explain_lesson").map((s) => s.token))), null, { timeout: 60_000 });
-    const plain = await page.evaluate(() => {
-      const r = window.__xgot.filter((m) => m.type === "explain_lesson" && m.cutoff == null).pop();
-      const q = window.__xsent.find((s) => s.type === "explain_lesson" && s.token === r.token);
-      return { bands: r.data.portrait.bands, facts: r.data.portrait.facts, tree: q.tree, buffer: r.buffer };
-    });
+    const r = await lessonReply(app, { cutoff: false }, 60_000);
+    const [q] = await app.sent({ type: "explain_lesson", token: r.token });
+    const plain = { bands: r.data.portrait.bands, facts: r.data.portrait.facts, tree: q.tree, buffer: r.buffer && r.buffer.bytes };
     expect(plain.buffer).toBeGreaterThan(0);
     // The filter's step: a lowpass on this sound, its cutoff where the
     // player puts it, its response the engine's.
@@ -298,16 +271,8 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
     await filt.focus();
     // Down from 12 kHz to about 400 Hz, a key at a time.
     for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowLeft");
-    await page.waitForFunction(() => {
-      const last = Math.max(...window.__xsent.filter((s) => s.type === "explain_lesson").map((s) => s.token));
-      const r = window.__xgot.find((m) => m.type === "explain_lesson" && m.token === last);
-      return r && r.cutoff != null;
-    }, null, { timeout: 90_000 });
-    const filtered = await page.evaluate(() => {
-      const last = Math.max(...window.__xsent.filter((s) => s.type === "explain_lesson").map((s) => s.token));
-      const r = window.__xgot.find((m) => m.type === "explain_lesson" && m.token === last);
-      return { bands: r.data.portrait.bands, facts: r.data.portrait.facts, cutoff_hz: r.data.cutoff_hz, response: r.data.response };
-    });
+    const f = await lessonReply(app, { cutoff: true }, 90_000);
+    const filtered = { bands: f.data.portrait.bands, facts: f.data.portrait.facts, cutoff_hz: f.data.cutoff_hz, response: f.data.response };
     const text = await filt.getAttribute("aria-valuetext");
     const want = await page.evaluate(async (hz) => (await import("/words.js")).cutoffWord(hz), filtered.cutoff_hz);
     expect(text).toBe(want);
@@ -331,38 +296,30 @@ test("the lesson on filters is the sound in hand: another sound, another lesson"
   const glass = await lessonOf("Glass Pad");
   expect(glass.tree).not.toBe(reese.tree);
   expect(glass.bands).not.toEqual(reese.bands);
-  expect(errs).toEqual([]);
 });
 
-test("under reduced motion a figure is drawn whole at once, and holds", async ({ page }) => {
-  test.setTimeout(400_000);
+test("under reduced motion a figure is drawn whole at once, and holds", async ({ page, app }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
-  const frames = async () => {
-    const a = await page.locator(".xp.on .xp-fig").evaluate((c) => c.toDataURL());
-    await page.waitForTimeout(500);
-    const b = await page.locator(".xp.on .xp-fig").evaluate((c) => c.toDataURL());
-    return [a, b];
-  };
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  const frame = () => page.locator(".xp.on .xp-fig").evaluate((c) => c.toDataURL());
   // MOTION's figure runs the held note at its real rate; still, it is the
-  // whole track, from the first frame drawn.
-  await askAbout(page, 2);
-  const [a, b] = await frames();
-  expect(a).toBe(b);
+  // whole track, from the first frame drawn, and nothing redraws it.
+  await askAbout(page, app, 2);
+  const a = await frame();
+  await app.quiet();
+  expect(await frame()).toBe(a);
   await page.keyboard.press("Escape");
   // And with motion, it runs.
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await askAbout(page, 2);
-  const [c, d] = await frames();
-  expect(c).not.toBe(d);
-  expect(errs).toEqual([]);
+  await askAbout(page, app, 2);
+  const c = await frame();
+  await expect.poll(frame).not.toBe(c);
 });
 
-test("asking about a control moves no label", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("asking about a control moves no label", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   const labels = () =>
     page.evaluate(() =>
       [...document.querySelectorAll(".pf-knob .pf-k-name, .bank-item .bi-name, .bank-item .name")].map((n) => {
@@ -376,22 +333,20 @@ test("asking about a control moves no label", async ({ page }) => {
   await expect(page.locator(".xp-chip.on")).toBeVisible();
   expect(await labels()).toEqual(at);
   await page.keyboard.press("?");
-  await settled(page);
+  await settled(page, app);
   expect(await labels()).toEqual(at);
   await page.locator(".xp.on .xp-sw button", { hasText: "Motion" }).click();
-  await settled(page);
+  await settled(page, app);
   expect(await labels()).toEqual(at);
   await page.keyboard.press("Escape");
   expect(await labels()).toEqual(at);
-  expect(errs).toEqual([]);
 });
 
-test("a turn with an answer open asks the engine once it rests, not on every move", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
-  await askAbout(page, 0);
-  const before = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain").length);
+test("a turn with an answer open asks the engine once it rests, not on every move", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
+  const before = await app.now();
   // Three seconds of drag on BRIGHT, up and down, a move every 50 ms.
   const b = await knob(page, 0).boundingBox();
   const x = b.x + b.width / 2;
@@ -400,39 +355,38 @@ test("a turn with an answer open asks the engine once it rests, not on every mov
   await page.mouse.down();
   for (let i = 0; i < 60; i++) {
     await page.mouse.move(x, y - 40 * Math.sin((i / 60) * Math.PI * 2) - i * 0.3);
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(DRAG_STEP_MS);
   }
   await page.mouse.up();
-  await settled(page);
-  await page.waitForTimeout(1_500);
-  const asked = await page.evaluate((n) => window.__xsent.filter((m) => m.type === "explain").length - n, before);
+  await settled(page, app);
+  // Nothing more is asked once it has answered.
+  await app.quiet();
+  const asked = (await app.sent({ type: "explain" }, { after: before })).length;
   expect(asked).toBeGreaterThanOrEqual(1);
   expect(asked).toBeLessThanOrEqual(2);
-  expect(errs).toEqual([]);
 });
 
-test("Space plays with an answer open and in the lesson, after a click on its buttons too", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
-  await askAbout(page, 0);
+test("Space plays with an answer open and in the lesson, after a click on its buttons too", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  await askAbout(page, app, 0);
   // A click on another control's name leaves no focus on it: Space plays.
   await page.locator(".xp.on .xp-sw button", { hasText: "Snap" }).click();
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Snap · what it does");
   expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BUTTON");
-  await quiet(page, "quiet before Space");
+  await silent(page, "quiet before Space");
   await page.keyboard.press(" ");
   await sounds(page, "Space plays with the answer open");
   await page.keyboard.press(" ");
-  await quiet(page, "Space again stops it");
+  await silent(page, "Space again stops it");
   // The lesson: NEXT clicked, Space plays the step's sound and does not step.
   await page.locator(".xp.on .xp-sw button", { hasText: "Bright" }).click();
-  await settled(page);
+  await settled(page, app);
   await page.locator(".xp.on .xp-learn").click();
-  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout }), { ms: 60_000 });
   await page.locator(".xl.on .xl-next").click();
   await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
-  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout }), { ms: 60_000 });
   await page.keyboard.press(" ");
   await sounds(page, "Space plays the filtered sound");
   await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
@@ -444,59 +398,60 @@ test("Space plays with an answer open and in the lesson, after a click on its bu
   await expect(page.locator(".xl.on .xl-count")).toHaveText("2 of 3");
   await page.keyboard.press("Enter");
   await expect(page.locator(".xl.on .xl-count")).toHaveText("3 of 3");
-  expect(errs).toEqual([]);
 });
 
-test("the lesson says why a render failed, draws nothing for it, and never plays the sound without the filter as through it", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("the lesson says why a render failed, draws nothing for it, and never plays the sound without the filter as through it", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   // Every filtered render refused by the check: said, not drawn, not played.
-  await page.evaluate(() => {
-    window.__xinject = (d) => (d.cutoff == null ? d : { ...d, data: { ...d.data, portrait: undefined, error: "vet" }, buffer: new Float32Array(0) });
-  });
-  await askAbout(page, 0);
+  await app.amend({ type: "explain_lesson", cutoff: true }, { "data.portrait": null, "data.error": "vet", buffer: null });
+  await askAbout(page, app, 0);
   await page.locator(".xp.on .xp-learn").click();
-  await expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".xl.on .xl-play")).toBeEnabled({ timeout }), { ms: 60_000 });
   await page.locator(".xl.on .xl-next").click();
-  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Through the filter at this cutoff, Reese doesn’t pass the vet, so it isn’t played: try another cutoff.", { timeout: 60_000 });
+  await app.engine(
+    (timeout) =>
+      expect(page.locator(".xl.on .xl-trouble")).toHaveText("Through the filter at this cutoff, Reese doesn’t pass the vet, so it isn’t played: try another cutoff.", { timeout }),
+    { ms: 60_000 },
+  );
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
   await page.keyboard.press(" ");
-  await page.waitForTimeout(800);
+  // Nothing plays.
+  await app.quiet();
   expect(await peakDb(page)).toBeLessThan(-80);
   // A drag still asks: another cutoff may render.
-  const before = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length);
+  const before = await app.now();
   await page.locator(".xl.on .xl-filter").focus();
   await page.keyboard.press("End");
-  await expect.poll(() => page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length)).toBeGreaterThan(before);
+  await expect.poll(async () => (await app.sent({ type: "explain_lesson" }, { after: before })).length).toBeGreaterThan(0);
   // And when it renders after the sound, there is no room in it: said, and played.
-  await page.evaluate(() => {
-    window.__xinject = (d) => (d.cutoff == null ? d : { ...d, data: { ...d.data, placement: "after" } });
-  });
+  await app.unamend();
+  await app.amend({ type: "explain_lesson", cutoff: true }, { "data.placement": "after" });
   await page.keyboard.press("ArrowLeft");
-  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese has no room for one more module, so this filter goes after it, at one cutoff for every note.", { timeout: 60_000 });
+  await app.engine(
+    (timeout) =>
+      expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese has no room for one more module, so this filter goes after it, at one cutoff for every note.", { timeout }),
+    { ms: 60_000 },
+  );
   await expect(page.locator(".xl.on .xl-play")).toBeEnabled();
   await page.keyboard.press("Escape");
   // The sound itself failing: said, nothing to play, and nothing more asked.
-  await page.evaluate(() => {
-    window.__xinject = (d) => (d.cutoff != null ? d : { ...d, data: { ...d.data, portrait: undefined, error: "silent" }, buffer: new Float32Array(0) });
-  });
-  await askAbout(page, 0);
+  await app.unamend();
+  await app.amend({ type: "explain_lesson", cutoff: false }, { "data.portrait": null, "data.error": "silent", buffer: null });
+  await askAbout(page, app, 0);
   await page.locator(".xp.on .xp-learn").click();
-  await expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese is silent on the phrase, so the lesson has nothing to show.", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".xl.on .xl-trouble")).toHaveText("Reese is silent on the phrase, so the lesson has nothing to show.", { timeout }), { ms: 60_000 });
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
-  const asked = await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length);
+  const asked = await app.now();
   await page.locator(".xl.on .xl-next").click();
-  await page.waitForTimeout(1_000);
-  expect(await page.evaluate(() => window.__xsent.filter((m) => m.type === "explain_lesson").length)).toBe(asked);
+  await app.quiet();
+  expect(await app.sent({ type: "explain_lesson" }, { after: asked })).toEqual([]);
   await expect(page.locator(".xl.on .xl-play")).toBeDisabled();
-  expect(errs).toEqual([]);
 });
 
-test("? is the key map's once the pointer has left a control a mouse turned, and never over an open answer", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("? is the key map's once the pointer has left a control a mouse turned, and never over an open answer", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   // Turn SNAP with the mouse: it keeps focus, but not keyboard focus.
   const b = await knob(page, 1).boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 3);
@@ -510,18 +465,16 @@ test("? is the key map's once the pointer has left a control a mouse turned, and
   await page.keyboard.press("Escape");
   await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
   // An answer open, the pointer elsewhere: ? leaves the key map closed.
-  await askAbout(page, 0);
+  await askAbout(page, app, 0);
   await page.mouse.move(5, 5);
   await page.keyboard.press("?");
   await expect(page.locator(".xp.on")).toBeVisible();
   await expect(page.locator("#help")).toHaveClass(/\bhidden\b/);
-  expect(errs).toEqual([]);
 });
 
-test("a long press on a touch screen opens the answer, and a turn does not", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("a long press on a touch screen opens the answer, and a turn does not", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   const b = await knob(page, 2).boundingBox();
@@ -530,61 +483,54 @@ test("a long press on a touch screen opens the answer, and a turn does not", asy
   // A finger that moves is a turn: no answer.
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - 12 }] });
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(LONG_PRESS_MS);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  await page.waitForTimeout(300);
+  await app.quiet();
   await expect(page.locator(".xp.on")).toHaveCount(0);
   // Held still: the answer opens.
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(LONG_PRESS_MS);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await expect(page.locator(".xp.on .xp-title")).toHaveText("Motion · what it does");
-  expect(errs).toEqual([]);
 });
 
-test("with a bank of faces, BRIGHT's figure and the lesson draw the sound's face", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("with a bank of faces, BRIGHT's figure and the lesson draw the sound's face", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
   // Four faces drawn in the bank: there is a mean and a spread to draw against.
-  await page.waitForFunction(() => document.querySelectorAll(".face-slot img.face").length >= 4, null, { timeout: 120_000 });
-  await askAbout(page, 0);
+  await app.engine((timeout) => page.waitForFunction(() => document.querySelectorAll(".face-slot img.face").length >= 4, null, { timeout }), { ms: 120_000 });
+  await askAbout(page, app, 0);
   await expect(page.locator(".xp.on .xp-fig")).toHaveAttribute("aria-label", /its face, low at the base/);
   // The portrait carries the render's own face, beside its bands.
-  const face = await page.evaluate(() => {
-    const r = window.__xgot.filter((m) => m.type === "explain" && m.k === 0).pop();
-    return r.made.portrait.face;
-  });
+  const face = (await app.replies("explain", { where: { k: 0 } })).pop().made.portrait.face;
   expect(typeof face).toBe("string");
   expect(face.length).toBeGreaterThan(100);
   await page.locator(".xp.on .xp-learn").click();
-  await expect(page.locator(".xl.on .xl-body p").first()).toHaveText(/^This is Reese’s face: /, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".xl.on .xl-body p").first()).toHaveText(/^This is Reese’s face: /, { timeout }), { ms: 60_000 });
   await expect(page.locator(".xl.on .xl-shape")).toHaveAttribute("aria-label", "Reese’s face, low at the base");
-  expect(errs).toEqual([]);
 });
 
-test("with no answer or lesson open, nothing asks the engine for a figure, and putting one away cancels its wait", async ({ page }) => {
-  test.setTimeout(400_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Reese");
+test("with no answer or lesson open, nothing asks the engine for a figure, and putting one away cancels its wait", async ({ page, app }) => {
+  await boot(page, app);
+  await openOnPerform(app, "Reese");
+  const OFFER_MS = await app.offerBudget({ waits: 1 });
   // Nothing open: an Offer grows with no explain request beside it.
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
-  await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: 180_000 });
-  await page.waitForTimeout(1_000);
-  expect(await page.evaluate(() => window.__xsent.filter((m) => /^explain/.test(m.type)).length)).toBe(0);
+  await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
+  await app.quiet();
+  expect(await app.sent({ type: EXPLAIN })).toEqual([]);
   // An answer opened and put away at once: its request, if still waiting,
   // is cancelled, answered, and nothing more is sent while nothing is open.
   await knob(page, 0).hover();
   await page.keyboard.press("?");
   await page.keyboard.press("Escape");
   await expect(page.locator(".xp.on")).toHaveCount(0);
-  const sent = await page.evaluate(() => window.__xsent.length);
+  const away = await app.now();
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(2_000);
-  const after = await page.evaluate(() => window.__xsent.slice());
-  expect(after.slice(sent).filter((m) => m.type === "explain")).toEqual([]);
+  // Watched for two seconds, as it always was.
+  await app.quiet(2_000);
+  expect(await app.sent({ type: "explain" }, { after: away })).toEqual([]);
   // Every explain request got its reply (rendered or cancelled).
-  const replies = await page.evaluate(() => window.__xgot.filter((m) => m.type === "explain").map((m) => m.token));
-  for (const m of after.filter((q) => q.type === "explain")) expect(replies).toContain(m.token);
-  expect(errs).toEqual([]);
+  const replies = (await app.replies("explain")).map((m) => m.token);
+  for (const m of await app.sent({ type: "explain" })) expect(replies).toContain(m.token);
 });

@@ -9,50 +9,13 @@
 //   the sound at home, each says there is nothing to do.
 // - The keys yield to a text field and to a modal dialog, and the note keys
 //   still play in PERFORM.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
-
-const INIT = `(() => {
-  const offers = (window.__offers = []);
-  const Orig = window.Worker;
-  function Wrapped(url, o) {
-    const w = new Orig(url, o);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type === "perform_offer" && !m.bg) offers.push(performance.now());
-        return post(m, t);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-}
+//
+// The offers asked for are read through the fixture's tap.
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const blur = (page) => page.evaluate(() => document.activeElement?.blur());
-const offersAsked = (page) => page.evaluate(() => window.__offers.length);
+// The offers a press or a key asks for (not a spare grown in the background).
+const offersAsked = async (app) => (await app.sent({ type: "perform_offer", bg: false })).length;
 
 /** Drag a dial vertically by `dy` px (negative is up) with the mouse. */
 async function drag(page, loc, dy) {
@@ -74,14 +37,13 @@ async function slideBlend(page) {
   await page.mouse.up();
 }
 
-test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ takes, after Blend too", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
-  const n0 = await offersAsked(page);
+test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ takes, after Blend too", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
+  const OFFER_MS = await app.offerBudget({ waits: 2 });
+  const n0 = await offersAsked(app);
   await page.keyboard.press("n");
-  await expect.poll(() => offersAsked(page)).toBe(n0 + 1);
+  await expect.poll(() => offersAsked(app)).toBe(n0 + 1);
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
   // Blend slid with the mouse, then B held is PEEK held; let go, it is up.
@@ -98,7 +60,7 @@ test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ t
   await page.locator(".pf-blend input").focus();
   await page.keyboard.press("n");
   await expect(page.locator("#toasts")).toContainText("Skipped B.");
-  await expect.poll(() => offersAsked(page)).toBe(n0 + 2);
+  await expect.poll(() => offersAsked(app)).toBe(n0 + 2);
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   // Blend slid again with the mouse (which leaves no focus), and focused from
   // the keyboard too: ⇧↵ takes either way, and the sound in hand is the offer.
@@ -106,15 +68,13 @@ test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ t
   expect(await page.evaluate(() => document.activeElement === document.body), "a slide leaves no focus").toBe(true);
   await page.locator(".pf-blend input").focus();
   await page.keyboard.press("Shift+Enter");
-  await expect(page.locator(".pf-name")).toHaveText("Glass Pad (taken offer)", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad (taken offer)", { timeout }), { ms: 60_000 });
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
-  expect(errs).toEqual([]);
 });
 
-test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its own Enter, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its own Enter, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   const bar = page.locator(".pf-moved");
   // At home: nothing to keep, nothing to go back to. (The level's stop the
   // spec clicked to get here is a button, whose Enter is its own.)
@@ -140,21 +100,19 @@ test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its o
   await drag(page, k, -60);
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
   await page.keyboard.press("Enter");
-  await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
+  await app.engine((timeout) => expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout }), { ms: 15_000 });
   await expect(bar).not.toHaveClass(/\bon\b/);
   // Moved again with the mouse, ⇧⌫ glides back home.
   await drag(page, k, -60);
   await expect(bar).toHaveClass(/\bon\b/);
   await page.keyboard.press("Shift+Backspace");
   await expect(bar).not.toHaveClass(/\bon\b/, { timeout: 10_000 });
-  expect(errs).toEqual([]);
 });
 
-test("the pad keys yield to a text field and a modal, the note keys still play, and N in EVOLVE is another pair", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  const n0 = await offersAsked(page);
+test("the pad keys yield to a text field and a modal, the note keys still play, and N in EVOLVE is another pair", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
+  const n0 = await offersAsked(app);
   // Typed into Find a sound: letters, not an offer or a peek.
   const find = page.locator("#bank-find");
   await find.click();
@@ -170,19 +128,24 @@ test("the pad keys yield to a text field and a modal, the note keys still play, 
   await page.keyboard.press("Escape");
   await expect(page.locator("#help")).toBeHidden();
   // An offer is asked for in the keydown itself, so none asked by now is none.
-  expect(await offersAsked(page), "no offer asked for from a text field or under a modal").toBe(n0);
+  expect(await offersAsked(app), "no offer asked for from a text field or under a modal").toBe(n0);
   // The note keys still play in PERFORM, beside the pad keys.
   await page.keyboard.down("a");
   await expect(page.locator('.pkey[data-note="60"]')).toHaveClass(/\bdown\b/);
   await page.keyboard.up("a");
   // In EVOLVE, N deals another pair.
-  await goLevel(page, "evolve");
+  await app.level("evolve");
   const name = page.locator("#name-a");
-  await expect(name).not.toHaveText("sound a", { timeout: 60_000 });
+  await app.engine((timeout) => expect(name).not.toHaveText("sound a", { timeout }), { ms: 60_000 });
   const before = await name.textContent();
-  await expect(async () => {
-    await page.keyboard.press("n");
-    await expect(name).not.toHaveText(before, { timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
-  expect(errs).toEqual([]);
+  // N again until the next pair is dealt: one pressed while none waits is
+  // said and changes nothing.
+  await app.engine(
+    (timeout) =>
+      expect(async () => {
+        await page.keyboard.press("n");
+        await expect(name).not.toHaveText(before, { timeout: 5_000 });
+      }).toPass({ timeout }),
+    { ms: 60_000 },
+  );
 });

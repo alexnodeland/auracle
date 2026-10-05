@@ -81,6 +81,30 @@ const DEFAULT_SEED = (() => {
   return v && /^\d+$/.test(v) ? Number(v) : SEED;
 })();
 
+/** The seed PERFORM's specs boot with (`app.boot({ seed: PERFORM_SEED,
+ *  random: PERFORM_SEED })`), in place of SEED: under SEED the first offer
+ *  they grow is unusually light. `AURACLE_SEED` overrides it as it does SEED
+ *  (`random` boots them unseeded, N with N).
+ *
+ *  Chosen (#135) so the first offer grown on Glass Pad, in the specs' own
+ *  order (Glass Pad on PERFORM, the budget's two probe walks, Offer, Take),
+ *  is a typical one. Twelve seeds on a 16-core M3 Max, the offer's growth
+ *  and the taken offer's measurement:
+ *
+ *    seed          growth   measurement   modules   controls reach
+ *    20261005      4.7 s    2.8 s         1         4   (SEED)
+ *    1085668085    5.0 s    8.3 s         5         3   (this)
+ *    all twelve    1.5 to 10.0 s, median 4.4 s; 1.5 to 20.9 s, median 7.8 s
+ *
+ *  SEED's offer is mid-range in growth, but its measurement is the third
+ *  lightest of twelve, under the lower quartile; this one is near the
+ *  median in both, and three repeats of each dealt the same offer. */
+const PERFORM_SEED = (() => {
+  const v = process.env.AURACLE_SEED;
+  if (v === "random") return null;
+  return v && /^\d+$/.test(v) ? Number(v) : 1085668085;
+})();
+
 // The tap, installed before the page's scripts on every navigation. One
 // wrapper of `Worker`: whatever a spec adds later wraps it.
 const TAP = `(() => {
@@ -149,6 +173,7 @@ const TAP = `(() => {
   T.release = (drop) => {
     T.holds = [];
     T.holdFrom = null;
+    T.holdNext = [];
     const held = T.held.splice(0);
     if (!drop) for (const h of held) {
       const e = new MessageEvent("message", { data: h.d });
@@ -173,6 +198,7 @@ const TAP = `(() => {
     else if (op === "answer") T.answers.push({ match: a.match, reply: a.reply });
     else if (op === "delay") T.delays.push({ match: a.match, ms: a.ms });
     else if (op === "undelay") T.delays = [];
+    else if (op === "fail") (T.fails = T.fails || []).push({ match: a.match, message: a.message, fatal: !!a.fatal, once: !!a.once });
   };
   T.releaseRequests = () => {
     T.reqHolds = [];
@@ -215,6 +241,7 @@ const TAP = `(() => {
         if (m.type === "perform_wire" && m.tree) window.__pbTree = m.tree;
         if (T.holdFrom && matches(T.holdFrom, m)) {
           T.holds = T.holdNext;
+          T.holdNext = [];
           T.holdFrom = null;
         }
       }
@@ -225,6 +252,14 @@ const TAP = `(() => {
       if (typed && T.stalls.some((p) => matches(p, m))) {
         T.stalls = [];
         T.stalled.push(m);
+        return;
+      }
+      // Failed as the worker fails a request it could not run (worker.js engineError).
+      const fail = typed && (T.fails || []).find((f) => matches(f.match, m));
+      if (fail) {
+        if (fail.once) T.fails.splice(T.fails.indexOf(fail), 1);
+        const data = { type: "engine_error", request: m.type, id: m.id == null ? null : m.id, req: m.req == null ? null : m.req, message: fail.message, fatal: fail.fatal };
+        setTimeout(() => T.inject(data), 0);
         return;
       }
       const answer = typed && T.answers.find((a) => matches(a.match, m));
@@ -696,6 +731,40 @@ class App {
       { ms: timeout },
     );
   }
+
+  /** Answer the requests matching `match` as the worker answers one it could
+   *  not run (worker.js `engineError`): an `engine_error` naming the request
+   *  (`request`, and its `id` and `req`), injected, and the request sent no
+   *  further. It is still in `sent`. `fatal`: the engine is down, as a
+   *  poisoned worker answers everything; `once`: the next such request only.
+   *  The way to fail what the shipped engine never fails. */
+  fail(match, { message = "Error: injected for the test", fatal = false, once = false } = {}) {
+    return this.config("fail", { match: asPattern(match), message, fatal, once });
+  }
+
+  /** A preset opened as a player opens one onto PERFORM: PRESETS, its row,
+   *  and once the rack holds it, the PERFORM stop, until PERFORM names it;
+   *  then, unless `reach` is false, `reached({ wired })`. Engine waits. */
+  async openOnPerform(name, { reach = true, wired = false } = {}) {
+    const { page } = this;
+    await shell.bankTab(page, "presets");
+    await page.locator(".bank-item", { hasText: name }).first().click();
+    await this.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
+    await this.level("perform");
+    await this.engine((timeout) => expect(page.locator(".pf-name")).toHaveText(name, { timeout }), { ms: 30_000 });
+    if (reach) await this.reached({ wired });
+  }
+
+  /** PERFORM's controls reach the patch it shows (the status line's
+   *  "controls reach"), and with `wired`, at the same moment, none of the
+   *  panel's six is unwired: an engine wait (a measurement, or a kept one
+   *  read back). */
+  reached({ wired = false, ms = 120_000 } = {}) {
+    const live = (all) =>
+      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
+      (!all || ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired")));
+    return this.engine((timeout) => this.page.waitForFunction(live, wired, { timeout }), { ms });
+  }
 }
 
 /** The tap on another page (a second context's), before it navigates. */
@@ -741,4 +810,4 @@ const test = base.test.extend({
 
 });
 
-module.exports = { test, expect, openApp, ENGINE_MS, QUIET_MS, SEED, ...shell };
+module.exports = { test, expect, openApp, ENGINE_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };

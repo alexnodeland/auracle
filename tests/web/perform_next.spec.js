@@ -12,49 +12,9 @@
 // B" under it, a heard pass waits out a seven-second window with UNDO (B comes
 // back and nothing is recorded), and an unheard pass says it was not counted.
 //
-// The spec watches the worker's replies by wrapping `Worker` before `main.js`
-// runs, to know when a spare has landed.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
-
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const offered = (window.__offered = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      w.addEventListener("message", (e) => {
-        // The page's offers only: perform_budget.js's probes (ids from
-        // 8_800_000) are not spares.
-        if (e.data && e.data.type === "perform_offered" && e.data.req < 8_000_000 && e.data.offer && e.data.offer.tree) offered.push(performance.now());
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-}
+// The worker's replies are read through the fixture's tap, to know when a
+// spare has landed.
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 /** Press the Offer/Next pad and return how long, in the page's own clock,
  *  until B holds an offer. */
@@ -72,29 +32,34 @@ async function pressOffer(page) {
   });
 }
 
-async function peek(page, ms) {
+// PEEK held long enough for B to be heard: a second of it while a note sounds.
+const HEARD_MS = 1_800;
+
+async function peek(page) {
   const b = await page.locator(".pf-pad", { hasText: "Peek" }).boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(HEARD_MS);
   await page.mouse.up();
   await page.mouse.move(10, 10);
 }
 
-const spares = (page) => page.evaluate(() => window.__offered.length);
+// The offers the engine has handed the page: its own, not perform_budget.js's
+// probes (ids from 8_800_000), which are not spares.
+const spares = async (app) => (await app.replies("perform_offered")).filter((r) => r.req < 8_000_000 && r.offer && r.offer.tree).length;
 
-test("the second offer is as fast as the first, and a pass says what it did and can be undone", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("the second offer is as fast as the first, and a pass says what it did and can be undone", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(210_000); // about 91 to 103 s on CI: two spares grown, and 17 s of pass windows watched
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   // Two spares waited for: each behind whatever the engine has queued (the
   // first behind the shipped wiring's re-check), then grown.
-  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
+  const OFFER_MS = await app.offerBudget({ waits: 2 });
   const picks = async () => Number(await page.locator("#duel-count").textContent());
   await page.keyboard.down("a");
 
   // The first spare grows once the patch is steady and the hands are off.
-  await expect.poll(() => spares(page), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => spares(app), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(1);
   const first = await pressOffer(page);
   expect(first, "the first offer is handed over").toBeLessThan(300);
   await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
@@ -103,8 +68,8 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   const bFirst = await page.locator(".pf-offer-body").textContent();
 
   // Heard, and a second spare grows while B holds the first.
-  await peek(page, 1800);
-  await expect.poll(() => spares(page), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(2);
+  await peek(page);
+  await expect.poll(() => spares(app), { timeout: OFFER_MS }).toBeGreaterThanOrEqual(2);
   const p0 = await picks();
   const second = await pressOffer(page);
   console.log(`offer → B: first ${first.toFixed(0)} ms, NEXT ${second.toFixed(0)} ms`);
@@ -117,13 +82,14 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   await toast.locator(".toast-undo").click();
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/);
   await expect(page.locator(".pf-offer-body")).toHaveText(bFirst);
-  await page.waitForTimeout(9_000);
+  // Watched past the pass's seven-second window.
+  await app.quiet(9_000);
   expect(await picks(), "an undone pass is not recorded").toBe(p0);
 
   // A heard pass left alone counts once its window closes.
   await pressOffer(page);
   await expect(page.locator(".toast", { hasText: "Passed on B" })).toBeVisible({ timeout: 5_000 });
-  await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
+  await app.engine((timeout) => expect.poll(picks, { timeout }).toBe(p0 + 1), { ms: 30_000 });
 
   // An unheard B passed on says it was not counted, and can come back.
   const bUnheard = await page.locator(".pf-offer-body").textContent();
@@ -132,8 +98,8 @@ test("the second offer is as fast as the first, and a pass says what it did and 
   await expect(skipped).toBeVisible({ timeout: 5_000 });
   await skipped.locator(".toast-undo").click();
   await expect(page.locator(".pf-offer-body")).toHaveText(bUnheard, { timeout: 5_000 });
-  await page.waitForTimeout(8_000);
+  // Watched past a pass's seven-second window.
+  await app.quiet(8_000);
   expect(await picks(), "a skip teaches nothing").toBe(p0 + 1);
   await page.keyboard.up("a");
-  expect(errs).toEqual([]);
 });

@@ -24,36 +24,17 @@
 // twenty renders, and after a Take it waits first for the taken patch's own
 // measurement, which is `soon` work asked before it. On a CI runner the second
 // test's offer after a Take did not grow within the 150 s it had, so each such
-// wait is `offerBudget` (perform_budget.js): CI's floor, or more when a step
-// measured on the runner says so.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
+// wait is `app.offerBudget` (perform_budget.js): CI's floor, or more when a
+// step measured on the runner says so.
+//
+// What the page asks the engine to record (a pick from an offer,
+// `perform_record`) and each sound kept as new (`committed`) are read through
+// the fixture's tap.
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const INIT = `(() => {
   const animate = Element.prototype.animate;
   const seen = (window.__anims = []);
-  // What the page asks the engine to record (a pick from an offer).
-  const records = (window.__records = []);
-  const Orig = window.Worker;
-  function Wrapped(url, o) {
-    const w = new Orig(url, o);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type === "perform_record") records.push({ took: !!m.took, asOf: m.asOf, at: performance.now() });
-        return post(m, t);
-      };
-      // Each sound kept as new, and when its reply landed.
-      w.addEventListener("message", (e) => {
-        const d = e.data;
-        if (d && d.type === "committed") (window.__committed = window.__committed || []).push({ id: d.id, at: performance.now() });
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
   Element.prototype.animate = function (frames, opts) {
     const cls = String(this.className || "");
     if (/pf-(offer|ghost)/.test(cls)) {
@@ -64,35 +45,30 @@ const INIT = `(() => {
   };
 })();`;
 
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
 }
 
 /** `name` on PERFORM, its controls reached; then how long an offer may take
  *  to grow here, the test's timeout grown for `waits` such waits. */
-async function openOnPerform(page, name, waits) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-  return budget.offerBudget(page, { waits });
+async function openOnPerform(app, name, waits) {
+  await app.openOnPerform(name);
+  return app.offerBudget({ waits });
 }
+
+// The picks the page has asked the engine to record.
+const records = async (app) => (await app.sent({ type: "perform_record" })).map((m) => ({ took: !!m.took, asOf: m.asOf, at: m._at }));
+
+// PEEK held long enough for B to be heard: a second of it while a note sounds.
+const HEARD_MS = 1_800;
 
 async function grow(page, ms) {
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: ms });
 }
 
-async function peek(page, ms) {
+async function peek(page, ms = HEARD_MS) {
   const b = await page.locator(".pf-pad", { hasText: "Peek" }).boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
@@ -115,10 +91,10 @@ const faceBox = (page) => page.locator(".pf-faces > .pf-face").evaluate((e) => {
 });
 const anims = (page) => page.evaluate(() => window.__anims.slice());
 
-test("an offer grows from the sound in hand, fills when taken, and folds back when passed", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errs = await boot(page);
-  const OFFER_MS = await openOnPerform(page, "Glass Pad", 3);
+test("an offer grows from the sound in hand, fills when taken, and folds back when passed", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 50 to 62 s on CI: three offers grown
+  await boot(page, app);
+  const OFFER_MS = await openOnPerform(app, "Glass Pad", 3);
   await page.keyboard.down("a");
 
   // Grown: B's first frame is the sound's face, its last is B's own place.
@@ -134,7 +110,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   expect(grown.frames[grown.frames.length - 1].transform).toBe("none");
 
   // Passed (heard): a copy of B folds back into the face; B empties.
-  await peek(page, 1800);
+  await peek(page);
   n0 = (await anims(page)).length;
   await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(page.locator("#toasts")).toContainText("Passed on B.", { timeout: 10_000 });
@@ -149,7 +125,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   // Passed with PASS (heard): no next offer, so B's room goes and the face
   // stands alone; the copy folds into the face where it stands then.
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
-  await peek(page, 1800);
+  await peek(page);
   n0 = (await anims(page)).length;
   await page.locator(".pf-pad.pf-pass").click();
   await expect(page.locator("#toasts")).toContainText("Passed on B.", { timeout: 10_000 });
@@ -161,7 +137,7 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   // Taken (heard): a copy of B fills green from its base, then goes into the
   // face, and the name is the offer's.
   await grow(page, OFFER_MS);
-  await peek(page, 1800);
+  await peek(page);
   n0 = (await anims(page)).length;
   const before = await page.locator(".pf-name").textContent();
   await page.locator(".pf-pad", { hasText: "Take" }).click();
@@ -175,17 +151,16 @@ test("an offer grows from the sound in hand, fills when taken, and folds back wh
   expect(fill.frames.map((f) => f.transform)).toEqual(["scaleY(0)", "scaleY(1)"]);
   const taken = after.find((a) => /ghost/.test(a.cls) && a.moment === "taken");
   expect(near(boxOf(taken.frames[taken.frames.length - 1].transform, taken.at), nameAtTake), "into the sound's face").toBe(true);
-  await expect(page.locator(".pf-name")).not.toHaveText(before, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).not.toHaveText(before, { timeout }), { ms: 60_000 });
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   await page.keyboard.up("a");
-  expect(errs).toEqual([]);
 });
 
-test("an offer taken unheard becomes the sound but records no pick; heard, it records one", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(360_000);
-  const errs = await boot(page);
-  const OFFER_MS = await openOnPerform(page, "Glass Pad", 2);
-  const records = () => page.evaluate(() => window.__records.length);
+test("an offer taken unheard becomes the sound but records no pick; heard, it records one", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(110_000); // about 37 to 53 s on CI: two offers, and a take's window watched
+  await boot(page, app);
+  const OFFER_MS = await openOnPerform(app, "Glass Pad", 2);
+  const recorded = async () => (await records(app)).length;
   const picks = async () => Number(await page.locator("#duel-count").textContent());
   const p0 = await picks();
   // Unheard (no note sounding, no PEEK): TAKE is there, and takes it.
@@ -194,22 +169,21 @@ test("an offer taken unheard becomes the sound but records no pick; heard, it re
   await expect(take).toBeEnabled();
   const name = await page.locator(".pf-name").textContent();
   await take.click();
-  await expect(page.locator(".pf-name")).not.toHaveText(name, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).not.toHaveText(name, { timeout }), { ms: 60_000 });
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   // Past a take's eight-second window: nothing was sent to be recorded
   // (`perform_record`, the engine's `record_tree_duel`), and no pick counted.
-  await page.waitForTimeout(10_000);
-  expect(await records(), "an unheard take records no pick").toBe(0);
+  await app.quiet(10_000);
+  expect(await recorded(), "an unheard take records no pick").toBe(0);
   expect(await picks()).toBe(p0);
   // Heard (a second of PEEK with a note sounding): the same TAKE records one.
   await page.keyboard.down("a");
   await grow(page, OFFER_MS);
-  await peek(page, 1600);
+  await peek(page);
   await take.click();
-  await expect.poll(records, { timeout: 30_000 }).toBe(1);
-  await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
+  await expect.poll(recorded, { timeout: 30_000 }).toBe(1);
+  await app.engine((timeout) => expect.poll(picks, { timeout }).toBe(p0 + 1), { ms: 30_000 });
   await page.keyboard.up("a");
-  expect(errs).toEqual([]);
 });
 
 // A Take waits out its eight seconds before it is recorded (DON'T COUNT IT
@@ -220,35 +194,32 @@ test("an offer taken unheard becomes the sound but records no pick; heard, it re
 // when the answer was given (`asOf`), and the engine judges only sounds at or
 // below it (`Engine::record_tree_duel_as_of`, proven natively by
 // `a_take_held_over_a_keep_does_not_judge_the_kept_sound`).
-test("a sound kept as new while a Take waits out its window is not judged by that Take", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(360_000);
-  const errs = await boot(page);
-  const OFFER_MS = await openOnPerform(page, "Glass Pad", 1);
+test("a sound kept as new while a Take waits out its window is not judged by that Take", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  const OFFER_MS = await openOnPerform(app, "Glass Pad", 1);
   const name = await page.locator(".pf-name").textContent();
   await page.keyboard.down("a");
   await grow(page, OFFER_MS);
-  await peek(page, 1600);
+  await peek(page);
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   await page.keyboard.up("a");
-  await expect(page.locator(".pf-name")).not.toHaveText(name, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-name")).not.toHaveText(name, { timeout }), { ms: 60_000 });
   // Inside the window: PATCH, KEEP AS NEW, and the comparison skipped.
-  await goLevel(page, "patch");
-  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
+  await app.level("patch");
+  await app.engine((timeout) => expect(page.locator("#rack-commit")).toBeEnabled({ timeout }), { ms: 30_000 });
   await page.locator("#rack-commit").click();
   const skip = page.locator("#cd-skip");
   await Promise.race([
     skip.waitFor({ state: "visible", timeout: 20_000 }).then(() => skip.click()).catch(() => {}),
-    page.waitForFunction(() => (window.__committed || []).length > 0, null, { timeout: 20_000 }).catch(() => {}),
+    expect.poll(async () => (await app.replies("committed")).length, { timeout: 20_000 }).toBeGreaterThan(0).catch(() => {}),
   ]);
-  await page.waitForFunction(() => (window.__committed || []).length > 0, null, { timeout: 30_000 });
-  const kept = await page.evaluate(() => window.__committed[0]);
+  const kept = await app.reply("committed", { timeout: 30_000 });
   expect(kept.id, "the taken sound was not kept as new").toBeGreaterThan(0);
-  await expect.poll(() => page.evaluate(() => window.__records.length), { timeout: 30_000 }).toBe(1);
-  const rec = await page.evaluate(() => window.__records[0]);
-  console.log(`kept ${kept.id} at ${Math.round(kept.at)}; Take recorded at ${Math.round(rec.at)} as of ${rec.asOf}`);
+  await expect.poll(async () => (await records(app)).length, { timeout: 30_000 }).toBe(1);
+  const [rec] = await records(app);
+  console.log(`kept ${kept.id} at ${Math.round(kept._at)}; Take recorded at ${Math.round(rec.at)} as of ${rec.asOf}`);
   expect(rec.took).toBe(true);
-  expect(rec.at, "the Take was recorded before the keep: no race to test").toBeGreaterThan(kept.at);
+  expect(rec.at, "the Take was recorded before the keep: no race to test").toBeGreaterThan(kept._at);
   expect(typeof rec.asOf, "the answer carries no bound").toBe("number");
   expect(rec.asOf, "the answer's bound takes in the sound kept after it").toBeLessThan(kept.id);
-  expect(errs).toEqual([]);
 });

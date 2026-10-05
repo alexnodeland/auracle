@@ -17,8 +17,7 @@
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -55,34 +54,45 @@ const INIT = `(() => {
     for (let i = 3; i < d.length; i += 16) if (d[i] > 40) n++;
     return n;
   };
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
+  // The loudest the output is from __loudestFrom() until __loudest(),
+  // sampled every frame: what a window of "nothing plays" heard.
+  window.__loudestFrom = () => {
+    const s = (window.__loud = { max: -Infinity, on: true });
+    const tick = () => {
+      if (!s.on) return;
+      s.max = Math.max(s.max, window.__pwPeakDb());
+      requestAnimationFrame(tick);
+    };
+    tick();
+  };
+  window.__loudest = () => {
+    window.__loud.on = false;
+    return window.__loud.max;
+  };
 })();`;
 
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
+// Glass Pad opened from PRESETS, the rack holding it (the app opens at
+// PERFORM, with the warm start and the tours marked seen).
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 90_000 });
-  return errs;
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 90_000 });
 }
-async function toPerform(page) {
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
+async function toPerform(page, app) {
+  await app.level("perform");
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
+  await app.reached();
 }
-const quiet = (page) => expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeLessThan(-60);
+const peak = (page) => page.evaluate(() => window.__pwPeakDb());
+// The output playing, or silent: the phrase may wait for a render.
+const sounds = (page, app) => app.engine((timeout) => expect.poll(() => peak(page), { timeout }).toBeGreaterThan(-40), { ms: 30_000 });
+const silent = (page, app) => app.engine((timeout) => expect.poll(() => peak(page), { timeout }).toBeLessThan(-60), { ms: 30_000 });
 
-test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still plays in it", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await toPerform(page);
+test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still plays in it", async ({ page, app }) => {
+  await boot(page, app);
+  await toPerform(page, app);
 
   const stage = page.locator(".st-stage");
   await page.keyboard.press("Shift+F");
@@ -92,16 +102,16 @@ test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still play
   expect(await page.evaluate(() => document.activeElement === document.querySelector(".st-stage"))).toBe(true);
 
   // Quiet: the sound's face stands, and nothing is drawn over it.
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeLessThan(-60);
-  await expect.poll(() => page.evaluate(() => window.__stageLit(".st-canvas:not(.st-trail)")), { timeout: 60_000 }).toBeGreaterThan(50);
+  await silent(page, app);
+  await app.engine((timeout) => expect.poll(() => page.evaluate(() => window.__stageLit(".st-canvas:not(.st-trail)")), { timeout }).toBeGreaterThan(50), { ms: 60_000 });
   await expect.poll(() => page.evaluate(() => window.__stageLit()), { timeout: 10_000 }).toBe(0);
   // Space plays the sound, and the stage draws it over the face.
   await page.keyboard.press(" ");
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
+  await sounds(page, app);
   await expect.poll(() => page.evaluate(() => window.__stageLit()), { timeout: 10_000 }).toBeGreaterThan(50);
   await expect(stage).toBeVisible();
   await page.keyboard.press(" ");
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeLessThan(-60);
+  await silent(page, app);
 
   // ⇧F leaves, and focus goes back where it was.
   await page.keyboard.press("Shift+F");
@@ -115,41 +125,39 @@ test("stage mode enters with ⇧F, leaves with ⇧F or Esc, and Space still play
 
   // F alone is a note, as it always was.
   await page.keyboard.down("f");
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
+  await sounds(page, app);
   await page.keyboard.up("f");
   await expect(stage).toHaveCount(0);
-  expect(errs).toEqual([]);
 });
 
-test("⇧F is stage mode in PERFORM only; in PATCH it is the accented F", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
+test("⇧F is stage mode in PERFORM only; in PATCH it is the accented F", async ({ page, app }) => {
+  await boot(page, app);
   // PATCH: ⇧F plays F, harder, and no stage opens.
-  await goLevel(page, "patch");
+  await app.level("patch");
   await expect(page.locator('.rail-stop[data-level="patch"]')).toHaveAttribute("aria-current", "location");
-  await quiet(page);
+  await silent(page, app);
   await page.keyboard.down("Shift");
   await page.keyboard.down("F");
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
+  await sounds(page, app);
   await page.keyboard.up("F");
   await page.keyboard.up("Shift");
   await expect(page.locator(".st-stage")).toHaveCount(0);
-  // PERFORM: ⇧F opens the stage, and plays nothing.
-  await toPerform(page);
-  await quiet(page);
+  // PERFORM: ⇧F opens the stage, and plays nothing: not a frame of sound
+  // while it opens and for the quiet window after.
+  await toPerform(page, app);
+  await silent(page, app);
+  await page.evaluate(() => window.__loudestFrom());
   await page.keyboard.press("Shift+F");
   await expect(page.locator(".st-stage")).toBeVisible();
-  await page.waitForTimeout(600);
-  expect(await page.evaluate(() => window.__pwPeakDb())).toBeLessThan(-60);
+  await app.quiet();
+  expect(await page.evaluate(() => window.__loudest()), "⇧F played in PERFORM").toBeLessThan(-60);
   await page.keyboard.press("Escape");
   await expect(page.locator(".st-stage")).toHaveCount(0);
-  expect(errs).toEqual([]);
 });
 
-test("Tab stays inside stage mode, and focus comes back where it was", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await toPerform(page);
+test("Tab stays inside stage mode, and focus comes back where it was", async ({ page, app }) => {
+  await boot(page, app);
+  await toPerform(page, app);
   const bright = page.locator('.pf-knob[data-i="0"]');
   await bright.focus();
   await page.keyboard.press("Shift+F");
@@ -163,22 +171,20 @@ test("Tab stays inside stage mode, and focus comes back where it was", async ({ 
   expect(await page.evaluate(() => document.querySelector(".app").inert)).toBe(true);
   // Space on the stage plays, rather than pressing anything behind it.
   await page.locator(".st-stage").focus();
-  await quiet(page);
+  await silent(page, app);
   await page.keyboard.press(" ");
-  await expect.poll(() => page.evaluate(() => window.__pwPeakDb()), { timeout: 30_000 }).toBeGreaterThan(-40);
+  await sounds(page, app);
   await page.keyboard.press(" ");
-  await quiet(page);
+  await silent(page, app);
   await page.keyboard.press("Escape");
   await expect(page.locator(".st-stage")).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement === document.querySelector('.pf-knob[data-i="0"]'))).toBe(true);
   expect(await page.evaluate(() => document.querySelector(".app").inert)).toBe(false);
-  expect(errs).toEqual([]);
 });
 
-test("a refusal said in stage mode is in sight", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await toPerform(page);
+test("a refusal said in stage mode is in sight", async ({ page, app }) => {
+  await boot(page, app);
+  await toPerform(page, app);
   await page.keyboard.press("Shift+F");
   const stage = page.locator(".st-stage");
   await expect(stage).toBeVisible();
@@ -195,5 +201,4 @@ test("a refusal said in stage mode is in sight", async ({ page }) => {
   expect(onTop, "the toast is over the stage").toBe(true);
   // …and the stage's own line says it too.
   await expect(stage.locator(".st-hint")).toContainText("Nothing to undo here");
-  expect(errs).toEqual([]);
 });

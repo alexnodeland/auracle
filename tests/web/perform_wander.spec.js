@@ -13,52 +13,12 @@
 // line under Wander carries its state ("drift · next in 9 s", "paused 3 s",
 // "frozen") with a thin arc counting down; the status line keeps to the patch.
 //
-// The spec records PERFORM's requests to the engine by wrapping `Worker`
-// before `main.js` runs.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+// PERFORM's requests to the engine are read through the fixture's tap.
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const posts = (window.__pfPosts = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && typeof m.type === "string" && /^perform_/.test(m.type)) posts.push({ type: m.type, bg: !!m.bg, t: performance.now() });
-        return post(m, t);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-}
-
-test("Wander answers a second and a half after it is let go, and says what it is doing on itself", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("Wander answers a second and a half after it is let go, and says what it is doing on itself", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   const wander = page.locator('.pf-knob[data-i="7"]');
   const sub = wander.locator(".pf-k-sub");
   await page.evaluate(() => {
@@ -86,23 +46,23 @@ test("Wander answers a second and a half after it is let go, and says what it is
   const x = b.x + b.width / 2;
   const y = b.y + b.height / 2;
   await page.mouse.move(x, y);
-  const grabbed = await page.evaluate(() => performance.now());
+  const grabbed = await app.now();
   await page.mouse.down();
   await page.mouse.move(x, y - 99, { steps: 12 }); // +0.55: drift
   expect(await sub.textContent()).toMatch(/^drift/);
-  const released = await page.evaluate(() => performance.now());
+  const released = await app.now();
   await page.mouse.up();
   await page.mouse.move(10, 10);
   // The first move is asked for about 1.5 s after the hand left.
-  await page.waitForFunction((t) => window.__pfPosts.some((p) => p.type === "perform_drift" && p.t > t), released, { timeout: 20_000 });
-  const firstMove = await page.evaluate((t) => window.__pfPosts.find((p) => p.type === "perform_drift" && p.t > t).t - t, released);
+  await expect.poll(async () => (await app.sent({ type: "perform_drift" }, { after: released })).length, { timeout: 20_000 }).toBeGreaterThan(0);
+  const firstMove = (await app.sent({ type: "perform_drift" }, { after: released }))[0]._at - released;
   console.log(`Wander let go in drift → first move asked for after ${(firstMove / 1000).toFixed(2)} s`);
   expect(firstMove).toBeGreaterThan(1_000);
   expect(firstMove).toBeLessThan(3_000);
 
   // After the move, it counts down to the next one, with its arc.
-  await expect(sub).toHaveText(/^(drift · next in \d+ s|nothing better nearby)$/, { timeout: 120_000 });
-  await expect(sub).toHaveText(/^drift · next in \d+ s$/, { timeout: 30_000 });
+  await app.engine((timeout) => expect(sub).toHaveText(/^(drift · next in \d+ s|nothing better nearby)$/, { timeout }), { ms: 120_000 });
+  await app.engine((timeout) => expect(sub).toHaveText(/^drift · next in \d+ s$/, { timeout }), { ms: 30_000 });
   // The arc starts empty (the wait has barely begun) and fills as the
   // countdown repaints, so it is waited for rather than read the instant the
   // caption appears.
@@ -125,14 +85,13 @@ test("Wander answers a second and a half after it is let go, and says what it is
   const whileTurned = said.filter(([t]) => t >= grabbed && t <= released).map(([, w]) => w);
   expect(whileTurned.filter((w) => /paused/.test(w)), "turning Wander is not a touch").toEqual([]);
   expect(said.some(([, w]) => /^drift · (walking…|gliding)/.test(w)), "it said it was moving").toBe(true);
-  expect(errs).toEqual([]);
 });
 
 // A tap on Wander freezes it (#80 named the pad FREEZE and the state
 // *frozen*); its tooltip and how it works said a tap would "hold" it.
-test("Wander's tooltip and how it works say a tap freezes it", async ({ page }) => {
-  const errs = await boot(page);
-  await goLevel(page, "perform");
+test("Wander's tooltip and how it works say a tap freezes it", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.level("perform");
   const wander = page.locator('.pf-knob[data-i="7"]');
   await expect(wander).toHaveAttribute("title", /Tap to freeze it\./);
   await expect(wander).not.toHaveAttribute("title", /hold it/);
@@ -140,5 +99,4 @@ test("Wander's tooltip and how it works say a tap freezes it", async ({ page }) 
   const body = page.locator(".pf-why-body");
   await expect(body).toContainText("Tap Wander to freeze it;");
   await expect(body).not.toContainText("to hold it");
-  expect(errs).toEqual([]);
 });

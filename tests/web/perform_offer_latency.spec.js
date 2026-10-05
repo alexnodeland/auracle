@@ -34,60 +34,12 @@
 // not begin within the 30 s the spec gave it. So the spec first waits until
 // the page's own PERFORM requests are answered, its spare included, then
 // measures a step on a quiet engine, and only then asks for its spare. Those
-// waits are engine growth, bounded by `offerBudget` (perform_budget.js); the
-// pick and Keep bounds stay on the measured step.
+// waits are engine growth, bounded by `app.offerBudget` (perform_budget.js);
+// the pick and Keep bounds stay on the measured step.
 //
-// The spec reaches the worker by wrapping `Worker` before `main.js` runs, as
-// perform_next.spec.js does.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const patchPage = require("./patch_page.js");
-const budget = require("./perform_budget.js");
-
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const sent = (window.__sent = []);
-  const got = (window.__got = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      window.__worker = w;
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, ...rest) => {
-        if (m && /^perform_/.test(m.type)) sent.push({ at: performance.now(), type: m.type, req: m.req, tree: m.tree, bg: !!m.bg });
-        return post(m, ...rest);
-      };
-      w.addEventListener("message", (e) => {
-        const m = e.data || {};
-        if (/^perform_/.test(m.type) || m.type === "busy" || m.type === "idle")
-          got.push({ at: performance.now(), type: m.type, req: m.req, error: m.error, recorded: m.recorded, offer: m.offer ? { tree: m.offer.tree } : m.offer });
-      });
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-}
+// The spec reaches the worker through the fixture's tap: it posts as the page
+// does (`app.post`), and reads what was asked and answered, and when.
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 async function drag(page, loc, dy) {
   const b = await loc.boundingBox();
@@ -101,51 +53,49 @@ async function drag(page, loc, dy) {
 }
 
 /** Send `m` to the engine worker; the page clock at the send. */
-const post = (page, m) =>
-  page.evaluate((msg) => {
-    const at = performance.now();
-    window.__worker.postMessage(msg);
-    return at;
-  }, m);
+async function post(app, m) {
+  await app.post(m);
+  const sent = await app.sent({ type: m.type, req: m.req });
+  return sent[sent.length - 1]._at;
+}
 
 /** Every PERFORM request the page itself has made (ids under the spec's) is
  *  answered, and one of them was a spare (an offer asked as `bg`): after its
  *  spare the page asks the engine for nothing more until the patch or the
  *  knobs move. */
-const pageQuiet = () => {
+async function pageQuiet(app) {
   const reply = { perform_wire: "perform_wired", perform_offer: "perform_offered", perform_drift: "perform_drifted" };
-  const asked = window.__sent.filter((s) => reply[s.type] && s.req < 8_000_000);
-  const answered = (s) => window.__got.some((g) => g.type === reply[s.type] && g.req === s.req);
-  return asked.every(answered) && asked.some((s) => s.type === "perform_offer" && s.bg);
-};
+  const asked = (await app.sent({ type: Object.keys(reply) })).filter((s) => s.req < 8_000_000);
+  const answered = new Set();
+  for (const type of Object.values(reply)) for (const r of await app.replies(type)) answered.add(`${type}:${r.req}`);
+  return asked.every((s) => answered.has(`${reply[s.type]}:${s.req}`)) && asked.some((s) => s.type === "perform_offer" && s.bg);
+}
 
-/** The worker's reply of `type` to request `req` (resolves when it lands). */
-const reply = async (page, type, req, timeout) => {
-  await page.waitForFunction(([t, r]) => window.__got.some((g) => g.type === t && g.req === r), [type, req], { timeout });
-  return page.evaluate(([t, r]) => window.__got.find((g) => g.type === t && g.req === r), [type, req]);
-};
+/** The worker's reply of `type` to request `req`, once it lands (`_at`). */
+const reply = (app, type, req, timeout) => app.reply(type, { where: { req }, timeout });
 
-test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  const tree = await page.evaluate(() => window.__sent.find((s) => s.type === "perform_wire" && s.tree).tree);
-  // Three waits on engine growth below: the offer to answer, the page's own
-  // work, and the spare's start.
-  const OFFER_MS = await budget.offerBudget(page, { waits: 3 });
+test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(130_000); // about 32 to 64 s on CI: the page's own work done first, and the steps measured
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
+  const [{ tree }] = await app.sent({ type: "perform_wire", tree: true });
+  // How long engine growth may take here. One wait on it is the spec's own
+  // (the page's work done, below); the others are replies, whose time
+  // `app.reply` adds to the test's.
+  const OFFER_MS = await app.offerBudget({ waits: 1 });
 
   // An offer to answer, grown before the spare (a short walk).
   const OFFER = 9_000_001;
   const SPARE = 9_000_002;
   const PICK = 9_000_003;
-  await post(page, { type: "perform_offer", req: OFFER, tree, overrides: [], locks: [], steps: 6 });
-  const grown = await reply(page, "perform_offered", OFFER, OFFER_MS);
+  await post(app, { type: "perform_offer", req: OFFER, tree, overrides: [], locks: [], steps: 6 });
+  const grown = await reply(app, "perform_offered", OFFER, OFFER_MS);
   expect(grown.offer && grown.offer.tree, "an offer to answer grew").toBeTruthy();
 
   // The page's own `later` work, ahead of any spare the spec asks for: the
   // re-check of the shipped wiring, then the page's spare.
   const quietAt = Date.now();
-  await page.waitForFunction(pageQuiet, null, { timeout: OFFER_MS });
+  await expect.poll(() => pageQuiet(app), { timeout: OFFER_MS }).toBe(true);
   console.log(`the page's re-check and spare were done ${Date.now() - quietAt} ms after the offer grew`);
 
   const cdp = await page.context().newCDPSession(page);
@@ -157,8 +107,8 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
   let step = 0;
   for (let i = 0; i < 3; i++) {
     const req = 9_000_010 + i;
-    const at = await post(page, { type: "perform_offer", req, tree, overrides: [], locks: [], steps: 1 });
-    step = Math.max(step, (await reply(page, "perform_offered", req, OFFER_MS)).at - at);
+    const at = await post(app, { type: "perform_offer", req, tree, overrides: [], locks: [], steps: 1 });
+    step = Math.max(step, (await reply(app, "perform_offered", req, OFFER_MS))._at - at);
   }
   // A request waits for the step in progress; a pick is one trip to the worker.
   const PICK_MS = Math.max(2_000, 2 * step);
@@ -169,24 +119,24 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
 
   // The spare: far longer than the checks below, asked as the page asks for
   // one nobody has claimed (`bg`).
-  const spareAt = await post(page, { type: "perform_offer", req: SPARE, tree, overrides: [], locks: [], steps: 400, bg: true });
+  const spareAt = await post(app, { type: "perform_offer", req: SPARE, tree, overrides: [], locks: [], steps: 400, bg: true });
   // Begun: the worker announces a walk as long work (`busy`). Nothing of the
   // page's is ahead of it now, but a face render or the guess may be, so the
   // bound is the budget's, not a step's.
-  await page.waitForFunction((at) => window.__got.some((g) => g.type === "busy" && g.at > at), spareAt, { timeout: OFFER_MS });
-  const begun = await page.evaluate((at) => window.__got.find((g) => g.type === "busy" && g.at > at).at, spareAt);
+  const begun = (await app.reply("busy", { after: spareAt, timeout: OFFER_MS }))._at;
   console.log(`the spare began ${(begun - spareAt).toFixed(0)} ms after it was asked for`);
-  await page.waitForTimeout(1_500);
-  expect(await page.evaluate((r) => window.__got.some((g) => g.type === "perform_offered" && g.req === r), SPARE), "the spare is still growing").toBe(false);
+  const spareDone = async () => (await app.replies("perform_offered", { where: { req: SPARE } })).length > 0;
+  await app.quiet();
+  expect(await spareDone(), "the spare is still growing").toBe(false);
 
   // A pick, as PERFORM records a heard answer: it must not wait for the spare.
-  const pickAt = await post(page, { type: "perform_record", req: PICK, tree, overrides: [], offer: JSON.stringify(grown.offer.tree), took: false });
-  const recorded = await reply(page, "perform_recorded", PICK, 20_000);
-  const pickMs = recorded.at - pickAt;
+  const pickAt = await post(app, { type: "perform_record", req: PICK, tree, overrides: [], offer: JSON.stringify(grown.offer.tree), took: false });
+  const recorded = await reply(app, "perform_recorded", PICK, 20_000);
+  const pickMs = recorded._at - pickAt;
   console.log(`pick answered in ${pickMs.toFixed(0)} ms with the spare growing`);
   expect(recorded.recorded, "the pick was recorded").toBe(true);
   expect(pickMs, "the pick waited on the spare").toBeLessThan(PICK_MS);
-  expect(await page.evaluate((r) => window.__got.some((g) => g.type === "perform_offered" && g.req === r), SPARE), "the pick came after the spare finished, so it proved nothing").toBe(false);
+  expect(await spareDone(), "the pick came after the spare finished, so it proved nothing").toBe(false);
 
   // A Keep on the panel: turned away from home, kept, and said so.
   const bright = page.locator('.pf-knob[data-i="0"]');
@@ -199,11 +149,34 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
 
   // Leaving the patch stops the walk at its next step: answered retired, and
   // within a step or two.
-  await post(page, { type: "retire", reqs: [SPARE] });
-  const retired = await reply(page, "perform_offered", SPARE, Math.max(10_000, 4 * step));
+  await app.post({ type: "retire", reqs: [SPARE] });
+  const retired = await reply(app, "perform_offered", SPARE, Math.max(10_000, 4 * step));
   expect(retired.error).toBe("retired");
-  expect(errs).toEqual([]);
 });
+
+/** PATCH, with a preset open on it and its rack drawn. */
+async function openInPatch(page, app, name) {
+  await app.level("patch");
+  await bankTab(page, "presets");
+  await page.locator(".bank-item", { hasText: name }).first().click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 60_000 });
+  await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
+}
+
+/** The guess PATCH draws, once it is the top of the newest ranking for the
+ *  tree on the bench (a refit can rank it again while the page waits). */
+function drawnGuess(page, app) {
+  const agree = () => {
+    const T = window.__tap;
+    const bench = T.last.bench && T.last.bench.treeJson;
+    const r = T.replies.filter((x) => x.type === "guess" && !x.injected && x.d.data && x.d.data.guesses && (x.d.tree || x.d.treeJson) === bench).pop();
+    const g = document.querySelector("#rack-svg .guess-plate");
+    if (!r || !g || !r.d.data.guesses.length) return false;
+    const top = r.d.data.guesses[0];
+    return g.getAttribute("data-kind") === top.kind && g.getAttribute("data-socket") === top.socket;
+  };
+  return app.engine((timeout) => expect.poll(() => page.evaluate(agree), { timeout }).toBe(true), { ms: 90_000 });
+}
 
 // PATCH's guess asks a render crew to render every candidate, and waiting for
 // that crew (its spawn, its replies: seconds) used to hold the floor though
@@ -212,32 +185,16 @@ test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" 
 // now detached; this opens a patch the guess has not ranked, and presses an
 // Offer (over the worker's protocol, a step long) while the crew is out. The
 // Offer must be answered before the guess is, within a measured step's bound.
-test("an Offer pressed while the guess is on its crew starts at once", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  // `watch` for AURACLE_CPU_THROTTLE's slowing of the engine worker, which
-  // patchPage.boot's page throttle does not reach.
-  await budget.watch(page);
-  const errors = await patchPage.boot(page, { warmed: false });
-  await patchPage.warmStartAndFit(page);
-  const lat = () => page.evaluate(() => window.__lat);
-  await page.evaluate(() => {
-    window.__lat = [];
-    window.__pwEngine().addEventListener("message", (e) => {
-      const d = e.data || {};
-      if (d.type === "perform_offered") window.__lat.push({ type: d.type, req: d.req, t: performance.now(), offer: !!(d.offer && d.offer.tree), reason: d.offer && d.offer.reason, error: d.error });
-    });
-  });
+test("an Offer pressed while the guess is on its crew starts at once", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
+  await app.warmStart();
   const offer = async (req) => {
-    const tree = await page.evaluate(() => window.__pwLast.bench.treeJson);
-    const at = await page.evaluate(([r, tr]) => {
-      const t = performance.now();
-      window.__pwEngine().postMessage({ type: "perform_offer", req: r, tree: tr, overrides: [], locks: [], steps: 1 });
-      return t;
-    }, [req, tree]);
-    await expect.poll(async () => (await lat()).some((l) => l.req === req), { timeout: 120_000 }).toBe(true);
-    const got = (await lat()).find((l) => l.req === req);
-    console.log(`offer ${req}: ${got.offer ? "an offer" : got.reason || got.error || "nothing"} after ${(got.t - at).toFixed(0)} ms`);
-    return { at, took: got.t - at };
+    const bench = (await app.replies("bench")).pop();
+    const at = await post(app, { type: "perform_offer", req, tree: bench.treeJson, overrides: [], locks: [], steps: 1 });
+    const got = await reply(app, "perform_offered", req, 120_000);
+    const what = got.offer && got.offer.tree ? "an offer" : (got.offer && got.offer.reason) || got.error || "nothing";
+    console.log(`offer ${req}: ${what} after ${(got._at - at).toFixed(0)} ms`);
+    return { at, took: got._at - at };
   };
 
   // The first patch opened after the warm start: the crew is cold, so the
@@ -250,32 +207,30 @@ test("an Offer pressed while the guess is on its crew starts at once", { tag: "@
   // And keep it there until the Offer is answered. On a CI runner the crew
   // came up and the guess was done before the Offer was answered, so the
   // test proved nothing and said so. The crew's ports are held back from the
-  // engine worker (`holdCrew`) until the Offer's reply has landed: the guess
-  // is then on its crew for the whole of the Offer, every run. The worker
-  // waits 10 s for a crew before giving up on it, longer than the bound
-  // below. With a guess that held the floor through its crew phase, the
-  // Offer would wait those 10 s.
-  const t0 = await patchPage.now(page);
-  const wants = await page.evaluate(() => window.__pwCounts.farm_want || 0);
-  await patchPage.holdCrew(page);
-  await patchPage.openPreset(page, "Reese");
-  await page.waitForFunction((w) => (window.__pwCounts.farm_want || 0) > w, wants, { timeout: 30_000 });
-  const wantedAt = await patchPage.now(page);
-  await page.waitForTimeout(100);
+  // engine worker (`app.holdRequests("farm_ports")`) until the Offer's reply
+  // has landed: the guess is then on its crew for the whole of the Offer,
+  // every run. The worker waits 10 s for a crew before giving up on it,
+  // longer than the bound below. With a guess that held the floor through its
+  // crew phase, the Offer would wait those 10 s.
+  const t0 = await app.now();
+  const wants = await app.count("farm_want");
+  await app.holdRequests("farm_ports");
+  await openInPatch(page, app, "Reese");
+  await app.engine((timeout) => expect.poll(() => app.count("farm_want"), { timeout }).toBeGreaterThan(wants), { ms: 30_000 });
+  const wantedAt = await app.now();
   const { at, took } = await offer(9_100_002);
   const answeredAt = at + took;
-  const guessed = await page.evaluate((t) => window.__pwReplies.find((r) => r.type === "guess" && r.t > t && r.data && r.data.guesses), t0);
-  const held = await patchPage.releaseCrew(page);
+  const guessed = (await app.replies("guess", { after: t0 })).find((r) => r.data && r.data.guesses);
+  const held = await app.releaseRequests();
   console.log(`crew asked for; the Offer answered ${(answeredAt - wantedAt).toFixed(0)} ms later, ${held} crew's ports held until then`);
   // The cost of a step here, idle, once the guess has landed.
-  await patchPage.drawnGuess(page);
+  await drawnGuess(page, app);
   const step = (await offer(9_100_001)).took;
-  console.log(`idle step ${step.toFixed(0)} ms; an Offer pressed with the guess on its crew answered in ${took.toFixed(0)} ms; guess ${guessed ? "answered " + (guessed.t - answeredAt).toFixed(0) + " ms after" : "not yet answered"}`);
+  console.log(`idle step ${step.toFixed(0)} ms; an Offer pressed with the guess on its crew answered in ${took.toFixed(0)} ms; guess ${guessed ? "answered " + (guessed._at - answeredAt).toFixed(0) + " ms after" : "not yet answered"}`);
   expect(took, "the Offer waited for the guess's crew").toBeLessThan(Math.max(2_000, 3 * step));
   // The test proves something only if the guess was still out when the Offer
   // was answered: its crew was held until then, and the worker had not given
   // up waiting for it (10 s after asking).
   expect(answeredAt - wantedAt, "the worker gave up on the crew before the Offer was answered, so nothing was proved").toBeLessThan(10_000);
-  expect(guessed === undefined || guessed.t > answeredAt, "the guess was done before the Offer was answered, so nothing was proved").toBe(true);
-  expect(errors, errors.join("\n")).toEqual([]);
+  expect(guessed === undefined || guessed._at > answeredAt, "the guess was done before the Offer was answered, so nothing was proved").toBe(true);
 });

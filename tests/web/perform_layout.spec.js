@@ -15,49 +15,7 @@
 // - PASS passes on B without growing another: heard, it is recorded as
 //   Next's pass is (`perform_record`, took false) after its window, and its
 //   UNDO brings B back.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
-
-const INIT = `(() => {
-  const records = (window.__records = []);
-  const offers = (window.__offers = []);
-  const Orig = window.Worker;
-  function Wrapped(url, o) {
-    const w = new Orig(url, o);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type === "perform_record") records.push({ took: !!m.took, at: performance.now() });
-        if (m && m.type === "perform_offer" && !m.bg) offers.push(performance.now());
-        return post(m, t);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-}
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 /** A control that turns up on this patch, focused. */
 async function turnUp(page, presses = 8) {
@@ -72,23 +30,31 @@ async function grow(page, ms) {
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: ms });
 }
 
-async function peek(page, ms) {
+// PEEK held long enough for B to be heard: a second of it while a note sounds.
+const HEARD_MS = 1_600;
+
+async function peek(page) {
   const b = await page.locator(".pf-pad", { hasText: "Peek" }).boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(HEARD_MS);
   await page.mouse.up();
   await page.mouse.move(10, 10);
 }
 
+// What PERFORM asked the engine for, through the fixture's tap: the offers a
+// press asks for (not a spare grown in the background), and the picks it
+// records.
+const asked = async (app) => (await app.sent({ type: "perform_offer", bg: false })).length;
+const records = async (app) => (await app.sent({ type: "perform_record" })).map((m) => ({ took: !!m.took }));
+
 for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
   test.describe(`a ${width} px window`, () => {
     test.use({ viewport: { width, height } });
-    test(`PERFORM is a well and a panel at ${width} px, its pads above the keybed and whole`, async ({ page }) => {
-      test.setTimeout(240_000);
-      const errs = await boot(page);
-      await openOnPerform(page, "Glass Pad");
-      await expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout: 60_000 });
+    test(`PERFORM is a well and a panel at ${width} px, its pads above the keybed and whole`, async ({ page, app }) => {
+      await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+      await app.openOnPerform("Glass Pad");
+      await app.engine((timeout) => expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
       const box = await page.evaluate(() => {
         const r = (sel) => {
           const b = document.querySelector(sel).getBoundingClientRect();
@@ -109,15 +75,13 @@ for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
       expect(box.order).toEqual(["Wander", "Offer", "Peek", "Take", "Pass"]);
       expect(box.pads.bottom, "the pads are above the keybed").toBeLessThanOrEqual(box.keybar.top + 1);
       expect(box.cut, "words past their edge").toEqual([]);
-      expect(errs).toEqual([]);
     });
   });
 }
 
-test("XY is a mode of the well: the button swaps the face for the field, and the button or Esc puts it back", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("XY is a mode of the well: the button swaps the face for the field, and the button or Esc puts it back", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   const well = page.locator(".pf-well");
   const btn = page.locator(".pf-xy-btn");
   await expect(page.locator(".pf-xy")).toBeHidden();
@@ -150,13 +114,11 @@ test("XY is a mode of the well: the button swaps the face for the field, and the
   await btn.click();
   await expect(well).toHaveAttribute("data-mode", "xy");
   await expect(page.locator(".pf-why-body")).toBeHidden();
-  expect(errs).toEqual([]);
 });
 
-test("Freeze is a tap on Wander, or Enter on it, and Wander says so", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("Freeze is a tap on Wander, or Enter on it, and Wander says so", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   const wander = page.locator(".pf-pads .pf-wander");
   await expect(wander).toHaveAttribute("data-frozen", "false");
   await expect(page.locator(".pf-pad", { hasText: /^Freeze$/ })).toHaveCount(0);
@@ -171,13 +133,11 @@ test("Freeze is a tap on Wander, or Enter on it, and Wander says so", async ({ p
   await page.keyboard.press("Enter");
   await expect(wander).toHaveAttribute("data-frozen", "false");
   await expect(wander).toHaveAttribute("aria-valuenow", v);
-  expect(errs).toEqual([]);
 });
 
-test("the moved bar shows only when the sound has left home, and KEEP and BACK settle it", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("the moved bar shows only when the sound has left home, and KEEP and BACK settle it", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
   const bar = page.locator(".pf-moved");
   await expect(bar).not.toHaveClass(/\bon\b/);
   await expect(bar).toBeHidden();
@@ -195,17 +155,15 @@ test("the moved bar shows only when the sound has left home, and KEEP and BACK s
   await turnUp(page);
   await expect(bar).toHaveClass(/\bon\b/);
   await page.locator(".pf-moved .pf-keep").click();
-  await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
+  await app.engine((timeout) => expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout }), { ms: 15_000 });
   await expect(bar).not.toHaveClass(/\bon\b/);
   await expect(k).toHaveAttribute("aria-valuenow", "0.00");
-  expect(errs).toEqual([]);
 });
 
-test("Blend shows only while B holds an offer, and PASS passes on B without growing another", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(420_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
+test("Blend shows only while B holds an offer, and PASS passes on B without growing another", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
+  await app.openOnPerform("Glass Pad");
+  const OFFER_MS = await app.offerBudget({ waits: 2 });
   const slot = page.locator(".pf-blend-slot");
   const pass = page.locator(".pf-pad.pf-pass");
   await expect(slot).toBeHidden();
@@ -217,16 +175,16 @@ test("Blend shows only while B holds an offer, and PASS passes on B without grow
   await expect(pass).toBeEnabled();
   // Heard (a note sounding, a second and a half of Peek), then passed.
   await page.keyboard.down("a");
-  await peek(page, 1600);
+  await peek(page);
   await page.keyboard.up("a");
-  const asked = await page.evaluate(() => window.__offers.length);
+  const before = await asked(app);
   await pass.click();
   await expect(page.locator(".pf-offer")).not.toHaveClass(/\bready\b/);
   await expect(slot).toBeHidden();
   await expect(page.locator("#toasts")).toContainText("Passed on B. That counts as a pick for what you had.");
   // No offer was asked for: a pass, not a Next (an offer is asked in the
   // press itself, so none by now is none).
-  expect(await page.evaluate(() => window.__offers.length), "PASS grows nothing").toBe(asked);
+  expect(await asked(app), "PASS grows nothing").toBe(before);
   await expect(page.locator(".pf-pad.primary")).toHaveText("Offer");
   // UNDO brings B back, heard as it was, and nothing is recorded.
   await page.locator("#toasts .toast-undo", { hasText: "undo" }).last().click();
@@ -235,6 +193,5 @@ test("Blend shows only while B holds an offer, and PASS passes on B without grow
   // Passed again, and left: after its window it is recorded as Next's pass
   // is, a pick for what you had.
   await pass.click();
-  await expect.poll(() => page.evaluate(() => window.__records.slice()), { timeout: 30_000 }).toEqual([expect.objectContaining({ took: false })]);
-  expect(errs).toEqual([]);
+  await expect.poll(() => records(app), { timeout: 30_000 }).toEqual([expect.objectContaining({ took: false })]);
 });

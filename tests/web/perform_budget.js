@@ -20,32 +20,15 @@
 // What must not wait for an offer (a pick, a Keep, NEXT handing over a spare)
 // is held to its own tight bounds where it is tested; this budget is only for
 // waiting on the engine's growth.
+//
+// A spec reaches it as `app.offerBudget` (fixtures.js). The fixture's tap keeps
+// the engine worker (`window.__pbEngine`) and the tree of the last
+// `perform_wire` the page asked for, the patch on PERFORM (`window.__pbTree`),
+// and `app.boot` applies AURACLE_CPU_THROTTLE (`SLOW_ENGINE` below).
 const { test } = require("@playwright/test");
 
 const FLOOR_MS = process.env.CI ? 240_000 : 90_000;
 const STEPS = 120;
-
-// The engine worker, and the tree of the last `perform_wire` the page asked
-// for (the patch on PERFORM), kept by wrapping `Worker` before main.js runs.
-// It composes with a spec's own wrapper: each wraps whatever `Worker` is when
-// it runs, and both see every message.
-const INIT = `(() => {
-  const Orig = window.Worker;
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      window.__pbEngine = w;
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, ...rest) => {
-        if (m && m.type === "perform_wire" && m.tree) window.__pbTree = m.tree;
-        return post(m, ...rest);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
 
 // AURACLE_CPU_THROTTLE for the engine. Chrome's CPU throttling is for pages
 // only: sent to the engine worker's target it answers "Operation is only
@@ -81,23 +64,6 @@ const SLOW_ENGINE = (rate) => `(() => {
   }
 })();
 `;
-
-/** Before the page loads: keep the engine worker in reach, and apply
- *  AURACLE_CPU_THROTTLE: to the page as patch_page.js does (CDP), and to the
- *  engine worker's wasm calls (`SLOW_ENGINE`), which CDP cannot reach. */
-async function watch(page) {
-  await page.addInitScript(INIT);
-  const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
-  if (rate > 1) {
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
-    await page.route(/\/worker\.js(\?|$)/, async (route) => {
-      const resp = await route.fetch();
-      const body = await resp.text();
-      await route.fulfill({ response: resp, body: SLOW_ENGINE(rate) + body, contentType: "text/javascript" });
-    });
-  }
-}
 
 // The spec-side request ids used here, clear of the page's (a counter from 1)
 // and of the ones specs post themselves (9_000_000 and up).
@@ -138,8 +104,9 @@ async function measureStep(page, n = 2) {
 
 /** How long to wait for an offer (or a drift) to grow here: the floor, or
  *  STEPS measured steps when that is longer. Call it with a patch on PERFORM
- *  (its controls reached), after `watch`. `waits`: how many such waits the
- *  test has left; its timeout grows by a budget for each. */
+ *  (its controls reached), on a page booted with the fixture's tap. `waits`:
+ *  how many such waits the test has left; its timeout grows by a budget for
+ *  each. */
 async function offerBudget(page, { waits = 0 } = {}) {
   const step = await measureStep(page);
   const ms = Math.round(Math.max(FLOOR_MS, step == null ? 0 : STEPS * step));
@@ -149,4 +116,4 @@ async function offerBudget(page, { waits = 0 } = {}) {
   return ms;
 }
 
-module.exports = { watch, measureStep, offerBudget, FLOOR_MS, STEPS, SLOW_ENGINE };
+module.exports = { measureStep, offerBudget, FLOOR_MS, STEPS, SLOW_ENGINE };
