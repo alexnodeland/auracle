@@ -105,7 +105,7 @@ measured with audition clips, from quiver to the PATCH plate.
      out under one) is measured on the engine instead (`Engine::absorb_prior`),
      and a restore's falls back to `bank_render`. The farm's phrase is re-sent
      after a capture and a restore that installs one (task 4). Open: a clip
-     per input <!-- TODO(issue): the operator opens this issue and links its number here -->.
+     per input (#147; the keys through any input: #148).
 4. **Web capture.** *Done* (web), the live face included (#104,
    `the square draws the input's live face…` in `audio_in.spec.js`)
    (`apps/web/audio-in.js`; the guide's *Playing through Auracle*;
