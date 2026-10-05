@@ -18670,7 +18670,10 @@ function renderSpecDock() {
     const html =
       `${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
-      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}">${priceHTML(p, true)}</span>` +
+      // The whole sentence where the line has room, and beside the open
+      // catalog the figure alone (its caveat is the tooltip), so ▶ and the
+      // price stay whole on one line.
+      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}"><span class="pr-long">${priceHTML(p, true)}</span><span class="pr-short">${priceHTML(p, false)}</span></span>` +
       previewStripHTML(target) +
       `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit</span>`;
     // Rewritten only when it actually changed: this line re-renders on every
@@ -20375,6 +20378,34 @@ function drawPickGhost(svg, hand, b, caretPt) {
     cx = b.x + b.w + GUTTER + box.w / 2;
     cy = b.y + b.h / 2;
   }
+  // …nor over any other module (a short cable puts the next plate right
+  // there: the ghost covered MIX, C2a's armed state). A source replaces the
+  // plate it is drawn over, so that one it may cover. Otherwise it stands
+  // above the plates it would cover, or below them, with a dashed lead to
+  // where it goes.
+  let lead = null;
+  if (hand.sort !== "source") {
+    const PAD = 10;
+    const rect = (x, y) => ({ x: x - box.w / 2, y: y - box.h / 2, w: box.w, h: box.h });
+    const hits = (r) => [...rackBoxes.values()].filter((q) => r.x < q.x + q.w + PAD && q.x - PAD < r.x + r.w && r.y < q.y + q.h + PAD && q.y - PAD < r.y + r.h);
+    let over = hits(rect(cx, cy));
+    if (over.length) {
+      const at = caretPt || { x: cx, y: cy };
+      const top = Math.min(...over.map((q) => q.y), b.y);
+      const up = top - PAD - box.h / 2;
+      if (!hits(rect(cx, up)).length) cy = up;
+      else {
+        const bottom = Math.max(...over.map((q) => q.y + q.h), b.y + b.h);
+        cy = bottom + PAD + box.h / 2;
+        over = hits(rect(cx, cy));
+        for (let k = 0; k < 6 && over.length; k++) {
+          cy = Math.max(...over.map((q) => q.y + q.h)) + PAD + box.h / 2;
+          over = hits(rect(cx, cy));
+        }
+      }
+      lead = { x1: cx, y1: cy < at.y ? cy + box.h / 2 : cy - box.h / 2, x2: at.x, y2: at.y };
+    }
+  }
   const g = svgEl(
     "g",
     { transform: `translate(${(cx - box.w / 2).toFixed(1)},${(cy - box.h / 2).toFixed(1)})` },
@@ -20421,6 +20452,10 @@ function drawPickGhost(svg, hand, b, caretPt) {
     kg.appendChild(lbl);
     g.appendChild(kg);
   });
+  if (lead) {
+    const l = svgEl("path", { d: `M ${lead.x1.toFixed(1)} ${lead.y1.toFixed(1)} L ${lead.x2.toFixed(1)} ${lead.y2.toFixed(1)}` }, "pick-ghost pick-lead");
+    svg.querySelector(".rack-controls")?.appendChild(l);
+  }
   svg.querySelector(".rack-controls")?.appendChild(g);
 }
 

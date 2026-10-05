@@ -3706,6 +3706,10 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
    painting a highlight over half the rack. */
 #rack-svg.picking g[data-key].dimmed { opacity: 0.28; }
 #rack-svg.picking g[data-key] { transition: opacity var(--d-state) cubic-bezier(0.2, 0, 0.6, 1); }
+/* Not a target: drawn over the socket's cable, it took the pointer off the
+   socket, which took it away, which gave the socket the pointer back, about
+   thirty times a second, and the ghost never stayed long enough to see. */
+.pick-caret { pointer-events: none; }
 .pick-caret path {
   stroke: var(--phos-a);
   stroke-width: 2;
@@ -3744,7 +3748,10 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   filter: grayscale(0.85) drop-shadow(0 6px 12px var(--black-75));
   animation: ghost-in var(--d-state) cubic-bezier(0.2, 0, 0.6, 1);
 }
-@keyframes ghost-in { from { opacity: 0; transform: scale(0.97); } }
+/* Opacity only: a CSS transform on an SVG group replaces its `transform`
+   attribute while it runs, so a scale here drew the ghost at the rack's
+   origin, and a ghost redrawn under a still pointer stayed there. */
+@keyframes ghost-in { from { opacity: 0; } }
 .pick-ghost .mod-plate {
   fill: var(--ghost-plate);
   stroke: var(--phos-a);
@@ -3752,6 +3759,8 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   stroke-dasharray: 6 4;
 }
 .pick-ghost.modside .mod-plate { stroke: var(--phos-b); }
+/* Stood clear of the plates it would cover: a dashed lead to where it goes. */
+.pick-ghost.pick-lead { fill: none; stroke: var(--phos-a-45); stroke-width: 1.2; stroke-dasharray: 4 4; filter: none; animation: none; }
 .pick-ghost .knob-body { filter: none; }
 @media (prefers-reduced-motion: reduce) {
   .pick-ghost { animation: none; }
@@ -7608,8 +7617,44 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 /* Beside the open catalog the line has less room than the well: its width
    is what is left, and the price and ▶ go to a second line rather than past
    the well's edge. */
-.rack-frame.cat-open .pick-chip { max-width: calc(100% - 248px - var(--s3) - var(--s3) - var(--s4)); white-space: normal; flex-wrap: wrap; }
-.pick-chip .pick-chip-text { flex: none; }
+/* Beside the open catalog the line has less room than the well: its width
+   is what is left, and it stays one line (C2b). The module, IN HAND, the
+   price's figure and ▶ stay whole; what gives way, cut with an ellipsis, is
+   the reasons: what happens at the socket, how many are lit, the preview's
+   label, and a price that is a reason rather than a figure ("no price yet:
+   it needs a few picks"). */
+.rack-frame.cat-open .pick-chip { max-width: calc(100% - 248px - var(--s3) - var(--s3) - var(--s4)); }
+.pick-chip, .rack-frame.cat-open .pick-chip { white-space: nowrap; flex-wrap: nowrap; }
+/* Its parts are the line's own items, so each can give way by itself. */
+.pick-chip .pick-armed { display: contents; }
+.pick-chip .pick-armed > *, .pick-chip .pv > * { flex: none; }
+/* The preview's ▶ comes first in it and never goes: what gives is its trace
+   and label, after it. */
+.pick-chip .pick-armed .pv { flex: 0 1 auto; min-width: 22px; overflow: hidden; }
+.pick-chip .pick-armed .pv-scope { width: 96px; height: 26px; }
+.pick-chip .pick-armed .pv-label,
+.pick-chip .pick-armed .sd-hint,
+.pick-chip .pick-armed .sd-price:has(.pr-mute),
+.pick-chip .pick-chip-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-chip .pick-chip-text { flex-shrink: 2; }
+.sd-price .pr-short { display: none; }
+.rack-frame.cat-open .pick-chip .sd-price .pr-long { display: none; }
+.rack-frame.cat-open .pick-chip .sd-price .pr-short { display: inline; }
+/* Narrower still (the catalog open in a 1000 px window): the preview's trace
+   and the count of lit sockets (the canvas lights them) step out, so where it
+   goes and the price keep their words. ▶ stays. */
+@media (max-width: 1180px) {
+  .rack-frame.cat-open .pick-chip { gap: var(--s1); }
+  .rack-frame.cat-open .pick-chip .pv-scope,
+  .rack-frame.cat-open .pick-chip .pick-armed .sd-hint,
+  .rack-frame.cat-open .pick-chip .pick-armed .sd-verb { display: none; }
+}
 
 /* ---- the camera's corner (C2a): fit · − · + · map · layout ▾ ---- */
 .pt-corner { gap: 2px; padding: 2px; border-radius: var(--r2); background: var(--bezel-72); }
