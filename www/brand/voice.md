@@ -528,6 +528,19 @@ banned-words check in `make dev-check` reads the list after it.
 | **set aside** | Modules unplugged or deleted, waiting to go back | HELD |
 | **59% · leaning** | A prediction: a percentage and a word | MODEL'S GUESS 0.59 |
 | **guess** (a module) | PATCH: the module the model guesses you'd add next, GUESS · FILTER, with its reason in the model's italic | suggestion, recommendation, TRY, NEXT |
+| **What goes here?** | PATCH: a module's ⋯ row (and Q) asking the model's guess for that module's place: after it, on its modulation slot, or in it if the socket is empty | suggest here, recommend |
+| **AFTER THE MIX** / **ON THE FILTER'S CUTOFF** / **IN THE EMPTY SOCKET** | Where a guess asked for a place goes, on the well's top line after GUESS · DELAY | |
+| *hearing the modules that fit at the mix…* | The well's top line while a What goes here? is ranked | thinking, loading |
+| **lower bound +0.03** | A runner-up guess's ranking figure under the model view: its gain's mean less one sd | at least, worst case |
+| *it’d like this 62% · leaning · was 58% ▲* | Under the model view, PATCH's subtitle in place of its counts: the model's guess for the sound in hand, what it said before the last edit, and the arrow when the printed number moved | MODEL'S GUESS |
+| **THE PATCH** | PATCH's readout under the model view with nothing selected, then what adds up to the belief line | |
+| **filtering +0.12 · shared by 2** (the worth chip) | Under the model view, a chip per kind of module in PATCH: what one more of that kind is worth to the model, shared by the modules of that kind; *a guess* when its interval crosses zero | the worth of this module, a per-socket price |
+| **from ‹Seed› · N changes** | PATCH's subtitle on a bred sound as it was bred; N counted as its bank row lists the changes | parent, mutations, diffs |
+| *silent without it* / *without it, it fails the safety check* / **Dashed at OUT: without the selected module, measured** | PATCH: the readout's words when the patch without the selected module has no face to draw, and HOW TO READ THIS's row for the face it does draw | approximate, estimated |
+| **BRIGHT and SPACE turn this cutoff** / **BRIGHT turns its cutoff and res; SPACE turns its decay** | PATCH's readout: which of PERFORM's controls turn a knob, or a module's knobs, as PERFORM measured them | mapped to, assigned to |
+| **Hold ⌥: what the model believes (your lean on each kind, what one more is worth, its next guesses)** / **A tick on a module: the generation that bred this sound changed it** / **A pale tick on a knob: where it was when you opened the sound; on a bred sound as bred, where its seed had it** | HOW TO READ THIS's rows for the model view, what a generation changed, and the pale pointer | |
+| **couldn’t measure this patch** / **couldn’t re-check this patch** | PERFORM's status line when the engine failed a measurement of the sound in hand and none is out now: *measure* when there is no wiring to play, *re-check* (after the count, *4 of 6 controls reach this patch · …*) when the controls still play on their last measurement | measurement failed, error, unavailable |
+| **the engine crashed: reload to continue** | B's line, or a control's toast after *nothing changed.*, for something asked of PERFORM after the engine crashed; the alarm's own words | try again (it can't), engine unavailable |
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
 | **the levels** | PERFORM, PATCH, EVOLVE, TASTE and LEARNING as one space around the sound you're playing: zoom out to TASTE and LEARNING, in to PATCH, beside it to EVOLVE; and the cross at the stage's right edge that shows where you are (its name to a screen reader: *Where you are*) | tabs, pages, "the rail" (that is the bank's), the depth rail |
