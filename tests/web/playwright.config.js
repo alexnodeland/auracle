@@ -18,11 +18,12 @@ const PORT = OWN_PORT || "8642";
 module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
-  // Fail fast. A test's own budget is twice the longest a test without an
-  // explicit timeout took on CI (about 45 s at 63ec6ff); a longer test says
-  // so with `test.setTimeout` or `test.slow()`, and a wait on the engine
-  // through the fixture (`app.engine`, `app.reply`, `app.booted`,
-  // `app.offerBudget`) adds its own time to the test's timeout.
+  // Fail fast. A test's own budget is twice the longest a fast-tier test
+  // without an explicit timeout took on CI (about 45 s at 63ec6ff); a longer
+  // test says so with `test.setTimeout` (and over about 40 s on CI is tagged
+  // @slow), and a wait on the engine through the fixture (`app.engine`,
+  // `app.reply`, `app.booted`, `app.offerBudget`) adds its own time to the
+  // test's timeout.
   timeout: 90_000,
   // A UI state: a wait for the engine says so with a longer bound of its own
   // (fixtures.js ENGINE_MS, perform_budget.js `offerBudget`).
