@@ -23,7 +23,7 @@ what it learned. Every sound is a patch you can open and change.
 
 **In your browser: <https://auracle.alexnodeland.com/play/>.** It is free, with
 no account and nothing to install, and your sounds and your taste stay in your
-browser. Every push to `main` rebuilds the engine and redeploys it.
+browser. Every change to `main` that passes CI is deployed here.
 
 **Offline:** every [release](https://github.com/alexnodeland/auracle/releases)
 comes with a ready-built web bundle. Unzip it, run `python3 serve.py`, and open
