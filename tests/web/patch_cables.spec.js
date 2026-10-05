@@ -77,8 +77,11 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
   await page.mouse.up();
-  // While the change is unmeasured, the marks are hollow.
-  await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
+  // While the change is unmeasured, the marks are hollow. They go hollow when
+  // the edit's answer lands, an engine wait: the model's guess for the open
+  // can still be out, and on a slow runner the edit waited behind it for
+  // longer than 15 s (CI: the page sent the edit, and nothing came back).
+  await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(asked, { timeout }).toBeGreaterThan(before), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   // Not one per step. At most one probe at the engine and one owed
