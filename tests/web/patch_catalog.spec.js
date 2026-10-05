@@ -282,7 +282,15 @@ for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog a
     const keys = await page.evaluate(() => [...document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")].map((j) => j.getAttribute("data-childkey")));
     let reached = 0;
     for (const key of keys) {
-      const at = await reach(key);
+      // Wait for the camera to be still (the catalog opening refits it, on
+      // its tween): the socket where it is twice running is where it stays.
+      let at = null;
+      await expect.poll(async () => {
+        const a = await reach(key);
+        const b = await new Promise((r) => setTimeout(r, 250)).then(() => reach(key));
+        at = b;
+        return !a || !b ? "gone" : Math.abs(a.x - b.x) + Math.abs(a.y - b.y) < 0.5 ? "still" : "moving";
+      }, { timeout: 15_000 }).not.toBe("moving");
       if (!at) continue;
       reached += 1;
       await page.mouse.move(at.x, at.y);
