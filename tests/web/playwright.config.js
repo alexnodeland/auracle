@@ -28,8 +28,17 @@ module.exports = defineConfig({
   // a single runner take three times as long as the others. Nothing in a
   // spec file is shared between its tests (each boots its own page).
   fullyParallel: true,
+  // No retries, on CI either: a flaky test is fixed, or tagged @quarantine,
+  // which moves it from the gate to the Slow suite until it is
+  // (docs/architecture/testing.md § Flakes).
   retries: 0,
-  reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
+  // A stray test.only would quietly narrow the run to that test (on CI, to
+  // one runner's share minus everything but it), and the run would pass.
+  forbidOnly: !!process.env.CI,
+  // On CI each runner also writes a blob report (blob-report/). One job merges
+  // a run's blobs into a single HTML report, traces and all, and on main
+  // into the timings shard.mjs deals the next run by.
+  reporter: process.env.CI ? [["list"], ["github"], ["blob"]] : [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
     // Wider than the handheld gate (min dimension ≥ 620 and a fine pointer),

@@ -123,21 +123,24 @@ Every change must pass `make check`:
 6. `cargo test --workspace --profile test-fast` — release-grade codegen
    without release's shipping flags; see the profile's comment in `Cargo.toml`
 
-That list is what CI's `lint`, `web`, `wasm` and `test` jobs run, so "green
-locally" and "green in CI" are one claim. What CI runs that `make check` does
+That list is what CI's `lint`, `web` and `test` jobs and its wasm32 build
+(the engine job, with warnings as errors) run, so "green locally" and "green
+in CI" are one claim. What CI runs that `make check` does
 not is the site build (`make site && make site-check`) with the browser smoke
 test inside it (`make smoke`), and the browser specs, because they need the
 wasm built and the first needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
-The **fast tier** is the required `CI` check, about five to seven minutes: the
-jobs above, the Rust tests except the slow ones, and every browser spec not
-tagged `@slow`. A PR may merge on it alone. The **slow tier** (the *Slow
-suite* workflow) runs the search floor, the other Rust tests over a minute and
-the `@slow` browser specs on every push to `main` and nightly, where a failure
-opens an issue; on a PR it runs when the diff reaches what those tests cover,
-or when you add the `full-ci` label. Locally, `make check` still runs every
+The **fast tier** is the required `CI` check, about ten minutes: the jobs
+above, the Rust tests except the slow ones, and every browser spec not tagged
+`@slow` or `@quarantine`, dealt to eight runners by time. A PR may merge on it
+alone. The **slow tier** (the *Slow suite* workflow) runs the search floor, the
+other Rust tests over a minute and the `@slow` and `@quarantine` browser specs
+on every push to `main` and nightly, where a failure opens an issue; on a PR it
+runs when the diff reaches what those tests cover, or when you add the
+`full-ci` label. A flaky test is fixed or quarantined, never retried
+([§ Flakes](docs/architecture/testing.md#flakes)). Locally, `make check` still runs every
 Rust test; `make test-fast-tier` / `make test-slow-tier` and
 `make browser-fast` / `make browser-slow` run one tier the way CI does.
 

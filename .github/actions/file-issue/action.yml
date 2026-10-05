@@ -1,0 +1,55 @@
+name: File an issue
+description: >
+  A failure on main nobody is watching, filed as an issue: one open issue per
+  title, commented on by every further failing run until someone closes it.
+  The job needs `permissions: issues: write`.
+
+inputs:
+  title:
+    description: "The issue's title, which is also how a later run finds it"
+    required: true
+  results:
+    description: "toJSON(needs) of the calling job: the failed jobs are named"
+    required: true
+  advice:
+    description: "What to do about it, after the run's link"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        TITLE: ${{ inputs.title }}
+        RESULTS: ${{ inputs.results }}
+        ADVICE: ${{ inputs.advice }}
+      with:
+        script: |
+          const title = process.env.TITLE;
+          const { owner, repo } = context.repo;
+          const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+          const results = JSON.parse(process.env.RESULTS);
+          const failed = Object.entries(results)
+            .filter(([, v]) => v.result === "failure")
+            .map(([k]) => `\`${k}\``)
+            .join(", ");
+          const why = context.eventName === "schedule" ? "The nightly run" : "The push";
+          const body = [
+            `${why} at ${context.sha.slice(0, 7)} failed: ${failed}.`,
+            "",
+            `Run: ${run}`,
+            "",
+            process.env.ADVICE,
+          ].join("\n");
+
+          const open = await github.paginate(github.rest.issues.listForRepo, {
+            owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+          });
+          const existing = open.find((i) => i.title === title && !i.pull_request);
+          if (existing) {
+            await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            core.info(`commented on #${existing.number}`);
+          } else {
+            const { data } = await github.rest.issues.create({ owner, repo, title, body });
+            core.info(`opened #${data.number}`);
+          }

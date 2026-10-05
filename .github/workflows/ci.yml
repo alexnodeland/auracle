@@ -1,10 +1,11 @@
 name: CI
 
-# The FAST tier: what a PR must pass to merge, aimed at five to seven minutes of
-# wall time. The tests too slow for that (the search floor, the other Rust
-# tests over a minute, the browser specs tagged @slow) run in the Slow suite
-# workflow (slow-suite.yml): on main, nightly, and on a PR that touches what
-# they cover or carries the `full-ci` label. Each test runs in exactly one
+# The FAST tier: what a PR must pass to merge, about ten minutes of wall time
+# (the browser tier's eight runners set it). The tests too slow for that (the
+# search floor, the other Rust tests over a minute, the browser specs tagged
+# @slow, and any tagged @quarantine while a flake is fixed) run in the Slow
+# suite workflow (slow-suite.yml): on main, nightly, and on a PR that touches
+# what they cover or carries the `full-ci` label. Each test runs in exactly one
 # tier; docs/architecture/testing.md § CI tiers lists which and why.
 #
 # The branch ruleset requires one check, `CI` (the last job here). The fast
@@ -22,6 +23,11 @@ on:
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
+
+# Read the code, nothing else: no job here writes to the repository. The
+# Actions cache and artifacts use the runner's own token, not this one.
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -55,8 +61,10 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
       browser: ${{ steps.filter.outputs.browser }}
+      specs: ${{ steps.filter.outputs.specs }}
+      browser_matrix: ${{ steps.filter.outputs.browser_matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The merge base has to be reachable to diff against it.
           fetch-depth: 0
@@ -68,9 +76,12 @@ jobs:
 
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "not a pull request — running everything"
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            echo "site=true" >> "$GITHUB_OUTPUT"
-            echo "browser=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "rust=true"
+              echo "site=true"
+              echo "browser=true"
+              echo 'browser_matrix=["1/8","2/8","3/8","4/8","5/8","6/8","7/8","8/8"]'
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -106,10 +117,34 @@ jobs:
             browser=false
           fi
 
-          echo "rust=$rust" >> "$GITHUB_OUTPUT"
-          echo "site=$site" >> "$GITHUB_OUTPUT"
-          echo "browser=$browser" >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s browser=%s\n' "$rust" "$site" "$browser"
+          # A PR whose only change the browser tier can see is to spec files
+          # runs those specs and nothing else: no other spec's code changed,
+          # and the app it runs against is main's. A change to a spec's
+          # helpers, the config or anything else the tier reads runs it all.
+          # On main every run is the whole tier.
+          specs=""
+          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/(workflows|actions)/)' | grep -vE '^tests/web/[^/]+\.md$' || true)"
+          if [ "$browser" = true ] && [ -n "$reach" ] && ! echo "$reach" | grep -qvE '^tests/web/[^/]+\.spec\.js$'; then
+            # Anchored at a path separator, as shard.mjs does, so a spec's
+            # name never also selects another file ending in it.
+            for f in $reach; do [ -f "$f" ] && specs="$specs /${f#tests/web/}"; done
+          fi
+          specs="${specs# }"
+          n=8
+          if [ -n "$specs" ]; then
+            n=$(echo "$specs" | wc -w | tr -d " ")
+            [ "$n" -gt 8 ] && n=8
+          fi
+          matrix="[$(seq 1 "$n" | sed "s#.*#\"&/$n\"#" | paste -sd, -)]"
+
+          {
+            echo "rust=$rust"
+            echo "site=$site"
+            echo "browser=$browser"
+            echo "specs=$specs"
+            echo "browser_matrix=$matrix"
+          } >> "$GITHUB_OUTPUT"
+          printf '\n  rust=%s site=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$browser" "${specs:-all}" "$matrix"
 
       # The voice check (www/brand/voice.md) reads the README and the
       # changelog as well as the site and the app, and a PR that touches only
@@ -129,11 +164,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all --check
@@ -147,29 +183,30 @@ jobs:
   # `lint`, because `lint` is gated on Rust having changed and a JS-only PR is
   # exactly the PR this check exists for. It also runs `make dev-check`, whose
   # film tools' tests need numpy and scipy (installed below), with no Rust
-  # toolchain. It has grown to four and a half to five minutes as web-check and
-  # dev-check took on more, and went over 5 on main at #117, so it has 10.
+  # toolchain. dev-check's parts run side by side on the runner's four cores
+  # (`-j4`, each part's output kept together by `-O`); the longest, the tokens
+  # check's own tests, sets its time, about a minute.
   web:
     name: Web
     needs: changes
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .node-version
       # The film tools' own tests need numpy and scipy for the mix (the rest
       # of dev-check is the standard library). Only those two, pinned as
       # www/video/requirements-tools.txt pins them: about half a minute,
       # where the voice's whole set would take minutes.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - run: python3 -m pip install --quiet $(grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt)
+      - run: grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt | xargs python3 -m pip install --quiet
       - run: make web-check
-      - run: make dev-check
+      - run: make -j4 -O dev-check
 
   # The fast tier of the Rust tests, split across two runners.
   #
@@ -200,15 +237,19 @@ jobs:
       matrix:
         partition: ["1/2", "2/2"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
       # One cache for every test job, here and in slow-suite.yml, saved from
       # main by this job only.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: nextest
 
       # test-fast, not release: the tests need release-grade codegen for the DSP
       # but none of release's shipping flags. Measured on the three heaviest
@@ -224,21 +265,13 @@ jobs:
         if: matrix.partition == '1/2'
         run: cargo test --doc --workspace --profile test-fast
 
-  wasm:
-    name: Wasm check
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo check -p auracle-wasm --target wasm32-unknown-unknown --release
+  # No separate wasm32 check: when Rust changed, the cache key of the engine
+  # job below (crates/**, Cargo.*, the Makefile) misses and it runs
+  # `make wasm`, a full wasm32 build under this workflow's -Dwarnings (the
+  # Makefile's WASM_RUSTFLAGS adds to RUSTFLAGS rather than replacing them),
+  # which is more than `cargo check` for the target. The one change that
+  # reaches neither is a workflow-only edit, which cannot change what the
+  # compiler sees.
 
   # The site is built and link-checked on every PR that can affect it, not only
   # on deploy.
@@ -248,30 +281,34 @@ jobs:
   # link that only exists once four sections are assembled, a root-absolute path
   # that works at a domain root and 404s under a project subpath. All of those
   # would otherwise be found on the live site by a reader.
+  #
+  # The instrument at /play/ is the engine job's build, downloaded, not a
+  # second one: the same bytes the browser tier tests. Rust is still needed
+  # here for the API reference (`cargo doc`).
   site:
     name: Site
-    needs: changes
+    needs: [changes, engine]
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          targets: wasm32-unknown-unknown
+          name: web-engine
+          path: apps/web/pkg
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # A prebuilt binary from the tool cache. This used to curl-pipe upstream's
-      # installer on every run, which cost a download and a shell out of a
-      # third-party script for a tool that publishes releases.
-      - uses: taiki-e/install-action@wasm-pack
-
       - name: Cache the doc toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.local/bin
           key: doc-tools-${{ runner.os }}-mdbook${{ env.MDBOOK_VERSION }}-katex${{ env.MDBOOK_KATEX_VERSION }}-admonish${{ env.MDBOOK_ADMONISH_VERSION }}
@@ -300,7 +337,7 @@ jobs:
       - name: Build the site
         run: |
           set -euo pipefail
-          make site 2>&1 | tee /tmp/site-build.log
+          make site WASM_PREBUILT=1 2>&1 | tee /tmp/site-build.log
 
       - name: Fail on unrendered math
         run: |
@@ -314,8 +351,8 @@ jobs:
       - name: Check every link and asset resolves
         run: make site-check
 
-      # The browser tests: boot the instrument against the wasm `make site`
-      # just built and require a clean console, a registered worklet and an
+      # The browser tests: boot the instrument against the wasm the site
+      # ships and require a clean console, a registered worklet and an
       # engine that reaches `playable` (tests/web/smoke.spec.js); then provoke
       # the audit's four failure flows — an unparseable save, an engine error,
       # a refused vote, a profile import — and require each to be reported and
@@ -332,7 +369,7 @@ jobs:
 
       - name: Keep the trace of a failed boot
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: smoke-test-results-${{ github.sha }}
           path: tests/web/test-results/
@@ -341,63 +378,85 @@ jobs:
   # The engine for the fast browser tier, built once per run (see the
   # action's comment): restored from the cache when no crate changed, which is
   # most PRs that touch the app, and ~1.5 min of wasm build otherwise.
+  #
+  # It also reads main's browser timings once for the whole run (see the
+  # action): every browser runner deals its tests from that one file.
   engine:
     name: Engine for the browser
     needs: changes
-    if: needs.changes.outputs.browser == 'true'
+    if: needs.changes.outputs.site == 'true' || needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/web-engine
+      - if: needs.changes.outputs.browser == 'true'
+        uses: ./.github/actions/browser-timings
+        with:
+          tier: fast
 
-  # The fast browser tier: every spec in tests/web not tagged @slow, against
-  # the engine built above.
+  # The fast browser tier: every spec in tests/web not tagged @slow or
+  # @quarantine, against the engine built above.
   #
-  # Measured on PR #65 (head f67cde2), those 80 tests take ~16.6 min of test
-  # time in one worker; five runners take ~2.6–3.9 min each. The split is by
-  # test, not by file (`fullyParallel` in playwright.config.js), in the order
-  # Playwright lists them, so no runner draws a whole file of PERFORM specs.
+  # About 70 minutes of test time in one worker (main at f6f4612, 272 tests,
+  # a fresh boot each). tests/web/shard.mjs deals them to eight runners by
+  # main's last timings, longest first, so each runs about 9 minutes: with
+  # Playwright's own split by count, five runners took from 9 to 19.
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
   # the engine works). A failure that only appears here is still a finding
-  # about the app on a slower machine, not a flake to retry away.
+  # about the app on a slower machine. It is fixed, or quarantined, never
+  # retried (docs/architecture/testing.md § Flakes).
   browser:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
-    # 25: PATCH's canvas (Plan-008 C2a) added about twenty specs, each a fresh
-    # boot of 7-17 s with no fixed waits, and the fullest shard was already at
-    # 19.6 minutes of 20 before them.
-    timeout-minutes: 25
+    # Twice the planned load: a runner that takes this long has found
+    # something (a hang, or a machine far slower than main's timings).
+    timeout-minutes: 16
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
+        # Eight, or one per changed spec up to eight on a PR that changed
+        # only specs (the changes job).
+        shard: ${{ fromJSON(needs.changes.outputs.browser_matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: web-engine
           path: apps/web/pkg
 
       - uses: ./.github/actions/playwright
 
-      # Its own port, so the run can never be served by anything else.
-      - name: Run the fast browser tier
-        env:
-          AURACLE_TEST_PORT: "8690"
-        run: cd tests/web && npx playwright test --grep-invert @slow --shard=${{ matrix.shard }} --reporter=list
-
-      - name: Keep the traces of failed specs
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/browser-shard
         with:
-          name: browser-results-${{ github.sha }}-${{ strategy.job-index }}
-          path: tests/web/test-results/
-          if-no-files-found: ignore
+          tier: fast
+          name: fast
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep-invert "@slow|@quarantine"
+          files: ${{ needs.changes.outputs.specs }}
+
+  # The runners' reports as one: an HTML report of every test, with the traces
+  # of what failed, uploaded when a runner failed (the run's summary links
+  # it), and on main the times folded into the timings the next run deals by.
+  # Not part of the `CI` check: it reports on the answer, it is not one.
+  report:
+    name: Browser report
+    needs: [changes, browser]
+    if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: fast
+          failed: ${{ needs.browser.result == 'failure' }}
+          timings: fast
 
   # One check that means "CI is green", whatever ran.
   #
@@ -408,7 +467,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, test, wasm, site, engine, browser]
+    needs: [changes, lint, web, test, site, engine, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

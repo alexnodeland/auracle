@@ -82,6 +82,7 @@ Python 3 standard library only.
 from __future__ import annotations
 
 import fnmatch
+import functools
 import glob
 import json
 import os
@@ -562,10 +563,16 @@ def blank(s: str) -> str:
     return re.sub(r"[^\n]", " ", s)
 
 
+# The strippers are pure functions of the text, and a check reads the same
+# files several times over (the scan, the size counts, the usage map), as
+# its tests do once per case: keyed on the text itself, a file is stripped
+# once per content rather than once per read.
+@functools.lru_cache(maxsize=512)
 def strip_css(t: str) -> str:
     return re.sub(r"/\*.*?\*/", lambda m: blank(m.group(0)), t, flags=re.S)
 
 
+@functools.lru_cache(maxsize=512)
 def strip_html(t: str) -> str:
     return strip_css(re.sub(r"<!--.*?-->", lambda m: blank(m.group(0)), t, flags=re.S))
 
@@ -573,6 +580,7 @@ def strip_html(t: str) -> str:
 REGEX_AFTER = set("(,=:[!&|?{};+-*%<>~^")
 
 
+@functools.lru_cache(maxsize=512)
 def strip_js(t: str) -> str:
     """Blank out a script's comments, keeping its strings and regexes."""
     out = []
@@ -660,7 +668,8 @@ def scanned_files() -> list[tuple[str, tuple[str, ...]]]:
     return out
 
 
-def named_colours(body: str, kind: str) -> list[int]:
+@functools.lru_cache(maxsize=512)
+def named_colours(body: str, kind: str) -> tuple[int, ...]:
     """Offsets of CSS named colours used as colours in `body` (comments
     already blanked). `kind` is "css", "html" or "js"."""
     hits = []
@@ -678,7 +687,7 @@ def named_colours(body: str, kind: str) -> list[int]:
 
     if kind == "css":
         values(body, 0)
-        return hits
+        return tuple(hits)
     if kind == "html":
         for m in re.finditer(r"(<style[^>]*>)(.*?)</style>", body, re.S):
             values(m.group(2), m.start(2))
@@ -691,7 +700,7 @@ def named_colours(body: str, kind: str) -> list[int]:
             for m in pat.finditer(body):
                 v = re.sub(r"\$\{[^}]*\}", lambda x: blank(x.group(0)), m.group(2))
                 words(v, m.start(2))
-    return sorted(set(hits))
+    return tuple(sorted(set(hits)))
 
 
 def scan(src: dict) -> list[str]:
@@ -703,6 +712,7 @@ def scan(src: dict) -> list[str]:
             owned.setdefault(n, set()).add(s)
     families = {f"font-{n}" for n in src["fonts"]}
     rack = src["palettes"]["rack"]["groups"][0]["tokens"]["rack"]["value"].lower()
+    values = {rgba_of(v) for s in src["surfaces"] for v in names_of(src, s).values()}
     for rel, surfaces in scanned_files():
         text = read(rel)
         if rel in blocks:
@@ -740,7 +750,6 @@ def scan(src: dict) -> list[str]:
             if m.group(1).lower() != rack:
                 errs.append(f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: theme-color {m.group(1)} is not the rack ({rack})")
             body = body[: m.start(1)] + blank(m.group(1)) + body[m.end(1) :]
-        values = {rgba_of(v) for s in src["surfaces"] for v in names_of(src, s).values()}
         for m in CODE_HEX_RE.finditer(body):
             if rgba_of(m.group(1)) not in values:
                 errs.append(f"{rel}:{body.count(chr(10), 0, m.start()) + 1}: `{m.group(1)}` in prose is not a token's value")
@@ -863,6 +872,12 @@ def js_size_hits(body: str, usage: dict | None = None) -> list[Hit]:
     """Sizes and durations in a script: CSS in its strings, its `.style.*`
     assignments, style objects and setProperty() calls, its canvas fonts, an
     SVG `font-size` attribute in a template, and an animation's duration."""
+    return list(_js_size_hits(body, tuple(sorted((usage or {}).items()))))
+
+
+@functools.lru_cache(maxsize=512)
+def _js_size_hits(body: str, usage_items: tuple[tuple[str, str], ...]) -> tuple[Hit, ...]:
+    usage = dict(usage_items)
     hits = []
     # A string's own text, inside its quotes, so a declaration in it ends
     # where its value does and an exemption after the string attaches.
@@ -886,7 +901,7 @@ def js_size_hits(body: str, usage: dict | None = None) -> list[Hit]:
     for at, args in animate_args(body):
         found = list(JS_DURATION_RE.finditer(args)) + list(JS_ANIMATE_LAST_RE.finditer(args))
         hits += [(at + m.start(1), "time", m.group(1), at + m.end(1)) for m in found if float(m.group(1)) > 0]
-    return hits
+    return tuple(hits)
 
 
 def animate_args(body: str) -> list[tuple[int, str]]:

@@ -29,15 +29,18 @@ FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
 # on, which is why `make check` never saw this. Costs nothing but address
 # space; the AudioWorklet build gets it too, and it compiles the same patches.
 WASM_STACK := 8388608
-WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
+# Added to the caller's RUSTFLAGS, not in place of them: CI sets -Dwarnings, and
+# the engine job's wasm32 build is where a warning only that target has (a
+# helper only the native-only items use) must fail.
+WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: setup film-setup web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
-        browser-fast browser-slow \
+        browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
-        wasm wasm-stamp perform-wirings serve doc bundle clean \
+        wasm wasm-prebuilt wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -85,20 +88,35 @@ install-hooks:
 ## Claude Code hooks against inputs they must block and pass, the syntax of
 ## every film tool, and the film tools' own tests (on .venv-voice when it
 ## exists)
-dev-check:
+##
+## Its parts write nothing in the tree but Python's bytecode caches (written
+## atomically), so they are prerequisites that `make -j` runs side by side (CI runs `make -j4 -O dev-check`); a plain
+## `make dev-check` runs them one after another as before.
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests
+dev-check: $(DEV_CHECKS)
+.PHONY: $(DEV_CHECKS)
+
+dev-docs:
 	@python3 .claude/checks/check_docs.py
+dev-names:
 	@python3 www/checknames.py
+dev-tokens:
 	@python3 www/brand/tokens.py --check
 	@python3 www/brand/test_tokens.py
+dev-voice:
 	@python3 www/checkwords.py
 	@python3 www/test_checkwords.py
+dev-sound:
 	@python3 www/brand/sound.py --check
 	@python3 www/brand/test_sound.py
+dev-hooks:
 	@bash .claude/checks/test_hooks.sh
+dev-syntax:
 	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
 	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
 	@printf '  film tools and hooks: syntax OK\n'
+dev-film-tests:
 	@for f in www/video/tools/test_*.py; do $(FILM_ENV) python3 $$f || exit 1; done
 
 ## tokens: write the colors, font families, type scale, spacing, radii and
@@ -140,12 +158,11 @@ js-check:
 
 ## wasm-check: the engine compiles for wasm32, which the native build does not
 ## prove (cfg(target_arch) paths, wasm-bindgen signatures, `u64` at the
-## boundary). CI ran this and `make check` did not, so "green locally" and
-## "green in CI" were two different claims.
+## boundary), with warnings as errors as CI's wasm32 build has them
 wasm-check:
 	@rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$$' || { \
 		printf '  the wasm32 target is missing — run: rustup target add wasm32-unknown-unknown\n'; exit 1; }
-	$(WASM_PATH) $(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
+	$(WASM_PATH) RUSTFLAGS="$(RUSTFLAGS) -Dwarnings" $(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
 
 ## smoke: boot the instrument in a real browser against the built wasm and
 ## require a clean console and a registered worklet, then provoke the failure
@@ -225,23 +242,34 @@ test-search-floor: nextest-installed
 test-slow-rest: nextest-installed
 	$(NEXTEST) -E '$(SLOW_TESTS)' $(NEXTEST_ARGS)
 
-# The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) runs
-# in the slow tier, every other one in the fast tier. Through the browser queue
+# The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) or
+# `@quarantine` (testing.md § Flakes) runs in the slow tier, every other one in
+# the fast tier. Through the browser queue
 # and on a port of their own, like any local browser job (ADR-010). Needs
 # `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
 BROWSER_PORT ?= 8690
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
-## browser-fast: browser specs not tagged @slow, CI's fast tier (~17 min serially)
+## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~70 min serially)
 browser-fast:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	$(PLAYWRIGHT) --grep-invert @slow --reporter=line
+	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
 
-## browser-slow: browser specs tagged @slow, CI's slow tier (~19 min serially)
+## browser-changed: the specs your change reaches against BASE (origin/main):
+## changed specs, the specs of a changed helper or app module (tests/web/changed.mjs)
+BASE ?= origin/main
+browser-changed:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	@specs="$$(cd tests/web && node changed.mjs $(BASE))"; \
+	if [ -z "$$specs" ]; then printf '  no spec to run for this change\n'; exit 0; fi; \
+	printf '  %s\n' $$specs; \
+	$(PLAYWRIGHT) $$specs --reporter=line
+
+## browser-slow: browser specs tagged @slow or @quarantine, CI's slow tier (~35 min serially)
 browser-slow:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	$(PLAYWRIGHT) --grep @slow --reporter=line
+	$(PLAYWRIGHT) --grep "@slow|@quarantine" --reporter=line
 
 fmt:
 	$(CARGO) fmt --all
@@ -340,6 +368,10 @@ wasm:
 # midi.js) that was left out would keep its old URL when it changed and be
 # served from cache.
 WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json
+wasm-prebuilt:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  WASM_PREBUILT=1 but apps/web/pkg has no engine\n'; exit 1; }
+	@$(MAKE) --no-print-directory wasm-stamp
+
 wasm-stamp:
 	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
 	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
@@ -410,8 +442,10 @@ site-landing: site-fonts site-brand
 	# One runtime, three consumers — the landing page reads it from the root.
 	cp www/viz/viz.js www/viz/viz.css site/
 
-## site-play: the instrument, at /play/
-site-play: wasm
+## site-play: the instrument, at /play/. `WASM_PREBUILT=1` takes the engine
+## already in apps/web/pkg (CI's Site job downloads the one the engine job
+## built) instead of building it again
+site-play: $(if $(filter 1,$(WASM_PREBUILT)),wasm-prebuilt,wasm)
 	mkdir -p site/play
 	cp -r apps/web/. site/play/
 	# serve.py is for local development; Pages is the server here.

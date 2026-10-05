@@ -1,0 +1,36 @@
+# Keep CI's pinned actions and the browser tests' npm packages current.
+#
+# Every action in .github is pinned to a commit SHA with its version in a
+# trailing comment (`uses: actions/checkout@<sha> # v7.0.1`): a tag can be moved
+# to other code, a SHA cannot. Dependabot reads the comment and opens a PR that
+# moves both. One grouped PR a week per ecosystem, so updates arrive as one
+# reviewable change rather than a dozen. dtolnay/rust-toolchain has no
+# releases: it is pinned to the head of its `stable` branch, passed
+# `toolchain: stable`, and moved by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # The workflows, and the composite actions they share (Dependabot reads
+    # .github/workflows from `/`, but each composite only from its own
+    # directory).
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  # @playwright/test pins the Chromium the specs run in (and the browser cache
+  # key in .github/actions/playwright), so a bump is a real change to what the
+  # specs run against, and CI runs the whole browser tier on it.
+  - package-ecosystem: npm
+    directory: /tests/web
+    schedule:
+      interval: weekly
+    groups:
+      browser-tests:
+        patterns: ["*"]
+    commit-message:
+      prefix: tests

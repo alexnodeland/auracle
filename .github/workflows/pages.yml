@@ -63,19 +63,22 @@ jobs:
     name: Build site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # A prebuilt binary from the tool cache, the same way ci.yml gets it. This
       # used to curl-pipe upstream's installer, unpinned, which ran a third-party
       # script and took whatever version it served that day — and was the one
       # place in three workflows that did.
-      - uses: taiki-e/install-action@wasm-pack
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: wasm-pack
 
       # mdbook and mdbook-admonish ship prebuilt binaries; mdbook-katex does not
       # publish any, so it has to be compiled — which is why the cache is keyed on
@@ -83,7 +86,7 @@ jobs:
       # ~/.cargo/bin (where it would fight rustup's shims).
       - name: Cache the doc toolchain
         id: doc-tools
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.local/bin
           key: doc-tools-${{ runner.os }}-mdbook${{ env.MDBOOK_VERSION }}-katex${{ env.MDBOOK_KATEX_VERSION }}-admonish${{ env.MDBOOK_ADMONISH_VERSION }}
@@ -125,11 +128,11 @@ jobs:
 
       # `enablement` is a no-op here (Pages is already set to the Actions
       # source) but makes the workflow self-bootstrapping in a fresh fork.
-      - uses: actions/configure-pages@v6
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         with:
           enablement: true
 
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
@@ -142,4 +145,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

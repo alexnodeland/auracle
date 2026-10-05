@@ -1,0 +1,43 @@
+name: Browser timings
+description: >
+  Main's last timings for a browser tier, read once for the whole run and
+  uploaded as the `browser-timings-<tier>` artifact that every runner of the
+  tier deals its tests from (tests/web/shard.mjs).
+
+# Once per run, not once per runner: the deal is a partition only if every
+# runner reads the same file. Restoring the cache on each runner let a re-run
+# of one failed runner, or a save from main landing mid-run, deal from newer
+# timings than its siblings had, and a run could then skip tests and pass. An
+# artifact is the run's own: a re-run of failed jobs downloads the first
+# attempt's.
+
+inputs:
+  tier:
+    description: "`fast` or `slow`"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The newest entry under the prefix (the key itself never matches). Saved
+    # from main only (browser-report), so a PR reads main's.
+    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: tests/web/timings-${{ inputs.tier }}.json
+        key: browser-timings-${{ inputs.tier }}-${{ github.run_id }}
+        restore-keys: browser-timings-${{ inputs.tier }}-
+
+    # None at all (evicted, the first run) is an empty file: every runner then
+    # deals by count, and still all from the same file.
+    - shell: bash
+      run: |
+        f=tests/web/timings-${{ inputs.tier }}.json
+        [ -s "$f" ] || echo '{}' > "$f"
+        echo "timings: $(node -e "console.log(Object.keys(require('./$f')).length)") tests with a time"
+
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: browser-timings-${{ inputs.tier }}
+        path: tests/web/timings-${{ inputs.tier }}.json
+        retention-days: 3
+        if-no-files-found: error

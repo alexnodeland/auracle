@@ -8,9 +8,13 @@ name: Slow suite
 #   and the ten other tests over a minute (~1030 s of test time between them),
 #   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
 #   every test NOT named there.
-# - Browser: the specs tagged `@slow` (13 tests, ~18.5 min of test time in one
-#   worker: EVOLVE POOL generations, and PERFORM's listening, offers and
-#   drift). The fast tier runs `--grep-invert @slow`.
+# - Browser: the specs tagged `@slow` (~35 min of test time in one worker:
+#   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and
+#   any tagged `@quarantine`, a flaky test moved out of the gate until it is
+#   fixed. The fast tier runs `--grep-invert "@slow|@quarantine"`.
+#
+# The nightly flake hunt is its own workflow (flake-hunt.yml), so its half
+# hour never holds this one's queue on main.
 #
 # When it runs:
 #
@@ -80,7 +84,7 @@ jobs:
       rust: ${{ steps.scope.outputs.rust }}
       browser: ${{ steps.scope.outputs.browser }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -129,7 +133,7 @@ jobs:
           # A changed spec counts if it holds an @slow test now.
           slow_spec=false
           for f in $(echo "$files" | grep -E '^tests/web/.*\.spec\.js$' || true); do
-            if [ -f "$f" ] && grep -q '@slow' "$f"; then slow_spec=true; fi
+            if [ -f "$f" ] && grep -qE '@slow|@quarantine' "$f"; then slow_spec=true; fi
           done
 
           if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|patch|live-audio|audio-in|explain)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
@@ -159,14 +163,18 @@ jobs:
           - name: the rest
             target: test-slow-rest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
       # CI's test cache (ci.yml saves it from main); never saved from here.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test
           save-if: false
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: nextest
       - run: make ${{ matrix.target }}
 
   engine:
@@ -176,12 +184,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/web-engine
+      - uses: ./.github/actions/browser-timings
+        with:
+          tier: slow
 
-  # The @slow specs on six runners. The split is by test in list order, and
-  # three tests are ~3 min each, so six is what keeps any one runner under
-  # ~5 min of tests; with four, one draws ~7.5.
+  # The @slow specs, and any @quarantine'd out of the gate while it is fixed,
+  # on six runners, dealt by main's last timings for this tier (see
+  # tests/web/shard.mjs): a few of these tests take ~3 min each, so the split
+  # by count left one runner with twice another's work.
   browser:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
@@ -193,28 +205,38 @@ jobs:
       matrix:
         shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: web-engine
           path: apps/web/pkg
 
       - uses: ./.github/actions/playwright
 
-      # Its own port, so the run can never be served by anything else.
-      - name: Run the slow browser tier
-        env:
-          AURACLE_TEST_PORT: "8690"
-        run: cd tests/web && npx playwright test --grep @slow --shard=${{ matrix.shard }} --reporter=list
-
-      - name: Keep the traces of failed specs
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/browser-shard
         with:
-          name: slow-browser-results-${{ github.sha }}-${{ strategy.job-index }}
-          path: tests/web/test-results/
-          if-no-files-found: ignore
+          tier: slow
+          name: slow
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep "@slow|@quarantine"
+
+  # The runners' reports as one HTML report when one failed, and on main this
+  # tier's timings for its next deal, as ci.yml's `report` job does.
+  report-browser:
+    name: Slow browser report
+    needs: browser
+    if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: slow
+          failed: ${{ needs.browser.result == 'failure' }}
+          timings: slow
 
   # A red slow tier on main is a regression that merged on the fast tier.
   # Nobody is watching a nightly run, so it files an issue: one open issue at
@@ -229,39 +251,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       issues: write
     steps:
-      - uses: actions/github-script@v8
-        env:
-          RESULTS: ${{ toJSON(needs) }}
+      # A local action: the job checks out first.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
         with:
-          script: |
-            const title = "Slow suite failing on main";
-            const { owner, repo } = context.repo;
-            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            const results = JSON.parse(process.env.RESULTS);
-            const failed = Object.entries(results)
-              .filter(([, v]) => v.result === "failure")
-              .map(([k]) => `\`${k}\``)
-              .join(", ");
-            const why = context.eventName === "schedule" ? "The nightly run" : "The push";
-            const body = [
-              `${why} at ${context.sha.slice(0, 7)} failed: ${failed}.`,
-              "",
-              `Run: ${run}`,
-              "",
-              "This tier does not block merging, so the change that broke it is on main. " +
-                "The failing jobs' logs name the tests; a browser shard's traces are in the run's artifacts.",
-            ].join("\n");
-
-            const open = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
-            });
-            const existing = open.find((i) => i.title === title && !i.pull_request);
-            if (existing) {
-              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
-              core.info(`commented on #${existing.number}`);
-            } else {
-              const { data } = await github.rest.issues.create({ owner, repo, title, body });
-              core.info(`opened #${data.number}`);
-            }
+          title: Slow suite failing on main
+          results: ${{ toJSON(needs) }}
+          advice: >-
+            This tier does not block merging, so the change that broke it is on
+            main. The failing jobs' logs name the tests; the run's summary links
+            one report of every browser runner, with the failed tests' traces.

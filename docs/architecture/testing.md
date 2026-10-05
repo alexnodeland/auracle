@@ -22,8 +22,8 @@ this table.
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
-| Film tools | `make dev-check` (its last step) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
-| wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
+| Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
+| wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
@@ -31,7 +31,7 @@ this table.
 | Native and wasm agree | `cargo test -p auracle-wasm --profile test-fast --test boot_agrees`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
-| Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` specs run in the *Slow suite* ([CI tiers](#ci-tiers)) |
+| Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
 | φ | `make revalidate` (both sides, diff), then `make perform-wirings`, then `cargo run -p auracle-features --example file_phi --release` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ; `FILE_MASKED` still names what a recording cannot measure (the mask gate test fails until it does) | Any φ, phrase, vetting or normalization change |
@@ -39,14 +39,48 @@ this table.
 
 ## CI tiers
 
-CI runs in two tiers, so that the check a PR must pass takes about five to
-seven minutes instead of the twelve of the old `Test` job plus up to fifteen
-of the browser suite. A PR may merge on the fast tier alone.
+CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint, Web, Wasm check, Site (with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` (five runners, against one wasm build per run) | Yes. The branch ruleset requires `CI`, unchanged; the fast browser shards are inside it |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners) | No |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time) | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main ([Flakes](#flakes)) | No |
+
+**How long.** The fast tier's browser tests are about seventy minutes of
+test time in one worker (272 tests at `f6f4612`, each a fresh boot), so they
+set the check's length: about ten minutes, the engine job and eight runners
+of about nine minutes each. Rust takes about seven and a half (a two-minute compile,
+then the tests); Web and Site take two to three.
+
+**Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
+equal count, which left one of five runners with twice another's work.
+`tests/web/shard.mjs` weighs each test by its time on main's last run and
+deals the longest first, each to the emptiest runner, so the runners finish
+together. The deal is a partition only if every runner reads the same
+timings, so the engine job reads them once per run (from the Actions cache)
+and uploads them as an artifact every runner downloads, a re-run's included;
+each runner prints the plan's hash, the same on every runner of a run. A
+test with no time yet weighs the median; with no timings the split is by
+count. `node shard.mjs plan --shards 8 -- --grep-invert "@slow|@quarantine"`
+in `tests/web` prints a split without running it.
+
+**One report.** Each runner keeps a blob report; the *Browser report* job
+merges a run's into one HTML report, every test with the traces of what
+failed, uploaded when a runner failed and linked from the run's summary
+(`npx playwright show-report <dir>` opens it). On main it also folds the
+run's times into the timings the next run deals by.
+
+**A PR that changes only specs** runs those specs and nothing else, on one
+runner per spec up to eight: no other spec's code changed, and the app it
+runs against is main's. A change to a spec's helpers, the config or anything
+else the browser tier reads runs the whole tier; main always does.
+
+**The workflows themselves.** Each workflow's token is read-only unless a
+job needs more (filing an issue, deploying Pages). Every action is pinned to
+a commit SHA with its version in a comment; Dependabot
+(`.github/dependabot.yml`) opens one grouped PR a week for the actions and
+one for `tests/web`'s npm packages.
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a
 failure there opens an issue titled *Slow suite failing on main*, or comments
@@ -60,89 +94,45 @@ reaches what the slow tests cover, or when the PR carries the `full-ci` label
   session), so no crate is outside what they cover;
 - the `@slow` browser specs run on a change to `apps/web/worker.js`,
   `farm.js`, `perform.js`, `patch.js`, `live-audio.js` or `explain.js`, to `crates/auracle-session` or
-  `crates/auracle-wasm`, to a spec file holding an `@slow` test, or to the
-  suite's config and lockfile. Not `main.js`: every view lives there, so it
-  would make nearly every app PR a slow run. A `main.js` change that reaches
-  EVOLVE's generations or PERFORM's offers should carry `full-ci`; otherwise
-  the push to `main` is where it is caught.
+  `crates/auracle-wasm`, to a spec file holding an `@slow` or `@quarantine`
+  test, or to the suite's config and lockfile. Not `main.js`: every view
+  lives there, so it would make nearly every app PR a slow run. A `main.js`
+  change that reaches EVOLVE's generations or PERFORM's offers should carry
+  `full-ci`; otherwise the push to `main` is where it is caught.
 
-**What is slow.** Measured on PR #65's CI run at `f67cde2` (GitHub's 4-core
-runners). Rust tests over a minute, named in the `Makefile` as
-`SEARCH_FLOOR` and `SLOW_TESTS`:
-
-| Test | Time |
-| --- | --- |
-| `auracle-session tests::refinement_improves_pool` (the search floor, a runner of its own) | 331 s |
-| `auracle-session perform::tests::an_aimed_offer_moves_the_way_it_was_turned` | 184 s |
-| `auracle-session perform::tests::a_planned_measurement_is_the_measurement` | 183 s (before its palette case, which adds a third measurement; it now fits its standardizer once rather than six times, which more than pays for it) |
-| `auracle-session tests::a_walk_is_a_function_of_its_job` | 127 s |
-| `auracle-session perform::tests::named_controls_move_the_sound_they_name` | 100 s (before it held the palette's twelve too; its four presets now run in parallel, 34 s on a 16-core M3 Max) |
-| `auracle-wasm tests::evolve_from_this_on_the_farm_is_evolve_from_this` | 83 s |
-| `auracle-session tests::closed_loop_learns_synthetic_taste` | 76 s |
-| `auracle-session tests::closed_loop_learns_motion_rate` | 72 s |
-| `auracle-session perform::tests::drift_is_local_and_follows_sigma` | 71 s |
-| `auracle-session perform::tests::a_stepped_walk_is_the_walk` | 41 s on a 16-core M3 Max (a preset, two seeds, three kinds of walk, each stepped two ways beside the one call), not yet timed on CI; `auracle-wasm tests::a_stepped_offer_gives_the_reply_the_one_call_gives` (27 s there) stays in the fast tier |
-| `auracle-wasm tests::farm_walks_breed_the_serial_generation` | 70 s |
-| `auracle-session tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one` | 63 s |
-
-The fast tier's slowest Rust test is 55 s; the 262 left take ~1120 s of test
-time between them, which two runners clear in about 2.5 min each after a
-2 min compile.
-
-Browser tests over 40 s, tagged `@slow`: every test in
-`evolve_breeds_beside_you.spec.js` (186, 168, 56, 47 and 44 s: each breeds a
-generation), `evolve_from_new.spec.js` (20 s measured on a 16-core M3 Max,
-not yet on CI: six picks, a refit and a ⚡ walk, the walk alone about 23 s on a
-quiet four-core machine), `bank_lineage.spec.js`'s five that breed (16, 35, 24, 26 and
-22 s on a 16-core M3 Max, not yet on CI: six picks, a refit, and a
-generation stopped early, after its first walk or its third, or one ⚡
-walk),
-`bank_kept.spec.js` (21 s on a 16-core M3 Max, not yet on CI: the warm
-start, its fit, a full pool, a keep as new and a preset),
-`evolve_truth.spec.js`'s generation with no farm (186 s),
-`perform_next.spec.js` (78 s), `perform_layout.spec.js`'s Blend and PASS
-and `pad_keys.spec.js`'s N, B and ⇧↵ (each grows two offers and answers
-them: about a minute each on a 16-core M3 Max with its re-check and spare
-first, not yet on CI), `perform_truth.spec.js`'s drift re-check
-(72 s), all five tests in `perform_instant.spec.js` (66 and 44 s; the
-held-engine reload test, which boots twice like them; the reload-at-once
-test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI;
-and the kept wiring from another build, a boot and one background
-measurement: 14 s on a loaded 16-core M3 Max, not yet on CI),
-`perform_wander.spec.js` (55 s), `perform_offer_latency.spec.js` (44 to 52 s
-on CI at 198659b and on #106; it now first waits out the page's own re-check and spare,
-about a minute more there, not yet timed), `perform_recentre.spec.js`'s glide home
-(54 s), `perform_teaches.spec.js` (54 s), three that wait on PERFORM's
-engine work, not yet timed on CI: `perform_palette.spec.js`'s measured
-control (two measurements, 22 to 25 s on a 16-core M3 Max), its naming by
-index and its marks (a measurement each: 13 to 16 and 13 to 15 s there),
-and all three tests in `perform_offer_moments.spec.js` (offers grown, heard and
-answered: 17 to 19 and 31 s there, 36 to 42 and 50 to 78 s on CI; the third,
-a Take held over a keep as new, about 20 s there, not yet on CI), and `patch_guess.spec.js`'s five that
-fit after the warm start before PATCH guesses (the guess drawn, added,
-skipped and undone; the floor with no crew; keep as new; a new patch's own
-skips; a stale take: 15 to
-25 s each on a 16-core M3 Max, not yet on CI, where the warm start, a fit and
-a render crew's spawn come first) and its guess asked while the bank is still
-arriving (boot's crew slowed twelvefold: 66 to 72 s on a 16-core M3 Max, not
-yet on CI), and `audio_in.spec.js`'s capture handed
-to a standing crew (28 s on a 16-core M3 Max, not yet on CI: six picks, a
-refit and a ⚡ walk to raise the crew, then a capture), and
-`explain.spec.js`'s eighteen figures (the panel arranged twice, each set
-measured, and a figure asked of each control: 31 s on a 16-core M3 Max, not
-yet on CI), and `patch_cables.spec.js`'s measurement nobody is waiting on
-(it waits for a measurement of a tree nothing has measured to finish: 10 to
-35 s on a 16-core M3 Max, not yet on CI). Thirty-four tests, ~21 min in one worker; the other 87 took ~16.6 min
-when last timed (at 80), and the fast tier's five runners take 2.6–3.9 min
-each. The next slowest (a shipped-wirings fetch that never
-answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
+**What is slow.** Rust: the tests that took over a minute on a runner, named
+in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
+and a half minutes, a runner of its own) and `SLOW_TESTS`. Browser: a test
+over about 40 s on CI is tagged `@slow` in its declaration
+(`tests/web/AGENTS.md` says how); `npx playwright test --list --grep @slow`
+lists them. The tag and the `Makefile` are the lists; this page does not
+repeat them, so they cannot disagree.
 
 **Exactly one tier each.** The fast tier is defined as the complement of the
-slow one: `not (SEARCH_FLOOR | SLOW_TESTS)` for nextest, `--grep-invert @slow`
-for Playwright. A new test is fast until someone names or tags it; a renamed
-slow Rust test falls into the fast tier rather than out of both; a slow list
-that matches nothing fails its leg (`--no-tests=fail`). `make test` and
-`make check` still run every Rust test locally.
+slow one: `not (SEARCH_FLOOR | SLOW_TESTS)` for nextest, `--grep-invert
+"@slow|@quarantine"` for Playwright. A new test is fast until someone names
+or tags it; a renamed slow Rust test falls into the fast tier rather than out
+of both; a slow list that matches nothing fails its leg (`--no-tests=fail`).
+`make test` and `make check` still run every Rust test locally.
+
+## Flakes
+
+The gate runs every test once, with no retries, in CI as locally. A test
+that passes only sometimes is a finding about the app or the test, and a
+retry would hide it while charging every run its timeouts (a browser spec's
+waits run to two minutes).
+
+- **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
+  browser tests three times each, against main, where nothing changed but
+  the machine. A failure files a *Flake hunt found a flaky test* issue whose
+  run links one report naming each failed test and which of its runs failed.
+- **Fix it.** Most flakes here have been a wait on a time rather than a
+  state, an exact count of something a slow machine may do twice, or a
+  timing bound with no slack ([Rules](#rules)).
+- **Or quarantine it** while it is fixed: add `@quarantine` to the test's
+  tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) with a comment naming
+  the issue. It leaves the gate and runs in the *Slow suite*, so it is still
+  run and still seen. Remove the tag in the PR that fixes it.
 
 ## What each browser spec pins
 
