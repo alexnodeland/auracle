@@ -3,7 +3,8 @@
 How a change gets from an idea to `main` and the live site. This is the
 canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
-[ADR-019](decisions/019-work-flows-through-issues-and-prs.md). The `ship` skill
+[ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
+[ADR-020](decisions/020-merge-at-green-stack-before-ci.md) amends it. The `ship` skill
 (`.claude/skills/ship/`) walks one task through it with the exact commands.
 
 ## The lifecycle
@@ -81,8 +82,11 @@ in a plan's prose, a session's notes or a conversation.
 - **The gates a builder runs** are the fast ones for what changed (the `check`
   skill) and the specs it added or touched (`make browser-changed`), through
   the browser queue on its own port. Not the full suite: CI runs it eight wide.
-- **Rebasing while building or in review** is only to resolve a conflict with
-  `main`. The rebase that matters is the one before the merge
+- **Sized for one review round.** A brief that will not fit one round of
+  review is split before the builder starts: two PRs that each merge on
+  their first green run land sooner than one that goes round three times.
+- **Rebasing while building or in review** is only to resolve a conflict.
+  The one that matters is stacking on the PR ahead before CI
   ([CI and merging](#ci-and-merging)).
 - **Descriptions stay true in the same change**
   ([ADR-004](decisions/004-descriptions-stay-true.md)): the guide, the
@@ -122,9 +126,18 @@ or a person, against:
   assertion that can pass vacuously.
 - **The area's invariants** (its `AGENTS.md` and ADRs).
 
-Findings come back ranked. The builder fixes them on the branch; the fixes,
-not the whole branch, get a second review. A finding the operator declines is
-said in the PR body with the reason.
+Findings come back ranked, and review is **one round**:
+
+- **Blocking findings** are fixed on the branch before the PR, and the
+  fixes, not the whole branch, get a second look:
+  - a wrong result;
+  - a dropped capability;
+  - an untrue description;
+  - a spec that can pass vacuously or that a slow runner can fail.
+- **Every other finding** becomes an issue, named in the PR body. It is not
+  more commits on the branch: a branch that grows in review runs CI again,
+  and every run is another roll of the flaky dice.
+- A finding the operator declines is said in the PR body with the reason.
 
 ## Pull requests
 
@@ -155,23 +168,35 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   or quarantined ([Flakes](#flakes)).
 - **GitHub enforces it.** `main`'s ruleset requires the `CI` check, from
   GitHub Actions, with no bypass for anyone, admins included. It does not
-  require the branch to be up to date with `main`; the rule below does that
-  where it matters. To merge anything else, the maintainer edits the
+  require the branch to be up to date with `main`; the rules below say when
+  a PR is stacked, rebased or merged behind. To merge anything else, the maintainer edits the
   ruleset.
-- **Before the merge, catch up with `main`:**
-  - if `main` moved since the PR's CI run and the PR touches the app, the
-    tests, the crates or CI (`apps/`, `tests/`, `crates/`, `Cargo.*`, the
-    `Makefile`, `.github/`), rebase it on `main`, push with
-    `git push --force-with-lease`, wait for CI on the new head, and merge that
-    SHA;
-  - a PR that changes only docs may merge behind `main`. Its merged files
-    then differ from the ones its run tested, so `main`'s run reuses nothing
-    and verifies it in full.
+- **Merge at green.** A PR whose `CI` is green and that has no blocking
+  finding merges then. Nothing is added to a green PR. A finding raised
+  after it, or an improvement seen in passing, becomes an issue or the next
+  PR ([ADR-020](decisions/020-merge-at-green-stack-before-ci.md)).
+- **Stack before CI, not after.** A PR queued behind another is based on
+  that PR's head before its first CI run
+  (`git rebase origin/claude/<the one ahead>`).
+  - When the one ahead squash-merges, the one behind merges into exactly the
+    tree its run tested. It merges on that run, with no push, and `main`'s
+    run reuses its verdict.
+  - Rebase it again only if the PR ahead changes after the stack, or on a
+    conflict.
+- **Behind `main`, when the files don't meet.** Say `main` moved since a PR's
+  run, and the PR has nothing ahead of it in the queue.
+  - If no PR merged since then touches the PR's files, it merges on its run.
+    `main`'s run then verifies the merged tree in full, and a failure there
+    is fixed forward before anything else merges.
+  - If the files meet, rebase it on `main`, push with
+    `--force-with-lease=<branch>:<the head you pushed>`, and merge at the new
+    head once its CI is green.
 - **Linear:** one merge queue, at most two streams of work in flight and
   never two touching the same files.
 - **On `main`**, a job the merged PR already passed is not run again, but only
   when the merged files are exactly the files the PR's run tested (the same
-  git tree): `main` did not move between the PR's run and its merge. The site deploys from CI's
+  git tree). That holds when `main` did not move, or when all that merged in
+  between is the PR it was stacked on. The site deploys from CI's
   own build once `CI` is green. The *Slow suite* runs on every push to `main`
   and nightly; the *Flake hunt* nightly. A failure there files an issue.
 
@@ -195,6 +220,15 @@ a finding about the app or the test.
    says what goes in it), tag the test `@quarantine` with a comment naming the
    issue, label the issue `quarantined`. It leaves the gate and runs in the
    *Slow suite*. The PR that fixes it removes the tag and closes the issue.
+4. **On a PR, an unrelated failure is quarantined on sight.** The failure
+   qualifies when all three hold:
+   - the test is in a file the PR doesn't touch;
+   - it fails on behaviour the PR doesn't change;
+   - its trace shows a cause outside the PR.
+
+   It gets one commit on that PR: the tag and its issue. The PR goes on, and
+   the root cause is the issue's job, not the PR's. In doubt, the failure is
+   the PR's.
 
 The nightly *Flake hunt* runs the gate's browser tests three times each
 against `main` and files an issue when one fails.

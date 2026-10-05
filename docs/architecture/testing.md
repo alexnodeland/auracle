@@ -77,15 +77,16 @@ runs against is main's. A change to a spec's helpers, the config or anything
 else the browser tier reads runs the whole tier; main always does.
 
 **On main, what the PR already passed is not run again.** A push to main is
-a squash merge; when the PR was up to date with main, its files are exactly
-the files the PR's run tested (a pull_request run tests the PR merged into
+a squash merge; when the PR was up to date with main, or stacked on the PR
+that merged just before it (`docs/process.md` § CI and merging), its files
+are exactly the files the PR's run tested (a pull_request run tests the PR merged into
 main). That run's `CI` job leaves a record (the artifact
 `verified-tree-<git tree>`, kept 14 days) of the jobs that passed on those
 files, and main's *What changed* job reads it: Lint, Web, the Rust tests and
 the browser tier are skipped there when the record says they passed, and the
 run's summary says so, with a link. A job the PR skipped or ran in part (a
 spec-only PR's browser tier) runs on main as before; so does everything when
-main moved on after the PR's run, on a manual run, and for a PR from a fork.
+main moved on after the PR's run in any other way, on a manual run, and for a PR from a fork.
 The Site job always runs on main: its build is what deploys. The *Slow
 suite* and the nightly flake hunt still run in full.
 
