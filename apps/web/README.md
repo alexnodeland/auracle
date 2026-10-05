@@ -280,7 +280,10 @@ to a pinned `role="alert"` strip that stays until resolved.
   a preview slot, …). PERFORM's requests are named by their `req`, and
   `perform.requestFailed` answers that one as an empty reply carrying the
   error, so a measurement stops saying *listening…* or *re-checking* and the
-  status says it couldn't measure (or re-check) the patch. `fatal` means the engine is gone — the wasm build has
+  status says it couldn't measure (or re-check) the patch. Once the engine
+  is down (a `fatal` one, or `perform.failAll`) PERFORM sends nothing more:
+  a request it makes is answered as failed at once, and a spare and Wander
+  stop asking. `fatal` means the engine is gone — the wasm build has
   `panic = "abort"`, so a Rust panic traps out of a `&mut self` call and every
   later call fails with wasm-bindgen's "recursive use of an object" — and the
   worker latches `poisoned`, answering everything after with the same fatal

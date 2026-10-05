@@ -2936,7 +2936,7 @@ worker.onmessage = (e) => {
     // so once, in the strip that stays.
     case "engine_error": {
       console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
-      releaseRequest(m.request, m.id, m.req, m.message);
+      releaseRequest(m.request, m.id, m.req, m.message, m.fatal);
       if (m.request === "faces" || m.request === "face_render") facesUnanswered();
       if (m.fatal) {
         engineCrashed(m.message);
@@ -3419,13 +3419,18 @@ worker.onmessage = (e) => {
 // "thinking", edits queued behind one that would never return, the evolve
 // button reading "breeding 2/3…" forever. The worker answers those with
 // `engine_error` now; this releases what each request was holding.
-function releaseRequest(request, id, req, message) {
+function releaseRequest(request, id, req, message, fatal = false) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
   // PERFORM's questions are matched to their replies by `req`: it answers
   // that one as failed, and what it was holding (a measurement's "listening…"
-  // or "re-checking", an offer growing) is let go there.
+  // or "re-checking", an offer growing) is let go there. A throw in it must
+  // not keep a crash's alarm from going up.
   if (typeof request === "string" && request.startsWith("perform_")) {
-    if (perform && req != null) perform.requestFailed(req, message);
+    try {
+      if (perform && req != null) perform.requestFailed(req, message, !!fatal);
+    } catch (err) {
+      console.error("[auracle] PERFORM could not let go of a failed request:", err);
+    }
     return;
   }
   switch (request) {

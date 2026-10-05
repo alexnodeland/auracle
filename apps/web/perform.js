@@ -265,6 +265,10 @@ export function createPerform(host) {
     // measure this patch"), said on the status line until another lands or
     // the patch changes; null when none has.
     wireError: null,
+    // The engine crashed (main's `engineCrashed`, or a fatal `engine_error`):
+    // its words, or null. Nothing more is asked of it (see `request`), and
+    // nothing asks by itself (a spare, Wander), until the page is reloaded.
+    engineDown: null,
     // A measurement not started because another patch is on its way to the
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
@@ -1382,6 +1386,14 @@ export function createPerform(host) {
     // A measurement carries the set it asked for (no `controls` is the six),
     // so its reply is laid on the panel it belongs to (`forPanel`).
     if (kind === "perform_wire") state.pending.get(req).set = setOf(msg.controls || PANEL_DEFAULT);
+    // The engine is down: nothing is sent, and the request is answered as
+    // failed straight after the caller has set it up, as one the engine
+    // could not run is (`requestFailed`). Sent, each came back as another
+    // crash, and a spare or Wander asked again a second later, for good.
+    if (state.engineDown) {
+      queueMicrotask(() => requestFailed(req, state.engineDown));
+      return req;
+    }
     host.send({ ...msg, type: kind, req });
     return req;
   }
@@ -1828,7 +1840,7 @@ export function createPerform(host) {
   }
   function growSpare() {
     const now = performance.now();
-    if (!state.visible || !state.cur || !state.wire || state.spare) return;
+    if (state.engineDown || !state.visible || !state.cur || !state.wire || state.spare) return;
     if (state.pending.size > 0 || state.glide) return;
     // No spare for a patch on its way out, either (see `heldForOpen`).
     if (host.opening?.()) return;
@@ -2357,7 +2369,9 @@ export function createPerform(host) {
     perform_apply: ["perform_applied", "json"],
     perform_record: ["perform_recorded", "recorded"],
   };
-  function requestFailed(req, message) {
+  // `fatal`: the engine is gone, and is asked nothing more (`engineDown`).
+  function requestFailed(req, message, fatal = false) {
+    if (fatal) state.engineDown = message || "the engine crashed";
     const p = state.pending.get(req);
     if (!p) return false; // answered already, or never PERFORM's
     const [type, field] = REPLY[p.kind] || [];
@@ -2370,6 +2384,7 @@ export function createPerform(host) {
   }
   // The engine is gone (main's `engineCrashed`): nothing still out is coming.
   function failAll(message) {
+    state.engineDown = message || state.engineDown || "the engine crashed";
     for (const req of [...state.pending.keys()]) requestFailed(req, message);
   }
 
@@ -2444,8 +2459,10 @@ export function createPerform(host) {
       if (!m.data) {
         state.measuring = false;
         state.wire = null;
-        state.wireError = m.error ? "couldn’t measure this patch" : "the model hasn’t heard enough sounds to measure against yet";
-        renderStatus();
+        state.wireError = m.error ? "couldn’t measure this patch" : null;
+        // Not a failure: said once, as it always was, until the line is
+        // next drawn.
+        renderStatus(m.error ? undefined : "the model hasn’t heard enough sounds to measure against yet");
       } else {
         applyWired(m.data);
         markWired("measured");
@@ -2507,7 +2524,14 @@ export function createPerform(host) {
         const dir = state.intent ? state.intent.dir : 1;
         state.intent = null;
         const w = state.wire && state.wire[i];
-        if (w) {
+        if (w && m.error) {
+          // The engine failed, which is not "nothing to add": said so, and
+          // nothing grows in its place.
+          const said = state.engineDown
+            ? `${w.name}: nothing changed. The engine crashed: reload to continue.`
+            : `${w.name}: the engine couldn’t add the ${GRAFTS[w.name] || "module"}, so nothing changed.`;
+          host.note(said, { replace: `pf-graft:${w.name}`, urgent: true });
+        } else if (w) {
           host.note(`${w.name}: nothing to add here, so it’s growing an offer instead.`, { replace: `pf-graft:${w.name}`, urgent: true });
           requestOffer(`${w.name.toLowerCase()} ${dir > 0 ? "up" : "down"}`, aimAt(i, dir));
         }
@@ -2682,6 +2706,7 @@ export function createPerform(host) {
   // the one that no retry fixes: the patch has a value the grammar gives no
   // mass, so evolution cannot start from it at all.
   function whyNot(m, r, otherwise) {
+    if (m.error && state.engineDown) return "the engine crashed: reload to continue";
     if (m.error) return "the walk failed on this sound: try again";
     if (r && r.reason === "outside_support")
       return "a walk can’t start from this sound: nudge any knob off its stop and try again";
@@ -3064,7 +3089,7 @@ export function createPerform(host) {
       // The last measurement asked of it failed (the engine's own words are
       // its toast), and none is out now.
       else if (state.wireError) parts.push(state.wireError);
-    } else if (state.wireError) parts.push(state.wireError);
+    } else if (state.wireError && !state.revalidating && !state.measuring) parts.push(state.wireError);
     // Written only when the words change.
     const text = parts.join(" · ");
     if (statusEl.textContent !== text) statusEl.textContent = text;
@@ -4117,6 +4142,9 @@ export function createPerform(host) {
     const left = [...state.pending.entries()]
       .filter(([, p]) => p.kind === "perform_wire" && p.gen === state.gen && p.cacheAs && p.cacheAs.set && !same(p))
       .map(([req]) => req);
+    // Background from here (a Take's too, if the panel changed under it), so
+    // `show` does not promote them ahead of the set the panel holds now.
+    for (const req of left) state.pending.get(req).bg = true;
     if (left.length) host.send({ type: "retire", reqs: left });
     revalidate(!hit && state.wire.some((w) => w.pending));
     knobs.forEach(paintKnob);
@@ -4147,7 +4175,7 @@ export function createPerform(host) {
 
   // ---------- the wander clock ----------
   function wanderTick() {
-    if (!state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
+    if (state.engineDown || !state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
     const now = performance.now();
     if (now < wanderDue()[1]) return;
     const z = wanderZone(state.wander);

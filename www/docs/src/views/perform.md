@@ -66,7 +66,9 @@ On the right, what you turn:
   *listening to Bite…* while it measures a control you just placed. If the
   engine fails partway, it says so instead: *couldn’t measure this patch*,
   or, after the count, *couldn’t re-check this patch* when the controls
-  still play on their last measurement.
+  still play on their last measurement. After the engine has crashed,
+  PERFORM asks it for nothing more, and an offer you ask for says *the
+  engine crashed: reload to continue*.
 - **Your controls**, three to a row: to start, **BRIGHT**, **SNAP**,
   **MOTION**, **BODY**, **GRIT**, and **SPACE** (a longer panel takes four to
   a row). The line under each says what it turns, or what state it’s in. A

@@ -171,14 +171,19 @@ changelog that edits its own past is not a record.
   and the faces in the bank and on the stage appear as they did before,
   instead of after that measurement (up to a minute on a slow machine).
 
-### Fixed: PERFORM says when a measurement failed
+### Fixed: PERFORM says when the engine couldn't measure a sound
 
-- **When the engine fails while measuring a sound, PERFORM's status line
-  says so** (*couldn’t measure this patch*, or *couldn’t re-check this
-  patch* when the controls still play on their last measurement), next to
-  the engine's own error. It used to say *listening to this sound…* or
-  *re-checking* for the rest of the session, with the controls it was
-  measuring reading *listening…*.
+- **When the engine has crashed, or cannot run a measurement PERFORM asks
+  for, PERFORM's status line says so** (*couldn’t measure this patch*, or
+  *couldn’t re-check this patch* when the controls still play on their last
+  measurement), next to the engine's own error. A measurement asked for
+  after the engine had crashed, or still waiting its turn when it did, used
+  to leave the line on *listening to this sound…* or *re-checking* for the
+  rest of the session, with the controls it was measuring reading
+  *listening…*.
+- **After a crash PERFORM asks the engine nothing more.** An offer you ask
+  for says *the engine crashed: reload to continue*, as the alarm does,
+  where B used to say *growing an offer…* for good.
 
 ### Fixed: a taken offer is measured first when you come back to PERFORM
 
