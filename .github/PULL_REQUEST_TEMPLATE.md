@@ -26,5 +26,5 @@ Closes #
 - [ ] Descriptions are true in this change: guide, reference, in-app copy, films' claims, the plan's as-built, `CHANGELOG.md` for anything a player notices (ADR-004)
 - [ ] Nothing dropped: everything moved or retired still works by mouse, keyboard and touch
 - [ ] New player-facing words are in `www/brand/voice.md`, approved by the maintainer (ADR-013)
-- [ ] Rust the app calls changed: `make wasm` rebuilt it; `style.css` or `main.js` changed: its `?b=` is bumped
+- [ ] Rust the app calls changed: `make wasm` rebuilt it
 - [ ] No test was retried to pass; a flaky one is fixed or quarantined with an issue (`docs/process.md` § Flakes)

@@ -47,7 +47,8 @@ git diff --stat HEAD
   unless a string changed: then `make dev-check` too, for the voice check.
 - A user-visible change also needs its descriptions updated (`truth-pass`)
   and a `CHANGELOG.md` entry (`changelog`).
-- `apps/web/style.css` or `main.js` changed: bump its `?b=` in `index.html`.
+- `apps/web/style.css` or `main.js` changed: nothing to bump. The site and
+  the bundle stamp them with their content hashes (`www/stamppage.py`).
 
 ## Reporting
 

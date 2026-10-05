@@ -89,8 +89,7 @@ brief, and what to hunt for. Send its findings back to the builder (the same
 agent, so it keeps its context); have only the fixes re-reviewed. A finding you
 decline goes in the PR body with the reason.
 
-Rebase now only to resolve a conflict with `main` (resolve, and give a
-colliding `?b=` cache-buster the next value above main's).
+Rebase now only to resolve a conflict with `main`.
 
 New words for `voice.md`'s table: ask the maintainer once for the batch, then
 have the builder commit the approved rows.
