@@ -8,6 +8,15 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: a sound opened in PATCH isn't kept waiting behind a cable probe
+
+- After you arrive in PATCH, or a sound opens, PATCH waits 1.2 s before it
+  asks the engine to measure the cables or rank a guess, so a sound you open
+  straight away isn't queued behind that render. An answer about the sound
+  before, arriving after the new one opened, could cut that wait to half a
+  second; now it waits the whole window. "What goes here?" is still asked
+  the moment you ask (#167).
+
 ### Changed: no cache-buster to bump by hand
 
 - `apps/web/index.html` names `style.css` and `main.js` without a `?b=`

@@ -55,7 +55,17 @@ export function createPatch(host) {
   // started then is one that click waits behind: on a slow machine the open
   // took over a second and was announced (`OPEN_SAID_MS`, "Opened …"). So
   // after an arrival the bench must be quiet for longer first.
+  // The window is kept by its end (`quietUntil`), not by the timer: a reply
+  // inside it (a probe or a guess for the sound before, come back after the
+  // open landed) asks for a settle sooner, and that shorter timer replaces
+  // the arrival's, so the settle waits out what is left of the window
+  // (#167). "What goes here?" is the player asking: it is not held to it.
   const ARRIVE_MS = 1200;
+  let quietUntil = 0;
+  function arrive() {
+    quietUntil = performance.now() + ARRIVE_MS;
+    scheduleSettle(ARRIVE_MS);
+  }
   function scheduleSettle(ms = 450) {
     if (settleTimer) clearTimeout(settleTimer);
     settleTimer = setTimeout(onSettle, ms);
@@ -65,6 +75,12 @@ export function createPatch(host) {
     if (!host.visible() || !host.hasRack()) return;
     if (!host.benchSettled() || host.knobDragging()) {
       scheduleSettle(400);
+      return;
+    }
+    if (guess.want && guess.asked) askGuess();
+    const quiet = quietUntil - performance.now();
+    if (quiet > 0) {
+      if (probe.want || guess.want) scheduleSettle(quiet);
       return;
     }
     if (probe.want) askProbe();
@@ -193,13 +209,17 @@ export function createPatch(host) {
   // place the guess is ranked for (`guess_rank`'s `at`: its wire, its
   // modulation slot, and itself if it is an empty socket), until the
   // structure changes or Esc goes back to the output's.
-  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0, at: null, atData: null };
+  // `asked`: the player asked ("What goes here?") and it has not gone yet
+  // (the bench was busy, or a guess was out): it goes at the next settle,
+  // inside an arrival's quiet or not.
+  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0, at: null, atData: null, asked: false };
 
   function askGuess() {
     if (guess.out) {
       guess.again = true;
       return;
     }
+    guess.asked = false;
     guess.want = false;
     guess.out = { token: ++seq, epoch, at: guess.at };
     host.send({ type: "guess", token: guess.out.token, ...(guess.at ? { at: guess.at } : {}) });
@@ -270,6 +290,7 @@ export function createPatch(host) {
     guess.skipping = false;
     drawGuess();
     // Asked now, not on the next settle: the player asked.
+    guess.asked = true;
     if (!host.benchSettled() || host.knobDragging()) {
       guess.want = true;
       scheduleSettle(0);
@@ -282,6 +303,7 @@ export function createPatch(host) {
     guess.focusWhenDrawn = false;
     guess.focusFrom = null;
     guess.retries = 0;
+    guess.asked = false;
     guess.want = true;
     drawGuess();
     scheduleSettle(0);
@@ -1224,7 +1246,8 @@ export function createPatch(host) {
       if (svg && frame) drawMarks(svg, frame);
     }
     syncSheet();
-    scheduleSettle(m.subject !== undefined ? ARRIVE_MS : 450);
+    if (m.subject !== undefined) arrive();
+    else scheduleSettle();
   }
 
   /** The rack was built again (`buildRack` replaced every element). */
@@ -1294,7 +1317,7 @@ export function createPatch(host) {
 
   function shown() {
     renderTools();
-    scheduleSettle(ARRIVE_MS);
+    arrive();
   }
   function hidden() {
     closeSheet();

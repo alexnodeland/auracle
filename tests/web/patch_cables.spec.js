@@ -233,6 +233,43 @@ test("sounds opened right after arriving in PATCH are not kept waiting behind a 
   await app.busy({});
 });
 
+// The quiet window is kept by when it ends, not by its timer (#167). The
+// probe asked on arriving, and the guess with it, are answered while the
+// player's next open is on its way, and their answers reach the page only
+// once it has landed: an answer for the sound before asks again (the tree it
+// measured is gone), and a settle sooner than the window's (450 ms) used to
+// replace the window's timer, so the probe went out about 0.5 s after the
+// open landed. The answers are handed over in the page, the moment the open
+// lands, so no harness pace sits between the two.
+test("a probe answered after an open has landed waits out the open's quiet window", async ({ page, app }) => {
+  await app.boot();
+  await app.level("evolve");
+  await expect(page.locator("#view-evolve")).toBeVisible();
+  await app.hold(["cable_levels", "guess"]);
+  await markArrival(page);
+  await app.level("patch");
+  const arrived = await page.evaluate(() => window.__pwArrived);
+  expect(arrived, "the press on PATCH's stop was seen").not.toBeNull();
+  // The probe asked on arriving has been answered, and the answer is held.
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).map((h) => h.type), { timeout }).toContain("cable_levels"), { ms: 60_000 });
+  const rows = page.locator("#bank-list .bank-item");
+  const id = Number(await rows.nth(1).getAttribute("data-id"));
+  const handed = page.evaluate((x) => new Promise((done) => {
+    const until = performance.now() + 30_000;
+    const tick = () => {
+      if (window.__aur.wb.subjectId === x) done(window.__tap.release());
+      else if (performance.now() > until) done(-1);
+      else setTimeout(tick, 5);
+    };
+    tick();
+  }), id);
+  await rows.nth(1).locator(".bi-name").click();
+  expect(await handed, "the held answers were handed over once the open landed").toBeGreaterThan(0);
+  const landed = (await app.log({ after: arrived })).filter((e) => e.type === "bench" && e.subject === id).pop().at;
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: ["cable_levels", "guess"] }, { after: landed })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
+  await keptQuiet(app, arrived);
+});
+
 // PERFORM's measurement of a sound it has left, or of one out of sight, is
 // still worth finishing (it is cached for coming back), but nobody is waiting
 // on it. The app opens at PERFORM (Plan-008), so one is running whenever the
