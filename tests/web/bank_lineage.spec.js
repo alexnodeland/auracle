@@ -30,14 +30,27 @@ const { test, expect, goLevel } = require("./fixtures");
 // phrase that starts sounding, every bud, and what EVOLVE POOL said.
 const WATCH = `(() => {
   // The marks, read the moment main.js has handled the walk's
-  // \`refine_child\`, however fast the walks land: by a listener added after
-  // main.js's \`onmessage\` (at the first message, by which time main.js has
-  // set it), so it runs after it.
+  // \`refine_child\` (or a save's \`pinned\`, in \`__pwSaves\`), however fast
+  // they land: by a listener added after main.js's \`onmessage\` (at the
+  // first message, by which time main.js has set it), so it runs after it.
   const marks = (window.__pwMarks = []);
+  const saves = (window.__pwSaves = []);
   const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
   const after = (e) => {
     const d = e.data;
-    if (!d || d.type !== "refine_child" || e.__tapInjected) return;
+    if (!d || e.__tapInjected) return;
+    if (d.type === "pinned") {
+      saves.push({
+        id: d.id,
+        retiring: d.retiring || [],
+        breeding: !!document.querySelector("#evolve-btn.breeding"),
+        rows: ids("[data-id]"),
+        seed: ids(".seed"),
+        may: ids(".may-go"),
+      });
+      return;
+    }
+    if (d.type !== "refine_child") return;
     const status = window.__tap.facts.status;
     marks.push({
       index: d.index,
@@ -555,28 +568,18 @@ test("a sound saved while a generation runs loses its mark, and the one that wil
   expect(pinned.ok, "the save was refused").toBe(true);
   expect(pinned.retiring, "a save while a generation runs carries what its end will replace").toBeTruthy();
   expect(pinned.retiring).not.toContain(target);
-  // The marks follow the latest word on it: this save's, or a walk landed since.
-  await expect.poll(async () => {
-    const now = await page.evaluate(() => {
-      const last = window.__tap.replies.filter((r) => !r.injected && (r.type === "pinned" || r.type === "refine_child")).pop().d;
-      const ids = (sel) => [...document.querySelectorAll("#bank-list .bank-item" + sel)].map((e) => Number(e.dataset.id)).sort((a, b) => a - b);
-      return { retiring: last.retiring || [], rows: ids("[data-id]"), may: ids(".may-go"), seed: ids(".seed") };
-    });
-    const want = now.retiring.filter((id) => now.rows.includes(id) && !now.seed.includes(id)).sort((a, b) => a - b);
-    return JSON.stringify({ may: now.may, has: now.may.includes(target) }) === JSON.stringify({ may: want, has: false });
-  }, { timeout: 10_000 }).toBe(true);
-  await expect(row(page, target)).not.toHaveClass(/\bmay-go\b/);
+  // The marks as main.js left them on this save's reply (WATCH's snapshot,
+  // taken as it handled \`pinned\`, so a generation that ends a moment later
+  // cannot clear them first): what this save says its end will replace.
+  await expect.poll(() => page.evaluate((id) => window.__pwSaves.some((s) => s.id === id), target)).toBe(true);
+  const saved = await page.evaluate((id) => window.__pwSaves.filter((s) => s.id === id).pop(), target);
+  expect(saved.breeding, "the generation ended before the save's reply").toBe(true);
+  const want = saved.retiring.filter((id) => saved.rows.includes(id) && !saved.seed.includes(id)).sort((a, b) => a - b);
+  expect(saved.may, "the marks are not what the save says will be replaced").toEqual(want);
+  expect(saved.may, "the saved sound kept its mark").not.toContain(target);
   // One sound not marked before is marked now: the one that will go instead.
-  // (Read with whether the generation still runs: on a fast farm its last
-  // walks can land in the moment after the save, and its end clears the
-  // marks, which leaves nothing to test, as above.)
-  const { after, still } = await page.evaluate(() => ({
-    after: [...document.querySelectorAll("#bank-list .bank-item.may-go")].map((e) => Number(e.dataset.id)),
-    still: document.getElementById("evolve-btn").classList.contains("breeding"),
-  }));
-  console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(after)}${still ? "" : " (the generation had ended)"}`);
-  test.skip(!still, "the generation ended before the marks after the save were read");
-  expect(after.some((id) => !snap.may.includes(id)), "no sound took the saved one's place").toBe(true);
+  console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(saved.may)}`);
+  expect(saved.may.some((id) => !snap.may.includes(id)), "no sound took the saved one's place").toBe(true);
   await page.mouse.move(5, 5);
   const stop = page.locator("#evolve-stop");
   if (await stop.isVisible()) await stop.click({ timeout: 5_000 }).catch(() => {});
