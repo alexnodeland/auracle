@@ -1,6 +1,6 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
-last_updated: 2026-10-02
+last_updated: 2026-10-05
 related_adrs: [3, 5]
 ---
 
@@ -224,6 +224,19 @@ waits run to two minutes).
 - **Browser jobs take a ticket (tests two at a time), own port for a worktree**
   ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)).
 - **Gate tests over mocks.** Extend the gate that covers a behaviour.
+- **Logic is unit-tested; a browser spec proves the wiring.** New logic lands
+  in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
+  which `make web-check` runs in milliseconds. A browser spec proves that the
+  module is wired in and what a player sees and hears, not its arithmetic: a
+  boot costs seconds here and tens of seconds on a CI runner.
+- **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
+  page errors fail every test by themselves; `app` boots seeded (`?seed=`)
+  through one tap on the engine worker, waits on the engine through named
+  bounds that add their time to the test's timeout (`app.engine`,
+  `app.reply`, `ENGINE_MS`), and holds the engine's own replies while an
+  injected one stands (`app.hold`). UI state waits the config's 10 s; a test
+  has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
+  1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.
 - **Timing assertions need slack** on a loaded machine (1.5 s or more), and a

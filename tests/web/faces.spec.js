@@ -146,6 +146,9 @@ test("a face appears on every row, card and chip once its render lands", async (
 });
 
 test("the warm start's cards carry their faces", async ({ page }) => {
+  // The config's old default, which this test still needs: about 130 s on CI,
+  // most of it the bank arriving behind the warm start's renders.
+  test.setTimeout(180_000);
   const errors = await boot(page, { warmed: false });
   await expect(page.locator("#warmstart")).toBeVisible({ timeout: 150_000 });
   await expect(page.locator("#warm-grid .warm-item")).toHaveCount(9);

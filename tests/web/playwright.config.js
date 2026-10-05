@@ -18,7 +18,15 @@ const PORT = OWN_PORT || "8642";
 module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
-  timeout: 180_000,
+  // Fail fast. A test's own budget is twice the longest a test without an
+  // explicit timeout took on CI (about 45 s at 63ec6ff); a longer test says
+  // so with `test.setTimeout` or `test.slow()`, and a wait on the engine
+  // through the fixture (`app.engine`, `app.reply`, `app.booted`,
+  // `app.offerBudget`) adds its own time to the test's timeout.
+  timeout: 90_000,
+  // A UI state: a wait for the engine says so with a longer bound of its own
+  // (fixtures.js ENGINE_MS, perform_budget.js `offerBudget`).
+  expect: { timeout: 10_000 },
   // One worker, no retries: a boot that only sometimes comes up clean, or a
   // flow that only sometimes rolls back, is a finding, not a flake to paper
   // over. Serial because every test boots the engine and the render farm.
