@@ -10,13 +10,15 @@
 // - × stops it, and a reload keeps it stopped (`auracle-guide`).
 // - The first steps' ticks kept before the pill (`auracle-perform-steps`)
 //   carry over: the pill opens at the next step, and the old key is gone.
-const { test, expect } = require("@playwright/test");
-const { goLevel } = require("./shell");
+const { test, expect, goLevel } = require("./fixtures");
 
-async function boot(page, { seed = null } = {}) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  if (seed) {
+/** A first visit, seeded as every spec boots (fixtures.js): an unseeded
+ *  session can open on a sound none of whose controls reach ("0 of 6
+ *  controls reach this patch"), where step 2 has no control to name. `stored`:
+ *  keys in localStorage before the page's first load. */
+async function boot(app, { stored = null } = {}) {
+  const { page } = app;
+  if (stored) {
     await page.addInitScript((s) => {
       try {
         if (!sessionStorage.getItem("seeded")) {
@@ -24,21 +26,19 @@ async function boot(page, { seed = null } = {}) {
           sessionStorage.setItem("seeded", "1");
         }
       } catch (_) {}
-    }, seed);
+    }, stored);
   }
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await app.boot({ warmed: false, seen: false });
   await page.locator("#warm-skip").click();
   await goLevel(page, "perform");
-  return errs;
 }
 
 const pill = (page) => page.locator("#guide");
 const pips = (page) => page.locator("#guide .pips i");
 
-test("the pill shows one step at a time and ticks each off as it happens", async ({ page }) => {
+test("the pill shows one step at a time and ticks each off as it happens", async ({ page, app }) => {
   test.setTimeout(240_000);
-  const errs = await boot(page);
+  await boot(app);
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step")).toHaveCount(1);
@@ -77,12 +77,11 @@ test("the pill shows one step at a time and ticks each off as it happens", async
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")));
   // The note ticked PATCH's first step (play it) too.
   expect(kept.done.sort()).toEqual(["offer", "patch-play", "play", "turn"]);
-  expect(errs).toEqual([]);
 });
 
-test("× stops the pill, and a reload keeps it stopped", async ({ page }) => {
+test("× stops the pill, and a reload keeps it stopped", async ({ page, app }) => {
   test.setTimeout(240_000);
-  const errs = await boot(page);
+  await boot(app);
   await expect(pill(page)).toBeVisible();
   await page.locator("#guide .x").click();
   await expect(pill(page)).toBeHidden();
@@ -92,24 +91,22 @@ test("× stops the pill, and a reload keeps it stopped", async ({ page }) => {
   await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).not.toHaveText("·", { timeout: 60_000 });
   await expect(pill(page)).toBeHidden();
-  expect(errs).toEqual([]);
 });
 
-test("the first steps' old ticks carry over into the pill, and the old key goes", async ({ page }) => {
+test("the first steps' old ticks carry over into the pill, and the old key goes", async ({ page, app }) => {
   test.setTimeout(240_000);
-  const errs = await boot(page, { seed: { "auracle-perform-steps": JSON.stringify(["play"]) } });
+  await boot(app, { stored: { "auracle-perform-steps": JSON.stringify(["play"]) } });
   await expect(pill(page)).toBeVisible();
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^Turn /);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
   const store = await page.evaluate(() => ({ old: localStorage.getItem("auracle-perform-steps"), now: JSON.parse(localStorage.getItem("auracle-guide")) }));
   expect(store.old).toBeNull();
   expect(store.now).toEqual({ done: ["play"], closed: [] });
-  expect(errs).toEqual([]);
 });
 
-test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", async ({ page }) => {
+test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", async ({ page, app }) => {
   test.setTimeout(240_000);
-  const errs = await boot(page);
+  await boot(app);
   await expect(pill(page)).toBeVisible();
   await page.locator("#guide .x").click();
   await expect(pill(page)).toBeHidden();
@@ -122,13 +119,10 @@ test("× on PERFORM's pill stops PERFORM's steps only: PATCH's still show", asyn
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("auracle-guide")).closed.sort())).toEqual(["patch", "perform"]);
   await goLevel(page, "perform");
   await expect(pill(page)).toBeHidden();
-  expect(errs).toEqual([]);
 });
 
 test("a first visit that starts on PATCH is asked to play before anything else, and a note ticks it off", async ({ page }) => {
   test.setTimeout(240_000);
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
   // Straight to PATCH by its address: PERFORM, and its first step, never seen.
   await page.goto("/#patch");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -139,5 +133,4 @@ test("a first visit that starts on PATCH is asked to play before anything else, 
   await page.keyboard.press("a");
   await expect(page.locator("#guide .pf-step.now")).toContainText(/^(Drag a knob|Tap a module)/);
   await expect(page.locator("#guide .pips i.done")).toHaveCount(1);
-  expect(errs).toEqual([]);
 });
