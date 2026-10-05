@@ -1,0 +1,56 @@
+name: Browser shard
+description: >
+  One runner's share of a browser tier: the tests shard.mjs deals this runner
+  by main's last timings, run against apps/web/pkg (download the web-engine
+  artifact first, and run ./.github/actions/playwright). Keeps the runner's
+  JSON report for main's timings, and the traces of what failed.
+
+inputs:
+  tier:
+    description: "`fast` or `slow`: which timings to split by, and the artifacts' names"
+    required: true
+  shard:
+    description: "This runner, as k/N"
+    required: true
+  index:
+    description: "The matrix job's index (strategy.job-index), for unique artifact names"
+    required: true
+  args:
+    description: "Playwright's own arguments: the tier's --grep, and anything else (--repeat-each)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The timings main saved last (the `timings` job). A PR reads main's; the
+    # key never matches, so the newest entry under the prefix is the one used.
+    # None at all (evicted, a first run) splits by count, which still works.
+    - uses: actions/cache/restore@v4
+      with:
+        path: tests/web/timings.json
+        key: browser-timings-${{ inputs.tier }}-${{ github.run_id }}
+        restore-keys: browser-timings-${{ inputs.tier }}-
+
+    # Its own port, so the run can never be served by anything else.
+    - name: Run this runner's tests
+      shell: bash
+      env:
+        AURACLE_TEST_PORT: "8690"
+      run: cd tests/web && node shard.mjs run --shard "${{ inputs.shard }}" --timings timings.json -- ${{ inputs.args }}
+
+    - name: Keep the report for main's timings
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: browser-report-${{ inputs.tier }}-${{ inputs.index }}
+        path: tests/web/reports/run.json
+        retention-days: 3
+        if-no-files-found: ignore
+
+    - name: Keep the traces of failed specs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: browser-results-${{ inputs.tier }}-${{ github.sha }}-${{ inputs.index }}
+        path: tests/web/test-results/
+        if-no-files-found: ignore

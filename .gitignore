@@ -40,6 +40,9 @@ www/docs/src/img/
 
 # The browser smoke test's run output (tests/web).
 test-results/
+# Each CI runner's JSON report and the timings shard.mjs splits by (tests/web).
+tests/web/reports/
+tests/web/timings.json
 playwright-report/
 
 # Film renders: frames, clips, mixes and drafts. Only finished films are

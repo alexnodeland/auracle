@@ -8,9 +8,11 @@ name: Slow suite
 #   and the ten other tests over a minute (~1030 s of test time between them),
 #   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
 #   every test NOT named there.
-# - Browser: the specs tagged `@slow` (13 tests, ~18.5 min of test time in one
-#   worker: EVOLVE POOL generations, and PERFORM's listening, offers and
-#   drift). The fast tier runs `--grep-invert @slow`.
+# - Browser: the specs tagged `@slow` (~19 min of test time in one worker:
+#   EVOLVE POOL generations, and PERFORM's listening, offers and drift), and
+#   any tagged `@quarantine`, a flaky test moved out of the gate until it is
+#   fixed. The fast tier runs `--grep-invert "@slow|@quarantine"`.
+# - The flake hunt: nightly, the fast tier's browser tests three times over.
 #
 # When it runs:
 #
@@ -129,7 +131,7 @@ jobs:
           # A changed spec counts if it holds an @slow test now.
           slow_spec=false
           for f in $(echo "$files" | grep -E '^tests/web/.*\.spec\.js$' || true); do
-            if [ -f "$f" ] && grep -q '@slow' "$f"; then slow_spec=true; fi
+            if [ -f "$f" ] && grep -qE '@slow|@quarantine' "$f"; then slow_spec=true; fi
           done
 
           if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|patch|live-audio|audio-in|explain)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
@@ -179,9 +181,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/web-engine
 
-  # The @slow specs on six runners. The split is by test in list order, and
-  # three tests are ~3 min each, so six is what keeps any one runner under
-  # ~5 min of tests; with four, one draws ~7.5.
+  # The @slow specs, and any @quarantine'd out of the gate while it is fixed,
+  # on six runners, dealt by main's last timings for this tier (see
+  # tests/web/shard.mjs): a few of these tests take ~3 min each, so the split
+  # by count left one runner with twice another's work.
   browser:
     name: Slow browser (${{ matrix.shard }})
     needs: [scope, engine]
@@ -202,26 +205,82 @@ jobs:
 
       - uses: ./.github/actions/playwright
 
-      # Its own port, so the run can never be served by anything else.
-      - name: Run the slow browser tier
-        env:
-          AURACLE_TEST_PORT: "8690"
-        run: cd tests/web && npx playwright test --grep @slow --shard=${{ matrix.shard }} --reporter=list
-
-      - name: Keep the traces of failed specs
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/browser-shard
         with:
-          name: slow-browser-results-${{ github.sha }}-${{ strategy.job-index }}
-          path: tests/web/test-results/
-          if-no-files-found: ignore
+          tier: slow
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep "@slow|@quarantine"
+
+  # This tier's timings for its next split, as ci.yml's `timings` job does
+  # for the fast tier.
+  timings:
+    name: Slow browser timings
+    needs: browser
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.browser.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/cache/restore@v4
+        with:
+          path: tests/web/timings.json
+          key: browser-timings-slow-${{ github.run_id }}
+          restore-keys: browser-timings-slow-
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: browser-report-slow-*
+          path: reports
+      - run: node tests/web/shard.mjs timings --out tests/web/timings.json reports/*/run.json
+      - uses: actions/cache/save@v4
+        with:
+          path: tests/web/timings.json
+          key: browser-timings-slow-${{ github.run_id }}
+
+  # The flake hunt: every night, the gate's browser tests three times over.
+  # The gate runs each test once with no retries, so a test that fails one
+  # run in thirty only shows up as a red PR now and then; here it fails
+  # three times as often, against main, where nothing changed but the
+  # machine. A failure files the issue below: fix the test, or tag it
+  # @quarantine, which moves it here until it is fixed
+  # (docs/architecture/testing.md § Flakes).
+  flake-hunt:
+    name: Flake hunt (${{ matrix.shard }})
+    needs: [scope, engine]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Three times the gate's ~8 minutes a runner, and room.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - uses: ./.github/actions/browser-shard
+        with:
+          tier: fast
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep-invert "@slow|@quarantine" --repeat-each=3
 
   # A red slow tier on main is a regression that merged on the fast tier.
   # Nobody is watching a nightly run, so it files an issue: one open issue at
   # a time, commented on by every further failing run until someone closes it.
   report:
     name: Report a failure on main
-    needs: [scope, rust, engine, browser]
+    needs: [scope, rust, engine, browser, flake-hunt]
     if: >-
       always() && github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'schedule') &&
@@ -251,7 +310,9 @@ jobs:
               `Run: ${run}`,
               "",
               "This tier does not block merging, so the change that broke it is on main. " +
-                "The failing jobs' logs name the tests; a browser shard's traces are in the run's artifacts.",
+                "The failing jobs' logs name the tests; a browser shard's traces are in the run's artifacts. " +
+                "A test that failed only in the flake hunt passes the gate on most runs: fix it, or tag it " +
+                "@quarantine until it is fixed (docs/architecture/testing.md § Flakes).",
             ].join("\n");
 
             const open = await github.paginate(github.rest.issues.listForRepo, {

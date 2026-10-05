@@ -85,20 +85,35 @@ install-hooks:
 ## Claude Code hooks against inputs they must block and pass, the syntax of
 ## every film tool, and the film tools' own tests (on .venv-voice when it
 ## exists)
-dev-check:
+##
+## Its parts read the tree and write nothing in it, so they are prerequisites
+## that `make -j` runs side by side (CI runs `make -j4 -O dev-check`); a plain
+## `make dev-check` runs them one after another as before.
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests
+dev-check: $(DEV_CHECKS)
+.PHONY: $(DEV_CHECKS)
+
+dev-docs:
 	@python3 .claude/checks/check_docs.py
+dev-names:
 	@python3 www/checknames.py
+dev-tokens:
 	@python3 www/brand/tokens.py --check
 	@python3 www/brand/test_tokens.py
+dev-voice:
 	@python3 www/checkwords.py
 	@python3 www/test_checkwords.py
+dev-sound:
 	@python3 www/brand/sound.py --check
 	@python3 www/brand/test_sound.py
+dev-hooks:
 	@bash .claude/checks/test_hooks.sh
+dev-syntax:
 	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
 	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
 	@printf '  film tools and hooks: syntax OK\n'
+dev-film-tests:
 	@for f in www/video/tools/test_*.py; do $(FILM_ENV) python3 $$f || exit 1; done
 
 ## tokens: write the colors, font families, type scale, spacing, radii and
@@ -233,15 +248,15 @@ BROWSER_PORT ?= 8690
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
-## browser-fast: browser specs not tagged @slow, CI's fast tier (~17 min serially)
+## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~an hour serially)
 browser-fast:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	$(PLAYWRIGHT) --grep-invert @slow --reporter=line
+	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
 
-## browser-slow: browser specs tagged @slow, CI's slow tier (~19 min serially)
+## browser-slow: browser specs tagged @slow or @quarantine, CI's slow tier (~20 min serially)
 browser-slow:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	$(PLAYWRIGHT) --grep @slow --reporter=line
+	$(PLAYWRIGHT) --grep "@slow|@quarantine" --reporter=line
 
 fmt:
 	$(CARGO) fmt --all
