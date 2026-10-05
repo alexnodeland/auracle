@@ -8,40 +8,36 @@
 // - EVOLVE's corner (⇄ circuit) and what each generation did answer a tap.
 // - KEEP, BACK and the pill's × are a finger's size; BACK answers a tap.
 // - PEEK held with a finger plays B (heard, so a pass counts it).
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
+const { test, expect, bankTab } = require("./fixtures");
 
 // A tablet: a coarse pointer and touch, wide enough to have no gate.
 test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
 
-async function boot(page) {
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(() => {
-    try {
-      for (const k of ["auracle-played", "auracle-bench-tour", "auracle-bank-toured", "auracle-warmed"]) localStorage.setItem(k, "1");
-    } catch (_) {}
-  });
-  await page.goto("/");
+// PEEK held long enough for B to be heard: a second of it while a note sounds.
+const HEARD_MS = 1_800;
+
+async function boot(page, app) {
+  await app.boot({ wait: false });
   const anyway = page.locator("#hg-anyway");
   if (await anyway.isVisible().catch(() => false)) await anyway.click();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-  return errors;
+  await app.booted();
+  await app.level("perform");
+  await app.reached();
 }
 
-test("on a touch screen every PERFORM function the layout moved is a tap away, with no printed keys", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  // Glass Pad, whose BRIGHT turns both ways: the XY pad's first axis moves.
+/** Glass Pad, tapped in PRESETS, on PERFORM with its controls reached. */
+async function glassPad(page, app) {
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().tap();
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
+  await app.level("perform");
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 60_000 });
+  await app.reached();
+}
+
+test("on a touch screen every PERFORM function the layout moved is a tap away, with no printed keys", async ({ page, app }) => {
+  await boot(page, app);
+  // Glass Pad, whose BRIGHT turns both ways: the XY pad's first axis moves.
+  await glassPad(page, app);
   // No printed key on a pad or in the moved bar under a finger.
   const keyShown = await page.evaluate(() => ({
     pads: [...document.querySelectorAll(".pf-pad[data-key]")].some((b) => getComputedStyle(b, "::before").display !== "none"),
@@ -87,7 +83,7 @@ test("on a touch screen every PERFORM function the layout moved is a tap away, w
   await expect(page.locator(".pf-moved")).toHaveClass(/\bon\b/);
   await page.locator(".pf-xy-btn").tap();
   await page.locator(".pf-moved .pf-keep").tap();
-  await expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout: 15_000 });
+  await app.engine((timeout) => expect(page.locator("#toasts")).toContainText("Kept: this is home now.", { timeout }), { ms: 15_000 });
   // HOW IT WORKS opens in the well.
   await page.locator(".pf-why-btn").tap();
   await expect(page.locator(".pf-why-body")).toBeVisible();
@@ -104,14 +100,12 @@ test("on a touch screen every PERFORM function the layout moved is a tap away, w
   await expect(page.locator(".st-hint")).toHaveText("tap to play the sound · × leaves");
   await page.locator(".st-leave").tap();
   await expect(page.locator(".st-stage")).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
-test("on a touch screen EVOLVE's corner and what each generation did answer a tap", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page);
-  await goLevel(page, "evolve");
-  await expect(page.locator("#name-a")).not.toHaveText("sound a", { timeout: 90_000 });
+test("on a touch screen EVOLVE's corner and what each generation did answer a tap", async ({ page, app }) => {
+  await boot(page, app);
+  await app.level("evolve");
+  await app.engine((timeout) => expect(page.locator("#name-a")).not.toHaveText("sound a", { timeout }), { ms: 90_000 });
   await page.locator("#flip-a").tap();
   await expect(page.locator("#mini-a")).toBeVisible();
   await page.locator("#flip-a").tap();
@@ -120,21 +114,15 @@ test("on a touch screen EVOLVE's corner and what each generation did answer a ta
   await expect(page.locator("#lineage-pop")).toBeVisible();
   await page.locator("#lineage-x").tap();
   await expect(page.locator("#lineage-pop")).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
 // A finger held on PEEK: the pad's press and its release, as a touch screen
 // sends them (CDP touch events), with a note sounding. B was heard, so PASS
 // counts it as a pick for what you had.
-test("on a touch screen PEEK held with a finger plays B", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(360_000);
-  const errors = await boot(page);
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().tap();
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 60_000 });
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-  const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
+test("on a touch screen PEEK held with a finger plays B", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  await glassPad(page, app);
+  const OFFER_MS = await app.offerBudget({ waits: 1 });
   await page.locator(".pf-pad", { hasText: /^Offer$/ }).tap();
   await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   const peek = await page.locator(".pf-pad", { hasText: "Peek" }).boundingBox();
@@ -142,10 +130,9 @@ test("on a touch screen PEEK held with a finger plays B", { tag: "@slow" }, asyn
   const cdp = await page.context().newCDPSession(page);
   await page.keyboard.down("a");
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-  await page.waitForTimeout(1800); // held: B must sound for a second while a note does
+  await page.waitForTimeout(HEARD_MS); // held: B must sound for a second while a note does
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await page.keyboard.up("a");
   await page.locator(".pf-pad.pf-pass").tap();
   await expect(page.locator("#toasts")).toContainText("Passed on B. That counts as a pick for what you had.");
-  expect(errors).toEqual([]);
 });

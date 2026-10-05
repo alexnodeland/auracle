@@ -17,59 +17,8 @@
 // (`make offer-census`) measure that over seeds; here the strip must say
 // whichever is true.
 //
-// A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
-// here, to record what PERFORM asks it for.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
-
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const posts = (window.__pfOffers = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        if (m && m.type === "perform_offer")
-          posts.push({ control: m.control, sign: m.sign, bg: !!m.bg });
-        return post(m, t);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-})();`;
-
-async function boot(page) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-}
-
-async function wired(page) {
-  await page.waitForFunction(
-    () =>
-      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
-      ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired")),
-    null,
-    { timeout: 120_000 },
-  );
-}
+// What PERFORM asks the engine for is read through the fixture's tap.
+const { test, expect } = require("./fixtures");
 
 /** Drag a knob vertically by `dy` px (negative is up), and let go. */
 async function drag(page, loc, dy) {
@@ -82,17 +31,17 @@ async function drag(page, loc, dy) {
   await page.mouse.up();
 }
 
-test("a search control's offer is aimed the way it was turned, and B says how far it went", async ({ page }) => {
-  test.setTimeout(360_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+test("a search control's offer is aimed the way it was turned, and B says how far it went", async ({ page, app }) => {
+  await app.boot();
+  await app.openOnPerform("Glass Pad", { wired: true });
   // Two offers grown below, an aimed one (up to three walks) and a plain one.
-  const OFFER_MS = await budget.offerBudget(page, { waits: 2 });
+  const OFFER_MS = await app.offerBudget({ waits: 2 });
   const grit = page.locator('.pf-knob[data-i="4"]');
   await expect(grit, "Grit is a search control on Glass Pad").toHaveClass(/\bsearch\b/);
   const strip = page.locator(".pf-offer");
-  await page.evaluate(() => (window.__pfOffers.length = 0));
+  // The offers asked for from here (`perform_offer`), as the tap kept them.
+  const offers = async (after) => (await app.sent({ type: "perform_offer" }, { after })).map((m) => ({ control: m.control, sign: m.sign, bg: !!m.bg }));
+  const turned = await app.now();
 
   // Turned up past the notch and let go: an aimed request, said as such.
   await drag(page, grit, -90);
@@ -100,8 +49,8 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
   await expect(page.locator("#toasts")).toContainText("growing a grittier offer instead", { timeout: 5_000 });
   // Asked for once, aimed: Grit (index 4), up. Spares grown in the
   // background are the Offer button's, and carry no control.
-  await page.waitForFunction(() => window.__pfOffers.some((p) => p.control === 4), null, { timeout: 5_000 });
-  const asked = await page.evaluate(() => window.__pfOffers.filter((p) => p.control != null));
+  await expect.poll(async () => (await offers(turned)).some((p) => p.control === 4), { timeout: 5_000 }).toBe(true);
+  const asked = (await offers(turned)).filter((p) => p.control != null);
   expect(asked).toEqual([{ control: 4, sign: 1, bg: false }]);
   // B says what it is growing, and counts once it takes a while.
   await expect(strip).toContainText(/growing a grittier offer…|grittier by|not grittier/, { timeout: 5_000 });
@@ -125,11 +74,10 @@ test("a search control's offer is aimed the way it was turned, and B says how fa
 
   // The Offer button passes on it and asks undirected: no control on the
   // request, no direction in B.
-  await page.evaluate(() => (window.__pfOffers.length = 0));
+  const pressed = await app.now();
   await page.locator(".pf-pad", { hasText: /^(Offer|Next)/ }).first().click();
   await expect(strip).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
   await expect(strip.locator(".pf-offer-aim")).toHaveCount(0);
-  const plain = await page.evaluate(() => window.__pfOffers);
+  const plain = await offers(pressed);
   expect(plain.every((p) => p.control == null && p.sign == null)).toBe(true);
-  expect(errs).toEqual([]);
 });

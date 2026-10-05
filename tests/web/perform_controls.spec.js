@@ -9,32 +9,11 @@
 //
 // An XY axis set to a control the patch cannot move strikes its end words
 // through, as the guide promises, rather than only dimming them.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
+const { test, expect } = require("./fixtures");
 
-async function openOnPerform(page, name) {
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForTimeout(800);
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30000 });
-  await page.waitForFunction(
-    () =>
-      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
-      ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired")),
-    null,
-    { timeout: 90000 },
-  );
-}
-
-test("a half-closed control stops at the centre on its closed side", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await openOnPerform(page, "Glass Pad");
+test("a half-closed control stops at the centre on its closed side", async ({ page, app }) => {
+  await app.boot();
+  await app.openOnPerform("Glass Pad", { wired: true });
 
   const half = page.locator(".pf-knob.half-lo, .pf-knob.half-hi").first();
   await expect(half, "Glass Pad has a half-closed control").toHaveCount(1);
@@ -64,14 +43,11 @@ test("a half-closed control stops at the centre on its closed side", async ({ pa
   await page.keyboard.press("Home");
   for (let n = 0; n < 8; n++) await page.keyboard.press(up ? "ArrowDown" : "ArrowUp");
   expect(await value(), "arrow keys stop at the centre").toBe(0);
-  expect(errs).toEqual([]);
 });
 
-test("an XY axis the patch can't move strikes its end words through", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
-  await openOnPerform(page, "Glass Pad");
+test("an XY axis the patch can't move strikes its end words through", async ({ page, app }) => {
+  await app.boot();
+  await app.openOnPerform("Glass Pad", { wired: true });
 
   // A search control is one this patch can't move; put it on the pad's y axis.
   const i = await page.evaluate(() =>
@@ -86,5 +62,4 @@ test("an XY axis the patch can't move strikes its end words through", async ({ p
   await expect(page.locator(".pf-xy-field")).toHaveClass(/\bdead-y\b/);
   const deco = await page.locator(".pf-xy-t").evaluate((el) => getComputedStyle(el).textDecorationLine);
   expect(deco).toContain("line-through");
-  expect(errs).toEqual([]);
 });
