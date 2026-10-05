@@ -127,6 +127,19 @@ again to take that back. Space plays the same phrase from PERFORM and EVOLVE,
 and waits the same way: *▶ waiting for the edit…* stands in for the name in
 the menu bar until it lands.
 
+**Without this module.** Select a module and, over the face at OUT, a dashed
+outline shows the face of the patch without it: what that module does to the
+sound, by eye. It is measured, not estimated: the engine renders the patch as
+the [structure menu](../rack.md#the--menu) would leave it (a processor
+bypassed, a source's socket left empty, a modulator unplugged) and takes its
+face. It takes a moment, at the back of the engine's queue behind anything
+you asked for and the bank's faces, and nothing is drawn until it lands; once
+measured, the same module on the same patch comes back at once. A knob turned
+takes it away until the patch is measured again. When the patch would be
+silent without the module (the only source), the readout says *silent without
+it* instead; when it would not pass the safety check, *without it, it fails
+the safety check*. The amp and an empty socket have no outline.
+
 **The cables.** Each green cable curves from one module's output to the next
 one's input, carries light by the level the engine measured on it, and a mark
 on its middle lights a bar for each third of the meter's range; point at it

@@ -425,6 +425,7 @@
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-lean" x="4" y="3" width="36" height="16" rx="4"/></svg>Hold ⌥: what the model believes (your lean on each kind, what one more is worth, its next guesses)</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-without" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>Dashed at OUT: without the selected module, measured</span>
               </div>
               <!-- The catalog, on demand over the well's left (the
                    specimen's `pt-cat`): ADD MODULE or / opens it, Esc or ×
@@ -552,8 +553,10 @@
               <!-- The face at OUT: the bench's measured face, the same as the
                    menu bar's chip, past the amp's OUT jack and moved with the
                    camera (main.js `placeOutFace`). It is the rack's ▶: a
-                   press plays the sound. -->
-              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button></span>
+                   press plays the sound. Over it, dashed, the face of the
+                   patch without the selected module, measured
+                   (`paintWithout`). -->
+              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button><span class="out-without" id="out-without" hidden></span></span>
               <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
               <!-- What is about to happen, pinned to the plate it will happen
                    to, named by the title silkscreened on that plate. The rail

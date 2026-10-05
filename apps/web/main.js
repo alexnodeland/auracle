@@ -713,6 +713,8 @@ function facesChanged() {
     paintFaces();
     // TASTE's map draws faces too: a frame with the ones that landed.
     if (currentView === "taste" && taste) taste.draw();
+    // PATCH's "without this module" outline, if its face is what landed.
+    if (without.target) paintWithout();
     // PATCH's guess plate was waiting on one of its two faces.
     if (guessFaceWaiting && patchView) {
       guessFaceWaiting = false;
@@ -12926,6 +12928,114 @@ function placeOutFace() {
   slot.style.height = `${(rackOut.h * view.zoom).toFixed(1)}px`;
 }
 
+// ---------- without this module (Plan-008 C2b, the first engine fact) ----------
+// The selected module's part in the sound, by eye: over the face at OUT, a
+// dashed outline of the face of the patch without it. A measurement, not an
+// estimate (the specimen's was "approximate"): the patch the structure menu's
+// verb would leave (`withoutTree`: a processor bypassed, a source's socket
+// left empty, a modulator unplugged) is rendered on the audition phrase and
+// its face taken (`face_of_tree`), through the faces lane, which is below
+// every other (`face_render`), so it never delays the guess, a face or
+// PERFORM. Memoized by the tree (a face is filed under its render key, and
+// main keeps its ref), asked once the bench is settled, and let go when the
+// selection moves on (`face_cancel`). While it is measured nothing is drawn;
+// a patch that would be silent, or would not pass the safety check, without
+// the module is said in the readout instead. At rest: it is a measurement,
+// not a belief.
+const without = { key: null, tree: null, target: null, why: "", timer: 0 };
+const WITHOUT_SETTLE_MS = 350;
+
+/** The patch without the module `mod`, as JSON with whether it sounds, or
+ *  why there is none: the amp is the envelope every voice ends in, and an
+ *  empty socket has nothing to take out. */
+function withoutTree(mod) {
+  if (!wb.tree || !mod || mod.kind === "amp" || isEmptySocketMod(mod)) return null;
+  const tree = JSON.parse(JSON.stringify(wb.tree));
+  let why;
+  if (mod.is_mod) why = unplugIn(tree, mod.key.replace(/\/m$/, ""));
+  else if (childFields(MOD_BY_KIND[mod.kind] || {}).length === 0) why = emptyIn(tree, mod.key);
+  else why = bypassIn(tree, mod.key);
+  if (why) return null;
+  return { json: JSON.stringify(tree), sounds: treeSounds(tree) };
+}
+
+/** The selection or the bench moved: measure again once it is still. */
+function syncWithout() {
+  clearTimeout(without.timer);
+  without.timer = setTimeout(measureWithout, WITHOUT_SETTLE_MS);
+  // What is drawn describes a selection or a patch that is no longer so
+  // (a knob turned: the patch without the module has moved with it).
+  const mod = plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
+  if (!mod || mod.key !== without.key || benchTreeJson !== without.tree) clearWithout();
+}
+function clearWithout() {
+  if (without.target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
+  const said = !!without.why;
+  without.key = null;
+  without.tree = null;
+  without.target = null;
+  without.why = "";
+  paintWithout();
+  if (said) renderSpecDock();
+}
+function measureWithout() {
+  without.timer = 0;
+  const mod = currentView === "patch" && plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
+  if (!mod) return clearWithout();
+  // Not under a hand or with an edit on its way: the tree is about to move.
+  if (knobDragging || !laneFree() || editPending) {
+    without.timer = setTimeout(measureWithout, WITHOUT_SETTLE_MS);
+    return;
+  }
+  const w = withoutTree(mod);
+  const target = w && w.sounds ? faceTarget({ tree: w.json }) : null;
+  if (without.target && without.target !== target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
+  without.key = mod.key;
+  without.tree = benchTreeJson;
+  without.target = target;
+  without.why = w && !w.sounds ? "silent without it" : "";
+  paintWithout();
+  renderSpecDock();
+}
+/** Draw the outline, if its face has landed (or say it never will). */
+function paintWithout() {
+  const el = $("out-without");
+  if (!el) return;
+  const t = without.target;
+  if (t && faceNone.has(t)) {
+    // Rendered, and it did not pass the vet: no face to draw.
+    if (!without.why) {
+      without.why = "without it, it fails the safety check";
+      renderSpecDock();
+    }
+  }
+  const key = t ? faceKeyOfTarget(t) : null;
+  const face = key ? lruGet(faceByKey, key) : null;
+  const was = !el.hidden;
+  if (!t || !face || !faceStats) {
+    if (t && !face && !faceNone.has(t)) wantFace(t);
+    el.hidden = true;
+    if (was) renderSpecDock();
+    el.innerHTML = "";
+    delete el.dataset.face;
+    delete el.dataset.key;
+    delete el.dataset.of;
+    return;
+  }
+  const drawn = `${key}|${faceEpoch}`;
+  if (el.dataset.drawn !== drawn) {
+    const [w, h] = FACE_SIZE.out;
+    el.innerHTML = `<img class="face" src="${faceImage(face, w, h, { ...FACE_OPTS.out(), slices: false, glow: 0, reflection: false, color: tok("--silk"), dash: [4, 4], line: 1.4 })}" width="${w}" height="${h}" alt="">`;
+    el.dataset.drawn = drawn;
+  }
+  el.dataset.face = t;
+  el.dataset.key = key;
+  el.dataset.of = without.key;
+  el.hidden = false;
+  // The readout says it too, for a screen reader (`pr-without`).
+  if (!was) renderSpecDock();
+}
+
 /** The well's edges, when the patch is wider than the view (the specimen's
  *  ‹ 2 and 3 ›): how many modules' middles lie past each side, and a press
  *  that brings the nearest of them to the middle of the view. */
@@ -13145,6 +13255,7 @@ function paintRackFacts() {
   if (!svg) return;
   paintLeans(svg);
   paintWorth();
+  syncWithout();
 }
 
 /** Worth per kind, under the model view: one chip per family the patch
@@ -14980,9 +15091,9 @@ function extractModule(key) {
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "That module has moved. Try again.";
     const hole = placeholderNode();
-    if (!setNodeAtIn(tree, key, hole)) return "That module has moved. Try again.";
+    const why = emptyIn(tree, key, hole);
+    if (why) return why;
     if (!marks.includes(node)) doomed = node;
     marks.push(hole);
     return null;
@@ -14995,6 +15106,55 @@ function extractModule(key) {
       : "The socket is empty.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
+}
+
+// The rewrites the structure menu's verbs make, on a tree you hold (a clone):
+// each mutates `tree` and returns null, or why it cannot. Shared by the verbs
+// and by "without this module" (`withoutTree`), so the face drawn at OUT for
+// a module's absence is the patch the verb would leave.
+
+/** ⋯ › bypass: the module's first input passed straight through to what it
+ *  fed (a two-input module keeps that side). */
+function bypassIn(tree, key) {
+  const node = nodeAtIn(tree, key);
+  if (!node) return "That module has moved. Try again.";
+  const tag = nodeTag(node);
+  const ff = childFields(MOD_BY_TAG[tag] || {});
+  if (ff.length === 0) return "A source makes the signal, so there is nothing to pass through it.";
+  const through = node[tag][ff[0]];
+  if (!through) return "Nothing is plugged into it to pass through.";
+  if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
+  return null;
+}
+
+/** ⋯ › set aside: the module and what is under it out, its socket empty. */
+function emptyIn(tree, key, hole = placeholderNode()) {
+  if (!nodeAtIn(tree, key)) return "That module has moved. Try again.";
+  if (!setNodeAtIn(tree, key, hole)) return "That module has moved. Try again.";
+  return null;
+}
+
+/** ⋯ › unplug this modulator: the slot of the module at `ownerKey` empty
+ *  (the engine's `set_mod` with `none`, which the verb sends). */
+function unplugIn(tree, ownerKey) {
+  const node = nodeAtIn(tree, ownerKey);
+  if (!node || typeof node === "string") return "That module has moved. Try again.";
+  const v = node[nodeTag(node)];
+  if (!v || v.modulation == null || v.modulation === "None") return "Nothing is plugged in to modulate it.";
+  v.modulation = "None";
+  return null;
+}
+
+/** Does any source reach the output: a leaf that is not an empty socket.
+ *  (A binary's second input counts; the render's vet says the rest.) */
+function treeSounds(tree) {
+  const walk = (n) => {
+    if (!n) return false;
+    const kids = nodeChildrenJSON(n);
+    if (!kids.length) return nodeTag(n) !== "Silence";
+    return kids.some(walk);
+  };
+  return walk(tree && tree.root);
 }
 
 /** Bypass, the verb every DAW user reaches for, as a client-side rewrite: the
@@ -15016,13 +15176,8 @@ function bypassModule(key) {
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
     if (!node) return "That module has moved. Try again.";
-    const tag = nodeTag(node);
-    const ff = childFields(MOD_BY_TAG[tag] || {});
-    const through = node[tag][ff[0]];
-    if (!through) return "Nothing is plugged into it to pass through.";
     head = headFragment(node);
-    if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
-    return null;
+    return bypassIn(tree, key);
   }, { op: "bypass", key, kind: rackKindAt(key) });
   if (!ok) return;
   const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
@@ -18475,6 +18630,8 @@ function renderSpecDock() {
     (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
     (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
     (isModuleLocked(mod) ? `<span class="pr-lock mono">locked</span>` : "") +
+    (without.why && without.key === mod.key ? `<span class="pr-without mono">${esc(without.why)}</span>` : "") +
+    (!$("out-without").hidden && without.key === mod.key ? `<span class="sr-only">Dashed at OUT: the sound without it, measured.</span>` : "") +
     `</div>` +
     model;
 }
@@ -18514,6 +18671,7 @@ function selectPlate(key) {
   plateSelUid = key != null ? wb.rack?.modules.find((x) => x.key === key)?.uid || null : null;
   syncPlateSel();
   renderSpecDock();
+  syncWithout();
 }
 function syncPlateSel() {
   const svg = $("rack-svg");
@@ -23720,6 +23878,8 @@ window.__aur = {
   audioIn: () => audioIn.state(),
   // PATCH's guess, cable levels and new patch, as patch.js holds them.
   patch: () => patchView.state(),
+  // PATCH's "without this module": the module, the tree measured, its face.
+  without: () => ({ key: without.key, why: without.why, target: without.target, asked: without.target ? faceAsked.has(without.target) : false, none: without.target ? faceNone.has(without.target) : false, face: without.target ? faceKeyOfTarget(without.target) || null : null }),
   // CAPTURE's recording under way, and the sounds kept safe (takes.js).
   takes: () => takes.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.
