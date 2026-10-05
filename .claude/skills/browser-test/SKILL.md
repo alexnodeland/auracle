@@ -22,7 +22,9 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
 ```
 
 - **Own port** (`AURACLE_TEST_PORT`), always from a worktree, and whenever
-  another server may be on `:8642`.
+  another server may be on `:8642`. A branch's brief gives it one (8771 and
+  up); set in the environment, it reaches `make browser-changed`,
+  `browser-fast` and `browser-slow` too.
 - **Through the queue** (`one_browser.sh`). Rehearsals and recordings may be
   ahead of you. Run it in the background and wait for it; do not start a
   second browser job.
