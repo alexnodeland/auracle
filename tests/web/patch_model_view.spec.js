@@ -13,12 +13,12 @@
 // - Letting go rebuilds nothing: the plates on screen are the same elements.
 // - "the model view", never "lens", in what it shows.
 //
-// The fit is pinned (patch_page.js `pinPulls`, posted to main.js as the
-// worker would post it): the filter family settled, the VCO family a guess,
-// so which plates get an edge is known whatever the warm start taught.
-const { test, expect } = require("@playwright/test");
-const { boot, warmStartAndFit, openPreset, drawnGuess, pinPulls } = require("./patch_page.js");
-const { modelView } = require("./shell");
+// The fit is pinned (patch_page.js `pinPulls`, handed to main.js as the
+// worker would post it, every later fit's styles rewritten to it): the filter
+// family settled, the VCO family a guess, so which plates get an edge is
+// known whatever the warm start taught.
+const { test, expect, modelView } = require("./fixtures");
+const { openPreset, drawnGuess, pinPulls } = require("./patch_page.js");
 
 const SURE = "(a hunch|leaning|fairly sure)";
 
@@ -87,21 +87,20 @@ async function modelMarks(page, ranked) {
   expect(copy).not.toMatch(/\blens\b/i);
 }
 
-test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL shows the leans, a worth chip per family, the belief line and the guess's runners-up; letting go restores the canvas", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(360_000);
-  const errors = await boot(page, { warmed: false });
-  await warmStartAndFit(page);
-  await pinPulls(page, "n_filter", "n_vco");
-  await openPreset(page, "Sub & Sparkle");
+test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL shows the leans, a worth chip per family, the belief line and the guess's runners-up; letting go restores the canvas", { tag: "@slow" }, async ({ page, app }) => {
+  await app.boot({ warmed: false });
+  await app.warmStart();
+  await pinPulls(app, "n_filter", "n_vco");
+  await openPreset(app, "Sub & Sparkle");
   // The ranking on screen, with two runners-up in it.
-  const ranked = await drawnGuess(page, { timeout: 120_000 });
+  const ranked = await drawnGuess(app, { timeout: 120_000 });
   expect(ranked.data.guesses.length).toBeGreaterThanOrEqual(3);
   // A state the subtitle carries (a module locked), which the view keeps.
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="mix"]').focus();
   await page.keyboard.press("l");
   await expect(page.locator("#rack-meta")).toContainText(/\d+ locked/);
   await page.keyboard.press("Escape"); // out of the module: nothing selected
-  await expect(page.locator("#rack-svg .guess-plate")).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-svg .guess-plate")).toHaveCount(1, { timeout }), { ms: 60_000 });
   await atRest(page);
 
   // The plates as built, to tell a rebuild from a repaint.
@@ -132,5 +131,4 @@ test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL
   await page.keyboard.press("Escape");
   await atRest(page);
   expect(await same(), "the tapped view rebuilt nothing either").toBe(true);
-  expect(errors).toEqual([]);
 });

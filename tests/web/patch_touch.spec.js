@@ -16,10 +16,9 @@
 //   and stops.
 const fs = require("fs");
 const path = require("path");
-const { test, expect } = require("@playwright/test");
-const { boot, openPreset } = require("./patch_page.js");
-const { goLevel } = require("./shell");
-const { STUB, INIT } = require("./audio_in_stub.js");
+const { test, expect, goLevel } = require("./fixtures");
+const { openPreset } = require("./patch_page.js");
+const { STUB } = require("./audio_in_stub.js");
 
 test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true });
 
@@ -52,10 +51,10 @@ async function tapPlate(page, kind) {
   await page.touchscreen.tap(at.x, at.y);
 }
 
-test("on touch, the head's acts, the camera's corner and ⚡'s ▾ are a finger's size and answer a tap", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
+test("on touch, the head's acts, the camera's corner and ⚡'s ▾ are a finger's size and answer a tap", async ({ page, app }) => {
+  await app.boot();
   expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
-  await openPreset(page, "Reese");
+  await openPreset(app, "Reese");
   for (const id of ["#pt-add", "#patch-new-btn", "#pt-how", "#pt-evolve-more", "#pt-fit", "#pt-zoom-out", "#pt-zoom-in", "#rack-map-btn", "#rack-layout"]) {
     const b = await page.locator(id).boundingBox();
     expect(b.height, `${id} height`).toBeGreaterThanOrEqual(40);
@@ -77,45 +76,37 @@ test("on touch, the head's acts, the camera's corner and ⚡'s ▾ are a finger'
   await expect(page.locator("#pt-laymenu")).toBeVisible();
   await page.locator('#pt-laymenu [data-layout="compact"]').tap();
   await expect(page.locator("#rack-layout")).toHaveText(/^compact/);
-  expect(errors).toEqual([]);
 });
 
-test("on touch, every module shows its ⋯, and a tap on it opens the structure menu", async ({ page }) => {
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
+test("on touch, every module shows its ⋯, and a tap on it opens the structure menu", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
   const menu = page.locator('#rack-svg .rack-controls g[data-kind="filter"] .mod-menu-btn').first();
   await expect(menu).toHaveCSS("opacity", "1");
   await menu.tap();
   await expect(page.locator("#ctx-menu")).toBeVisible();
   await expect(page.locator("#ctx-menu .cm-item").filter({ hasText: /^replace with/ })).toHaveCount(1);
-  expect(errors).toEqual([]);
 });
 
-test("on touch, a tapped module's sheet shows the bench's face, as made", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors = await boot(page, { warmed: true });
-  await openPreset(page, "Reese");
-  await expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout: 60_000 });
+test("on touch, a tapped module's sheet shows the bench's face, as made", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
+  await app.engine((timeout) => expect(page.locator("#rack-svg .cable-mark:not(.unknown)").first()).toBeVisible({ timeout }), { ms: 60_000 });
   await tapPlate(page, "filter");
   const sheet = page.locator("#module-sheet");
   await expect(sheet).toHaveClass(/\bon\b/);
-  await expect(sheet.locator(".ms-face img.face")).toHaveCount(1, { timeout: 60_000 });
+  await app.engine((timeout) => expect(sheet.locator(".ms-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
   await expect(sheet.locator(".ms-cap")).toHaveText("as made");
-  expect(errors).toEqual([]);
 });
 
-test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press the lane's own", async ({ page }, info) => {
-  test.setTimeout(240_000);
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press the lane's own", async ({ page, app }, info) => {
+  // The microphone, stubbed as granted (audio_in_stub.js).
   await page.addInitScript(`try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`);
   await page.addInitScript(STUB);
-  await page.addInitScript(INIT);
-  await page.addInitScript(() => { try { for (const k of ["auracle-played", "auracle-bench-tour", "auracle-warmed"]) localStorage.setItem(k, "1"); } catch (_) {} });
-  await page.goto("/");
+  await app.boot({ wait: false });
   const anyway = page.locator("#hg-anyway");
   if (await anyway.isVisible().catch(() => false)) await anyway.click();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
+  await app.booted();
   await goLevel(page, "patch");
   const amp = { attack: 0.01, decay: 0.3, sustain: 0.95, release: 0.05 };
   const take = (n) => {
@@ -128,7 +119,7 @@ test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press
   const file = path.join(info.outputDir, "Mic-Loop.json");
   fs.writeFileSync(file, JSON.stringify(data));
   await page.setInputFiles("#patch-import-input", file);
-  await expect(page.locator("#rack-svg .take-lane").first()).toBeVisible({ timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-svg .take-lane").first()).toBeVisible({ timeout }), { ms: 60_000 });
   await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
 
   // AUDIO IN: its input line, MONITOR and NEW CLIP, each 44 px.
@@ -160,5 +151,4 @@ test("on touch, AUDIO IN's and CAPTURE's lane buttons are in the sheet and press
   }), { timeout: 15_000 }).toBe(true);
   await sheet.locator('.ms-lane-btn[data-stop="take-rec"]').tap();
   await expect(page.locator("#rack-svg .take-rec").first()).not.toHaveClass(/\bon\b/, { timeout: 15_000 });
-  expect(errors).toEqual([]);
 });
