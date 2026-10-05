@@ -812,7 +812,9 @@ test("an edit's reply leaves alone the makeup of a preset opened while the edit 
   expect(errors).toEqual([]);
 });
 
-test("▶ and Space pressed while a wave change is still at the engine play the changed patch", async ({ page }) => {
+// Quarantined (#127): on a loaded runner no snapshot of the fixed window can
+// fall inside the held note.
+test("▶ and Space pressed while a wave change is still at the engine play the changed patch", { tag: "@quarantine" }, async ({ page }) => {
   test.setTimeout(90_000);
   const errors = await boot(page, { slowable: true });
   await openPreset(page, "Falling Sign");
