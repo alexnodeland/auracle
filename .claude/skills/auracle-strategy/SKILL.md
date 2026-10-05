@@ -55,7 +55,7 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 
 Skills: `check`, `wasm`, `browser-test`, `truth-pass`, `changelog`, `film`,
 `ship`. Agents: `engine-engineer`, `web-engineer`, `film-producer`,
-`docs-writer`, `truth-auditor`, `reviewer`. The root `CLAUDE.md` says when to
+`docs-writer`, `truth-auditor`, `reviewer`. The root `AGENTS.md` (*Tooling*) and `.claude/README.md` say when to
 use each. Record a new engineering decision with `/new-adr` (principled-docs)
 and a change worth arguing about first with `/new-proposal`; outstanding work
 goes in a GitHub issue (`docs/process.md` § Issues).

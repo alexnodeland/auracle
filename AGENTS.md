@@ -107,6 +107,22 @@ contributor guide; this file does not repeat it.
 
 The `check` skill picks the right subset for what changed.
 
+## Tooling (`.claude/`)
+
+Claude Code loads these files through one-line `CLAUDE.md` shims (`@AGENTS.md`)
+beside each `AGENTS.md`; the rules live here, never in a `CLAUDE.md`. The setup
+in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
+
+- **Skills:** `auracle-strategy` (background), `check`, `wasm`, `browser-test`,
+  `truth-pass`, `changelog`, `film`, and `ship` (an issue to a merged PR).
+- **Agents:** `engine-engineer`, `web-engineer`, `docs-writer`,
+  `film-producer` build in their own worktree and commit only;
+  `truth-auditor` and `reviewer` are read-only. The operator pushes, opens the
+  PR and merges on a green check ([`docs/process.md`](docs/process.md)).
+- **Hooks:** a stale-wasm and browser-queue report at session start; no hand
+  edits to generated paths; format and syntax checks after an edit;
+  unoptimized `cargo test` on the audio crates refused.
+
 ## Where to go deeper
 
 - How the engine works: [`docs/architecture/system.md`](docs/architecture/system.md)
