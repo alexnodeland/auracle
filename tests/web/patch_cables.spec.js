@@ -155,30 +155,56 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
 
 // A player's pace between two opens, right after arriving.
 const CLICK_PACE_MS = 300;
+// How long the bench is quiet, after PATCH comes into view or a sound lands,
+// before the probe and the guess are asked (patch.js `ARRIVE_MS`).
+const ARRIVE_MS = 1_200;
 
 // The probe is a render on the engine's one thread, so one started the moment
-// PATCH comes into view is one the player's next click waits behind. Made as
-// slow as a CI runner's render here, opens in quick succession on arriving
-// were announced ("Opened …", which means the open kept you waiting) until
-// the probe waited for the bench to be quiet after an arrival (`ARRIVE_MS`).
+// PATCH comes into view is one the player's next click waits behind. It is
+// asked only once the bench has been quiet for ARRIVE_MS after an arrival or
+// an open landing, with nothing on its way, so sounds opened right after
+// arriving find no probe at the engine, nor the model's guess, asked with
+// it. Both are made as slow as a CI runner's render here, so either, gone
+// out early, would hold an open up.
 //
-// Quarantined (#120): on a slow runner the second open can land after the
-// window has closed and queue behind a probe already started.
-test("sounds opened right after arriving in PATCH are not kept waiting behind a cable probe", { tag: "@quarantine" }, async ({ page, app }) => {
+// What is checked is that window, from what the page sent and heard: both
+// opens asked, and landed, before the first probe or guess went out, and
+// that one at least ARRIVE_MS after the last open landed. Not "Opened …":
+// the page says that of any open slower than a second, and on a loaded
+// machine an open takes that long by itself (with AURACLE_CPU_THROTTLE=4 the
+// first open took 1.1 to 1.2 s, with the probe going out 1.3 s after the
+// second landed; #120).
+test("sounds opened right after arriving in PATCH are not kept waiting behind a cable probe", async ({ page, app }) => {
   await app.boot({ busy: true });
   await app.level("evolve");
   await expect(page.locator("#view-evolve")).toBeVisible();
   await app.busy({ cable_levels: 900, guess: 900 });
+  const arrived = await app.now();
   await app.level("patch");
-  const n0 = await app.toastMark();
   const rows = page.locator("#bank-list .bank-item");
+  const ids = [];
   for (const i of [1, 2]) {
     await page.waitForTimeout(CLICK_PACE_MS);
+    const id = Number(await rows.nth(i).getAttribute("data-id"));
+    ids.push(id);
     await rows.nth(i).locator(".bi-name").click();
-    await page.waitForFunction((id) => window.__aur.wb.subjectId === id, Number(await rows.nth(i).getAttribute("data-id")), { timeout: 30_000 });
+    await app.engine((timeout) => page.waitForFunction((x) => window.__aur.wb.subjectId === x, id, { timeout }), { ms: 30_000 });
   }
-  await app.quiet();
-  for (const t of await app.toasts(n0)) expect(t, "an open was kept waiting").not.toMatch(/Opened/);
+  // The window closes, and the probe goes out.
+  const probe = { type: ["cable_levels", "guess"] };
+  await app.engine((timeout) => expect.poll(async () => (await app.sent(probe, { after: arrived })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
+  const [first] = await app.sent(probe, { after: arrived });
+  const log = await app.log({ after: arrived });
+  let lastLanded = arrived;
+  for (const id of ids) {
+    const asked = log.find((e) => e.type === "sent:edit_begin" && e.id === id);
+    const landed = log.find((e) => e.type === "bench" && e.subject === id && e.at > asked.at);
+    expect(asked.at, `sound ${id} was asked inside the quiet window, before any probe`).toBeLessThan(first._at);
+    expect(landed.at, `sound ${id} landed before any probe went out`).toBeLessThan(first._at);
+    lastLanded = Math.max(lastLanded, landed.at);
+  }
+  // (Less 5 ms for the grain of the page's clock.)
+  expect(first._at - lastLanded, "the probe waited out the quiet window after the last open landed").toBeGreaterThanOrEqual(ARRIVE_MS - 5);
   await app.busy({});
 });
 
