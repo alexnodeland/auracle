@@ -171,6 +171,19 @@ changelog that edits its own past is not a record.
   and the faces in the bank and on the stage appear as they did before,
   instead of after that measurement (up to a minute on a slow machine).
 
+### Fixed: a taken offer is measured first when you come back to PERFORM
+
+- **Take an offer, look at PATCH, come back, and the taken sound's
+  measurement carries on first.** Going to another level hands PERFORM's
+  measurements to the engine's background work, and coming back hands back
+  the ones you are waiting on. A Take's measurement was left there: it waited
+  behind anything else in the background (a cable probe, the model's guess),
+  and the controls the taken sound had lost said *listening…*, with
+  *re-checking* on the status line, for longer than they needed to. The same
+  happened to a control you had just placed on the panel, which says
+  *listening…* until it is measured. Now both are yours again the moment
+  PERFORM shows, as a sound's first measurement already was.
+
 ### Fixed: a sound you keep as new is safe until it has been in a pick
 
 - **A sound you make in PATCH and keep as new is no longer replaced before

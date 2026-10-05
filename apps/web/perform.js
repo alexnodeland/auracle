@@ -1372,7 +1372,9 @@ export function createPerform(host) {
   // ---------- worker plumbing ----------
   function request(kind, msg) {
     const req = ++state.req;
-    state.pending.set(req, { kind, gen: state.gen, at: performance.now() });
+    // `bg`: asked in the engine's background lane, nobody waiting on it (see
+    // `show`, which gives the player back only what was theirs).
+    state.pending.set(req, { kind, gen: state.gen, at: performance.now(), bg: !!msg.bg });
     // A measurement carries the set it asked for (no `controls` is the six),
     // so its reply is laid on the panel it belongs to (`forPanel`).
     if (kind === "perform_wire") state.pending.get(req).set = setOf(msg.controls || PANEL_DEFAULT);
@@ -4309,11 +4311,16 @@ export function createPerform(host) {
     },
     show() {
       state.visible = true;
-      // Back in sight: a first measurement of this patch that `hide` let drop
-      // into the engine's background lane is the player's again. (A re-check
-      // is background by nature, and stays there.)
+      // Back in sight: a measurement of this patch the player was waiting on,
+      // which `hide` let drop into the engine's background lane, is theirs
+      // again: a first one, a Take's (its controls read listening… until it
+      // lands), a control just placed. One asked in the background (a
+      // re-check, a pre-warm) stays there. A Take's and a placed control's
+      // used to be left there, because they are quiet like a re-check: after
+      // a look at PATCH and back, they started only when nothing else in
+      // `later` was waiting, and gave way to whatever arrived there.
       for (const [req, p] of state.pending) {
-        if (p.kind === "perform_wire" && p.gen === state.gen && !(p.cacheAs && p.cacheAs.quiet)) {
+        if (p.kind === "perform_wire" && p.gen === state.gen && !p.bg) {
           host.send({ type: "promote", kind: "perform_wire", req });
         }
       }

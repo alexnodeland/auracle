@@ -235,3 +235,69 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   expect(errs).toEqual([]);
 });
 
+// A Take's measurement is quiet (the controls play on the wiring carried over
+// from the sound before, as they do through a re-check), but the player is
+// waiting on it: the controls the taken patch lost read listening… until it
+// lands. A look at PATCH drops PERFORM's measurements into the engine's
+// background lane (`hide`), and coming back must give this one back to the
+// player (`show`). It used to stay there, so it gave way to anything that
+// arrived in `later` and started only when nothing else there was waiting:
+// here a drift of the same patch, posted the way Wander posts one, landed
+// before it.
+test("a Take's measurement is the player's again when PERFORM comes back into sight", { tag: "@slow" }, async ({ page }) => {
+  test.setTimeout(300_000);
+  const errs = [];
+  page.on("pageerror", (e) => errs.push(e.message));
+  // The engine slowed fourfold, so the measurement is still running when
+  // PERFORM is back (AURACLE_CPU_THROTTLE, through `watch`, takes over).
+  await page.route(/\/worker\.js(\?|$)/, async (route) => {
+    const resp = await route.fetch();
+    await route.fulfill({ response: resp, body: budget.SLOW_ENGINE(4) + (await resp.text()), contentType: "text/javascript" });
+  });
+  await budget.watch(page);
+  await boot(page);
+  await openPreset(page, "Glass Pad");
+  await goLevel(page, "perform");
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
+  await page.waitForSelector(".pf-status:has-text('controls reach')", { timeout: 120_000 });
+  const ENGINE_MS = await budget.offerBudget(page, { waits: 2 });
+  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  await page.waitForSelector(".pf-offer.ready", { timeout: ENGINE_MS });
+  const takenAt = await page.evaluate(() => performance.now());
+  await page.locator(".pf-pad", { hasText: "Take" }).click();
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad (taken offer)", { timeout: 30_000 });
+  const req = await page.evaluate((t) => (window.__pwAsked.find((a) => a.at > t) || {}).req ?? null, takenAt);
+  expect(req, "the Take asked for the taken offer's measurement").not.toBeNull();
+  // To PATCH and back while it runs.
+  await goLevel(page, "patch");
+  await goLevel(page, "perform");
+  // Background work asked for after PERFORM is back: a drift of the taken
+  // patch (the tree the Take's measurement was asked about), in `later`.
+  const DRIFT = 9_100_001;
+  const posted = await page.evaluate(
+    ([r, id]) => {
+      if (window.__pwSeen.some((s) => s.type === "perform_wired" && s.req === r)) return false;
+      window.__pwEngine().postMessage({ type: "perform_drift", req: id, tree: window.__pbTree, overrides: [], locks: [], steps: 12, sigma: 0.05 });
+      return true;
+    },
+    [req, DRIFT],
+  );
+  expect(posted, "the Take's measurement was over before PERFORM came back").toBe(true);
+  await expect
+    .poll(() => page.evaluate((r) => window.__pwSeen.some((s) => s.type === "perform_wired" && s.req === r), req), {
+      timeout: ENGINE_MS,
+      message: "the engine answered the taken offer's measurement",
+    })
+    .toBe(true);
+  const order = await page.evaluate(
+    ([r, id]) => {
+      const w = window.__pwSeen.find((s) => s.type === "perform_wired" && s.req === r);
+      const d = window.__pwSeen.find((s) => s.type === "perform_drifted" && s.req === id);
+      return { wired: w.at, drifted: d ? d.at : null };
+    },
+    [req, DRIFT],
+  );
+  expect(order.drifted === null || order.wired < order.drifted, "the drift, asked for after it in the background, landed first").toBe(true);
+  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 10_000 });
+  expect(errs).toEqual([]);
+});
