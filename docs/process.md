@@ -99,11 +99,11 @@ in a plan's prose, a session's notes or a conversation.
   one question; the approved rows are committed. A sentence written in the
   existing words (most toasts and status lines) needs no row, only the voice
   check.
-- **Cache-busters:** a change to `apps/web/style.css` or `main.js` bumps its
-  `?b=` in `index.html`. When two branches both bump it, the one that merges
-  second takes a value above main's at its rebase: a cache-buster only has to
-  differ from what the browser last loaded, but a value that only rises reads
-  as history.
+- **Cache-busters:** none to bump. `index.html` names `style.css` and
+  `main.js` plainly, and the copies the site and the bundle ship get each
+  file's content hash (`www/stamppage.py`, run by `make site` and
+  `make bundle`). The modules, the worker and the engine are stamped from
+  `pkg/build.json` (`make wasm-stamp`). The dev server sends `no-store`.
 
 ## Review
 

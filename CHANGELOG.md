@@ -8,6 +8,15 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed: no cache-buster to bump by hand
+
+- `apps/web/index.html` names `style.css` and `main.js` without a `?b=`
+  number. `make site` and `make bundle` stamp the copies they ship with each
+  file's content hash (`www/stamppage.py`, tested in `make dev-check`), so a
+  deploy is fetched fresh exactly when a file changed. Two PRs that both
+  changed `main.js` used to conflict on that line and run CI again after
+  the first merged (#157).
+
 ### Added: hold ⌥ in PATCH to see what the model believes about the patch
 
 - **The belief line.** Hold ⌥ (or tap MODEL to keep it up) and the subtitle's
