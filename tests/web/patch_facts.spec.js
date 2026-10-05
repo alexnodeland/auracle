@@ -5,7 +5,9 @@
 //   face at OUT, a dashed outline of the face of the patch the structure
 //   menu's verb would leave (a processor bypassed, a source's socket empty, a
 //   modulator unplugged), rendered by the worker (`face_of_tree`); a patch
-//   that would be silent without it says so in the readout instead.
+//   that would be silent without it says so in the readout instead. Shown
+//   again it is drawn again; its own module's knobs leave it up; and the
+//   readout is not rewritten by a turn that changes nothing it says.
 //
 // - What goes here?: the selection's ⋯ (or Q on a module) asks the model's
 //   guess for that module's place (`guess`'s `at`, which the page never sent
@@ -87,21 +89,27 @@ test("the face of the patch without the selected module is drawn at OUT, measure
 
   // A knob of the selected filter leaves the patch without it as it was:
   // the outline stays, drawn, through the turn and after it.
-  await page.evaluate(() => {
-    window.__pwHid = 0;
-    const el = document.getElementById("out-without");
-    new MutationObserver(() => { if (el.hidden) window.__pwHid++; }).observe(el, { attributes: true, attributeFilter: ["hidden"] });
-  });
+  // And the readout (a polite live region), which says nothing new during
+  // the turn, is not written again for it.
   const hit = page.locator('#rack-svg .rack-controls g[data-kind="filter"] [data-addr] > .knob-hit').first();
   const b = await hit.boundingBox();
-  const t0 = await now(page);
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await expect(page.locator("#pt-read .pr-name")).toHaveText(/filter/i);
+  await page.evaluate(() => {
+    window.__pwHid = 0;
+    window.__pwDockWrites = 0;
+    const el = document.getElementById("out-without");
+    new MutationObserver(() => { if (el.hidden) window.__pwHid++; }).observe(el, { attributes: true, attributeFilter: ["hidden"] });
+    new MutationObserver(() => { window.__pwDockWrites++; }).observe(document.getElementById("pt-read"), { childList: true });
+  });
+  const t0 = await now(page);
   await page.mouse.down();
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 25, { steps: 5 });
   await page.mouse.up();
   await replied(page, "bench", t0);
   await page.waitForTimeout(800); // past the settle the outline is measured again after
   expect(await page.evaluate(() => window.__pwHid), "the outline never hid for its own module's knob").toBe(0);
+  expect(await page.evaluate(() => window.__pwDockWrites), "the readout was not rewritten with the same words").toBe(0);
   await expect(img).toHaveCount(1);
   await expect(out).toHaveAttribute("data-key", drawn.key);
 
