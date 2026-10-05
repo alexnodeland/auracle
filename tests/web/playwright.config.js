@@ -57,7 +57,11 @@ module.exports = defineConfig({
       // A WebAudio context must not wait for a gesture nobody will make.
       args: ["--autoplay-policy=no-user-gesture-required"],
     },
-    trace: "retain-on-failure",
+    // A failed test's trace, kept. On a workstation without its DOM snapshots:
+    // saving them there (Playwright 1.56, macOS) hung a failed test's teardown
+    // until its timeout and left a trace that would not open. CI's traces keep
+    // them (its failures save in seconds) and are what the run's report shows.
+    trace: process.env.CI ? "retain-on-failure" : { mode: "retain-on-failure", snapshots: false },
   },
   webServer: {
     command: `python3 ../../apps/web/serve.py ${PORT}`,
