@@ -18,15 +18,26 @@
 // by wrapping `Worker` before main.js runs.
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
+const budget = require("./perform_budget");
 
 const INIT = `(() => {
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
   const seen = (window.__pwSeen = []);
+  // The measurements the page asks for, by req, so a reply can be matched to
+  // the request it answers.
+  const asked = (window.__pwAsked = []);
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     w.__pwUrl = String(url);
     workers.push(w);
+    if (/worker\\.js/.test(w.__pwUrl)) {
+      const post = w.postMessage.bind(w);
+      w.postMessage = (m, ...rest) => {
+        if (m && m.type === "perform_wire") asked.push({ req: m.req, at: performance.now() });
+        return post(m, ...rest);
+      };
+    }
     w.addEventListener("message", (e) => {
       const d = e.data;
       if (d && typeof d.type === "string" && d.type !== "log") seen.push({ type: d.type, req: d.req, id: d.id, at: performance.now() });
@@ -166,14 +177,23 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   test.setTimeout(300_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  await budget.watch(page);
   await boot(page);
   await openPreset(page, "Glass Pad");
   await goLevel(page, "perform");
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   await page.waitForSelector(".pf-status:has-text('controls reach')", { timeout: 120_000 });
+  // Two waits on the engine's work, renders whose number and cost depend on
+  // the offer dealt, so each is bounded by the budget, not a fixed time: the
+  // offer growing, and the taken offer's own measurement. That measurement
+  // was 8 to 50 renders over 15 runs, and the more a patch has to render the
+  // longer each render takes: with the engine slowed eightfold (`SLOW_ENGINE`
+  // in perform_budget.js) it took 14 to 206 s, against offers of 12 to 53 s. A fixed two minutes failed on CI when a
+  // heavy offer was dealt (its offer took 30 s there).
+  const ENGINE_MS = await budget.offerBudget(page, { waits: 2 });
   const reachBefore = await page.evaluate(() => [0, 1, 2, 3, 4, 5].filter((i) => !document.querySelector(`.pf-knob[data-i="${i}"]`).classList.contains("unwired")).length);
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
-  await page.waitForSelector(".pf-offer.ready", { timeout: 120_000 });
+  await page.waitForSelector(".pf-offer.ready", { timeout: ENGINE_MS });
   // Blend toward the offer, as a player auditions it: the slider under the
   // two faces, dragged most of the way to B.
   const blend = page.locator(".pf-blend[data-i='6'] input");
@@ -183,6 +203,7 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   for (let i = 1; i <= 10; i++) await page.mouse.move(b.x + 2 + (i * (b.width - 4)) / 12, b.y + b.height / 2);
   await page.mouse.up();
   expect(Number(await blend.getAttribute("aria-valuenow"))).toBeGreaterThan(0.3);
+  const takenAt = await page.evaluate(() => performance.now());
   await page.locator(".pf-pad", { hasText: "Take" }).click();
   // Blend is home at once: B is empty.
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00");
@@ -196,8 +217,21 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   expect(reachAfter, "every control went dark after Take").toBeGreaterThan(0);
   const allListening = await page.evaluate(() => [...document.querySelectorAll(".pf-knob .pf-k-sub")].slice(0, 6).every((s) => /listening/.test(s.textContent)));
   expect(allListening, "every control read listening… after Take").toBe(false);
-  // …and the taken offer's own measurement lands.
-  await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
-  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 120_000 });
+  // …and the taken offer's own measurement lands: first the engine's reply
+  // to the measurement the Take asked for (its time is the engine's, so the
+  // budget's), then the status saying so straight after. Re-checking left
+  // on after that reply is PERFORM's bookkeeping, not the engine's pace.
+  const req = await page.evaluate((t) => (window.__pwAsked.find((a) => a.at > t) || {}).req ?? null, takenAt);
+  expect(req, "the Take asked for the taken offer's measurement").not.toBeNull();
+  await expect
+    .poll(() => page.evaluate((r) => window.__pwSeen.some((s) => s.type === "perform_wired" && s.req === r), req), {
+      timeout: ENGINE_MS,
+      message: "the engine answered the taken offer's measurement",
+    })
+    .toBe(true);
+  const status = page.locator(".pf-status");
+  await expect(status, "the measurement landed: the controls say what they reach").toContainText("controls reach", { timeout: 10_000 });
+  await expect(status, "the measurement landed: nothing is left re-checking").not.toContainText("re-checking", { timeout: 10_000 });
   expect(errs).toEqual([]);
 });
+
