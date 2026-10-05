@@ -6,11 +6,16 @@
 // fixture boots every other spec with a seed of its own (fixtures.js SEED).
 const { test, expect, openApp } = require("./fixtures");
 
-/** The pool a fresh session with `seed` fills: every sound's id and name. */
+/** The pool a fresh session with `seed` fills: every sound's id and its
+ *  patch (`sexpr`), which is what it sounds like. Not its name: a generated
+ *  name is read off the pool as it stood when the bank was handed over, and
+ *  is logged here, not compared. */
 async function poolOf(app) {
   await app.filled();
   const { ranked } = await app.facts();
-  return ranked.map((r) => `${r.id} ${r.name}`).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  const byId = [...ranked].sort((a, b) => a.id - b.id);
+  console.log(`names: ${byId.map((r) => `${r.id} ${r.name}`).join(", ")}`);
+  return byId.map((r) => `${r.id} ${r.sexpr}`);
 }
 
 test("the same ?seed fills the same pool on a fresh session, and another seed another", async ({ app, browser }) => {

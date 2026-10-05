@@ -159,7 +159,9 @@ deals:
 Without `?seed`, every new session starts from a random seed of its own. With
 it, a fresh session (nothing saved in this browser yet) deals the same pool of
 sounds on any machine running the same version, at any worker count, so you
-can send the address to someone and they start where you did. The pairs,
+can send the address to someone and they start where you did. (A sound you
+haven't named takes its name from the bank as it stood then, so the same
+sound can be named differently in another session.) The pairs,
 refits and offers after that draw from the same random seed, and repeat when
 the same things happen in the same order; a pair dealt before the pool has
 finished filling can still differ with the machine's speed. A saved session
