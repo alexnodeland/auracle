@@ -127,9 +127,10 @@ It shows only what the engine has:
   after your pick reads, asked again if the model refits before you pick.
 - **PATCH:** the belief line in place of the subtitle (*it’d like this 62% ·
   leaning · was 58% ▲*), what adds up to it in the readout at the well's
-  foot, what the model makes of the selected module's family, and each
-  module's edge tinted by which way your taste leans on its family
-  ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
+  foot, what the model makes of the selected module's family, each module's
+  edge tinted by which way your taste leans on its family, a chip per family
+  with what one more is worth, and the guess's two runners-up with their
+  lower bounds ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
 - **PERFORM:** nothing per control yet. The engine doesn’t say which way your
   taste leans on each control, so nothing is drawn there.
 

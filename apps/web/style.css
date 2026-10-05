@@ -5048,6 +5048,40 @@ html:not(.engineer) .dn-sig { display: none; }
    Utility is linear within a style lens, so these contributions are exact.
    "The model likes this" is a claim; "it likes this because it's bright and
    has a long tail, under your Dark Drones lens" is one you can check by ear. */
+/* ---------- worth per kind, under the model view (`paintWorth`) ----------
+   One chip per family the patch holds, in the well's top right, under its
+   top line: what one more of the family is worth to the model. Solid amber
+   for a settled lean, dashed for a guess. */
+.pt-worth {
+  position: absolute;
+  z-index: 5;
+  right: var(--s4);
+  top: calc(var(--s3) + 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s1);
+  pointer-events: none;
+}
+.pt-worth[hidden] { display: none; }
+.pt-worth-chip {
+  pointer-events: auto;
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--phos-b-40);
+  border-radius: var(--r1);
+  background: var(--panel-94);
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  letter-spacing: 0.04em;
+  color: var(--silk-dim);
+  white-space: nowrap;
+}
+.pt-worth-chip.guess { border-style: dashed; }
+.pt-worth-chip .pw-fig { font-size: var(--t-value); font-weight: 400; color: var(--phos-b); }
+.pt-worth-chip.down .pw-fig { color: var(--silk-dim); }
+.pt-worth-chip.guess .pw-fig { color: var(--phos-b-dim); }
+.pt-worth-chip .pw-note { color: var(--silk-mute); }
+
 /* ---------- the belief line: PATCH's subtitle under the model view ---------- */
 /* What the model makes of the patch in hand, in its voice (`renderBelief`):
    "it'd like this 62% · leaning · was 58% ▲". At rest the subtitle says what
@@ -6827,6 +6861,21 @@ html.xl-on .alarm { z-index: 62; }
   fill: var(--phos-b-dim);
 }
 .guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Under the model view, the ranking's next two: fainter, smaller, dashed,
+   each with its lower bound; not controls. */
+.guess-runner { pointer-events: auto; }
+.rack-guess .runner-lead { fill: none; stroke: var(--phos-b-30); stroke-width: 1.2; stroke-dasharray: 3 4; pointer-events: none; }
+.guess-runner .gr-body { fill: var(--phos-b-06); stroke: var(--phos-b-40); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.guess-runner .gr-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--phos-b-70);
+  pointer-events: none;
+}
+.guess-runner .gr-lcb { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-55); pointer-events: none; }
 /* Beside the guess plate: the patch's face, and its face with the guess, as
    rendered (Plan-005 task 3). The words under them are the rack's value tier. */
 .rack-guess .gp-face { pointer-events: none; }
@@ -7210,6 +7259,7 @@ html.xl-on .alarm { z-index: 62; }
 .pt-leg .lg-light { fill: var(--phos-a); stroke: none; }
 .pt-leg .lg-guess { stroke: var(--phos-b); stroke-width: 1.4; stroke-dasharray: 4 3; }
 .pt-leg .lg-lock { stroke: var(--phos-b); stroke-width: 1.6; }
+.pt-leg .lg-lean { stroke: var(--led-red); stroke-width: 2; stroke-opacity: 0.7; }
 .pt-leg .lg-jack { fill: var(--jack-bore); stroke: var(--phos-a); stroke-width: 1.6; }
 .pt-leg .lg-face { stroke: var(--phos-a); stroke-width: 1.4; fill: var(--phos-a-15); }
 

@@ -24,7 +24,7 @@ const init = ({ warmed }) => `(() => {
     if (/worker\\.js/.test(w.__pwUrl)) {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
-        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null });
+        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null, at: m.at ?? null, trees: m.type === "faces" ? (m.trees || []).map((x) => ({ ref: x.ref, tree: x.tree || null })) : null });
         // A crew's ports held back while __pwHoldCrew is set (holdCrew).
         if (m && m.type === "farm_ports" && window.__pwHoldCrew) {
           window.__pwHeld.push([m, t, performance.now()]);
@@ -40,10 +40,18 @@ const init = ({ warmed }) => `(() => {
       w.addEventListener("message", (e) => {
         const d = e.data;
         if (!d || typeof d.type !== "string") return;
+        // A pinned fit (pinPulls) outlives the real refits behind it: every
+        // listener sees this same data object, and this one runs first.
+        if (d.views && window.__pwPinStyles) d.views.styles = JSON.parse(JSON.stringify(window.__pwPinStyles));
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
         if (["guess", "guess_skipped", "cable_levels", "edit_rejected", "bench", "committed"].includes(d.type)) {
           replies.push({ type: d.type, t: performance.now(), data: d.data || null, error: d.error || null, tree: d.tree || d.treeJson || null, token: d.token ?? null, edited: d.edited ?? null, subject: d.subject ?? null });
+        }
+        // Every face the worker hands back, by the ref it was asked under.
+        if (d.type === "faces") {
+          for (const it of d.items || []) if (it.ref) replies.push({ type: "face", t: performance.now(), ref: it.ref, key: it.key });
+          for (const f of d.failed || []) if (f.ref) replies.push({ type: "face_failed", t: performance.now(), ref: f.ref });
         }
       });
     }
@@ -215,4 +223,20 @@ const holdCrew = (page) => page.evaluate(() => { window.__pwHoldCrew = true; });
 /** Hand the held ports over; how many crews were held. */
 const releaseCrew = (page) => page.evaluate(() => { const n = window.__pwHeld.length; window.__pwReleaseCrew(); return n; });
 
-module.exports = { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess, holdCrew, releaseCrew };
+/** Hand main.js a fit whose every style carries exactly two coefficients, a
+ *  settled one on `sure` (0.5 ± 0.1) and a guess on `unsure` (0.4 ± 0.6, an
+ *  interval across zero), as the worker would post it (`fitted`), with the
+ *  first style holding the whole pool. Pinned: a real refit or views post
+ *  that lands later keeps them (taste_marks.spec.js's method). */
+async function pinPulls(page, sure, unsure) {
+  await page.evaluate(([a, b]) => {
+    const f = window.__pwLast.fitted;
+    const v = JSON.parse(JSON.stringify(f.views));
+    const theta = [{ name: a, mean: 0.5, std: 0.1 }, { name: b, mean: 0.4, std: 0.6 }];
+    v.styles = v.styles.map((s, k) => ({ ...s, share: k === 0 ? 1 : 0, theta }));
+    window.__pwPinStyles = v.styles;
+    window.__pwEngine().dispatchEvent(new MessageEvent("message", { data: { type: "fitted", views: v, status: f.status } }));
+  }, [sure, unsure]);
+}
+
+module.exports = { boot, warmStartAndFit, openPreset, slowWorker, rankedGuess, now, replied, guessAfter, drawnGuess, holdCrew, releaseCrew, pinPulls };

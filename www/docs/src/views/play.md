@@ -269,6 +269,22 @@ one), and says so.
 amber toward, red away, stronger where the model is surer. A family it has
 only a guess about, or too little evidence for, gets no tint.
 
+**What each kind is worth,** in the well's top right: one chip for each family
+of module the patch holds, with what one more of that family is worth to the
+model, in the same units as the readout's parts (*filtering +0.12*). It is a
+chip per family, never per module: the model counts how many filters a patch
+has, not which is which, so two filters share one figure (*VCOs −0.07 · shared
+by 2*), the same wherever they sit. A figure the model isn't sure of is dashed
+and says *a guess*; a family too thin to price gets no chip. It is the price
+the catalog quotes for a module in your hand.
+
+**The guess's runners-up.** Beside the model's guess, the two it ranks next,
+fainter and smaller, each with its lower bound (*2 · DELAY, lower bound
++0.03*): the guess is ranked by that bound, what it expects the module to add
+less its doubt, so these are the next two it would show if you skipped. A
+runner-up for another place in the patch has a faint lead to it. They are only
+to read: the guess itself is what <kbd>Enter</kbd> adds.
+
 [Reading what it learned](../reading-the-model.md) says how to read all of it.
 
 ## The catalog

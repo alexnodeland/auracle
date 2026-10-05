@@ -1906,6 +1906,8 @@ let auditionClip = null;
 const patchView = createPatch({
   // The guess plate's two faces: the patch as it is, and with the guess.
   guessFace,
+  // The model view is up (hold ⌥, or MODEL): the guess's runners-up show.
+  modelOn: () => modelOn,
   words: PATCH_WORDS,
   send: (msg) => send(msg),
   visible: () => currentView === "patch",
@@ -4459,6 +4461,12 @@ function applyViews(next) {
   // many pins a restored session came back with.
   if (next && next.pinBudget) pinBudget = next.pinBudget;
   renderPinBudget();
+  // PATCH under the model view: the leans and the worth chips read the new
+  // fit, and so does what the readout says of the selected module.
+  if (modelOn) {
+    paintRackFacts();
+    renderSpecDock();
+  }
   // A pin means this can no longer happen to anything the user kept, so if it
   // somehow does, that is a bug worth shouting about rather than a policy to
   // apologise for.
@@ -13136,6 +13144,53 @@ function paintRackFacts() {
   const svg = $("rack-svg");
   if (!svg) return;
   paintLeans(svg);
+  paintWorth();
+}
+
+/** Worth per kind, under the model view: one chip per family the patch
+ *  holds, never one per module or socket. The figure is the socket price
+ *  (`socketPrice`: θ/scale for the family's count in φ, `phi_scale`, under
+ *  the bench's style), what one more of the family is worth to the model,
+ *  in the units of the belief line's parts. φ counts a family, so with two
+ *  filters the figure is shared by both and says so ("filtering +0.12 ·
+ *  shared by 2"), and it is the same wherever one sits ("prices what, not
+ *  where"). A settled lean is drawn solid; one still crossing zero dashed
+ *  and called a guess; a family too thin to price, or before the first fit,
+ *  gets no chip (the belief line says why). In the well's top right. */
+function paintWorth() {
+  const box = $("pt-worth");
+  if (!box) return;
+  const fams = new Map(); // phi -> {kind, n}
+  if (modelOn && wb.rack) {
+    for (const m of wb.rack.modules) {
+      if (m.kind === "amp" || isEmptySocketMod(m)) continue;
+      const phi = MOD_BY_KIND[m.kind]?.phi;
+      if (!phi) continue;
+      const f = fams.get(phi) || { kind: m.kind, n: 0 };
+      f.n += 1;
+      fams.set(phi, f);
+    }
+  }
+  const chips = [];
+  for (const [phi, f] of fams) {
+    const p = socketPrice(f.kind, "insert", null);
+    if (!p || (p.state !== "resolved" && p.state !== "flat")) continue;
+    chips.push({ phi, n: f.n, p });
+  }
+  chips.sort((a, b) => Math.abs(b.p.du) - Math.abs(a.p.du));
+  box.hidden = chips.length === 0;
+  box.innerHTML = chips
+    .map(({ phi, n, p }) => {
+      const guess = p.state === "flat";
+      const fig = guess ? `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}` : PRICE_SIGN(p.du);
+      return `<span class="pt-worth-chip${guess ? " guess" : p.du >= 0 ? " up" : " down"}" data-phi="${esc(phi)}" data-n="${n}" ` +
+        `title="What one more of these is worth to it">` +
+        `<span class="pw-fam">${esc(niceName(phi))}</span> <b class="pw-fig mono">${fig}</b>` +
+        (guess ? ` <span class="pw-note">a guess</span>` : "") +
+        (n > 1 ? ` <span class="pw-note">· shared by ${n}</span>` : "") +
+        `</span>`;
+    })
+    .join("");
 }
 
 /** The family lean on each plate, under the model view only. */
@@ -18600,7 +18655,7 @@ function priceWhatNotWhere(p) {
     `The model’s structural features count modules; they don’t record which cable a module sits on. ` +
     `So this prices what you are adding, not where: it is the same number at every lit socket. ` +
     `It covers the module count only. How it will actually sound is the ▶ beside it.` +
-    (p && p.lens ? `\n\nIn the style “${p.lens}”, the same one the guess above the rack reads.` : "")
+    (p && p.lens ? `\n\nIn the style “${p.lens}”, the same one the belief line reads.` : "")
   );
 }
 
@@ -21153,6 +21208,7 @@ function modelViewChanged(on) {
   // runners-up, and what the model makes of the selection in the readout.
   // The belief line in the subtitle is CSS (`body.model-view`).
   paintRackFacts();
+  patchView.modelViewChanged();
   renderSpecDock();
 }
 /** Redraw the bank, and let each row that moved glide from where it was.

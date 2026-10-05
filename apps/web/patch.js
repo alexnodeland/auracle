@@ -430,15 +430,89 @@ export function createPatch(host) {
     if (host.guessFace) host.guessFace(g, at, layer, guess.tree);
     // Over a narrow socket the words can be wider than the plate: condensed
     // to fit, as the rack's own silkscreen is (`fitLabels`).
-    for (const t of [t1, t2, t3]) {
-      const avail = at.w - (t === t1 ? 40 : 24);
-      let w = 0;
-      try { w = t.getBBox().width; } catch (_) { w = 0; }
-      if (w > avail) {
-        t.setAttribute("textLength", avail.toFixed(1));
-        t.setAttribute("lengthAdjust", "spacingAndGlyphs");
-      }
+    for (const t of [t1, t2, t3]) condense(t, at.w - (t === t1 ? 40 : 24));
+    // Under the model view, the ranking's next two (`guess_rank` ranks them
+    // by the lower bound of the gain, mean − 1 sd, best first): fainter
+    // dashed chips at their own sockets, each with its lower bound. Drawn
+    // only while the view is up; the top guess stays as it is.
+    if (host.modelOn && host.modelOn()) drawRunnersUp(layer, at);
+  }
+
+  function condense(t, avail) {
+    let w = 0;
+    try { w = t.getBBox().width; } catch (_) { w = 0; }
+    if (w > avail) {
+      t.setAttribute("textLength", avail.toFixed(1));
+      t.setAttribute("lengthAdjust", "spacingAndGlyphs");
     }
+  }
+
+  // A runner-up: smaller than the top guess, fainter, not a control (the top
+  // guess is the one Enter takes; skipping it shows the next).
+  const RW = 132;
+  const RH = 44;
+  function drawRunnersUp(layer, top) {
+    const list = (guess.data && guess.data.guesses) || [];
+    const taken = [{ x: top.x, y: top.y, w: top.w, h: top.h }];
+    // The faces beside the top guess, as `guessFace` lays them out.
+    taken.push({ x: top.x + top.w, y: top.y, w: 150, h: top.h });
+    const plates = [...host.rackBoxes().values()].map((b) => ({ x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 }));
+    const cam = cameraBox();
+    const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const inCam = (b) => !cam || (b.x >= cam.x && b.y >= cam.y + 44 / cam.s && b.x + b.w <= cam.x + cam.w && b.y + b.h <= cam.y + cam.h - 12 / cam.s);
+    const clear = (b) => inCam(b) && !plates.some((q) => overlaps(b, q)) && !taken.some((q) => overlaps(b, q));
+    list.slice(1, 3).forEach((g, i) => {
+      const spot = placeOf(g);
+      if (!spot) return;
+      // Near its own socket (where the top guess would go for it, at the
+      // runner's size), else beside the top guess, above it, or under the
+      // patch: the first place that covers no module, no other guess and
+      // stays in the camera's view. A modulation guess hangs under its plate.
+      const own = { x: spot.x + Math.max(0, (spot.w - RW) / 2), y: spot.over ? spot.y + spot.h + 10 : spot.y, w: RW, h: RH };
+      const prev = taken[taken.length - 1];
+      const bottom = Math.max(...plates.map((q) => q.y + q.h), top.y + top.h);
+      const tries = [
+        own,
+        { ...own, x: top.x - RW - 10, y: top.y },
+        { ...own, x: top.x - RW - 10, y: top.y + RH + 8 },
+        { ...own, x: top.x, y: top.y - RH - 8 },
+        { ...own, x: prev.x, y: prev.y - RH - 8 },
+        { ...own, x: top.x, y: bottom + 8 + i * (RH + 8) },
+      ];
+      const box = tries.find(clear) || own;
+      taken.push(box);
+      // A socket other than the top guess's gets a faint lead to it.
+      const at = spot.lead ? [spot.lead[2], spot.lead[3]] : spot.over ? [spot.x + spot.w / 2, spot.y + spot.h] : null;
+      if (at && g.socket !== list[0].socket) {
+        const fromTop = box.y > at[1];
+        layer.appendChild(svgEl("path", { d: `M ${box.x + RW / 2} ${fromTop ? box.y : box.y + RH} L ${at[0]} ${at[1]}` }, "runner-lead"));
+      }
+      const name = nameOfKind(g.kind);
+      const lcb = `lower bound ${g.lcb >= 0 ? "+" : "−"}${Math.abs(g.lcb).toFixed(2)}`;
+      const chip = svgEl("g", {
+        transform: `translate(${box.x.toFixed(1)},${box.y.toFixed(1)})`,
+        role: "img",
+        "data-rank": i + 2, "data-kind": g.kind, "data-socket": g.socket, "data-lcb": g.lcb,
+        "aria-label": `The model's guess number ${i + 2}: ${name}, ${lcb}`,
+      }, "guess-runner");
+      chip.appendChild(svgEl("rect", { x: 0, y: 0, width: RW, height: RH, rx: 6 }, "gr-body"));
+      const n = svgEl("text", { x: 10, y: 18 }, "gr-name");
+      n.textContent = `${i + 2} · ${name}`;
+      const l = svgEl("text", { x: 10, y: RH - 11 }, "gr-lcb");
+      l.textContent = lcb;
+      chip.append(n, l);
+      const tt = svgEl("title");
+      tt.textContent = "Ranked by its lower bound";
+      chip.appendChild(tt);
+      layer.appendChild(chip);
+      condense(n, RW - 20);
+      condense(l, RW - 20);
+    });
+  }
+
+  /** The model view came or went: the runners-up with it. */
+  function modelViewChanged() {
+    drawGuess();
   }
 
   // The module rail's row for the guessed kind carries an amber mark, left of
@@ -1157,6 +1231,7 @@ export function createPatch(host) {
     onWorker,
     benchLanded,
     rackBuilt,
+    modelViewChanged,
     platesMoved,
     cameraMoved,
     restLevel,
