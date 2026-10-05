@@ -15,26 +15,45 @@ procedure. You are the operator: agents build and commit, you review, push,
 open the PR, merge and clean up. Keep at most two streams in flight, never two
 on the same files.
 
+Every command names the repository explicitly, so it works from any session
+directory:
+
+```bash
+REPO=/absolute/path/to/auracle          # the main checkout
+WT="$REPO/../auracle-wt-<topic>"        # this task's worktree
+GH="gh -R alexnodeland/auracle"
+```
+
 ## 1. The issue
 
 ```bash
-gh issue view <n>                       # the task, its plan, its brief
-gh issue list --milestone "<milestone>" --state open
+$GH issue view <n>                       # the task, its plan, its brief
+$GH issue list --milestone "<milestone>" --state open
 ```
 
-No issue yet? Open one first (`gh issue create --template "Task"`, or
-`--template "Flaky test"`) with its type label, area labels, plan label and
-milestone.
+No issue yet? Open one first. `gh issue create --template` does not work
+non-interactively, and a template's labels aren't applied from the command
+line, so pass the body and the labels yourself:
+
+```bash
+$GH issue create --title "<what is true when done>" \
+  --body-file <(sed '1,/^---$/d' "$REPO/.github/ISSUE_TEMPLATE/task.md") \
+  --label task --label area:<area> --label plan-<nnn> --milestone "<milestone>"
+```
+
+(`flake.md` with `--label flake --label area:tests` for a flaky test.) Then
+edit the body to fill the template's sections.
 
 ## 2. A worktree and a branch
 
 ```bash
-git -C <repo> fetch -q origin
-git -C <repo> worktree add -q -b claude/<topic> ../auracle-wt-<topic> origin/main
+git -C "$REPO" fetch -q origin
+git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
 ```
 
-Pick a free port for the branch's browser runs (`AURACLE_TEST_PORT`, e.g.
-8771–8799) and say it in the brief.
+Pick a free port for the branch's browser runs (8771 and up) and put it in the
+brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
+`browser-fast` and `browser-slow` all use it.
 
 ## 3. The brief
 
@@ -44,15 +63,15 @@ to ask:
 - the scope, the decisions already made (don't re-ask), and what not to touch
   (files another stream is changing);
 - the rules: commit only, never push or open a PR; small commits; `Refs #<n>`
-  in commit messages; the commit trailer rules (no `Co-Authored-By`, no model
-  names; the session link line last, when the session asks for one);
+  in commit messages; no hand-written attribution (`Co-Authored-By`, model
+  names); the session link line last, when the session asks for one;
 - the gates: the `check` skill's set for what changes, the specs it adds or
   touches through `one_browser.sh` on its port (`make browser-changed`), no
   full suite;
 - drop no functionality: a before → after table for anything moved or
   retired, by mouse, keyboard and touch;
-- descriptions stay true in the same change; new `voice.md` rows drafted in
-  the report, not committed;
+- descriptions stay true in the same change; rows for new words that
+  `voice.md`'s table governs drafted in the report, not committed;
 - the report: head SHA, gates and spec counts, the before → after table,
   meaning changes to specs, voice drafts, anything left open.
 
@@ -61,21 +80,23 @@ Hand it to the area's agent (`web-engineer`, `engine-engineer`,
 
 ## 4. Review before the PR
 
-When the builder reports, rebase on `origin/main` yourself (resolve, bump
-`?b=` cache-busters that collide), run the quick gates, then hand the branch to
-the `reviewer` agent: the diff (`git log origin/main..HEAD`), the brief, and
-what to hunt for. Send its findings back to the builder (the same agent, so it
-keeps its context); have only the fixes re-reviewed. A finding you decline goes
-in the PR body with the reason.
+When the builder reports, run the quick gates in `$WT`, then hand the branch to
+the `reviewer` agent: the diff (`git -C "$WT" log origin/main..HEAD`), the
+brief, and what to hunt for. Send its findings back to the builder (the same
+agent, so it keeps its context); have only the fixes re-reviewed. A finding you
+decline goes in the PR body with the reason.
 
-New `voice.md` rows: ask the maintainer once for the batch, then have the
-builder commit the approved rows.
+Rebase now only to resolve a conflict with `main` (resolve, and give a
+colliding `?b=` cache-buster the next value above main's).
+
+New words for `voice.md`'s table: ask the maintainer once for the batch, then
+have the builder commit the approved rows.
 
 ## 5. The PR
 
 ```bash
-git -C ../auracle-wt-<topic> push -q -u origin claude/<topic>
-gh pr create --base main --head claude/<topic> \
+git -C "$WT" push -q -u origin claude/<topic>
+$GH pr create --base main --head claude/<topic> \
   --title "<what is true now>" --body-file <scratch>/pr-<topic>.md
 ```
 
@@ -86,35 +107,53 @@ when an agent session made it, the session's link line last.
 ## 6. CI, waited on by state
 
 ```bash
-sha=$(gh pr view <n> --json headRefOid -q .headRefOid)
-until [ "$(gh run list --workflow ci.yml --branch claude/<topic> \
+sha=$($GH pr view <n> --json headRefOid -q .headRefOid)
+until [ "$($GH run list --workflow ci.yml --branch claude/<topic> \
   --json headSha,status -q "[.[] | select(.headSha==\"$sha\")][0].status")" = completed ]; do sleep 30; done
-gh run list --workflow ci.yml --branch claude/<topic> --limit 1 --json databaseId,conclusion
-gh run view <run> --json jobs -q '.jobs[] | "\(.name) \(.conclusion)"'
+$GH run list --workflow ci.yml --branch claude/<topic> \
+  --json databaseId,conclusion,headSha -q "[.[] | select(.headSha==\"$sha\")][0]"
+$GH run view <run> --json jobs -q '.jobs[] | "\(.name) \(.conclusion)"'
 ```
 
 Run the wait in the background; never sleep a fixed time and assume. A red
-run: `gh run view <run> --log-failed`, and the run summary's merged browser
+run: `$GH run view <run> --log-failed`, and the run summary's merged browser
 report. The app or the test is fixed on the branch; a flake is fixed or
 quarantined (`process.md` § Flakes). Never re-run a red check until it
 passes.
 
-## 7. The merge
+## 7. Catch up, then merge
+
+If `main` moved since the PR's CI run and the PR touches the app, the tests,
+the crates or CI (`apps/`, `tests/`, `crates/`, `Cargo.*`, the `Makefile`,
+`.github/`):
 
 ```bash
-gh pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
+git -C "$WT" fetch -q origin
+git -C "$WT" rebase origin/main
+git -C "$WT" push -q --force-with-lease
 ```
 
-Only on green, only the SHA that was checked. Then watch `main`'s run: it
-reuses the PR's verdict when the files are identical, and deploys the site
-once green.
+then wait for CI on the new head (step 6, with the new `sha`). A PR that
+changes only docs may merge behind `main`; `main`'s run then verifies it in
+full.
+
+```bash
+$GH pr merge <n> --squash --match-head-commit "$sha" --subject "<title> (#<n>)"
+```
+
+Only on green, only the SHA that was checked; `main`'s ruleset refuses
+anything else. Then watch `main`'s run: it reuses the PR's verdict when the
+merged files are exactly the tested ones, and deploys the site once green.
 
 ## 8. Clean up
 
+The PR's branch deletes itself on GitHub when it merges. Remove the worktree
+and the local branch:
+
 ```bash
-git -C <repo> worktree remove ../auracle-wt-<topic>
-git -C <repo> branch -D claude/<topic>
-gh issue view <n> --json state          # closed by "Closes #<n>"; close it by hand if not
+git -C "$REPO" worktree remove "$WT"
+git -C "$REPO" branch -D claude/<topic>
+$GH issue view <n> --json state       # closed by "Closes #<n>"; close it by hand if not
 ```
 
 Update the plan's progress table (the task's issue and PR) when the PR did not.
