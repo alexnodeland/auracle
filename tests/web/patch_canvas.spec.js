@@ -25,13 +25,14 @@
 // - Audio cables are curves between the jacks; a two-input module names its
 //   inputs (a, b) outside the plate, by the cables; the modulation cable's
 //   words ("depth 25% · 0.51 Hz") show at that fit.
-// - The scope is folded until asked for; the belief line is on the well's
-//   top line and says nothing without a guess; TEACH counts the picks in one
-//   place, the chip at the well's foot.
+// - The scope is folded until asked for; the belief line is the subtitle's
+//   under the model view only, and without a guess says why; TEACH counts
+//   the picks in one place, the chip at the well's foot.
 // - "Undo to as opened" waits for a sound on its way: pressed while another
 //   opens, it posts nothing and says why (so does ⌘Z, which waits).
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, now, replied, slowWorker } = require("./patch_page");
+const { modelView } = require("./shell");
 
 /** The rack's counts, as the head should say them. */
 const counts = (page) => page.evaluate(() => {
@@ -306,16 +307,24 @@ test("audio cables curve between the jacks, a two-input module names its inputs 
   expect(errors).toEqual([]);
 });
 
-test("the scope is folded until asked for, the belief line says nothing without a guess, and TEACH counts the picks in one place", async ({ page }) => {
+test("the scope is folded until asked for, the belief line is the model view's and says why it has no guess, and TEACH counts the picks in one place", async ({ page }) => {
   test.setTimeout(180_000);
   const errors = await boot(page, { warmed: true });
   await openPreset(page, "Reese");
   await expect(page.locator("#scope-shell")).toBeHidden();
-  // The belief line: inside the well, quiet with no picks.
-  expect(await page.locator("#rack-frame #belief-row").count()).toBe(1);
+  // The belief line: in the subtitle, hidden at rest, where the subtitle
+  // says what the patch is made of.
+  expect(await page.locator(".pt-sub #belief").count()).toBe(1);
+  await expect(page.locator("#belief")).toBeHidden();
+  await expect(page.locator("#rack-meta")).toBeVisible();
+  // Under the model view the subtitle becomes it: with no picks, its limit.
+  await modelView(page, true);
+  await expect(page.locator("#belief")).toBeVisible();
+  await expect(page.locator("#rack-meta")).toBeHidden();
   await expect(page.locator("#belief .bl-u")).toHaveCount(0);
-  const quiet = await page.evaluate(() => [...document.querySelectorAll("#belief > *")].every((e) => getComputedStyle(e).display === "none"));
-  expect(quiet).toBe(true);
+  await expect(page.locator("#belief .bl-none")).toHaveText("no guess yet: it needs a few picks first");
+  await modelView(page, false);
+  await expect(page.locator("#belief")).toBeHidden();
   // A pair dealt: the chip counts the picks, and the head says nothing more.
   await expect(page.locator("#pt-teach")).toBeVisible({ timeout: 90_000 });
   await expect(page.locator("#pt-teach")).toHaveText("teach · 6 picks ▸");

@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=75">
+<link rel="stylesheet" href="style.css?b=76">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -336,8 +336,10 @@
             <h1 class="pt-title subject-name" id="rack-subject">no sound open</h1>
             <!-- The subtitle: what the rack is made of, and what is happening
                  to it (opening, waiting, silent, locks). The budget joins it
-                 near a ceiling, or under Show measurements. -->
-            <p class="pt-sub"><span class="subject-meta" id="rack-meta"></span><span class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></span></p>
+                 near a ceiling, or under Show measurements. Under the model
+                 view (⌥, or MODEL) it becomes the belief line: what the model
+                 makes of the patch in hand (`renderBelief`), in its voice. -->
+            <p class="pt-sub"><span class="subject-meta" id="rack-meta"></span><span class="belief" id="belief" role="status"></span><span class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></span></p>
               <!-- The edit bar: shown only once something was edited (its slot
                    is kept, so nothing beside it moves). KEEP AS NEW plays your
                    edit against the original and asks; with "pick the edit"
@@ -484,7 +486,7 @@
               <!-- The camera, quiet in the corner (Plan-008 C2a): fit, out,
                    in, the map (where its bookmarks are), and the layout's ▾
                    (chain, compact, by hand; snap and reset for by hand; the
-                   level of detail; leans). Every gesture stays on the canvas:
+                   level of detail). Every gesture stays on the canvas:
                    the wheel and a drag pan, ctrl-wheel or a pinch zooms at the
                    pointer, Space+drag and a middle drag pan, ⌘0 ⌘− ⌘=. -->
               <div class="pt-corner" id="pt-corner" role="toolbar" aria-label="The camera">
@@ -508,7 +510,6 @@
                     <!-- Rewritten by `syncLodBtn`: the threshold is a function of
                          the frame's height. -->
                     <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="pt-mi" id="rack-lod" type="button" role="menuitem" aria-pressed="false">detail auto</button></span>
-                    <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="pt-mi" id="rack-belief" type="button" role="menuitemcheckbox" aria-checked="false" aria-pressed="false">leans</button></span>
                   </div>
                 </div>
               </div>
@@ -586,14 +587,6 @@
                    reason in the model's italic, over the rack's top left. Its
                    module is drawn at its socket in the rack (patch.js). -->
               <div class="guess-read" id="guess-read" role="status" hidden></div>
-              <!-- What the model makes of the patch in hand, on the well's top
-                   line (the specimen's), when it has a guess; the module guess
-                   and the thing in hand take the line while they are up.
-                   TODO(Plan-008 C2b): under ⌥ it becomes the subtitle's
-                   belief line. -->
-              <div class="belief-row mono" id="belief-row">
-                <div class="belief" id="belief" role="status"></div>
-              </div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
           </div>

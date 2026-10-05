@@ -191,7 +191,6 @@ a menu:
 | **snap to the grid** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
 | **reset positions** | Throw away the hand positions, and lay the patch out along the signal chain again |
 | **detail** | **automatic** leaves off labels too small to read (names and settings print larger), and leaves three knobs to read on modules too small to grab; or force **full** or **compact** |
-| **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
 **snap** and **reset** act only on a layout by hand. Positions are kept for each patch,
 survive a reload and a ⚡ generation, and travel in a downloaded patch file. If
@@ -296,6 +295,6 @@ The picture carries the patch inside it: open an Auracle PNG or SVG with
 ## What to try next
 
 - Lock a module you like and press ⚡ EVOLVE FROM THIS a few times.
-- Turn **leans** on (in the layout's ▾), and see which kinds of module your
-  taste leans toward.
+- Hold <kbd>⌥</kbd> (the [model view](./views/play.md#the-model-view-in-patch)),
+  and see which kinds of module your taste leans toward.
 - [Wiring and the catalog](./wiring.md): add a module, or rewire one.

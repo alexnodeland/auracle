@@ -6718,7 +6718,7 @@ function renderDealRule() {
 // lens that claims the most of the pool, which is usually but not always this
 // one; two numbers from two lenses sitting next to each other is a
 // disagreement the player would have no way to see.
-const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], stale: false, has: false };
+const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], all: [], stale: false, has: false };
 
 /** An edit has gone out; whatever is on screen is about to be untrue. */
 function beliefStale() {
@@ -6742,6 +6742,8 @@ function applyBelief(m) {
     belief.u = null;
     belief.prev = null;
     belief.styleK = null;
+    belief.all = [];
+    belief.top = [];
   } else {
     // A subject load is a new patch, not a move: it has no "was".
     if (m.subject !== undefined) belief.prev = null;
@@ -6750,7 +6752,10 @@ function applyBelief(m) {
     belief.sd = u.sd;
     belief.lens = u.lens || "";
     belief.styleK = ex && typeof ex.style === "number" ? ex.style : null;
-    belief.top = ex && ex.contributions ? ex.contributions.slice(0, 3) : [];
+    // Every part, for a module's own under the model view (`modulePart`),
+    // and the three largest for the patch's line.
+    belief.all = ex && ex.contributions ? ex.contributions : [];
+    belief.top = belief.all.slice(0, 3);
     belief.has = true;
     belief.stale = false;
   }
@@ -6770,6 +6775,12 @@ function styleClause() {
   return /^style \d+$/.test(name) ? `in ${esc(name)}` : `in your <b>${esc(name)}</b> style`;
 }
 
+// The belief line: PATCH's subtitle under the model view (⌥, or MODEL),
+// hidden at rest (style.css). What the model makes of the patch in hand, in
+// its voice: "it’d like this 62% · leaning · was 58% ▲" (`edit_utility`, on
+// the bank's scale), or the limit it is at. The parts that add up to it, the
+// style judging it and the utility itself are the readout's under the model
+// view (`beliefParts`), with nothing selected.
 function renderBelief() {
   const el = $("belief");
   if (!el) return;
@@ -6792,16 +6803,14 @@ function renderBelief() {
     el.innerHTML = wb.subjectId == null
       ? ""
       : `<span class="bl-none">${why}</span>`;
-    el.title = "";
+    renderSpecDock();
     return;
   }
   el.classList.toggle("stale", belief.stale);
   // Drawn on the bank's scale, not the model's. The posterior mean is an
   // unbounded log-odds and the bank's bars have always shown `sq()` of it, so
-  // a raw 1.43 above the rack would be a *different number for the same claim*
-  // sitting a few hundred pixels from the bar it contradicts. The contributions
-  // below stay in utility units — they are an exact decomposition of that
-  // quantity and squashing them would make them stop summing.
+  // a raw 1.43 in the head would be a *different number for the same claim*
+  // sitting a few hundred pixels from the bar it contradicts.
   const u = sq(belief.u);
   const prev = belief.prev == null ? null : sq(belief.prev);
   const d = prev == null ? null : u - prev;
@@ -6810,22 +6819,32 @@ function renderBelief() {
   // would point at a change the number it sits next to does not show.
   const [uPct, prevPct] = [Math.round(u * 100), prev == null ? null : Math.round(prev * 100)];
   const arrow = prevPct == null || uPct === prevPct ? "" :
-    `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
+    ` <span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
   const was = prevPct == null ? "" :
-    `<span class="bl-was">(was ${prevPct}%)</span>`;
+    ` <span class="bl-was">· was ${prevPct}%</span>`;
+  const [pctText, sure] = guessLabel(u).split(" · ");
+  el.innerHTML =
+    `<span class="bl-voice">it’d like this</span> <b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span>${was}${arrow}` +
+    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
+  renderSpecDock();
+}
+
+/** What adds up to the belief line, for the readout under the model view
+ *  with nothing selected: the three largest parts of the patch's utility (an
+ *  exact decomposition, `edit_explain`, in utility units, so they are not
+ *  squashed), the style judging it, and the utility with its doubt. Null
+ *  without a guess (the subtitle says why). */
+function beliefParts() {
+  if (!belief.has) return null;
   const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
     return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
-  const [pctText, sure] = guessLabel(u).split(" · ");
-  el.innerHTML =
-    `<b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span> ${was}${arrow}` +
-    (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
+  return (
+    (parts.length ? `<span class="pr-parts mono">${parts.join(" · ")}</span>` : "") +
     (belief.lens ? ` <span class="ex-lens">${styleClause()}</span>` : "") +
-    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
-  el.title = belief.stale
-    ? "An edit is on its way. This is its guess for the sound before it."
-    : `Its guess for the sound you’re playing, the same one the bank’s bar draws (utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}). The qualities beside it add up to that utility.`;
+    ` <span class="pr-u mono">utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}</span>`
+  );
 }
 
 // ---------- the structural budget ----------
@@ -10947,7 +10966,6 @@ function rackShapeOf(rack, build) {
       build.compact,
       layoutMode,
       build.places ? [...build.places].sort((a, b) => (a[0] < b[0] ? -1 : 1)) : null,
-      !!beliefOverlay,
       portTrace.mid ?? null,
     ],
     (key, v) => {
@@ -11134,11 +11152,11 @@ function renderRack(rebuild = false) {
   // the PATCH film's second drag, straight after a first one's reply,
   // failed on exactly that. It is also most of the cost of a reply.
   const shape = rackShapeOf(wb.rack, build);
-  // Not while the probe or the belief overlay is up: both draw from state
-  // that moves without the rack's shape moving (a trace landing, the pool's
-  // support), and they are redrawn by rebuilding.
-  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn && !beliefOverlay) {
+  // Not while the probe is up: it draws from state that moves without the
+  // rack's shape moving (a trace landing), and is redrawn by rebuilding.
+  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn) {
     repaintRackInPlace(wb.rack);
+    paintRackFacts();
     return;
   }
   // A new shape is new DOM, and new DOM is never built under a hand that is
@@ -11196,6 +11214,8 @@ function renderRack(rebuild = false) {
 
   // The guess and the level marks, over the rack just built.
   patchView.rackBuilt();
+  // …and what the engine says about it, drawn over the plates.
+  paintRackFacts();
 }
 
 // The head, to the specimen (Plan-008 C2a): the cap (PATCH, and the family
@@ -11319,7 +11339,6 @@ function buildRack(svg, rack, opts) {
   // The belief tint is a read of the posterior, and the posterior is the same
   // for every plate — so the support counts are gathered once per build rather
   // than once per module.
-  const beliefSup = interactive && beliefOverlay && !compact ? nbSupport() : null;
   svg.innerHTML = "";
   // Compact draws each plate's name and setting larger, to read at the zoom
   // that chose it (style.css `.lod-compact`).
@@ -11610,13 +11629,6 @@ function buildRack(svg, rack, opts) {
     // plate and a blurred filter region the compositor still has to paint.
     if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
     plateG.appendChild(plate);
-    // The opt-in belief tint, immediately over the panel and under everything
-    // printed on it — an edge, the way a coloured band on a resistor is an
-    // edge, rather than a wash that would fight the silkscreen.
-    if (beliefSup && !isEmpty) {
-      const edge = beliefEdge(m, p, beliefSup);
-      if (edge) plateG.appendChild(edge);
-    }
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
@@ -13058,13 +13070,12 @@ $("rack-lod").onclick = () => {
 };
 syncLodBtn();
 
-// ---------- belief overlay ----------
+// ---------- the family lean, under the model view ----------
 // WS-9: which parts of your patch the model has an opinion about, at a glance.
-// It lives beside the arrangement and detail switches because it is the same
-// kind of control — a way of *reading* the rack, not a way of changing it —
-// and it is off by default because it is a second colour law running over the
-// first, and the first one (green carries signal, amber is the model's mind)
-// has to be legible on its own.
+// Drawn under the model view only (hold ⌥, or MODEL; Plan-008 C2b), where the
+// layout's ▾ used to hold a toggle for it: it is a second colour law running
+// over the first (green carries signal, amber is the model's mind), so it is
+// raised with the rest of what the model believes and goes when that goes.
 //
 // The honesty, which is the whole design: φ_struct counts **families**.
 // `n_filter` says how many filters a patch has; there is no coordinate in
@@ -13073,38 +13084,6 @@ syncLodBtn();
 // nothing is drawn at all for a coefficient that is not resolved — the same
 // law `nbPaintTheta` runs under, for the same reason: a tint without evidence
 // is a lie with a colour.
-let beliefOverlay = localStorage.getItem("auracle-belief") === "1";
-function syncBeliefBtn() {
-  const b = $("rack-belief");
-  if (!b) return;
-  b.setAttribute("aria-pressed", String(beliefOverlay));
-  b.setAttribute("aria-checked", String(beliefOverlay));
-  b.closest(".tt").title = beliefOverlay
-    ? "Leans: on. An amber edge means your taste leans toward that kind of module, red away, "
-      + "stronger where the model is surer. It reads the kind, not this module: φ counts how many "
-      + "filters a patch has, not which filter. Click to turn it off."
-    : "Tint each module by which way your taste leans on its kind: amber toward, "
-      + "red away, stronger where the model is surer. Off by default.";
-}
-$("rack-belief").onclick = () => {
-  beliefOverlay = !beliefOverlay;
-  try { localStorage.setItem("auracle-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
-  syncBeliefBtn();
-  renderRack();
-  // A control whose whole effect can be "nothing visibly changed" owes the
-  // player the reason: an unfitted posterior, or a bank too thin to resolve
-  // any coefficient, paints no edges at all and looks exactly like a dead
-  // button.
-  if (beliefOverlay && wb.rack) {
-    const sup = nbSupport();
-    const lit = wb.rack.modules.filter((m) => beliefResolved(m, sup)).length;
-    if (lit === 0) {
-      note("Leans is on, but the model has no settled lean on anything in this patch yet. Make a few more picks.");
-    }
-  }
-};
-syncBeliefBtn();
-
 /** What the posterior has resolved about this module's family, or null — which
  *  is the answer for anything the taste model does not measure, has not been
  *  fitted for, has too few patches carrying, or has only a guess about (an
@@ -13145,6 +13124,39 @@ function beliefEdge(m, p, sup) {
   r.appendChild(tt);
   return r;
 }
+
+/** What the engine says about the patch on the canvas, drawn over the
+ *  plates the build left, never by rebuilding them (so no knob is replaced
+ *  under a held pointer, and letting go of ⌥ restores exactly the canvas at
+ *  rest): under the model view, each plate's family lean (`beliefEdge`) and
+ *  the worth chips (`paintWorth`); at rest, what a generation changed
+ *  (`paintLineage`). Called after every build and every repaint in place,
+ *  and when the model view comes or goes. */
+function paintRackFacts() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  paintLeans(svg);
+}
+
+/** The family lean on each plate, under the model view only. */
+function paintLeans(svg) {
+  for (const e of svg.querySelectorAll(".rack-plates .belief-edge")) e.remove();
+  if (!modelOn || !wb.rack || effectiveLod() === "compact") return;
+  const sup = nbSupport();
+  for (const g of svg.querySelectorAll(".rack-plates > g[data-key]")) {
+    const m = wb.rack.modules.find((x) => x.key === g.getAttribute("data-key"));
+    if (!m || isEmptySocketMod(m)) continue;
+    const plate = g.querySelector(".mod-plate");
+    if (!plate) continue;
+    const p = { w: Number(plate.getAttribute("width")) || 0, h: Number(plate.getAttribute("height")) || 0 };
+    const edge = beliefEdge(m, p, sup);
+    // Immediately over the panel and under everything printed on it: an
+    // edge, the way a coloured band on a resistor is an edge, rather than a
+    // wash that would fight the silkscreen.
+    if (edge) plate.after(edge);
+  }
+}
+const isEmptySocketMod = (m) => isPlaceholderKey(m.key) || m.kind === "silence";
 
 // ---------- fits and moves ----------
 function cancelTween() {
@@ -18386,8 +18398,13 @@ function renderSpecDock() {
   const key = plateHover ?? plateSel;
   const mod = key != null ? wb.rack?.modules.find((x) => x.key === key) : null;
   if (!mod) {
-    dock.className = "pt-read rest";
-    dock.innerHTML = "";
+    // Under the model view, with nothing selected: what adds up to the
+    // belief line in the subtitle (`beliefParts`). At rest, nothing.
+    const parts = modelOn && wb.rack ? beliefParts() : null;
+    dock.className = parts ? "pt-read sel model" : "pt-read rest";
+    dock.innerHTML = parts
+      ? `<div class="pr-line"><span class="pr-name">the patch</span><span class="pr-says pr-belief">${parts}</span></div>`
+      : "";
     return;
   }
   const empty = isPlaceholderKey(mod.key) || mod.kind === "silence";
@@ -18396,13 +18413,33 @@ function renderSpecDock() {
   const says = empty ? "Nothing is plugged in here: drop a source on it, or pick one from ADD MODULE."
     : mod.kind === "amp" ? "Every voice ends here: an envelope shapes each note’s loudness, then OUT."
     : MOD_BY_KIND[mod.kind]?.blurb || "";
-  dock.className = "pt-read sel";
+  const model = modelOn && !empty ? moduleModelHTML(mod) : "";
+  dock.className = `pt-read sel${model ? " model" : ""}`;
   dock.innerHTML =
     `<div class="pr-line"><span class="pr-name">${esc(name)}</span>` +
     (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
     (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
     (isModuleLocked(mod) ? `<span class="pr-lock mono">locked</span>` : "") +
-    `</div>`;
+    `</div>` +
+    model;
+}
+
+/** What the model makes of a module on the canvas, for the readout under
+ *  the model view (what the spec dock said of a module before Plan-008):
+ *  its family's part of this patch's utility, from the exact decomposition
+ *  the belief line is (`edit_explain`; a structural coordinate such as
+ *  `n_filter`, counted per family), then which way your taste leans on the
+ *  family and how much evidence that rests on (`specParts`). Opened over the
+ *  well's bottom edge, above the line, as the catalog's description is. */
+function moduleModelHTML(mod) {
+  const spec = MOD_BY_KIND[mod.kind];
+  if (!spec) return "";
+  const c = spec.phi && belief.has ? belief.all.find((x) => x.name === spec.phi) : null;
+  const part = c
+    ? `<span class="pr-part"><b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ` +
+      `${PRICE_SIGN(c.contribution)} of this patch’s utility.</span><br>`
+    : "";
+  return `<div class="pr-model sd-model mono">${part}${specParts(spec).belief}</div>`;
 }
 
 // ---- the selection: plates on the canvas ----
@@ -21103,12 +21140,20 @@ function styleName(s, k) {
 //   drives TASTE's side of its toggle while the view is up);
 // - EVOLVE: its guess for the pair before you pick (`askPairGuess`) and each
 //   card's style (CSS, `best_style_of`);
+// - PATCH: each plate's family lean (`paintLeans`), the belief line in the
+//   subtitle (`renderBelief`, CSS) and what the model makes of the selection
+//   in the readout (`renderSpecDock`);
 // - PERFORM: nothing per control, until the engine exposes a control's lean.
 function modelViewChanged(on) {
   modelOn = on;
   flipBank(() => renderBank());
   if (taste) taste.setModelView(on);
   askPairGuess();
+  // PATCH: each plate's family lean, the worth chips, the guess's
+  // runners-up, and what the model makes of the selection in the readout.
+  // The belief line in the subtitle is CSS (`body.model-view`).
+  paintRackFacts();
+  renderSpecDock();
 }
 /** Redraw the bank, and let each row that moved glide from where it was.
  *  Under reduced motion (`motionMs` 0) the rows are simply in their places. */

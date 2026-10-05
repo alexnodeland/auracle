@@ -5048,78 +5048,54 @@ html:not(.engineer) .dn-sig { display: none; }
    Utility is linear within a style lens, so these contributions are exact.
    "The model likes this" is a claim; "it likes this because it's bright and
    has a long tail, under your Dark Drones lens" is one you can check by ear. */
-/* ---------- the belief row: what the model thinks, above the rack ---------- */
-/* One row, two claims, opposite ends: what the model makes of the patch you
-   are holding (left, where reading starts) and how much structural room that
-   patch has left (right, under COMMIT, which is the button both numbers are
-   about). The row keeps its height when either half is empty — it sits between
-   the toolbar and the rack, and a row that collapses would move the whole
-   canvas every time a patch is loaded. */
-.belief-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s3);
-  min-height: 22px;
-  padding: 0 var(--s1);
-}
-/* On PATCH's canvas the line is the well's top line, at its top left, as the
-   guess's is; with no guess it says nothing, and the module guess and the
-   thing in hand take the line while they are up. */
-#rack-frame .belief-row {
-  position: absolute;
-  z-index: 5;
-  left: var(--s4);
-  top: var(--s3);
-  right: var(--s7);
-  min-height: 0;
-  padding: 0;
-  pointer-events: none;
-}
-#rack-frame .belief-row .belief { pointer-events: auto; padding: 0; font-size: var(--t-value); }
-#rack-frame .belief .bl-none { display: none; }
-.rack-frame.cat-open .belief-row { left: calc(248px + var(--s3) + var(--s3)); }
-.rack-frame:has(#guess-read:not([hidden])) .belief-row,
-.rack-frame:has(#pick-chip:not(.hidden)) .belief-row { visibility: hidden; }
+/* ---------- the belief line: PATCH's subtitle under the model view ---------- */
+/* What the model makes of the patch in hand, in its voice (`renderBelief`):
+   "it'd like this 62% · leaning · was 58% ▲". At rest the subtitle says what
+   the patch is made of and this is hidden; under the model view (hold ⌥, or
+   MODEL) the subtitle becomes it. One line, always: the head keeps its
+   height, so the well under it never moves. */
+.pt-sub .belief { display: none; }
+body.model-view .pt-sub .belief { display: flex; }
+body.model-view #view-patch .pt-sub .subject-meta { display: none; }
 .belief {
-  display: flex;
   align-items: baseline;
   gap: var(--s2);
-  /* One line, always. Wrapping would make the row's height a function of how
-     many characters the model's top three features happen to have, and this
-     row sits directly above the canvas — a second line moves the whole rack
-     every time a patch is loaded. The score is first and the decomposition is
-     last, so what gets clipped on a narrow frame is what matters least. */
   flex-wrap: nowrap;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--t-body);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  line-height: 1.45;
   color: var(--silk-dim);
-  padding: var(--s1) 0;
   transition: opacity var(--d-state) ease;
 }
 .belief > * { flex: 0 0 auto; }
-.belief .ex-why { color: var(--phos-b); letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--t-label); }
-.belief b.up { color: var(--phos-b); font-weight: 400; }
-.belief b.down { color: var(--silk-dim); font-weight: 400; }
-.belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
-.belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
-/* The number itself is the loudest thing in the row: it is what changes. */
-.belief .bl-u { color: var(--silk); font-weight: 500; font-size: var(--t-body); }
-.belief .bl-was { color: var(--silk-dim); }
+/* The number itself is the loudest thing on the line: it is what changes. */
+.belief .bl-u { color: var(--silk); font-weight: 500; }
+.belief .bl-voice, .belief .bl-was { color: var(--silk-dim); }
 /* The word beside the percentage (a hunch · leaning · fairly sure): the
    model saying how sure it is, so amber. */
 .belief .bl-sure { color: var(--phos-b); }
-.belief .bl-sep, .belief .bl-none { color: var(--silk-dim); }
+.belief .bl-none { color: var(--silk-dim); }
+.belief .bl-arrow { font-style: normal; }
 .belief .bl-arrow.up { color: var(--phos-a); }
 .belief .bl-arrow.down { color: var(--silk-mute); }
 /* Stale is drawn, never guessed: an edit is in flight and this number is about
    the tree before it. Dimmed rather than hidden, because a number that
    disappears and comes back is a flicker under every knob turn. */
 .belief.stale { opacity: 0.45; }
-.belief .bl-stale { color: var(--phos-b-dim); font-style: italic; }
+.belief .bl-stale { color: var(--phos-b-dim); }
+/* The parts that add up to it, the style judging it and the utility: the
+   readout's under the model view with nothing selected (`beliefParts`). */
+.pr-belief b.up { color: var(--phos-b); font-weight: 400; }
+.pr-belief b.down { color: var(--silk-dim); font-weight: 400; }
+.pr-belief .pr-parts, .pr-belief .pr-u { font-size: var(--t-value); }
+.pr-belief .pr-u { color: var(--silk-mute); }
+.pr-belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
+.pr-belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
 
 /* The ceilings evolution can search. Quiet until it is nearly spent. */
 .budget {
@@ -7465,6 +7441,25 @@ html.xl-on .alarm { z-index: 62; }
   background: var(--panel-94);
   box-shadow: var(--shadow-pop);
 }
+/* Under the model view, what the model makes of the selected module (its
+   family's part of the utility, the lean): over the well's bottom edge,
+   above the line, as the catalog's description is. */
+.pr-model {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--s2));
+  max-width: min(100%, 560px);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--t-value);
+  line-height: 1.5;
+  color: var(--silk-dim);
+}
+.pr-model b.up { color: var(--phos-b); font-weight: 400; }
+.pr-model b.down { color: var(--silk-dim); font-weight: 400; }
 /* Which way your taste leans on a module is the model view's (⌥, or MODEL):
    at rest the longer description and the keyboard's card leave it out, and
    the description takes two columns. */

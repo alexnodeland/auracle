@@ -48,11 +48,15 @@ test("a guess is drawn hollow with a ?, in LEARNING's weights and the module rai
   await app.boot({ warmed: false, random: 20260928 });
   await app.warmStart([1, 4, 7]);
 
-  // The guess above the rack is a percentage and a word, never MODEL'S GUESS
-  // and a bare decimal (words.js `guessLabel`).
+  // The belief line (PATCH's subtitle under the model view) is a percentage
+  // and a word, never MODEL'S GUESS and a bare decimal (words.js
+  // `guessLabel`).
+  await openView(page, "patch");
+  await modelView(page, true);
   await app.engine((timeout) => expect(page.locator("#belief .bl-u")).toHaveText(/^\d+%$/, { timeout }), { ms: 30_000 });
   await expect(page.locator("#belief .bl-sure")).toHaveText(/^· (a hunch|leaning|fairly sure)$/);
   await expect(page.locator("#belief")).not.toContainText(/model's guess/i);
+  await modelView(page, false);
 
   // A real early fit: eighteen picks, and LEARNING says how few of its
   // weights it is sure of.

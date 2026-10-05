@@ -47,7 +47,9 @@ come what is happening to the patch: *opening Glass Pad…*, *2 locked*,
 *silent: nothing reaches the output*, *1 edit waiting*. Near one of the
 ceilings breeding searches within (24 modules, a depth of 6, a modulation depth
 of 3) it says that too, in amber (*5/6 depth*), and in red at one: a patch at a
-ceiling has no room to grow, and a hand-built patch past one is refused.
+ceiling has no room to grow, and a hand-built patch past one is refused. Under
+[the model view](#the-model-view-in-patch) the subtitle becomes the belief
+line instead: what the model makes of this sound.
 
 **What to do next,** a small amber line at the head's top right, and pressing
 it does the step it names:
@@ -198,7 +200,7 @@ down. [Adding a module](../wiring.md).
 
 - **The camera,** bottom left: **FIT**, **−**, **+**, **MAP**, and the
   layout's **▾** (chain, compact, by hand; snap to the grid and reset positions
-  for a layout by hand; the level of detail; **LEANS**). See [getting
+  for a layout by hand; the level of detail). See [getting
   around](../rack.md#getting-around).
 - **SET ASIDE n,** beside it, once anything is set aside: anything you
   unplug, delete, or bypass lands there instead of vanishing, and stays across
@@ -220,26 +222,54 @@ size, trigger, and freeze) and brings it into its corner of the well, tracing
 the output while you play. It steps out of the way of any module it would
 cover.
 
-**The model's guess about the sound you're playing,** on the well's top line,
-at its left, once it has one (the module guess and the thing in hand take the
-line while they are up):
+## The model view in PATCH
+
+Hold <kbd>⌥</kbd> (Alt off Apple platforms), or press and hold **MODEL** in
+the menu bar, and PATCH shows what the model believes about the patch; let go
+and the canvas is exactly as it was. Tap **MODEL** to keep it up (that is how
+it stays on while you work; a tap again or <kbd>Esc</kbd> ends it). On a touch
+screen, MODEL's press and hold is the model view. Nothing here is shown at
+rest, and every mark is the model's own data:
+
+**The belief line,** in place of the subtitle, in the model's voice:
 
 ```text
-79% · fairly sure · even branches +0.39 · plucked strings +0.18 ·
-mod chaining +0.17   in your analog sustain style
+it’d like this 79% · fairly sure · was 74% ▲
 ```
 
 That is how likely it guesses you’d pick this sound, and a word for how sure
 that reads. The words come from one scale: *a hunch* (46–54%), *leaning*
-(55–69%, or 31–45%), or *fairly sure* (70% and over, or 30% and under). Then the three qualities that count most,
-and the style that rates it highest, by name. While an edit is on its way, the
-line dims and ends in *· rating…*: the model rating the edited sound again.
+(55–69%, or 31–45%), or *fairly sure* (70% and over, or 30% and under). *was*
+is what it said before your last edit, and the arrow shows only when the
+printed number moved. While an edit is on its way, the line dims and ends in
+*· rating…*: the model rating the edited sound again. When the model has no
+basis for a guess it says why instead of printing a number: *no guess yet: it
+needs a few picks first*, *fitting to what you taught it…*, or *nothing to
+rate: no source reaches the output* (the patch’s only source socket is
+[empty](../rack.md#empty-sockets)). Near a ceiling the budget stays beside it.
 
-When the model has no basis for a guess, the line is empty rather than
-printing a number: before your first picks, while it fits, and when nothing
-reaches the output (the patch’s only source socket is
-[empty](../rack.md#empty-sockets)). [Reading what it learned](../reading-the-model.md)
-says how to read it.
+**The readout,** at the well's foot, with nothing selected: what adds up to
+that number. The three qualities that count most, each with its part of the
+model's utility (they add up to it exactly), the style that rates it highest,
+by name, and the utility itself with its doubt:
+
+```text
+THE PATCH   even branches +0.39 · plucked strings +0.18 · mod chaining +0.17
+            in your analog sustain style   utility 1.43 ± 0.31
+```
+
+With a module selected (or under the pointer), a note opens above the
+readout: its family's part of that utility (*filtering +0.12 of this patch’s
+utility*), then which way your taste leans on that family, from how many of
+your sounds. The model counts how many of a family a patch has, not which one
+is where, so the note is about the family (a filter, an EQ and a vocoder share
+one), and says so.
+
+**Each module's edge** is tinted by which way your taste leans on its family:
+amber toward, red away, stronger where the model is surer. A family it has
+only a guess about, or too little evidence for, gets no tint.
+
+[Reading what it learned](../reading-the-model.md) says how to read all of it.
 
 ## The catalog
 
@@ -250,8 +280,8 @@ its cables. **✕** or <kbd>Esc</kbd> closes it. While it is open the patch is
 fitted beside it. Hold <kbd>⌥</kbd> (the model view), or press **model**, to
 see which way your taste leans on each module: its bar in the list, a line in
 its description, and in the card that stands beside the catalog while the
-keyboard walks it. At rest they leave it out. **LEANS**, in the layout's ▾,
-is still a switch of its own for now: it tints the modules on the canvas.
+keyboard walks it. At rest they leave it out. On the canvas the same view
+tints each module's edge ([the model view in PATCH](#the-model-view-in-patch)).
 [Wiring and the catalog](../wiring.md) has the rest.
 
 ## TEACH
@@ -352,7 +382,7 @@ that differ only where you allowed them to.
 ## What to try next
 
 - [Rewire it](../wiring.md) from the catalog.
-- Turn **LEANS** on (in the layout's ▾), and see which modules your taste
-  leans toward.
+- Hold <kbd>⌥</kbd>, and see which modules your taste leans toward and what
+  the model makes of the patch.
 - Open the sound in [PERFORM](./perform.md), and play it with the named
   controls.

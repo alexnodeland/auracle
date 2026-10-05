@@ -125,6 +125,11 @@ It shows only what the engine has:
   it favours (*it guesses this · 62% · leaning*), and each card’s
   [style](#styles-are-leanings-not-genres). The guess is the same one the line
   after your pick reads, asked again if the model refits before you pick.
+- **PATCH:** the belief line in place of the subtitle (*it’d like this 62% ·
+  leaning · was 58% ▲*), what adds up to it in the readout at the well's
+  foot, what the model makes of the selected module's family, and each
+  module's edge tinted by which way your taste leans on its family
+  ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
 - **PERFORM:** nothing per control yet. The engine doesn’t say which way your
   taste leans on each control, so nothing is drawn there.
 

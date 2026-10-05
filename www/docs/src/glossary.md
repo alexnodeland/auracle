@@ -131,8 +131,10 @@ HOLD, UNI, ARP or SYNC is on. See [the keyboard map](./keyboard.md#the-keys-bar)
 
 ### Leans
 
-PATCH’s toggle that tints each module by which way your taste leans on its
-kind: amber toward, red away.
+Under [the model view](#model-view) in PATCH, each module's edge is tinted by
+which way your taste leans on its kind: amber toward, red away, stronger where
+the model is surer. It was a toggle in the layout's ▾; holding <kbd>⌥</kbd>
+(or tapping **MODEL**) is its home now.
 
 ### Levels
 
