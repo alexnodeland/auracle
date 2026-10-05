@@ -72,3 +72,33 @@ test("the own-sound requests never await the wirings fetch", () => {
     assert.doesNotMatch(body, /await/, `${type} awaits inside dispatch`);
   }
 });
+
+test("a face the player is looking at goes before a measurement nobody waits on, never before PERFORM's own", () => {
+  const FACES = 3;
+  const idle = src.match(/^const idleOnly = .*$/m);
+  assert.ok(idle, "worker.js has no idleOnly");
+  const build = (lanes) => new Function(
+    "SOON", "LATER", "FACES", "lanes", "floor", "blocked",
+    `${idle[0]}\n${lift("seenFaceWaiting")}\n${lift("nextLong")}\nreturn nextLong;`,
+  )(SOON, LATER, FACES, lanes, null, () => false);
+  const order = (lanes) => {
+    const next = build(lanes);
+    const out = [];
+    for (let m = next(); m; m = next()) out.push(m.name);
+    return out;
+  };
+  // PATCH's outline, a bank face and a background re-check, all waiting.
+  assert.deepEqual(order([[], [], [{ type: "perform_wire", bg: true, name: "recheck" }],
+    [{ type: "face_render", seen: true, name: "outline" }, { type: "face_render", name: "bank" }]]),
+  ["outline", "recheck", "bank"]);
+  // PERFORM measuring the sound it plays is not idle: it goes first.
+  assert.deepEqual(order([[], [], [{ type: "perform_wire", name: "measure" }],
+    [{ type: "face_render", seen: true, name: "outline" }]]),
+  ["measure", "outline"]);
+  // With nothing looked at, a background measurement still goes before the faces lane.
+  assert.deepEqual(order([[], [], [{ type: "perform_wire", bg: true, name: "recheck" }],
+    [{ type: "face_render", name: "bank" }]]),
+  ["recheck", "bank"]);
+  // And a measurement nobody waits on gives way to a looked-at face mid-run.
+  assert.match(lift("measure"), /idleOnly\(m\) && \(laterWaiting\(\) \|\| seenFaceWaiting\(lanes\)\)/);
+});

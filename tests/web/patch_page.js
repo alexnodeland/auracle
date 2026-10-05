@@ -24,7 +24,7 @@ const init = ({ warmed }) => `(() => {
     if (/worker\\.js/.test(w.__pwUrl)) {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
-        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null, at: m.at ?? null, trees: m.type === "faces" ? (m.trees || []).map((x) => ({ ref: x.ref, tree: x.tree || null })) : null, req: m.req ?? null, ptree: m.type === "perform_wire" ? m.tree || null : null });
+        if (m && typeof m.type === "string") posted.push({ type: m.type, t: performance.now(), op: m.op || null, guess: m.guess || null, token: m.token ?? null, at: m.at ?? null, trees: m.type === "faces" ? (m.trees || []).map((x) => ({ ref: x.ref, tree: x.tree || null, seen: !!x.seen })) : null, req: m.req ?? null, ptree: m.type === "perform_wire" ? m.tree || null : null });
         // A crew's ports held back while __pwHoldCrew is set (holdCrew).
         if (m && m.type === "farm_ports" && window.__pwHoldCrew) {
           window.__pwHeld.push([m, t, performance.now()]);

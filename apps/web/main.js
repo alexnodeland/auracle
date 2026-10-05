@@ -639,7 +639,11 @@ function drawMapFace(ctx, id, x, y, size) {
   ctx.drawImage(c, x - w / 2, y - h / 2, w, h);
   return true;
 }
-function wantFace(target) {
+// Targets the player is looking at and waiting on (`wantFace` with `seen`):
+// the worker renders them first in its faces lane (worker.js `faces`).
+const faceSeen = new Set();
+function wantFace(target, { seen = false } = {}) {
+  if (seen) faceSeen.add(target);
   if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
   faceWanted.add(target);
   if (faceSendQueued) return;
@@ -656,7 +660,7 @@ function sendFaceAsks() {
     if (t.startsWith("i")) ids.push(Number(t.slice(1)));
     else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
     else if (t.startsWith("g")) trees.push({ ref: t, memo: t.slice(1) });
-    else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
+    else trees.push({ ref: t, tree: faceTreeByRef.get(t), ...(faceSeen.delete(t) ? { seen: true } : {}) });
   }
   faceWanted.clear();
   // A row the store has no face for (one stored before faces existed), or a
@@ -12962,7 +12966,7 @@ function placeOutFace() {
 // a patch that would be silent, or would not pass the safety check, without
 // the module is said in the readout instead. At rest: it is a measurement,
 // not a belief.
-const without = { key: null, tree: null, target: null, why: "", timer: 0 };
+const without = { key: null, json: null, target: null, why: "", timer: 0 };
 const WITHOUT_SETTLE_MS = 350;
 
 /** The patch without the module `mod`, as JSON with whether it sounds, or
@@ -12979,20 +12983,23 @@ function withoutTree(mod) {
   return { json: JSON.stringify(tree), sounds: treeSounds(tree) };
 }
 
-/** The selection or the bench moved: measure again once it is still. */
+/** The selection or the bench moved: measure again once it is still. What
+ *  is drawn stays only while it still describes the patch without the
+ *  selected module: a knob of that module itself leaves that patch as it
+ *  was, so its outline stays; any other edit takes it away until measured. */
 function syncWithout() {
+  const mod = plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
+  const w = mod && mod.key === without.key ? withoutTree(mod) : null;
+  if (mod && w && (w.json === without.json)) return; // still true as drawn
   clearTimeout(without.timer);
   without.timer = setTimeout(measureWithout, WITHOUT_SETTLE_MS);
-  // What is drawn describes a selection or a patch that is no longer so
-  // (a knob turned: the patch without the module has moved with it).
-  const mod = plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
-  if (!mod || mod.key !== without.key || benchTreeJson !== without.tree) clearWithout();
+  if (!mod || mod.key !== without.key || !w || w.json !== without.json) clearWithout();
 }
 function clearWithout() {
   if (without.target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
   const said = !!without.why;
   without.key = null;
-  without.tree = null;
+  without.json = null;
   without.target = null;
   without.why = "";
   paintWithout();
@@ -13011,7 +13018,7 @@ function measureWithout() {
   const target = w && w.sounds ? faceTarget({ tree: w.json }) : null;
   if (without.target && without.target !== target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
   without.key = mod.key;
-  without.tree = benchTreeJson;
+  without.json = w ? w.json : null;
   without.target = target;
   without.why = w && !w.sounds ? "silent without it" : "";
   paintWithout();
@@ -13033,10 +13040,13 @@ function paintWithout() {
   const face = key ? lruGet(faceByKey, key) : null;
   const was = !el.hidden;
   if (!t || !face || !faceStats) {
-    if (t && !face && !faceNone.has(t)) wantFace(t);
+    // Looked at and waited on: ahead of a measurement nobody waits on.
+    if (t && !face && !faceNone.has(t)) wantFace(t, { seen: true });
     el.hidden = true;
     if (was) renderSpecDock();
     el.innerHTML = "";
+    // What was drawn goes with it, so the same face shown again is drawn.
+    delete el.dataset.drawn;
     delete el.dataset.face;
     delete el.dataset.key;
     delete el.dataset.of;
@@ -18708,8 +18718,7 @@ function renderSpecDock() {
   const m = specSubject ? MOD_BY_KIND[specSubject] : null;
   if (m) {
     const p = specParts(m);
-    dock.className = "pt-read open";
-    dock.innerHTML =
+    setDock(dock, "pt-read open",
       `<div class="pr-line"><span class="pr-name">${esc(m.name)}</span>` +
       `<span class="pr-says">${esc(m.blurb)}</span></div>` +
       `<div class="pr-more">` +
@@ -18717,7 +18726,7 @@ function renderSpecDock() {
       `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
       `<div class="sd-body"><div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
       `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
-      `<div class="sd-model mono">${p.belief}</div></div>`;
+      `<div class="sd-model mono">${p.belief}</div></div>`);
     return;
   }
   // A module on the canvas: the one under the pointer, else the selected one.
@@ -18727,10 +18736,9 @@ function renderSpecDock() {
     // Under the model view, with nothing selected: what adds up to the
     // belief line in the subtitle (`beliefParts`). At rest, nothing.
     const parts = modelOn && wb.rack ? beliefParts() : null;
-    dock.className = parts ? "pt-read sel model" : "pt-read rest";
-    dock.innerHTML = parts
+    setDock(dock, parts ? "pt-read sel model" : "pt-read rest", parts
       ? `<div class="pr-line"><span class="pr-name">the patch</span><span class="pr-says pr-belief">${parts}</span></div>`
-      : "";
+      : "");
     return;
   }
   const empty = isPlaceholderKey(mod.key) || mod.kind === "silence";
@@ -18741,8 +18749,7 @@ function renderSpecDock() {
     : MOD_BY_KIND[mod.kind]?.blurb || "";
   const model = modelOn && !empty ? moduleModelHTML(mod) : "";
   const wired = empty ? "" : wiredSentence(mod);
-  dock.className = `pt-read sel${model ? " model" : ""}`;
-  dock.innerHTML =
+  setDock(dock, `pt-read sel${model ? " model" : ""}`,
     `<div class="pr-line"><span class="pr-name">${esc(name)}</span>` +
     (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
     (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
@@ -18751,7 +18758,18 @@ function renderSpecDock() {
     (without.why && without.key === mod.key ? `<span class="pr-without mono">${esc(without.why)}</span>` : "") +
     (!$("out-without").hidden && without.key === mod.key ? `<span class="sr-only">Dashed at OUT: the sound without it, measured.</span>` : "") +
     `</div>` +
-    model;
+    model);
+}
+
+/** Write the readout only when what it says changed: it is a live region,
+ *  and a knob turn redraws it several times with the same words, each of
+ *  them otherwise announced again. */
+function setDock(dock, cls, html) {
+  if (dock.className !== cls) dock.className = cls;
+  if (dock.dataset.html !== html) {
+    dock.innerHTML = html;
+    dock.dataset.html = html;
+  }
 }
 
 // ---------- which PERFORM controls turn a knob (Plan-008 C2b, the fourth engine fact) ----------

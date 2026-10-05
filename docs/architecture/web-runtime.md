@@ -135,7 +135,10 @@ A hidden PERFORM's measurement drops to `later`, and goes last there
 (`idleOnly` in `worker.js`): a measurement nobody is waiting on (that one, one
 of a patch PERFORM has left, a re-check, a pre-warm) starts only when nothing
 else in `later` is ready, and at each breath gives way to anything that has
-arrived there, resuming from the memo. Back in sight, PERFORM gives the player
+arrived there, resuming from the memo. It also waits for, and gives way to,
+a face the player is looking at and waiting on in the faces lane (`seen`:
+PATCH's outline of the patch without the selected module, Plan-008 C2b),
+which it held back 15 s on a 16-core M3 Max when it did not. Back in sight, PERFORM gives the player
 back what was theirs (`promote`, to `soon`): a first measurement, a Take's
 (its controls play on the wiring carried over and the ones it lost read
 listening… until it lands) and a control just placed; one asked in the
@@ -547,9 +550,13 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   `not_ready` or an `engine_error` for one makes main ask again when a slot
   next wants it.
   PATCH's "without this module" outline (Plan-008 C2b) asks the same way, by
-  tree: the patch the structure menu's verb would leave without the selected
-  module (`withoutTree`), rendered for its face in the faces lane, so it waits
-  behind everything else, the bank's faces included.
+  tree, with `seen` on its entry: the patch the structure menu's verb would
+  leave without the selected module (`withoutTree`), rendered for its face at
+  the front of the faces lane (moved there if it was already waiting) and
+  ahead of a measurement nobody is waiting on (`seenFaceWaiting`, in
+  `nextLong` and in `measure`'s breaths). It still waits for `soon` work, the
+  rest of `later` (the guess, the cable probe, a refit) and PERFORM's own
+  measurement of the sound it plays.
 - **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
   that left the view (a preset row scrolled past, the PRESETS tab left, or
   PATCH's selection moved on before its "without" face was rendered) is

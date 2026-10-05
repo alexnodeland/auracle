@@ -142,10 +142,13 @@ outline shows the face of the patch without it: what that module does to the
 sound, by eye. It is measured, not estimated: the engine renders the patch as
 the [structure menu](../rack.md#the--menu) would leave it (a processor
 bypassed, a source's socket left empty, a modulator unplugged) and takes its
-face. It takes a moment, at the back of the engine's queue behind anything
-you asked for and the bank's faces, and nothing is drawn until it lands; once
-measured, the same module on the same patch comes back at once. A knob turned
-takes it away until the patch is measured again. When the patch would be
+face. It takes a moment (about three seconds after a fresh open on a fast
+machine), and nothing is drawn until it lands: it waits for work you asked
+for, the model's guess and cable levels, and PERFORM's measurement of the
+sound it plays, but goes before the bank's faces and PERFORM's background
+re-checks. Once measured, the same module on the same patch comes back at
+once. A knob of that module leaves it as it is (the patch without it is
+unchanged); any other edit takes it away until the patch is measured again. When the patch would be
 silent without the module (the only source), the readout says *silent without
 it* instead; when it would not pass the safety check, *without it, it fails
 the safety check*. The amp and an empty socket have no outline.

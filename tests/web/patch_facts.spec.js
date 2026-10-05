@@ -27,6 +27,7 @@
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, warmStartAndFit, now, replied } = require("./patch_page.js");
 const { goLevel } = require("./shell");
+const { FLOOR_MS } = require("./perform_budget.js");
 
 /** Select a module on the canvas by its kind, as a press on its plate does. */
 async function selectPlate(page, kind, nth = 0) {
@@ -37,17 +38,22 @@ async function selectPlate(page, kind, nth = 0) {
 }
 
 test("the face of the patch without the selected module is drawn at OUT, measured by the worker, and a patch silent without it says so", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(FLOOR_MS * 2 + 60_000);
   const errors = await boot(page, { warmed: true });
   // Hornet: a square VCO into a bandpass filter, a S&H modulating the cutoff.
+  // The app opens at PERFORM, whose measurement of the sound it boots with
+  // goes on in the background once PATCH shows: the outline does not wait
+  // for it (a face the player is looking at goes first, `seen`).
   await openPreset(page, "Hornet");
   const out = page.locator("#out-without");
+  const img = page.locator("#out-without img");
   await expect(out).toBeHidden();
 
   // The filter: bypassed, the VCO goes straight to the amp.
   await selectPlate(page, "filter");
   const key = await page.locator('#rack-svg .rack-plates g[data-kind="filter"]').getAttribute("data-key");
-  await expect(out).toBeVisible({ timeout: 90_000 });
+  await expect(out).toBeVisible({ timeout: FLOOR_MS });
+  await expect(img).toHaveCount(1);
   await expect(out).toHaveAttribute("data-of", key);
   const drawn = { ref: await out.getAttribute("data-face"), key: await out.getAttribute("data-key") };
   const got = await page.evaluate(({ ref, key: k }) => {
@@ -57,9 +63,10 @@ test("the face of the patch without the selected module is drawn at OUT, measure
     // The bypass the structure menu makes: the filter's input in its place.
     const node = k === "node" ? bench.root : null;
     const expected = node ? JSON.stringify({ ...bench, root: node.Filter.input }) : null;
-    return { asked: ask ? ask.tree : null, replyKey: reply ? reply.key : null, expected };
+    return { asked: ask ? ask.tree : null, seen: ask ? ask.seen : null, replyKey: reply ? reply.key : null, expected };
   }, { ref: drawn.ref, key });
   expect(got.asked, "the outline's tree was asked of the worker").not.toBeNull();
+  expect(got.seen, "…as a face the player is looking at").toBe(true);
   expect(got.expected, "Hornet's filter is its root").not.toBeNull();
   expect(got.asked, "…and it is the patch with the filter bypassed").toBe(got.expected);
   expect(got.replyKey, "the worker's own face for that tree is the one drawn").toBe(drawn.key);
@@ -71,11 +78,37 @@ test("the face of the patch without the selected module is drawn at OUT, measure
   await expect(page.locator("#pt-read .pr-without")).toHaveText("silent without it");
   await expect(out).toBeHidden();
 
-  // Nothing selected: nothing at OUT.
+  // The filter again: the same face, drawn again (it was an empty box).
   await selectPlate(page, "filter");
   await expect(out).toBeVisible({ timeout: 30_000 });
+  await expect(img).toHaveCount(1);
+  await expect(out).toHaveAttribute("data-key", drawn.key);
+
+  // A knob of the selected filter leaves the patch without it as it was:
+  // the outline stays, drawn, through the turn and after it.
+  await page.evaluate(() => {
+    window.__pwHid = 0;
+    const el = document.getElementById("out-without");
+    new MutationObserver(() => { if (el.hidden) window.__pwHid++; }).observe(el, { attributes: true, attributeFilter: ["hidden"] });
+  });
+  const hit = page.locator('#rack-svg .rack-controls g[data-kind="filter"] [data-addr] > .knob-hit').first();
+  const b = await hit.boundingBox();
+  const t0 = await now(page);
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 25, { steps: 5 });
+  await page.mouse.up();
+  await replied(page, "bench", t0);
+  await page.waitForTimeout(800); // past the settle the outline is measured again after
+  expect(await page.evaluate(() => window.__pwHid), "the outline never hid for its own module's knob").toBe(0);
+  await expect(img).toHaveCount(1);
+  await expect(out).toHaveAttribute("data-key", drawn.key);
+
+  // Nothing selected: nothing at OUT.
+  await page.mouse.move(4, 400);
   await page.keyboard.press("Escape");
   await expect(out).toBeHidden();
+  await expect(img).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -104,8 +137,10 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
   const t0 = await now(page);
   await page.locator('#rack-svg .rack-controls g[data-kind="mix"] .mod-menu-btn').first().click();
   await page.locator("#ctx-menu .cm-item", { hasText: /^what goes here/ }).click();
-  const asked = await page.evaluate((t) => window.__pwPosted.find((p) => p.type === "guess" && p.t >= t), t0);
-  expect(asked && asked.at, "the guess is asked for the mix's place").toBe(mixKey);
+  // Asked for the mix's place: at once, or once a ranking for the output
+  // already out comes back (one guess is out at a time).
+  await expect.poll(() => page.evaluate(([t, k]) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at === k), [t0, mixKey]),
+    { timeout: 60_000, message: "the guess is asked for the mix's place" }).toBe(true);
   // While it is ranked, the top line says what it is doing (or, on a fast
   // machine, the ranking is in already).
   await expect(page.locator("#guess-read")).toHaveText(/hearing the modules that fit at the mix…|^guess · /);
@@ -225,7 +260,7 @@ test("a bred sound shows what its generation changed: from its seed and how many
 });
 
 test("the readout names the PERFORM controls that turn the knob under the pointer, and a module's, from PERFORM's measurement", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(FLOOR_MS + 120_000);
   const errors = await boot(page, { warmed: true });
   // PERFORM measures the sound it plays at boot; that is the patch on the
   // bench. Its measurement, as the worker answered it: for each control on
@@ -236,7 +271,7 @@ test("the readout names the PERFORM controls that turn the knob under the pointe
     const sh = (j) => j.replace(/-?\d+(\.\d+)?(e-?\d+)?/g, "#");
     const reqs = new Set(window.__pwPosted.filter((p) => p.type === "perform_wire" && p.ptree && sh(p.ptree) === sh(bench)).map((p) => p.req));
     return window.__pwReplies.some((r) => r.type === "perform_wired" && reqs.has(r.req));
-  }), { timeout: 120_000 }).toBe(true);
+  }), { timeout: FLOOR_MS }).toBe(true);
   await goLevel(page, "patch");
   await expect(page.locator("#rack-svg g.mod-group").first()).toBeVisible();
   const m = await page.evaluate(() => {

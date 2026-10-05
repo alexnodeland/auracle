@@ -322,15 +322,18 @@ into C2a and C2b; round 2's decisions govern PATCH):
   plate, with a faint lead when their place is not the top guess's. They are
   to read, not to take: the top guess is what Enter adds.
 - **Without this module** is drawn for the selected module, not the one under
-  the pointer (the mock's): a measurement takes a render, and the faces lane
-  it runs in is below every other, the bank's faces included, so it waits
-  behind a PRESETS tab's faces (measured: over 14 s while they rendered,
-  well under a second once quiet). The patch measured is the structure
-  menu's: a processor bypassed, a source's socket empty (set aside), a
-  modulator unplugged, through rewrites the verbs now share (`bypassIn`,
-  `emptyIn`, `unplugIn`). It hides while a knob turn has made it stale. Silent
-  or failing the vet, the readout says so; the amp and an empty socket have
-  none.
+  the pointer (the mock's): a measurement takes a render. It is asked as a
+  face the player is looking at (`seen`): the front of the faces lane, ahead
+  of the bank's faces and of a PERFORM measurement nobody is waiting on, but
+  after `soon` work, the rest of `later` and PERFORM's measurement of the
+  sound it plays. Measured on Hornet's filter right after boot: 14.9 s before
+  (behind the boot sound's demoted measurement), 2.9 s after. The patch
+  measured is the structure menu's: a processor bypassed, a source's socket
+  empty (set aside), a modulator unplugged, through rewrites the verbs now
+  share (`bypassIn`, `emptyIn`, `unplugIn`). It stays through the selected
+  module's own knobs (the patch without it is unchanged) and hides while any
+  other edit has made it stale. Silent or failing the vet, the readout says
+  so; the amp and an empty socket have none.
 - **What goes here?** is the ⋯'s row (on a modulator, for its module's slot)
   and **Q** on a module: Q is no note key, is in no ADR's list (016, 017,
   018) and is taken nowhere in the app, and like L it acts only on a
