@@ -173,7 +173,7 @@ test("teach it opens PERFORM on the first pick, named at once", async ({ page })
   expect(errs).toEqual([]);
 });
 
-test("Take keeps the controls live, names the taken offer, and brings Blend home", async ({ page }) => {
+test("Take keeps the controls live, names the taken offer, and brings Blend home", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
