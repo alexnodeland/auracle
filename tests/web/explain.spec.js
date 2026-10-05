@@ -207,20 +207,20 @@ test("a figure says what the worker posted, and follows its control", async ({ p
     const { reply, req } = await expectedSay(page, app, 0);
     // The sentence's measurement, built by the app's own words from the
     // reply alone (the turn it names is the page's: the request's).
-    const text = (await say(page).textContent()).replace(/ /g, " ");
+    const text = (await say(page).textContent()).replace(/\u00a0/g, " ");
     const sentence = await page.evaluate(async ({ reply, req }) => {
       const w = await import("/words.js");
       const c = w.PALETTE[req.k];
       const p = (x) => (x && !x.error ? x.portrait.facts : null);
       const m = /^Turned (to \w+|(\d+)% toward (\w+)),/.exec(document.querySelector(".xp.on .xp-say").textContent);
       const at = !m ? 0 : m[2] ? (Number(m[2]) / 100) * (m[3] === c.high ? 1 : -1) : m[1] === `to ${c.high}` ? 1 : -1;
-      return w.explainSays(c, { at, knobs: [] }, p(reply.made), p(reply.turned)).replace(/ /g, " ");
+      return w.explainSays(c, { at, knobs: [] }, p(reply.made), p(reply.turned)).replace(/\u00a0/g, " ");
     }, { reply, req });
     expect(text.startsWith(sentence)).toBe(true);
     // The sentence is read where it stands, a live region; the figure's own
     // text says what is drawn, and does not repeat it.
     await expect(say(page)).toHaveAttribute("role", "status");
-    expect(((await page.locator(".xp.on .xp-fig").getAttribute("aria-label")) || "").replace(/ /g, " ")).not.toContain(text);
+    expect(((await page.locator(".xp.on .xp-fig").getAttribute("aria-label")) || "").replace(/\u00a0/g, " ")).not.toContain(text);
     // The numbers are the engine's: BRIGHT's center, made and turned.
     const hz = await page.evaluate(async (f) => {
       const w = await import("/words.js");
