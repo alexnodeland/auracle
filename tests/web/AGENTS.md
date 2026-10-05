@@ -99,8 +99,11 @@ runs. No retries anywhere
     run to run; with the warm start and the tours marked seen
     (`{ warmed: false }` shows the warm start, `seed: null, random: null`
     boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
-    slows the engine's wasm). `AURACLE_SEED=random` boots every spec that
-    names no seed of its own unseeded (the nightly flake hunt does), and
+    slows the engine's wasm). PERFORM's specs boot with `{ seed:
+    PERFORM_SEED, random: PERFORM_SEED }` instead, a seed whose first offer
+    on Glass Pad is a typical one (SEED's is unusually light).
+    `AURACLE_SEED=random` boots every spec that names no seed of its own
+    unseeded, PERFORM's too (the nightly flake hunt does), and
     `AURACLE_SEED=N` with N;
   - what the engine said and was asked: `app.reply(type, { where, after })`
     waits for a reply main was handed (`where` a pattern or a function),

@@ -14,10 +14,10 @@
 // "frozen") with a thin arc counting down; the status line keeps to the patch.
 //
 // PERFORM's requests to the engine are read through the fixture's tap.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 test("Wander answers a second and a half after it is let go, and says what it is doing on itself", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const wander = page.locator('.pf-knob[data-i="7"]');
   const sub = wander.locator(".pf-k-sub");
@@ -90,7 +90,7 @@ test("Wander answers a second and a half after it is let go, and says what it is
 // A tap on Wander freezes it (#80 named the pad FREEZE and the state
 // *frozen*); its tooltip and how it works said a tap would "hold" it.
 test("Wander's tooltip and how it works say a tap freezes it", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.level("perform");
   const wander = page.locator('.pf-knob[data-i="7"]');
   await expect(wander).toHaveAttribute("title", /Tap to freeze it\./);

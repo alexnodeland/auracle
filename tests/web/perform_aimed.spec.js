@@ -18,7 +18,7 @@
 // whichever is true.
 //
 // What PERFORM asks the engine for is read through the fixture's tap.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 /** Drag a knob vertically by `dy` px (negative is up), and let go. */
 async function drag(page, loc, dy) {
@@ -32,7 +32,7 @@ async function drag(page, loc, dy) {
 }
 
 test("a search control's offer is aimed the way it was turned, and B says how far it went", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad", { wired: true });
   // Two offers grown below, an aimed one (up to three walks) and a plain one.
   const OFFER_MS = await app.offerBudget({ waits: 2 });

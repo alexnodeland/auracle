@@ -30,7 +30,7 @@
 // What the page asks the engine to record (a pick from an offer,
 // `perform_record`) and each sound kept as new (`committed`) are read through
 // the fixture's tap.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const INIT = `(() => {
   const animate = Element.prototype.animate;
@@ -47,7 +47,7 @@ const INIT = `(() => {
 
 async function boot(page, app) {
   await page.addInitScript(INIT);
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
 }
 
 /** `name` on PERFORM, its controls reached; then how long an offer may take

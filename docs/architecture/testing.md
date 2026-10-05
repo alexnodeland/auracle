@@ -147,7 +147,8 @@ waits run to two minutes).
   browser tests three times each, against main, where nothing changed but
   the machine. The specs on the fixture that name no seed of their own boot
   unseeded there (`AURACLE_SEED=random`); on the gate they boot seeded
-  (`tests/web/fixtures.js` `SEED`, the same pool and sides every run), so a
+  (`tests/web/fixtures.js` `SEED`, the same pool and sides every run;
+  PERFORM's specs `PERFORM_SEED`, whose first offer is a typical one), so a
   spec that only holds for one pool shows up here. A spec that names its own
   `random:` seed keeps it in both. A failure files a *Flake hunt found a
   flaky test* issue whose run links one report naming each failed test and

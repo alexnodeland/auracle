@@ -17,7 +17,7 @@
 // (`app.holdRequests`), counted (`app.sentCount`), and its offers read.
 const fs = require("fs");
 const path = require("path");
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 // Acid Line as the app keys its wiring (`wireKey`: the tree's JSON with its
 // uids dropped), from the shipped file.
@@ -27,7 +27,7 @@ const acidKey = JSON.stringify(JSON.parse(acid.tree), (k, v) => (k === "uid" ? u
 
 test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page, app }) => {
   await page.route("**/perform-wirings.json*", (r) => r.abort());
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
   const open = async (name) => {
     await page.locator(".bank-item", { hasText: name }).first().click();
@@ -91,7 +91,7 @@ const wiredHow = (page, name) =>
 // the controls.
 test("a preset opened before plays at once after a reload, however busy the engine is", { tag: "@slow" }, async ({ page, app }) => {
   await page.route("**/perform-wirings.json*", (r) => r.abort());
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
   await app.engine((timeout) => expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout }), { ms: 60_000 });
@@ -173,7 +173,7 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
     );
   };
 
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
 
   // 1. A preset opened, then a reload at once.
@@ -228,7 +228,7 @@ test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" },
   // (a state, not a guess at how long a loaded machine takes to grow one);
   // the page's own, not perform_budget.js's probes (ids from 8_800_000).
   const spares = async () => (await app.replies("perform_offered")).filter((r) => r.req < 8_000_000 && r.offer && r.offer.tree).length;
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const OFFER_MS = await app.offerBudget({ waits: 1 });
   // Steady, hands off: the spare grows, behind the shipped wiring's re-check.
@@ -258,7 +258,7 @@ test("a kept wiring from another build's DSP plays at once and is re-measured", 
   }, [acidKey, acid.data]);
   // The shipped file is blocked: the wiring under test is the player's own.
   await page.route("**/perform-wirings.json*", (r) => r.abort());
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   // Opened from PATCH, then PERFORM clicked: the app opens at PERFORM now
   // (Plan-008), where the wiring would be marked before the click.
   await app.level("patch");

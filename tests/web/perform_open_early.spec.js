@@ -14,7 +14,7 @@
 // Every message to the engine is held while the open is made
 // (`app.holdRequests`), so the state between the click and the rack is there
 // to look at, not a race.
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 // An open the engine cannot complete. With `__failBench` armed, the next
 // bench open asks the engine for a patch it does not hold (`__failing` keeps
@@ -58,7 +58,7 @@ const FAIL_BENCH = `(() => {
 // the patch the app opens by itself after the reload to be on the rack.
 async function remembered(page, app) {
   await page.addInitScript(FAIL_BENCH);
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
   for (const name of ["Acid Line", "Glass Pad"]) {
     await page.locator(".bank-item", { hasText: name }).first().click();

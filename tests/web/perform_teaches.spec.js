@@ -8,7 +8,7 @@
 // count plus the EVOLVE picks, cuts and ratings it has not answered for yet,
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 // How long an offer takes to grow is the renders it is made of (about twenty
 // phrase renders), so it is a real wait whose length is the machine's: 3 s on
@@ -23,7 +23,7 @@ const { test, expect } = require("./fixtures");
 const HEARD_MS = 1_800;
 
 test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   // Until PERFORM names the preset, "controls reach" may be the previous
   // patch's (the first pool patch lands on the bench at boot).
   await app.openOnPerform("Glass Pad");

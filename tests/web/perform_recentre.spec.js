@@ -17,7 +17,7 @@
 //
 // A MIDI device is stood in for by replacing navigator.requestMIDIAccess
 // before the app runs, with one input the spec sends control changes from.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const FAKE_MIDI = `(() => {
   const input = { id: "pw", name: "Test pot", manufacturer: "", state: "connected", onmidimessage: null };
@@ -28,7 +28,7 @@ const FAKE_MIDI = `(() => {
 
 async function boot(page, app, { midi = false } = {}) {
   if (midi) await page.addInitScript(FAKE_MIDI);
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
 }
 
 async function drag(page, loc, dy) {

@@ -39,7 +39,7 @@
 //
 // The spec reaches the worker through the fixture's tap: it posts as the page
 // does (`app.post`), and reads what was asked and answered, and when.
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 async function drag(page, loc, dy) {
   const b = await loc.boundingBox();
@@ -75,7 +75,7 @@ async function pageQuiet(app) {
 const reply = (app, type, req, timeout) => app.reply(type, { where: { req }, timeout });
 
 test("a pick and a Keep are answered while a spare offer grows", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const [{ tree }] = await app.sent({ type: "perform_wire", tree: true });
   // How long engine growth may take here. One wait on it is the spec's own
@@ -185,7 +185,7 @@ function drawnGuess(page, app) {
 // Offer (over the worker's protocol, a step long) while the crew is out. The
 // Offer must be answered before the guess is, within a measured step's bound.
 test("an Offer pressed while the guess is on its crew starts at once", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot({ warmed: false });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
   await app.warmStart();
   const offer = async (req) => {
     const bench = (await app.replies("bench")).pop();

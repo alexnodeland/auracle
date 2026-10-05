@@ -11,7 +11,7 @@
 // a figure says can be held against what the worker posted; a lesson reply
 // is rewritten there when a test asks (`app.amend`), so a render that fails
 // can be met on any sound.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const INIT = `(() => {
   // The output level, read through an analyser on everything the app
@@ -58,7 +58,7 @@ const DRAG_STEP_MS = 50;
 // still answer on.
 async function boot(page, app) {
   await page.addInitScript(INIT);
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
 }
 
 async function openOnPerform(app, name) {

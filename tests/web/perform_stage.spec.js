@@ -17,7 +17,7 @@
 //
 // It reads the output level through an analyser on everything the app
 // connects to the destination, as space_after_a_click.spec.js does.
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 const INIT = `(() => {
   const connect = AudioNode.prototype.connect;
@@ -75,7 +75,7 @@ const INIT = `(() => {
 // PERFORM, with the warm start and the tours marked seen).
 async function boot(page, app) {
   await page.addInitScript(INIT);
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 90_000 });

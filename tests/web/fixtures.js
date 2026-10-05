@@ -81,6 +81,30 @@ const DEFAULT_SEED = (() => {
   return v && /^\d+$/.test(v) ? Number(v) : SEED;
 })();
 
+/** The seed PERFORM's specs boot with (`app.boot({ seed: PERFORM_SEED,
+ *  random: PERFORM_SEED })`), in place of SEED: under SEED the first offer
+ *  they grow is unusually light. `AURACLE_SEED` overrides it as it does SEED
+ *  (`random` boots them unseeded, N with N).
+ *
+ *  Chosen (#135) so the first offer grown on Glass Pad, in the specs' own
+ *  order (Glass Pad on PERFORM, the budget's two probe walks, Offer, Take),
+ *  is a typical one. Twelve seeds on a 16-core M3 Max, the offer's growth
+ *  and the taken offer's measurement:
+ *
+ *    seed          growth   measurement   modules   controls reach
+ *    20261005      4.7 s    2.8 s         1         4   (SEED)
+ *    1085668085    5.0 s    8.3 s         5         3   (this)
+ *    all twelve    1.5 to 10.0 s, median 4.4 s; 1.5 to 20.9 s, median 7.8 s
+ *
+ *  SEED's offer is mid-range in growth, but its measurement is the third
+ *  lightest of twelve, under the lower quartile; this one is near the
+ *  median in both, and three repeats of each dealt the same offer. */
+const PERFORM_SEED = (() => {
+  const v = process.env.AURACLE_SEED;
+  if (v === "random") return null;
+  return v && /^\d+$/.test(v) ? Number(v) : 1085668085;
+})();
+
 // The tap, installed before the page's scripts on every navigation. One
 // wrapper of `Worker`: whatever a spec adds later wraps it.
 const TAP = `(() => {
@@ -786,4 +810,4 @@ const test = base.test.extend({
 
 });
 
-module.exports = { test, expect, openApp, ENGINE_MS, QUIET_MS, SEED, ...shell };
+module.exports = { test, expect, openApp, ENGINE_MS, QUIET_MS, SEED, PERFORM_SEED, ...shell };

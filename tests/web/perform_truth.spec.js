@@ -36,7 +36,7 @@
 //   cannot be made to trap.
 //
 // What PERFORM asks the engine for is read through the tap too.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 // PERFORM's requests to the engine (worker.js's perform_* types): what a
 // poisoned engine answers with a fatal `engine_error`, never running them.
@@ -53,7 +53,7 @@ const PERFORM_REQUESTS = ["perform_wire", "perform_offer", "perform_drift", "per
 async function boot(page, app, { shipped = true, stalled = false, slow = 0, seen = true } = {}) {
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   if (stalled) await page.route("**/perform-wirings.json*", () => {});
-  await app.boot({ slowEngine: slow, seen });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, slowEngine: slow, seen });
 }
 
 /** Drag a knob vertically by `dy` px (negative is up), and let go. */

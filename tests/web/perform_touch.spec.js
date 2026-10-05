@@ -8,7 +8,7 @@
 // - EVOLVE's corner (⇄ circuit) and what each generation did answer a tap.
 // - KEEP, BACK and the pill's × are a finger's size; BACK answers a tap.
 // - PEEK held with a finger plays B (heard, so a pass counts it).
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 // A tablet: a coarse pointer and touch, wide enough to have no gate.
 test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: true });
@@ -17,7 +17,7 @@ test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true, isMobile: tru
 const HEARD_MS = 1_800;
 
 async function boot(page, app) {
-  await app.boot({ wait: false });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, wait: false });
   const anyway = page.locator("#hg-anyway");
   if (await anyway.isVisible().catch(() => false)) await anyway.click();
   await app.booted();

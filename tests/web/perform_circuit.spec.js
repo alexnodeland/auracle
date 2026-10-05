@@ -4,10 +4,10 @@
 // voices. A knob PERFORM is playing away from its kept value carries an amber
 // pointer at the sounding value, and its readout says that value: turn Bright
 // on First Bass, open PATCH, and the ladder's cutoff is visibly performed.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   // Until PERFORM names the preset, "controls reach" may be the previous
   // patch's (the first pool patch lands on the bench at boot).
   await app.openOnPerform("First Bass");

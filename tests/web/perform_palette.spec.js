@@ -11,7 +11,7 @@
 //
 // The page's requests to the engine worker and its replies are read through
 // the fixture's tap.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 // Watch the page every frame for what `probe` (a function's source, run in
 // the page) reports, keeping every distinct answer: a state that lasts a
@@ -59,7 +59,7 @@ const measured = (app) =>
   );
 
 test("the palette places, hides and orders up to eight controls, and the panel comes back after a reload", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   expect(await deckNames(page)).toEqual(["Bright", "Snap", "Motion", "Body", "Grit", "Space"]);
 
@@ -144,7 +144,7 @@ test("the palette places, hides and orders up to eight controls, and the panel c
 });
 
 test("a placed control is measured with the panel's set, keyed by that set, and says listening… until it is", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   // From a settled sound: the six's background re-check is done first.
   await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout }), { ms: 120_000 });
@@ -221,7 +221,7 @@ test("a placed control is measured with the panel's set, keyed by that set, and 
 });
 
 test("a control is named back by its palette index, on a panel in another order", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   // A preset on which GRIT is a search control (most are: the shipped
   // wirings say which), so turning it asks for an aimed offer.
   const name = await page.evaluate(async () => {
@@ -277,7 +277,7 @@ test("a control is named back by its palette index, on a panel in another order"
 });
 
 test("How it works lists every placed control, and explains the one last touched", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   await page.locator(".pf-why-btn").click();
   const tabs = page.locator(".pf-how-tab");
@@ -301,7 +301,7 @@ test("How it works lists every placed control, and explains the one last touched
 });
 
 test("a row's mark never moves its name: every name starts at the same x", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   // From a settled sound: the six's background re-check is done first.
   await app.engine((timeout) => expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout }), { ms: 120_000 });

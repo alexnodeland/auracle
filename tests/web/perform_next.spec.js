@@ -14,7 +14,7 @@
 //
 // The worker's replies are read through the fixture's tap, to know when a
 // spare has landed.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 /** Press the Offer/Next pad and return how long, in the page's own clock,
  *  until B holds an offer. */
@@ -49,7 +49,7 @@ async function peek(page) {
 const spares = async (app) => (await app.replies("perform_offered")).filter((r) => r.req < 8_000_000 && r.offer && r.offer.tree).length;
 
 test("the second offer is as fast as the first, and a pass says what it did and can be undone", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   // Two spares waited for: each behind whatever the engine has queued (the
   // first behind the shipped wiring's re-check), then grown.

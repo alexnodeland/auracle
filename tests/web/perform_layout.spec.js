@@ -15,7 +15,7 @@
 // - PASS passes on B without growing another: heard, it is recorded as
 //   Next's pass is (`perform_record`, took false) after its window, and its
 //   UNDO brings B back.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 /** A control that turns up on this patch, focused. */
 async function turnUp(page, presses = 8) {
@@ -52,7 +52,7 @@ for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
   test.describe(`a ${width} px window`, () => {
     test.use({ viewport: { width, height } });
     test(`PERFORM is a well and a panel at ${width} px, its pads above the keybed and whole`, async ({ page, app }) => {
-      await app.boot();
+      await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
       await app.openOnPerform("Glass Pad");
       await app.engine((timeout) => expect(page.locator(".pf-faces > .pf-face img.face")).toHaveCount(1, { timeout }), { ms: 60_000 });
       const box = await page.evaluate(() => {
@@ -80,7 +80,7 @@ for (const [width, height] of [[1000, 760], [1280, 800], [1440, 900]]) {
 }
 
 test("XY is a mode of the well: the button swaps the face for the field, and the button or Esc puts it back", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const well = page.locator(".pf-well");
   const btn = page.locator(".pf-xy-btn");
@@ -117,7 +117,7 @@ test("XY is a mode of the well: the button swaps the face for the field, and the
 });
 
 test("Freeze is a tap on Wander, or Enter on it, and Wander says so", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const wander = page.locator(".pf-pads .pf-wander");
   await expect(wander).toHaveAttribute("data-frozen", "false");
@@ -136,7 +136,7 @@ test("Freeze is a tap on Wander, or Enter on it, and Wander says so", async ({ p
 });
 
 test("the moved bar shows only when the sound has left home, and KEEP and BACK settle it", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const bar = page.locator(".pf-moved");
   await expect(bar).not.toHaveClass(/\bon\b/);
@@ -161,7 +161,7 @@ test("the moved bar shows only when the sound has left home, and KEEP and BACK s
 });
 
 test("Blend shows only while B holds an offer, and PASS passes on B without growing another", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const OFFER_MS = await app.offerBudget({ waits: 2 });
   const slot = page.locator(".pf-blend-slot");

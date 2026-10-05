@@ -11,7 +11,7 @@
 //   still play in PERFORM.
 //
 // The offers asked for are read through the fixture's tap.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 const blur = (page) => page.evaluate(() => document.activeElement?.blur());
 // The offers a press or a key asks for (not a spare grown in the background).
@@ -38,7 +38,7 @@ async function slideBlend(page) {
 }
 
 test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ takes, after Blend too", { tag: "@slow" }, async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const OFFER_MS = await app.offerBudget({ waits: 2 });
   const n0 = await offersAsked(app);
@@ -73,7 +73,7 @@ test("N offers and, with B full, passes and offers again; B held peeks; ⇧↵ t
 });
 
 test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its own Enter, ⇧⌫ goes back, and at home each says there is nothing to do", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const bar = page.locator(".pf-moved");
   // At home: nothing to keep, nothing to go back to. (The level's stop the
@@ -110,7 +110,7 @@ test("↵ keeps after a mouse turn, a dial reached with the keyboard keeps its o
 });
 
 test("the pad keys yield to a text field and a modal, the note keys still play, and N in EVOLVE is another pair", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad");
   const n0 = await offersAsked(app);
   // Typed into Find a sound: letters, not an offer or a peek.

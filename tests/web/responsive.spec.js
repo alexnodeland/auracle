@@ -16,7 +16,7 @@
 // not a number of seconds, so a slow runner cannot pass a regression or fail
 // a fix. The engine worker is reached through the fixture's tap: what was
 // asked and answered, and when, in the page's clock.
-const { test, expect, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
 
 // The controls as the player first sees them after a Take: a beat after the
 // swap, inside the taken offer's own measurement (seconds of renders).
@@ -27,7 +27,7 @@ const AFTER_SWAP_MS = 300;
 // start.
 async function boot(page, app, { warmed = true, shipped = true, slowEngine = 0 } = {}) {
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
-  await app.boot({ warmed, slowEngine });
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed, slowEngine });
 }
 
 async function openPreset(page, app, name) {

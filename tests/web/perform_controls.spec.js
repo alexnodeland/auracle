@@ -9,10 +9,10 @@
 //
 // An XY axis set to a control the patch cannot move strikes its end words
 // through, as the guide promises, rather than only dimming them.
-const { test, expect } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 test("a half-closed control stops at the centre on its closed side", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad", { wired: true });
 
   const half = page.locator(".pf-knob.half-lo, .pf-knob.half-hi").first();
@@ -46,7 +46,7 @@ test("a half-closed control stops at the centre on its closed side", async ({ pa
 });
 
 test("an XY axis the patch can't move strikes its end words through", async ({ page, app }) => {
-  await app.boot();
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED });
   await app.openOnPerform("Glass Pad", { wired: true });
 
   // A search control is one this patch can't move; put it on the pad's y axis.
