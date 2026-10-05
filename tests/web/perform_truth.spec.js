@@ -30,110 +30,30 @@
 //   failed to add says so, and grows no offer in its place (it said there
 //   was "nothing to add here"). An offer whose own walk crashed the engine
 //   says the engine crashed, even when its failure was answered before the
-//   crash was. The errors are injected,
-//   dispatched on the worker as the worker posts them, because the shipped
-//   engine answers every measurement it runs and cannot be made to trap.
+//   crash was. The errors are injected through the fixture's tap
+//   (`app.inject`, `app.fail`), dispatched on the worker as the worker posts
+//   them, because the shipped engine answers every measurement it runs and
+//   cannot be made to trap.
 //
-// A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
-// here, to record what PERFORM asks it for.
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const budget = require("./perform_budget.js");
+// What PERFORM asks the engine for is read through the tap too.
+const { test, expect } = require("./fixtures");
 
-const INIT = `(() => {
-  const Orig = window.Worker;
-  const posts = (window.__pfPosts = []);
-  function Wrapped(url, opts) {
-    const w = new Orig(url, opts);
-    if (/worker\\.js/.test(String(url))) {
-      const post = w.postMessage.bind(w);
-      w.postMessage = (m, t) => {
-        const ask = m && typeof m.type === "string" && /^perform_/.test(m.type);
-        if (ask) posts.push({ type: m.type, req: m.req, bg: !!m.bg, t: performance.now() });
-        // \`window.__pfPoison\` (its words): the engine is poisoned from here,
-        // and PERFORM's requests are answered as the worker answers every
-        // request then (\`runMessage\`): a fatal \`engine_error\`, never run.
-        if (ask && window.__pfPoison) {
-          const data = { type: "engine_error", request: m.type, id: null, req: m.req, message: window.__pfPoison, fatal: true };
-          setTimeout(() => w.dispatchEvent(new MessageEvent("message", { data })), 0);
-          return;
-        }
-        // \`window.__pfFailNext\` ({type, message}): the next request of that
-        // type throws in the worker instead (a non-fatal \`engine_error\`).
-        const once = window.__pfFailNext;
-        if (ask && once && once.type === m.type) {
-          window.__pfFailNext = null;
-          const data = { type: "engine_error", request: m.type, id: null, req: m.req, message: once.message, fatal: false };
-          setTimeout(() => w.dispatchEvent(new MessageEvent("message", { data })), 0);
-          return;
-        }
-        return post(m, t);
-      };
-    }
-    return w;
-  }
-  Wrapped.prototype = Orig.prototype;
-  window.Worker = Wrapped;
-  // Every toast that enters the lane: it shows one at a time, and a refusal
-  // pre-empts the one showing, so its text alone can miss one.
-  const toasts = (window.__pfToasts = []);
-  document.addEventListener("DOMContentLoaded", () => {
-    const lane = document.getElementById("toasts");
-    if (!lane) return;
-    new MutationObserver((muts) => {
-      for (const m of muts)
-        for (const n of m.addedNodes) {
-          const msg = n.querySelector && n.querySelector(".toast-msg");
-          if (msg) toasts.push(msg.textContent);
-        }
-    }).observe(lane, { childList: true });
-  });
-})();`;
+// PERFORM's requests to the engine (worker.js's perform_* types): what a
+// poisoned engine answers with a fatal `engine_error`, never running them.
+const PERFORM_REQUESTS = ["perform_wire", "perform_offer", "perform_drift", "perform_graft", "perform_record", "perform_apply"];
 
 // `shipped: false` blocks the presets' shipped wirings, so a preset is
 // measured as a patch never seen before is: the only way to watch a
 // measurement in progress on a known patch.
 // `stalled: true` holds the file's fetch open for good, as a stuck connection
 // does. `slow`: the engine worker's wasm calls slowed that many times
-// (`SLOW_ENGINE`), so a measurement is still out when the test acts on it
-// (AURACLE_CPU_THROTTLE, through `watch`, takes over when it is set).
-async function boot(page, { shipped = true, stalled = false, slow = 0 } = {}) {
-  const errs = [];
-  page.on("pageerror", (e) => errs.push(e.message));
+// (`app.boot`'s `slowEngine`), so a measurement is still out when the test
+// acts on it (AURACLE_CPU_THROTTLE takes over when it is larger). `seen`:
+// the first-visit tours (the keybed coach among them) marked seen.
+async function boot(page, app, { shipped = true, stalled = false, slow = 0, seen = true } = {}) {
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   if (stalled) await page.route("**/perform-wirings.json*", () => {});
-  if (slow > 1) {
-    await page.route(/\/worker\.js(\?|$)/, async (route) => {
-      const resp = await route.fetch();
-      await route.fulfill({ response: resp, body: budget.SLOW_ENGINE(slow) + (await resp.text()), contentType: "text/javascript" });
-    });
-  }
-  await budget.watch(page);
-  await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await page.locator("#warm-skip").click();
-  return errs;
-}
-
-/** Open a preset from the library and go to PERFORM, without waiting for it
- *  to be measured. */
-async function openOnPerform(page, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item", { hasText: name }).first().click();
-  await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
-  await goLevel(page, "perform");
-  await expect(page.locator(".pf-name")).toHaveText(name, { timeout: 30_000 });
-}
-
-async function wired(page) {
-  await page.waitForFunction(
-    () =>
-      /controls reach/.test(document.querySelector(".pf-status")?.textContent || "") &&
-      ![0, 1, 2, 3, 4, 5].some((i) => document.querySelector(`.pf-knob[data-i="${i}"]`)?.classList.contains("unwired")),
-    null,
-    { timeout: 120_000 },
-  );
+  await app.boot({ slowEngine: slow, seen });
 }
 
 /** Drag a knob vertically by `dy` px (negative is up), and let go. */
@@ -148,11 +68,9 @@ async function drag(page, loc, dy, { hold } = {}) {
   await page.mouse.up();
 }
 
-test("a half-closed control draws its ring on the side it turns toward, and says so", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+test("a half-closed control draws its ring on the side it turns toward, and says so", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { wired: true });
 
   const halves = await page.evaluate(() =>
     [...document.querySelectorAll(".pf-knob.half-lo, .pf-knob.half-hi")].map((k) => {
@@ -216,15 +134,13 @@ test("a half-closed control draws its ring on the side it turns toward, and says
   await drag(page, half, up ? 90 : -90);
   expect(await half.getAttribute("aria-valuenow")).toBe("0.00");
   expect(await page.evaluate(() => window.__bumps), "the stop was felt").toBeGreaterThan(0);
-  expect(errs).toEqual([]);
 });
 
-test("a control still being listened to does nothing, and never looks or acts like a search control", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page, { shipped: false });
-  await openOnPerform(page, "Glass Pad");
+test("a control still being listened to does nothing, and never looks or acts like a search control", async ({ page, app }) => {
+  await boot(page, app, { shipped: false });
+  await app.openOnPerform("Glass Pad", { reach: false });
   // A fresh profile has no wiring cached: the first measurement takes seconds.
-  await expect(page.locator(".pf-status")).toContainText("listening to this sound", { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator(".pf-status")).toContainText("listening to this sound", { timeout }), { ms: 30_000 });
   expect(await page.locator(".pf-status").textContent()).not.toMatch(/measuring/);
 
   const look = await page.evaluate(() => {
@@ -248,36 +164,35 @@ test("a control still being listened to does nothing, and never looks or acts li
 
   // Turn Grit hard (a search control on Glass Pad, once measured) and let go.
   const grit = page.locator('.pf-knob[data-i="4"]');
-  const before = await page.evaluate(() => window.__pfPosts.length);
+  const before = await app.now();
   await drag(page, grit, -120);
   expect(await page.locator(".pf-status").textContent(), "still listening when it was turned").toContain("listening to this sound");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
-  await page.waitForTimeout(1500);
-  const asked = await page.evaluate((n) => window.__pfPosts.slice(n).filter((p) => p.type === "perform_graft" || (p.type === "perform_offer" && !p.bg)), before);
+  await app.quiet();
+  const asked = [...(await app.sent({ type: "perform_graft" }, { after: before })), ...(await app.sent({ type: "perform_offer", bg: false }, { after: before }))];
   expect(asked, "a turn while listening grafts nothing and grows no offer").toEqual([]);
   expect(await page.locator("#toasts").textContent()).not.toMatch(/growing an offer|giving it a/);
-  expect(errs).toEqual([]);
 });
 
-test("first steps name a control that turns on this patch, and speak alone", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
+test("first steps name a control that turns on this patch, and speak alone", async ({ page, app }) => {
+  // A newcomer: the keybed coach not yet retired by a first note.
+  await boot(page, app, { seen: false });
   // A newcomer, at PERFORM, where the app opens: step 1 says what the keybed
   // coach would, so the coach keeps quiet. In PATCH it is up until the first
   // note.
   await expect(page.locator("#guide .pf-steps")).toBeVisible();
   await expect(page.locator(".coach")).toBeHidden();
-  await goLevel(page, "patch");
+  await app.level("patch");
   await expect(page.locator(".coach")).toBeVisible();
-  await openOnPerform(page, "Glass Pad");
+  await app.openOnPerform("Glass Pad", { reach: false });
   await expect(page.locator("#guide .pf-steps")).toBeVisible();
   // One voice per lesson: step 1 says what the coach says.
   await expect(page.locator(".coach")).toBeHidden();
-  await wired(page);
+  await app.reached({ wired: true });
   // Back in PATCH the coach speaks again (until the first note).
-  await goLevel(page, "patch");
+  await app.level("patch");
   await expect(page.locator(".coach")).toBeVisible();
-  await goLevel(page, "perform");
+  await app.level("perform");
   // The pill shows one step at a time: a note played, step 2 is next (and
   // the note retires the coach for good).
   await expect(page.locator("#guide .pf-step.now")).toContainText("Play a key");
@@ -291,13 +206,11 @@ test("first steps name a control that turns on this patch, and speak alone", asy
   const cls = await k.getAttribute("class");
   expect(cls, `${m[1]} turns on this patch`).not.toMatch(/\b(search|pending|unwired)\b/);
   if (m[2] === "up or down") expect(cls).not.toMatch(/\bhalf-(lo|hi)\b/);
-  expect(errs).toEqual([]);
 });
 
-test("choosing an XY axis gives the note keys back", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
+test("choosing an XY axis gives the note keys back", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { reach: false });
   await page.locator(".pf-xy-btn").click();
   const ysel = page.locator(".pf-xy-head select").nth(1);
   // As a click does: the select has focus when the choice is made.
@@ -311,14 +224,11 @@ test("choosing an XY axis gives the note keys back", async ({ page }) => {
   await page.keyboard.up("a");
   await page.keyboard.press("s");
   expect(await ysel.inputValue()).toBe("5");
-  expect(errs).toEqual([]);
 });
 
-test("a search control springs back when let go, and says what letting go will do", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+test("a search control springs back when let go, and says what letting go will do", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { wired: true });
   const grit = page.locator('.pf-knob[data-i="4"]');
   await expect(grit, "Grit is a search control on Glass Pad").toHaveClass(/\bsearch\b/);
   const sub = grit.locator(".pf-k-sub");
@@ -346,15 +256,12 @@ test("a search control springs back when let go, and says what letting go will d
   // A refusal answering the turn: it takes the lane at once, ahead of the
   // preset's own arrival toasts still queued.
   await expect(page.locator("#toasts")).toContainText("growing a grittier offer instead", { timeout: 5_000 });
-  expect(errs).toEqual([]);
 });
 
-test("after a pass, Blend comes home", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
-  const OFFER_MS = await budget.offerBudget(page, { waits: 1 });
+test("after a pass, Blend comes home", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { wired: true });
+  const OFFER_MS = await app.offerBudget({ waits: 1 });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
   // Blend, the slider under the two faces, toward B.
@@ -368,17 +275,14 @@ test("after a pass, Blend comes home", async ({ page }) => {
   await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
   await expect(page.locator('.pf-blend[data-i="6"] .pf-blend-v')).toHaveText(/^(no offer yet|0% offer)$/);
-  expect(errs).toEqual([]);
 });
 
-test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(360_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", { tag: "@slow" }, async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { wired: true });
   // A drift waits behind the shipped wiring's background re-check, then
   // walks twelve renders: engine growth, bounded by the budget.
-  const DRIFT_MS = await budget.offerBudget(page, { waits: 1 });
+  const DRIFT_MS = await app.offerBudget({ waits: 1 });
   // Every status line from here on.
   await page.evaluate(() => {
     const s = document.querySelector(".pf-status");
@@ -389,7 +293,7 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
     window.__wander = [w.textContent];
     new MutationObserver(() => window.__wander.push(w.textContent)).observe(w, { childList: true, characterData: true, subtree: true });
   });
-  const from = await page.evaluate(() => performance.now());
+  const from = await app.now();
   // Wander all the way to roam, from the keyboard.
   const wander = page.locator('.pf-knob[data-i="7"]');
   await wander.focus();
@@ -398,155 +302,128 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   await page.evaluate(() => document.activeElement?.blur()); // off the dial, hands off
   // A drift arrives and glides.
   await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: DRIFT_MS });
-  // …and finishes: give the glide (3 s at most in roam) time to land.
-  await page.waitForTimeout(4000);
+  // …and finishes: the glide (3 s at most in roam) lands, and what follows
+  // it (the re-check, the status) has its window.
+  await expect(wander.locator(".pf-k-sub")).not.toHaveText(/gliding/);
+  await app.quiet();
   const seen = await page.evaluate(() => window.__statuses);
   expect(seen.filter((t) => /listening|measuring/.test(t)), "the dials never went back to waiting").toEqual([]);
   expect(await page.locator(".pf-name").textContent(), "the drift did not arrive as a new patch").toBe("Glass Pad");
-  const wires = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t), from);
+  const wires = (await app.sent({ type: "perform_wire" }, { after: from })).map((m) => ({ bg: !!m.bg }));
   for (const w of wires) expect(w.bg, "a re-check after a drift is background work").toBe(true);
   if (wires.length) expect(seen.some((t) => /re-checking/.test(t)), "a re-check says so").toBe(true);
   // Keep: the sound did not move, so there is nothing to measure in front of
   // the player's next request.
-  const k0 = await page.evaluate(() => performance.now());
+  const k0 = await app.now();
   await wander.focus();
   await page.keyboard.press("Home"); // Wander still
   await page.locator(".pf-moved .pf-keep").click();
   await expect(page.locator("#toasts")).toContainText("Kept: this is home now. Back returns here.", { timeout: 10_000 });
-  await page.waitForTimeout(1500);
-  const afterKeep = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t && !p.bg), k0);
+  await app.quiet();
+  const afterKeep = await app.sent({ type: "perform_wire", bg: false }, { after: k0 });
   expect(afterKeep, "Keep never re-measures in front of the player").toEqual([]);
-  expect(errs).toEqual([]);
 });
 
-test("a shipped-wirings fetch that never answers does not hold a patch on listening", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errs = await boot(page, { stalled: true });
+test("a shipped-wirings fetch that never answers does not hold a patch on listening", async ({ page, app }) => {
+  await boot(page, app, { stalled: true });
   const t0 = Date.now();
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+  await app.openOnPerform("Glass Pad", { wired: true });
   console.log(`Glass Pad wired with the file stalled: ${((Date.now() - t0) / 1000).toFixed(1)} s after its click`);
   const how = await page.evaluate(() => window.__aur.marks().filter((m) => m.name === "perform-wired").map((m) => m.detail && m.detail.how));
   expect(how).toContain("measured");
-  expect(await page.evaluate(() => window.__pfPosts.some((p) => p.type === "perform_wire"))).toBe(true);
-  expect(errs).toEqual([]);
+  expect(await app.sentCount("perform_wire")).toBeGreaterThan(0);
 });
 
-const sawToast = (page, text) =>
-  expect
-    .poll(() => page.evaluate(() => window.__pfToasts), { timeout: 5_000 })
-    .toEqual(expect.arrayContaining([expect.stringContaining(text)]));
+// Every toast that enters the lane (the tap keeps them): it shows one at a
+// time, and a refusal pre-empts the one showing, so its text alone can miss
+// one.
+const sawToast = (app, text) => app.toast(text, { timeout: 5_000 });
 
 // What the worker posts for a request it could not run (`engineError`).
-async function failMeasurement(page, req, { fatal = false } = {}) {
-  await page.evaluate(
-    ([r, f]) =>
-      window.__pbEngine.dispatchEvent(
-        new MessageEvent("message", {
-          data: { type: "engine_error", request: "perform_wire", id: null, req: r, message: "RuntimeError: injected for the test", fatal: f },
-        }),
-      ),
-    [req, fatal],
-  );
-}
-const lastWire = (page, bg) =>
-  page.evaluate((b) => {
-    const w = window.__pfPosts.filter((p) => p.type === "perform_wire" && p.bg === b);
-    return w.length ? w[w.length - 1].req : null;
-  }, bg);
+const failMeasurement = (app, req, { fatal = false } = {}) =>
+  app.inject({ type: "engine_error", request: "perform_wire", id: null, req, message: "RuntimeError: injected for the test", fatal });
+// The last measurement asked for, in the background (`bg`) or not.
+const lastWire = async (app, bg) => {
+  const w = await app.sent({ type: "perform_wire", bg });
+  return w.length ? w[w.length - 1].req : null;
+};
 
-test("a re-check the engine never answers is let go: the status leaves re-checking and says it couldn't", async ({ page }) => {
-  test.setTimeout(240_000);
+test("a re-check the engine never answers is let go: the status leaves re-checking and says it couldn't", async ({ page, app }) => {
   // Slowed, so Glass Pad's re-check of its shipped wiring is still out.
-  const errs = await boot(page, { slow: 4 });
-  await openOnPerform(page, "Glass Pad");
+  await boot(page, app, { slow: 4 });
+  await app.openOnPerform("Glass Pad", { reach: false });
   const status = page.locator(".pf-status");
-  await expect(status).toContainText("re-checking", { timeout: 30_000 });
-  const req = await lastWire(page, true);
+  await app.engine((timeout) => expect(status).toContainText("re-checking", { timeout }), { ms: 30_000 });
+  const req = await lastWire(app, true);
   expect(req, "the re-check was asked for").not.toBeNull();
-  await failMeasurement(page, req);
-  await sawToast(page, "The engine couldn’t finish");
+  await failMeasurement(app, req);
+  await sawToast(app, "The engine couldn’t finish");
   await expect(status).not.toContainText("re-checking", { timeout: 5_000 });
   // The shipped wiring still plays; it just wasn't re-checked.
   await expect(status).toContainText("controls reach this patch · couldn’t re-check this patch");
-  expect(errs).toEqual([]);
 });
 
-test("a first measurement a crashed engine never answers is let go: the status stops listening and says it couldn't", async ({ page }) => {
-  test.setTimeout(240_000);
+test("a first measurement a crashed engine never answers is let go: the status stops listening and says it couldn't", async ({ page, app }) => {
   // No shipped wiring: Glass Pad is measured from nothing, slowed so it is
   // still running.
-  const errs = await boot(page, { shipped: false, slow: 4 });
-  await openOnPerform(page, "Glass Pad");
+  await boot(page, app, { shipped: false, slow: 4 });
+  await app.openOnPerform("Glass Pad", { reach: false });
   const status = page.locator(".pf-status");
-  await expect(status).toContainText("listening to this sound", { timeout: 30_000 });
-  const req = await lastWire(page, false);
+  await app.engine((timeout) => expect(status).toContainText("listening to this sound", { timeout }), { ms: 30_000 });
+  const req = await lastWire(app, false);
   expect(req, "the measurement was asked for").not.toBeNull();
   // The engine is down (a poisoned engine answers each request so).
-  await failMeasurement(page, req, { fatal: true });
+  await failMeasurement(app, req, { fatal: true });
   await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
   await expect(status).toHaveText("couldn’t measure this patch", { timeout: 5_000 });
   expect(await page.locator(".pf-knob.waiting").count(), "no control still says listening…").toBe(0);
-  expect(errs).toEqual([]);
 });
 
 // A crashed engine is asked nothing more. Each request sent to it came back
 // as another crash, and a spare (or Wander) asked again a second later, for
 // as long as the page was open.
-test("after the engine crashes, PERFORM asks it nothing more: no spare grows, and an Offer says the engine crashed", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  const openedAt = await page.evaluate(() => performance.now());
+test("after the engine crashes, PERFORM asks it nothing more: no spare grows, and an Offer says the engine crashed", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { reach: false });
+  const openedAt = await app.now();
   const status = page.locator(".pf-status");
-  await expect(status).toContainText("controls reach", { timeout: 30_000 });
+  await app.engine((timeout) => expect(status).toContainText("controls reach", { timeout }), { ms: 30_000 });
   // The crash, during Glass Pad's re-check, and the engine poisoned from then
-  // on (see INIT).
-  const req = await lastWire(page, true);
-  const crashAt = await page.evaluate((r) => {
-    window.__pfPoison = "the engine is down (RuntimeError: unreachable)";
-    window.__pbEngine.dispatchEvent(
-      new MessageEvent("message", {
-        data: { type: "engine_error", request: "perform_wire", id: null, req: r, message: "RuntimeError: unreachable", fatal: true },
-      }),
-    );
-    return performance.now();
-  }, req);
+  // on: every PERFORM request answered as a poisoned worker answers it, with
+  // a fatal engine_error, and never run (`app.fail`).
+  const req = await lastWire(app, true);
+  await app.fail({ type: PERFORM_REQUESTS }, { message: "the engine is down (RuntimeError: unreachable)", fatal: true });
+  await app.inject({ type: "engine_error", request: "perform_wire", id: null, req, message: "RuntimeError: unreachable", fatal: true });
+  const crashAt = await app.now();
   await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
-  const walks = () =>
-    page.evaluate((t) => window.__pfPosts.filter((p) => p.t > t && (p.type === "perform_offer" || p.type === "perform_drift")).length, crashAt);
+  const walks = async () => (await app.sent({ type: ["perform_offer", "perform_drift"] }, { after: crashAt })).length;
   // Hands off for as long as a spare waits before it grows (`growSpare`: six
   // seconds after the patch arrived, three after it played, two of hands
   // off), and a second more for its timer: nothing is asked.
   const quietUntil = Math.max(openedAt + 9_000, crashAt + 3_000);
-  await page.waitForFunction((u) => performance.now() > u, quietUntil, { timeout: 30_000 });
+  await app.quiet(Math.max(0, quietUntil - (await app.now())));
   expect(await walks(), "a spare asked of the crashed engine").toBe(0);
   // Asked for, an offer is not sent either, and B says why.
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await expect(page.locator(".pf-offer")).toContainText("the engine crashed: reload to continue", { timeout: 5_000 });
   expect(await walks(), "an offer sent to the crashed engine").toBe(0);
-  expect(errs).toEqual([]);
 });
 
-test("a module the engine fails to add is said to have failed, and no offer grows in its place", async ({ page }) => {
-  test.setTimeout(240_000);
-  const errs = await boot(page);
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+test("a module the engine fails to add is said to have failed, and no offer grows in its place", async ({ page, app }) => {
+  await boot(page, app);
+  await app.openOnPerform("Glass Pad", { wired: true });
   const body = page.locator('.pf-knob[data-i="3"]');
   await expect(body, "Body is a search control on Glass Pad, with a module to give").toHaveClass(/\bsearch\b/);
-  await page.evaluate(() => {
-    window.__pfFailNext = { type: "perform_graft", message: "Error: injected for the test" };
-  });
-  const turnedAt = await page.evaluate(() => performance.now());
+  // The next graft throws in the worker instead (a non-fatal engine_error).
+  await app.fail("perform_graft", { message: "Error: injected for the test", once: true });
+  const turnedAt = await app.now();
   // Past the notch and let go: Body asks for a module to turn.
   await drag(page, body, -90);
-  await sawToast(page, "Body: the engine couldn’t add the tone EQ, so nothing changed.");
-  expect(await page.evaluate((t) => window.__pfPosts.some((p) => p.type === "perform_graft" && p.t > t), turnedAt), "the turn asked for a module").toBe(true);
-  expect((await page.evaluate(() => window.__pfToasts)).join("\n")).not.toMatch(/nothing to add here/);
+  await sawToast(app, "Body: the engine couldn’t add the tone EQ, so nothing changed.");
+  expect((await app.sent({ type: "perform_graft" }, { after: turnedAt })).length, "the turn asked for a module").toBeGreaterThan(0);
+  expect((await app.toasts()).join("\n")).not.toMatch(/nothing to add here/);
   // An offer in its place was asked for in the same breath as its toast.
-  expect(await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_offer" && p.t > t).length, turnedAt), "an offer grown in its place").toBe(0);
-  expect(errs).toEqual([]);
+  expect((await app.sent({ type: "perform_offer" }, { after: turnedAt })).length, "an offer grown in its place").toBe(0);
 });
 
 // A walk that traps answers with the crash alone now (worker.js, unit-tested
@@ -554,28 +431,23 @@ test("a module the engine fails to add is said to have failed, and no offer grow
 // answered the walk first, empty with the error, and the crash second, by
 // then about a request no longer pending: B said "try again" under the
 // alarm. Both replies are dispatched here, in that order.
-test("an offer whose walk crashed the engine says the engine crashed, even answered before the crash", async ({ page }) => {
-  test.setTimeout(240_000);
+test("an offer whose walk crashed the engine says the engine crashed, even answered before the crash", async ({ page, app }) => {
   // Slowed, so the offer is still growing when its replies are dispatched.
-  const errs = await boot(page, { slow: 4 });
-  await openOnPerform(page, "Glass Pad");
-  await wired(page);
+  await boot(page, app, { slow: 4 });
+  await app.openOnPerform("Glass Pad", { wired: true });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   // The offer growing for B: this press's, or a spare it claimed.
-  const req = await page.evaluate(() => {
-    const o = window.__pfPosts.filter((p) => p.type === "perform_offer");
-    return o.length ? o[o.length - 1].req : null;
-  });
+  const offers = await app.sent({ type: "perform_offer" });
+  const req = offers.length ? offers[offers.length - 1].req : null;
   expect(req, "an offer is growing").not.toBeNull();
+  // Both replies in one breath, in the old worker's order (the tap's own
+  // inject, in the page).
   await page.evaluate((r) => {
-    const w = window.__pbEngine;
-    const say = (data) => w.dispatchEvent(new MessageEvent("message", { data }));
-    say({ type: "perform_offered", req: r, offer: null, error: "RuntimeError: unreachable" });
-    say({ type: "engine_error", request: "perform_offer", id: null, req: r, message: "RuntimeError: unreachable", fatal: true });
+    window.__tap.inject({ type: "perform_offered", req: r, offer: null, error: "RuntimeError: unreachable" });
+    window.__tap.inject({ type: "engine_error", request: "perform_offer", id: null, req: r, message: "RuntimeError: unreachable", fatal: true });
   }, req);
   await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
   const b = page.locator(".pf-offer");
   await expect(b).toContainText("the engine crashed: reload to continue", { timeout: 5_000 });
   await expect(b).not.toContainText("try again");
-  expect(errs).toEqual([]);
 });
