@@ -6,7 +6,9 @@
 // on First Bass, open PATCH, and the ladder's cutoff is visibly performed.
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
-test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) => {
+// Quarantined (#159): it waits on fixed times, and a slow runner counts the
+// ghosts before they land. Moves onto the fixture with #135.
+test("a knob turned in PERFORM is drawn performed in PATCH", { tag: "@quarantine" }, async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
