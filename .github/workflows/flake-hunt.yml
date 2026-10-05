@@ -57,7 +57,13 @@ jobs:
 
       - uses: ./.github/actions/playwright
 
+      # Unseeded: the gate boots every spec seeded (tests/web/fixtures.js
+      # SEED, the same pool and sides each run), so the draws a seed holds
+      # still are shaken here, where a spec meets pools and offers it has
+      # not seen before.
       - uses: ./.github/actions/browser-shard
+        env:
+          AURACLE_SEED: random
         with:
           tier: fast
           name: hunt

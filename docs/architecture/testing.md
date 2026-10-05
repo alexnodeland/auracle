@@ -145,7 +145,9 @@ waits run to two minutes).
 
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
-  the machine. A failure files a *Flake hunt found a flaky test* issue whose
+  the machine. It boots them unseeded (`AURACLE_SEED=random`): the gate's
+  boots are seeded (`tests/web/fixtures.js` `SEED`, the same pool and
+  sides every run), so a spec that only holds for one pool shows up here. A failure files a *Flake hunt found a flaky test* issue whose
   run links one report naming each failed test and which of its runs failed.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a

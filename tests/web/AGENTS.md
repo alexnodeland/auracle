@@ -93,10 +93,15 @@ runs. No retries anywhere
     `pageerror` or ends with `expect(errors).toEqual([])`.
     `test.use({ consoleErrors: true })` counts `console.error` too;
   - **`app`** installs the engine worker's tap before main.js runs, and
-    `app.boot()` boots seeded (`?seed=`, `SEED`), with the warm start and the
-    tours marked seen (`{ warmed: false }` shows the warm start, `random: N`
-    seeds the page's own Math.random as the films do, `query: "?farm=0"`
-    adds to the address, `slowEngine: 4` slows the engine's wasm);
+    `app.boot()` boots seeded twice over, the engine's random seed
+    (`?seed=`) and the page's Math.random (as the films seed it), both
+    `SEED`, so the pool, the warm start's cards and each pair's sides repeat
+    run to run; with the warm start and the tours marked seen
+    (`{ warmed: false }` shows the warm start, `seed: null, random: null`
+    boots unseeded, `query: "?farm=0"` adds to the address, `slowEngine: 4`
+    slows the engine's wasm). `AURACLE_SEED=random` boots every spec that
+    names no seed of its own unseeded (the nightly flake hunt does), and
+    `AURACLE_SEED=N` with N;
   - what the engine said and was asked: `app.reply(type, { where, after })`
     waits for a reply main was handed (`where` a pattern or a function),
     `app.replies`, `app.last`, `app.count`, `app.sent`, `app.sentCount`,
@@ -124,9 +129,11 @@ runs. No retries anywhere
   by default (the config's `expect.timeout`): enough for anything the page
   does by itself. A wait on the engine (boot, the pool filling, a fit, a
   deal, a reply) goes through `app.engine((timeout) => …, { ms })`,
-  `app.reply` or `app.booted`, bounded by `ENGINE_MS` (150 s) or less; its
-  time is added to the test's timeout, so a slow runner's engine never eats
-  the test's own 90 s. When the app gets faster, a spec that expected to see
+  `app.reply` or `app.booted`, bounded by `ENGINE_MS` (150 s) unless the
+  call names its own bound: shorter for what is quick (a deal, 30 s), longer
+  only where the engine's work is (the pool filling behind a refit, 300 s;
+  a generation, 400 to 480 s). Its time is added to the test's timeout, so
+  a slow runner's engine never eats the test's own 90 s. When the app gets faster, a spec that expected to see
   an intermediate state may miss it: accept either state rather than slowing
   the app down. A timeout under about 1.5 s is a flake waiting to happen.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`

@@ -61,11 +61,24 @@ const ENGINE_MS = 150_000;
 /** "Nothing happens": long enough for a loaded machine to have done the wrong
  *  thing (testing.md § Rules: timing needs 1.5 s of slack). */
 const QUIET_MS = 1_500;
-/** The session seed every spec boots with unless it says otherwise
- *  (`?seed=`, apps/web/main.js `seedOverride`): the same pool on every run,
- *  and the same pairs and offers when the same things happen in the same
- *  order. `seed: null` boots unseeded. */
+/** The seed every spec boots with unless it says otherwise, twice: as the
+ *  engine's random seed (`?seed=`, apps/web/main.js `seedOverride`) and as
+ *  the page's own Math.random (`RANDOM`, seeded as the films seed it). With
+ *  both, every run fills the same pool, shows the same nine warm start cards,
+ *  and puts each pair's sounds and the keep-as-new comparison's on the same
+ *  sides. What the engine deals later (pairs, fits, walks, offers) repeats
+ *  when the same requests reach it in the same order, which timing can still
+ *  change: a deal made while the pool is filling, the order PERFORM's walks
+ *  begin in. `AURACLE_SEED=random` boots unseeded (no `?seed`, Math.random
+ *  as the browser has it), as the nightly flake hunt does; `AURACLE_SEED=N`
+ *  boots with N. Either changes the default only: a spec that names its own
+ *  seed keeps it. */
 const SEED = 20261005;
+const DEFAULT_SEED = (() => {
+  const v = process.env.AURACLE_SEED;
+  if (v === "random") return null;
+  return v && /^\d+$/.test(v) ? Number(v) : SEED;
+})();
 
 // The tap, installed before the page's scripts on every navigation. One
 // wrapper of `Worker`: whatever a spec adds later wraps it.
@@ -272,8 +285,9 @@ const asPattern = (p) => (typeof p === "string" ? { type: p } : p);
 class App {
   constructor(page) {
     this.page = page;
-    // Settings made before boot, replayed on every load (`config`).
-    this.early = [];
+    // Settings made with no tap to take them (before boot, mid-navigation),
+    // each replayed on every load from then on by an init script (`config`).
+    this.settings = 0;
     this.ENGINE_MS = ENGINE_MS;
     this.QUIET_MS = QUIET_MS;
   }
@@ -285,23 +299,22 @@ class App {
   /** Boot the instrument and wait until it is playable (`#boot.done`).
    *  - `warmed` (true): the warm start is marked done, so it never shows;
    *  - `seen` (true): the first-visit tours are marked seen;
-   *  - `seed` (SEED): the session seed, as `?seed=`; null for none;
-   *  - `random`: seed the page's Math.random as the films do (every draw the
-   *    page makes, the session seed among them), instead of `?seed=`;
+   *  - `seed` (SEED): the engine's random seed, as `?seed=`; null for none;
+   *  - `random` (SEED): the page's Math.random, seeded as the films do; null
+   *    for the browser's own. A spec that names `random` and no `seed` boots
+   *    the films' way, its session seed drawn from that Math.random;
    *  - `query`: more of the address (`"?farm=0"`);
    *  - `busy`: let `app.busy` make chosen requests busy-wait in the worker;
    *  - `slowEngine`: run the engine's wasm calls that many times slower
    *    (perform_budget.js `SLOW_ENGINE`). AURACLE_CPU_THROTTLE does that and
    *    throttles the page (CDP);
    *  - `wait` (true): wait for the boot. */
-  async boot({ warmed = true, seen = true, seed, random = null, query = "", busy = false, slowEngine = 0, wait = true } = {}) {
+  async boot({ warmed = true, seen = true, seed, random, query = "", busy = false, slowEngine = 0, wait = true } = {}) {
     const { page } = this;
+    if (seed === undefined) seed = random === undefined ? DEFAULT_SEED : null;
+    if (random === undefined) random = DEFAULT_SEED;
     if (random != null) await page.addInitScript(RANDOM(random));
     await page.addInitScript(SEEN({ warmed, seen }));
-    if (this.early.length) {
-      await page.addInitScript(`(() => { for (const [op, a] of ${JSON.stringify(this.early)}) window.__tap.config(op, a); })();`);
-      this.early = [];
-    }
     const throttle = Number(process.env.AURACLE_CPU_THROTTLE || 0);
     const rate = Math.max(slowEngine || 0, throttle > 1 ? throttle : 0);
     if (busy || rate > 1) {
@@ -316,8 +329,7 @@ class App {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
     }
     const params = new URLSearchParams(query.replace(/^\?/, ""));
-    const s = seed === undefined ? (random != null ? null : SEED) : seed;
-    if (s != null && !params.has("seed")) params.set("seed", String(s));
+    if (seed != null && !params.has("seed")) params.set("seed", String(seed));
     const q = params.toString();
     await page.goto(`/${q ? `?${q.replace(/=(?=&|$)/g, "")}` : ""}`);
     if (wait) await this.booted();
@@ -477,13 +489,24 @@ class App {
     return this.page.evaluate((d) => window.__tap.inject(d), data);
   }
 
-  /** Apply a setting to the tap: now, on a live page, or (before `boot`) by
-   *  an init script on every load, so it holds from the first message. */
+  /** Apply a setting to the tap: at once on a live page; with no tap to
+   *  take it (before `boot`, or while a page loads) by an init script, so it
+   *  holds from the first message of every load from then on, and on the
+   *  load under way if its scripts ran before that one was added. */
   async config(op, args = {}) {
     const live = await this.page
       .evaluate(([op, a]) => (window.__tap ? (window.__tap.config(op, a), true) : false), [op, args])
       .catch(() => false);
-    if (!live) this.early.push([op, args]);
+    if (live) return;
+    const id = ++this.settings;
+    const apply = ([op, a, id]) => {
+      const T = window.__tap;
+      if (!T || (T.applied || []).includes(id)) return;
+      T.config(op, a);
+      (T.applied = T.applied || []).push(id);
+    };
+    await this.page.addInitScript(apply, [op, args, id]);
+    await this.page.evaluate(apply, [op, args, id]).catch(() => {});
   }
 
   /** Keep the engine's own replies matching any pattern from main until
@@ -633,11 +656,20 @@ class App {
     await this.engine((timeout) => expect(page.locator("#job-slot")).toBeHidden({ timeout }), { ms: 30_000 });
   }
 
-  /** The bank whole: the engine has said `filled`.
- The app is playable at 8
-   *  sounds and fills the rest behind the player. */
-  filled() {
-    return this.reply("filled");
+  /** The bank whole: the engine has said `filled`, and main has heard the
+   *  whole list (`facts.ranked`, as long as `status.pool_target`), which
+   *  comes with the views after `filled`. The app is playable at 8 sounds
+   *  and fills the rest behind the player. */
+  async filled() {
+    const done = await this.reply("filled");
+    await this.engine((ms) =>
+      expect
+        .poll(() => this.page.evaluate(() => {
+          const f = window.__tap.facts;
+          return !!(f.status && f.ranked && f.status.pool_target > 0 && f.ranked.length >= f.status.pool_target);
+        }), { timeout: ms, message: "the pool's whole list never came after filled" })
+        .toBe(true));
+    return done;
   }
 
   /** The bank's list showing `n` rows of the pool (all 40 by default), as

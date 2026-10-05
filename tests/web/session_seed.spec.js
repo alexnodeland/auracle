@@ -14,7 +14,7 @@ async function poolOf(app) {
 }
 
 test("the same ?seed fills the same pool on a fresh session, and another seed another", async ({ app, browser }) => {
-  await app.boot({ seed: 7 });
+  await app.boot({ seed: 7, random: null });
   const first = await poolOf(app);
   expect(first.length).toBe(40);
 
@@ -25,7 +25,7 @@ test("the same ?seed fills the same pool on a fresh session, and another seed an
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     const other = await openApp(page);
-    await other.boot({ seed });
+    await other.boot({ seed, random: null });
     const pool = await poolOf(other);
     await context.close();
     expect(errors, `uncaught exceptions with ?seed=${seed}`).toEqual([]);
