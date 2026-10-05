@@ -77,7 +77,7 @@ jobs:
       # scrolling two summaries side by side.
       - name: Upload the measurements
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: search-health-stats-${{ github.sha }}
           path: /tmp/*.log
@@ -103,7 +103,7 @@ jobs:
           { echo "## Pool climb"; echo '```'; cat /tmp/climb.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the measurements
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: search-health-climb-${{ github.sha }}
           path: /tmp/*.log
@@ -126,7 +126,7 @@ jobs:
           { echo "## Search health"; echo '```'; cat /tmp/search.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the measurements
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: search-health-battery-${{ github.sha }}
           path: /tmp/*.log
