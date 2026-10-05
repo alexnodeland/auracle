@@ -245,9 +245,11 @@ test-slow-rest: nextest-installed
 # The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) or
 # `@quarantine` (testing.md § Flakes) runs in the slow tier, every other one in
 # the fast tier. Through the browser queue
-# and on a port of their own, like any local browser job (ADR-010). Needs
-# `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
-BROWSER_PORT ?= 8690
+# and on a port of their own, like any local browser job (ADR-010): the port
+# is AURACLE_TEST_PORT when the environment sets it (a branch's worktree is
+# given one; docs/process.md § The machine), else BROWSER_PORT, else 8690.
+# Needs `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
+BROWSER_PORT ?= $(or $(AURACLE_TEST_PORT),8690)
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
