@@ -101,8 +101,13 @@ pair. It is always a percentage and a word, from one scale: *a hunch*
 (46–54%), *leaning* (55–69%, or 31–45%), or *fairly sure* (70% and over, or 30%
 and under), as in *59% · leaning*. Under [the model view](#model-view), a bank
 row draws it as a percentage and a bar, with a block around the guess for how
-unsure it is; PATCH shows it above the rack with the qualities that count
-most.
+unsure it is; in PATCH it is the belief line the subtitle becomes (*it’d like
+this 59% · leaning*), with the qualities that count most in the readout.
+
+PATCH's module guess is the module the model guesses you'd add next, dashed
+amber at its place; **what goes here?** (a module's **⋯**, or <kbd>Q</kbd>)
+asks it for that module's place, and under the model view its two runners-up
+show with their lower bounds.
 
 ### Job slot
 
@@ -131,8 +136,11 @@ HOLD, UNI, ARP or SYNC is on. See [the keyboard map](./keyboard.md#the-keys-bar)
 
 ### Leans
 
-PATCH’s toggle that tints each module by which way your taste leans on its
-kind: amber toward, red away.
+Under [the model view](#model-view) in PATCH, each module's edge is tinted by
+which way your taste leans on its kind: amber toward, red away, stronger where
+the model is surer. It was a toggle in the layout's ▾; holding <kbd>⌥</kbd>
+(or tapping **MODEL**, which stays up across a reload, as the toggle did) is
+its home now.
 
 ### Levels
 
@@ -173,9 +181,10 @@ sound you’re playing (its face, its name and ▶, which is <kbd>Space</kbd>),
 
 What holding <kbd>⌥</kbd> (or **MODEL** in the menu bar) shows: what the model
 believes, over whatever level is up. The bank’s guesses and the pool in the
-order the model rates it, TASTE’s halos, and EVOLVE’s guess for the pair
-before you pick. A tap on **MODEL** keeps it up. See [reading what it
-learned](./reading-the-model.md#the-model-view).
+order the model rates it, TASTE’s halos, EVOLVE’s guess for the pair
+before you pick, and in PATCH the belief line, the [leans](#leans), a
+[worth](#worth) chip per kind and the guess's runners-up. A tap on **MODEL**
+keeps it up, across a reload too. See [reading what it learned](./reading-the-model.md#the-model-view).
 
 ### Module, catalog
 
@@ -282,7 +291,10 @@ SPACE turned up), or an offer grows in B, aimed the way you turned it. See
 
 The sound a child grew from. A generation breeds from the ten the model
 rates highest; hover **EVOLVE POOL** and the bank marks them **SEED**. (A
-random number generator’s seed is always called a random seed.)
+random number generator’s seed is always called a random seed.) Opened in
+PATCH as it was bred, a child's subtitle says *from ‹seed› · 3 changes*, a tick
+marks each module the generation changed, and a pale pointer on a knob shows
+the seed's value.
 
 ### Set aside
 
@@ -334,6 +346,21 @@ on it) freezes it. It leads PERFORM’s pads. See
 Picking three of nine presets on a first visit, under **PICK THE THREE YOU’D
 REACH FOR**. It teaches the model 18 picks in half a minute, and your three are
 saved. Run it again from **⋯** › *Re-run the three-pick warm start*.
+
+### Without this module
+
+In PATCH, the dashed outline over the face at OUT while a module is
+selected: the face of the patch without it (a processor bypassed, a source's
+socket empty, a modulator unplugged), measured by rendering that patch. When
+the patch would be silent without it, the readout says *silent without it*.
+
+### Worth
+
+Under the model view in PATCH, a chip for each kind of module the patch
+holds: what one more of that kind is worth to the model (*filtering +0.12*).
+The model counts how many of a kind a patch has, not which is where, so two
+filters share one figure (*shared by 2*). It is the price the catalog quotes
+for a module in your hand.
 
 ### Your taste, the model
 

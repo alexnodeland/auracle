@@ -3647,6 +3647,11 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   fill: var(--silk-dim);
   pointer-events: none;
 }
+/* A lit socket takes the pointer by its circles' boxes, not their strokes: the
+   stroke changes with the socket's state (hot, previewed, dashed), and a
+   pointer resting on the ring's edge went in and out with it, about thirty
+   times a second, redrawing the module in hand each time. */
+.jack.legal circle { pointer-events: bounding-box; }
 .jack.legal circle {
   stroke: var(--phos-a);
   filter: drop-shadow(0 0 4px var(--phos-a-90));
@@ -3706,6 +3711,9 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
    painting a highlight over half the rack. */
 #rack-svg.picking g[data-key].dimmed { opacity: 0.28; }
 #rack-svg.picking g[data-key] { transition: opacity var(--d-state) cubic-bezier(0.2, 0, 0.6, 1); }
+/* Not a target: it is drawn over the cable the socket cuts, and must never
+   take the pointer off the socket under it. */
+.pick-caret { pointer-events: none; }
 .pick-caret path {
   stroke: var(--phos-a);
   stroke-width: 2;
@@ -3744,7 +3752,10 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   filter: grayscale(0.85) drop-shadow(0 6px 12px var(--black-75));
   animation: ghost-in var(--d-state) cubic-bezier(0.2, 0, 0.6, 1);
 }
-@keyframes ghost-in { from { opacity: 0; transform: scale(0.97); } }
+/* Opacity only: a CSS transform on an SVG group replaces its `transform`
+   attribute while it runs, so a scale here drew the ghost at the rack's
+   origin, and a ghost redrawn under a still pointer stayed there. */
+@keyframes ghost-in { from { opacity: 0; } }
 .pick-ghost .mod-plate {
   fill: var(--ghost-plate);
   stroke: var(--phos-a);
@@ -3752,6 +3763,8 @@ body:not(.model-view) #nodebank .ni-theta { display: none; }
   stroke-dasharray: 6 4;
 }
 .pick-ghost.modside .mod-plate { stroke: var(--phos-b); }
+/* Stood clear of the plates it would cover: a dashed lead to where it goes. */
+.pick-ghost.pick-lead { fill: none; stroke: var(--phos-a-45); stroke-width: 1.2; stroke-dasharray: 4 4; filter: none; animation: none; }
 .pick-ghost .knob-body { filter: none; }
 @media (prefers-reduced-motion: reduce) {
   .pick-ghost { animation: none; }
@@ -5048,78 +5061,102 @@ html:not(.engineer) .dn-sig { display: none; }
    Utility is linear within a style lens, so these contributions are exact.
    "The model likes this" is a claim; "it likes this because it's bright and
    has a long tail, under your Dark Drones lens" is one you can check by ear. */
-/* ---------- the belief row: what the model thinks, above the rack ---------- */
-/* One row, two claims, opposite ends: what the model makes of the patch you
-   are holding (left, where reading starts) and how much structural room that
-   patch has left (right, under COMMIT, which is the button both numbers are
-   about). The row keeps its height when either half is empty — it sits between
-   the toolbar and the rack, and a row that collapses would move the whole
-   canvas every time a patch is loaded. */
-.belief-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s3);
-  min-height: 22px;
-  padding: 0 var(--s1);
-}
-/* On PATCH's canvas the line is the well's top line, at its top left, as the
-   guess's is; with no guess it says nothing, and the module guess and the
-   thing in hand take the line while they are up. */
-#rack-frame .belief-row {
+/* ---------- worth per kind, under the model view (`paintWorth`) ----------
+   One chip per family the patch holds, in the well's top right, under its
+   top line: what one more of the family is worth to the model. Solid amber
+   for a settled lean, dashed for a guess. */
+.pt-worth {
   position: absolute;
   z-index: 5;
-  left: var(--s4);
-  top: var(--s3);
-  right: var(--s7);
-  min-height: 0;
-  padding: 0;
+  right: var(--s4);
+  top: calc(var(--s3) + 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s1);
   pointer-events: none;
 }
-#rack-frame .belief-row .belief { pointer-events: auto; padding: 0; font-size: var(--t-value); }
-#rack-frame .belief .bl-none { display: none; }
-.rack-frame.cat-open .belief-row { left: calc(248px + var(--s3) + var(--s3)); }
-.rack-frame:has(#guess-read:not([hidden])) .belief-row,
-.rack-frame:has(#pick-chip:not(.hidden)) .belief-row { visibility: hidden; }
+.pt-worth[hidden] { display: none; }
+.pt-worth-chip {
+  pointer-events: auto;
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--phos-b-40);
+  border-radius: var(--r1);
+  background: var(--panel-94);
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  letter-spacing: 0.04em;
+  color: var(--silk-dim);
+  white-space: nowrap;
+}
+.pt-worth-chip.guess { border-style: dashed; }
+.pt-worth-chip .pw-fig { font-size: var(--t-value); font-weight: 400; color: var(--phos-b); }
+.pt-worth-chip.down .pw-fig { color: var(--silk-dim); }
+.pt-worth-chip.guess .pw-fig { color: var(--phos-b-dim); }
+.pt-worth-chip .pw-note { color: var(--silk-mute); }
+/* No family settled, so no edge drawn: the model says so, in its voice. */
+.pt-worth-none {
+  pointer-events: auto;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  color: var(--silk-dim);
+  white-space: nowrap;
+}
+
+/* ---------- the belief line: PATCH's subtitle under the model view ---------- */
+/* What the model makes of the patch in hand, in its voice (`renderBelief`):
+   "it'd like this 62% · leaning · was 58% ▲". At rest the subtitle says what
+   the patch is made of and this is hidden; under the model view (hold ⌥, or
+   MODEL) the subtitle becomes it. One line, always: the head keeps its
+   height, so the well under it never moves. */
+.pt-sub .belief { display: none; }
+/* It stands in for the counts (4 modules · 1 modulator, in signal order)
+   and nothing else: a bred sound's seed, opening…, 1 edit waiting, 2 locked
+   and silent stay in sight after it. */
+body.model-view .pt-sub .belief { display: flex; order: -1; flex: none; max-width: 70%; }
+body.model-view #view-patch #rack-meta .pt-made { display: none; }
+body.model-view #view-patch #rack-meta .pm:first-child:not(.pt-made)::before { content: "· "; }
+#rack-meta .pm-sep { font-style: normal; }
 .belief {
-  display: flex;
   align-items: baseline;
   gap: var(--s2);
-  /* One line, always. Wrapping would make the row's height a function of how
-     many characters the model's top three features happen to have, and this
-     row sits directly above the canvas — a second line moves the whole rack
-     every time a patch is loaded. The score is first and the decomposition is
-     last, so what gets clipped on a narrow frame is what matters least. */
   flex-wrap: nowrap;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--t-body);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  line-height: 1.45;
   color: var(--silk-dim);
-  padding: var(--s1) 0;
   transition: opacity var(--d-state) ease;
 }
 .belief > * { flex: 0 0 auto; }
-.belief .ex-why { color: var(--phos-b); letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--t-label); }
-.belief b.up { color: var(--phos-b); font-weight: 400; }
-.belief b.down { color: var(--silk-dim); font-weight: 400; }
-.belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
-.belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
-/* The number itself is the loudest thing in the row: it is what changes. */
-.belief .bl-u { color: var(--silk); font-weight: 500; font-size: var(--t-body); }
-.belief .bl-was { color: var(--silk-dim); }
+/* The number itself is the loudest thing on the line: it is what changes. */
+.belief .bl-u { color: var(--silk); font-weight: 500; }
+.belief .bl-voice, .belief .bl-was { color: var(--silk-dim); }
 /* The word beside the percentage (a hunch · leaning · fairly sure): the
    model saying how sure it is, so amber. */
 .belief .bl-sure { color: var(--phos-b); }
-.belief .bl-sep, .belief .bl-none { color: var(--silk-dim); }
+.belief .bl-none { color: var(--silk-dim); }
+.belief .bl-arrow { font-style: normal; }
 .belief .bl-arrow.up { color: var(--phos-a); }
 .belief .bl-arrow.down { color: var(--silk-mute); }
 /* Stale is drawn, never guessed: an edit is in flight and this number is about
    the tree before it. Dimmed rather than hidden, because a number that
    disappears and comes back is a flicker under every knob turn. */
 .belief.stale { opacity: 0.45; }
-.belief .bl-stale { color: var(--phos-b-dim); font-style: italic; }
+.belief .bl-stale { color: var(--phos-b-dim); }
+/* The parts that add up to it, the style judging it and the utility: the
+   readout's under the model view with nothing selected (`beliefParts`). */
+.pr-belief b.up { color: var(--phos-b); font-weight: 400; }
+.pr-belief b.down { color: var(--silk-dim); font-weight: 400; }
+.pr-belief .pr-parts, .pr-belief .pr-u { font-size: var(--t-value); }
+.pr-belief .pr-u { color: var(--silk-mute); }
+.pr-belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
+.pr-belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
 
 /* The ceilings evolution can search. Quiet until it is nearly spent. */
 .budget {
@@ -6818,6 +6855,32 @@ html.xl-on .alarm { z-index: 62; }
   text-overflow: ellipsis;
 }
 .guess-read .gr-why:only-child { color: var(--silk-dim); }
+/* The way back from a place asked about to the output's guess. */
+.gr-back {
+  flex: none;
+  pointer-events: auto;
+  align-self: center;
+  border: 0;
+  background: none;
+  padding: 0 var(--s1);
+  font-size: var(--t-label);
+  line-height: 1;
+  color: var(--silk-dim);
+  cursor: pointer;
+}
+.gr-back:hover, .gr-back:focus-visible { color: var(--silk); }
+@media (pointer: coarse) { .gr-back { min-width: 40px; min-height: 40px; } }
+/* "What goes here?": where the guess asked for a place goes (after the
+   drive, on the filter's cutoff, in the empty socket). */
+.gr-at {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+}
 
 .rack-guess .guess-lead { fill: none; stroke: var(--phos-b-55); stroke-width: 1.6; stroke-dasharray: 5 5; }
 .rack-guess .guess-at { fill: var(--phos-b); }
@@ -6851,6 +6914,21 @@ html.xl-on .alarm { z-index: 62; }
   fill: var(--phos-b-dim);
 }
 .guess-plate .gp-p { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-dim); }
+/* Under the model view, the ranking's next two: fainter, smaller, dashed,
+   each with its lower bound; not controls. */
+.guess-runner { pointer-events: auto; }
+.rack-guess .runner-lead { fill: none; stroke: var(--phos-b-30); stroke-width: 1.2; stroke-dasharray: 3 4; pointer-events: none; }
+.guess-runner .gr-body { fill: var(--phos-b-06); stroke: var(--phos-b-40); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.guess-runner .gr-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--phos-b-70);
+  pointer-events: none;
+}
+.guess-runner .gr-lcb { font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-b-55); pointer-events: none; }
 /* Beside the guess plate: the patch's face, and its face with the guess, as
    rendered (Plan-005 task 3). The words under them are the rack's value tier. */
 .rack-guess .gp-face { pointer-events: none; }
@@ -7234,6 +7312,9 @@ html.xl-on .alarm { z-index: 62; }
 .pt-leg .lg-light { fill: var(--phos-a); stroke: none; }
 .pt-leg .lg-guess { stroke: var(--phos-b); stroke-width: 1.4; stroke-dasharray: 4 3; }
 .pt-leg .lg-lock { stroke: var(--phos-b); stroke-width: 1.6; }
+.pt-leg .lg-lean { stroke: var(--led-red); stroke-width: 2; stroke-opacity: 0.7; }
+.pt-leg .lg-without { stroke: var(--silk); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.pt-leg .lg-tick { stroke: var(--silk); stroke-width: 1.6; stroke-linejoin: round; }
 .pt-leg .lg-jack { fill: var(--jack-bore); stroke: var(--phos-a); stroke-width: 1.6; }
 .pt-leg .lg-face { stroke: var(--phos-a); stroke-width: 1.4; fill: var(--phos-a-15); }
 
@@ -7359,6 +7440,11 @@ html.xl-on .alarm { z-index: 62; }
   cursor: pointer;
 }
 .out-play:disabled { cursor: default; opacity: 0.55; }
+/* The face of the patch without the selected module, measured: a dashed
+   outline over the face at OUT, the same size and floor. Not a control. */
+.out-without { position: absolute; inset: 0; pointer-events: none; }
+.out-without[hidden] { display: none; }
+.out-without .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .out-play > .face-slot { position: absolute; inset: 0; }
 .face-slot.face-out .face { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .out-play:hover:not(:disabled) > .face-slot { filter: brightness(1.15); }
@@ -7447,6 +7533,12 @@ html.xl-on .alarm { z-index: 62; }
   color: var(--silk);
 }
 .pr-lock { flex: none; font-size: var(--t-value); color: var(--phos-b); }
+/* A measurement about the selected module: what the patch is without it,
+   when there is no face to draw (silent, or failing the vet). */
+.pr-without { flex: none; font-size: var(--t-value); color: var(--silk-dim); }
+/* Which of PERFORM's controls turn it, as measured: the controls' names are
+   silk labels, so caps; kept whole, the description gives way. */
+.pr-wired { flex: none; font-family: var(--font-silk); font-size: var(--t-label); letter-spacing: 0.06em; color: var(--silk); }
 /* Pointed at in the catalog: the longer description opens over the well's
    bottom edge, above the line, and never resizes the well. */
 .pr-more { display: none; }
@@ -7465,6 +7557,25 @@ html.xl-on .alarm { z-index: 62; }
   background: var(--panel-94);
   box-shadow: var(--shadow-pop);
 }
+/* Under the model view, what the model makes of the selected module (its
+   family's part of the utility, the lean): over the well's bottom edge,
+   above the line, as the catalog's description is. */
+.pr-model {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--s2));
+  max-width: min(100%, 560px);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--panel-94);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--t-value);
+  line-height: 1.5;
+  color: var(--silk-dim);
+}
+.pr-model b.up { color: var(--phos-b); font-weight: 400; }
+.pr-model b.down { color: var(--silk-dim); font-weight: 400; }
 /* Which way your taste leans on a module is the model view's (⌥, or MODEL):
    at rest the longer description and the keyboard's card leave it out, and
    the description takes two columns. */
@@ -7539,8 +7650,44 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 /* Beside the open catalog the line has less room than the well: its width
    is what is left, and the price and ▶ go to a second line rather than past
    the well's edge. */
-.rack-frame.cat-open .pick-chip { max-width: calc(100% - 248px - var(--s3) - var(--s3) - var(--s4)); white-space: normal; flex-wrap: wrap; }
-.pick-chip .pick-chip-text { flex: none; }
+/* Beside the open catalog the line has less room than the well: its width
+   is what is left, and it stays one line (C2b). The module, IN HAND, the
+   price's figure and ▶ stay whole; what gives way, cut with an ellipsis, is
+   the reasons: what happens at the socket, how many are lit, the preview's
+   label, and a price that is a reason rather than a figure ("no price yet:
+   it needs a few picks"). */
+.rack-frame.cat-open .pick-chip { max-width: calc(100% - 248px - var(--s3) - var(--s3) - var(--s4)); }
+.pick-chip, .rack-frame.cat-open .pick-chip { white-space: nowrap; flex-wrap: nowrap; }
+/* Its parts are the line's own items, so each can give way by itself. */
+.pick-chip .pick-armed { display: contents; }
+.pick-chip .pick-armed > *, .pick-chip .pv > * { flex: none; }
+/* The preview's ▶ comes first in it and never goes: what gives is its trace
+   and label, after it. */
+.pick-chip .pick-armed .pv { flex: 0 1 auto; min-width: 22px; overflow: hidden; }
+.pick-chip .pick-armed .pv-scope { width: 96px; height: 26px; }
+.pick-chip .pick-armed .pv-label,
+.pick-chip .pick-armed .sd-hint,
+.pick-chip .pick-armed .sd-price:has(.pr-mute),
+.pick-chip .pick-chip-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-chip .pick-chip-text { flex-shrink: 2; }
+.sd-price .pr-short { display: none; }
+.rack-frame.cat-open .pick-chip .sd-price .pr-long { display: none; }
+.rack-frame.cat-open .pick-chip .sd-price .pr-short { display: inline; }
+/* Narrower still (the catalog open in a 1000 px window): the preview's trace
+   and the count of lit sockets (the canvas lights them) step out, so where it
+   goes and the price keep their words. ▶ stays. */
+@media (max-width: 1180px) {
+  .rack-frame.cat-open .pick-chip { gap: var(--s1); }
+  .rack-frame.cat-open .pick-chip .pv-scope,
+  .rack-frame.cat-open .pick-chip .pick-armed .sd-hint,
+  .rack-frame.cat-open .pick-chip .pick-armed .sd-verb { display: none; }
+}
 
 /* ---- the camera's corner (C2a): fit · − · + · map · layout ▾ ---- */
 .pt-corner { gap: 2px; padding: 2px; border-radius: var(--r2); background: var(--bezel-72); }
@@ -7648,6 +7795,12 @@ body:not(.model-view) .pt-read.open .pr-more { grid-template-columns: minmax(150
 /* Where a knob was as the sound was opened, once it has been turned: a pale
    pointer across its rim (`paintWas`). */
 #rack-svg .knob-was { stroke: var(--silk-mute); stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+/* A bred sound as it was bred (`paintLineage`): the same pale pointer at the
+   seed's value on each knob the generation changed, and a silk tick on the
+   top edge of each module it changed. */
+#rack-svg .knob-seed { stroke: var(--silk-mute); stroke-width: 1.4; stroke-linecap: round; pointer-events: none; }
+#rack-svg .lineage-tick { fill: none; stroke: var(--silk); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#view-patch .pt-sub .pt-from { color: var(--silk); }
 .pt-leg .lg-arc { stroke: var(--phos-a); stroke-width: 2; }
 .pt-leg .lg-was { stroke: var(--silk-mute); stroke-width: 1.6; }
 /* Focused from the keyboard while it waits: the focus ring stays where it is,

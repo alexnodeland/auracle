@@ -50,6 +50,9 @@ import {
   walkLabel,
   belowNote,
   fromLine,
+  bredLine,
+  turnedBy,
+  turnsItsKnobs,
   grownFrom,
   bredRatings,
   changeParts,
@@ -263,6 +266,10 @@ test("EVOLVE POOL narrates each walk from the engine's reason, and only a refuse
 test("the bank's lineage lines name the seed, what changed, and both ratings with their words", () => {
   assert.equal(fromLine("Soft Pad", "+reverb, cutoff 1.2 kHz → 3.4 kHz"), "from Soft Pad · +reverb, cutoff 1.2 kHz → 3.4 kHz");
   assert.equal(fromLine("Soft Pad", ""), "from Soft Pad");
+  // PATCH's subtitle on a bred sound counts the same changes the row lists.
+  assert.equal(bredLine("Soft Pad", 3), "from Soft Pad · 3 changes");
+  assert.equal(bredLine("Soft Pad", 1), "from Soft Pad · 1 change");
+  assert.equal(bredLine("Soft Pad", 0), "from Soft Pad");
   assert.equal(grownFrom("Soft Pad", 3), "Grown from Soft Pad in generation 3.");
   assert.equal(belowNote(1), "1 more was bred and rated below the pool.");
   assert.equal(belowNote(3), "3 more were bred and rated below the pool.");
@@ -700,4 +707,13 @@ test("before a pick, the model view says on the card it favours how sure it is, 
   assert.equal(pairGuess(0.5), "it guesses this · 50% · a hunch");
   voiced(pairGuess(0.6));
   assert.ok(!/\blens\b/.test(pairGuess(0.6)));
+});
+
+test("PATCH's readout names the PERFORM controls that turn a knob, from the measured wiring", () => {
+  assert.equal(turnedBy(["Bright", "Space"], "cutoff"), "BRIGHT and SPACE turn this cutoff");
+  assert.equal(turnedBy(["Bright"], "cutoff"), "BRIGHT turns this cutoff");
+  assert.equal(turnedBy([], "cutoff"), "");
+  assert.equal(turnsItsKnobs([["Bright", ["cutoff", "res"]], ["Space", ["decay"]], ["Snap", []]]), "BRIGHT turns its cutoff and res; SPACE turns its decay");
+  assert.equal(turnsItsKnobs([]), "");
+  voiced(turnedBy(["Bright", "Space", "Motion"], "cutoff"));
 });

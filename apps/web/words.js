@@ -377,6 +377,32 @@ export function fromLine(seedName, changes) {
   return changes ? `from ${seedName} · ${changes}` : `from ${seedName}`;
 }
 
+/** PATCH's readout for a knob PERFORM's controls turn, from the measured
+ *  wiring: "BRIGHT and SPACE turn this cutoff". `names` are the controls'
+ *  names; "" when none does (the readout then says nothing of PERFORM). */
+export function turnedBy(names, knob) {
+  if (!names.length) return "";
+  const who = series(names.map((n) => String(n).toUpperCase()));
+  return `${who} ${names.length === 1 ? "turns" : "turn"} this ${knob}`;
+}
+
+/** …and for a module, each control with the knobs of it that it turns:
+ *  "BRIGHT turns its cutoff and res; SPACE turns its decay". `pairs` is
+ *  [[name, [knob, …]], …] in the panel's order. */
+export function turnsItsKnobs(pairs) {
+  return pairs
+    .filter(([, ks]) => ks.length)
+    .map(([n, ks]) => `${String(n).toUpperCase()} turns its ${series(ks)}`)
+    .join("; ");
+}
+
+/** PATCH's subtitle on a bred sound, while it is as it was bred: its seed
+ *  and how many changes the generation made, counted as the bank row lists
+ *  them (`changeParts`), "from Soft Pad · 3 changes". */
+export function bredLine(seedName, n) {
+  return n > 0 ? `from ${seedName} · ${count(n, "change")}` : `from ${seedName}`;
+}
+
 /** The line under a sound's name on its card (Plan-005 task 3): where it
  *  came from. A bred sound's is its bank row's (`fromLine`, from its
  *  `LineageEvent`); any other's is its origin, as the bank's glyph says it. */

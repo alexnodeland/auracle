@@ -21,7 +21,7 @@ at last time.
 | <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Zoom out / in: PATCH, PERFORM, TASTE, LEARNING. From EVOLVE, out goes to TASTE and in to PATCH |
 | <kbd>⌥←</kbd> / <kbd>⌥→</kbd> | Beside it to EVOLVE / back to PERFORM |
 | <kbd>⌥1</kbd>–<kbd>⌥5</kbd> | Straight to PERFORM, PATCH, EVOLVE, TASTE, LEARNING |
-| Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up; <kbd>Esc</kbd> ends it |
+| Hold <kbd>⌥</kbd> | [The model view](./reading-the-model.md#the-model-view) while you hold it: what the model believes, over the level you’re at. **MODEL** in the menu bar does the same held, and a tap on it keeps it up, across a reload too; <kbd>Esc</kbd> ends it (in PATCH, once nothing nearer is open: the press walks out one thing first) |
 
 They work with a knob or a list focused. A held <kbd>⌥</kbd> shows the model
 view after a moment; a key pressed while it is down (<kbd>⌥↑</kbd>, say) is
@@ -111,6 +111,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>F2</kbd>, or the menu key | Its structure menu (⋯) |
 | <kbd>Delete</kbd> | Delete it; a two-input module asks which input survives. On the guess: skip it |
 | <kbd>L</kbd> | Lock it, or unlock it |
+| <kbd>Q</kbd> | What goes here? The model's guess for its place: after it, on its modulation slot, or in it if the socket is empty (on a modulator, its module's slot). The guess takes the focus when it lands: <kbd>Enter</kbd> adds it, <kbd>Delete</kbd> skips it, <kbd>Esc</kbd> goes back to the guess for the output |
 | <kbd>/</kbd> | A module after it, from the catalog |
 | <kbd>Esc</kbd> | Out of it |
 

@@ -191,7 +191,6 @@ a menu:
 | **snap to the grid** | Pin every module where it sits, on the 24 px grid. This is how you start arranging a bred patch by hand |
 | **reset positions** | Throw away the hand positions, and lay the patch out along the signal chain again |
 | **detail** | **automatic** leaves off labels too small to read (names and settings print larger), and leaves three knobs to read on modules too small to grab; or force **full** or **compact** |
-| **leans** | Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default |
 
 **snap** and **reset** act only on a layout by hand. Positions are kept for each patch,
 survive a reload and a ⚡ generation, and travel in a downloaded patch file. If
@@ -256,13 +255,15 @@ or press <kbd>F2</kbd> on it):
 | **bypass** | The input passes straight through. Grayed on a source |
 | **modulate → *destination*** | Opens the catalog at the modulators, for this module’s modulation input. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
+| **what goes here?** (<kbd>Q</kbd>) | The model's guess for this place: after it, on its modulation slot, or in it if the socket is empty. Drawn there, dashed amber; <kbd>Enter</kbd> adds it ([the guess](./views/play.md#the-well)) |
 | **swap the two inputs** | On the six two-input modules only |
 | **delete** | Below a rule, in red. A source leaves its socket empty |
 
 **replace with…**, **insert…**, and **modulate** hand off to the
 [catalog](./wiring.md) with the socket already chosen and lit, so there is one
-list of modules in one place. A modulator’s own ⋯ has two rows: **replace
-with…** and **unplug this modulator**.
+list of modules in one place. A modulator’s own ⋯ has three rows: **replace
+with…**, **what goes here?** (the guess for its module's slot) and **unplug
+this modulator**.
 
 Anything you bypass or delete is set aside rather than disappearing (**SET
 ASIDE n** at the well's foot), and stays there across a reload.
@@ -296,6 +297,6 @@ The picture carries the patch inside it: open an Auracle PNG or SVG with
 ## What to try next
 
 - Lock a module you like and press ⚡ EVOLVE FROM THIS a few times.
-- Turn **leans** on (in the layout's ▾), and see which kinds of module your
-  taste leans toward.
+- Hold <kbd>⌥</kbd> (the [model view](./views/play.md#the-model-view-in-patch)),
+  and see which kinds of module your taste leans toward.
 - [Wiring and the catalog](./wiring.md): add a module, or rewire one.

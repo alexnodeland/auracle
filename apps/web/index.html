@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=75">
+<link rel="stylesheet" href="style.css?b=76">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      on a coarse pointer whose shorter side is under 620px (a phone) there is
      no honest way to show it, so we say so instead of shipping a broken one.
@@ -48,7 +48,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=143";
+    s.src = "main.js?b=144";
     document.head.appendChild(s);
   }
 })();
@@ -336,8 +336,10 @@
             <h1 class="pt-title subject-name" id="rack-subject">no sound open</h1>
             <!-- The subtitle: what the rack is made of, and what is happening
                  to it (opening, waiting, silent, locks). The budget joins it
-                 near a ceiling, or under Show measurements. -->
-            <p class="pt-sub"><span class="subject-meta" id="rack-meta"></span><span class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></span></p>
+                 near a ceiling, or under Show measurements. Under the model
+                 view (⌥, or MODEL) it becomes the belief line: what the model
+                 makes of the patch in hand (`renderBelief`), in its voice. -->
+            <p class="pt-sub"><span class="subject-meta" id="rack-meta"></span><span class="belief" id="belief" role="status"></span><span class="budget" id="budget" title="What breeding can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></span></p>
               <!-- The edit bar: shown only once something was edited (its slot
                    is kept, so nothing beside it moves). KEEP AS NEW plays your
                    edit against the original and asks; with "pick the edit"
@@ -415,13 +417,16 @@
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-plate" x="4" y="3" width="36" height="16" rx="4"/></svg>A module: its name and all its knobs</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-audio" d="M3 16C20 16 24 6 41 6"/></svg>A cable: sound, flowing right to OUT</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-mod" d="M22 20V2"/></svg>Dashed: a modulator, with its depth and rate as set</span>
-                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-arc" d="M15.3 16.7A8 8 0 1 1 28.7 16.7"/><path class="lg-was" d="M28 5L31 2"/></svg>A pale tick on a knob: where it was when you opened the sound</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-arc" d="M15.3 16.7A8 8 0 1 1 28.7 16.7"/><path class="lg-was" d="M28 5L31 2"/></svg>A pale tick on a knob: where it was when you opened the sound; on a bred sound as bred, where its seed had it</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-plate" x="4" y="6" width="36" height="14" rx="4"/><path class="lg-tick" d="M9 6L12 9L19 2"/></svg>A tick on a module: the generation that bred this sound changed it</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-mark" x="14" y="4" width="16" height="14" rx="3"/><path class="lg-bars" d="M18 15v-3M22 15v-5M26 15v-7"/></svg>A level: each cable's, measured on one render (hollow until it is)</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-light" cx="8" cy="11" r="2.2"/><circle class="lg-light" cx="22" cy="11" r="2.2"/><circle class="lg-light" cx="36" cy="11" r="2.2"/></svg>Lit while notes sound: the live meter</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-guess" x="4" y="3" width="36" height="16" rx="4"/></svg>Amber, dashed: the model's guess</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-lock" x="4" y="3" width="36" height="16" rx="4"/></svg>An amber edge: locked, so breeding keeps it (L)</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><rect class="lg-lean" x="4" y="3" width="36" height="16" rx="4"/></svg>Hold ⌥: what the model believes (your lean on each kind, what one more is worth, its next guesses)</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><circle class="lg-jack" cx="10" cy="11" r="4.5"/><path class="lg-audio" d="M15 11H40"/></svg>Drag a jack: unplug, or patch</span>
                 <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-face" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>At OUT: the sound's face, measured; a click plays it</span>
+                <span class="pt-leg"><svg viewBox="0 0 44 22" aria-hidden="true"><path class="lg-without" d="M18 2h8c0 5-4 6-4 9s5 4 5 9H17c0-5 5-6 5-9s-4-4-4-9z"/></svg>Dashed at OUT: without the selected module, measured</span>
               </div>
               <!-- The catalog, on demand over the well's left (the
                    specimen's `pt-cat`): ADD MODULE or / opens it, Esc or ×
@@ -484,7 +489,7 @@
               <!-- The camera, quiet in the corner (Plan-008 C2a): fit, out,
                    in, the map (where its bookmarks are), and the layout's ▾
                    (chain, compact, by hand; snap and reset for by hand; the
-                   level of detail; leans). Every gesture stays on the canvas:
+                   level of detail). Every gesture stays on the canvas:
                    the wheel and a drag pan, ctrl-wheel or a pinch zooms at the
                    pointer, Space+drag and a middle drag pan, ⌘0 ⌘− ⌘=. -->
               <div class="pt-corner" id="pt-corner" role="toolbar" aria-label="The camera">
@@ -508,7 +513,6 @@
                     <!-- Rewritten by `syncLodBtn`: the threshold is a function of
                          the frame's height. -->
                     <span class="tt" title="Detail: automatic. Modules lose their knobs once they are drawn too small to grab."><button class="pt-mi" id="rack-lod" type="button" role="menuitem" aria-pressed="false">detail auto</button></span>
-                    <span class="tt" title="Tint each module by which way your taste leans on its kind: amber toward, red away, stronger where the model is surer. Off by default."><button class="pt-mi" id="rack-belief" type="button" role="menuitemcheckbox" aria-checked="false" aria-pressed="false">leans</button></span>
                   </div>
                 </div>
               </div>
@@ -550,8 +554,10 @@
               <!-- The face at OUT: the bench's measured face, the same as the
                    menu bar's chip, past the amp's OUT jack and moved with the
                    camera (main.js `placeOutFace`). It is the rack's ▶: a
-                   press plays the sound. -->
-              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button></span>
+                   press plays the sound. Over it, dashed, the face of the
+                   patch without the selected module, measured
+                   (`paintWithout`). -->
+              <span class="tt out-slot hidden" id="out-slot" title="Pick a sound from the bank first"><button class="out-play" id="rack-play" type="button" aria-label="Play this sound" data-hear="inhand" disabled><span id="out-face"></span></button><span class="out-without" id="out-without" hidden></span></span>
               <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap: click to move there"></svg>
               <!-- What is about to happen, pinned to the plate it will happen
                    to, named by the title silkscreened on that plate. The rail
@@ -586,14 +592,10 @@
                    reason in the model's italic, over the rack's top left. Its
                    module is drawn at its socket in the rack (patch.js). -->
               <div class="guess-read" id="guess-read" role="status" hidden></div>
-              <!-- What the model makes of the patch in hand, on the well's top
-                   line (the specimen's), when it has a guess; the module guess
-                   and the thing in hand take the line while they are up.
-                   TODO(Plan-008 C2b): under ⌥ it becomes the subtitle's
-                   belief line. -->
-              <div class="belief-row mono" id="belief-row">
-                <div class="belief" id="belief" role="status"></div>
-              </div>
+              <!-- Under the model view: what one more of each family the
+                   patch holds is worth to the model, one chip per family
+                   (main.js `paintWorth`). -->
+              <div class="pt-worth" id="pt-worth" role="group" aria-label="What each kind of module is worth to the model" hidden></div>
               <div class="rack-empty" id="rack-empty">Pick a sound from the bank. Then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
           </div>
@@ -1048,7 +1050,7 @@
       </div>
       <div>
         <div class="help-h">the patch</div>
-        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. The selected module shows <b>⋯</b>, its structure menu (or right-click it, or <kbd>F2</kbd>), and <b>▢</b>, which locks it so breeding can’t touch it (<kbd>l</kbd>). <kbd>Tab</kbd> into the patch, then <kbd>←</kbd>/<kbd>→</kbd> walk the modules in signal order, <kbd>↑</kbd>/<kbd>↓</kbd> go into a module’s modulators and back, <kbd>Home</kbd>/<kbd>End</kbd> the first and the last, <kbd>Enter</kbd> into its knobs: <kbd>↑</kbd>/<kbd>↓</kbd> turn (<kbd>Shift</kbd> finely), <kbd>Space</kbd> or <kbd>Enter</kbd> cycles a setting (<kbd>Shift</kbd> goes back), <kbd>Esc</kbd> back out. A click on the face at OUT plays the sound.</p>
+        <p>Drag a knob and the sound changes at once. Click a named setting (a wave, a filter mode) to cycle it. The selected module shows <b>⋯</b>, its structure menu (or right-click it, or <kbd>F2</kbd>), and <b>▢</b>, which locks it so breeding can’t touch it (<kbd>l</kbd>); <kbd>q</kbd> asks the model what goes there. <kbd>Tab</kbd> into the patch, then <kbd>←</kbd>/<kbd>→</kbd> walk the modules in signal order, <kbd>↑</kbd>/<kbd>↓</kbd> go into a module’s modulators and back, <kbd>Home</kbd>/<kbd>End</kbd> the first and the last, <kbd>Enter</kbd> into its knobs: <kbd>↑</kbd>/<kbd>↓</kbd> turn (<kbd>Shift</kbd> finely), <kbd>Space</kbd> or <kbd>Enter</kbd> cycles a setting (<kbd>Shift</kbd> goes back), <kbd>Esc</kbd> back out. A click on the face at OUT plays the sound.</p>
         <div class="help-h">the catalog</div>
         <p><b>add module</b> (or <kbd>/</kbd>) opens the catalog over the well. <b>Click a module</b> and it’s in your hand: every socket it can go into lights up and says what will happen there. Green <b>inserts</b> it after what’s already in the socket, and amber <b>replaces</b> it. Click a lit ○ to place it, or <b>▶</b> on the line along the well’s top to hear it there first. <kbd>Esc</kbd> puts it down, and closes the catalog.</p>
         <p><kbd>/</kbd> searches by sound as well as by name: <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Point at any module for a sentence on what it does and its ports (hold <kbd>⌥</kbd> to see which way your taste leans on it). Arrows walk the list; <kbd>Enter</kbd> takes one; then arrows walk the lit sockets and <kbd>Enter</kbd> places.</p>

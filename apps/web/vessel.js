@@ -53,8 +53,10 @@ export function traceVessel(ctx, pts) {
  *  - `reflection`: the floor under the vessel, a line of light and the
  *    outline mirrored in it, faint and fading (the specimen's stage and card).
  *  - `line`: the outline's width (default h/70, at least 1); `dim`: an
- *    overall alpha. */
-export function drawVessel(ctx, face, stats, { box, color, slices = true, glow = 0, reflection = false, line = null, dim = 1 } = {}) {
+ *    overall alpha.
+ *  - `dash`: the outline dashed (`[on, off]` in px), for a face drawn as a
+ *    comparison over another (PATCH's "without this module" at OUT). */
+export function drawVessel(ctx, face, stats, { box, color, slices = true, glow = 0, reflection = false, line = null, dim = 1, dash = null } = {}) {
   const rgb = rgbOf(color);
   if (!face || !stats || !box || !rgb) return false;
   const k = box.h < 36 ? 2 : 1;
@@ -99,6 +101,7 @@ export function drawVessel(ctx, face, stats, { box, color, slices = true, glow =
     }
   }
   traceVessel(ctx, outline);
+  if (dash) ctx.setLineDash(dash);
   if (glow) {
     ctx.shadowColor = `rgba(${rgb}, ${0.65 * dim})`;
     ctx.shadowBlur = glow;

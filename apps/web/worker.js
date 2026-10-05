@@ -1277,8 +1277,11 @@ function faceNow(q, render = false) {
   }
 }
 
-// `m.ids`: pool members; `m.trees`: [{ref, tree}] (a preset, an offer, the
-// bench). `m.render`: render what has no face yet, in `later`.
+// `m.ids`: pool members; `m.trees`: [{ref, tree, seen?}] (a preset, an
+// offer, the bench). `m.render`: render what has no face yet, in `later`.
+// `seen`: a face the player is looking at and waiting on (PATCH's outline of
+// the patch without the selected module): its render goes to the front of the
+// faces lane and ahead of a measurement nobody is waiting on (`nextLong`).
 async function faces(m) {
   const asks = [
     ...(m.ids || []).map((id) => ({ id })),
@@ -1288,6 +1291,7 @@ async function faces(m) {
       memo: t.memo || null,
       // A preset by its index: its tree, without inserting it.
       tree: t.memo ? null : t.preset != null ? engine.preset_tree_json(t.preset) : t.tree,
+      ...(t.seen ? { seen: true } : {}),
     })),
   ];
   const items = [];
@@ -1333,8 +1337,15 @@ async function faceLookup(m) {
     } else if (m.render) {
       if (!faceRendering.has(q.key)) {
         faceRendering.add(q.key);
-        lanes[FACES].push({ type: "face_render", ...q });
+        const job = { type: "face_render", ...q };
+        if (q.seen) lanes[FACES].unshift(job);
+        else lanes[FACES].push(job);
         schedulePump();
+      } else if (q.seen) {
+        // Already waiting for a slot, and now looked at: to the front.
+        const i = lanes[FACES].findIndex((j) => j.type === "face_render" && j.key === q.key);
+        if (i > 0) lanes[FACES].unshift({ ...lanes[FACES].splice(i, 1)[0], seen: true, ref: q.ref });
+        else if (i === 0) lanes[FACES][0].seen = true;
       }
     } else if (!m.quiet) {
       failed.push({ ...faceTag(q), missing: true });
@@ -1434,10 +1445,11 @@ async function measure(m) {
       for (const job of need) {
         if (!engine.memo_render(job.tree)) failed.push(job.key);
         // Nobody waiting on it (`idleOnly`): it also gives way to anything
-        // else in `later` (a cable probe, a guess, a face lookup, a refit).
+        // else in `later` (a cable probe, a guess, a face lookup, a refit),
+        // and to a face the player is looking at (`seenFaceWaiting`).
         // With Wander on, the drifts go first, one each time; PERFORM coming
         // back into sight (`promote`) makes a demoted one the player's again.
-        if ((await breathe(laneOf(m))) || (idleOnly(m) && laterWaiting())) {
+        if ((await breathe(laneOf(m))) || (idleOnly(m) && (laterWaiting() || seenFaceWaiting(lanes)))) {
           lanes[LATER].unshift(m);
           return;
         }
@@ -2475,13 +2487,24 @@ function bootCrewDone() {
 const idleOnly = (q) => q.type === "perform_wire" && !!q.bg;
 const laterWaiting = () => lanes[LATER].some((q) => !idleOnly(q) && !blocked(q));
 
+// A face the player is looking at and waiting on (`seen`, PATCH's outline of
+// the patch without the selected module) is ready in the faces lane.
+function seenFaceWaiting(lanes) {
+  return lanes[FACES].some((q) => q.seen && !blocked(q));
+}
+
 // The first request in `soon`, then `later` (a measurement nobody is waiting
-// on last), then the faces lane, that may start now.
+// on last, after a face the player is looking at), then the faces lane, that
+// may start now. PERFORM's own measurement of the sound it plays is not
+// `idleOnly`, so it still goes before any face.
 function nextLong() {
   if (floor) return null;
   for (const lane of [SOON, LATER, FACES]) {
     let i = lanes[lane].findIndex((q) => !blocked(q) && !(lane === LATER && idleOnly(q)));
-    if (i < 0 && lane === LATER) i = lanes[LATER].findIndex((q) => !blocked(q));
+    if (i < 0 && lane === LATER) {
+      if (seenFaceWaiting(lanes)) continue;
+      i = lanes[LATER].findIndex((q) => !blocked(q));
+    }
     if (i >= 0) return lanes[lane].splice(i, 1)[0];
   }
   return null;

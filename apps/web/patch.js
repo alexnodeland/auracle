@@ -189,7 +189,11 @@ export function createPatch(host) {
   // the engine ranks (`guess_skip`, then `guess` again).
   // `tree`: the bench's tree the ranking was made on (the reply's), which
   // the faces beside the plate describe.
-  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0 };
+  // `at`: "What goes here?" (the selection's ⋯, or Q): the module key whose
+  // place the guess is ranked for (`guess_rank`'s `at`: its wire, its
+  // modulation slot, and itself if it is an empty socket), until the
+  // structure changes or Esc goes back to the output's.
+  const guess = { want: false, out: null, again: false, data: null, tree: null, epoch: -1, skipping: false, retries: 0, at: null, atData: null };
 
   function askGuess() {
     if (guess.out) {
@@ -197,8 +201,8 @@ export function createPatch(host) {
       return;
     }
     guess.want = false;
-    guess.out = { token: ++seq, epoch };
-    host.send({ type: "guess", token: guess.out.token });
+    guess.out = { token: ++seq, epoch, at: guess.at };
+    host.send({ type: "guess", token: guess.out.token, ...(guess.at ? { at: guess.at } : {}) });
   }
   function onGuess(m) {
     if (!guess.out || m.token !== guess.out.token) return;
@@ -208,6 +212,14 @@ export function createPatch(host) {
       guess.again = false;
       guess.want = true;
       scheduleSettle(0);
+    }
+    // Ranked for another place than the one now asked about (a "What goes
+    // here?" asked while the output's ranking was out, or Esc since): not
+    // this answer. The place asked about now is asked for.
+    if (asked.at !== guess.at) {
+      guess.want = true;
+      scheduleSettle(0);
+      return;
     }
     if (m.error) {
       guess.data = null;
@@ -225,6 +237,7 @@ export function createPatch(host) {
     guess.tree = m.tree || null;
     guess.epoch = epoch;
     guess.skipping = false;
+    guess.atData = asked.at;
     // A ranking that came back with nothing in it because its time ran out
     // before any candidate was heard (a crew still starting, a slow machine)
     // is not an answer: what it did render is in the engine's memo, so
@@ -237,8 +250,49 @@ export function createPatch(host) {
     }
     drawGuess();
   }
+  const guessCurrent = () => guess.data && guess.epoch === epoch && guess.atData === guess.at;
   const topGuess = () =>
-    guess.data && guess.epoch === epoch && !guess.skipping && Array.isArray(guess.data.guesses) ? guess.data.guesses[0] || null : null;
+    guessCurrent() && !guess.skipping && Array.isArray(guess.data.guesses) ? guess.data.guesses[0] || null : null;
+
+  /** "What goes here?": the guess for the place of the module at `key`
+   *  (the selection's ⋯, or Q). Its ghost is drawn there with its reason on
+   *  the well's top line, Enter takes it and × skips it, as the output's. */
+  function askHere(key, { focus = false } = {}) {
+    if (!key || !host.hasRack()) return;
+    guess.at = key;
+    // Asked from the keyboard: the ghost takes the focus when it lands, so
+    // Enter takes it, if the keyboard is still on the module Q was pressed
+    // on then (or the rebuild took that module's focus away), never from a
+    // knob it has gone into since.
+    guess.focusWhenDrawn = focus;
+    guess.focusFrom = focus ? document.activeElement : null;
+    guess.retries = 0;
+    guess.skipping = false;
+    drawGuess();
+    // Asked now, not on the next settle: the player asked.
+    if (!host.benchSettled() || host.knobDragging()) {
+      guess.want = true;
+      scheduleSettle(0);
+    } else askGuess();
+  }
+  /** Back to the output's guess (Esc on the ghost, or a structural edit). */
+  function clearHere() {
+    if (!guess.at) return;
+    guess.at = null;
+    guess.focusWhenDrawn = false;
+    guess.focusFrom = null;
+    guess.retries = 0;
+    guess.want = true;
+    drawGuess();
+    scheduleSettle(0);
+  }
+  /** Where a guess at `g` goes, in words, for the top line ("after the drive"). */
+  function placeWords(g) {
+    const owner = host.kindName(host.kindAt(g.op.key)) || "module";
+    if (g.op.op === "set_mod") return `on the ${owner}’s ${host.kindModTarget(host.kindAt(g.op.key)) || "modulation"}`;
+    if (g.op.op === "replace") return "in the empty socket";
+    return `after the ${owner}`;
+  }
 
   function nameOfKind(kind) {
     return host.kindName(kind) || String(kind).replace(/_/g, " ");
@@ -348,17 +402,40 @@ export function createPatch(host) {
     const svg = host.rackSvg();
     const read = $("guess-read");
     const g = topGuess();
-    const say = !g && guess.data && guess.epoch === epoch && !guess.skipping ? W.guessRefusal(guess.data) : null;
+    let say = !g && guessCurrent() && !guess.skipping ? W.guessRefusal(guess.data) : null;
+    // A place asked about: before the warm start the model says so (the
+    // output's guess says nothing then, but here the player asked), and
+    // while it is ranked, what it is doing.
+    const here = guess.at ? host.kindName(host.kindAt(guess.at)) || "module" : null;
+    if (here && !g && !say) {
+      say = guessCurrent() && guess.data && (guess.data.reason === "no_taste" || guess.data.reason === "no_patch")
+        ? "no guess yet: it needs a few picks first"
+        : guessCurrent() ? null : `hearing the modules that fit at the ${here}…`;
+    }
+    // An answer with nothing to draw for the place asked about: nothing for
+    // the focus to go to.
+    if (here && !g && guessCurrent()) guess.focusWhenDrawn = false;
+    // The way back to the output's guess for a pointer or a finger (the
+    // keyboard's is Esc on the ghost); not the ghost's ×, which skips its
+    // kind of module for that place.
+    const back = () => el("button", {
+      class: "gr-back", type: "button",
+      "aria-label": "Back to the guess for the output", title: "Back to the output’s guess · Esc",
+      onclick: (ev) => { ev.stopPropagation(); clearHere(); },
+    }, "✕");
     // The line above the rack: GUESS · FILTER and the model's reason.
     if (read) {
+      read.classList.toggle("here", !!here);
       if (g) {
         read.replaceChildren(
           el("span", { class: "gr-chip", text: `guess · ${nameOfKind(g.kind)}` }),
+          ...(here ? [el("span", { class: "gr-at", text: placeWords(g) })] : []),
           el("span", { class: "gr-why", text: W.guessLine(g, guess.data.against, host.niceName) }),
+          ...(here ? [back()] : []),
         );
         read.hidden = false;
       } else if (say) {
-        read.replaceChildren(el("span", { class: "gr-why", text: say }));
+        read.replaceChildren(el("span", { class: "gr-why", text: say }), ...(here ? [back()] : []));
         read.hidden = false;
       } else {
         read.replaceChildren();
@@ -367,7 +444,12 @@ export function createPatch(host) {
     }
     drawRailMark(g);
     if (!svg) return;
-    svg.querySelector(":scope > g.rack-guess")?.remove();
+    // A redraw (a face landing beside it, the camera moving, the model view)
+    // replaces the plate: the keyboard standing on it stays on it.
+    const old = svg.querySelector(":scope > g.rack-guess");
+    const held = old && old.contains(document.activeElement);
+    const onSkip = held && document.activeElement.classList.contains("gp-skip");
+    old?.remove();
     if (!g) return;
     const at = placeOf(g);
     if (!at) return;
@@ -383,8 +465,8 @@ export function createPatch(host) {
     const plate = svgEl("g", {
       transform: `translate(${at.x},${at.y})`,
       role: "button", tabindex: "0",
-      "data-kind": g.kind, "data-family": g.family, "data-socket": g.socket,
-      "aria-label": `The model's guess: ${name}. ${W.guessLine(g, guess.data.against, host.niceName)}. Press Enter to add it.`,
+      "data-kind": g.kind, "data-family": g.family, "data-socket": g.socket, "data-at": guess.at || null,
+      "aria-label": `The model's guess${guess.at ? ` ${placeWords(g)}` : ""}: ${name}. ${W.guessLine(g, guess.data.against, host.niceName)}. Press Enter to add it.`,
     }, `guess-plate${at.over ? " over" : ""}`);
     plate.appendChild(svgEl("rect", { x: 0, y: 0, width: at.w, height: at.h, rx: 8 }, "gp-body"));
     const t1 = svgEl("text", { x: 14, y: 22 }, "gp-name");
@@ -417,9 +499,19 @@ export function createPatch(host) {
       if (ev.target !== plate) return;
       if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); takeGuess(); }
       else if (ev.key === "Delete" || ev.key === "Backspace") { ev.preventDefault(); ev.stopPropagation(); skipGuess(); }
+      // Esc on a guess asked for a place: back to the output's guess.
+      else if (ev.key === "Escape" && guess.at) { ev.preventDefault(); ev.stopPropagation(); clearHere(); }
     });
     layer.appendChild(plate);
     svg.appendChild(layer);
+    if (held) (onSkip ? x : plate).focus({ preventScroll: true });
+    else if (guess.focusWhenDrawn && guess.at) {
+      guess.focusWhenDrawn = false;
+      const a = document.activeElement;
+      const from = guess.focusFrom;
+      guess.focusFrom = null;
+      if (!a || a === document.body || (from && a === from)) plate.focus({ preventScroll: true });
+    }
     // The faces' hook (Plan-005 task 3, #102): the guess's candidate is a
     // real render in the engine's memo (`GuessCandidate::key`), so its face
     // is a measurement, not the specimen's estimate. Once faces exist the
@@ -430,15 +522,89 @@ export function createPatch(host) {
     if (host.guessFace) host.guessFace(g, at, layer, guess.tree);
     // Over a narrow socket the words can be wider than the plate: condensed
     // to fit, as the rack's own silkscreen is (`fitLabels`).
-    for (const t of [t1, t2, t3]) {
-      const avail = at.w - (t === t1 ? 40 : 24);
-      let w = 0;
-      try { w = t.getBBox().width; } catch (_) { w = 0; }
-      if (w > avail) {
-        t.setAttribute("textLength", avail.toFixed(1));
-        t.setAttribute("lengthAdjust", "spacingAndGlyphs");
-      }
+    for (const t of [t1, t2, t3]) condense(t, at.w - (t === t1 ? 40 : 24));
+    // Under the model view, the ranking's next two (`guess_rank` ranks them
+    // by the lower bound of the gain, mean − 1 sd, best first): fainter
+    // dashed chips at their own sockets, each with its lower bound. Drawn
+    // only while the view is up; the top guess stays as it is.
+    if (host.modelOn && host.modelOn()) drawRunnersUp(layer, at);
+  }
+
+  function condense(t, avail) {
+    let w = 0;
+    try { w = t.getBBox().width; } catch (_) { w = 0; }
+    if (w > avail) {
+      t.setAttribute("textLength", avail.toFixed(1));
+      t.setAttribute("lengthAdjust", "spacingAndGlyphs");
     }
+  }
+
+  // A runner-up: smaller than the top guess, fainter, not a control (the top
+  // guess is the one Enter takes; skipping it shows the next).
+  const RW = 132;
+  const RH = 44;
+  function drawRunnersUp(layer, top) {
+    const list = (guess.data && guess.data.guesses) || [];
+    const taken = [{ x: top.x, y: top.y, w: top.w, h: top.h }];
+    // The faces beside the top guess, as `guessFace` lays them out.
+    taken.push({ x: top.x + top.w, y: top.y, w: 150, h: top.h });
+    const plates = [...host.rackBoxes().values()].map((b) => ({ x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 }));
+    const cam = cameraBox();
+    const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const inCam = (b) => !cam || (b.x >= cam.x && b.y >= cam.y + 44 / cam.s && b.x + b.w <= cam.x + cam.w && b.y + b.h <= cam.y + cam.h - 12 / cam.s);
+    const clear = (b) => inCam(b) && !plates.some((q) => overlaps(b, q)) && !taken.some((q) => overlaps(b, q));
+    list.slice(1, 3).forEach((g, i) => {
+      const spot = placeOf(g);
+      if (!spot) return;
+      // Near its own socket (where the top guess would go for it, at the
+      // runner's size), else beside the top guess, above it, or under the
+      // patch: the first place that covers no module, no other guess and
+      // stays in the camera's view. A modulation guess hangs under its plate.
+      const own = { x: spot.x + Math.max(0, (spot.w - RW) / 2), y: spot.over ? spot.y + spot.h + 10 : spot.y, w: RW, h: RH };
+      const prev = taken[taken.length - 1];
+      const bottom = Math.max(...plates.map((q) => q.y + q.h), top.y + top.h);
+      const tries = [
+        own,
+        { ...own, x: top.x - RW - 10, y: top.y },
+        { ...own, x: top.x - RW - 10, y: top.y + RH + 8 },
+        { ...own, x: top.x, y: top.y - RH - 8 },
+        { ...own, x: prev.x, y: prev.y - RH - 8 },
+        { ...own, x: top.x, y: bottom + 8 + i * (RH + 8) },
+      ];
+      const box = tries.find(clear) || own;
+      taken.push(box);
+      // A socket other than the top guess's gets a faint lead to it.
+      const at = spot.lead ? [spot.lead[2], spot.lead[3]] : spot.over ? [spot.x + spot.w / 2, spot.y + spot.h] : null;
+      if (at && g.socket !== list[0].socket) {
+        const fromTop = box.y > at[1];
+        layer.appendChild(svgEl("path", { d: `M ${box.x + RW / 2} ${fromTop ? box.y : box.y + RH} L ${at[0]} ${at[1]}` }, "runner-lead"));
+      }
+      const name = nameOfKind(g.kind);
+      const lcb = `lower bound ${g.lcb >= 0 ? "+" : "−"}${Math.abs(g.lcb).toFixed(2)}`;
+      const chip = svgEl("g", {
+        transform: `translate(${box.x.toFixed(1)},${box.y.toFixed(1)})`,
+        role: "img",
+        "data-rank": i + 2, "data-kind": g.kind, "data-socket": g.socket, "data-lcb": g.lcb,
+        "aria-label": `The model's guess number ${i + 2}: ${name}, ${lcb}`,
+      }, "guess-runner");
+      chip.appendChild(svgEl("rect", { x: 0, y: 0, width: RW, height: RH, rx: 6 }, "gr-body"));
+      const n = svgEl("text", { x: 10, y: 18 }, "gr-name");
+      n.textContent = `${i + 2} · ${name}`;
+      const l = svgEl("text", { x: 10, y: RH - 11 }, "gr-lcb");
+      l.textContent = lcb;
+      chip.append(n, l);
+      const tt = svgEl("title");
+      tt.textContent = "Runner-up guess";
+      chip.appendChild(tt);
+      layer.appendChild(chip);
+      condense(n, RW - 20);
+      condense(l, RW - 20);
+    });
+  }
+
+  /** The model view came or went: the runners-up with it. */
+  function modelViewChanged() {
+    drawGuess();
   }
 
   // The module rail's row for the guessed kind carries an amber mark, left of
@@ -1021,6 +1187,9 @@ export function createPatch(host) {
     }
     if (structural) {
       epoch += 1;
+      // A place asked about was a place in the structure that just changed:
+      // the guess goes back to the output's.
+      guess.at = null;
       probe.levels = null;
       probe.tree = null;
       probe.stale = false;
@@ -1157,6 +1326,10 @@ export function createPatch(host) {
     onWorker,
     benchLanded,
     rackBuilt,
+    modelViewChanged,
+    askHere,
+    clearHere,
+    asking: () => guess.at,
     platesMoved,
     cameraMoved,
     restLevel,

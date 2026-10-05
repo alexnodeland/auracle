@@ -17,6 +17,10 @@
 //   Space plays; the keyboard's goes back to the chip that opened it.
 // - Which way your taste leans on a module shows under the model view only:
 //   the longer description and the keyboard's card leave it out at rest.
+// - Beside the open catalog, at 1000 and 1440 px, the line is one line: the
+//   price and ▶ whole, the reasons cut short; and the module in hand is drawn
+//   at a socket clear of every module (C2a drew it over the MIX), and stays
+//   drawn under a still pointer, even on a socket's edge.
 const { test, expect } = require("@playwright/test");
 const { boot, openPreset, now, replied, warmStartAndFit } = require("./patch_page");
 const { modelView, openCatalog } = require("./shell");
@@ -251,5 +255,103 @@ test("closing the catalog puts down a socket ⋯ handed it: the line goes, and t
   await expect(page.locator("#pick-armed b")).toHaveText(/distortion/i);
   await expect(page.locator("#rack-svg .jack.legal").first()).toBeVisible();
   expect(await posted()).toBe(before);
+  expect(errors).toEqual([]);
+});
+
+for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog at ${w} px the armed line stays one line with its price and ▶ whole, and the module in hand is drawn clear of every module`, async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: w, height: h });
+  const errors = await boot(page, { warmed: true });
+  await openPreset(page, "Reese");
+  {
+    await openCatalog(page);
+    await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
+    const line = page.locator("#pick-chip");
+    await expect(line).toBeVisible();
+    // Every lit socket a pointer can reach (the catalog covers the well's
+    // left), found where it is now: the camera refits after a resize.
+    const reach = (key) => page.evaluate((k) => {
+      for (const j of document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")) {
+        if (k != null && j.getAttribute("data-childkey") !== k) continue;
+        const r = [...j.querySelectorAll(":scope > circle")].pop().getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        if (j.contains(document.elementFromPoint(x, y))) return { x, y, key: j.getAttribute("data-childkey") };
+      }
+      return null;
+    }, key);
+    const keys = await page.evaluate(() => [...document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")].map((j) => j.getAttribute("data-childkey")));
+    let reached = 0;
+    for (const key of keys) {
+      // Wait for the camera to be still (the catalog opening refits it, on
+      // its tween): the socket where it is twice running is where it stays.
+      let at = null;
+      await expect.poll(async () => {
+        const a = await reach(key);
+        const b = await new Promise((r) => setTimeout(r, 250)).then(() => reach(key));
+        at = b;
+        return !a || !b ? "gone" : Math.abs(a.x - b.x) + Math.abs(a.y - b.y) < 0.5 ? "still" : "moving";
+      }, { timeout: 15_000 }).not.toBe("moving");
+      if (!at) continue;
+      reached += 1;
+      await page.mouse.move(at.x, at.y);
+      // The line names this socket's module before anything is read.
+      const title = await page.evaluate((k) => window.__aur.wb.rack.modules.find((m) => m.key === k)?.title || "", at.key);
+      const plain = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await expect(line.locator(".pick-chip-text")).toHaveText(new RegExp(`^insert after ${plain}$`, "i"));
+      const got = await page.evaluate(() => {
+        const box = (e) => e.getBoundingClientRect();
+        const chip = box(document.getElementById("pick-chip"));
+        const play = box(document.getElementById("pv-play"));
+        const price = document.querySelector("#pick-chip .sd-price");
+        const ghost = [...document.querySelectorAll("#rack-svg .pick-ghost")].find((g) => !g.classList.contains("pick-lead"));
+        const g = ghost ? box(ghost) : null;
+        const over = g ? [...document.querySelectorAll("#rack-svg .rack-plates .mod-plate")].map(box)
+          .filter((q) => g.left < q.right - 1 && q.left < g.right - 1 && g.top < q.bottom - 1 && q.top < g.bottom - 1).length : -1;
+        return {
+          height: chip.height,
+          playIn: play.width >= 18 && play.left >= chip.left && play.right <= chip.right,
+          priceWhole: price.querySelector(".pr-mute") ? true : price.scrollWidth <= price.clientWidth + 1,
+          over,
+        };
+      });
+      expect(got.height, `${w}: one line`).toBeLessThan(50);
+      expect(got.playIn, `${w}: ▶ whole, inside the line`).toBe(true);
+      expect(got.priceWhole, `${w}: the price whole`).toBe(true);
+      expect(got.over, `${w}: the ghost at ${at.key} covers no module`).toBe(0);
+    }
+    expect(reached, `${w}: a lit socket to point at`).toBeGreaterThan(0);
+    // A still pointer anywhere on a lit socket keeps it (and the module in
+    // hand drawn once): resting on the ring's edge used to enter and leave
+    // it about thirty times a second as its stroke changed with its state.
+    const edge = await page.evaluate(() => {
+      // Between the ring's outer edge at rest (stroke 1.6) and lit (2): r + 0.9
+      // rack units from its centre.
+      for (const j of document.querySelectorAll("#rack-svg .jack.legal[data-childkey]")) {
+        const el = [...j.querySelectorAll(":scope > circle")].pop();
+        const c = el.getBoundingClientRect();
+        const r = Number(el.getAttribute("r")) || 0;
+        if (!r || !c.width) continue;
+        const k = c.width / (2 * r);
+        const x = c.left + c.width / 2 + (r + 0.9) * k;
+        const y = c.top + c.height / 2;
+        const at = document.elementFromPoint(x, y);
+        if (at && at.closest("#rack-svg") && !at.closest(".nodebank")) return { x, y };
+      }
+      return null;
+    });
+    if (edge) {
+      await page.mouse.move(edge.x, edge.y);
+      const drawn = await page.evaluate(() => new Promise((resolve) => {
+        let n = 0;
+        const mo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost") && !x.classList.contains("pick-lead")) n++; });
+        mo.observe(document.getElementById("rack-svg"), { childList: true, subtree: true });
+        setTimeout(() => { mo.disconnect(); resolve(n); }, 1500);
+      }));
+      expect(drawn, `${w}: the module in hand drawn again under a still pointer`).toBeLessThanOrEqual(1);
+    }
+    await page.keyboard.press("Escape");
+    await expect(line).toBeHidden();
+  }
   expect(errors).toEqual([]);
 });

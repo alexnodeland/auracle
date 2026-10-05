@@ -135,7 +135,10 @@ A hidden PERFORM's measurement drops to `later`, and goes last there
 (`idleOnly` in `worker.js`): a measurement nobody is waiting on (that one, one
 of a patch PERFORM has left, a re-check, a pre-warm) starts only when nothing
 else in `later` is ready, and at each breath gives way to anything that has
-arrived there, resuming from the memo. Back in sight, PERFORM gives the player
+arrived there, resuming from the memo. It also waits for, and gives way to,
+a face the player is looking at and waiting on in the faces lane (`seen`:
+PATCH's outline of the patch without the selected module, Plan-008 C2b),
+which it held back 15 s on a 16-core M3 Max when it did not. Back in sight, PERFORM gives the player
 back what was theirs (`promote`, to `soon`): a first measurement, a Take's
 (its controls play on the wiring carried over and the ones it lost read
 listening… until it lands) and a control just placed; one asked in the
@@ -364,10 +367,13 @@ it drops a stale pre-placement audition.
   (`no_taste` before the first fit, `full` at the grammar's ceiling,
   `no_patch` with nothing open). It gives way to work the player asks for and
   resumes from the memo. `at`, a module's key, ranks that deeper socket
-  instead of the output's. PATCH keeps one `guess` out at a time, asks once
-  the bench settles after an open or a structural edit, a refit or a skip
-  (never after a knob turn alone), and drops a ranking made on a structure
-  it has since left.
+  instead of the output's: PATCH sends it for "What goes here?" (the
+  selection's ⋯, or Q on a module, Plan-008 C2b), keeps asking for that place
+  until a structural edit or Esc on the ghost, and drops a ranking made for
+  another place than the one now asked about. PATCH keeps one `guess` out at
+  a time, asks once the bench settles after an open or a structural edit, a
+  refit or a skip (never after a knob turn alone), and drops a ranking made
+  on a structure it has since left.
 - **`edit_structure` with `guess`**: takes a guess (`guess_take`), the same
   edit with the same replies, remembered so that a later edit back to the
   tree before it (⌘Z) counts as a skip. A guess no longer current for the
@@ -543,8 +549,17 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   face does not insert it into the bank. Every request is answered; a
   `not_ready` or an `engine_error` for one makes main ask again when a slot
   next wants it.
+  PATCH's "without this module" outline (Plan-008 C2b) asks the same way, by
+  tree, with `seen` on its entry: the patch the structure menu's verb would
+  leave without the selected module (`withoutTree`), rendered for its face at
+  the front of the faces lane (moved there if it was already waiting) and
+  ahead of a measurement nobody is waiting on (`seenFaceWaiting`, in
+  `nextLong` and in `measure`'s breaths). It still waits for `soon` work, the
+  rest of `later` (the guess, the cable probe, a refit) and PERFORM's own
+  measurement of the sound it plays.
 - **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
-  that left the view (a preset row scrolled past, the PRESETS tab left) is
+  that left the view (a preset row scrolled past, the PRESETS tab left, or
+  PATCH's selection moved on before its "without" face was rendered) is
   dropped from the faces lane and from waiting lookups, and answered as `faces`
   with `cancelled`; main asks again when the slot comes back into view.
 - **After a `render`**, the worker posts the buffer first; the face, if main

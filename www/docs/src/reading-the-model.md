@@ -108,7 +108,8 @@ Two things follow:
 Hold <kbd>⌥</kbd> (Alt off Apple platforms) for a moment, at any level, and
 what the model believes comes up over it; let go and it goes. Press and hold
 **MODEL** in the menu bar for the same, or tap it to keep the view up until
-you tap it again or press <kbd>Esc</kbd>. Its light is lit while the view is
+you tap it again or press <kbd>Esc</kbd> (in PATCH, with nothing nearer to close); a tapped
+view is still up after a reload. Its light is lit while the view is
 up, and a tag under the menu bar says what it is reading from: *what it
 believes, from 18 picks*, or *still guessing · 4 more picks and it fits*
 before its first fit. A key pressed while you hold <kbd>⌥</kbd> (a level key
@@ -125,6 +126,12 @@ It shows only what the engine has:
   it favours (*it guesses this · 62% · leaning*), and each card’s
   [style](#styles-are-leanings-not-genres). The guess is the same one the line
   after your pick reads, asked again if the model refits before you pick.
+- **PATCH:** the belief line in place of the subtitle (*it’d like this 62% ·
+  leaning · was 58% ▲*), what adds up to it in the readout at the well's
+  foot, what the model makes of the selected module's family, each module's
+  edge tinted by which way your taste leans on its family, a chip per family
+  with what one more is worth, and the guess's two runners-up with their
+  lower bounds ([the model view in PATCH](./views/play.md#the-model-view-in-patch)).
 - **PERFORM:** nothing per control yet. The engine doesn’t say which way your
   taste leans on each control, so nothing is drawn there.
 

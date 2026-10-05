@@ -16,6 +16,10 @@
 const { WHERE, isLevel, startLevel, hashLevel, levelForKey } = await import(`./levels.js${new URL(import.meta.url).search}`);
 
 const SAVED = "auracle-view";
+// A tapped model view is remembered (held is never): "1" up, "0" down. Seeded
+// once from PATCH's old LEANS switch (`auracle-belief`), which it replaced.
+const SAVED_MODEL = "auracle-model-view";
+const OLD_LEANS = "auracle-belief";
 // ⌥ held this long shows the model view (ADR-017); a key pressed sooner
 // cancels it, so ⌥↑ never flashes it on the way to TASTE.
 const MODEL_HOLD_MS = 220;
@@ -70,6 +74,26 @@ export function createShell(host = {}) {
     if (model.on && !model.held) quietTimer = setTimeout(() => document.body.classList.add("model-quiet"), TAG_SAYS_MS);
     if (was !== model.on) paintModelTag();
     if (was !== model.on && host.modelViewChanged) host.modelViewChanged(model.on);
+    // A tap is a choice to leave it up (or take it down), kept across a
+    // reload; a hold is a glance, and leaves the choice as it was.
+    if (sticky) saveModel(model.on);
+  }
+  function saveModel(on) {
+    try {
+      localStorage.setItem(SAVED_MODEL, on ? "1" : "0");
+      localStorage.removeItem(OLD_LEANS);
+    } catch { /* private windows throw; the view is never load-bearing */ }
+  }
+  /** Was the model view left up by a tap? The old LEANS switch, if that is
+   *  all there is, says so once. */
+  function readModel() {
+    try {
+      const v = localStorage.getItem(SAVED_MODEL);
+      if (v != null) return v === "1";
+      return localStorage.getItem(OLD_LEANS) === "1";
+    } catch {
+      return false;
+    }
   }
   function cancelAltHold() {
     clearTimeout(altTimer);
@@ -177,6 +201,8 @@ export function createShell(host = {}) {
    *  PERFORM (levels.js `startLevel`). */
   function start() {
     show(startLevel(location.hash, read()));
+    // Left up by a tap last time: up again (and the old LEANS key retired).
+    if (readModel()) setModelView(true, { sticky: true });
   }
 
   // The rail: a click goes there. With a pointer, the level takes focus (as a
@@ -235,10 +261,6 @@ export function createShell(host = {}) {
         }
         return;
       }
-      // Esc ends the model view, however it came up, and goes on to close
-      // whatever else it closes; in a text field Esc is the field's (Find a
-      // sound clears), and the view stays.
-      if (e.key === "Escape" && model.on && !typing(e.target)) setModelView(false, { sticky: true });
       if (!e.altKey || e.metaKey || e.ctrlKey) return;
       if (!(e.key.startsWith("Arrow") || /^Digit[1-5]$/.test(e.code || ""))) return;
       if (typing(e.target)) return;
@@ -254,6 +276,17 @@ export function createShell(host = {}) {
     },
     true,
   );
+  // Esc ends the model view only when nothing nearer took it: on the window,
+  // in the bubble phase, after every handler on the page has had it, and not
+  // when one of them closed something with it (`defaultPrevented`: a menu,
+  // the selection, the catalog, a module in hand, a guess asked for a place,
+  // a new patch) or stopped it on its way (a plate, a knob). So PATCH's Esc
+  // chain walks out one thing a press and the view outlasts it. In a text
+  // field Esc is the field's (Find a sound clears), and the view stays.
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !model.on || e.defaultPrevented || typing(e.target)) return;
+    setModelView(false, { sticky: true });
+  });
   document.addEventListener(
     "keyup",
     (e) => {

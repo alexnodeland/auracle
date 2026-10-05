@@ -12,8 +12,18 @@ model makes of each module.</p>
    names it, with its price and **▶**.
 3. Every socket it can go into lights up and says what will happen there:
    green **inserts** it after what’s in the socket, and amber **replaces** it.
+   Point at one and the module is drawn, gray and dashed, where it would go:
+   on the cable when there is room, otherwise just above or below the modules
+   it would cover, with a dashed lead to its place (a source is drawn over the
+   module it replaces).
 4. Click a lit ○ to place it. <kbd>Esc</kbd>, or **✕** on that line, puts it
    down.
+
+The line stays one line. Beside the open catalog its price is the figure alone
+(*+0.08 ± 0.18*, or *a guess* and its figure; what it prices, and that it is
+the same at every socket, is its tooltip), and what happens at the socket and
+the preview's words are cut short before the price or **▶** are; in a narrow
+window the preview's trace and the count of lit sockets step out.
 
 To hear a placement before you make it, rest the pointer on a lit ○ for a
 moment, or press **▶** on the line along the well's top. It renders two

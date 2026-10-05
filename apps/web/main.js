@@ -128,7 +128,7 @@ const {
   count: plural, series, capital, guessLabel, forecastLine, taughtTitle, taughtSentence, kindsInLog, emptyGeneration, evolveRefusal,
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
-  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace,
+  changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
 } = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
@@ -639,7 +639,11 @@ function drawMapFace(ctx, id, x, y, size) {
   ctx.drawImage(c, x - w / 2, y - h / 2, w, h);
   return true;
 }
-function wantFace(target) {
+// Targets the player is looking at and waiting on (`wantFace` with `seen`):
+// the worker renders them first in its faces lane (worker.js `faces`).
+const faceSeen = new Set();
+function wantFace(target, { seen = false } = {}) {
+  if (seen) faceSeen.add(target);
   if (faceAsked.has(target) || faceNone.has(target) || faceWanted.has(target)) return;
   faceWanted.add(target);
   if (faceSendQueued) return;
@@ -656,7 +660,7 @@ function sendFaceAsks() {
     if (t.startsWith("i")) ids.push(Number(t.slice(1)));
     else if (t.startsWith("p")) trees.push({ ref: t, preset: Number(t.slice(1)) });
     else if (t.startsWith("g")) trees.push({ ref: t, memo: t.slice(1) });
-    else trees.push({ ref: t, tree: faceTreeByRef.get(t) });
+    else trees.push({ ref: t, tree: faceTreeByRef.get(t), ...(faceSeen.delete(t) ? { seen: true } : {}) });
   }
   faceWanted.clear();
   // A row the store has no face for (one stored before faces existed), or a
@@ -713,6 +717,8 @@ function facesChanged() {
     paintFaces();
     // TASTE's map draws faces too: a frame with the ones that landed.
     if (currentView === "taste" && taste) taste.draw();
+    // PATCH's "without this module" outline, if its face is what landed.
+    if (without.target) paintWithout();
     // PATCH's guess plate was waiting on one of its two faces.
     if (guessFaceWaiting && patchView) {
       guessFaceWaiting = false;
@@ -1426,6 +1432,9 @@ let undoTrimmed = false;
 // bar's compare, drawn on the knob as a pale pointer where it was.
 let openedKnobs = null;
 let openedKnobsWant = false;
+// The bench's tree as the sound was opened (`lineageFacts`).
+let openedTreeJson = null;
+let openedTreeWant = false;
 let restoreInFlight = false;
 /** The bench as a step: everything one edit can change and ⌘Z has to answer
  *  for, except what the shelf owes — which only the edit itself knows. */
@@ -1906,6 +1915,8 @@ let auditionClip = null;
 const patchView = createPatch({
   // The guess plate's two faces: the patch as it is, and with the guess.
   guessFace,
+  // The model view is up (hold ⌥, or MODEL): the guess's runners-up show.
+  modelOn: () => modelOn,
   words: PATCH_WORDS,
   send: (msg) => send(msg),
   visible: () => currentView === "patch",
@@ -1971,6 +1982,8 @@ worker.onmessage = (e) => {
   const m = e.data;
   if (m.type && m.type.startsWith("perform_")) {
     if (perform) perform.onWorker(m);
+    // A measurement landed: PATCH's readout may name its controls now.
+    if (m.type === "perform_wired" && currentView === "patch") renderSpecDock();
     return;
   }
   // A control's figure and the lesson on filters (explain.js).
@@ -2640,6 +2653,9 @@ worker.onmessage = (e) => {
         // rack below lands (`openedKnobsWant`).
         openedKnobs = null;
         openedKnobsWant = true;
+        // …and the tree as it was opened, which a bred sound's changes are
+        // drawn against (`lineageFacts`): taken when the tree below lands.
+        openedTreeWant = true;
         redoStack.length = 0;
         // ⚡'s child is announced here, where it is true (see `evolved_from`);
         // `replace` lets it take over from "⚡ evolving around…" if that is
@@ -2743,6 +2759,10 @@ worker.onmessage = (e) => {
         wb.tree = JSON.parse(m.treeJson);
         benchTreeJson = m.treeJson;
         benchMakeup = m.makeup;
+        if (openedTreeWant) {
+          openedTreeWant = false;
+          openedTreeJson = m.treeJson;
+        }
       }
       // Every reply, not only the structural ones, and after the tree lands
       // because the tree is the only thing that can answer either half: which
@@ -4459,6 +4479,12 @@ function applyViews(next) {
   // many pins a restored session came back with.
   if (next && next.pinBudget) pinBudget = next.pinBudget;
   renderPinBudget();
+  // PATCH under the model view: the leans and the worth chips read the new
+  // fit, and so does what the readout says of the selected module.
+  if (modelOn) {
+    paintRackFacts();
+    renderSpecDock();
+  }
   // A pin means this can no longer happen to anything the user kept, so if it
   // somehow does, that is a bug worth shouting about rather than a policy to
   // apologise for.
@@ -5274,7 +5300,8 @@ async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
   // The guide pill's steps (`auracle-guide`), and the key they had before it.
-  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps"])
+  // A model view the last visitor left up by a tap (`auracle-model-view`) goes too.
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-guide", "auracle-perform-steps", "auracle-model-view", "auracle-belief"])
     localStorage.removeItem(k);
   // The next visitor starts at PERFORM, not at the level the address names,
   // and on a new pool.
@@ -5707,17 +5734,21 @@ document.addEventListener("keydown", (e) => {
       spent = true;
     }
     if (!$("ctx-menu").classList.contains("hidden")) spent = true;
-    if (spent) { closeMenu(); return; }
+    // What this press closed is said with `preventDefault`, so the model
+    // view (shell.js, which takes Esc last) stays up for it and goes on the
+    // press that has nothing nearer left to close.
+    if (spent) { e.preventDefault(); closeMenu(); return; }
+    let closed = true;
     if (layoutMenuOpen()) setLayoutMenu(false);
     else if (shelfOpen()) setShelf(false);
     else if (teachOpen && currentView === "patch") setTeach(false);
     else if (evolveMenuOpen()) setEvolveMenu(false);
     // PATCH's chain (the specimen's): a selected module, then the catalog;
     // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed) {
-      if (plateSel != null) selectPlate(null);
-      else closeCatalog();
-    }
+    else if (currentView === "patch" && !armed && plateSel != null) selectPlate(null);
+    else if (currentView === "patch" && !armed) closed = closeCatalog();
+    else closed = false;
+    if (closed) e.preventDefault();
     closeMenu();
     return;
   }
@@ -6718,7 +6749,7 @@ function renderDealRule() {
 // lens that claims the most of the pool, which is usually but not always this
 // one; two numbers from two lenses sitting next to each other is a
 // disagreement the player would have no way to see.
-const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], stale: false, has: false };
+const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], all: [], stale: false, has: false };
 
 /** An edit has gone out; whatever is on screen is about to be untrue. */
 function beliefStale() {
@@ -6742,6 +6773,8 @@ function applyBelief(m) {
     belief.u = null;
     belief.prev = null;
     belief.styleK = null;
+    belief.all = [];
+    belief.top = [];
   } else {
     // A subject load is a new patch, not a move: it has no "was".
     if (m.subject !== undefined) belief.prev = null;
@@ -6750,7 +6783,10 @@ function applyBelief(m) {
     belief.sd = u.sd;
     belief.lens = u.lens || "";
     belief.styleK = ex && typeof ex.style === "number" ? ex.style : null;
-    belief.top = ex && ex.contributions ? ex.contributions.slice(0, 3) : [];
+    // Every part, for a module's own under the model view (`modulePart`),
+    // and the three largest for the patch's line.
+    belief.all = ex && ex.contributions ? ex.contributions : [];
+    belief.top = belief.all.slice(0, 3);
     belief.has = true;
     belief.stale = false;
   }
@@ -6770,6 +6806,12 @@ function styleClause() {
   return /^style \d+$/.test(name) ? `in ${esc(name)}` : `in your <b>${esc(name)}</b> style`;
 }
 
+// The belief line: PATCH's subtitle under the model view (⌥, or MODEL),
+// hidden at rest (style.css). What the model makes of the patch in hand, in
+// its voice: "it’d like this 62% · leaning · was 58% ▲" (`edit_utility`, on
+// the bank's scale), or the limit it is at. The parts that add up to it, the
+// style judging it and the utility itself are the readout's under the model
+// view (`beliefParts`), with nothing selected.
 function renderBelief() {
   const el = $("belief");
   if (!el) return;
@@ -6792,16 +6834,16 @@ function renderBelief() {
     el.innerHTML = wb.subjectId == null
       ? ""
       : `<span class="bl-none">${why}</span>`;
-    el.title = "";
+    // The readout says what adds up to this only under the model view: at
+    // rest it is not redrawn (it is a live region) for a line it does not show.
+    if (modelOn) renderSpecDock();
     return;
   }
   el.classList.toggle("stale", belief.stale);
   // Drawn on the bank's scale, not the model's. The posterior mean is an
   // unbounded log-odds and the bank's bars have always shown `sq()` of it, so
-  // a raw 1.43 above the rack would be a *different number for the same claim*
-  // sitting a few hundred pixels from the bar it contradicts. The contributions
-  // below stay in utility units — they are an exact decomposition of that
-  // quantity and squashing them would make them stop summing.
+  // a raw 1.43 in the head would be a *different number for the same claim*
+  // sitting a few hundred pixels from the bar it contradicts.
   const u = sq(belief.u);
   const prev = belief.prev == null ? null : sq(belief.prev);
   const d = prev == null ? null : u - prev;
@@ -6810,22 +6852,32 @@ function renderBelief() {
   // would point at a change the number it sits next to does not show.
   const [uPct, prevPct] = [Math.round(u * 100), prev == null ? null : Math.round(prev * 100)];
   const arrow = prevPct == null || uPct === prevPct ? "" :
-    `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
+    ` <span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
   const was = prevPct == null ? "" :
-    `<span class="bl-was">(was ${prevPct}%)</span>`;
+    ` <span class="bl-was">· was ${prevPct}%</span>`;
+  const [pctText, sure] = guessLabel(u).split(" · ");
+  el.innerHTML =
+    `<span class="bl-voice">it’d like this</span> <b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span>${was}${arrow}` +
+    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
+  if (modelOn) renderSpecDock();
+}
+
+/** What adds up to the belief line, for the readout under the model view
+ *  with nothing selected: the three largest parts of the patch's utility (an
+ *  exact decomposition, `edit_explain`, in utility units, so they are not
+ *  squashed), the style judging it, and the utility with its doubt. Null
+ *  without a guess (the subtitle says why). */
+function beliefParts() {
+  if (!belief.has) return null;
   const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
     return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
-  const [pctText, sure] = guessLabel(u).split(" · ");
-  el.innerHTML =
-    `<b class="bl-u">${pctText}</b> <span class="bl-sure">· ${sure}</span> ${was}${arrow}` +
-    (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
+  return (
+    (parts.length ? `<span class="pr-parts mono">${parts.join(" · ")}</span>` : "") +
     (belief.lens ? ` <span class="ex-lens">${styleClause()}</span>` : "") +
-    (belief.stale ? ` <span class="bl-stale">· rating…</span>` : "");
-  el.title = belief.stale
-    ? "An edit is on its way. This is its guess for the sound before it."
-    : `Its guess for the sound you’re playing, the same one the bank’s bar draws (utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}). The qualities beside it add up to that utility.`;
+    ` <span class="pr-u mono">utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}</span>`
+  );
 }
 
 // ---------- the structural budget ----------
@@ -10947,7 +10999,6 @@ function rackShapeOf(rack, build) {
       build.compact,
       layoutMode,
       build.places ? [...build.places].sort((a, b) => (a[0] < b[0] ? -1 : 1)) : null,
-      !!beliefOverlay,
       portTrace.mid ?? null,
     ],
     (key, v) => {
@@ -11134,11 +11185,11 @@ function renderRack(rebuild = false) {
   // the PATCH film's second drag, straight after a first one's reply,
   // failed on exactly that. It is also most of the cost of a reply.
   const shape = rackShapeOf(wb.rack, build);
-  // Not while the probe or the belief overlay is up: both draw from state
-  // that moves without the rack's shape moving (a trace landing, the pool's
-  // support), and they are redrawn by rebuilding.
-  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn && !beliefOverlay) {
+  // Not while the probe is up: it draws from state that moves without the
+  // rack's shape moving (a trace landing), and is redrawn by rebuilding.
+  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn) {
     repaintRackInPlace(wb.rack);
+    paintRackFacts();
     return;
   }
   // A new shape is new DOM, and new DOM is never built under a hand that is
@@ -11196,6 +11247,8 @@ function renderRack(rebuild = false) {
 
   // The guess and the level marks, over the rack just built.
   patchView.rackBuilt();
+  // …and what the engine says about it, drawn over the plates.
+  paintRackFacts();
 }
 
 // The head, to the specimen (Plan-008 C2a): the cap (PATCH, and the family
@@ -11265,7 +11318,19 @@ function renderSubject() {
   // The family only where the engine has one: a preset's category, and only
   // as it was made (a bred or edited sound has none, plan §6).
   fam(wb.dirty ? "" : presetOfId(wb.subjectId)?.category || "");
-  metaEl.textContent = [`${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`, ...states].join(" · ");
+  // A bred sound as it was bred: its seed and how many changes, first
+  // (`lineageFacts`). Each part its own span with its separator, so the
+  // model view's belief line can stand in for the counts alone (`pt-made`,
+  // style.css) and every state stays in sight beside it.
+  const lf = lineageFacts();
+  const parts = [
+    ...(lf ? [["pt-from", bredLine(lf.seedName, lf.changes)]] : []),
+    ["pt-made", `${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`],
+    ...states.map((t) => ["", t]),
+  ];
+  metaEl.innerHTML = parts
+    .map(([cls, t], i) => `<span class="pm${cls ? ` ${cls}` : ""}">${i ? `<i class="pm-sep"> · </i>` : ""}${esc(t)}</span>`)
+    .join("");
   syncEditBar();
 }
 
@@ -11319,7 +11384,6 @@ function buildRack(svg, rack, opts) {
   // The belief tint is a read of the posterior, and the posterior is the same
   // for every plate — so the support counts are gathered once per build rather
   // than once per module.
-  const beliefSup = interactive && beliefOverlay && !compact ? nbSupport() : null;
   svg.innerHTML = "";
   // Compact draws each plate's name and setting larger, to read at the zoom
   // that chose it (style.css `.lod-compact`).
@@ -11610,13 +11674,6 @@ function buildRack(svg, rack, opts) {
     // plate and a blurred filter region the compositor still has to paint.
     if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
     plateG.appendChild(plate);
-    // The opt-in belief tint, immediately over the panel and under everything
-    // printed on it — an edge, the way a coloured band on a resistor is an
-    // edge, rather than a wash that would fight the silkscreen.
-    if (beliefSup && !isEmpty) {
-      const edge = beliefEdge(m, p, beliefSup);
-      if (edge) plateG.appendChild(edge);
-    }
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
@@ -12906,6 +12963,120 @@ function placeOutFace() {
   slot.style.height = `${(rackOut.h * view.zoom).toFixed(1)}px`;
 }
 
+// ---------- without this module (Plan-008 C2b, the first engine fact) ----------
+// The selected module's part in the sound, by eye: over the face at OUT, a
+// dashed outline of the face of the patch without it. A measurement, not an
+// estimate (the specimen's was "approximate"): the patch the structure menu's
+// verb would leave (`withoutTree`: a processor bypassed, a source's socket
+// left empty, a modulator unplugged) is rendered on the audition phrase and
+// its face taken (`face_of_tree`), through the faces lane, which is below
+// every other (`face_render`), so it never delays the guess, a face or
+// PERFORM. Memoized by the tree (a face is filed under its render key, and
+// main keeps its ref), asked once the bench is settled, and let go when the
+// selection moves on (`face_cancel`). While it is measured nothing is drawn;
+// a patch that would be silent, or would not pass the safety check, without
+// the module is said in the readout instead. At rest: it is a measurement,
+// not a belief.
+const without = { key: null, json: null, target: null, why: "", timer: 0 };
+const WITHOUT_SETTLE_MS = 350;
+
+/** The patch without the module `mod`, as JSON with whether it sounds, or
+ *  why there is none: the amp is the envelope every voice ends in, and an
+ *  empty socket has nothing to take out. */
+function withoutTree(mod) {
+  if (!wb.tree || !mod || mod.kind === "amp" || isEmptySocketMod(mod)) return null;
+  const tree = JSON.parse(JSON.stringify(wb.tree));
+  let why;
+  if (mod.is_mod) why = unplugIn(tree, mod.key.replace(/\/m$/, ""));
+  else if (childFields(MOD_BY_KIND[mod.kind] || {}).length === 0) why = emptyIn(tree, mod.key);
+  else why = bypassIn(tree, mod.key);
+  if (why) return null;
+  return { json: JSON.stringify(tree), sounds: treeSounds(tree) };
+}
+
+/** The selection or the bench moved: measure again once it is still. What
+ *  is drawn stays only while it still describes the patch without the
+ *  selected module: a knob of that module itself leaves that patch as it
+ *  was, so its outline stays; any other edit takes it away until measured. */
+function syncWithout() {
+  const mod = plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
+  const w = mod && mod.key === without.key ? withoutTree(mod) : null;
+  if (mod && w && (w.json === without.json)) return; // still true as drawn
+  clearTimeout(without.timer);
+  without.timer = setTimeout(measureWithout, WITHOUT_SETTLE_MS);
+  if (!mod || mod.key !== without.key || !w || w.json !== without.json) clearWithout();
+}
+function clearWithout() {
+  if (without.target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
+  const said = !!without.why;
+  without.key = null;
+  without.json = null;
+  without.target = null;
+  without.why = "";
+  paintWithout();
+  if (said) renderSpecDock();
+}
+function measureWithout() {
+  without.timer = 0;
+  const mod = currentView === "patch" && plateSel != null ? wb.rack?.modules.find((x) => x.key === plateSel) : null;
+  if (!mod) return clearWithout();
+  // Not under a hand or with an edit on its way: the tree is about to move.
+  if (knobDragging || !laneFree() || editPending) {
+    without.timer = setTimeout(measureWithout, WITHOUT_SETTLE_MS);
+    return;
+  }
+  const w = withoutTree(mod);
+  const target = w && w.sounds ? faceTarget({ tree: w.json }) : null;
+  if (without.target && without.target !== target && !faceKeyOfTarget(without.target)) faceDrop(without.target);
+  without.key = mod.key;
+  without.json = w ? w.json : null;
+  without.target = target;
+  without.why = w && !w.sounds ? "silent without it" : "";
+  paintWithout();
+  renderSpecDock();
+}
+/** Draw the outline, if its face has landed (or say it never will). */
+function paintWithout() {
+  const el = $("out-without");
+  if (!el) return;
+  const t = without.target;
+  if (t && faceNone.has(t)) {
+    // Rendered, and it did not pass the vet: no face to draw.
+    if (!without.why) {
+      without.why = "without it, it fails the safety check";
+      renderSpecDock();
+    }
+  }
+  const key = t ? faceKeyOfTarget(t) : null;
+  const face = key ? lruGet(faceByKey, key) : null;
+  const was = !el.hidden;
+  if (!t || !face || !faceStats) {
+    // Looked at and waited on: ahead of a measurement nobody waits on.
+    if (t && !face && !faceNone.has(t)) wantFace(t, { seen: true });
+    el.hidden = true;
+    if (was) renderSpecDock();
+    el.innerHTML = "";
+    // What was drawn goes with it, so the same face shown again is drawn.
+    delete el.dataset.drawn;
+    delete el.dataset.face;
+    delete el.dataset.key;
+    delete el.dataset.of;
+    return;
+  }
+  const drawn = `${key}|${faceEpoch}`;
+  if (el.dataset.drawn !== drawn) {
+    const [w, h] = FACE_SIZE.out;
+    el.innerHTML = `<img class="face" src="${faceImage(face, w, h, { ...FACE_OPTS.out(), slices: false, glow: 0, reflection: false, color: tok("--silk"), dash: [4, 4], line: 1.4 })}" width="${w}" height="${h}" alt="">`;
+    el.dataset.drawn = drawn;
+  }
+  el.dataset.face = t;
+  el.dataset.key = key;
+  el.dataset.of = without.key;
+  el.hidden = false;
+  // The readout says it too, for a screen reader (`pr-without`).
+  if (!was) renderSpecDock();
+}
+
 /** The well's edges, when the patch is wider than the view (the specimen's
  *  ‹ 2 and 3 ›): how many modules' middles lie past each side, and a press
  *  that brings the nearest of them to the middle of the view. */
@@ -13058,13 +13229,12 @@ $("rack-lod").onclick = () => {
 };
 syncLodBtn();
 
-// ---------- belief overlay ----------
+// ---------- the family lean, under the model view ----------
 // WS-9: which parts of your patch the model has an opinion about, at a glance.
-// It lives beside the arrangement and detail switches because it is the same
-// kind of control — a way of *reading* the rack, not a way of changing it —
-// and it is off by default because it is a second colour law running over the
-// first, and the first one (green carries signal, amber is the model's mind)
-// has to be legible on its own.
+// Drawn under the model view only (hold ⌥, or MODEL; Plan-008 C2b), where the
+// layout's ▾ used to hold a toggle for it: it is a second colour law running
+// over the first (green carries signal, amber is the model's mind), so it is
+// raised with the rest of what the model believes and goes when that goes.
 //
 // The honesty, which is the whole design: φ_struct counts **families**.
 // `n_filter` says how many filters a patch has; there is no coordinate in
@@ -13073,38 +13243,6 @@ syncLodBtn();
 // nothing is drawn at all for a coefficient that is not resolved — the same
 // law `nbPaintTheta` runs under, for the same reason: a tint without evidence
 // is a lie with a colour.
-let beliefOverlay = localStorage.getItem("auracle-belief") === "1";
-function syncBeliefBtn() {
-  const b = $("rack-belief");
-  if (!b) return;
-  b.setAttribute("aria-pressed", String(beliefOverlay));
-  b.setAttribute("aria-checked", String(beliefOverlay));
-  b.closest(".tt").title = beliefOverlay
-    ? "Leans: on. An amber edge means your taste leans toward that kind of module, red away, "
-      + "stronger where the model is surer. It reads the kind, not this module: φ counts how many "
-      + "filters a patch has, not which filter. Click to turn it off."
-    : "Tint each module by which way your taste leans on its kind: amber toward, "
-      + "red away, stronger where the model is surer. Off by default.";
-}
-$("rack-belief").onclick = () => {
-  beliefOverlay = !beliefOverlay;
-  try { localStorage.setItem("auracle-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
-  syncBeliefBtn();
-  renderRack();
-  // A control whose whole effect can be "nothing visibly changed" owes the
-  // player the reason: an unfitted posterior, or a bank too thin to resolve
-  // any coefficient, paints no edges at all and looks exactly like a dead
-  // button.
-  if (beliefOverlay && wb.rack) {
-    const sup = nbSupport();
-    const lit = wb.rack.modules.filter((m) => beliefResolved(m, sup)).length;
-    if (lit === 0) {
-      note("Leans is on, but the model has no settled lean on anything in this patch yet. Make a few more picks.");
-    }
-  }
-};
-syncBeliefBtn();
-
 /** What the posterior has resolved about this module's family, or null — which
  *  is the answer for anything the taste model does not measure, has not been
  *  fitted for, has too few patches carrying, or has only a guess about (an
@@ -13145,6 +13283,164 @@ function beliefEdge(m, p, sup) {
   r.appendChild(tt);
   return r;
 }
+
+/** What the engine says about the patch on the canvas, drawn over the
+ *  plates the build left, never by rebuilding them (so no knob is replaced
+ *  under a held pointer, and letting go of ⌥ restores exactly the canvas at
+ *  rest): under the model view, each plate's family lean (`beliefEdge`) and
+ *  the worth chips (`paintWorth`); at rest, what a generation changed
+ *  (`paintLineage`). Called after every build and every repaint in place,
+ *  and when the model view comes or goes. */
+function paintRackFacts() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  const leans = paintLeans(svg);
+  paintWorth(leans);
+  paintLineage(svg);
+  syncWithout();
+}
+
+// ---------- what a generation changed (Plan-008 C2b, the third engine fact) ----------
+// On a bred sound, in place: the subtitle names its seed and counts the
+// changes (as its bank row lists them), each changed module gets a silk tick
+// on its top edge, and each changed knob a pale pointer at the seed's value.
+// From its `LineageEvent` (`lineage()`), whose `DiffEntry.addr` is
+// `key#site`, the rack's own address space. Drawn only while the bench is
+// the child's tree as it was bred (as it was opened): an edit takes it away
+// and undo to as opened brings it back. At rest: it is the engine's record,
+// not a belief.
+
+/** The bred sound's changes, keyed for the canvas, or null: not a bred
+ *  sound, not as it was opened, or a pair's sound on the bench. */
+function lineageFacts() {
+  if (wb.subjectId == null || !openedTreeJson || benchTreeJson !== openedTreeJson) return null;
+  if (hearingSide || patchView.isNew()) return null;
+  const lin = lineageOf(wb.subjectId);
+  if (!lin) return null;
+  const keys = new Set(); // modules the generation changed or added
+  const seed = new Map(); // knob address -> the seed's value (0..1)
+  const latent = (v) => v != null && /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
+  for (const d of lin.diff || []) {
+    const i = d.addr.lastIndexOf("#");
+    const key = d.addr.slice(0, i);
+    const site = d.addr.slice(i + 1);
+    // Only what is in the child: a site the generation removed has no plate.
+    if (d.after == null || SKIP_SITES.has(site)) continue;
+    keys.add(key);
+    if (latent(d.before) && latent(d.after)) seed.set(d.addr, Number(d.before));
+  }
+  return { seedName: lineageName(lin.parent_id), changes: diffParts(lin.diff).length, keys, seed };
+}
+
+/** The ticks and the seed's pointers, over what the build left. */
+function paintLineage(svg) {
+  for (const e of svg.querySelectorAll(".lineage-tick, .knob-seed")) e.remove();
+  const lf = lineageFacts();
+  if (!lf) return;
+  for (const g of svg.querySelectorAll(".rack-plates > g[data-key]")) {
+    if (!lf.keys.has(g.getAttribute("data-key"))) continue;
+    const plate = g.querySelector(".mod-plate");
+    if (!plate) continue;
+    // On the plate's top edge at its left, clear of the name under it.
+    const tick = svgEl("path", { d: "M 9 -1 L 12 2 L 19 -5" }, "lineage-tick");
+    const t = svgEl("title");
+    t.textContent = `Changed from ${lf.seedName}`;
+    tick.appendChild(t);
+    g.appendChild(tick);
+  }
+  for (const [addr, w] of lf.seed) {
+    const kg = svg.querySelector(`.rack-controls [data-addr="${CSS.escape(addr)}"]`);
+    const k = knobByAddr(addr);
+    if (!kg || !k || k.kind.t !== "continuous" || Math.abs(w - k.value) < 0.004) continue;
+    // The pale pointer, as the edit bar's compare draws it (`paintWas`), at
+    // the seed's value.
+    const a = (-135 + 270 * w) * (Math.PI / 180);
+    const line = svgEl("line", {
+      x1: (Math.sin(a) * (KNOB_R - 2)).toFixed(2), y1: (-Math.cos(a) * (KNOB_R - 2)).toFixed(2),
+      x2: (Math.sin(a) * (KNOB_R + 6)).toFixed(2), y2: (-Math.cos(a) * (KNOB_R + 6)).toFixed(2),
+      "data-seed": w.toFixed(2),
+    }, "knob-seed");
+    const was = kg.querySelector(".knob-was");
+    if (was) was.after(line);
+    else kg.insertBefore(line, kg.firstChild);
+  }
+}
+
+/** Worth per kind, under the model view: one chip per family the patch
+ *  holds, never one per module or socket. The figure is the socket price
+ *  (`socketPrice`: θ/scale for the family's count in φ, `phi_scale`, under
+ *  the bench's style), what one more of the family is worth to the model,
+ *  in the units of the belief line's parts. φ counts a family, so with two
+ *  filters the figure is shared by both and says so ("filtering +0.12 ·
+ *  shared by 2"), and it is the same wherever one sits ("prices what, not
+ *  where"). A settled lean is drawn solid; one still crossing zero dashed
+ *  and called a guess; a family too thin to price, or before the first fit,
+ *  gets no chip (the belief line says why). In the well's top right. */
+function paintWorth(leans = null) {
+  const box = $("pt-worth");
+  if (!box) return;
+  const fams = new Map(); // phi -> {kind, n}
+  if (modelOn && wb.rack) {
+    for (const m of wb.rack.modules) {
+      if (m.kind === "amp" || isEmptySocketMod(m)) continue;
+      const phi = MOD_BY_KIND[m.kind]?.phi;
+      if (!phi) continue;
+      const f = fams.get(phi) || { kind: m.kind, n: 0 };
+      f.n += 1;
+      fams.set(phi, f);
+    }
+  }
+  const chips = [];
+  for (const [phi, f] of fams) {
+    const p = socketPrice(f.kind, "insert", null);
+    if (!p || (p.state !== "resolved" && p.state !== "flat")) continue;
+    chips.push({ phi, n: f.n, p });
+  }
+  chips.sort((a, b) => Math.abs(b.p.du) - Math.abs(a.p.du));
+  // No edge drawn because nothing here is settled: said, not left to look
+  // like nothing happened (what the LEANS switch said when it found none).
+  const unsettled = leans === 0 && modelOn && !!wb.rack;
+  box.hidden = chips.length === 0 && !unsettled;
+  box.innerHTML = chips
+    .map(({ phi, n, p }) => {
+      const guess = p.state === "flat";
+      const fig = guess ? `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}` : PRICE_SIGN(p.du);
+      return `<span class="pt-worth-chip${guess ? " guess" : p.du >= 0 ? " up" : " down"}" data-phi="${esc(phi)}" data-n="${n}" ` +
+        `title="Worth per kind">` +
+        `<span class="pw-fam">${esc(niceName(phi))}</span> <b class="pw-fig mono">${fig}</b>` +
+        (guess ? ` <span class="pw-note">a guess</span>` : "") +
+        (n > 1 ? ` <span class="pw-note">· shared by ${n}</span>` : "") +
+        `</span>`;
+    })
+    .join("") +
+    (unsettled ? `<span class="pt-worth-none">no settled lean on anything in this patch yet</span>` : "");
+}
+
+/** The family lean on each plate, under the model view only. How many it
+ *  drew, or null where it draws none at all (no view, no rack, compact). */
+function paintLeans(svg) {
+  for (const e of svg.querySelectorAll(".rack-plates .belief-edge")) e.remove();
+  if (!modelOn || !wb.rack || effectiveLod() === "compact") return null;
+  let drawn = 0;
+  const sup = nbSupport();
+  for (const g of svg.querySelectorAll(".rack-plates > g[data-key]")) {
+    const m = wb.rack.modules.find((x) => x.key === g.getAttribute("data-key"));
+    if (!m || isEmptySocketMod(m)) continue;
+    const plate = g.querySelector(".mod-plate");
+    if (!plate) continue;
+    const p = { w: Number(plate.getAttribute("width")) || 0, h: Number(plate.getAttribute("height")) || 0 };
+    const edge = beliefEdge(m, p, sup);
+    // Immediately over the panel and under everything printed on it: an
+    // edge, the way a coloured band on a resistor is an edge, rather than a
+    // wash that would fight the silkscreen.
+    if (edge) {
+      plate.after(edge);
+      drawn += 1;
+    }
+  }
+  return drawn;
+}
+const isEmptySocketMod = (m) => isPlaceholderKey(m.key) || m.kind === "silence";
 
 // ---------- fits and moves ----------
 function cancelTween() {
@@ -14719,6 +15015,11 @@ function openStructMenu(mod, x, y) {
         run: () => armFromRack("insert", parentKey, { accepts: ["mod"], verb: "modulate" }),
       },
       {
+        label: "what goes here?",
+        sub: `the model’s guess for the ${kindName(owner)}’s ${port} slot · Q`,
+        run: () => patchView.askHere(parentKey),
+      },
+      {
         label: "unplug this modulator",
         sub: "it’s set aside, and the knob stops moving",
         danger: true,
@@ -14793,6 +15094,14 @@ function openStructMenu(mod, x, y) {
     disabled: isPlaceholderKey(key),
     why: "this socket is empty: there is nothing here to listen to",
     run: () => togglePortTrace(mod),
+  });
+  // The model's guess for this place (`guess_rank`'s `at`): after it, on its
+  // modulation slot, or in it if the socket is empty. Drawn at the place,
+  // taken with Enter and skipped with ×, as the output's guess is.
+  rows.push({
+    label: "what goes here?",
+    sub: isPlaceholderKey(key) ? "the model’s guess for this empty socket · Q" : "the model’s guess for after it, or its modulation · Q",
+    run: () => patchView.askHere(key),
   });
   if (ins === 2) {
     rows.push({
@@ -14913,9 +15222,9 @@ function extractModule(key) {
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
-    if (!node) return "That module has moved. Try again.";
     const hole = placeholderNode();
-    if (!setNodeAtIn(tree, key, hole)) return "That module has moved. Try again.";
+    const why = emptyIn(tree, key, hole);
+    if (why) return why;
     if (!marks.includes(node)) doomed = node;
     marks.push(hole);
     return null;
@@ -14928,6 +15237,55 @@ function extractModule(key) {
       : "The socket is empty.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
+}
+
+// The rewrites the structure menu's verbs make, on a tree you hold (a clone):
+// each mutates `tree` and returns null, or why it cannot. Shared by the verbs
+// and by "without this module" (`withoutTree`), so the face drawn at OUT for
+// a module's absence is the patch the verb would leave.
+
+/** ⋯ › bypass: the module's first input passed straight through to what it
+ *  fed (a two-input module keeps that side). */
+function bypassIn(tree, key) {
+  const node = nodeAtIn(tree, key);
+  if (!node) return "That module has moved. Try again.";
+  const tag = nodeTag(node);
+  const ff = childFields(MOD_BY_TAG[tag] || {});
+  if (ff.length === 0) return "A source makes the signal, so there is nothing to pass through it.";
+  const through = node[tag][ff[0]];
+  if (!through) return "Nothing is plugged into it to pass through.";
+  if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
+  return null;
+}
+
+/** ⋯ › set aside: the module and what is under it out, its socket empty. */
+function emptyIn(tree, key, hole = placeholderNode()) {
+  if (!nodeAtIn(tree, key)) return "That module has moved. Try again.";
+  if (!setNodeAtIn(tree, key, hole)) return "That module has moved. Try again.";
+  return null;
+}
+
+/** ⋯ › unplug this modulator: the slot of the module at `ownerKey` empty
+ *  (the engine's `set_mod` with `none`, which the verb sends). */
+function unplugIn(tree, ownerKey) {
+  const node = nodeAtIn(tree, ownerKey);
+  if (!node || typeof node === "string") return "That module has moved. Try again.";
+  const v = node[nodeTag(node)];
+  if (!v || v.modulation == null || v.modulation === "None") return "Nothing is plugged in to modulate it.";
+  v.modulation = "None";
+  return null;
+}
+
+/** Does any source reach the output: a leaf that is not an empty socket.
+ *  (A binary's second input counts; the render's vet says the rest.) */
+function treeSounds(tree) {
+  const walk = (n) => {
+    if (!n) return false;
+    const kids = nodeChildrenJSON(n);
+    if (!kids.length) return nodeTag(n) !== "Silence";
+    return kids.some(walk);
+  };
+  return walk(tree && tree.root);
 }
 
 /** Bypass, the verb every DAW user reaches for, as a client-side rewrite: the
@@ -14949,13 +15307,8 @@ function bypassModule(key) {
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
     if (!node) return "That module has moved. Try again.";
-    const tag = nodeTag(node);
-    const ff = childFields(MOD_BY_TAG[tag] || {});
-    const through = node[tag][ff[0]];
-    if (!through) return "Nothing is plugged into it to pass through.";
     head = headFragment(node);
-    if (!setNodeAtIn(tree, key, through)) return "That module has moved. Try again.";
-    return null;
+    return bypassIn(tree, key);
   }, { op: "bypass", key, kind: rackKindAt(key) });
   if (!ok) return;
   const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
@@ -15937,7 +16290,8 @@ $("rack-svg").addEventListener("keydown", (e) => {
   // signal order, ↑/↓ into its modulators and back out, Home/End the first
   // module and the last (the amp, at OUT), Enter into its controls, F2 (or
   // the context-menu key) its structure menu, Delete removes it through the
-  // survivor choice, L locks it, / puts a module after it, Esc leaves it.
+  // survivor choice, L locks it, / puts a module after it, Q asks what goes
+  // here (C2b), Esc leaves it.
   if (plate && !e.target.closest?.("[data-addr], [data-stop]")) {
     const plates = platesInOrder();
     const i = plates.indexOf(plate);
@@ -15985,6 +16339,18 @@ $("rack-svg").addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
       else armFromRack("insert", "node");
+    } else if (e.key.toLowerCase() === "q" && !e.shiftKey && mod) {
+      // What goes here? (the ⋯'s row): the model's guess for this place. A
+      // modulator's place is its module's slot; the amp's input is where
+      // the guess looks already.
+      e.preventDefault();
+      e.stopPropagation();
+      if (mod.kind === "amp") nbAnnounce("The model’s guess already looks at the amp’s input.");
+      else {
+        const at = mod.is_mod ? key.replace(/\/m$/, "") : key;
+        patchView.askHere(at, { focus: true });
+        nbAnnounce(`Asking what goes at the ${mod.title || kindName(mod.kind)}.`);
+      }
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
       // `l` is a note too (D, an octave up): the lock must not also play it.
       e.preventDefault();
@@ -16061,7 +16427,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     // region says it.
     nbAnnounce(`${kg.dataset.name}: ${enumDisplay(knob)}`);
     sendEdit(knob.addr, knob.value, true);
-  } else if (e.key.toLowerCase() === "l") {
+  } else if (e.key.toLowerCase() === "l" && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
     e.stopPropagation(); // …as on a plate: a lock, not a note
     setLock(knob.addr, !isLockedAddr(knob.addr));
@@ -18337,7 +18703,10 @@ function renderSpecDock() {
     const html =
       `${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
-      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}">${priceHTML(p, true)}</span>` +
+      // The whole sentence where the line has room, and beside the open
+      // catalog the figure alone (its caveat is the tooltip), so ▶ and the
+      // price stay whole on one line.
+      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}"><span class="pr-long">${priceHTML(p, true)}</span><span class="pr-short">${priceHTML(p, false)}</span></span>` +
       previewStripHTML(target) +
       `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit</span>`;
     // Rewritten only when it actually changed: this line re-renders on every
@@ -18370,8 +18739,7 @@ function renderSpecDock() {
   const m = specSubject ? MOD_BY_KIND[specSubject] : null;
   if (m) {
     const p = specParts(m);
-    dock.className = "pt-read open";
-    dock.innerHTML =
+    setDock(dock, "pt-read open",
       `<div class="pr-line"><span class="pr-name">${esc(m.name)}</span>` +
       `<span class="pr-says">${esc(m.blurb)}</span></div>` +
       `<div class="pr-more">` +
@@ -18379,15 +18747,19 @@ function renderSpecDock() {
       `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
       `<div class="sd-body"><div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
       `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
-      `<div class="sd-model mono">${p.belief}</div></div>`;
+      `<div class="sd-model mono">${p.belief}</div></div>`);
     return;
   }
   // A module on the canvas: the one under the pointer, else the selected one.
   const key = plateHover ?? plateSel;
   const mod = key != null ? wb.rack?.modules.find((x) => x.key === key) : null;
   if (!mod) {
-    dock.className = "pt-read rest";
-    dock.innerHTML = "";
+    // Under the model view, with nothing selected: what adds up to the
+    // belief line in the subtitle (`beliefParts`). At rest, nothing.
+    const parts = modelOn && wb.rack ? beliefParts() : null;
+    setDock(dock, parts ? "pt-read sel model" : "pt-read rest", parts
+      ? `<div class="pr-line"><span class="pr-name">the patch</span><span class="pr-says pr-belief">${parts}</span></div>`
+      : "");
     return;
   }
   const empty = isPlaceholderKey(mod.key) || mod.kind === "silence";
@@ -18396,13 +18768,103 @@ function renderSpecDock() {
   const says = empty ? "Nothing is plugged in here: drop a source on it, or pick one from ADD MODULE."
     : mod.kind === "amp" ? "Every voice ends here: an envelope shapes each note’s loudness, then OUT."
     : MOD_BY_KIND[mod.kind]?.blurb || "";
-  dock.className = "pt-read sel";
-  dock.innerHTML =
+  const model = modelOn && !empty ? moduleModelHTML(mod) : "";
+  const wired = empty ? "" : wiredSentence(mod);
+  setDock(dock, `pt-read sel${model ? " model" : ""}`,
     `<div class="pr-line"><span class="pr-name">${esc(name)}</span>` +
     (which && !empty ? `<span class="pr-sub mono">${esc(enumDisplay(which))}</span>` : "") +
     (says ? `<span class="pr-says">${esc(says)}</span>` : "") +
     (isModuleLocked(mod) ? `<span class="pr-lock mono">locked</span>` : "") +
-    `</div>`;
+    (wired ? `<span class="pr-wired">${esc(wired)}</span>` : "") +
+    (without.why && without.key === mod.key ? `<span class="pr-without mono">${esc(without.why)}</span>` : "") +
+    (!$("out-without").hidden && without.key === mod.key ? `<span class="sr-only">Dashed at OUT: the sound without it, measured.</span>` : "") +
+    `</div>` +
+    model);
+}
+
+/** Write the readout only when what it says changed: it is a live region,
+ *  and a knob turn redraws it several times with the same words, each of
+ *  them otherwise announced again. */
+function setDock(dock, cls, html) {
+  if (dock.className !== cls) dock.className = cls;
+  if (dock.dataset.html !== html) {
+    dock.innerHTML = html;
+    dock.dataset.html = html;
+  }
+}
+
+// ---------- which PERFORM controls turn a knob (Plan-008 C2b, the fourth engine fact) ----------
+// The knob under the pointer, else the one the keyboard is on, for the
+// readout (it follows the module otherwise).
+let knobHover = null;
+let knobFocus = null;
+/** In the readout, at rest (a measurement, not a belief): which of
+ *  PERFORM's named controls turn the knob in hand, or, for the module, each
+ *  control with the knobs of it that it turns, from PERFORM's measured
+ *  wiring (perform.js `wiredTo`, `perform_wire`'s `knobs`). Nothing while
+ *  PERFORM has not measured this patch (it measures the sound PERFORM
+ *  plays), and nothing when no control turns it. */
+function wiredSentence(mod) {
+  if (!perform || !perform.wiredTo || !benchTreeJson) return "";
+  const addr = [knobHover, knobFocus].find((a) => a && mod.knobs.some((k) => k.addr === a));
+  if (addr) {
+    const hits = perform.wiredTo(addr, benchTreeJson);
+    const k = mod.knobs.find((x) => x.addr === addr);
+    return hits && k ? turnedBy(hits.map((h) => h.name), k.label) : "";
+  }
+  const by = new Map(); // control -> {at, its knobs here}
+  let measured = false;
+  for (const k of mod.knobs) {
+    const hits = perform.wiredTo(k.addr, benchTreeJson);
+    if (!hits) continue;
+    measured = true;
+    for (const h of hits) {
+      if (!by.has(h.name)) by.set(h.name, { at: h.at, knobs: [] });
+      by.get(h.name).knobs.push(k.label);
+    }
+  }
+  // The controls in the panel's order, each with its knobs in the module's.
+  const pairs = [...by].sort((a, b) => a[1].at - b[1].at).map(([n, v]) => [n, v.knobs]);
+  return measured ? turnsItsKnobs(pairs) : "";
+}
+function setKnobAt(which, addr) {
+  if (which === "hover" ? knobHover === addr : knobFocus === addr) return;
+  if (which === "hover") knobHover = addr;
+  else knobFocus = addr;
+  renderSpecDock();
+}
+$("rack-svg").addEventListener("pointerover", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  if (kg) setKnobAt("hover", kg.dataset.addr);
+});
+$("rack-svg").addEventListener("pointerout", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  if (kg && !kg.contains(e.relatedTarget)) setKnobAt("hover", null);
+});
+$("rack-svg").addEventListener("focusin", (e) => {
+  const kg = e.target.closest?.(".rack-controls [data-addr]");
+  setKnobAt("focus", kg ? kg.dataset.addr : null);
+});
+$("rack-svg").addEventListener("focusout", (e) => {
+  if (!$("rack-svg").contains(e.relatedTarget)) setKnobAt("focus", null);
+});
+
+/** What the model makes of a module on the canvas, for the readout under
+ *  the model view (what the spec dock said of a module before Plan-008):
+ *  its family's part of this patch's utility, from the exact decomposition
+ *  the belief line is (`edit_explain`; a structural coordinate such as
+ *  `n_filter`, counted per family), then which way your taste leans on the
+ *  family and how much evidence that rests on (`specParts`). Opened over the
+ *  well's bottom edge, above the line, as the catalog's description is. */
+function moduleModelHTML(mod) {
+  const spec = MOD_BY_KIND[mod.kind];
+  if (!spec) return "";
+  const c = spec.phi && belief.has ? belief.all.find((x) => x.name === spec.phi) : null;
+  const part = c
+    ? `<span class="pr-part"><b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ` +
+      `${PRICE_SIGN(c.contribution)} of this patch’s utility.</span><br>`
+    : "";
+  return `<div class="pr-model sd-model mono">${part}${specParts(spec).belief}</div>`;
 }
 
 // ---- the selection: plates on the canvas ----
@@ -18422,6 +18884,7 @@ function selectPlate(key) {
   plateSelUid = key != null ? wb.rack?.modules.find((x) => x.key === key)?.uid || null : null;
   syncPlateSel();
   renderSpecDock();
+  syncWithout();
 }
 function syncPlateSel() {
   const svg = $("rack-svg");
@@ -18563,7 +19026,7 @@ function priceWhatNotWhere(p) {
     `The model’s structural features count modules; they don’t record which cable a module sits on. ` +
     `So this prices what you are adding, not where: it is the same number at every lit socket. ` +
     `It covers the module count only. How it will actually sound is the ▶ beside it.` +
-    (p && p.lens ? `\n\nIn the style “${p.lens}”, the same one the guess above the rack reads.` : "")
+    (p && p.lens ? `\n\nIn the style “${p.lens}”, the same one the belief line reads.` : "")
   );
 }
 
@@ -19958,6 +20421,34 @@ function drawPickGhost(svg, hand, b, caretPt) {
     cx = b.x + b.w + GUTTER + box.w / 2;
     cy = b.y + b.h / 2;
   }
+  // …nor over any other module (a short cable puts the next plate right
+  // there: the ghost covered MIX, C2a's armed state). A source replaces the
+  // plate it is drawn over, so that one it may cover. Otherwise it stands
+  // above the plates it would cover, or below them, with a dashed lead to
+  // where it goes.
+  let lead = null;
+  if (hand.sort !== "source") {
+    const PAD = 10;
+    const rect = (x, y) => ({ x: x - box.w / 2, y: y - box.h / 2, w: box.w, h: box.h });
+    const hits = (r) => [...rackBoxes.values()].filter((q) => r.x < q.x + q.w + PAD && q.x - PAD < r.x + r.w && r.y < q.y + q.h + PAD && q.y - PAD < r.y + r.h);
+    let over = hits(rect(cx, cy));
+    if (over.length) {
+      const at = caretPt || { x: cx, y: cy };
+      const top = Math.min(...over.map((q) => q.y), b.y);
+      const up = top - PAD - box.h / 2;
+      if (!hits(rect(cx, up)).length) cy = up;
+      else {
+        const bottom = Math.max(...over.map((q) => q.y + q.h), b.y + b.h);
+        cy = bottom + PAD + box.h / 2;
+        over = hits(rect(cx, cy));
+        for (let k = 0; k < 6 && over.length; k++) {
+          cy = Math.max(...over.map((q) => q.y + q.h)) + PAD + box.h / 2;
+          over = hits(rect(cx, cy));
+        }
+      }
+      lead = { x1: cx, y1: cy < at.y ? cy + box.h / 2 : cy - box.h / 2, x2: at.x, y2: at.y };
+    }
+  }
   const g = svgEl(
     "g",
     { transform: `translate(${(cx - box.w / 2).toFixed(1)},${(cy - box.h / 2).toFixed(1)})` },
@@ -20004,6 +20495,10 @@ function drawPickGhost(svg, hand, b, caretPt) {
     kg.appendChild(lbl);
     g.appendChild(kg);
   });
+  if (lead) {
+    const l = svgEl("path", { d: `M ${lead.x1.toFixed(1)} ${lead.y1.toFixed(1)} L ${lead.x2.toFixed(1)} ${lead.y2.toFixed(1)}` }, "pick-ghost pick-lead");
+    svg.querySelector(".rack-controls")?.appendChild(l);
+  }
   svg.querySelector(".rack-controls")?.appendChild(g);
 }
 
@@ -21103,12 +21598,21 @@ function styleName(s, k) {
 //   drives TASTE's side of its toggle while the view is up);
 // - EVOLVE: its guess for the pair before you pick (`askPairGuess`) and each
 //   card's style (CSS, `best_style_of`);
+// - PATCH: each plate's family lean (`paintLeans`), the belief line in the
+//   subtitle (`renderBelief`, CSS) and what the model makes of the selection
+//   in the readout (`renderSpecDock`);
 // - PERFORM: nothing per control, until the engine exposes a control's lean.
 function modelViewChanged(on) {
   modelOn = on;
   flipBank(() => renderBank());
   if (taste) taste.setModelView(on);
   askPairGuess();
+  // PATCH: each plate's family lean, the worth chips, the guess's
+  // runners-up, and what the model makes of the selection in the readout.
+  // The belief line in the subtitle is CSS (`body.model-view`).
+  paintRackFacts();
+  patchView.modelViewChanged();
+  renderSpecDock();
 }
 /** Redraw the bank, and let each row that moved glide from where it was.
  *  Under reduced motion (`motionMs` 0) the rows are simply in their places. */
@@ -23619,6 +24123,8 @@ window.__aur = {
   audioIn: () => audioIn.state(),
   // PATCH's guess, cable levels and new patch, as patch.js holds them.
   patch: () => patchView.state(),
+  // PATCH's "without this module": the module, the tree measured, its face.
+  without: () => ({ key: without.key, why: without.why, target: without.target, asked: without.target ? faceAsked.has(without.target) : false, none: without.target ? faceNone.has(without.target) : false, face: without.target ? faceKeyOfTarget(without.target) || null : null }),
   // CAPTURE's recording under way, and the sounds kept safe (takes.js).
   takes: () => takes.state(),
   // The timing marks (see `mark`), in the page's clock: ms since it loaded.

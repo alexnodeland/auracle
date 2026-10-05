@@ -84,3 +84,14 @@ test("no face, no bank or no color draws nothing", () => {
   assert.equal(drawVessel(ctx, bank[0], stats, { box: vesselBox(24, 40) }), false);
   assert.equal(ctx.ops.length, 0);
 });
+
+test("a comparison face: the outline alone, dashed, and nothing else", () => {
+  const ctx = recorder();
+  drawVessel(ctx, bank[2], stats, { box: vesselBox(150, 250), color: GREEN, slices: false, dash: [4, 4], line: 1.4 });
+  assert.equal(count(ctx.ops, "fill"), 0, "no layers");
+  assert.equal(count(ctx.ops, "stroke"), 1, "one outline");
+  assert.ok(ctx.ops.some((o) => o[0] === "setLineDash" && Array.isArray(o[1]) && o[1].join() === "4,4"), "dashed");
+  const plain = recorder();
+  drawVessel(plain, bank[2], stats, { box: vesselBox(150, 250), color: GREEN, slices: false });
+  assert.ok(!plain.ops.some((o) => o[0] === "setLineDash"), "solid unless asked");
+});

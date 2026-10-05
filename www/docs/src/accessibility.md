@@ -33,9 +33,14 @@ live region, so a level key is announced where it went.
 
 **The model view.** Holding <kbd>⌥</kbd> (Alt) shows it, under the same
 rules; **MODEL** in the menu bar is a button whose <kbd>Enter</kbd> or
-<kbd>Space</kbd> keeps it up (`aria-pressed`), and <kbd>Esc</kbd> ends it. Its
+<kbd>Space</kbd> keeps it up (`aria-pressed`, and remembered across a reload),
+and <kbd>Esc</kbd> ends it (in PATCH, once nothing nearer takes the press). Its
 tag, saying what the model believes and from how many picks, is a status, read
-once as the view comes up.
+once as the view comes up. In PATCH, the belief line in the subtitle is a
+status too, and the readout at the well's foot (a polite live region) reads
+what the model makes of the selection; each worth chip names its family and
+figure in its text, and each of the guess's runners-up is an image named for
+its rank, its module and its lower bound.
 
 **PERFORM.** Its pads have keys, printed on each and given in
 `aria-keyshortcuts`: <kbd>n</kbd> OFFER (NEXT), hold <kbd>b</kbd> PEEK,
@@ -57,7 +62,9 @@ its **×** is a button named *Stop showing these* (that level's steps). In PATCH
 the canvas or with nothing in focus: on **VOL**, in a menu, in the catalog's
 rows or under a dialog they keep their own meaning. **UNDO TO AS OPENED**
 stays in the tab order when it can't go (`aria-disabled`), and pressing it
-says why. Closing the catalog or TEACH with the keyboard puts the focus back
+says why. The dashed face at OUT for the selected module's absence is
+said in the readout (*Dashed at OUT: the sound without it, measured*, or
+*silent without it*). Closing the catalog or TEACH with the keyboard puts the focus back
 on the button that opened it; with the pointer, it lets the focus go, so
 <kbd>Space</kbd> plays.
 
