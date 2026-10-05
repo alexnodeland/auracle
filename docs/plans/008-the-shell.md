@@ -338,10 +338,12 @@ into C2a and C2b; round 2's decisions govern PATCH):
   and **Q** on a module: Q is no note key, is in no ADR's list (016, 017,
   018) and is taken nowhere in the app, and like L it acts only on a
   focused module. The top line adds where it goes (*GUESS · DELAY · AFTER
-  THE MIX*); Esc on the ghost goes back to the output's guess, as does any
-  structural edit. Asked from the keyboard the ghost takes the focus when it
-  lands, and any redraw of the guess now keeps the focus on it (it used to
-  drop it when a face landed beside it).
+  THE MIX*) and a ✕ for a pointer or a finger; it and Esc on the ghost go
+  back to the output's guess, as does any structural edit. Asked from the
+  keyboard the ghost takes the focus when it lands, if the focus is still on
+  the module Q was pressed on (never from a knob gone into since), and any
+  redraw of the guess now keeps the focus on it (it used to drop it when a
+  face landed beside it).
 - **What a generation changed** prefixes the subtitle (*from Reese · 3
   changes*, counted as the bank row lists them, `bredLine`); the tick is on
   the plate's top edge at its left; the seed's pointer is the compare's

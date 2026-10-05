@@ -6841,6 +6841,21 @@ html.xl-on .alarm { z-index: 62; }
   text-overflow: ellipsis;
 }
 .guess-read .gr-why:only-child { color: var(--silk-dim); }
+/* The way back from a place asked about to the output's guess. */
+.gr-back {
+  flex: none;
+  pointer-events: auto;
+  align-self: center;
+  border: 0;
+  background: none;
+  padding: 0 var(--s1);
+  font-size: var(--t-label);
+  line-height: 1;
+  color: var(--silk-dim);
+  cursor: pointer;
+}
+.gr-back:hover, .gr-back:focus-visible { color: var(--silk); }
+@media (pointer: coarse) { .gr-back { min-width: 40px; min-height: 40px; } }
 /* "What goes here?": where the guess asked for a place goes (after the
    drive, on the filter's cutoff, in the empty socket). */
 .gr-at {

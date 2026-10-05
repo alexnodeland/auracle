@@ -213,9 +213,11 @@ its modulation slot, or in it if the socket is empty (on a modulator, its
 module's slot), and draws its guess there, saying where (*GUESS · DELAY ·
 AFTER THE MIX*) with its reason. While it listens, the line says *hearing the
 modules that fit at the mix…*. Click it or press <kbd>Enter</kbd> to add it,
-**×** to skip it (the next for that place shows), and <kbd>Esc</kbd> on it to
-go back to the guess for the output, which also comes back after any change to
-the patch's structure. Before the warm start it says *no guess yet: it needs
+**×** to skip it (the next for that place shows), and <kbd>Esc</kbd> on it, or
+the **✕** at the end of its line, to go back to the guess for the output, which
+also comes back after any change to the patch's structure. Asked with
+<kbd>Q</kbd>, the guess takes the keyboard's focus when it lands, unless you
+have gone into a module's knobs since. Before the warm start it says *no guess yet: it needs
 a few picks first*. It renders within the same budget as the guess at the
 output.
 

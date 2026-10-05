@@ -297,7 +297,8 @@ for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog a
       await page.mouse.move(at.x, at.y);
       // The line names this socket's module before anything is read.
       const title = await page.evaluate((k) => window.__aur.wb.rack.modules.find((m) => m.key === k)?.title || "", at.key);
-      await expect(line.locator(".pick-chip-text")).toHaveText(new RegExp(`^insert after ${title}$`, "i"));
+      const plain = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await expect(line.locator(".pick-chip-text")).toHaveText(new RegExp(`^insert after ${plain}$`, "i"));
       const got = await page.evaluate(() => {
         const box = (e) => e.getBoundingClientRect();
         const chip = box(document.getElementById("pick-chip"));
@@ -343,11 +344,11 @@ for (const [w, h] of [[1000, 760], [1440, 900]]) test(`beside the open catalog a
       await page.mouse.move(edge.x, edge.y);
       const drawn = await page.evaluate(() => new Promise((resolve) => {
         let n = 0;
-        const mo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost")) n++; });
+        const mo = new MutationObserver((ms) => { for (const m of ms) for (const x of m.addedNodes) if (x.classList && x.classList.contains("pick-ghost") && !x.classList.contains("pick-lead")) n++; });
         mo.observe(document.getElementById("rack-svg"), { childList: true, subtree: true });
         setTimeout(() => { mo.disconnect(); resolve(n); }, 1500);
       }));
-      expect(drawn, `${w}: the module in hand drawn again under a still pointer`).toBeLessThanOrEqual(2);
+      expect(drawn, `${w}: the module in hand drawn again under a still pointer`).toBeLessThanOrEqual(1);
     }
     await page.keyboard.press("Escape");
     await expect(line).toBeHidden();

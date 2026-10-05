@@ -4255,6 +4255,9 @@ export function createPerform(host) {
   }
   requestAnimationFrame(drawScope);
 
+  // `wiredTo`'s last structure check: PERFORM's tree, PATCH's, and whether
+  // they differ.
+  const wiredMemo = { a: null, b: null, differs: true };
   return {
     // The row under the title, where booth mode lays its attract band.
     marquee,
@@ -4365,8 +4368,17 @@ export function createPerform(host) {
     // `knobs`, `[addr, gain]`): [{name, gain}], [] when none does, or null
     // while PERFORM has not measured this patch (another structure, or still
     // measuring). PATCH's readout names them (Plan-008 C2b).
+    // A Take's carried-over wiring is the sound before's, not this one's
+    // (`state.carried`): nothing until this patch is measured. The structure
+    // check is kept per pair of trees, as PATCH asks per knob per redraw.
     wiredTo(addr, json) {
-      if (!state.cur || !state.wire || !json || structureDiffers(state.cur.json, json)) return null;
+      if (!state.cur || !state.wire || state.carried || !json) return null;
+      if (wiredMemo.a !== state.cur.json || wiredMemo.b !== json) {
+        wiredMemo.a = state.cur.json;
+        wiredMemo.b = json;
+        wiredMemo.differs = structureDiffers(state.cur.json, json);
+      }
+      if (wiredMemo.differs) return null;
       const out = [];
       state.wire.forEach((w, i) => {
         if (!knobs[i] || knobs[i].spec.kind !== "named" || !turns(w)) return;

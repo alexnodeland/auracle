@@ -10,7 +10,8 @@
 // - What goes here?: the selection's ⋯ (or Q on a module) asks the model's
 //   guess for that module's place (`guess`'s `at`, which the page never sent
 //   before); its ghost is drawn there with where it goes and its reason on
-//   the well's top line, Enter takes it, Esc goes back to the output's.
+//   the well's top line, Enter takes it, Esc on it (or the line's ✕) goes
+//   back to the output's, and it never takes the focus from a knob.
 //
 // - What a generation changed: on a bred sound as it was bred, the subtitle
 //   names its seed and counts the changes, each changed module has a silk
@@ -160,6 +161,24 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
   await page.keyboard.press("Escape");
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
   await expect.poll(() => page.evaluate((t) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at == null), t1), { timeout: 30_000 }).toBe(true);
+
+  // Q on a VCO, then straight into its knobs: the ghost lands without taking
+  // the focus from the knob. The pointer's way back is the line's ✕ (the
+  // ghost's own × skips that kind of module for the place).
+  const vcoKey = await keyOf("vco");
+  await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="vco"]').first().focus();
+  const tv = await now(page);
+  await page.keyboard.press("q");
+  await page.keyboard.press("Enter");
+  const onKnob = () => page.evaluate(() => !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop]"));
+  await expect.poll(onKnob).toBe(true);
+  await hereRanked(page, vcoKey, tv);
+  await expect(ghost).toHaveAttribute("data-at", vcoKey, { timeout: 30_000 });
+  expect(await onKnob(), "the focus stayed on the knob").toBe(true);
+  const t4 = await now(page);
+  await page.locator("#guess-read .gr-back").click();
+  await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
+  await expect.poll(() => page.evaluate((t) => window.__pwPosted.some((p) => p.type === "guess" && p.t >= t && p.at == null), t4), { timeout: 30_000 }).toBe(true);
 
   // The keyboard: Q on the filter asks for its place; the ghost takes the
   // focus when it lands, and Enter adds it, through the edit lane.

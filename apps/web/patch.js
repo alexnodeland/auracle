@@ -261,8 +261,11 @@ export function createPatch(host) {
     if (!key || !host.hasRack()) return;
     guess.at = key;
     // Asked from the keyboard: the ghost takes the focus when it lands, so
-    // Enter takes it, if the keyboard is still on the canvas then.
+    // Enter takes it, if the keyboard is still on the module Q was pressed
+    // on then (or the rebuild took that module's focus away), never from a
+    // knob it has gone into since.
     guess.focusWhenDrawn = focus;
+    guess.focusFrom = focus ? document.activeElement : null;
     guess.retries = 0;
     guess.skipping = false;
     drawGuess();
@@ -277,6 +280,7 @@ export function createPatch(host) {
     if (!guess.at) return;
     guess.at = null;
     guess.focusWhenDrawn = false;
+    guess.focusFrom = null;
     guess.retries = 0;
     guess.want = true;
     drawGuess();
@@ -408,6 +412,17 @@ export function createPatch(host) {
         ? "no guess yet: it needs a few picks first"
         : guessCurrent() ? null : `hearing the modules that fit at the ${here}…`;
     }
+    // An answer with nothing to draw for the place asked about: nothing for
+    // the focus to go to.
+    if (here && !g && guessCurrent()) guess.focusWhenDrawn = false;
+    // The way back to the output's guess for a pointer or a finger (the
+    // keyboard's is Esc on the ghost); not the ghost's ×, which skips its
+    // kind of module for that place.
+    const back = () => el("button", {
+      class: "gr-back", type: "button",
+      "aria-label": "Back to the guess for the output", title: "Back to the output’s guess · Esc",
+      onclick: (ev) => { ev.stopPropagation(); clearHere(); },
+    }, "✕");
     // The line above the rack: GUESS · FILTER and the model's reason.
     if (read) {
       read.classList.toggle("here", !!here);
@@ -416,10 +431,11 @@ export function createPatch(host) {
           el("span", { class: "gr-chip", text: `guess · ${nameOfKind(g.kind)}` }),
           ...(here ? [el("span", { class: "gr-at", text: placeWords(g) })] : []),
           el("span", { class: "gr-why", text: W.guessLine(g, guess.data.against, host.niceName) }),
+          ...(here ? [back()] : []),
         );
         read.hidden = false;
       } else if (say) {
-        read.replaceChildren(el("span", { class: "gr-why", text: say }));
+        read.replaceChildren(el("span", { class: "gr-why", text: say }), ...(here ? [back()] : []));
         read.hidden = false;
       } else {
         read.replaceChildren();
@@ -492,7 +508,9 @@ export function createPatch(host) {
     else if (guess.focusWhenDrawn && guess.at) {
       guess.focusWhenDrawn = false;
       const a = document.activeElement;
-      if (!a || a === document.body || svg.contains(a)) plate.focus({ preventScroll: true });
+      const from = guess.focusFrom;
+      guess.focusFrom = null;
+      if (!a || a === document.body || (from && a === from)) plate.focus({ preventScroll: true });
     }
     // The faces' hook (Plan-005 task 3, #102): the guess's candidate is a
     // real render in the engine's memo (`GuessCandidate::key`), so its face
@@ -576,7 +594,7 @@ export function createPatch(host) {
       l.textContent = lcb;
       chip.append(n, l);
       const tt = svgEl("title");
-      tt.textContent = "Ranked by its lower bound";
+      tt.textContent = "Runner-up guess";
       chip.appendChild(tt);
       layer.appendChild(chip);
       condense(n, RW - 20);

@@ -14995,7 +14995,7 @@ function openStructMenu(mod, x, y) {
       },
       {
         label: "what goes here?",
-        sub: `the model’s guess for ${kindName(owner)}’s slot · Q`,
+        sub: `the model’s guess for the ${kindName(owner)}’s ${port} slot · Q`,
         run: () => patchView.askHere(parentKey),
       },
       {
@@ -15079,7 +15079,7 @@ function openStructMenu(mod, x, y) {
   // taken with Enter and skipped with ×, as the output's guess is.
   rows.push({
     label: "what goes here?",
-    sub: isPlaceholderKey(key) ? "the model’s guess for this socket · Q" : "the model’s guess for after it, or its slot · Q",
+    sub: isPlaceholderKey(key) ? "the model’s guess for this empty socket · Q" : "the model’s guess for after it, or its modulation · Q",
     run: () => patchView.askHere(key),
   });
   if (ins === 2) {
@@ -16406,7 +16406,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     // region says it.
     nbAnnounce(`${kg.dataset.name}: ${enumDisplay(knob)}`);
     sendEdit(knob.addr, knob.value, true);
-  } else if (e.key.toLowerCase() === "l") {
+  } else if (e.key.toLowerCase() === "l" && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
     e.stopPropagation(); // …as on a plate: a lock, not a note
     setLock(knob.addr, !isLockedAddr(knob.addr));
