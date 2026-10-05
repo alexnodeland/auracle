@@ -9,10 +9,15 @@
 // weighed by its time on main's last run and the runners are filled longest
 // test first, each test to the emptiest runner (LPT), so they finish together.
 //
-//   node shard.mjs run --shard 3/8 [--timings timings.json] [-- <playwright args>]
-//       list the tests the playwright args select, pick shard 3 of 8, run it
-//   node shard.mjs plan --shards 8 [--timings timings.json] [-- <playwright args>]
+//   node shard.mjs run --shard 3/8 [--timings t.json] [--files "a.spec.js …"] [-- <playwright options>]
+//       list the tests the files and options select, pick shard 3 of 8, run it
+//   node shard.mjs plan --shards 8 [--timings t.json] [--files "…"] [-- <playwright options>]
 //       print how the tests would split, and run nothing
+//
+// Spec files go in --files, not after `--`: Playwright ORs its positional
+// filters, so a whole file passed beside a runner's `file:line` selectors
+// would run every test in it on every runner. The files narrow the listing;
+// the run gets the selectors and the options only.
 //   node shard.mjs timings --out timings.json report.json [report.json ...]
 //       fold Playwright JSON reports into the timings file (tests the reports
 //       did not run keep the time they had)
@@ -22,7 +27,14 @@
 // all) weighs the median of the known ones. Tests sharing a line (a loop over
 // describe blocks) go to the same runner, because a run selects them by line.
 // Without a timings file the split is still deterministic, by count.
+//
+// The deal is a partition only if every runner reads the same timings, so CI
+// reads them once per run (the engine job uploads them as an artifact every
+// runner downloads, a re-run's too), and each runner prints a hash of the
+// whole plan: runners of one run that print different hashes dealt from
+// different files.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +63,7 @@ const keyOf = (file, titles) => [file, ...titles].join(" › ");
 function testsIn(report) {
   const out = [];
   const walk = (suite, titles) => {
+    if (titles.length) out.describes.push({ file: suite.file, line: suite.line, title: titles.join(" › ") });
     for (const spec of suite.specs || []) {
       const key = keyOf(spec.file, [...titles, spec.title]);
       const durations = (spec.tests || []).flatMap((t) => (t.results || []).map((r) => r.duration));
@@ -58,13 +71,15 @@ function testsIn(report) {
     }
     for (const child of suite.suites || []) walk(child, [...titles, child.title]);
   };
+  out.describes = [];
   // A file's own suite is titled by the file; its describes nest below it.
   for (const fileSuite of report.suites || []) walk(fileSuite, []);
   return out;
 }
 
 function listTests(pass) {
-  const r = spawnSync("npx", ["playwright", "test", "--list", "--reporter=json", ...pass], {
+  // --pass-with-no-tests: a PR's changed spec may hold only slow tests.
+  const r = spawnSync("npx", ["playwright", "test", "--list", "--reporter=json", "--pass-with-no-tests", ...pass], {
     cwd: HERE,
     encoding: "utf8",
     maxBuffer: 64 << 20,
@@ -78,7 +93,20 @@ function listTests(pass) {
     for (const e of report.errors) process.stderr.write(`${e.message}\n`);
     throw new Error("playwright could not load the specs");
   }
-  return testsIn(report);
+  const tests = testsIn(report);
+  // `file:line` also selects a describe declared on that line, and with it
+  // every test in its body: if one of those tests is on another line, it has
+  // a selector of its own too and would run on two runners.
+  const clash = [];
+  for (const d of tests.describes) {
+    const atLine = tests.some((t) => t.file === d.file && t.line === d.line);
+    const inside = tests.filter((t) => t.key.startsWith(`${keyOf(d.file, [d.title])} › `));
+    if (atLine && inside.some((t) => t.line !== d.line)) clash.push(`  ${d.file}:${d.line} (describe "${d.title}")`);
+  }
+  if (clash.length) {
+    throw new Error(`a test shares its line with a describe whose other tests are on other lines, so a run by line would select them twice; give the test a line of its own:\n${clash.join("\n")}`);
+  }
+  return tests;
 }
 
 function readTimings(path) {
@@ -117,14 +145,18 @@ function plan(tests, timings, n) {
     runners[best].units.push(u);
     runners[best].load += u.weight;
   }
-  return { runners, fallback, known: known.length, total: tests.length };
+  const hash = createHash("sha256")
+    .update(JSON.stringify(runners.map((r) => r.units.map((u) => u.sel))))
+    .digest("hex")
+    .slice(0, 12);
+  return { runners, fallback, known: known.length, total: tests.length, hash };
 }
 
 const minutes = (s) => `${(s / 60).toFixed(1)} min`;
 
 function describe(p) {
   const lines = [
-    `${p.total} tests, ${p.known} with a time from main (others weigh ${p.fallback.toFixed(1)} s)`,
+    `${p.total} tests, ${p.known} with a time from main (others weigh ${p.fallback.toFixed(1)} s); plan ${p.hash}`,
     ...p.runners.map((r, i) => `  runner ${i + 1}: ${r.units.reduce((n, u) => n + u.keys.length, 0)} tests, ~${minutes(r.load)}`),
   ];
   return lines.join("\n");
@@ -136,9 +168,11 @@ function parseShard(s) {
   return [+m[1], +m[2]];
 }
 
+const filesOf = (opts) => (opts.files || "").split(/\s+/).filter(Boolean);
+
 function cmdRun(opts, pass) {
   const [k, n] = parseShard(opts.shard);
-  const p = plan(listTests(pass), readTimings(opts.timings), n);
+  const p = plan(listTests([...filesOf(opts), ...pass]), readTimings(opts.timings), n);
   const mine = p.runners[k - 1];
   const summary = `${describe(p)}\nthis is runner ${k}`;
   console.log(summary);
@@ -155,7 +189,7 @@ function cmdRun(opts, pass) {
 
 function cmdPlan(opts, pass) {
   const n = Number(opts.shards || 1);
-  const p = plan(listTests(pass), readTimings(opts.timings), n);
+  const p = plan(listTests([...filesOf(opts), ...pass]), readTimings(opts.timings), n);
   console.log(describe(p));
   return 0;
 }

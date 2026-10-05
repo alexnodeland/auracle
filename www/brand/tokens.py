@@ -687,7 +687,7 @@ def named_colours(body: str, kind: str) -> tuple[int, ...]:
 
     if kind == "css":
         values(body, 0)
-        return hits
+        return tuple(hits)
     if kind == "html":
         for m in re.finditer(r"(<style[^>]*>)(.*?)</style>", body, re.S):
             values(m.group(2), m.start(2))

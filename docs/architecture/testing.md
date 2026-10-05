@@ -23,7 +23,7 @@ this table.
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
-| wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
+| wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
@@ -43,8 +43,9 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); Site (with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time, against one wasm build per run) | Yes. The branch ruleset requires `CI`; every job above is inside it |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time); nightly, the flake hunt | No |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine's wasm32 build (`-Dwarnings`), once per run; Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time) | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main ([Flakes](#flakes)) | No |
 
 **How long.** The fast tier's browser tests are about an hour of test time
 in one worker (269 tests at `f6f4612`, each a fresh boot), so they set the
@@ -56,12 +57,30 @@ then the tests); Web and Site take two to three.
 equal count, which left one of five runners with twice another's work.
 `tests/web/shard.mjs` weighs each test by its time on main's last run and
 deals the longest first, each to the emptiest runner, so the runners finish
-together. Each runner keeps a JSON report; on main, the *Browser timings* job
-folds them into the timings and saves them to the Actions cache, and every
-run after (a PR's too) restores the newest. A test with no time yet weighs
-the median; with no timings at all the split is by count. `node shard.mjs
-plan --shards 8 -- --grep-invert "@slow|@quarantine"` in `tests/web` prints a
-split without running it.
+together. The deal is a partition only if every runner reads the same
+timings, so the engine job reads them once per run (from the Actions cache)
+and uploads them as an artifact every runner downloads, a re-run's included;
+each runner prints the plan's hash, the same on every runner of a run. A
+test with no time yet weighs the median; with no timings the split is by
+count. `node shard.mjs plan --shards 8 -- --grep-invert "@slow|@quarantine"`
+in `tests/web` prints a split without running it.
+
+**One report.** Each runner keeps a blob report; the *Browser report* job
+merges a run's into one HTML report, every test with the traces of what
+failed, uploaded when a runner failed and linked from the run's summary
+(`npx playwright show-report <dir>` opens it). On main it also folds the
+run's times into the timings the next run deals by.
+
+**A PR that changes only specs** runs those specs and nothing else, on one
+runner per spec up to eight: no other spec's code changed, and the app it
+runs against is main's. A change to a spec's helpers, the config or anything
+else the browser tier reads runs the whole tier; main always does.
+
+**The workflows themselves.** Each workflow's token is read-only unless a
+job needs more (filing an issue, deploying Pages). Every action is pinned to
+a commit SHA with its version in a comment; Dependabot
+(`.github/dependabot.yml`) opens one grouped PR a week for the actions and
+one for `tests/web`'s npm packages.
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a
 failure there opens an issue titled *Slow suite failing on main*, or comments
@@ -103,9 +122,10 @@ that passes only sometimes is a finding about the app or the test, and a
 retry would hide it while charging every run its timeouts (a browser spec's
 waits run to two minutes).
 
-- **The flake hunt** runs nightly in the *Slow suite*: the fast tier's
+- **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
-  the machine. A failure files the *Slow suite failing on main* issue.
+  the machine. A failure files a *Flake hunt found a flaky test* issue whose
+  run links one report naming each failed test and which of its runs failed.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   timing bound with no slack ([Rules](#rules)).

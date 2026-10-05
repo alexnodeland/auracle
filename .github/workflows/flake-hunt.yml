@@ -1,0 +1,103 @@
+name: Flake hunt
+
+# Every night, the gate's browser tests three times each, against main, where
+# nothing changed but the machine.
+#
+# The gate (ci.yml) runs each test once with no retries, so a test that fails
+# one run in thirty shows up only as a red PR now and then, and is easy to
+# re-run past. Here it fails three times as often, and a failure files an
+# issue. The fix is to the test or the app; while it is being fixed the test
+# can be tagged @quarantine, which moves it from the gate to the Slow suite
+# (docs/architecture/testing.md § Flakes).
+#
+# Its own workflow, not a job in the Slow suite, so its half hour never holds
+# that workflow's queue on main.
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flake-hunt
+  cancel-in-progress: false
+
+jobs:
+  engine:
+    name: Engine for the browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/web-engine
+      - uses: ./.github/actions/browser-timings
+        with:
+          tier: fast
+
+  hunt:
+    name: Flake hunt (${{ matrix.shard }})
+    needs: engine
+    runs-on: ubuntu-latest
+    # Three times the gate's ~8 minutes a runner, and room.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      - uses: ./.github/actions/browser-shard
+        with:
+          tier: fast
+          name: hunt
+          shard: ${{ matrix.shard }}
+          index: ${{ strategy.job-index }}
+          args: --grep-invert "@slow|@quarantine" --repeat-each=3
+
+  # Which tests failed, and on which of their three runs, in one report.
+  report:
+    name: Flake hunt report
+    needs: hunt
+    if: ${{ !cancelled() && needs.hunt.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/browser-report
+        with:
+          name: hunt
+          failed: ${{ needs.hunt.result == 'failure' }}
+
+  file:
+    name: File what it found
+    needs: [engine, hunt]
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
+        with:
+          title: Flake hunt found a flaky test
+          results: ${{ toJSON(needs) }}
+          advice: >-
+            Each of these tests passes the gate on most runs and failed here on
+            main, where nothing changed but the machine. The run's summary links
+            one report naming each failed test and which of its three runs
+            failed, with traces. Fix the test or the app; while it is being
+            fixed, tag it @quarantine with a comment naming this issue
+            (docs/architecture/testing.md § Flakes).

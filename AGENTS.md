@@ -88,7 +88,8 @@ contributor guide; this file does not repeat it.
 | Only JS changed | `make web-check` |
 | One crate's tests | `cargo test -p auracle-<crate> --profile test-fast` |
 | Browser tests | `cd tests/web && AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test [spec]` |
-| One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow`) |
+| One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow` or `@quarantine`) |
+| The specs a change reaches | `make browser-changed` (against `origin/main`; `BASE=` for another) |
 | The instrument, locally | `make serve`, then <http://localhost:8642> |
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |

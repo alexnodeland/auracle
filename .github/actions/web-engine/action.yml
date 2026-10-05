@@ -24,23 +24,26 @@ runs:
   using: composite
   steps:
     - id: pkg
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: apps/web/pkg
         key: web-engine-${{ runner.os }}-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'Makefile', 'rust-toolchain*') }}
 
     - if: steps.pkg.outputs.cache-hit != 'true'
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       with:
+        toolchain: stable
         targets: wasm32-unknown-unknown
 
     - if: steps.pkg.outputs.cache-hit != 'true'
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - if: steps.pkg.outputs.cache-hit != 'true'
-      uses: taiki-e/install-action@wasm-pack
+      uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      with:
+        tool: wasm-pack
 
     - name: Build the engine for the browser
       if: steps.pkg.outputs.cache-hit != 'true'
@@ -52,7 +55,7 @@ runs:
       shell: bash
       run: make -s wasm-stamp
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: web-engine
         path: apps/web/pkg/

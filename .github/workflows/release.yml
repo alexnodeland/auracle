@@ -23,7 +23,7 @@ jobs:
     name: Build & publish release bundle
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Fail before spending six minutes on a build nobody can use. A tag whose
       # number disagrees with the workspace's is the classic release bug: the
@@ -43,15 +43,18 @@ jobs:
             exit 1
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # A prebuilt binary from the tool cache, the same way ci.yml and
       # pages.yml get it — not an unpinned `curl | sh` of upstream's installer.
-      - uses: taiki-e/install-action@wasm-pack
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: wasm-pack
 
       # Through the Makefile, so the wasm stack size lives in exactly one
       # place. Building wasm-pack directly here would ship a 1 MB stack, which

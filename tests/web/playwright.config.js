@@ -32,11 +32,10 @@ module.exports = defineConfig({
   // which moves it from the gate to the Slow suite until it is
   // (docs/architecture/testing.md § Flakes).
   retries: 0,
-  // On CI each runner also writes a JSON report, which main folds into the
-  // timings that shard.mjs splits the next run by.
-  reporter: process.env.CI
-    ? [["list"], ["github"], ["json", { outputFile: "reports/run.json" }]]
-    : [["list"]],
+  // On CI each runner also writes a blob report (blob-report/). One job merges
+  // a run's blobs into a single HTML report, traces and all, and on main
+  // into the timings shard.mjs deals the next run by.
+  reporter: process.env.CI ? [["list"], ["github"], ["blob"]] : [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,
     // Wider than the handheld gate (min dimension ≥ 620 and a fine pointer),

@@ -26,19 +26,19 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 
 ## The two tiers
 
-The suite is about an hour and twenty minutes in one worker, so CI splits it
+The suite is about an hour and a half in one worker, so CI splits it
 ([`docs/architecture/testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)):
 
 - **Fast tier**: every test not tagged `@slow` or `@quarantine`, about an
   hour in one worker. Part of the required `CI` check on any PR that touches
   `apps/web`, `tests/web` or the engine, dealt to eight runners by
   `shard.mjs` from main's last timings, about eight minutes each.
-- **Slow tier**: the tests tagged `@slow` or `@quarantine`, about twenty
-  minutes in one worker. The *Slow suite* workflow
+- **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
+  thirty-five minutes in one worker. The *Slow suite* workflow
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, on a PR
   that touches what they cover, and on a PR labelled `full-ci`. It does not
-  block merging. Nightly it also runs the flake hunt: the fast tier three
-  times over.
+  block merging. A separate nightly flake hunt (`flake-hunt.yml`) runs the
+  fast tier three times over.
 
 Run a tier locally the same way (after `make wasm`):
 
@@ -47,9 +47,16 @@ make browser-fast   # --grep-invert "@slow|@quarantine", queued, own port
 make browser-slow   # --grep "@slow|@quarantine"
 ```
 
-On a workstation, run the specs your change reaches, by file or by prefix
-(`npx playwright test patch_ perform_layout.spec.js`), and let CI run the
-rest: it is the gate, and it runs them eight wide.
+On a workstation, run the specs your change reaches and let CI run the rest:
+it is the gate, and it runs them eight wide. `make browser-changed` runs the
+specs changed against `origin/main`, the specs of a changed helper, and the
+specs named for a changed app module (`changed.mjs`); for `main.js` and the
+engine, which reach every level, name them by file or prefix
+(`npx playwright test patch_ perform_layout.spec.js`).
+
+When CI fails, the run's summary links one HTML report of every runner, with
+the failed tests' traces: download it and run `npx playwright show-report
+<dir>` here.
 
 **Tagging a slow test.** A test that takes over about 40 s on CI (the list
 reporter prints each test's time) goes in the slow tier: tag it in its

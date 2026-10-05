@@ -1,0 +1,93 @@
+name: Browser report
+description: >
+  A run's browser runners merged: one HTML report (every test, the traces of
+  what failed) uploaded as `browser-report-<name>` when a runner failed, and on
+  main the run's times folded into the tier's timings for the next run's deal.
+
+inputs:
+  name:
+    description: "The blob artifacts' prefix (`fast`, `slow`, `hunt`)"
+    required: true
+  failed:
+    description: "'true' when a runner of this set failed: upload the HTML report"
+    required: true
+  timings:
+    description: "On main, the tier whose timings these times update (`fast`, `slow`); empty for none"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: .node-version
+        cache: npm
+        cache-dependency-path: tests/web/package-lock.json
+
+    # Playwright's package for merge-reports; no browser.
+    - shell: bash
+      run: cd tests/web && npm ci --no-audit --no-fund
+
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        pattern: blob-${{ inputs.name }}-*
+        path: tests/web/all-blobs
+        merge-multiple: true
+
+    - name: Merge the runners' reports
+      shell: bash
+      env:
+        PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+        PLAYWRIGHT_HTML_OPEN: never
+        PLAYWRIGHT_JSON_OUTPUT_FILE: merged.json
+      run: |
+        cd tests/web
+        if ! ls all-blobs/*.zip >/dev/null 2>&1; then
+          echo "no runner wrote a report"; exit 0
+        fi
+        npx playwright merge-reports --reporter html,json all-blobs
+
+    - id: upload
+      if: inputs.failed == 'true'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: browser-report-${{ inputs.name }}
+        path: tests/web/playwright-report/
+        retention-days: 14
+        if-no-files-found: ignore
+
+    - if: inputs.failed == 'true' && steps.upload.outputs.artifact-url != ''
+      shell: bash
+      run: |
+        {
+          echo "### Browser tests (${{ inputs.name }}) failed"
+          echo
+          echo "Every runner's results in one report, with the failed tests' traces:"
+          echo "[browser-report-${{ inputs.name }}](${{ steps.upload.outputs.artifact-url }})."
+          echo "Unzip it and run \`npx playwright show-report <dir>\` in tests/web."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # Main's times for the next run's deal: folded into the last timings and
+    # saved under a new key (a cache entry is immutable), which the next run's
+    # browser-timings restores by prefix. A failure here costs the next run its
+    # balance, not its answer.
+    - if: inputs.timings != '' && github.ref == 'refs/heads/main'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: tests/web/timings-${{ inputs.timings }}.json
+        key: browser-timings-${{ inputs.timings }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: browser-timings-${{ inputs.timings }}-
+
+    - if: inputs.timings != '' && github.ref == 'refs/heads/main'
+      shell: bash
+      run: |
+        cd tests/web
+        [ -f merged.json ] || { echo "no merged report; timings unchanged"; exit 0; }
+        node shard.mjs timings --out "timings-${{ inputs.timings }}.json" merged.json
+
+    - if: inputs.timings != '' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: tests/web/timings-${{ inputs.timings }}.json
+        key: browser-timings-${{ inputs.timings }}-${{ github.run_id }}-${{ github.run_attempt }}
