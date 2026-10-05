@@ -18812,18 +18812,20 @@ function wiredSentence(mod) {
     const k = mod.knobs.find((x) => x.addr === addr);
     return hits && k ? turnedBy(hits.map((h) => h.name), k.label) : "";
   }
-  const by = new Map(); // control -> its knobs here, in the panel's order
+  const by = new Map(); // control -> {at, its knobs here}
   let measured = false;
   for (const k of mod.knobs) {
     const hits = perform.wiredTo(k.addr, benchTreeJson);
     if (!hits) continue;
     measured = true;
     for (const h of hits) {
-      if (!by.has(h.name)) by.set(h.name, []);
-      by.get(h.name).push(k.label);
+      if (!by.has(h.name)) by.set(h.name, { at: h.at, knobs: [] });
+      by.get(h.name).knobs.push(k.label);
     }
   }
-  return measured ? turnsItsKnobs([...by]) : "";
+  // The controls in the panel's order, each with its knobs in the module's.
+  const pairs = [...by].sort((a, b) => a[1].at - b[1].at).map(([n, v]) => [n, v.knobs]);
+  return measured ? turnsItsKnobs(pairs) : "";
 }
 function setKnobAt(which, addr) {
   if (which === "hover" ? knobHover === addr : knobFocus === addr) return;

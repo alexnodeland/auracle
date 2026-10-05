@@ -4365,7 +4365,8 @@ export function createPerform(host) {
     },
     // Which named controls on the panel turn the knob at `addr` of the patch
     // `json`, from PERFORM's measured wiring (`perform_wire`: each control's
-    // `knobs`, `[addr, gain]`): [{name, gain}], [] when none does, or null
+    // `knobs`, `[addr, gain]`): [{name, gain, at}] in the panel's order (`at`
+    // its place there), [] when none does, or null
     // while PERFORM has not measured this patch (another structure, or still
     // measuring). PATCH's readout names them (Plan-008 C2b).
     // A Take's carried-over wiring is the sound before's, not this one's
@@ -4383,7 +4384,7 @@ export function createPerform(host) {
       state.wire.forEach((w, i) => {
         if (!knobs[i] || knobs[i].spec.kind !== "named" || !turns(w)) return;
         const hit = w.knobs.find(([a]) => a === addr);
-        if (hit) out.push({ name: w.name, gain: hit[1] });
+        if (hit) out.push({ name: w.name, gain: hit[1], at: i });
       });
       return out;
     },

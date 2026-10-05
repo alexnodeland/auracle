@@ -325,12 +325,21 @@ test("the readout names the PERFORM controls that turn the knob under the pointe
   // The knob under the pointer: the controls that turn it, by name.
   const hit = page.locator(`#rack-svg .rack-controls [data-addr="${m.addr}"] .knob-hit`);
   await hit.hover();
-  await expect(page.locator("#pt-read .pr-wired")).toHaveText(`${series(m.names.map(caps))} ${m.names.length === 1 ? "turns" : "turn"} this ${m.label}`);
+  // (In the panel's order, which the reply's wiring need not be in.)
+  const verb = `${m.names.length === 1 ? "turns" : "turn"} this ${m.label}`;
+  await expect.poll(async () => {
+    const t = (await page.locator("#pt-read .pr-wired").textContent()) || "";
+    if (!t.endsWith(` ${verb}`)) return t;
+    return t.slice(0, -verb.length - 1).replace(/, and |, | and /g, "|").split("|").sort();
+  }).toEqual(m.names.map(caps).sort());
   // The module selected, nothing under the pointer: each control with its knobs.
   const plate = page.locator(`#rack-svg .rack-plates g[data-key="${m.key}"] .mod-plate`);
   const b = await plate.boundingBox();
   await page.mouse.click(b.x + 10, b.y + b.height - 6);
   await page.mouse.move(4, 400);
-  await expect(page.locator("#pt-read .pr-wired")).toHaveText(m.byControl.map(([n, ks]) => `${caps(n)} turns its ${series(ks)}`).join("; "));
+  // Each control with its knobs (in the panel's order, which the reply's
+  // wiring need not be in: compared as a set).
+  const want = m.byControl.map(([n, ks]) => `${caps(n)} turns its ${series(ks)}`).sort();
+  await expect.poll(async () => ((await page.locator("#pt-read .pr-wired").textContent()) || "").split("; ").sort()).toEqual(want);
   expect(errors).toEqual([]);
 });
