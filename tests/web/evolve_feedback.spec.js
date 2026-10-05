@@ -21,18 +21,28 @@
 // pool and the sides are the same run to run.
 const { test, expect, goLevel } = require("./fixtures");
 
-// Every phrase that starts sounding: what a player hears from a ▶.
-const STARTS = `(() => {
-  const starts = (window.__pwStarts = []);
-  const start = AudioBufferSourceNode.prototype.start;
-  AudioBufferSourceNode.prototype.start = function (...a) {
-    starts.push(performance.now());
+// Every phrase that starts sounding, how long it is, and when something
+// stopped it (its source's stop()): what a player hears from a ▶, and what a
+// ▶ pressed again does to it.
+const SOURCES = `(() => {
+  const src = (window.__pwSources = []);
+  const P = AudioBufferSourceNode.prototype;
+  const start = P.start;
+  const stop = P.stop;
+  P.start = function (...a) {
+    this.__pwN = src.length;
+    src.push({ at: performance.now(), ms: this.buffer ? this.buffer.duration * 1000 : 0, stopped: null });
     return start.apply(this, a);
+  };
+  P.stop = function (...a) {
+    const s = src[this.__pwN];
+    if (s && s.stopped == null) s.stopped = performance.now();
+    return stop.apply(this, a);
   };
 })();`;
 
 async function boot(page, app, opts = {}) {
-  await page.addInitScript(STARTS);
+  await page.addInitScript(SOURCES);
   await app.boot({ random: 20260927, ...opts });
 }
 
@@ -44,7 +54,32 @@ const cardNames = (page) =>
 const cardIds = (page) =>
   page.evaluate(() => ["a", "b"].map((s) => Number(document.querySelector(`#name-${s} .dn-id`).textContent.replace("#", ""))));
 const pairKey = (ids) => [...ids].sort((x, y) => x - y).join();
-const starts = (page) => page.evaluate(() => window.__pwStarts.length);
+const sources = (page) => page.evaluate(() => window.__pwSources.slice());
+// A second press stops the phrase at once: its light goes out well inside
+// what is left of the phrase, which runs seconds.
+const STOP_MS = 2_500;
+
+/** Press a ▶ whose phrase is sounding, and require that the press stopped
+ *  it: the source playing was stopped (not left to end), its light went out
+ *  within STOP_MS, and no phrase started over. */
+async function pressStops(page, app, what, press, dark) {
+  const before = await sources(page);
+  const playing = before.length - 1;
+  const at = await app.now();
+  await press();
+  await dark(STOP_MS);
+  await expect
+    .poll(async () => (await sources(page))[playing].stopped, { timeout: STOP_MS, message: `the second press on ${what} did not stop its phrase` })
+    .not.toBeNull();
+  const after = await sources(page);
+  expect(after.length, `the second press started ${what} over`).toBe(before.length);
+  const left = before[playing].at + before[playing].ms - at;
+  const said = `${what}: stopped ${Math.round(after[playing].stopped - at)} ms after the press, with ${Math.round(left)} ms of the phrase left`;
+  console.log(said);
+  // On a runner slow enough to leave less of the phrase than the bound, the
+  // light alone proves nothing, and the stop() above is the proof.
+  if (left <= STOP_MS) test.info().annotations.push({ type: "short phrase left", description: said });
+}
 
 async function toEvolve(page, app) {
   await app.reply("duel", { where: { pair: true }, timeout: 60_000 });
@@ -286,13 +321,11 @@ test("a bank row's ▶ lights while it plays and stops on a second press; ▶ SA
   await expect(page.locator("#bank-list .bank-item").nth(1).locator(".bi-star")).toHaveAttribute("aria-pressed", "true");
   await expect(lit).toHaveCount(1);
   await expect(page.locator("#bank-list .bank-item").first().locator(".bi-hear")).toHaveClass(/\bplaying\b/);
-  // Pressed again, it stops — it does not start the phrase over: the light
-  // goes out and no phrase starts.
+  // Pressed again, it stops — it does not start the phrase over.
   await first.hover();
-  let started = await starts(page);
-  await page.locator("#bank-list .bank-item .bi-hear").first().click();
-  await expect(lit).toHaveCount(0);
-  expect(await starts(page), "the second press started the phrase over").toBe(started);
+  await pressStops(page, app, "a row's ▶",
+    () => page.locator("#bank-list .bank-item .bi-hear").first().click(),
+    (timeout) => expect(lit).toHaveCount(0, { timeout }));
 
   // Played to its end, it goes dark by itself.
   await first.hover();
@@ -304,10 +337,8 @@ test("a bank row's ▶ lights while it plays and stops on a second press; ▶ SA
   const sample = page.locator("#play-a");
   await sample.click();
   await app.engine((timeout) => expect(sample).toHaveClass(/\bplaying\b/, { timeout }), { ms: 30_000 });
-  started = await starts(page);
-  await sample.click();
-  await expect(sample).not.toHaveClass(/\bplaying\b/);
-  expect(await starts(page), "the second press started SAMPLE over").toBe(started);
+  await pressStops(page, app, "▶ SAMPLE", () => sample.click(),
+    (timeout) => expect(sample).not.toHaveClass(/\bplaying\b/, { timeout }));
 });
 
 test("the warm start's result replaces its loading toast when it lands", async ({ page, app }) => {
