@@ -113,8 +113,11 @@ runs. No retries anywhere
     stands**, so a refit cannot overwrite it (#126); `app.release()` lets
     them through, in order. Requests are held (`app.holdRequests`), delayed
     (`app.delay`), stalled and answered by the spec (`app.stall`,
-    `app.stalled`), answered without the engine (`app.answer`), and replies
-    rewritten before main reads them (`app.amend`);
+    `app.stalled`), answered without the engine (`app.answer`) or failed as
+    the worker fails a request it could not run (`app.fail`: an
+    `engine_error` naming it, `fatal` as a crashed engine answers
+    everything, `once` for the next only), and replies rewritten before main
+    reads them (`app.amend`);
   - a setting made before `app.boot()` (`app.answer`, `app.hold`, …) is
     replayed by an init script on every load, so it holds from the first
     message; made after, it holds on the page as it is;
@@ -146,7 +149,10 @@ runs. No retries anywhere
 - **Waiting on PERFORM's engine** (an offer or a drift growing, or the work
   queued ahead of it) is renders, seconds each on a CI runner: bound it with
   `app.offerBudget()` (`perform_budget.js`), not a fixed number
-  ([`testing.md` § Rules](../../docs/architecture/testing.md#rules)).
+  ([`testing.md` § Rules](../../docs/architecture/testing.md#rules)). A
+  preset reaches PERFORM with `app.openOnPerform(name)` (its controls
+  reached; `{ wired: true }` none unwired, `{ reach: false }` not waited
+  for, then `app.reached()`).
 - **A test's timeout** is the config's 90 s unless it needs more: a test
   over about 45 s on CI says so with `test.setTimeout` (and over 40 s is
   tagged `@slow`, above).
@@ -169,6 +175,6 @@ runs. No retries anywhere
   but `rackAtRest` takes the test's `app`.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
-- Not yet on the fixture: `perform_*`, `responsive`, `audio_in*` and the rest
-  of the views' specs. A spec moved onto it keeps every test's title (the
-  timings and `testing.md` key on them).
+- Not yet on the fixture (#170): `audio_in*`, `smoke`, `failure_flows` and
+  the shell's and views' other specs. A spec moved onto it keeps every test's
+  title (the timings and `testing.md` key on them).
