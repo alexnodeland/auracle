@@ -398,9 +398,9 @@ jobs:
   # The fast browser tier: every spec in tests/web not tagged @slow or
   # @quarantine, against the engine built above.
   #
-  # About 63 minutes of test time in one worker (main at f6f4612, 269 tests,
+  # About 70 minutes of test time in one worker (main at f6f4612, 272 tests,
   # a fresh boot each). tests/web/shard.mjs deals them to eight runners by
-  # main's last timings, longest first, so each runs about 8 minutes: with
+  # main's last timings, longest first, so each runs about 9 minutes: with
   # Playwright's own split by count, five runners took from 9 to 19.
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while

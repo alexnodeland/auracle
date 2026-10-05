@@ -43,14 +43,14 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine's wasm32 build (`-Dwarnings`), once per run; Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time) | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main ([Flakes](#flakes)) | No |
 
-**How long.** The fast tier's browser tests are about an hour of test time
-in one worker (269 tests at `f6f4612`, each a fresh boot), so they set the
-check's length: about ten minutes, the engine job and eight runners of about
-eight minutes each. Rust takes about seven and a half (a two-minute compile,
+**How long.** The fast tier's browser tests are about seventy minutes of
+test time in one worker (272 tests at `f6f4612`, each a fresh boot), so they
+set the check's length: about ten minutes, the engine job and eight runners
+of about nine minutes each. Rust takes about seven and a half (a two-minute compile,
 then the tests); Web and Site take two to three.
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of

@@ -53,10 +53,16 @@ try {
 
 const specs = readdirSync(HERE).filter((f) => f.endsWith(".spec.js")).sort();
 const helpers = readdirSync(HERE).filter((f) => f.endsWith(".js") && !f.endsWith(".spec.js") && f !== "playwright.config.js");
-const requires = (spec, helper) => {
-  const src = readFileSync(join(HERE, spec), "utf8");
+const requiresDirectly = (file, helper) => {
+  const src = readFileSync(join(HERE, file), "utf8");
   const name = helper.replace(/\.js$/, "");
   return new RegExp(`require\\(["']\\./${name}(\\.js)?["']\\)`).test(src);
+};
+// Through other helpers too: patch_page.js requires shell.js, so a spec that
+// requires patch_page.js reaches shell.js.
+const requires = (spec, helper, seen = new Set()) => {
+  if (requiresDirectly(spec, helper)) return true;
+  return helpers.some((h) => !seen.has(h) && h !== helper && requiresDirectly(spec, h) && (seen.add(h), requires(h, helper, seen)));
 };
 
 const out = new Set();

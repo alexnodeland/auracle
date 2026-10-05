@@ -32,6 +32,9 @@ module.exports = defineConfig({
   // which moves it from the gate to the Slow suite until it is
   // (docs/architecture/testing.md § Flakes).
   retries: 0,
+  // A stray test.only would quietly narrow the run to that test (on CI, to
+  // one runner's share minus everything but it), and the run would pass.
+  forbidOnly: !!process.env.CI,
   // On CI each runner also writes a blob report (blob-report/). One job merges
   // a run's blobs into a single HTML report, traces and all, and on main
   // into the timings shard.mjs deals the next run by.

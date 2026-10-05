@@ -251,7 +251,7 @@ BROWSER_PORT ?= 8690
 PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
 	../../www/video/tools/one_browser.sh npx playwright test
 
-## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~an hour serially)
+## browser-fast: browser specs not tagged @slow or @quarantine, CI's fast tier (~70 min serially)
 browser-fast:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
 	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
@@ -445,7 +445,7 @@ site-landing: site-fonts site-brand
 ## site-play: the instrument, at /play/. `WASM_PREBUILT=1` takes the engine
 ## already in apps/web/pkg (CI's Site job downloads the one the engine job
 ## built) instead of building it again
-site-play: $(if $(WASM_PREBUILT),wasm-prebuilt,wasm)
+site-play: $(if $(filter 1,$(WASM_PREBUILT)),wasm-prebuilt,wasm)
 	mkdir -p site/play
 	cp -r apps/web/. site/play/
 	# serve.py is for local development; Pages is the server here.

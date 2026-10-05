@@ -29,10 +29,10 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 The suite is about an hour and a half in one worker, so CI splits it
 ([`docs/architecture/testing.md` § CI tiers](../../docs/architecture/testing.md#ci-tiers)):
 
-- **Fast tier**: every test not tagged `@slow` or `@quarantine`, about an
-  hour in one worker. Part of the required `CI` check on any PR that touches
-  `apps/web`, `tests/web` or the engine, dealt to eight runners by
-  `shard.mjs` from main's last timings, about eight minutes each.
+- **Fast tier**: every test not tagged `@slow` or `@quarantine`, about
+  seventy minutes in one worker. Part of the required `CI` check on any PR
+  that touches `apps/web`, `tests/web` or the engine, dealt to eight runners
+  by `shard.mjs` from main's last timings, about nine minutes each.
 - **Slow tier**: the tests tagged `@slow` or `@quarantine`, about
   thirty-five minutes in one worker. The *Slow suite* workflow
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, on a PR
