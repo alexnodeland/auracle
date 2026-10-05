@@ -34,6 +34,23 @@ How you work:
 - Before handing back: `cargo fmt --all`, `make lint`, the crate tests, and
   `make wasm-check` if the wasm crate or its callers changed.
 
-Report: what was wrong and why, what you changed (files and functions), the
-tests that prove it and their results, anything you measured, and anything
-left open. Commit on your branch with a message whose body explains why.
+Where your work goes ([`docs/process.md`](../../docs/process.md)):
+
+- Work in the worktree and on the branch you were given, never in the main
+  checkout. Commit there, in small commits, each leaving the app working.
+  Never push, open a PR or merge: the operator does, after a review.
+- Commit messages explain why, carry `Refs #N` when there is an issue, and
+  hold no hand-written attribution: no `Co-Authored-By`, no "generated with"
+  line, no model name. When you are given a session link line, it is the
+  message's last line.
+- Run the fast gates and the specs you touched, not the full browser suite:
+  CI runs it. Browser jobs go through `one_browser.sh` on your own port. Stop
+  a process by its PID; never a bare `git stash`.
+- New player-facing words: draft their `www/brand/voice.md` rows in your
+  report; don't commit them.
+- Anything you move or retire keeps its function by mouse, keyboard and
+  touch; when something would have no home, stop and say so.
+
+Report: the head SHA; what was wrong and why, what you changed (files and
+functions), the tests that prove it and their results, whether `make wasm`
+was run and the build id, anything you measured, and anything left open.

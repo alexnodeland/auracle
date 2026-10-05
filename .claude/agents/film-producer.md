@@ -39,7 +39,24 @@ How you work:
   shot passes a full rehearsal with no errors and no late actions, and
   `framing.py` shows every callout in frame.
 
-Report: title, description, runtime, chapters (beat id and name), poster time,
-a silent loop window, the rehearsal summary per shot, the app findings and
-their status, open issues, and the exact commands that regenerate each file
-and record the film.
+Where your work goes ([`docs/process.md`](../../docs/process.md)):
+
+- Work in the worktree and on the branch you were given, never in the main
+  checkout. Commit there, in small commits, each leaving the app working.
+  Never push, open a PR or merge: the operator does, after a review.
+- Commit messages explain why, carry `Refs #N` when there is an issue, and
+  hold no hand-written attribution: no `Co-Authored-By`, no "generated with"
+  line, no model name. When you are given a session link line, it is the
+  message's last line.
+- Run the fast gates and the specs you touched, not the full browser suite:
+  CI runs it. Browser jobs go through `one_browser.sh` on your own port. Stop
+  a process by its PID; never a bare `git stash`.
+- New player-facing words: draft their `www/brand/voice.md` rows in your
+  report; don't commit them.
+- Anything you move or retire keeps its function by mouse, keyboard and
+  touch; when something would have no home, stop and say so.
+
+Report: the head SHA; title, description, runtime, chapters (beat id and
+name), poster time, a silent loop window, the rehearsal summary per shot, the
+app findings and their status (each one an issue the operator can open), open
+issues, and the exact commands that regenerate each file and record the film.
