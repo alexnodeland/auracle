@@ -244,15 +244,17 @@ const LISTEN = `(() => {
     new MutationObserver(read).observe(el, { childList: true, characterData: true, subtree: true });
   });
 
-  // Every spectrum for \`ms\` from now, stamped with its time.
+  // Every spectrum for \`ms\` from now, stamped with its time, or until
+  // \`__pwRecStop\` is set.
   window.__pwRecord = (ms, want) => new Promise((resolve) => {
     const out = [];
     const t0 = performance.now();
+    window.__pwRecStop = false;
     const step = () => {
       const t = performance.now() - t0;
       const s = window.__pwSpectrum(want);
       if (s) out.push({ t, at: t0 + t, rms: window.__pwRmsDb(), ...s });
-      if (t < ms) setTimeout(step, 25);
+      if (t < ms && !window.__pwRecStop) setTimeout(step, 25);
       else resolve(out);
     };
     step();
@@ -649,12 +651,16 @@ test("an undo and a redo of a selector keep the held note's level: the voices ta
   await slowRender(app, 1500);
   for (const [key, want] of [["ControlOrMeta+z", "svf lp"], ["ControlOrMeta+Shift+z", "svf bp"]]) {
     const n = await page.evaluate(() => window.__pwIO.replies.length);
-    await page.evaluate((w) => { window.__pwRec = window.__pwRecord(2600, w); }, C4);
+    // Recorded until the reply, not for a fixed time: the restored tree can
+    // reach the voices late, behind the cable probe the last change asked
+    // for (CI: 2 s after the key, which left 5 reads before a fixed 2.6 s
+    // recording ended).
+    await page.evaluate((w) => { window.__pwRec = window.__pwRecord(30_000, w); }, C4);
     const t0 = await app.now();
     await page.locator("#rack-subject").click();
     await page.keyboard.press(key);
-    const snaps = await page.evaluate(() => window.__pwRec);
     await expect.poll(() => page.evaluate((i) => window.__pwIO.replies.length > i, n), { timeout: 30_000 }).toBe(true);
+    const snaps = await page.evaluate(() => { window.__pwRecStop = true; return window.__pwRec; });
     const { reply, early } = await page.evaluate(([i, t]) => {
       const reply = window.__pwIO.replies[i];
       return { reply, early: window.__pwMakeups.filter((m) => m.t > t && m.t < reply.t && m.type === "patch") };

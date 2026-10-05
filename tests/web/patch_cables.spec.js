@@ -77,8 +77,11 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
   await page.mouse.up();
-  // While the change is unmeasured, the marks are hollow.
-  await expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout: 15_000 }).toBe(true);
+  // While the change is unmeasured, the marks are hollow. They go hollow when
+  // the edit's answer lands, an engine wait: the model's guess for the open
+  // can still be out, and on a slow runner the edit waited behind it for
+  // longer than 15 s (CI: the page sent the edit, and nothing came back).
+  await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(asked, { timeout }).toBeGreaterThan(before), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   // Not one per step. At most one probe at the engine and one owed
@@ -231,6 +234,43 @@ test("sounds opened right after arriving in PATCH are not kept waiting behind a 
   const first = log.find((e) => e.type === "bench" && e.subject === ids[0]).at;
   console.log(`[patch_cables] opens asked ${Math.round(asked[0] - arrived)} ms after arriving and ${Math.round(asked[1] - first)} ms after the first landed; ${asks.length} probes and guesses, the first ${Math.round(asks[0].at - arrived)} ms after arriving`);
   await app.busy({});
+});
+
+// The quiet window is kept by when it ends, not by its timer (#167). The
+// probe asked on arriving, and the guess with it, are answered while the
+// player's next open is on its way, and their answers reach the page only
+// once it has landed: an answer for the sound before asks again (the tree it
+// measured is gone), and a settle sooner than the window's (450 ms) used to
+// replace the window's timer, so the probe went out about 0.5 s after the
+// open landed. The answers are handed over in the page, the moment the open
+// lands, so no harness pace sits between the two.
+test("a probe answered after an open has landed waits out the open's quiet window", async ({ page, app }) => {
+  await app.boot();
+  await app.level("evolve");
+  await expect(page.locator("#view-evolve")).toBeVisible();
+  await app.hold(["cable_levels", "guess"]);
+  await markArrival(page);
+  await app.level("patch");
+  const arrived = await page.evaluate(() => window.__pwArrived);
+  expect(arrived, "the press on PATCH's stop was seen").not.toBeNull();
+  // The probe asked on arriving has been answered, and the answer is held.
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).map((h) => h.type), { timeout }).toContain("cable_levels"), { ms: 60_000 });
+  const rows = page.locator("#bank-list .bank-item");
+  const id = Number(await rows.nth(1).getAttribute("data-id"));
+  const handed = page.evaluate((x) => new Promise((done) => {
+    const until = performance.now() + 30_000;
+    const tick = () => {
+      if (window.__aur.wb.subjectId === x) done(window.__tap.release());
+      else if (performance.now() > until) done(-1);
+      else setTimeout(tick, 5);
+    };
+    tick();
+  }), id);
+  await rows.nth(1).locator(".bi-name").click();
+  expect(await handed, "the held answers were handed over once the open landed").toBeGreaterThan(0);
+  const landed = (await app.log({ after: arrived })).filter((e) => e.type === "bench" && e.subject === id).pop().at;
+  await app.engine((timeout) => expect.poll(async () => (await app.sent({ type: ["cable_levels", "guess"] }, { after: landed })).length, { timeout }).toBeGreaterThan(0), { ms: 30_000 });
+  await keptQuiet(app, arrived);
 });
 
 // PERFORM's measurement of a sound it has left, or of one out of sight, is
