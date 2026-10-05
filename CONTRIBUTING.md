@@ -264,9 +264,11 @@ workflow watches that tag and nothing else has to be done by hand:
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
   the GitHub Release with the changelog section as its notes.
 
-[`pages.yml`](.github/workflows/pages.yml) deploys the live site — the landing
-page, the instrument at `/play/`, and both books — on every push to `main`. It
-deliberately does **not** fire on the tag. The `github-pages` environment permits
+CI's deploy job ([`ci.yml`](.github/workflows/ci.yml)) publishes the live site —
+the landing page, the instrument at `/play/`, and both books — from the build
+it just checked, once `CI` is green on a push to `main`; a red run deploys
+nothing and the last green build stays live. It deliberately does **not** run
+on the tag. The `github-pages` environment permits
 deployments from `main` only, so a tag-triggered deploy is rejected by protection
 rules; and it is not needed, because the tag is cut from a green `main` and that
 commit has therefore already deployed from the branch.
