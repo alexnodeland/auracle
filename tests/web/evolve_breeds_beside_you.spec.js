@@ -32,8 +32,36 @@
 // `?farm=N` sets the crew's width; the default is the app's own rule.
 const { test, expect, goLevel, bankTab } = require("./fixtures");
 
-// Every change of the lamp or the job slot, with whether they agreed.
-const LAMP = `(() => {
+// Every change of the lamp or the job slot, with whether they agreed; and
+// the bank the moment main.js has handled the first child a generation bred
+// (\`refine_child\` with a child), by a listener added after main.js's
+// \`onmessage\` (at the first message, by which time main.js has set it), so
+// a generation that ends a moment later cannot change it first.
+const WATCH = `(() => {
+  const Orig = window.Worker;
+  function Wrapped(url, opts) {
+    const w = new Orig(url, opts);
+    if (/worker\\.js/.test(String(url))) {
+      const after = (e) => {
+        const d = e.data;
+        if (window.__pwFirstChild || !d || d.type !== "refine_child" || !(d.child > 0) || e.__tapInjected) return;
+        const label = document.querySelector("#bank-list .bank-group.new .bg-label");
+        window.__pwFirstChild = {
+          child: d.child,
+          rows: [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((el) => Number(el.dataset.id)),
+          label: label ? label.textContent : null,
+        };
+      };
+      const first = () => {
+        w.removeEventListener("message", first);
+        w.addEventListener("message", after);
+      };
+      w.addEventListener("message", first);
+    }
+    return w;
+  }
+  Wrapped.prototype = Orig.prototype;
+  window.Worker = Wrapped;
   const lamp = (window.__pwLamp = []);
   document.addEventListener("DOMContentLoaded", () => {
     const e = document.getElementById("wm-lamp");
@@ -55,7 +83,7 @@ const LAMP = `(() => {
 /** Boot, seeded, and teach it: six picks in EVOLVE and their refit, a model
  *  to breed toward, with the lamp out. */
 async function taught(page, app, query = "") {
-  await page.addInitScript(LAMP);
+  await page.addInitScript(WATCH);
   await app.boot({ random: 20260928, query });
   await app.teach(6);
   await expect(page.locator("#wm-lamp")).not.toHaveClass(/\bthinking\b/);
@@ -100,15 +128,20 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
 
   // The first child lands at the top, under "new · generation N", and the ranked
   // rows below it keep their order. (No pick is pending here: a vote
-  // reweights the model, and would move rows for a reason of its own.)
+  // reweights the model, and would move rows for a reason of its own.) Read
+  // as main.js left the bank on that child's reply (WATCH): on a fast farm
+  // the last walks land a moment later and the generation's end replaces.
   const firstChild = (await app.reply("refine_child", { where: (d) => d.child > 0, timeout: 300_000 })).child;
-  await expect(page.locator("#bank-list .bank-group.new .bg-label")).toHaveText(/^new · generation \d+$/);
-  const mid = await bankIds(page);
+  await expect.poll(() => page.evaluate(() => !!window.__pwFirstChild)).toBe(true);
+  const landed = await page.evaluate(() => window.__pwFirstChild);
+  expect(landed.child).toBe(firstChild);
+  expect(landed.label).toMatch(/^new · generation \d+$/);
+  const mid = landed.rows;
   expect(mid[0], "the first child is not the bank's first row").toBe(firstChild);
   const rest = mid.filter((id) => before.includes(id));
   expect(rest, "the ranked rows moved while a child landed").toEqual(before.filter((id) => rest.includes(id)));
   // Nothing has left the bank yet: replacement waits for the end.
-  expect(before.every((id) => mid.includes(id)), "a patch left the bank before the generation ended").toBe(true);
+  expect(before.filter((id) => !mid.includes(id)), "a patch left the bank before the generation ended").toEqual([]);
 
   // Picks while it breeds: each next pair is dealt within a second.
   const pickFrom = await app.now();
