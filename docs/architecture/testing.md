@@ -76,6 +76,27 @@ runner per spec up to eight: no other spec's code changed, and the app it
 runs against is main's. A change to a spec's helpers, the config or anything
 else the browser tier reads runs the whole tier; main always does.
 
+**On main, what the PR already passed is not run again.** A push to main is
+a squash merge; when the PR was up to date with main, its files are exactly
+the files the PR's run tested (a pull_request run tests the PR merged into
+main). That run's `CI` job leaves a record (the artifact
+`verified-tree-<git tree>`, kept 14 days) of the jobs that passed on those
+files, and main's *What changed* job reads it: Lint, Web, the Rust tests and
+the browser tier are skipped there when the record says they passed, and the
+run's summary says so, with a link. A job the PR skipped or ran in part (a
+spec-only PR's browser tier) runs on main as before; so does everything when
+main moved on after the PR's run, on a manual run, and for a PR from a fork.
+The Site job always runs on main: its build is what deploys. The *Slow
+suite* and the nightly flake hunt still run in full.
+
+**The site deploys from CI.** On main, the Site job keeps the site it built
+and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
+a red run deploys nothing and the last green build stays live. A run on
+main is not cancelled by the next push; GitHub keeps one waiting run, so when
+three merges land inside one run's length the middle one is covered by the
+newest. Lint and the Rust tests are reused only while Rust's stable release
+is the one they ran on (the record keeps `rustc --version`).
+
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every action is pinned to
 a commit SHA with its version in a comment; Dependabot

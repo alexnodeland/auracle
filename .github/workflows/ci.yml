@@ -8,8 +8,12 @@ name: CI
 # what they cover or carries the `full-ci` label. Each test runs in exactly one
 # tier; docs/architecture/testing.md § CI tiers lists which and why.
 #
-# The branch ruleset requires one check, `CI` (the last job here). The fast
-# browser shards are inside it; the Slow suite is not.
+# The branch ruleset requires one check, `CI`. The fast browser shards are
+# inside it; the Slow suite is not.
+#
+# On main a job the merged PR already passed on these exact files is not run
+# again (the `changes` job says which), and the site deploys from this run's
+# own build once `CI` is green (the `deploy` job).
 
 on:
   push:
@@ -18,11 +22,14 @@ on:
   workflow_dispatch:
 
 # A new push to a PR makes the in-flight run for that PR obsolete, so stop it
-# rather than paying for two answers to the same question. `main` is keyed by
-# ref too, but pushes there are already serialized by the merge queue of one.
+# rather than paying for two answers to the same question. A run on main is
+# not cancelled by the next push: it finishes, and the next waits. (GitHub
+# keeps one waiting run per group, so of three merges inside one run's length
+# the middle one is skipped, and the newest run covers its files.) With the
+# merged PR's jobs reused (the changes job), main's runs are short.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read the code, nothing else: no job here writes to the repository. The
 # Actions cache and artifacts use the runner's own token, not this one.
@@ -37,7 +44,8 @@ env:
   CARGO_INCREMENTAL: 0
   # A blipped crates.io fetch should not cost a whole rerun.
   CARGO_NET_RETRY: 10
-  # Keep in sync with the Makefile and pages.yml. See pages.yml for why 0.4.
+  # Keep in sync with the Makefile. mdBook stays on 0.4: mdbook-katex and
+  # mdbook-admonish at these versions build against its preprocessor API.
   MDBOOK_VERSION: 0.4.52
   MDBOOK_KATEX_VERSION: 0.9.4
   MDBOOK_ADMONISH_VERSION: 1.20.0
@@ -57,12 +65,20 @@ jobs:
     name: What changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # actions: read, to find and download a merged PR's record (the reuse step).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
       browser: ${{ steps.filter.outputs.browser }}
       specs: ${{ steps.filter.outputs.specs }}
       browser_matrix: ${{ steps.filter.outputs.browser_matrix }}
+      reuse_lint: ${{ steps.reuse.outputs.lint }}
+      reuse_web: ${{ steps.reuse.outputs.web }}
+      reuse_test: ${{ steps.reuse.outputs.test }}
+      reuse_browser: ${{ steps.reuse.outputs.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,6 +162,60 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           printf '\n  rust=%s site=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$browser" "${specs:-all}" "$matrix"
 
+      # A push to main is a squash merge. When the PR was up to date with main,
+      # the merge's files are exactly the files the PR's run tested (a
+      # pull_request run tests the PR merged into main), and that run left a
+      # record of the jobs it passed on them (the `ci` job). Those jobs are not
+      # run again: same files, same answer, and one more chance to flake for
+      # nothing. A job the PR skipped or ran in part (a spec-only PR's browser
+      # tier) runs here as before, and so does everything when the files
+      # differ (main moved on after the PR's run), on a manual run, and when
+      # the record is missing or expired.
+      # Any error here (the API, a download, a record it cannot read) means no
+      # reuse, not a red run: the jobs then simply run.
+      - id: reuse
+        name: Reuse the merged PR's verdict on the same files
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "files: tree $tree"
+          art="$(gh api "repos/$REPO/actions/artifacts?name=verified-tree-$tree&per_page=10" \
+            -q '[.artifacts[] | select(.expired == false)] | first | .workflow_run.id // empty')"
+          if [ -z "$art" ]; then
+            echo "no PR run verified these exact files; running everything"; exit 0
+          fi
+          # Only a pull_request run of this workflow, from a branch of this
+          # repository: a fork's run executes the fork's copy of the workflow.
+          read -r event path head <<<"$(gh api "repos/$REPO/actions/runs/$art" \
+            -q '[.event, .path, .head_repository.full_name] | @tsv')"
+          if [ "$event" != pull_request ] || [ "$path" != .github/workflows/ci.yml ] || [ "$head" != "$REPO" ]; then
+            echo "the record is from run $art ($event, $path, $head), which does not count; running everything"; exit 0
+          fi
+          gh run download "$art" --repo "$REPO" -n "verified-tree-$tree" -D verified
+          cat verified/verified.json
+          # Lint and the Rust tests hold for the compiler they ran on: reused
+          # only while stable is still that release (the lint job pins none).
+          stable="$(curl -sSf https://static.rust-lang.org/dist/channel-rust-stable.toml \
+            | awk '/^\[pkg\.rustc\]/{f=1} f && /^version = /{gsub(/^version = "|"$/, ""); print; exit}')"
+          recorded="$(jq -r '.rustc // ""' verified/verified.json)"
+          echo "rustc: recorded '$recorded', stable now '$stable'"
+          for job in lint web test; do
+            r="$(jq -r ".ran.$job" verified/verified.json)"
+            if [ "$job" != web ] && [ "$recorded" != "$stable" ]; then continue; fi
+            if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
+          done
+          [ "$(jq -r .ran.browser verified/verified.json)" = full ] && echo "browser=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Reused from the merged PR"
+            echo
+            echo "PR run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`): $(jq -r '[.ran | to_entries[] | select(.value == "success" or .value == "full") | .key] | join(", ")' verified/verified.json). They are not run again."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The voice check (www/brand/voice.md) reads the README and the
       # changelog as well as the site and the app, and a PR that touches only
       # those skips the web job's `make dev-check`. It takes a second, so it
@@ -160,7 +230,11 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    # The compiler that judged these files, for main's reuse record: a lint or
+    # test verdict holds for the toolchain it ran on.
+    outputs:
+      rustc: ${{ steps.rustc.outputs.version }}
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_lint != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -172,6 +246,8 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - id: rustc
+        run: echo "version=$(rustc --version | cut -d' ' -f2-)" >> "$GITHUB_OUTPUT"
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -189,7 +265,7 @@ jobs:
   web:
     name: Web
     needs: changes
-    if: needs.changes.outputs.site == 'true'
+    if: needs.changes.outputs.site == 'true' && needs.changes.outputs.reuse_web != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -228,7 +304,7 @@ jobs:
   test:
     name: Test (${{ matrix.partition }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_test != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -291,6 +367,8 @@ jobs:
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      pages_artifact: ${{ steps.pages-name.outputs.artifact }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -351,6 +429,7 @@ jobs:
       - name: Check every link and asset resolves
         run: make site-check
 
+
       # The browser tests: boot the instrument against the wasm the site
       # ships and require a clean console, a registered worklet and an
       # engine that reaches `playable` (tests/web/smoke.spec.js); then provoke
@@ -375,6 +454,22 @@ jobs:
           path: tests/web/test-results/
           if-no-files-found: ignore
 
+      # What the deploy job publishes once `CI` is green: this build, the one
+      # just checked and booted. Last, so a red Site never kept one; named for
+      # the attempt, because deploy-pages refuses a run holding two artifacts
+      # of one name, which a re-run of this job would otherwise leave.
+      - name: Keep the site for the deploy
+        id: pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+          name: github-pages-${{ github.run_attempt }}
+          retention-days: 7
+      - if: steps.pages.outcome == 'success'
+        id: pages-name
+        run: echo "artifact=github-pages-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+
   # The engine for the fast browser tier, built once per run (see the
   # action's comment): restored from the cache when no crate changed, which is
   # most PRs that touch the app, and ~1.5 min of wasm build otherwise.
@@ -390,7 +485,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/web-engine
-      - if: needs.changes.outputs.browser == 'true'
+      - if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
         uses: ./.github/actions/browser-timings
         with:
           tier: fast
@@ -410,7 +505,7 @@ jobs:
   browser:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]
-    if: needs.changes.outputs.browser == 'true'
+    if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
     runs-on: ubuntu-latest
     # Twice the planned load: a runner that takes this long has found
     # something (a hang, or a machine far slower than main's timings).
@@ -483,3 +578,78 @@ jobs:
             esac
           done
           echo "green"
+
+      # What main reuses (the changes job's reuse step): the files this run
+      # tested, as a git tree, and the jobs that passed on them. A
+      # pull_request run tests the PR merged into main, GITHUB_SHA, so this is
+      # that merge's tree, the tree a squash merge of an up-to-date PR makes.
+      # Not from a fork: its run executes the fork's copy of this workflow.
+      # A record that cannot be written costs main a re-run, never the PR its
+      # green: both steps carry on past an error.
+      - name: Record what passed on these files
+        id: record
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RESULTS: ${{ toJSON(needs) }}
+          SPECS: ${{ needs.changes.outputs.specs }}
+          RUSTC: ${{ needs.lint.outputs.rustc }}
+        run: |
+          set -euo pipefail
+          tree="$(gh api "repos/$REPO/git/commits/$GITHUB_SHA" -q .tree.sha)"
+          browser="$(jq -r .browser.result <<<"$RESULTS")"
+          if [ "$browser" = success ]; then
+            if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
+          fi
+          jq -n --arg tree "$tree" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
+            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, test: $r.test.result, site: $r.site.result, browser: $browser}}' \
+            > verified.json
+          cat verified.json
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+
+      - if: steps.record.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-tree-${{ steps.record.outputs.tree }}
+          path: verified.json
+          retention-days: 14
+
+  # The site, published from this run's build once `CI` is green: four
+  # sections under one origin (/ the landing page, /play/ the instrument,
+  # /docs/ the guide, /reference/ the technical reference with /reference/api/
+  # rustdoc). Every asset path is relative, so it runs unchanged at the root
+  # of its custom domain (auracle.alexnodeland.com, set in Settings → Pages)
+  # or under a project subpath; `make site-check` enforces that.
+  #
+  # From main only: the github-pages environment permits deployments from
+  # `main`, and the site tracks its tip, as the README promises. A release tag
+  # is cut from a green main that has therefore already deployed
+  # (CONTRIBUTING.md § Cutting a release). A red run deploys nothing; the last
+  # green one stays live.
+  deploy:
+    name: Deploy to Pages
+    needs: [ci, site]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.ci.result == 'success' && needs.site.outputs.pages_artifact != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    # One deploy at a time, in order: a slow one is never cancelled by the next.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          enablement: true
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: ${{ needs.site.outputs.pages_artifact }}

@@ -2,10 +2,10 @@ name: Release
 
 # A release is one gesture: push a `vX.Y.Z` tag on a green main. This workflow
 # packages the prebuilt web instrument and publishes the GitHub Release. The
-# live site is NOT deployed from here: pages.yml fires on pushes to `main`
-# only (the github-pages environment rejects deployments from a tag), and the
-# tag is cut from a green `main` that has therefore already deployed. See
-# CONTRIBUTING.md § Cutting a release, and the header of pages.yml.
+# live site is NOT deployed from here: ci.yml's deploy job publishes it from
+# green runs on `main` only (the github-pages environment rejects deployments
+# from a tag), and the tag is cut from a green `main` that has therefore
+# already deployed. See CONTRIBUTING.md § Cutting a release.
 
 on:
   push:
@@ -50,8 +50,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      # A prebuilt binary from the tool cache, the same way ci.yml and
-      # pages.yml get it — not an unpinned `curl | sh` of upstream's installer.
+      # A prebuilt binary from the tool cache, the same way ci.yml gets it —
+      # not an unpinned `curl | sh` of upstream's installer.
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: wasm-pack

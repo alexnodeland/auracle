@@ -416,7 +416,7 @@ MDBOOK_VERSION := 0.4.52
 MDBOOK_KATEX_VERSION := 0.9.4
 MDBOOK_ADMONISH_VERSION := 1.20.0
 
-## site: build every section into site/ (what the Pages workflow publishes)
+## site: build every section into site/ (what CI's deploy job publishes)
 site: site-clean site-landing site-play site-docs site-reference site-api site-extras
 	@printf '\n  site/ assembled — %s files, %s\n' \
 		"$$(find site -type f | wc -l | tr -d ' ')" "$$(du -sh site | cut -f1)"
