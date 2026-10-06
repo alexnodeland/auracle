@@ -1,6 +1,6 @@
 ---
 title: "The engine: from a drawn patch to a learned taste"
-last_updated: 2026-10-01
+last_updated: 2026-10-06
 related_adrs: [1, 2, 5]
 ---
 
@@ -145,7 +145,13 @@ A new module is a change in every layer. In order:
 6. **φ_struct**: count it in `auracle-features/src/structural.rs` if the model
    should see it. That is a φ change: run `make revalidate`.
 7. **Web**: the node bank entry in `apps/web/main.js` (kind, name, group,
-   tags, `phi` hint), knob units and `SITE_NAMES` if it adds a site.
+   tags, `phi` hint), knob units and `SITE_NAMES` if it adds a site. The
+   pool's count of the module reads the s-expression: rewrite the grammar's
+   table of its tokens (`the_sexpr_heads_fixture_is_current` in
+   `term/tests.rs`, with `AURACLE_UPDATE_FIXTURES=1`), and if `to_sexpr`
+   opens the term with a token other than the kind's name, add it to
+   `apps/web/support.js` (`sexprHead`); `support.test.mjs` fails until you
+   do.
 8. **Guide**: its node page and the rack pages in `www/docs`; the reference if
    it changes the palette's story.
 9. **Tests**: the edit gate, the codec round trip, a compile test, and
