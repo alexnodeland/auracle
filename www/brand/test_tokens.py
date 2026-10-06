@@ -202,7 +202,7 @@ class TheCheck(unittest.TestCase):
         # The stage's ground is `var(--code-bg)`, an alias each page defines
         # beside its tokens; without it the landing page's stage has none.
         with Tree() as t:
-            t.edit("www/landing/style.css", lambda s: s.replace("  --code-bg: var(--white-02);\n", "", 1))
+            t.edit("www/landing/style.css", lambda s: re.sub(r"--code-bg\s*:[^;]*;", "", s, count=1))
             got = t.problems()
             self.assertTrue(
                 any(
@@ -217,8 +217,8 @@ class TheCheck(unittest.TestCase):
         with Tree() as t:
 
             def drop_paper_fg(s):
-                at = s.rindex("html.light {")  # the hand rule, after the block's
-                return s[:at] + s[at:].replace("    --fg: var(--silk);\n", "", 1)
+                at = s.rindex("html.light {")  # the hand rule, not the generated block's
+                return s[:at] + re.sub(r"--fg\s*:[^;]*;", "", s[at:], count=1)
 
             t.edit("www/theme/css/variables.css", drop_paper_fg)
             got = [p for p in t.problems() if "var(--fg)" in p]
