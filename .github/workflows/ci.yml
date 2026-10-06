@@ -1,12 +1,13 @@
 name: CI
 
-# The FAST tier: what a PR must pass to merge, about ten minutes of wall time
-# (the browser tier's eight runners set it). The tests too slow for that (the
-# search floor, the other Rust tests over a minute, the browser specs tagged
-# @slow, and any tagged @quarantine while a flake is fixed) run in the Slow
-# suite workflow (slow-suite.yml): on main, nightly, and on a PR that touches
-# what they cover or carries the `full-ci` label. Each test runs in exactly one
-# tier; docs/architecture/testing.md § CI tiers lists which and why.
+# The FAST tier: what a PR must pass to merge, about eleven minutes of wall
+# time (the engine job, then the browser tier's twelve runners, set it). The
+# tests too slow for that (the search floor, the other Rust tests over a
+# minute, the browser specs tagged @slow, and any tagged @quarantine while a
+# flake is fixed) run in the Slow suite workflow (slow-suite.yml): on main,
+# nightly, and on a PR that carries the `full-ci` label. Each test runs in
+# exactly one tier; docs/architecture/testing.md § CI tiers lists which and
+# why.
 #
 # The branch ruleset requires one check, `CI`. The fast browser shards are
 # inside it; the Slow suite is not.
@@ -100,7 +101,7 @@ jobs:
               echo "rust=true"
               echo "site=true"
               echo "browser=true"
-              echo 'browser_matrix=["1/8","2/8","3/8","4/8","5/8","6/8","7/8","8/8"]'
+              echo 'browser_matrix=["1/12","2/12","3/12","4/12","5/12","6/12","7/12","8/12","9/12","10/12","11/12","12/12"]'
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -150,10 +151,10 @@ jobs:
             for f in $reach; do [ -f "$f" ] && specs="$specs /${f#tests/web/}"; done
           fi
           specs="${specs# }"
-          n=8
+          n=12
           if [ -n "$specs" ]; then
             n=$(echo "$specs" | wc -w | tr -d " ")
-            [ "$n" -gt 8 ] && n=8
+            [ "$n" -gt 12 ] && n=12
           fi
           matrix="[$(seq 1 "$n" | sed "s#.*#\"&/$n\"#" | paste -sd, -)]"
 
@@ -504,10 +505,15 @@ jobs:
   # The fast browser tier: every spec in tests/web not tagged @slow or
   # @quarantine, against the engine built above.
   #
-  # About 70 minutes of test time in one worker (main at f6f4612, 272 tests,
-  # a fresh boot each). tests/web/shard.mjs deals them to eight runners by
-  # main's last timings, longest first, so each runs about 9 minutes: with
-  # Playwright's own split by count, five runners took from 9 to 19.
+  # About 75 minutes of test time in one worker (main at 42bd322, 284 tests,
+  # a fresh boot each). tests/web/shard.mjs deals them to twelve runners by
+  # main's last timings, longest first, so each is planned at about 6
+  # minutes: with Playwright's own split by count, five runners took from 9
+  # to 19. Twelve, not eight: simulated with the runners' observed spread of
+  # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
+  # (#177 § 3.1). The count is fixed and raised by hand; with the Slow suite
+  # off the PR path, a PR's CI at twelve still fits the account's 20 jobs at
+  # once (slow-suite.yml says how).
   #
   # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
   # the engine works). A failure that only appears here is still a finding
@@ -525,7 +531,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Eight, or one per changed spec up to eight on a PR that changed
+        # Twelve, or one per changed spec up to twelve on a PR that changed
         # only specs (the changes job).
         shard: ${{ fromJSON(needs.changes.outputs.browser_matrix) }}
     steps:
