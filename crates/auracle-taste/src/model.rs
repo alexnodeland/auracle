@@ -1097,3 +1097,6 @@ impl TastePosterior {
         Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
     }
 }
+
+#[cfg(test)]
+mod tests;
