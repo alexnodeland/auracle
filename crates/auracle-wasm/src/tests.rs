@@ -482,6 +482,40 @@ fn an_import_forgets_the_skips() {
     assert!(engine.guess_skip(skip), "a skip outlived the import");
 }
 
+/// **A whole-tree replace lands on the bench in normal form** (#208). The
+/// panel's rewrite (and ⌘Z) can hand in a tree with a quantizer over
+/// nothing on a slot; the bench holds it folded, which is the tree a
+/// structural edit would have made of it, so the guess finds room there
+/// instead of every module it could add also taking the quantizer away.
+#[test]
+fn a_whole_tree_replace_lands_in_normal_form() {
+    let mut engine = WasmEngine::new(3, 6);
+    while engine.fill_step(3) > 0 {}
+    assert!(engine.edit_begin(pool_ids(&engine)[0]));
+    let hornet = presets()
+        .into_iter()
+        .find(|(n, _)| *n == "Hornet")
+        .unwrap()
+        .1;
+    let mut sent = hornet.clone();
+    *sent.root.modulation_mut().unwrap() = auracle_grammar::ModNode::Op {
+        uid: auracle_grammar::Uid::NEW,
+        kind: auracle_grammar::term::ModOp::Quantize,
+        p0: 0.5,
+        p1: 0.0,
+        input: Box::new(auracle_grammar::ModNode::None),
+    };
+    assert_eq!(
+        engine.edit_set_tree_apply(&serde_json::to_string(&sent).unwrap()),
+        ""
+    );
+    let bench: PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
+    let mut folded = hornet;
+    *folded.root.modulation_mut().unwrap() = auracle_grammar::ModNode::None;
+    assert_eq!(bench, folded);
+    assert!(!auracle_session::guess_candidates(&bench, None).is_empty());
+}
+
 /// A guess for the bench as JSON, as `guess_rank` would give it: the
 /// first of `guess_candidates` of `kind`.
 fn a_guess(engine: &WasmEngine, kind: &str) -> String {

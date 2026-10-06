@@ -35,7 +35,7 @@
 //! | `record_stars(id, rating) -> bool` | same | same |
 //! | `last_refine_reason() -> String` | `"idle"\|"injected"\|"no_taste"\|"unknown_seed"\|"outside_support"\|"no_move"\|"duplicate"\|"not_admitted"\|"stale"` | Why the last `refine_seed`/`refine_absorb`/`refine_from` returned 0. `stale` means a walk result was offered out of job order or after its generation finished, and changed nothing. `outside_support` is the one to surface: the seed has zero prior mass (a knob past its domain, a tree deeper than the prior can score) and no budget will move it. |
 //! | `edit_param(addr, value, is_index) -> bool` | unchanged shape | now also `false` for a non-finite `value`. |
-//! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. |
+//! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. The tree lands in normal form (`normalize_tree`), so `0` also answers a file whose normal form the bank already holds. |
 //! | `budget_ceilings() -> String` (free function) | `{"size":24,"depth":6,"mod":3}` | The hand-edit ceilings, read from the grammar rather than restated in the app. |
 
 mod explain;
@@ -57,8 +57,8 @@ use auracle_features::{
     FeaturizeError, PhraseSpec, RenderMemo, VetFailure,
 };
 use auracle_grammar::{
-    apply_struct_op, describe, presets, set_param, validate_tree, ParamValue, PatchGrammarPrior,
-    PatchTree, StructOp,
+    apply_struct_op, describe, normalize_tree, presets, set_param, validate_tree, ParamValue,
+    PatchGrammarPrior, PatchTree, StructOp,
 };
 use auracle_session::{
     run_walk, BankEntry, ClipChange, ClipStatus, EditOutcome, Engine, GuessMemory, GuessSkip,
@@ -2744,33 +2744,14 @@ impl WasmEngine {
     // Workbench (the interactive panel)
     // ------------------------------------------------------------------
 
-    /// Import a shared patch (tree JSON + optional name) into the bank.
-    /// Returns the new id, or 0 (bad JSON / over the ceilings / duplicate /
-    /// vet failure).
+    /// Import a shared patch (tree JSON + optional name) into the bank, in
+    /// normal form ([`auracle_session::Engine::import_patch`]). Returns the
+    /// new id, or 0 (bad JSON / over the ceilings / duplicate / vet failure).
     pub fn import_patch(&mut self, tree_json: &str, name: &str) -> u32 {
-        let Ok(mut tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return 0;
         };
-        // A shared file is untrusted input by definition, and the pictures
-        // already in circulation carry whatever the build that wrote them had
-        // on the bench — including `1e30`. Repair on the way in, so an imported
-        // patch cannot reintroduce a fault the session has just been mended of.
-        tree.clamp_domains();
-        // Same split as `finish()` and `edit_set_tree_apply`: domains repaired,
-        // ceilings refused. This was the one write route without the check,
-        // and `commit_edit` always lands a hand edit — so a depth-40 tree from
-        // a shared file went straight into the pool, evicted a member, and
-        // put its out-of-range φ into the log on the next vote.
-        if validate_tree(&tree).is_err() {
-            return 0;
-        }
-        match self.engine.commit_edit(None, tree, EditOutcome::Untold) {
-            Some(id) => {
-                self.engine.set_name(id, name);
-                id as u32
-            }
-            None => 0,
-        }
+        self.engine.import_patch(tree, name).unwrap_or(0) as u32
     }
 
     /// Load candidate `id` onto the workbench. Returns false for unknown id.
@@ -2906,14 +2887,16 @@ impl WasmEngine {
             Ok(t) => t,
             Err(e) => return format!("the engine couldn’t read that patch ({e})"),
         };
-        // Domains are repaired, ceilings are refused, and the split is the same
-        // one `finish()` makes: a knob outside its range has one obviously
-        // right answer and a 40-node patch does not. It matters here because a
-        // rewrite is computed from the tree already on the bench — so if that
-        // tree came out of a session written before this gate, refusing would
-        // mean the player cannot edit their way out of the corruption, only
-        // look at it.
-        tree.clamp_domains();
+        // The term is put in normal form and the ceilings are refused, and the
+        // split is the same one `finish()` makes: a knob outside its range and
+        // a modulation term the grammar folds have one obviously right answer,
+        // and a 40-node patch does not. It matters here because a rewrite is
+        // computed from the tree already on the bench — so if that tree came
+        // out of a session written before this gate, refusing would mean the
+        // player cannot edit their way out of the corruption, only look at it.
+        // Folded here, once, the term is not left for the next edit to
+        // rewrite, or for the guess to read as a patch with no room.
+        normalize_tree(&mut tree);
         if let Err(e) = validate_tree(&tree) {
             return e;
         }
