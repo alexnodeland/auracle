@@ -155,6 +155,9 @@ test("a sound opened while preset faces wait to render is not kept waiting behin
   // Each waited at most for the face render running when it arrived.
   expect((await landed(load._at, loaded._at)).length, "faces rendered between the open and its answer").toBeLessThanOrEqual(1);
   expect((await landed(begin._at, benched._at)).length, "faces rendered between the bench open and its answer").toBeLessThanOrEqual(1);
-  // And the faces were waiting: they go on landing after it.
-  await app.engine((timeout) => expect.poll(async () => (await landed(benched._at)).length, { timeout }).toBeGreaterThan(3), { ms: 120_000 });
+  // And the faces were waiting when it was answered (so the open went ahead
+  // of them, and this is not a lane that had emptied), and go on landing
+  // after it.
+  expect((await landed(t0, loaded._at)).length, "faces still waiting when the open was answered").toBeLessThan(refs.length);
+  await app.engine((timeout) => expect.poll(async () => (await landed(loaded._at)).length, { timeout }).toBeGreaterThan(0), { ms: 60_000 });
 });
