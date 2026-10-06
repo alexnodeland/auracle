@@ -991,48 +991,6 @@ async function restoreSession(saved, farmed, stages) {
   return engine.restore_finish();
 }
 
-// ---------- "the bank already has this one" ----------
-//
-// The engine's own duplicate test is `PatchTree == PatchTree`, which is
-// structural and — deliberately — blind to `Uid` (`impl PartialEq for Uid` is
-// unconditionally true: identity travels with a node, it does not define it).
-// Reproducing that here means comparing the *shape*, not the bytes: two
-// serializations of the same tree differ in key order and in whether the uids
-// that survived a round trip are printed at all.
-//
-// So both sides are canonicalized — keys sorted, `uid` dropped, numbers put
-// through `JSON.parse` so a hand-formatted file and serde's output agree — and
-// compared as strings. Anything this gets wrong falls back to the honest
-// "it did not go in" message, which is where it was before.
-function canonTree(v) {
-  if (Array.isArray(v)) return v.map(canonTree);
-  if (v && typeof v === "object") {
-    const out = {};
-    for (const k of Object.keys(v).sort()) {
-      if (k === "uid") continue;
-      out[k] = canonTree(v[k]);
-    }
-    return out;
-  }
-  return v;
-}
-function canonJson(s) {
-  try {
-    return JSON.stringify(canonTree(JSON.parse(s)));
-  } catch (_) {
-    return null;
-  }
-}
-/** The id of the bank entry that *is* this tree, or 0. */
-function bankTwinOf(json) {
-  const want = canonJson(json);
-  if (want == null) return 0; // unparseable: not a duplicate, a bad file
-  for (const row of JSON.parse(engine.ranked())) {
-    if (canonJson(engine.tree_json_of(row.id)) === want) return row.id;
-  }
-  return 0;
-}
-
 // Why the last `refine_seed` / `refine_from` returned nothing: one of `idle`,
 // `injected`, `no_taste`, `unknown_seed`, `outside_support`, `no_move`,
 // `duplicate`, `not_admitted`. `outside_support` is the one worth a sentence
@@ -3028,9 +2986,13 @@ async function dispatch(m) {
           });
           // Say so when the restore had to mend something. A profile fitted on
           // values that were not measurements is the one kind of silent repair
-          // this app should never make — and the numbers are zero for every
-          // session written since the domain gate shipped, so the message only
-          // ever appears when it is true.
+          // this app should never make. The numbers count a knob or a log cell
+          // clamped into its range, a pick dropped as unreadable, and a take
+          // that couldn't be read, so they are zero for every session written
+          // since the domain gate shipped whose takes all read, and the message
+          // only ever appears when it is true. A modulation term folded on the
+          // way in is not counted (`Engine::repair_report`): it sounds as it
+          // did.
           try {
             const rep = JSON.parse(engine.repair_report());
             // Which sounds are kept for a recording that couldn't be read, so
@@ -3696,12 +3658,17 @@ async function dispatch(m) {
       // vet", which tells the player to go and find out for themselves.
       //
       // So the answer is looked up here rather than guessed at in the UI: on a
-      // 0, find the twin. Only on the failure path, so an ordinary import pays
-      // nothing for it, and over the bank's forty entries at most.
+      // 0, the engine names the twin (`bank_twin_of`). Only on the failure
+      // path, so an ordinary import pays nothing for it. The engine's, not a
+      // comparison of the file's text here: the import puts the file in normal
+      // form before it looks in the bank (a quantizer over nothing an older
+      // build saved is folded away), so the file as written can differ from
+      // the sound it is, and a twin missed that way was called a patch that
+      // failed the vet.
       post({
         type: "patch_imported",
         id,
-        duplicate: id > 0 ? 0 : bankTwinOf(m.json),
+        duplicate: id > 0 ? 0 : engine.bank_twin_of(m.json),
         views: tasteViews(),
         status: status(),
       });

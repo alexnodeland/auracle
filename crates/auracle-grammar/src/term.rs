@@ -1862,7 +1862,8 @@ impl AudioNode {
 
     /// Fold every modulation slot in this subtree through
     /// [`ModNode::normalized`], keeping the existing node (and its identity)
-    /// wherever normalization would change nothing.
+    /// wherever normalization would change nothing. Returns how many slots it
+    /// changed (0: the subtree was already in normal form).
     ///
     /// `SetModTree` always normalized the one fragment it installs;
     /// `ReplaceTree`/`InsertTree` graft whole audio subtrees whose slots
@@ -1872,17 +1873,26 @@ impl AudioNode {
     /// knob past its domain. A one-parameter `Op` carrying a non-zero `p1` is
     /// subtler: `p1` is not a trace site for it, so the term would not survive
     /// its own round trip and refinement's "did it move" test would be fooled.
-    pub fn normalize_mods(&mut self) {
+    /// A whole tree from outside the engine is folded on its way in, by
+    /// [`crate::mutate::normalize_tree`].
+    pub fn normalize_mods(&mut self) -> usize {
+        let mut folded_slots = 0;
         if let Some(slot) = self.modulation_mut() {
             let current = std::mem::replace(slot, ModNode::None);
             let folded = current.clone().normalized();
             // Content equality ignores identity, so this keeps the uids of a
             // slot that was already in normal form.
-            *slot = if folded == current { current } else { folded };
+            *slot = if folded == current {
+                current
+            } else {
+                folded_slots += 1;
+                folded
+            };
         }
         for child in self.children_mut() {
-            child.normalize_mods();
+            folded_slots += child.normalize_mods();
         }
+        folded_slots
     }
 
     /// Does any CAPTURE in this subtree hold a take that could not be read

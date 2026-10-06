@@ -470,6 +470,11 @@ pub(crate) fn identities(n: &term::AudioNode, out: &mut Vec<u64>) {
 /// delete / set-mod / swap) always yield compilable, describable,
 /// trace-roundtrippable trees — hand rewiring cannot leave the grammar.
 ///
+/// Every preset is in normal form, too (`normalize_tree` finds nothing to
+/// do): a preset joins the pool as it is written, so a term the grammar
+/// would fold has to be caught here, where it is written, as every other
+/// way in folds one on arrival.
+///
 /// And a splice loses nothing it was not asked to remove. An `Insert`
 /// seats the whole subtree it lands on as the new module's `/0` and
 /// moves nothing else; a processor `Replace` keeps the replaced node's
@@ -485,6 +490,11 @@ fn presets_and_struct_ops_stay_in_grammar() {
     for (name, tree) in presets::presets() {
         assert!(compile(&tree, SR).is_ok(), "preset {name} fails to compile");
         assert!(!tree.signature().is_empty());
+        assert_eq!(
+            mutate::normalize_tree(&mut tree.clone()),
+            mutate::Normalized::default(),
+            "preset {name} is not in normal form"
+        );
     }
     let prior = PatchGrammarPrior::default();
     let mut rng = StdRng::seed_from_u64(21);

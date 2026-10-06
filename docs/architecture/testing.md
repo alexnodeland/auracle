@@ -94,6 +94,7 @@ engine that traps on demand.
 | `tests/worker/lanes.test.mjs` | A request posted during PERFORM's measurement, during the guess's renders, or during a spare offer's steps (a pick) is handed to the worker when the call in progress ends, before any other engine call, and answered before the job's next one; leaving the patch (`retire`) drops the spare at that breath, with no further step; with no crew the guess ranks the likeliest eight |
 | `tests/worker/background.test.mjs` | A measurement nobody waits on (`bg`) gives way to a cable probe asked for during it and finishes after it, where PERFORM's own keeps the floor; a measurement `retire` demoted is the player's again after `promote`, landing before a drift asked for after it, and without `promote` the drift lands first; an Offer asked for while the guess waits for its crew begins before the guess renders anything |
 | `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
+| `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
 
 ## CI tiers
 
