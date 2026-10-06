@@ -44,7 +44,8 @@ contributor guide; this file does not repeat it.
    owes `make revalidate` on both sides of the change and a diff of the tables,
    then `make perform-wirings` for the preset wirings the app ships
    ([`crates/auracle-features/AGENTS.md`](crates/auracle-features/AGENTS.md)).
-3. **Rust tests run optimized.** Use `--profile test-fast` (or `make test`).
+3. **Rust tests run optimized.** Use `--profile test-fast` (nextest's
+   `--cargo-profile test-fast`), or `make test`.
    The grammar, features and session suites render audio sample by sample, and
    a debug build is about 20 times slower and overflows the stack in the
    grammar suite. A hook enforces this.
@@ -109,7 +110,8 @@ contributor guide; this file does not repeat it.
 | When | Run |
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
-| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests) |
+| Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests on nextest); `make -j check` runs the parts side by side |
+| Between edits | `make check-changed`: the parts of `make check` the change reaches, by CI's own classifier (`scripts/changes.py`), and what else CI runs for it |
 | After changing Rust the app calls | `make wasm` (`make wasm-dev` to try it by hand in seconds; the specs and films refuse that build) |
 | An engine for a new worktree that changed no Rust | `make pkg-reuse` (the main checkout's build, when it was built from the same Rust; else it says to `make wasm`) |
 | Only JS changed | `make web-check` |
@@ -146,8 +148,9 @@ in `.claude/` is detailed in [`.claude/README.md`](.claude/README.md):
   generated paths (`apps/web/pkg/`, `site/`, `target/`, `www/docs/src/img/`,
   `www/landing/assets/film/`); after an edit, `rustfmt`, `node --check`,
   `py_compile`, `json.tool` or `bash -n` by file type; before a Bash command,
-  `cargo test` without `--release`, `--profile` or `--doc` refused on any
-  crate, and `playwright test` refused outside `one_browser.sh`.
+  `cargo test` without `--release`, `--profile` or `--doc`, or
+  `cargo nextest run` without `--cargo-profile`, refused on any crate, and
+  `playwright test` refused outside `one_browser.sh`.
 
 ## Where to go deeper
 

@@ -329,8 +329,10 @@ worker-test:
 # and waited on the slowest test of each before starting the next. What a
 # test needs from that pool (the threads it starts, how long before it is
 # slow, and when a hung one is stopped) is in .config/nextest.toml. nextest
-# runs no doctests, hence the second line. NEXTEST_ARGS for nextest's own
-# options (`--no-fail-fast`, a filter).
+# runs no doctests, hence the second line. It stops starting tests at the
+# first failure, where `cargo test` finished the failing binary:
+# `NEXTEST_ARGS=--no-fail-fast` runs them all (NEXTEST_ARGS takes any of
+# nextest's options, a filter too).
 TEST_TARGETS := --lib --bins --tests
 test: nextest-installed
 	$(NEXTEST) $(NEXTEST_ARGS)

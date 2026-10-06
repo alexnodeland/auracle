@@ -39,7 +39,11 @@ Be respectful and constructive.
    `wasm-pack`, `cargo-nextest` and `cargo-llvm-cov`, installs the browser
    tests' packages and Chromium, turns on the git hooks and builds the app's
    engine. It is idempotent; run it again
-   after pulling. For the films, **`make film-setup`** also builds
+   after pulling. With `AURACLE_SCCACHE=1` in your environment it also
+   installs sccache, and `make` compiles through it, so a new worktree's
+   first build takes crates.io's dependencies from its cache (opt-in;
+   [`docs/architecture/testing.md` § The local loop](docs/architecture/testing.md#the-local-loop)).
+   For the films, **`make film-setup`** also builds
    `.venv-voice` (the narration's pinned Kokoro/Whisper set and the film
    tools' packages; needs Python 3.10–3.12), downloads the voice models and
    renders the shared sound. `scripts/setup.sh --site` adds the site's
@@ -74,6 +78,8 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 
 ```bash
 make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)
+make -j check       # the same, its parts side by side
+make check-changed  # only the parts of make check your change reaches, by CI's own classifier
 make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make wasm-dev       # a quick engine build for trying a Rust change by hand (the browser specs refuse it)
@@ -136,10 +142,12 @@ Every change must pass `make check`:
    film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; the pinned toolchain brings the target)
-6. `cargo test --workspace --profile test-fast --lib --bins --tests`, then
-   the doctests (`--doc`) — release-grade codegen without release's shipping
-   flags (see the profile's comment in `Cargo.toml`), and no build of the
-   examples, which no test runs and step 2 already compiles
+6. `cargo nextest run --workspace --cargo-profile test-fast --lib --bins --tests`
+   (`make test`; every test in one pool, each in its own process, as
+   `.config/nextest.toml` says), then the doctests (`cargo test --doc`) —
+   release-grade codegen without release's shipping flags (see the
+   profile's comment in `Cargo.toml`), and no build of the examples, which
+   no test runs and step 2 already compiles
 
 That list is what CI's Lint, Web and Doctests jobs, its Rust tests (run
 instrumented, as Coverage) and its wasm32 build (the engine job, with

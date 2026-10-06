@@ -30,12 +30,13 @@ this table.
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
-| All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
+| All tests | `make test` (needs `cargo-nextest`: `make setup`) | The workspace, optimized, on nextest, every test in its own process ([The local loop](#the-local-loop)), and then the doctests (the examples are not built: `make lint` compiles them); includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
 | Mutants | `make mutants DIFF=1` (the code changed since `origin/main`, `BASE=` for another), `make mutants CRATE=<crate>` (needs cargo-mutants at the `Makefile`'s `MUTANTS_VERSION`: `make setup`) | A test notices when the code is wrong: every mutant cargo-mutants makes of the code (a function returning a default, a `<` made `<=`) fails a test of its crate's fast tier. Each survivor is named by file, line, function and change in `mutants.out/missed.txt` ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)) | Any Rust change, before review; a survivor there is a finding |
 | Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
 | Native and wasm agree | `make test-crate CRATE=auracle-wasm TEST_TARGETS="--test boot_agrees"`; the wasm half is `tests/web/boot_agrees.spec.js` (after `make wasm`, no page opened) | The shipped seed deals the same trees, vetting and standardizer natively and in the built wasm, both pinned to `crates/auracle-wasm/tests/boot_probe.json` | A draw from an RNG, the prior, vetting, the standardizer fit; regenerate with `UPDATE_BOOT_PROBE=1` and owe what a moved pool owes. No Rust test fails without the `gen_index` fix on a target CI runs (CI's hosts are 64-bit, where it changes nothing), so the spec is the only regression guard against a width-dependent draw |
-| Everything CI runs | `make check` | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
+| Everything CI runs | `make check`; `make -j check` runs its parts side by side ([The local loop](#the-local-loop)) | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
+| What a change reaches | `make check-changed` (since `origin/main`, `BASE=` for another; uncommitted and untracked files count); `-j` side by side | The parts of `make check` the change reaches, by the classifier CI's fast lane uses (`scripts/changes.py`), and the fast lane's jobs beyond `make check` it reaches, each with its command | Between edits; a change to Rust or to CI reaches all of `make check` |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
@@ -97,6 +98,85 @@ engine that traps on demand.
 | `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
 | `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
 
+## The local loop
+
+What a workstation runs between edits, and what keeps it short (#177 § 6).
+The times are from the maintainer's 16-core Mac, which other work shares:
+each comparison was taken back to back, with the load average beside it.
+
+- **`make test` runs nextest**, every test in the workspace in one pool,
+  each in a process of its own, then the doctests with `cargo test --doc`
+  (nextest runs none; there are none today). `cargo test` ran the five test
+  binaries one after another, each waiting on its slowest test before the
+  next began: 204 s against nextest's 158 s on a quiet machine (#177). At a
+  load average of 46 to 143, three runs of each could not tell them apart
+  (`cargo test` 390, 504 and 512 s; nextest 346, 487 and 609 s), and
+  nextest used no more CPU (2,096 and 2,113 s against 2,139 and 2,145 s).
+  It stops starting tests at the first failure, where `cargo test`
+  finished the failing binary: `NEXTEST_ARGS=--no-fail-fast` runs them all.
+- **`.config/nextest.toml` says what a test needs from that pool.** A test
+  whose work runs in threads of its own for the whole test, one per seed,
+  preset or core, declares how many (`threads-required`), so it doesn't
+  slow every test beside it, and its time says what it costs: beside
+  fifteen other tests the search floor took 422 s (at a load average of 90
+  to 150), and declared, it ran alone in 112 and 164 s (46 to 98). Those
+  tests run first (`priority`), while the pool is empty: nextest starts
+  nothing new while a test waits for its slots. A test past a minute is
+  reported slow, and one past twenty minutes is stopped, so a hung test
+  ends with its name in the report. CI selects the file's `ci` profile
+  (`NEXTEST_PROFILE=ci`): stopped at ten minutes, inside a job's limit, and
+  a JUnit file with every test's time. cargo-mutants keeps the default
+  profile, where its own time limit comes first. Which tier a test is in is
+  still the `Makefile`'s (`SEARCH_FLOOR`, `SLOW_TESTS`).
+- **Test builds are incremental** (`incremental = true` in
+  `[profile.test-fast]`). After an edit to a function's body, the test binaries rebuild in 10 s
+  instead of 61 (an edit to the grammar, which three other crates build
+  on) and in 11 s instead of 41 (the session crate): medians of six each,
+  at a load average of 77 to 136. The tests run as fast: six of the
+  heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
+  whole. It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
+  CI sets `CARGO_INCREMENTAL=0`, which overrides it, since every build
+  there starts from a cache that the incremental state would only bloat;
+  `make coverage` sets it too, since each of its runs starts clean.
+- **`make -j check` runs its parts side by side.** Cargo locks each
+  profile's directory on its own, so `lint` (debug), `wasm-check` (the
+  wasm32 release build) and `test` (`test-fast`) build at once, beside
+  `web-check` and `dev-check`, and no cargo waits on another's directory.
+  What that saves is small now: with incremental builds the rebuild after
+  an edit takes seconds, and the test run is most of `make check`. After
+  an edit to the session crate, at load averages of 32 to 122, `make check`
+  took 559 and 575 s and `make -j check` 538 and 704 s; in the first pair
+  the test run was 464 and 517 s of it. Plain `-j`: macOS ships GNU Make
+  3.81, which has no `-O`; on GNU Make 4, `-j -O` keeps each part's output
+  together. The pre-commit hook runs `dev-check` with `-j8`.
+- **`make check-changed` runs the parts of `make check` your change
+  reaches**, since the merge base with `origin/main` (`BASE=` for another),
+  uncommitted and untracked files included, by the classifier CI's fast lane
+  uses (`scripts/changes.py`, [The two lanes](#ci-tiers)). Rust or CI
+  reaches all of it; the app, the docs, the specs or a script, `web-check`
+  and `dev-check`; anything else (a changelog entry, the worker-protocol
+  tests) the voice and the changelog's checks that CI runs on every PR. It
+  also names the fast lane's jobs beyond `make check` that the change
+  reaches (Site, Worker protocol, Browser smoke, the specs it reaches), each
+  with its local command. `make -j check-changed` runs the parts side by
+  side.
+- **sccache, opt-in.** With `AURACLE_SCCACHE=1` in the environment (put it
+  in your shell's profile; `make setup` then installs sccache, as
+  `scripts/setup.sh --sccache` does), every cargo call `make` makes
+  compiles through it. Each worktree keeps its own `target/`: one target
+  directory shared between worktrees is not safe here, since cargo judges
+  freshness by file times and bakes `CARGO_MANIFEST_DIR` into test binaries
+  (the main checkout once ran a test binary built from a copy of the
+  workspace, which read the copy's fixture). sccache keys each compile by
+  its inputs, the `CARGO_*` variables among them, so only what is the same
+  in every worktree, crates.io's dependencies, comes back from its cache,
+  and an incremental compile (the workspace's crates under `test-fast`) is
+  never cached. A new worktree's first builds (the tests, clippy and the
+  wasm32 check, as `make check` builds them) took 99, 130 and 146 s from a
+  warm cache against 117, 160 and 160 s without one, at load averages of
+  27 to 59: 146 of the 198 compiles it can cache came back from it, and it
+  never caches a build script or a procedural macro (161 calls).
+
 ## CI tiers
 
 CI runs in two tiers, and the PR checks run beside them. A PR may merge on
@@ -112,7 +192,7 @@ the fast tier and the PR checks alone.
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
-**The two lanes.** One workflow, and its *What changed* job picks the lane:
+**The two lanes.** One workflow, and its *What changed* job picks the lane. A PR's paths are classified by `scripts/changes.py`, which `make check-changed` runs on a workstation too, so the two agree on what a change reaches:
 
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
@@ -123,11 +203,11 @@ the fast tier and the PR checks alone.
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
-| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
+| The coverage gate's scripts, `scripts/setup.sh`, nextest's config (`.config/nextest.toml`) | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
 | The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
 | Another script (`scripts/*.py`: the changelog's assembler, the PR checks, and their tests) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
-| A workflow or an action (`.github/`) | The full gate, as the queue runs it |
+| A workflow or an action (`.github/`), or the classifier (`scripts/changes.py`) | The full gate, as the queue runs it |
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
   are the ones `tests/web/changed.mjs` picks: a changed spec, the specs that

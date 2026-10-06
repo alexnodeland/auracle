@@ -18,7 +18,11 @@ each crate's own `AGENTS.md` has its rules.
 
 - **Tests run optimized**: `cargo test -p <crate> --profile test-fast`. Debug
   builds are about 20 times slower on audio and overflow the stack in the
-  grammar suite. `make test` runs the workspace.
+  grammar suite. `make test` runs the workspace, on nextest.
+- **A test whose work runs in threads of its own** for the whole test (one
+  per seed, preset or core) declares how many in `.config/nextest.toml`
+  (`threads-required`), so it doesn't slow the tests beside it, and its
+  time says what it costs.
 - **Clippy is `-D warnings`** and `cargo fmt` is enforced
   (`make fmt-check lint`).
 - **Prefer gate tests to mocks.** Property tests over random trees and
