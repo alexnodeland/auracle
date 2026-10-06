@@ -2152,21 +2152,32 @@ fn the_arp_plays_its_patterns() {
 
 /// A tied arp (gate at or past 0.95) slides one sounding voice from pitch
 /// to pitch: its gate never falls between steps, so no other voice is
-/// pressed and the amp envelope keeps its place.
+/// pressed and the amp envelope keeps its place. With glide off the slide
+/// lands on its pitch at once; with glide up it portamentos there.
 #[test]
 fn a_tied_arp_slides_one_voice() {
-    let mut p = chord_arp(0, 1.0);
-    p.set_glide(0.2);
-    let _ = p.process(128);
-    let sounding = p.voices.iter().position(|v| v.note.is_some()).unwrap();
-    let mut pitches = std::collections::HashSet::new();
-    for _ in 0..400 {
+    for glide in [0.0, 0.2] {
+        let mut p = chord_arp(0, 1.0);
+        p.set_glide(glide);
         let _ = p.process(128);
-        let gated: Vec<usize> = (0..4).filter(|&i| p.voices[i].note.is_some()).collect();
-        assert_eq!(gated, vec![sounding], "the tie moved to another voice");
-        pitches.insert(p.voices[sounding].note.unwrap());
+        let sounding = p.voices.iter().position(|v| v.note.is_some()).unwrap();
+        let mut pitches = std::collections::HashSet::new();
+        let mut landed = true;
+        let mut prev = p.voices[sounding].note;
+        for _ in 0..400 {
+            let _ = p.process(128);
+            let gated: Vec<usize> = (0..4).filter(|&i| p.voices[i].note.is_some()).collect();
+            assert_eq!(gated, vec![sounding], "the tie moved to another voice");
+            let v = &p.voices[sounding];
+            if v.note != prev {
+                landed &= v.pitch_cur == v.pitch_tgt;
+            }
+            prev = v.note;
+            pitches.insert(v.note.unwrap());
+        }
+        assert_eq!(pitches.len(), 3, "the tie never moved: {pitches:?}");
+        assert_eq!(landed, glide == 0.0, "glide {glide}");
     }
-    assert_eq!(pitches.len(), 3, "the tie never moved: {pitches:?}");
 }
 
 /// A knob write that is not a number is refused. A sequencer's rate turned

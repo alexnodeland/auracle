@@ -2668,6 +2668,11 @@ fn an_unplayable_preview_is_empty_rather_than_silent() {
     assert!(engine
         .preview_op(r#"{"op":"insert","key":"node","kind":"vco"}"#, 1.6)
         .is_empty());
+    // An edit the grammar takes that leaves nothing to hear (the source
+    // swapped for silence) has nothing to play either.
+    assert!(engine
+        .preview_op(r#"{"op":"replace","key":"node","kind":"silence"}"#, 1.6)
+        .is_empty());
 }
 
 /// The scale is what turns θ into a price. Shipping it keyed by name (and
@@ -3056,7 +3061,16 @@ fn the_taste_views_are_the_posteriors() {
         "null",
         "nothing to project"
     );
+    // Evidence enough for two lenses (a fit over n picks is allowed
+    // 1 + n / OBS_PER_STYLE).
     let mut engine = taught_wasm(0x5711);
+    for _ in 0..auracle_session::OBS_PER_STYLE {
+        let [a, b]: [u32; 2] = serde_json::from_str::<Option<[u32; 2]>>(&engine.next_duel())
+            .unwrap()
+            .expect("a duel");
+        assert!(engine.record_duel(a, b, (a * 5 + b) % 3 != 0));
+    }
+    engine.fit();
     let value = |s: String| -> serde_json::Value { serde_json::from_str(&s).unwrap() };
     assert_eq!(
         value(engine.calibration()),
@@ -3074,6 +3088,7 @@ fn the_taste_views_are_the_posteriors() {
     );
 
     let p = engine.engine.posterior.clone().unwrap();
+    assert!(p.k_styles() > 1, "fixture: {} lens", p.k_styles());
     let styles: Vec<serde_json::Value> = serde_json::from_str(&engine.styles()).unwrap();
     assert_eq!(styles.len(), p.k_styles());
     let names = Features::phi_names();
@@ -3406,6 +3421,7 @@ fn the_bench_refuses_in_words_what_it_cannot_take() {
     assert_eq!(engine.guess_rank(None, "[]", 0), r#"{"reason":"no_patch"}"#);
     assert_eq!(engine.edit_commit("heard_edited"), 0);
     assert_eq!(engine.edit_describe(), "null");
+    assert_eq!(engine.edit_tree_json(), "null");
     assert_eq!(engine.edit_known_makeup(), -1.0);
     assert_eq!(engine.edit_original_id(), 0);
     assert!(!engine.edit_differs_from_original());
