@@ -657,15 +657,17 @@ test("a child the pool would not take buds beside its seed and is gone, and EVOL
 // The generation is the spec's (#169): its `refine` never reaches the engine
 // (`app.stall`), and its replies are posted to main as the worker posts them,
 // each carrying the request's number and all but `refined` marked `more`
-// (web-runtime.md § The worker's replies), with seeds, children and what its
-// end replaces chosen from rows in view. So every branch runs on every run: a
-// child budding from its seed, one landing under reduced motion, one bred and
-// then replaced at the end, and the sounds the end replaced. A real
-// generation's children landed only when the seeded walks bred and kept
-// something, and its buds only when they landed in view. Which seeds a
-// generation takes, the walk each child came from and the lineage it leaves
-// are the engine's (native
-// `next_seeds_and_may_replace_are_what_a_generation_does`);
+// (web-runtime.md § The worker's replies). Its seeds and children are rows at
+// the top of the list, in view; what its end replaces is the two rows at the
+// foot. So every branch runs on every run: a child budding from its seed, one
+// landing under reduced motion and marked to be replaced, one bred and then
+// replaced at the end, and the sounds the end replaced. A real generation's
+// children landed only when the seeded walks bred and kept something, and its
+// buds only when they landed in view. Which seeds a generation takes and what
+// it may replace are the engine's (native
+// `next_seeds_and_may_replace_are_what_a_generation_does`), and so is the
+// lineage a child leaves, its seed, what changed and both ratings
+// (`a_refined_childs_lineage_names_its_seed_what_changed_and_both_ratings`);
 // evolve_breeds_beside_you runs a real generation end to end.
 test("a generation's children land in New with their seed and what changed, and Replaced names what it replaced", async ({ page, app }) => {
   await pooled(page, app);
@@ -734,6 +736,10 @@ test("a generation's children land in New with their seed and what changed, and 
   await expect(row(page, kidB).locator(".bi-new")).toHaveText("new");
   await expect(page.locator("#bank-list .bank-group.new .bg-n")).toHaveText("2");
   await expect.poll(() => page.evaluate(() => window.__pwSaid.includes("walk 2 of 3joined the pool"))).toBe(true);
+  // A child the end will replace says so in New, as the rows at the foot do:
+  // nothing leaves the bank unwarned.
+  await expect.poll(() => marked(page, "may-go")).toEqual(sorted([...gone, kidB]));
+  await expect(row(page, kidB).locator(".bi-flag")).toHaveText("will be replaced");
   // (A bud is appended in the task that draws the row, so by now it would
   // have been seen.)
   expect(await page.evaluate(() => window.__pwBuds.filter((b) => !b.refused).length), "a child budded with motion reduced").toBe(1);
