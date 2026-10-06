@@ -197,9 +197,7 @@ fn every_fit_records_what_each_lens_claimed() {
 
     // And it survives a save/restore, because the evidence wanted is
     // "across real sessions" and a session ends.
-    let state = engine.export_state();
-    let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
-    restored.import_state(state);
+    let restored = reload(&engine);
     assert_eq!(
         restored.style_shares().len(),
         2,
@@ -1770,10 +1768,7 @@ fn a_reload_reuses_a_session_that_has_not_earned_its_own_threshold() {
     for i in 0..(MIN_SESSION_OBS - 2) {
         engine.record_keep(i % engine.pool.len(), true);
     }
-    let short = engine.export_state();
-    let mut back = Engine::new(PatchGrammarPrior::default(), cfg.clone());
-    back.begin_session();
-    back.import_state(short);
+    let mut back = restore(&engine, engine.export_state());
     assert_eq!(
         back.begin_session(),
         0,
@@ -1784,10 +1779,7 @@ fn a_reload_reuses_a_session_that_has_not_earned_its_own_threshold() {
     for i in 0..MIN_SESSION_OBS {
         back.record_keep(i % back.pool.len(), false);
     }
-    let long = back.export_state();
-    let mut again = Engine::new(PatchGrammarPrior::default(), cfg);
-    again.begin_session();
-    again.import_state(long);
+    let mut again = restore(&back, back.export_state());
     assert_eq!(again.begin_session(), 1, "a session past the floor closes");
 
     // A legacy log with one-vote sessions from eight reloads is regrouped
@@ -1801,15 +1793,7 @@ fn a_reload_reuses_a_session_that_has_not_earned_its_own_threshold() {
     for (i, o) in legacy.profile.log.observations.iter_mut().enumerate() {
         o.session = i; // one session per vote
     }
-    let mut merged = Engine::new(
-        PatchGrammarPrior::default(),
-        SessionConfig {
-            pool_size: 8,
-            ..fast()
-        },
-    );
-    merged.begin_session();
-    merged.import_state(legacy);
+    let merged = restore(&again, legacy);
     assert_eq!(
         merged.log.n_sessions(),
         2,
@@ -2251,19 +2235,14 @@ fn a_sound_kept_as_new_is_still_protected_after_a_reload() {
         "a session with nothing kept as new saved a new key"
     );
     let kept = keep_lowest_as_new(&mut engine, None, EditOutcome::Untold);
-    let json = serde_json::to_string(&engine.export_state()).unwrap();
-    let mut restored = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
-    restored.begin_session();
-    restored.import_state(serde_json::from_str(&json).unwrap());
+    let restored = reload(&engine);
     assert_eq!(restored.unjudged(), vec![kept]);
 
-    let mut legacy: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let mut legacy = serde_json::to_value(engine.export_state()).unwrap();
     for e in legacy["bank"].as_array_mut().unwrap() {
         e.as_object_mut().unwrap().remove("unjudged");
     }
-    let mut old = Engine::new(PatchGrammarPrior::default(), engine.cfg.clone());
-    old.begin_session();
-    old.import_state(serde_json::from_value(legacy).unwrap());
+    let old = restore(&engine, serde_json::from_value(legacy).unwrap());
     assert!(
         old.unjudged().is_empty(),
         "an old session loaded a sound as unjudged"
@@ -2897,8 +2876,7 @@ fn names_are_kept_across_a_reload() {
     engine.fill_pool(&mut rng);
     let before = engine.display_names();
 
-    let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
-    restored.import_state(engine.export_state());
+    let restored = restore(&engine, engine.export_state());
     assert_eq!(
         restored.display_names(),
         before,
@@ -2909,8 +2887,7 @@ fn names_are_kept_across_a_reload() {
     for entry in old["bank"].as_array_mut().unwrap() {
         entry.as_object_mut().unwrap().remove("auto_name");
     }
-    let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
-    restored.import_state(serde_json::from_value(old).unwrap());
+    let restored = restore(&engine, serde_json::from_value(old).unwrap());
     assert!(
         restored
             .pool
@@ -2974,8 +2951,7 @@ fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
             entry.as_object_mut().unwrap().remove("auto_name");
         }
     }
-    let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
-    restored.import_state(serde_json::from_value(old).unwrap());
+    let mut restored = restore(&engine, serde_json::from_value(old).unwrap());
     let c = restored.pool.iter().find(|c| c.id == id).unwrap();
     assert!(c.auto_name.is_none(), "the fixture's sound came back named");
 
@@ -3002,8 +2978,7 @@ fn a_cleared_name_is_read_off_the_bank_as_it_stands() {
     for entry in old["bank"].as_array_mut().unwrap() {
         entry.as_object_mut().unwrap().remove("auto_name");
     }
-    let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
-    restored.import_state(serde_json::from_value(old).unwrap());
+    let mut restored = restore(&engine, serde_json::from_value(old).unwrap());
     assert!(restored.pool.iter().all(|c| c.auto_name.is_none()));
     restored.set_name(id, "");
     let mut taken: HashSet<String> = restored

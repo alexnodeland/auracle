@@ -302,11 +302,7 @@ fn taste_map_keeps_its_orientation_across_redraws_and_reloads() {
         );
     }
 
-    let json = serde_json::to_string(&engine.export_state()).unwrap();
-    let mut restored = Engine::new(PatchGrammarPrior::default(), cfg);
-    restored.begin_session();
-    restored.import_state(serde_json::from_str(&json).unwrap());
-    let reloaded = restored.taste_map();
+    let reloaded = reload(&engine).taste_map();
     assert_eq!(reloaded.points.len(), redrawn.points.len());
     for (p, q) in redrawn.points.iter().zip(&reloaded.points) {
         assert!(

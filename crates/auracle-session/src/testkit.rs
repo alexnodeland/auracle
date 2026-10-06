@@ -108,3 +108,23 @@ pub(crate) fn sweep_clip(spec: &auracle_features::PhraseSpec) -> auracle_feature
         .collect();
     auracle_features::AuditionClip::from_interleaved(&x, 1, spec.sample_rate, spec).unwrap()
 }
+
+/// A fresh engine with `from`'s config and render memo, and `state` loaded
+/// into it: a reload for a test whose subject is not the measurement. The
+/// memo holds every bank member's render already, so the restore renders
+/// nothing, and a hit is the render bit for bit
+/// (`every_featurize_site_consults_the_memo`). A test about re-measuring
+/// (a clip, a take, an old palette, the deferred restore) builds its own
+/// cold engine instead.
+pub(crate) fn restore(from: &Engine, state: SessionState) -> Engine {
+    let mut e = Engine::new(PatchGrammarPrior::default(), from.cfg.clone());
+    e.set_memo(from.memo().clone());
+    e.import_state(state);
+    e
+}
+
+/// `e` saved as the app saves it, through JSON, and reloaded by [`restore`].
+pub(crate) fn reload(e: &Engine) -> Engine {
+    let json = serde_json::to_string(&e.export_state()).unwrap();
+    restore(e, serde_json::from_str(&json).unwrap())
+}
