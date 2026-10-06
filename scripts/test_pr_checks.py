@@ -6,8 +6,9 @@ does to the issues it names.
     python3 scripts/test_pr_checks.py      (run by `make dev-check`)
 
 No test reaches the network: the GitHub API is a fake that holds issues
-(their bodies too), comments and parents in memory, searches the bodies, and
-records every write, and `gh` never runs
+(their bodies too), comments and parents in memory, searches the bodies,
+records every write, and fails a read or a write when a test asks, and `gh`
+never runs
 (the API wrapper's own tests hand it a stand-in for `subprocess.run`). The
 last case reads the real pull request template. Python 3 standard library
 only.
@@ -34,12 +35,16 @@ REPO = "alexnodeland/auracle"
 
 class Fake:
     """The GitHub API in memory: issues by number ({state, title, body, pr,
-    parent}), each issue's comments, and the writes made. `closes_after`
-    closes an issue (as GitHub does after a merge) once it has been read
-    that many times. `edits` gives an issue the body a person saves just
-    after the job's first read of it."""
+    parent}), each issue's comments, and the writes made.
+    `closes_after` closes an issue (as GitHub does after a merge) once it
+    has been read that many times. `edits` gives an issue the body a person
+    saves just after the job's first read of it. `fail` fails a path's
+    every read, `fail_reads` an issue's reads by count ({n: {2}}: the
+    second), `fail_patch` the writes of an issue's body. `reverts` puts an
+    issue's body back after each of its first k writes ({n: k}), as another
+    write built on an older read does."""
 
-    def __init__(self, issues=None, comments=None, closes_after=None, fail=(), lag=False, edits=None):
+    def __init__(self, issues=None, comments=None, closes_after=None, fail=(), lag=False, edits=None, fail_reads=None, fail_patch=(), reverts=None):
         self.issues = {n: dict(i) for n, i in (issues or {}).items()}
         # With `lag`, a parent's list of sub-issues gives each one's state
         # from before any write, as GitHub's can for a moment.
@@ -49,6 +54,9 @@ class Fake:
         self.edits = dict(edits or {})
         self.reads = {}
         self.fail = set(fail)
+        self.fail_reads = dict(fail_reads or {})
+        self.fail_patch = set(fail_patch)
+        self.reverts = dict(reverts or {})
         self.writes = []
         self.files = []
 
@@ -77,6 +85,8 @@ class Fake:
             return 404, "gh: Not Found (HTTP 404)"
         if len(parts) == 5:
             self.reads[n] = self.reads.get(n, 0) + 1
+            if self.reads[n] in self.fail_reads.get(n, ()):
+                return 502, "gh: Bad Gateway (HTTP 502)"
             if n in self.closes_after and self.reads[n] > self.closes_after[n]:
                 self.issues[n]["state"] = "closed"
             read = self._issue(n)
@@ -119,19 +129,31 @@ class Fake:
     def patch(self, path, data):
         n = int(path.split("/")[4])
         if "body" in data:
+            if n in self.fail_patch:
+                return 502, "gh: Bad Gateway (HTTP 502)"
             self.writes.append(("body", n, data["body"]))
-            self.issues[n]["body"] = data["body"]
+            if self.reverts.get(n):
+                self.reverts[n] -= 1
+            else:
+                self.issues[n]["body"] = data["body"]
         else:
             self.writes.append(("close", n, data["state"]))
             self.issues[n]["state"] = data["state"]
         return 200, {}
 
 
-def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO, merged_at="", dry=False):
+def merge(body, api, number=300, title="tests: a change", author="alexnodeland", head=REPO, merged_at="", dry=False, sleep=None):
     """Run the merge job on a PR with `body` against `api`: its exit code,
-    its log, and how many times it slept."""
+    its log, and how many times it slept. `sleep` stands for the time that
+    passes while it sleeps."""
     log, slept = [], []
-    code = P.on_merge(P.Pr(number, title, body, author, head, merged_at), api, REPO, dry_run=dry, sleep=slept.append, log=log.append)
+
+    def nap(seconds):
+        slept.append(seconds)
+        if sleep:
+            sleep(seconds)
+
+    code = P.on_merge(P.Pr(number, title, body, author, head, merged_at), api, REPO, dry_run=dry, sleep=nap, log=log.append)
     return code, log, len(slept)
 
 
@@ -547,15 +569,13 @@ class Ticks(unittest.TestCase):
                 ("body", 178, "- [x] Saved with CRLF — #5\r\n- [ ] The rest\r\n"),
             ],
         )
+        # One comment, a line for each box, each marked with the box's line.
         (said,) = self.said(fake, 177)
-        self.assertIn(
-            "#300 closed #5, and every issue these 3 boxes name is closed now, so they are ticked: "
-            "“Flakes can't merge — #5”; “Hangs too (#5)”; “Done when #5 is”.",
-            said,
-        )
-        self.assertIn("<!-- pr-checks: ticked #300 -->", said)
+        for line, text in [(2, "Flakes can't merge — #5"), (4, "Hangs too (#5)"), (5, "Done when #5 is")]:
+            self.assertIn(f"#300 closed #5, and every issue this box names is closed now, so it is ticked: `{text}`.", said)
+            self.assertRegex(said, rf"<!-- pr-checks: ticked line {line} \([0-9a-f]{{8}}\) #300 -->")
         (said,) = self.said(fake, 178)
-        self.assertIn("every issue this box names is closed now, so it is ticked: “Saved with CRLF — #5”.", said)
+        self.assertIn("every issue this box names is closed now, so it is ticked: `Saved with CRLF — #5`.", said)
         self.assertIn("#177: ticked “Hangs too (#5)”", log)
 
     def test_a_box_naming_two_issues_waits_until_both_are_closed(self):
@@ -639,7 +659,8 @@ class Ticks(unittest.TestCase):
         self.assertEqual(self.ticked(fake), [("body", 177, "- [ ] Flakes, and slow suites — #5\n- [x] Hangs — #5\nA line of theirs.")])
         self.assertIn("#177: “Flakes — #5” changed since it was read: not ticked", log)
         (said,) = self.said(fake, 177)
-        self.assertIn("so it is ticked: “Hangs — #5”.", said)
+        self.assertIn("so it is ticked: `Hangs — #5`.", said)
+        self.assertNotIn("Flakes", said)
 
     def test_a_failed_search_or_read_fails_the_job_and_ticks_nothing(self):
         search = f"search/issues?q=repo:{REPO} is:issue is:open #5 in:body"
@@ -648,12 +669,86 @@ class Ticks(unittest.TestCase):
             code, _, _ = merge("Closes #5", fake)
             self.assertEqual((code, fake.writes), (1, []), fail)
 
-    def test_a_long_box_is_quoted_cut_short_at_a_word(self):
-        text = "Quarantined specs report to their own issues; the nightly files Flaky: issues and refreshes the timings — #5"
-        fake = Fake({5: {"state": "closed"}, 177: {"body": f"- [ ] {text}"}})
-        merge("Closes #5", fake)
+    def test_a_failed_read_again_or_write_fails_the_job_and_claims_no_tick(self):
+        # The read just before the write fails, or the write does: the body
+        # is as it was, and no comment says the box is ticked.
+        body = "- [ ] Flakes can't merge — #5"
+        for fails, said in [({"fail_reads": {177: {2}}}, "#177: couldn't be read again (HTTP 502): its boxes aren't ticked"), ({"fail_patch": {177}}, "#177: ticking 1 box failed (HTTP 502)")]:
+            fake = Fake({5: {"state": "closed"}, 177: {"body": body}}, **fails)
+            code, log, _ = merge("Closes #5", fake)
+            self.assertEqual((code, fake.issues[177]["body"], self.said(fake, 177)), (1, body, []), fails)
+            # The log says what failed, and nothing else of #177.
+            self.assertEqual([line for line in log if line.startswith("#177")], [said], fails)
+
+    def test_a_failed_read_after_the_write_fails_the_job_and_says_the_box(self):
+        # The write landed: the box is ticked and said, and the run is red,
+        # since whether another write put it back isn't known.
+        fake = Fake({5: {"state": "closed"}, 177: {"body": "- [ ] Flakes can't merge — #5"}}, fail_reads={177: {3}})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual((code, fake.issues[177]["body"]), (1, "- [x] Flakes can't merge — #5"))
+        self.assertIn("#177: couldn't be read again after the write (HTTP 502): whether its ticks held isn't known", log)
         (said,) = self.said(fake, 177)
-        self.assertIn("ticked: “Quarantined specs report to their own issues; the nightly files Flaky: issues…”.", said)
+        self.assertIn("so it is ticked: `Flakes can't merge — #5`.", said)
+
+    def test_another_runs_write_from_an_older_read_is_ticked_again(self):
+        # A queue batch merges #300 (closing #5) and #301 (closing #6)
+        # seconds apart. #300's run reads #177 and is about to write when
+        # #301's run reads it and writes first; #300's write, built on its
+        # older read, lands while #301's run waits, and puts #301's box back.
+        fake = Fake({5: {"state": "closed"}, 6: {"state": "closed"}, 177: {"body": "- [ ] Flakes can't merge — #5\n- [ ] Hangs too — #6"}})
+        patch, held, runs = fake.patch, [], {}
+
+        def landing_late(path, data):
+            if "body" not in data or 301 in runs:
+                return patch(path, data)
+            held.append(data)
+            runs[301] = None
+            runs[301] = merge("Closes #6", fake, number=301, sleep=lambda _: held and patch(path, held.pop()))
+            return 200, {}
+
+        fake.patch = landing_late
+        runs[300] = merge("Closes #5", fake)
+        self.assertEqual((runs[300][0], runs[301][0]), (0, 0))
+        self.assertEqual(fake.issues[177]["body"], "- [x] Flakes can't merge — #5\n- [x] Hangs too — #6")
+        self.assertIn("#177: “Hangs too — #6” was put back by another write: ticked again", runs[301][1])
+        said = "\n".join(self.said(fake, 177))
+        self.assertIn("#301 closed #6, and every issue this box names is closed now, so it is ticked: `Hangs too — #6`.", said)
+        self.assertIn("#300 closed #5, and every issue this box names is closed now, so it is ticked: `Flakes can't merge — #5`.", said)
+
+    def test_a_box_put_back_each_time_it_is_ticked_fails_the_job_and_is_not_said(self):
+        fake = Fake({5: {"state": "closed"}, 177: {"body": "- [ ] Flakes can't merge — #5"}}, reverts={177: P.TRIES})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual((code, fake.issues[177]["body"], len(self.ticked(fake))), (1, "- [ ] Flakes can't merge — #5", P.TRIES))
+        self.assertIn(f"#177: “Flakes can't merge — #5” was put back by another write each of the {P.TRIES} times it was ticked: not ticked", log)
+        self.assertEqual(self.said(fake, 177), [])
+
+    def test_a_run_again_ticks_and_says_a_box_the_red_run_left(self):
+        # #6's read fails on the first run, so only the box naming #5 alone
+        # is ticked and said. Run again: the other box is ticked and said,
+        # alone, in a comment of its own.
+        six = f"repos/{REPO}/issues/6"
+        fake = Fake({5: {"state": "closed"}, 6: {"state": "closed"}, 177: {"body": "- [ ] A — #5\n- [ ] B — #5 + #6"}}, fail={six})
+        self.assertEqual(merge("Closes #5", fake)[0], 1)
+        self.assertEqual(fake.issues[177]["body"], "- [x] A — #5\n- [ ] B — #5 + #6")
+        fake.fail.discard(six)
+        self.assertEqual(merge("Closes #5", fake)[0], 0)
+        self.assertEqual(fake.issues[177]["body"], "- [x] A — #5\n- [x] B — #5 + #6")
+        first, second = self.said(fake, 177)
+        self.assertIn("ticked: `A — #5`.", first)
+        self.assertIn("ticked: `B — #5 + #6`.", second)
+        self.assertNotIn("`A — #5`", second)
+
+    def test_a_box_is_quoted_in_code_cut_short_at_a_word(self):
+        # In code, an @mention or a `#n` in the box notifies no one again; a
+        # backtick in it takes a longer run around it.
+        text = "Quarantined specs report to their own issues; the nightly files Flaky: issues and refreshes the timings — #5"
+        fake = Fake({5: {"state": "closed"}, 177: {"body": f"- [ ] {text}\n- [ ] @alexnodeland picks `queue` — #5 (#130)"}})
+        code, log, _ = merge("Closes #5", fake)
+        self.assertEqual(code, 0)
+        (said,) = self.said(fake, 177)
+        self.assertIn("ticked: `Quarantined specs report to their own issues; the nightly files Flaky: issues…`.", said)
+        self.assertIn("ticked: ``@alexnodeland picks `queue` — #5 (#130)``.", said)
+        self.assertIn("#177: ticked “@alexnodeland picks `queue` — #5 (#130)”", log)
 
 
 class Boxes(unittest.TestCase):

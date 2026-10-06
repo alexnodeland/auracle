@@ -52,20 +52,32 @@ seconds before it is closed here.
 bodies of the other open issues (an umbrella's checklist), and each body
 found is read and parsed. A box there (`- [ ] …`) that names it is ticked
 once every issue the box names is closed: `#130 + #153` waits for both. A
-number that is a PR is not an issue to wait for. A box in fenced code, an
-HTML comment or a quote isn't read, nor a number in inline code or a
-comment, as GitHub reads them: a `<!--` in code is text, and one that starts
-mid-line and never closes is text too (only one that starts a line hides the
-rest of the body). A box that names an issue in another repository is left
-for a person. Only `[ ]` becomes `[x]`: the body is read again just before
-the write, and a box whose line changed since the first read is left as it
-is. A person's edit made in the moment between that read and the write is
-lost: the API has no conditional write for a body. The issue's comment gets
-a line listing the boxes ticked. A box ticked is ticked for good, so a run
-again ticks nothing twice; a run that ticked a box and then failed to post
-its line doesn't post it later, since a box ticked by the job looks like one
-ticked by hand. The search index can lag an edit by a minute, so a box added
-just before the merge can be missed; it is ticked by hand.
+number that is a PR is not an issue to wait for. A box that names an issue
+in another repository is left for a person. GitHub's own reading decides
+what is a box and what is a number: not a box in fenced code, in an HTML
+comment or in a quote, nor a number in inline code or a comment; a `<!--` in
+code is text, and one that starts mid-line and never closes is text too
+(only one that starts a line hides the rest of the body).
+
+Only `[ ]` becomes `[x]`. The body is read again just before the write, and
+a box whose line changed since the first read is left as it is. A queue
+batch merges its PRs seconds apart, so another run of this job may write the
+same body from a read taken before this write, putting its boxes back: the
+body is read again SETTLE seconds after the write, and a box back to `[ ]`,
+its line otherwise as it was, is ticked again, up to TRIES writes in all.
+What the job can't see: a person's edit saved between its read and its
+write is lost (the API has no conditional write for a body); a write
+landing more than SETTLE seconds after the read it was built on can still
+put a box back; and the search index can lag an edit by a minute, so a box
+added just before the merge can be missed. A person ticks those.
+
+The issue's comment gets a line for each box ticked, quoting it in code (so
+an @mention or `#n` in it notifies no one again), each line marked with the
+box's line and text. A box ticked is ticked for good, so a run again ticks
+nothing twice and says nothing twice, and a box a red run left (an issue it
+names couldn't be read) is ticked and said by the run again. A run that
+ticked a box and then failed to post its line doesn't post it later, since
+a box ticked by the job looks like one ticked by hand.
 
 The GitHub API is read and written through `gh api` (GH_TOKEN in CI).
 Python 3 standard library only.
@@ -74,6 +86,7 @@ Python 3 standard library only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -126,11 +139,16 @@ NO_ISSUE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?no issue:[ \t]*(?P<why>.*?)[ \t]*
 
 # Each line the merge job writes carries a marker naming what it says and the
 # PR: `closed by` (the job closed the issue), `advanced by` (a `Refs` line),
-# `sub-issues` (a parent's count of them closed), `ticked` (the boxes it
-# ticked in the issue's body).
+# `sub-issues` (a parent's count of them closed), `ticked line N (hash)` (a
+# box it ticked in the issue's body: the box's line, and its text hashed).
 MARK = "<!-- pr-checks: {what} #{pr} -->"
 POLLS = 6
 EVERY = 10  # seconds
+# How long after writing a body's ticks the job reads it again, to tick again
+# a box another run's write put back; and how many writes it makes at most.
+# Longer than any run takes between its read and its write (one API call).
+SETTLE = 5  # seconds
+TRIES = 3
 
 # A task list's box, as GitHub draws one: `- [ ] text`, `* [x] text`,
 # `1. [ ] text`. The line is matched whole, a CR at its end included (GitHub's
@@ -391,10 +409,22 @@ def listed(numbers: list[int]) -> str:
     return ", ".join(named[:-1]) + (" and " if len(named) > 1 else "") + named[-1]
 
 
-def quoted(box: Box) -> str:
-    """The box's text in quotes, cut short at a word when it is long."""
+def quoted(box: Box, code: bool = False) -> str:
+    """The box's text in quotes, cut short at a word when it is long; with
+    `code`, in inline code instead, where GitHub links no @mention and no
+    `#n`, so quoting a box notifies no one again."""
     text = box.text if len(box.text) <= QUOTE else box.text[:QUOTE].rsplit(" ", 1)[0] + "…"
-    return f"“{text}”"
+    if not code:
+        return f"“{text}”"
+    ticks = "`" * (max((len(r) for r in re.findall(r"`+", text)), default=0) + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{ticks}{pad}{text}{pad}{ticks}"
+
+
+def key(box: Box) -> str:
+    """What the marker of the line saying a box was ticked names it by: its
+    line, and its text hashed."""
+    return f"line {box.line} ({hashlib.sha1(box.text.encode()).hexdigest()[:8]})"
 
 
 def check_links(links: Links, get: Callable[[str], tuple[int, object]], repo: str = REPO) -> tuple[list[str], list[str]]:
@@ -680,10 +710,10 @@ def on_merge(
 
     # The boxes in other open issues that name what closed, ticked once
     # every issue each names is closed; said in the same comment.
-    ticked, bad = tick(pr, closed, api, repo, dry_run, log)
+    ticked, bad = tick(pr, closed, api, repo, dry_run, sleep, log)
     failed = failed or bad
-    for n, text in ticked.items():
-        lines.setdefault(n, []).append(("ticked", text))
+    for n, said in ticked.items():
+        lines.setdefault(n, []).extend(said)
     for n, said in lines.items():
         say(n, said)
     return 1 if failed else 0
@@ -695,15 +725,18 @@ def tick(
     api: Api,
     repo: str = REPO,
     dry_run: bool = False,
+    sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = print,
-) -> tuple[dict[int, str], bool]:
+) -> tuple[dict[int, list[tuple[str, str]]], bool]:
     """Tick each box in another open issue that names an issue in `closed`,
     the issues that closed with `pr`, once every issue the box names is
     closed. A PR a box names is not an issue to wait for. Only the box's
     `[ ]` changes, and only when its line is as it was read: the body is
     read again just before the write, and a line changed since (or moved,
-    or ticked by hand) is left. Returns what to say on each issue edited,
-    and whether a read or a write failed."""
+    or ticked by hand) is left. SETTLE seconds after the write it is
+    read again, and a box another write put back is ticked again, up to
+    TRIES writes. Returns the lines (what, text) to say on each issue edited,
+    one per box ticked, and whether a read or a write failed."""
     failed = False
     # The open issues whose bodies name one that closed. The search matches
     # the number anywhere in a body, so each body is read and parsed.
@@ -732,7 +765,60 @@ def tick(
                 kinds[n] = "?"
         return kinds[n]
 
-    said: dict[int, str] = {}
+    def write(m: int, due: list[Box]) -> list[Box]:
+        """Tick `due` in #m's body as it is now, and see that the ticks
+        held: the boxes ticked."""
+        nonlocal failed
+        done: list[Box] = []
+        writes = 0
+        while True:
+            if writes:
+                sleep(SETTLE)
+            status, issue = api.get(f"repos/{repo}/issues/{m}")
+            if status != 200 or not isinstance(issue, dict):
+                if writes:
+                    # The write landed; whether another put a box back since
+                    # isn't known.
+                    log(f"#{m}: couldn't be read again after the write (HTTP {status}): whether its ticks held isn't known")
+                    done += due
+                else:
+                    log(f"#{m}: couldn't be read again (HTTP {status}): its boxes aren't ticked")
+                failed = True
+                return done
+            body = issue.get("body") or ""
+            lines = body.split("\n")
+            if not writes:
+                # Only a line still as it was read: a person may have
+                # changed it, moved it or ticked it by hand.
+                still = {(b.line, b.raw) for b in boxes(body, repo) if not b.ticked}
+                for box in [b for b in due if (b.line, b.raw) not in still]:
+                    log(f"#{m}: {quoted(box)} changed since it was read: not ticked")
+                due = [b for b in due if (b.line, b.raw) in still]
+            else:
+                # Another run's write, built on a read from before this
+                # write, puts a box back to `[ ]` and leaves its line as it was.
+                back = [b for b in due if b.line < len(lines) and lines[b.line] == b.raw]
+                done += [b for b in due if b not in back]
+                due = back
+                if due and writes == TRIES:
+                    for box in due:
+                        log(f"#{m}: {quoted(box)} was put back by another write each of the {TRIES} times it was ticked: not ticked")
+                    failed = True
+                    return done
+                for box in due:
+                    log(f"#{m}: {quoted(box)} was put back by another write: ticked again")
+            if not due:
+                return done
+            for box in due:
+                lines[box.line] = box.raw[: box.mark] + "x" + box.raw[box.mark + 1 :]
+            status, _ = api.patch(f"repos/{repo}/issues/{m}", {"body": "\n".join(lines)})
+            if status != 200:
+                log(f"#{m}: ticking {len(due)} box{'es' if len(due) > 1 else ''} failed (HTTP {status})")
+                failed = True
+                return done
+            writes += 1
+
+    said: dict[int, list[tuple[str, str]]] = {}
     for m in sorted(found):
         status, issue = api.get(f"repos/{repo}/issues/{m}")
         if status != 200 or not isinstance(issue, dict):
@@ -762,33 +848,17 @@ def tick(
             for box in due:
                 log(f"#{m}: would tick {quoted(box)}")
         else:
-            # Read again, and tick only the lines still as they were read;
-            # what a person changes in the moment before the write is lost.
-            status, again = api.get(f"repos/{repo}/issues/{m}")
-            if status != 200 or not isinstance(again, dict):
-                log(f"#{m}: couldn't be read again (HTTP {status}): its boxes aren't ticked")
-                failed = True
-                continue
-            body = again.get("body") or ""
-            still = {(b.line, b.raw) for b in boxes(body, repo) if not b.ticked}
-            for box in [b for b in due if (b.line, b.raw) not in still]:
-                log(f"#{m}: {quoted(box)} changed since it was read: not ticked")
-            due = [b for b in due if (b.line, b.raw) in still]
-            if not due:
-                continue
-            text = body.split("\n")
-            for box in due:
-                text[box.line] = box.raw[: box.mark] + "x" + box.raw[box.mark + 1 :]
-            status, _ = api.patch(f"repos/{repo}/issues/{m}", {"body": "\n".join(text)})
-            if status != 200:
-                log(f"#{m}: ticking {len(due)} box{'es' if len(due) > 1 else ''} failed (HTTP {status})")
-                failed = True
-                continue
+            due = write(m, due)
             for box in due:
                 log(f"#{m}: ticked {quoted(box)}")
-        closers = listed(sorted({n for b in due for n in b.issues if n in closed}))
-        these = "this box names is closed now, so it is" if len(due) == 1 else f"these {len(due)} boxes name is closed now, so they are"
-        said[m] = f"#{pr.number} closed {closers}, and every issue {these} ticked: {'; '.join(quoted(b) for b in due)}."
+        for box in due:
+            closers = listed(sorted(n for n in box.issues if n in closed))
+            said.setdefault(m, []).append(
+                (
+                    f"ticked {key(box)}",
+                    f"#{pr.number} closed {closers}, and every issue this box names is closed now, so it is ticked: {quoted(box, code=True)}.",
+                )
+            )
     return said, failed
 
 
