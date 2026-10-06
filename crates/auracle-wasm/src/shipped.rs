@@ -251,11 +251,6 @@ fn tree_digest(tree_json: &str) -> String {
 /// [`auracle_grammar::rng`]); in the pool only, the renders or the features.
 #[wasm_bindgen]
 pub fn boot_probe() -> String {
-    probe().to_string()
-}
-
-/// [`boot_probe`]'s reply, as a value.
-fn probe() -> serde_json::Value {
     let mut e = WasmEngine::new(SEED, PROBE_POOL);
     let _ = e.fill_draw(0); // starts the stream, takes nothing from it
     let draws: Vec<String> = (0..PROBE_DRAWS)
@@ -290,6 +285,7 @@ fn probe() -> serde_json::Value {
             "spread": serde_json::from_str::<serde_json::Value>(&e.phi_scale()).unwrap_or_default(),
         },
     })
+    .to_string()
 }
 
 /// Where `now` first differs from `was`, as a path and both values: numbers
@@ -352,7 +348,9 @@ pub fn boot_probe_difference(pinned: &str) -> String {
     let Ok(was) = serde_json::from_str::<serde_json::Value>(pinned) else {
         return "the pinned probe is not JSON".into();
     };
-    first_difference(&was, &probe(), "probe").unwrap_or_default()
+    // The text the page's wasm hands the spec, read back as the spec reads it.
+    let now: serde_json::Value = serde_json::from_str(&boot_probe()).unwrap_or_default();
+    first_difference(&was, &now, "probe").unwrap_or_default()
 }
 
 /// Render `trees` into `e`'s memo on `threads` threads, so the serial calls
