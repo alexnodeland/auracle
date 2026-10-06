@@ -74,6 +74,7 @@ CI, merging, flakes, approvals) is [`process.md`](process.md).
 | [021](decisions/021-merges-go-through-mergifys-queue.md) | Merges go through Mergify's queue (amends ADR-020's rules 3 and 4) |
 | [022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md) | Time in a test: wait for the engine's reply, assert the app's own order, record the machine's speed as a budget; a slow runner may make a test slower, never wrong |
 | [023](decisions/023-the-gate-runs-in-the-queue.md) | The gate runs in the queue: a fast lane on the PR, the full gate on the batch that lands (amends ADR-021) |
+| [024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md) | A review's in-area findings are fixed in the PR, and a wave runs more than two streams (amends ADR-020's rule 2 and ADR-019's rule 5) |
 
 ## Proposals
 

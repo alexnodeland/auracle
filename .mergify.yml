@@ -93,7 +93,8 @@ queue_rules:
       - check-success = @github-actions/PR checks
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
-    # streams of work docs/process.md allows in flight, and a Dependabot PR.
+    # streams of work docs/process.md allows by hand, and a Dependabot PR. A
+    # wave runs more (ADR-024); its PRs fill one batch after another.
     batch_size: 3
     # How long a batch that isn't full waits for another PR to join it,
     # counted from the first PR's entry into the queue; then it is tested as

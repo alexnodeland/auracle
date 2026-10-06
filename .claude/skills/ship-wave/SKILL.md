@@ -143,7 +143,10 @@ It refuses a dirty worktree, a branch that isn't the worktree's or isn't
 to a flaky test. `--full-ci` is for a PR the Slow suite covers
 (`wf_result.py` says which, from the report's `needs_full_ci`): it opens the
 PR with `full-ci` and does not queue it; queue it once its Slow suite is
-green, with the two commands it prints.
+green, with the two commands it prints. A wave's PRs land minutes apart, so
+a slow test one of them broke is caught on its own PR, not on `main` with
+several to suspect (by hand, a `full-ci` PR is queued at once:
+`process.md` § CI and merging).
 
 ## 7. Watch
 
@@ -190,10 +193,12 @@ with a lease naming the head on GitHub, to the `claude/` branch only, never
 ```bash
 git -C "$WT" push -q --force-with-lease=claude/<topic>:"$pushed" origin claude/<topic>
 gh -R alexnodeland/auracle pr edit <n> --remove-label dequeued
-gh -R alexnodeland/auracle pr comment <n> --body "@mergifyio requeue"
+gh -R alexnodeland/auracle pr comment <n> --body "@mergifyio queue"
 ```
 
-Without the requeue comment it stays out of the queue, and nothing says so.
+The comment puts it back, as for any dequeued PR (the `ship` skill's step
+7). Mergify's `requeue` is the same command under an old name, deprecated.
+Without a comment the PR can stay out of the queue, and nothing says so.
 A conflict mid-rebase that needs a decision: `git -C "$WT" rebase --abort`,
 and ask.
 

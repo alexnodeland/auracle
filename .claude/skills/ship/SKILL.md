@@ -13,9 +13,10 @@ description: >
 [`docs/process.md`](../../../docs/process.md) is the rule; this is the
 procedure. You are the operator: agents build and commit; you review, push,
 open the PR in the merge queue, and clean up once the queue has merged it.
-Keep at most two streams in flight, never two on the same files. Several
-tasks at once, when the maintainer asks for a wave, go through the saved
-workflows and the [`ship-wave`](../ship-wave/SKILL.md) skill; its scripts
+By hand, keep at most two streams in flight, never two on the same files.
+Several tasks at once, when the maintainer asks for a wave, go through the
+saved workflows and the [`ship-wave`](../ship-wave/SKILL.md) skill, one
+stream per item, each on files no other touches (ADR-024); its scripts
 (`scripts/ops/`: `ship_pr.sh`, `watch_queue.sh`, `rows_resolve.py`) serve one
 task as well.
 
@@ -182,7 +183,9 @@ suite* runs on a PR only with it. It covers any crate, `Cargo.toml` or
 `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
 `package.json` or `package-lock.json`; a spec file that holds an `@slow` or
 `@quarantine` test; and a `main.js` change that reaches EVOLVE's
-generations or PERFORM's offers. It does not block the merge.
+generations or PERFORM's offers. The queue doesn't wait for it: by hand the
+PR is queued at once. A wave holds it out of the queue until its Slow suite
+is green (`ship_pr.sh --full-ci`; `process.md` § CI and merging says why).
 
 ## 6. The merge, waited on by state
 

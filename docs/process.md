@@ -5,11 +5,12 @@ canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 [ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
 [ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md),
-[ADR-021](decisions/021-merges-go-through-mergifys-queue.md) and
-[ADR-023](decisions/023-the-gate-runs-in-the-queue.md) amend it. The `ship` skill
-(`.claude/skills/ship/`) walks one task through it with the exact commands;
-the `ship-wave` skill runs several at once with the saved workflows
-([Waves](#waves)).
+[ADR-021](decisions/021-merges-go-through-mergifys-queue.md),
+[ADR-023](decisions/023-the-gate-runs-in-the-queue.md) and
+[ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)
+amend it. The `ship` skill (`.claude/skills/ship/`) walks one task through it
+with the exact commands; the `ship-wave` skill runs several at once with the
+saved workflows ([Waves](#waves)).
 
 ## The lifecycle
 
@@ -160,7 +161,7 @@ Findings come back ranked, and review is **one round**:
   a description left untrue, a nit. So is in-area work the builder lists as
   left open. Only two kinds leave the PR, each as an issue named in its
   body: a choice for the maintainer, and work in an area the branch doesn't
-  touch (the maintainer, 2026-10-06).
+  touch ([ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)).
 - A finding the operator declines is said in the PR body with the reason.
 - Nothing is added once the PR is open ([Merge at green](#ci-and-merging)):
   a branch that grows in CI runs CI again, and every run is another roll of
@@ -286,8 +287,12 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
   `package.json` or `package-lock.json`; a spec file that holds an `@slow` or
   `@quarantine` test; or a `main.js` change that reaches EVOLVE's
-  generations or PERFORM's offers. It does not block merging; without it,
-  the push to `main` is where a slow test catches the change.
+  generations or PERFORM's offers. It is none of the queue's conditions;
+  without the label, the push to `main` is where a slow test catches the
+  change. By hand, a `full-ci` PR is queued at once. A wave holds it out of
+  the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`, [Waves](#waves)): a
+  wave's PRs land minutes apart, and a slow test one of them broke would
+  turn up on `main` with several to suspect.
 - **Wait on the state, never a fixed time:** poll until the run completes,
   or the PR merges or leaves the queue, then read what happened.
 - **The merge queue merges**
@@ -306,7 +311,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     queues.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
-    at most three minutes for company. One batch is tested at a time.
+    at most ten minutes for company. One batch is tested at a time.
   - Green, the queue squash-merges each PR of the batch on its own, the head
     that was tested, so nothing pushed after the check merges unchecked. Each
     commit is `<title> (#<n>)` with the PR's commit messages. The queue never pushes to
@@ -367,8 +372,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   the queue start over on the new `main`.
 - **Linear:** one merge queue, and never two streams in flight touching
   the same files. By hand, at most two streams; a wave runs more, each item
-  on files no other touches ([Waves](#waves)), and every browser job still
-  goes through the one queue.
+  on files no other touches ([Waves](#waves),
+  [ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)),
+  and every browser job still goes through the one queue.
 - **On `main`**, a job the queue's run already passed is not run again when
   `main`'s files are exactly the files that run tested (the same git tree):
   the last merge of every batch. The site deploys from CI's own build once
@@ -439,8 +445,8 @@ The operator's loop:
 7. **Watch.** `scripts/ops/watch_queue.sh`, as a background task, until each
    PR merges, goes red or leaves the queue. A conflict is rebased with
    diff3 and its row-wise parts resolved by `scripts/ops/rows_resolve.py`,
-   pushed with a lease to its `claude/` branch, and requeued
-   (`@mergifyio requeue`).
+   pushed with a lease to its `claude/` branch, and put back in the queue
+   with `@mergifyio queue`.
 8. **Clean up** after each merge, as for one task.
 
 An agent inside a workflow can't be resumed once the run has ended: a
