@@ -138,6 +138,69 @@ fn the_site_counts_the_docs_quote_are_the_live_phis() {
     assert_eq!(sites(5, 1, true), 231, "{docs}");
 }
 
+/// A fused group moves only the prior's covariance, as `fused_rho`'s doc
+/// promises: the group's members correlate at ρ within a style, while every
+/// coordinate keeps the prior variance σ_θ² it has without the group, and
+/// nothing correlates across groups, across styles (each style has its own
+/// group mean), or with an unfused coordinate. Read off draws from the
+/// model's own prior.
+///
+/// Over sixteen seeds, at 8 000 draws, the correlations were within 0.027
+/// of their targets and every variance within 5.6% of σ_θ²; the bounds are
+/// 0.08 and 12%, some seven standard errors.
+#[test]
+fn a_fused_group_correlates_its_members_and_keeps_their_scale() {
+    const DF: usize = 8;
+    let mut cfg = TasteConfig::mixture(DF, 2);
+    cfg.fused = vec![vec![0, 1], vec![2, 3]];
+    cfg.fused_rho = Some(0.5);
+    let var = cfg.sigma_theta().powi(2);
+    let model = TasteModel::new(cfg.clone());
+    let mut rng = StdRng::seed_from_u64(0xC0);
+    let draws: Vec<TasteSample> = (0..8_000)
+        .map(|_| model.prior_sample(&mut rng, &FitSet::default()))
+        .collect();
+    let col = |k: usize, i: usize| -> Vec<f64> { draws.iter().map(|s| s.theta[k][i]).collect() };
+    let corr = |a: &[f64], b: &[f64]| -> f64 {
+        let n = a.len() as f64;
+        let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+        let c = a
+            .iter()
+            .zip(b)
+            .map(|(x, y)| (x - ma) * (y - mb))
+            .sum::<f64>()
+            / n;
+        c / (sample_sd(a) * sample_sd(b))
+    };
+    for (what, (k, i), (l, j), want) in [
+        ("a group, style 0", (0, 0), (0, 1), 0.5),
+        ("a group, style 1", (1, 2), (1, 3), 0.5),
+        ("two groups", (0, 0), (0, 2), 0.0),
+        ("two styles", (0, 0), (1, 0), 0.0),
+        ("a member and an unfused coordinate", (0, 1), (0, 4), 0.0),
+    ] {
+        let r = corr(&col(k, i), &col(l, j));
+        assert!(
+            (r - want).abs() < 0.08,
+            "{what}: correlation {r}, not {want}"
+        );
+    }
+    for k in 0..2 {
+        for i in 0..DF {
+            let v = sample_sd(&col(k, i)).powi(2);
+            assert!(
+                (v / var - 1.0).abs() < 0.12,
+                "θ[{k}][{i}] has prior variance {v}, not {var}"
+            );
+        }
+    }
+    // A correlation outside [0, 1) is clamped into it.
+    cfg.fused_rho = Some(1.5);
+    assert_eq!(cfg.fused_rho(), 0.99);
+    cfg.fused_rho = Some(-0.3);
+    assert_eq!(cfg.fused_rho(), 0.0);
+}
+
 /// A fused prior over correlated coordinates recovers taste better than a
 /// flat one when evidence is thin — which is the whole claim.
 ///
