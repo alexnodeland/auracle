@@ -22,8 +22,9 @@ base:
 - a line it changed, or removed, is swapped or removed where the kept side
   still has that line as the base had it;
 - a line it added goes after the base line it followed (after anything the
-  kept side added there too), or at the end when the kept side changed that
-  line;
+  kept side added there too); where the kept side changed or removed that
+  line, before the base line that came next, if the kept side still has it
+  as it was; and at the end when neither is left as it was;
 - when every side is one line, the same is done word by word, so two words
   added to one line (DEV_CHECKS := … a b) are both kept.
 

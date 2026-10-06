@@ -17,10 +17,11 @@ export const meta = {
 //
 // The file groups run one after another in the one worktree, not side by side. Side by side in one
 // checkout, their agents would race on git's index and on one target/, and each one's test run would
-// build and test the others' half-written changes. In worktrees of their own (isolation: 'worktree'),
-// each would make its tree from the session's checkout rather than this branch, start a cold target/
-// (an optimized build of the crate each, many GB), and leave a last agent to merge the branches; and
-// a mutation run is CPU-bound, so several at once on one machine are each slower, not done sooner.
+// build and test the others' half-written changes. A mutation run is CPU-bound, so several at once on
+// one machine are each slower, not done sooner. Worktrees of their own (isolation: 'worktree') would
+// each start a cold target/ (an optimized build of the crate each, many GB) and leave a last agent to
+// merge the branches; and the workflow-authoring reference says such a worktree is made from the
+// session's checkout rather than this branch (untested here).
 
 const REPO = 'alexnodeland/auracle'
 
