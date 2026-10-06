@@ -25,10 +25,12 @@
   PATCH the module you had selected. In PATCH so did a press that closed
   the scope or picture panel: it put down the module you had selected, or
   ended a new patch, and the scope panel left the keyboard focus nowhere
-  rather than on ⋯. A press that closed KEYS ⋯ over a new patch ended the
-  new patch too, and so could one that closed another menu, the SET ASIDE
-  shelf or TEACH over it. After a press on HOW IT WORKS, Esc didn't put the
-  face back at all (`model_view_esc.spec.js`, `patch_keys.spec.js`, #153).
+  rather than on ⋯. So did a press that closed a module's structure menu
+  (F2): the module went down with it. A press that closed KEYS ⋯ over a
+  new patch ended the new patch too, and so could one that closed another
+  menu, the SET ASIDE shelf or TEACH over it. After a press on HOW IT
+  WORKS, Esc didn't put the face back at all (`model_view_esc.spec.js`,
+  `patch_keys.spec.js`, #153).
 - **Under the model view, a new patch's subtitle and sound A's in TEACH
   follow the belief line after a "·".** They were written as one bare
   line, so a new patch read *nothing to rate: no source reaches the output*

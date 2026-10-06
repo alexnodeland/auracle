@@ -626,14 +626,15 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
   `openStructMenu`. Esc closes one thing a press. Whatever floats spends
   it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
   pop-up, the ⋯ menu, the scope or picture panel, the bank tour, KEYS ⋯, a
-  context menu; main's Esc chain closes all that are open together, and the
-  two panels nowhere else), and so does the touch sheet (it stops the event
-  in patch.js); then the first of `escSteps` that is open: the layout menu,
-  the shelf, TEACH, the evolve menu, the selection, then the catalog.
-  `escBusy` reads both lists, so a new patch's Esc waits while anything on
-  them is open, and the two cannot drift. The global Home/End focus the
-  first and last plate only with the focus on the canvas or nowhere, and
-  never under a modal (`modalUp`); ⇧Home is `fitAll`.
+  context menu; main's Esc chain closes all that are open together, and
+  the two panels and the context menu hear Esc nowhere else), and so does
+  the touch sheet (it stops the event in patch.js); then the first of
+  `escSteps` that is open: the layout menu, the shelf, TEACH, the evolve
+  menu, the selection, then the catalog. `escBusy` reads both lists, so a
+  new patch's Esc waits while anything on them is open, and the two cannot
+  drift. The global Home/End focus the first and last plate only with the
+  focus on the canvas or nowhere, and never under a modal (`modalUp`);
+  ⇧Home is `fitAll`.
 - **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
   `#rack-map-btn`, the layout's menu `#pt-laymenu` with `setLayoutMode`),
   SET ASIDE (`renderTray` fills the shelf `#tray` and the catalog's

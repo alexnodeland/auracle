@@ -5584,6 +5584,7 @@ function escFloats() {
       setKeysPop(false);
       if (inside) $("keys-btn").focus();
     }],
+    // The structure menu (F2, ⋯): its own keydown leaves Esc to this chain.
     [() => shown("ctx-menu"), closeMenu],
   ];
 }
@@ -15531,7 +15532,10 @@ $("ctx-menu").addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowUp") return go(i <= 0 ? items.length - 1 : i - 1);
   if (ev.key === "Home") return go(0);
   if (ev.key === "End") return go(items.length - 1);
-  if (ev.key === "Escape") { ev.preventDefault(); return closeMenu(); }
+  // Esc is left to main's Esc chain, which closes the menu as one of
+  // `escFloats` (the focus back where `closeMenu` puts it) and spends the
+  // press there. Closed here, it was gone before the chain looked, so the
+  // chain took the press for the next thing: PATCH's selected module.
   // Type-ahead: the verbs are words, and a menu of words that cannot be
   // reached by typing them is a menu that only a mouse can read.
   if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {

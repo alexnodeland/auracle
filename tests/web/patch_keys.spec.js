@@ -8,7 +8,8 @@
 //   module or with nothing in focus.
 // - Enter goes into a module's knobs, ↑/↓ turn one, Esc goes back to the
 //   module, and Esc again leaves it; ⇧Home fits the whole patch.
-// - F2 opens the structure menu, and Delete on a two-input module asks which
+// - F2 opens the structure menu (Esc closes it, and the module stays selected
+//   for the next press), and Delete on a two-input module asks which
 //   input survives.
 // - Esc walks out one thing at a time: the module, then the catalog, then a
 //   new patch; a panel or KEYS ⋯ open over the new patch goes before it.
@@ -111,8 +112,14 @@ test("F2 opens the structure menu, and Delete on a two-input module asks which i
   await page.keyboard.press("F2");
   await expect(page.locator("#ctx-menu")).toBeVisible();
   await expect(page.locator("#ctx-menu .cm-item").filter({ hasText: /^replace with/ })).toHaveCount(1);
+  // Esc closes the menu, and that press is spent: the focus goes back to the
+  // filter, still selected, and the next press puts it down.
   await page.keyboard.press("Escape");
   await expect(page.locator("#ctx-menu")).toBeHidden();
+  await expect.poll(() => active(page), { message: "the focus went back to the filter" }).toMatchObject({ kind: "filter", plate: true });
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"].selected'), "the press that closed the menu put the module down too").toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rack-svg .rack-plates g.selected")).toHaveCount(0);
   await page.locator('#rack-svg .rack-controls g.mod-group[data-kind="mix"]').focus();
   await page.keyboard.press("Delete");
   await expect(page.locator("#ctx-menu")).toBeVisible();
