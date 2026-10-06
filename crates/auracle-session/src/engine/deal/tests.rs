@@ -232,6 +232,19 @@ fn a_reach_cut_down_to_one_sound_reaches_further() {
         assert!(pair.iter().all(|id| !cut.contains(id)));
         assert!(after.dealt >= 2, "the first deal could not have dealt it");
     }
+    // Every sound but two cut: those two, wherever they are.
+    let two = [engine.pool[3].id, engine.pool[20].id];
+    let but_two: Vec<u64> = engine
+        .pool
+        .iter()
+        .map(|c| c.id)
+        .filter(|id| !two.contains(id))
+        .collect();
+    let rng = StdRng::seed_from_u64(2);
+    let (pair, _) = deal_ids(&mut engine, &rng, &but_two, &nth(0));
+    let mut want = two;
+    want.sort_unstable();
+    assert_eq!(pair, Some(want), "the last two sounds left uncut");
     let all: Vec<u64> = engine.pool[1..].iter().map(|c| c.id).collect();
     let rng = StdRng::seed_from_u64(1);
     let (pair, after) = deal_ids(&mut engine, &rng, &all, &nth(0));
@@ -240,6 +253,57 @@ fn a_reach_cut_down_to_one_sound_reaches_further() {
         after.dealt >= 3,
         "nothing to pair before the whole pool was reached"
     );
+}
+
+/// A deal drawn now, with fewer members joined than its reach names (the
+/// app does so once the fill is over and the pool stopped short), draws
+/// over those that have.
+#[test]
+fn a_deal_drawn_before_its_sounds_have_joined_draws_from_those_that_have() {
+    let mut engine = filled(0x5A0, 24, 10);
+    for seed in 0..10 {
+        let rng = StdRng::seed_from_u64(seed);
+        let mut stream = rng.clone();
+        let mut sched = nth(1);
+        let d = engine
+            .deal_duel_scheduled(&mut stream, &[], &mut sched)
+            .expect("a pair from the ten that joined");
+        assert!(d.a < 10 && d.b < 10 && d.a != d.b);
+        assert_eq!(sched.dealt, 2);
+        assert_eq!(
+            engine.deal_need(&rng, &[], &nth(1)),
+            16,
+            "a patient deal waits"
+        );
+    }
+}
+
+/// The engine remembers the last eight pairs it dealt and nobody has shown
+/// (`DEALT_UNSHOWN`): the oldest of eight can still be put on the table,
+/// and counts as shown; the oldest of nine is forgotten, and does not.
+#[test]
+fn the_engine_remembers_eight_deals_not_shown() {
+    let dealt = |n: usize| {
+        let mut engine = filled(0xDE7, 24, 24);
+        let mut rng = StdRng::seed_from_u64(9);
+        let keys: Vec<(u64, u64)> = (0..n)
+            .map(|_| {
+                let d = engine.deal_duel_except(&mut rng, &[]).expect("a pair");
+                pair_key(engine.pool[d.a].id, engine.pool[d.b].id)
+            })
+            .collect();
+        (engine, keys)
+    };
+    let (mut eight, keys) = dealt(DEALT_UNSHOWN);
+    let (mut nine, more) = dealt(DEALT_UNSHOWN + 1);
+    assert_eq!(keys[..], more[..DEALT_UNSHOWN], "fixture: one stream");
+    assert!(
+        !more[1..].contains(&more[0]),
+        "fixture: the first pair is dealt once"
+    );
+    let (a, b) = keys[0];
+    assert!(eight.duel_shown(a, b), "the oldest of eight was forgotten");
+    assert!(!nine.duel_shown(a, b), "the oldest of nine was remembered");
 }
 
 /// A pool the fill has not yet standardized deals nothing, under a schedule
@@ -254,10 +318,14 @@ fn an_unstandardized_pool_deals_nothing_under_a_schedule() {
 }
 
 /// Under a choosing rule the deal is scored over the sounds the schedule
-/// names and not cut.
+/// names and not cut, by the rule itself: no pair has been shown yet, so
+/// none is a scheduled check.
 #[test]
 fn a_choosing_rule_scores_the_sounds_the_schedule_names() {
-    for acquisition in [Acquisition::Thompson, Acquisition::Bald] {
+    for (acquisition, method) in [
+        (Acquisition::Thompson, "thompson"),
+        (Acquisition::Bald, "bald"),
+    ] {
         let mut engine = filled(0xB01D, 24, 24);
         engine.cfg.acquisition = acquisition;
         let mut rng = StdRng::seed_from_u64(11);
@@ -270,9 +338,9 @@ fn a_choosing_rule_scores_the_sounds_the_schedule_names() {
         let d = engine
             .deal_duel_scheduled(&mut rng, &cut, &mut sched)
             .expect("a pair");
-        assert_ne!(d.method, "random", "{acquisition:?}");
+        assert_eq!(d.method, method);
         assert!(
-            d.a < 16 && d.b < 16 && d.a >= 7 && d.b >= 7,
+            d.a < 16 && d.b < 16 && d.a >= 7 && d.b >= 7 && d.a != d.b,
             "{acquisition:?}: {} {}",
             d.a,
             d.b

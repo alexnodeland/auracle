@@ -106,9 +106,10 @@ impl Engine {
     ) -> Planned {
         let size = self.cfg.pool_size;
         let len = self.pool.len();
-        let check = self.cfg.duel_check_every > 0
-            && self.duels_shown > 0
-            && self.duels_shown.is_multiple_of(self.cfg.duel_check_every);
+        // A scheduled check, every `duel_check_every` pairs shown; none with
+        // 0, as `is_multiple_of(0)` holds only of 0, which `> 0` rules out.
+        let check =
+            self.duels_shown > 0 && self.duels_shown.is_multiple_of(self.cfg.duel_check_every);
         // No taste yet, the random rule, or a scheduled check: a uniform
         // pair. A uniform pair *is* a calibration check, so it is tagged as
         // one whether it was scheduled or is simply how this engine picks
