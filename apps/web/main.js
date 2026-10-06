@@ -7051,9 +7051,10 @@ function onDealt(pair, meta) {
     if (aheadRetries++ < 3) return void requestDeal();
     return void placePair(pair, meta);
   }
-  // A pair already waits: the one a taken-back pick had put up, back as the
-  // next (`retractVote`). This answer, the deal asked for behind that pair,
-  // is thrown away unseen.
+  // No pair: the engine dealt nothing (fewer than two sounds it may deal),
+  // so nothing waits, take-back or not. A pair already waiting: the one a
+  // taken-back pick had put up, back as the next (`retractVote`), and this
+  // answer, the deal asked for behind that pair, is thrown away unseen.
   if (!pair || ahead) return;
   if (!aheadUsable(pair)) {
     // The engine may deal the very pair on the table again (a small pool
@@ -7188,7 +7189,10 @@ function retractVote() {
   // dealt behind it, and the deal asked for behind it, if one was, is thrown
   // away unseen: one that has landed is overwritten here, and one still out
   // lands with a pair waiting and is dropped (`onDealt`). The pair after it
-  // is dealt when it goes up (`placePair`).
+  // is dealt when it goes up (`placePair`). When it may not wait (as when it
+  // is this same pair, put up again by a pool too small to deal another),
+  // nothing is thrown away: a deal behind it that has landed stays the next
+  // pair, and one still out becomes it.
   //
   // Nothing went up (the table was waiting on a deal): that deal lands with
   // this pair on the table, so it becomes the next pair (`onDealt`) rather

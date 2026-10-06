@@ -1064,19 +1064,22 @@ same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
 puts its pair back on the table, and which pair is next depends on what went
 up in its place. If a pair did (the one dealt ahead, or a deal that landed
 inside the undo window), that pair waits as the next one when `aheadUsable`
-allows, since the player has seen it, and the deal asked for behind it, if
+allows, since the player has seen it. Then the deal asked for behind it, if
 one was, is thrown away unseen: overwritten if it has landed, dropped by
 `onDealt` when it lands, because a pair already waits. The pair after it is
-dealt when it goes up. If nothing went up, the deal the table was waiting on
-lands with the pair back on the table and becomes the next pair. A
+dealt when it goes up. When `aheadUsable` refuses it (as when it is the
+pick's own pair, put up again by a pool too small to deal another), nothing
+is thrown away: a deal behind it that has landed stays the next pair, and
+one still out becomes it. If nothing went up, the deal the table was waiting
+on lands with the pair back on the table and becomes the next pair. A
 retraction asks for a deal only when no pair waits and none is out. With the
-table waiting, an answer that may
-not go up is dealt again, and after three tries goes up anyway, so a pool too
-small to deal anything else cannot leave the cards dimmed. An answer holding a
-cut sound is the exception: it is always dealt again (`holdsCut`). That ends,
-because each deal excludes the cuts made before it was asked for, so only a
-cut made while a deal is out brings one back. `placePair` is the one place a pair goes
-up: anything owed to a pair being shown belongs there.
+table waiting, an answer that may not go up is dealt again, and after three
+tries goes up anyway, so a pool too small to deal anything else cannot leave
+the cards dimmed. An answer holding a cut sound is the exception: it is
+always dealt again (`holdsCut`). That ends, because each deal excludes the
+cuts made before it was asked for, so only a cut made while a deal is out
+brings one back. `placePair` is the one place a pair goes up: anything owed
+to a pair being shown belongs there.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
