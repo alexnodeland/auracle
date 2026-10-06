@@ -413,12 +413,24 @@ fn mixed_modalities_recover() {
     let cos = cosine(&posterior.theta_mean(0), &user.theta);
     assert!(cos > 0.85, "mixed-modality recovery cosine {cos} too low");
 
-    // τ posterior mean near the truth (same scale as u).
-    let tau_mean: f64 =
-        posterior.samples.iter().map(|s| s.tau[0]).sum::<f64>() / posterior.samples.len() as f64;
+    // τ is located: the keep/kill evidence narrows it well inside its
+    // N(0, 1) prior, and the truth lies within three of the posterior's own
+    // standard deviations of its mean. Swept over twenty seeds (this one and
+    // 1 to 19), the posterior SD ran 0.178 to 0.237 and the error 0.01 to
+    // 2.43 SDs, median 0.47: the posterior is calibrated, so a fresh draw
+    // fails 3 SDs about 0.3% of the time. This seed is the 2.43, which a
+    // fixed bound of 0.6 had been set just above.
+    let n = posterior.samples.len();
+    let tau = |i: usize| posterior.samples[i].tau[0];
+    let tau_mean: f64 = (0..n).map(|i| posterior.weight(i) * tau(i)).sum();
+    let tau_var: f64 = (0..n)
+        .map(|i| posterior.weight(i) * (tau(i) - tau_mean).powi(2))
+        .sum();
+    let (err, sd) = ((tau_mean - user.tau).abs(), tau_var.sqrt());
+    assert!(sd < 0.35, "τ was not located: posterior SD {sd}");
     assert!(
-        (tau_mean - user.tau).abs() < 0.6,
-        "tau posterior mean {tau_mean} far from truth {}",
+        err < 3.0 * sd,
+        "τ posterior mean {tau_mean} is {err} from the truth {}, over 3 SDs of {sd}",
         user.tau
     );
 }
