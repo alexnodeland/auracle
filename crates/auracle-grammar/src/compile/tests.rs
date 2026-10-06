@@ -116,6 +116,72 @@ impl quiver::introspection::ModuleIntrospection for Refuses {
     }
 }
 
+/// **A step no tree can make fail records its fault, and the build returns
+/// it.** A live knob's cable and a modulation term's wiring are aimed by the
+/// compiler at ports it named itself, so only a compiler mistake fails
+/// them; when one does, the error is kept (the first, not what follows from
+/// it), the build goes on, and the build's result is that error. Never a
+/// panic: the wasm engine compiles every patch, and a panic there aborts
+/// it. Aimed here at a port the module does not have.
+#[test]
+fn a_build_step_that_fails_records_its_fault_and_the_build_returns_it() {
+    let level = || Arc::new(AtomicF64::new(0.0));
+    let mut c = Compiler::new(SR, &level(), &level(), None, false);
+    let adsr = c.patch.add("t:adsr", Adsr::new(SR));
+    let nowhere = |port| PortRef {
+        node: adsr.id(),
+        port,
+    };
+    assert!(c.take_fault().is_ok(), "a clean build has no fault");
+
+    c.knob("node", "cut", 0.5, ParamMap::Unit, false, nowhere(999));
+    assert!(
+        c.params.contains_key("node#cut"),
+        "the knob is still registered"
+    );
+    let lfo = ModNode::Lfo {
+        uid: Uid::NEW,
+        wave: Waveform::Sine,
+        rate: 0.5,
+    };
+    c.wire_mod(
+        &lfo,
+        "node/1",
+        0.5,
+        nowhere(998),
+        None,
+        DepthScale::Normalized,
+    );
+    assert!(
+        c.params.contains_key("node/1/m#rate"),
+        "the build went on past the first fault"
+    );
+    // The knob's fault (port 999), not the modulation's after it (998).
+    let err = c.take_fault().unwrap_err();
+    assert!(
+        matches!(err, PatchError::InvalidPort { port: Some(999), node, .. } if node == adsr.id()),
+        "{err}"
+    );
+    assert!(c.take_fault().is_ok(), "the fault is returned once");
+
+    // A modulation term's wiring alone records its own.
+    c.wire_mod(
+        &lfo,
+        "node/2",
+        0.5,
+        nowhere(998),
+        None,
+        DepthScale::Normalized,
+    );
+    assert!(matches!(
+        c.take_fault(),
+        Err(PatchError::InvalidPort {
+            port: Some(998),
+            ..
+        })
+    ));
+}
+
 /// A pin that cannot take says why, because each cause is a different
 /// compiler mistake: a cable already on the control input (quiver 0.4.0
 /// refuses the pin rather than letting the cable shadow it), an id that
@@ -2321,4 +2387,350 @@ fn capture_plays_once_hold_and_loop() {
     }
     assert_ne!(last, 0.0, "loop is still playing past the take's end");
     assert!(take.len() < 2_500);
+}
+
+// ---------- the voice's live surface ----------
+
+/// A voice holding a C4 with this amp envelope, nothing else in the way.
+fn enveloped(attack: f64, decay: f64, sustain: f64) -> CompiledVoice {
+    let tree = PatchTree {
+        amp: AmpEnv {
+            attack,
+            decay,
+            sustain,
+            release: 0.3,
+        },
+        root: sine_vco(),
+    };
+    let v = compile(&tree, SR).expect("compiles");
+    v.pitch.set(0.0);
+    v.gate.set(5.0);
+    v
+}
+
+/// **`env_phase` reads where the amp envelope is**: zero before the voice
+/// has ticked, rising through the attack, settling at the sustain level
+/// while the key is held, and falling once it is let go.
+#[test]
+fn the_envelope_phase_reads_where_the_amp_is() {
+    quiver::rng::seed(SEED);
+    let mut v = enveloped(0.2, 0.3, 0.6);
+    assert_eq!(v.env_phase(), 0.0);
+    let mut rising = Vec::new();
+    for _ in 0..(SR * 0.02) as usize {
+        v.patch.tick();
+        rising.push(v.env_phase());
+    }
+    assert!(rising.windows(2).all(|w| w[1] >= w[0]), "the attack fell");
+    for _ in 0..(SR * 3.0) as usize {
+        v.patch.tick();
+    }
+    assert!(
+        (v.env_phase() - 0.6).abs() < 0.01,
+        "held at {}",
+        v.env_phase()
+    );
+    v.gate.set(0.0);
+    for _ in 0..(SR * 0.2) as usize {
+        v.patch.tick();
+    }
+    assert!(v.env_phase() < 0.5, "released to {}", v.env_phase());
+}
+
+/// **A carried note resumes where it was.** `seed_env_phase` fast-forwards
+/// a held voice's envelope to the level asked: below the sustain level it
+/// stops on the attack there and goes on attacking at the patch's own rate;
+/// at or above it, it passes the peak and comes down to the level. The
+/// attack and decay knobs read as they did before, and a level of zero (a
+/// note with nothing to carry) seeds nothing.
+#[test]
+fn a_seeded_envelope_resumes_at_the_level_it_was() {
+    quiver::rng::seed(SEED);
+    let knobs = |v: &CompiledVoice| {
+        (
+            v.params["amp#attack"].value.get(),
+            v.params["amp#decay"].value.get(),
+        )
+    };
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    let before = knobs(&v);
+    assert!(v.seed_env_phase(0.3));
+    let seeded = v.env_phase();
+    assert!((0.3 - 1e-3..0.35).contains(&seeded), "seeded to {seeded}");
+    assert_eq!(knobs(&v), before, "the knobs were not put back");
+    v.patch.tick();
+    let next = v.env_phase();
+    assert!(
+        next > seeded && next - seeded < 0.01,
+        "the attack went on at {} a sample",
+        next - seeded
+    );
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    assert!(v.seed_env_phase(0.9));
+    let seeded = v.env_phase();
+    assert!((0.85..=0.9).contains(&seeded), "seeded to {seeded}");
+    for _ in 0..(SR * 0.05) as usize {
+        v.patch.tick();
+    }
+    assert!(v.env_phase() < seeded, "the decay did not go on");
+
+    let mut v = enveloped(0.5, 0.5, 0.6);
+    assert!(!v.seed_env_phase(0.0));
+    assert_eq!(v.env_phase(), 0.0, "nothing to carry, and nothing moved");
+}
+
+/// **A follower plays what its lead tracked, and stops with its key.** The
+/// leading voice tracks a 220 Hz tone; a follower built from the same tree
+/// (no input of its own, its TRACK fed by the lead each frame) is a key's
+/// voice: held, it sings the tone the lead tracked; let go, it falls
+/// silent while the lead, whose input still sounds, plays on.
+#[test]
+fn a_follower_plays_what_its_lead_tracked() {
+    quiver::rng::seed(SEED);
+    let n = (SR * 0.8) as usize;
+    let sung = tone(2 * n, 220.0);
+    let stream = stream_of(&sung);
+    let tree = patch(tracked(term::PitchBand::Mid, 0.0));
+    let mut lead = compile_with_input(&tree, SR, Some(&stream)).expect("compiles");
+    let mut follower = compile_follower(&tree, SR, None).expect("compiles");
+    assert_eq!(lead.tracker_keys(), ["node"]);
+    assert!(follower.tracker_keys().is_empty() && follower.track_feeds.contains_key("node"));
+    follower.pitch.set(2.0); // the key's own pitch, which the TRACK replaces
+    follower.gate.set(5.0);
+    let run = |lead: &mut CompiledVoice, follower: &mut CompiledVoice| {
+        let (mut led, mut followed) = (Vec::new(), Vec::new());
+        for _ in 0..n {
+            led.push(lead.patch.tick().0);
+            stream.advance();
+            lead.lead(follower);
+            followed.push(follower.patch.tick().0);
+        }
+        (led, followed)
+    };
+    let (_, held) = run(&mut lead, &mut follower);
+    let hz = frequency(&held[n / 2..]).expect("the follower sings");
+    assert!((1200.0 * (hz / 220.0).log2()).abs() < 5.0, "{hz:.2} Hz");
+    follower.gate.set(0.0);
+    let (led, released) = run(&mut lead, &mut follower);
+    let peak = |x: &[f64]| x.iter().fold(0.0f64, |m, s| m.max(s.abs()));
+    assert!(peak(&released[n / 2..]) < 1e-3, "the follower did not stop");
+    assert!(peak(&led[n / 2..]) > 0.05, "the lead stopped too");
+}
+
+/// **`read_tracks` hands over what `lead` does**, three values per TRACK in
+/// `tracker_keys` order (key order), for a host that feeds its followers
+/// from a copy; a buffer too short for a TRACK's three gets none of them.
+/// A follower is fed by key, so one holding fewer TRACKs gets only its own.
+/// After the patch's routing is rebuilt, the reads (now by name rather than
+/// by slot) are the ones a twin that kept its routing gives.
+#[test]
+fn read_tracks_copies_each_tracks_three_signals_in_key_order() {
+    quiver::rng::seed(SEED);
+    let n = (SR * 0.5) as usize;
+    let sung = tone(n, 220.0);
+    let two = patch(term::AudioNode::Mix {
+        uid: Uid::NEW,
+        balance: 0.5,
+        a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
+        b: Box::new(tracked(term::PitchBand::Mid, 0.5)),
+    });
+    let voice = |s: &Arc<AudioInputStream>| compile_with_input(&two, SR, Some(s)).unwrap();
+    let (sa, sb) = (stream_of(&sung), stream_of(&sung));
+    let (mut a, mut b) = (voice(&sa), voice(&sb));
+    assert_eq!(a.tracker_keys(), ["node/0", "node/1"]);
+    let follower = compile_follower(&two, SR, None).unwrap();
+    for _ in 0..n - 1 {
+        a.patch.tick();
+        sa.advance();
+        b.patch.tick();
+        sb.advance();
+    }
+    let mut copy = [f64::NAN; 6];
+    a.read_tracks(&mut copy);
+    a.lead(&follower);
+    for (i, key) in ["node/0", "node/1"].into_iter().enumerate() {
+        let feed = &follower.track_feeds[key];
+        assert_eq!(
+            copy[3 * i..3 * i + 3],
+            [feed.voct.get(), feed.gate.get(), feed.level.get()],
+            "{key}"
+        );
+    }
+    assert!(copy[0] != 0.0 && copy[1] > 2.5, "nothing tracked: {copy:?}");
+    // A follower of another tree, holding a TRACK only where the first of
+    // these two is, is fed that one's signals and nothing for the other.
+    let one = compile_follower(
+        &patch(term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(tracked(term::PitchBand::Mid, 0.0)),
+            b: Box::new(sine_vco()),
+        }),
+        SR,
+        None,
+    )
+    .unwrap();
+    a.lead(&one);
+    let feeds: Vec<&String> = one.track_feeds.keys().collect();
+    assert_eq!(feeds, ["node/0"]);
+    let fed = &one.track_feeds["node/0"];
+    assert_eq!([fed.voct.get(), fed.gate.get(), fed.level.get()], copy[..3]);
+    let mut short = [f64::NAN; 4];
+    a.read_tracks(&mut short);
+    assert_eq!(short[..3], copy[..3]);
+    assert!(short[3].is_nan(), "a TRACK's signals were split");
+
+    // The routing rebuilt under `b`: the next frame reads the same.
+    b.patch.compile().unwrap();
+    a.patch.tick();
+    b.patch.tick();
+    let (mut ra, mut rb) = ([0.0; 6], [0.0; 6]);
+    a.read_tracks(&mut ra);
+    b.read_tracks(&mut rb);
+    assert_eq!(ra, rb);
+}
+
+/// **Each pitch band tracks a note in its own range**: a low tone in the
+/// low band, a high one in the high band, each sung within 5 cents.
+#[test]
+fn each_band_tracks_a_note_in_its_range() {
+    quiver::rng::seed(SEED);
+    let n = (SR * 0.8) as usize;
+    for (band, hz) in [
+        (term::PitchBand::Low, 110.0),
+        (term::PitchBand::Mid, 220.0),
+        (term::PitchBand::High, 880.0),
+    ] {
+        let sung = tone(n, hz);
+        let stream = stream_of(&sung);
+        let mut v = compile_with_input(&patch(tracked(band, 0.0)), SR, Some(&stream)).unwrap();
+        let out: Vec<f64> = (0..n)
+            .map(|_| {
+                let (l, _) = v.patch.tick();
+                stream.advance();
+                l
+            })
+            .collect();
+        let got = frequency(&out[n / 2..]).unwrap_or(0.0);
+        assert!(
+            (1200.0 * (got / hz).log2()).abs() < 5.0,
+            "{band:?}: {got:.2} Hz for {hz} Hz"
+        );
+    }
+}
+
+/// A CAPTURE compiled with no take reads back as the empty take, and a key
+/// with no CAPTURE reads as none.
+#[test]
+fn a_capture_with_nothing_recorded_reads_as_the_empty_take() {
+    quiver::rng::seed(SEED);
+    let v = compile(&patch(captured(term::CaptureMode::Once, Take::empty())), SR).unwrap();
+    assert_eq!(v.take("node"), Some(Take::empty()));
+    assert_eq!(v.take("node/0"), None);
+}
+
+/// **A press records at most one take.** The record gate opens for a take's
+/// length at the voice's rate and then closes, however long the press;
+/// letting go and pressing again opens it again; a reset makes a press
+/// still held a new one; a new rate moves the bound, and a rate that is not
+/// one is ignored.
+#[test]
+fn a_record_window_opens_for_one_take_per_press() {
+    use quiver::port::PortValues;
+    let mut w = RecordWindow::new(100.0);
+    let n = w.max_samples();
+    assert_eq!(n, (TAKE_SECONDS * 100.0) as usize);
+    let (mut inp, mut out) = (PortValues::new(), PortValues::new());
+    let mut press = |w: &mut RecordWindow, held: bool, ticks: usize| {
+        inp.set(0, if held { 5.0 } else { 0.0 });
+        (0..ticks)
+            .filter(|_| {
+                w.tick(&inp, &mut out);
+                out.get(10) == Some(GATE_TRUE)
+            })
+            .count()
+    };
+    assert_eq!(press(&mut w, true, n + 50), n);
+    assert_eq!(press(&mut w, false, 1), 0);
+    assert_eq!(press(&mut w, true, 10), 10);
+    w.reset();
+    assert_eq!(press(&mut w, true, n + 50), n, "a reset is a new press");
+    w.set_sample_rate(200.0);
+    assert_eq!(w.max_samples(), 2 * n);
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        w.set_sample_rate(bad);
+        assert_eq!(w.max_samples(), 2 * n, "{bad}");
+    }
+    // It names itself in quiver's views of a compiled voice.
+    let v = compile(&patch(captured(term::CaptureMode::Once, Take::empty())), SR).unwrap();
+    assert!(format!("{:?}", v.patch).contains("(auracle_record_window)"));
+}
+
+/// A live write to a selector that became live clamps to a whole option
+/// (all eight wavetables, five octaves), where a continuous knob clamps to
+/// its domain: the value the voice hears is the one the term will hold.
+#[test]
+fn a_live_write_clamps_to_what_the_term_can_hold() {
+    assert_eq!(ParamMap::TableIndex.clamp_input(5.6), 6.0);
+    assert_eq!(ParamMap::TableIndex.clamp_input(12.0), 7.0);
+    assert_eq!(ParamMap::TableIndex.clamp_input(-3.0), 0.0);
+    assert_eq!(ParamMap::OctaveTrim(1).clamp_input(3.4), 3.0);
+    assert_eq!(ParamMap::OctaveTrim(1).clamp_input(9.0), 4.0);
+    assert_eq!(ParamMap::Unit.clamp_input(1.0), PARAM_MAX);
+    assert_eq!(ParamMap::Unit.clamp_input(-0.5), 0.0);
+}
+
+/// A hand-built modulation term the prior would never draw (a shaper over
+/// nothing, a pair with an empty side) compiles to exactly what its
+/// canonical form does: the voice plays the same samples.
+#[test]
+fn a_degenerate_mod_term_compiles_as_its_canonical_form() {
+    let lfo = || ModNode::Lfo {
+        uid: Uid::NEW,
+        wave: Waveform::Square,
+        rate: 0.6,
+    };
+    let op = |input: ModNode| ModNode::Op {
+        uid: Uid::NEW,
+        kind: ModOp::Slew,
+        p0: 0.2,
+        p1: 0.2,
+        input: Box::new(input),
+    };
+    let pair = |a: ModNode, b: ModNode| ModNode::Pair {
+        uid: Uid::NEW,
+        kind: PairOp::Max,
+        a: Box::new(a),
+        b: Box::new(b),
+    };
+    let render = |m: ModNode| {
+        quiver::rng::seed(SEED);
+        let mut v = compile(
+            &sustained(AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.4,
+                resonance: 0.3,
+                mod_depth: 0.8,
+                input: Box::new(saw()),
+                modulation: m,
+            }),
+            SR,
+        )
+        .unwrap();
+        hold(&mut v, 0.0, 8_000)
+    };
+    for m in [
+        op(ModNode::None),
+        pair(ModNode::None, ModNode::None),
+        pair(lfo(), ModNode::None),
+        pair(ModNode::None, lfo()),
+        op(pair(ModNode::None, lfo())),
+    ] {
+        let canonical = m.clone().normalized();
+        assert_ne!(m, canonical, "not degenerate: {m:?}");
+        assert_eq!(render(m.clone()), render(canonical), "{m:?}");
+    }
 }

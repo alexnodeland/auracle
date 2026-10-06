@@ -149,6 +149,16 @@ PR that brought one to 100% (auracle-features):
 The other sites are `auracle-session/src/map.rs` and `engine.rs`, and
 `auracle-wasm/src/shipped.rs`; each crate's coverage PR applies the rule.
 
+**An error no tree reaches records its fault, and the build returns it.**
+A step that only a mistake in the engine's own code can make fail (a
+compiler's cable to a port it named itself, a pin that cannot take) keeps
+its error, the first one, and the build returns it when it ends, with one
+test that makes the step fail and checks what is recorded and returned.
+Never a panic (an `expect`, an `unwrap`) for such a path in code the wasm
+engine runs: a panic there aborts the engine. Decided for #181 by
+auracle-grammar's coverage PR (`Compiler::record` and `take_fault` in
+`compile.rs`).
+
 ## Diagnostics worth knowing
 
 `make climb`, `make search-check`, `make islands`, `make phi-stats`,

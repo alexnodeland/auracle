@@ -411,6 +411,16 @@ pub struct ParamHandle {
     pub map: ParamMap,
 }
 
+/// The voice's amp envelope: its ADSR and the three knobs that shape it,
+/// held so [`CompiledVoice::env_phase`] and [`CompiledVoice::seed_env_phase`]
+/// read and drive them without looking them up. Every compiled voice has one.
+struct AmpEnvelope {
+    adsr: NodeId,
+    attack: ParamHandle,
+    decay: ParamHandle,
+    sustain: ParamHandle,
+}
+
 impl ParamHandle {
     /// Write a knob value in the site's own units — 0..1 for a continuous
     /// knob, a category index for the two live categorical sites (see
@@ -479,6 +489,8 @@ pub struct CompiledVoice {
     /// the patch — a recompile the audio thread would have to be staged around.
     /// Metering here costs no recompile at all.
     pub taps: HashMap<String, (String, PortId)>,
+    /// The amp envelope ([`AmpEnvelope`]).
+    amp: AmpEnvelope,
 }
 
 /// A gate that stays high for at most [`TAKE_SECONDS`] after it rises: a
@@ -671,10 +683,8 @@ impl CompiledVoice {
     /// voice has ticked at least once and zero before that.
     pub fn env_phase(&self) -> f64 {
         self.patch
-            .get_node_id_by_name(AMP_ADSR)
-            .and_then(|n| self.patch.get_output_value(n, ADSR_ENV_PORT))
-            .map(|v| (v * 0.1).clamp(0.0, 1.0))
-            .unwrap_or(0.0)
+            .get_output_value(self.amp.adsr, ADSR_ENV_PORT)
+            .map_or(0.0, |v| (v * 0.1).clamp(0.0, 1.0))
     }
 
     /// Fast-forward this voice's amp envelope to `level` (0..1), with the gate
@@ -719,26 +729,19 @@ impl CompiledVoice {
     /// [R3]: the panel plan's §4 risk register.
     pub fn seed_env_phase(&mut self, level: f64) -> bool {
         let level = level.clamp(0.0, 1.0);
-        let Some(adsr) = self.patch.get_node_id_by_name(AMP_ADSR) else {
-            return false;
-        };
         // A percussive patch (sustain 0) whose note has already decayed has no
         // phase to carry, and neither has a note that never sounded.
         if level <= 0.0 {
             return false;
         }
-        let (Some(attack), Some(decay), Some(sustain)) = (
-            self.params.get("amp#attack").cloned(),
-            self.params.get("amp#decay").cloned(),
-            self.params.get("amp#sustain").cloned(),
-        ) else {
-            return false;
-        };
-        let sustain = sustain.value.get();
-        let (a0, d0) = (attack.value.get(), decay.value.get());
+        let adsr = self.amp.adsr;
+        let attack = Arc::clone(&self.amp.attack.value);
+        let decay = Arc::clone(&self.amp.decay.value);
+        let sustain = self.amp.sustain.value.get();
+        let (a0, d0) = (attack.get(), decay.get());
         // `ParamMap::Unit` on both, and quiver maps 0 V to its 1 ms floor.
-        attack.value.set(0.0);
-        decay.value.set(0.0);
+        attack.set(0.0);
+        decay.set(0.0);
 
         let peak = if level < sustain { level } else { 1.0 };
         for _ in 0..SEED_MAX_TICKS {
@@ -768,8 +771,8 @@ impl CompiledVoice {
             }
         }
 
-        attack.value.set(a0);
-        decay.value.set(d0);
+        attack.set(a0);
+        decay.set(d0);
         true
     }
 }
@@ -1308,6 +1311,12 @@ struct Compiler {
     /// afterwards (the end of [`compile`]).
     #[cfg(test)]
     pins: Vec<(NodeId, &'static str, f64)>,
+    /// The first error a step of the build that no tree can make fail ran
+    /// into (a knob's cable, a modulation term's wiring): recorded here by
+    /// [`Self::record`] so the build goes on, and returned when it ends
+    /// ([`Self::take_fault`]). Never a panic: the wasm engine compiles every
+    /// patch, and a panic there aborts the engine.
+    fault: Option<PatchError>,
 }
 
 impl Compiler {
@@ -1340,7 +1349,20 @@ impl Compiler {
             track_feeds: HashMap::new(),
             #[cfg(test)]
             pins: Vec::new(),
+            fault: None,
         }
+    }
+
+    /// Keep `e` as the build's fault, unless an earlier one is already kept:
+    /// the first is the cause, and what follows it only repeats it.
+    fn record(&mut self, e: PatchError) {
+        self.fault.get_or_insert(e);
+    }
+
+    /// The build's fault, if a step recorded one, as the error the build
+    /// returns.
+    fn take_fault(&mut self) -> Result<(), PatchError> {
+        self.fault.take().map_or(Ok(()), Err)
     }
 
     /// Pin the control input `port` on `node` to a constant `value`. Used only
@@ -1418,8 +1440,8 @@ impl Compiler {
         pmap: ParamMap,
         bipolar: bool,
         target: PortRef,
-    ) -> Result<(), PatchError> {
-        self.knob_to(key, site, raw, pmap, bipolar, &[target])
+    ) {
+        self.knob_to(key, site, raw, pmap, bipolar, &[target]);
     }
 
     /// [`Self::knob`] with the same atomic cabled to several ports.
@@ -1437,7 +1459,7 @@ impl Compiler {
         pmap: ParamMap,
         bipolar: bool,
         targets: &[PortRef],
-    ) -> Result<(), PatchError> {
+    ) {
         let value = Arc::new(AtomicF64::new(pmap.apply(raw)));
         let input = if bipolar {
             ExternalInput::cv_bipolar(Arc::clone(&value))
@@ -1446,11 +1468,15 @@ impl Compiler {
         };
         let n = self.patch.add(format!("{key}:{site}!"), input);
         for target in targets {
-            self.patch.connect(n.out("out"), *target)?;
+            // A port this compiler named on its own patch, in Warn mode: no
+            // tree makes this fail, and if the compiler ever does, the build
+            // returns the error rather than aborting the engine.
+            if let Err(e) = self.patch.connect(n.out("out"), *target) {
+                self.record(e);
+            }
         }
         self.params
             .insert(format!("{key}#{site}"), ParamHandle { value, map: pmap });
-        Ok(())
     }
 
     /// Wire a modulation term into `target`. `ModNode::None` wires nothing.
@@ -1488,6 +1514,24 @@ impl Compiler {
         target: PortRef,
         owner_input: Option<Sig>,
         scale: DepthScale,
+    ) {
+        // Wiring a term the grammar can hold fails only on a compiler
+        // mistake (a pin that cannot take, `constant`'s diagnostic): the
+        // fault is recorded and the build returns it when it ends.
+        if let Err(e) = self.try_wire_mod(m, owner, depth, target, owner_input, scale) {
+            self.record(e);
+        }
+    }
+
+    /// [`Self::wire_mod`]'s steps, stopping at the first that fails.
+    fn try_wire_mod(
+        &mut self,
+        m: &ModNode,
+        owner: &str,
+        depth: f64,
+        target: PortRef,
+        owner_input: Option<Sig>,
+        scale: DepthScale,
     ) -> Result<(), PatchError> {
         let key = &format!("{owner}/m");
         let Some((src, unipolar)) = self.build_mod(m, key, owner_input)? else {
@@ -1502,7 +1546,7 @@ impl Compiler {
             scale.taper(unipolar),
             true,
             att.in_("level"),
-        )?;
+        );
         self.patch.connect(att.out("out"), target)?;
         Ok(())
     }
@@ -1536,14 +1580,14 @@ impl Compiler {
             ModNode::None => return Ok(None),
             ModNode::Lfo { wave, rate, .. } => {
                 let lfo = self.patch.add(format!("{key}:lfo"), Lfo::new(self.sr()));
-                self.knob(key, "rate", *rate, ParamMap::Unit, false, lfo.in_("rate"))?;
+                self.knob(key, "rate", *rate, ParamMap::Unit, false, lfo.in_("rate"));
                 (lfo.out(wave.port_name()), false)
             }
             ModNode::Rand { rate, glide, .. } => {
                 // S&H burble: white noise sampled on an internal square-LFO
                 // clock. The knob drives the clock rate.
                 let clk = self.patch.add(format!("{key}:rclk"), Lfo::new(self.sr()));
-                self.knob(key, "rate", *rate, ParamMap::Unit, false, clk.in_("rate"))?;
+                self.knob(key, "rate", *rate, ParamMap::Unit, false, clk.in_("rate"));
                 let noise = self
                     .patch
                     .add(format!("{key}:rnoise"), NoiseGenerator::new());
@@ -1568,7 +1612,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     &[slew.in_("rise"), slew.in_("fall")],
-                )?;
+                );
                 (slew.out("out"), false)
             }
             ModNode::Follow { sens, release, .. } => {
@@ -1595,7 +1639,7 @@ impl Compiler {
                 if let Some(input) = owner_input {
                     self.feed(input, f.in_("in"))?;
                 }
-                self.knob(key, "sens", *sens, ParamMap::Unit, false, f.in_("gain"))?;
+                self.knob(key, "sens", *sens, ParamMap::Unit, false, f.in_("gain"));
                 self.knob(
                     key,
                     "rel",
@@ -1603,7 +1647,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     f.in_("release"),
-                )?;
+                );
                 self.constant(FOLLOW_ATTACK, f.id(), "attack")?;
                 // 0–10 V detector output, so it shares the mod envelope's
                 // taper rather than the bipolar one.
@@ -1619,8 +1663,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     env.in_("attack"),
-                )?;
-                self.knob(key, "dec", *decay, ParamMap::Unit, false, env.in_("decay"))?;
+                );
+                self.knob(key, "dec", *decay, ParamMap::Unit, false, env.in_("decay"));
                 // AD shape: no sustain plateau, quick release.
                 self.constant(0.0, env.id(), "sustain")?;
                 self.constant(0.1, env.id(), "release")?;
@@ -1643,7 +1687,7 @@ impl Compiler {
                     ParamMap::ClockRate,
                     false,
                     clk.in_("bpm"),
-                )?;
+                );
                 let eu = self
                     .patch
                     .add(format!("{key}:euclid"), Euclidean::new(self.sr()));
@@ -1655,7 +1699,7 @@ impl Compiler {
                     ParamMap::EuclidSteps,
                     false,
                     eu.in_("steps"),
-                )?;
+                );
                 self.knob(
                     key,
                     "epulses",
@@ -1663,7 +1707,7 @@ impl Compiler {
                     ParamMap::EuclidPulses,
                     false,
                     eu.in_("pulses"),
-                )?;
+                );
                 self.constant(EUCLID_ROTATION, eu.id(), "rotation")?;
                 // `reset` stays unpatched: quiver's gather writes the port's
                 // own 0 V default, and the pattern is already re-armed by its
@@ -1716,7 +1760,7 @@ impl Compiler {
                             .map(|(i, v)| (*v, StepsCv::value_port(i))),
                     );
                 for ((raw, port), site) in knobs.zip(STEPS_SITES) {
-                    self.knob(key, site, raw, ParamMap::Unit, false, seq.in_(port))?;
+                    self.knob(key, site, raw, ParamMap::Unit, false, seq.in_(port));
                 }
                 // The transport position for tempo sync: a live handle that is
                 // not a genome site (the `~` keeps it out of any address a
@@ -1796,11 +1840,11 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:quant"), ScaleQuantizer::new(self.sr()));
                 self.patch.connect(a_in.out("out"), q.in_("in"))?;
-                self.knob(key, "qroot", p0, ParamMap::Unit, false, q.in_("root"))?;
+                self.knob(key, "qroot", p0, ParamMap::Unit, false, q.in_("root"));
                 // Straight through: quiver's own `(cv·6.99) as u8` is the
                 // seven-way selector, so the knob *is* the categorical and
                 // `crate::term::quant_scale_index` reads it the same way.
-                self.knob(key, "qscale", p1, ParamMap::Unit, false, q.in_("scale"))?;
+                self.knob(key, "qscale", p1, ParamMap::Unit, false, q.in_("scale"));
                 let a_out = self.patch.add(format!("{key}:qout"), Attenuverter::new());
                 self.patch.connect(q.out("out"), a_out.in_("in"))?;
                 self.constant(QUANTIZE_OUT_LEVEL, a_out.id(), "level")?;
@@ -1811,8 +1855,8 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:slew"), SlewLimiter::new(self.sr()));
                 self.patch.connect(src, s.in_("in"))?;
-                self.knob(key, "rise", p0, ParamMap::SlewTime, false, s.in_("rise"))?;
-                self.knob(key, "fall", p1, ParamMap::SlewTime, false, s.in_("fall"))?;
+                self.knob(key, "rise", p0, ParamMap::SlewTime, false, s.in_("rise"));
+                self.knob(key, "fall", p1, ParamMap::SlewTime, false, s.in_("fall"));
                 (s.out("out"), unipolar)
             }
             ModOp::Rectify => {
@@ -1846,7 +1890,7 @@ impl Compiler {
             }
             ModOp::Hold => {
                 let clk = self.patch.add(format!("{key}:hclk"), Clock::new(self.sr()));
-                self.knob(key, "hrate", p0, ParamMap::ClockRate, false, clk.in_("bpm"))?;
+                self.knob(key, "hrate", p0, ParamMap::ClockRate, false, clk.in_("bpm"));
                 let snh = self.patch.add(format!("{key}:hold"), SampleAndHold::new());
                 self.patch.connect(src, snh.in_("in"))?;
                 self.patch.connect(clk.out("out"), snh.in_("trig"))?;
@@ -2047,7 +2091,7 @@ impl Compiler {
             // source in every patch.
             true,
             node.in_("in"),
-        )?;
+        );
         Ok(node.in_("in"))
     }
 
@@ -2095,7 +2139,7 @@ impl Compiler {
                     // for a follower to tap — as on the wavetable and pluck.
                     None,
                     DepthScale::Pitch,
-                )?;
+                );
                 Ok(Sig::mono(vco.out(wave.port_name())))
             }
             AudioNode::Supersaw {
@@ -2117,7 +2161,7 @@ impl Compiler {
                     pitch_in,
                     None,
                     DepthScale::Pitch,
-                )?;
+                );
                 self.knob(
                     key,
                     "det",
@@ -2125,8 +2169,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     saw.in_("detune"),
-                )?;
-                self.knob(key, "smix", *mix, ParamMap::Unit, false, saw.in_("mix"))?;
+                );
+                self.knob(key, "smix", *mix, ParamMap::Unit, false, saw.in_("mix"));
                 Ok(Sig::mono(saw.out("out")))
             }
             AudioNode::Noise { color, .. } => {
@@ -2186,7 +2230,7 @@ impl Compiler {
                     ParamMap::InputGain,
                     false,
                     n.in_("gain"),
-                )?;
+                );
                 Ok(Sig::mono(n.out("out")))
             }
             AudioNode::Wavetable {
@@ -2226,13 +2270,13 @@ impl Compiler {
                     ParamMap::TableIndex,
                     false,
                     wt.in_("table"),
-                )?;
+                );
                 // No hard sync: the grammar has no second oscillator to sync
                 // *to*, and quiver retriggers phase on any positive edge, so
                 // an unpinned Gate-kind port would be one stray cable away
                 // from turning the oscillator into a buzz.
                 self.constant(0.0, wt.id(), "sync")?;
-                self.knob(key, "morph", *morph, ParamMap::Unit, false, wt.in_("morph"))?;
+                self.knob(key, "morph", *morph, ParamMap::Unit, false, wt.in_("morph"));
                 self.wire_mod(
                     modulation,
                     key,
@@ -2240,7 +2284,7 @@ impl Compiler {
                     wt.in_("morph"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(wt.out("out")))
             }
             AudioNode::Pluck {
@@ -2267,7 +2311,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ks.in_("damping"),
-                )?;
+                );
                 self.knob(
                     key,
                     "bright",
@@ -2275,7 +2319,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ks.in_("brightness"),
-                )?;
+                );
                 // No inharmonicity. `stretch` detunes the string's partials
                 // away from the harmonic series, and quiver applies it as a
                 // one-pole allpass inside the feedback loop, so it also moves
@@ -2289,7 +2333,7 @@ impl Compiler {
                     ks.in_("damping"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(ks.out("out")))
             }
             AudioNode::Formant {
@@ -2307,7 +2351,7 @@ impl Compiler {
                 // module has no detune site, but its pitch still goes through
                 // the same Offset as every other source.
                 self.wire_pitch(key, *octave, 0.5, fo.in_("v_oct"))?;
-                self.knob(key, "vowel", *vowel, ParamMap::Unit, false, fo.in_("vowel"))?;
+                self.knob(key, "vowel", *vowel, ParamMap::Unit, false, fo.in_("vowel"));
                 self.knob(
                     key,
                     "fshift",
@@ -2315,7 +2359,7 @@ impl Compiler {
                     ParamMap::FormantShift,
                     true,
                     fo.in_("formant_shift"),
-                )?;
+                );
                 self.constant(FORMANT_VIBRATO, fo.id(), "vibrato")?;
                 // The vowel knob and the mod cable sum on one port, as on the
                 // wavefolder threshold.
@@ -2326,7 +2370,7 @@ impl Compiler {
                     fo.in_("vowel"),
                     None,
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(fo.out("out")))
             }
             AudioNode::Mix { balance, a, b, .. } => {
@@ -2342,7 +2386,7 @@ impl Compiler {
                     ParamMap::XfadePos,
                     true,
                     xf.in_("pos"),
-                )?;
+                );
                 Ok(Sig::mono(xf.out("out")))
             }
             AudioNode::Filter {
@@ -2380,7 +2424,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     filt.in_("cutoff"),
-                )?;
+                );
                 self.knob(
                     key,
                     "res",
@@ -2388,7 +2432,7 @@ impl Compiler {
                     ParamMap::Resonance,
                     false,
                     filt.in_("res"),
-                )?;
+                );
                 // Keyboard tracking. Without it `keytrack_amt` stays at
                 // quiver's 0.0 default and the corner never moves: a patch
                 // dialled in at cutoff 0.3 (≈159 Hz) speaks at C3 and is gone
@@ -2404,7 +2448,7 @@ impl Compiler {
                     filt.in_("fm"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(filt.out(out_port)))
             }
             AudioNode::Fold {
@@ -2434,7 +2478,7 @@ impl Compiler {
                     ParamMap::FoldThreshold,
                     false,
                     fold.in_("threshold"),
-                )?;
+                );
                 self.wire_mod(
                     modulation,
                     key,
@@ -2442,7 +2486,7 @@ impl Compiler {
                     fold.in_("threshold"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(fold.out("out")))
             }
             AudioNode::Delay {
@@ -2459,7 +2503,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:delay"), DelayLine::new(self.sr()));
                 self.feed(in_out, dl.in_("in"))?;
-                self.knob(key, "time", *time, ParamMap::Unit, false, dl.in_("time"))?;
+                self.knob(key, "time", *time, ParamMap::Unit, false, dl.in_("time"));
                 self.knob(
                     key,
                     "fb",
@@ -2467,8 +2511,8 @@ impl Compiler {
                     ParamMap::Feedback,
                     false,
                     dl.in_("feedback"),
-                )?;
-                self.knob(key, "dmix", *mix, ParamMap::Unit, false, dl.in_("mix"))?;
+                );
+                self.knob(key, "dmix", *mix, ParamMap::Unit, false, dl.in_("mix"));
                 // Modulating delay time is the only way this grammar reaches
                 // tape wow, flange and doppler smear; the knob and the mod
                 // cable sum on one port, as on the wavefolder.
@@ -2479,7 +2523,7 @@ impl Compiler {
                     dl.in_("time"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(dl.out("out")))
             }
             AudioNode::Chorus {
@@ -2496,7 +2540,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:chorus"), Chorus::new(self.sr()));
                 self.feed(in_out, ch.in_("in"))?;
-                self.knob(key, "crate", *rate, ParamMap::Unit, false, ch.in_("rate"))?;
+                self.knob(key, "crate", *rate, ParamMap::Unit, false, ch.in_("rate"));
                 self.knob(
                     key,
                     "cdepth",
@@ -2504,8 +2548,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ch.in_("depth"),
-                )?;
-                self.knob(key, "cmix", *mix, ParamMap::Unit, false, ch.in_("mix"))?;
+                );
+                self.knob(key, "cmix", *mix, ParamMap::Unit, false, ch.in_("mix"));
                 self.wire_mod(
                     modulation,
                     key,
@@ -2513,7 +2557,7 @@ impl Compiler {
                     ch.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Width is the entire reason a chorus exists; port 10 (`out`)
                 // is the mono sum of the two voices and throws it away.
                 Ok(Sig::stereo(ch.out("left"), ch.out("right")))
@@ -2532,7 +2576,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:reverb"), Reverb::new(self.sr()));
                 self.feed(in_out, rv.in_("in"))?;
-                self.knob(key, "rsize", *size, ParamMap::Unit, false, rv.in_("size"))?;
+                self.knob(key, "rsize", *size, ParamMap::Unit, false, rv.in_("size"));
                 self.knob(
                     key,
                     "rdamp",
@@ -2540,8 +2584,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     rv.in_("damping"),
-                )?;
-                self.knob(key, "rmix", *mix, ParamMap::Unit, false, rv.in_("mix"))?;
+                );
+                self.knob(key, "rmix", *mix, ParamMap::Unit, false, rv.in_("mix"));
                 self.wire_mod(
                     modulation,
                     key,
@@ -2549,7 +2593,7 @@ impl Compiler {
                     rv.in_("size"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // The decorrelation between the two tanks *is* the reverb.
                 Ok(Sig::stereo(rv.out("left"), rv.out("right")))
             }
@@ -2567,8 +2611,8 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:dist"), Distortion::new(self.sr()));
                 self.feed(in_out, ds.in_("in"))?;
-                self.knob(key, "drive", *drive, ParamMap::Unit, false, ds.in_("drive"))?;
-                self.knob(key, "tone", *tone, ParamMap::Unit, false, ds.in_("tone"))?;
+                self.knob(key, "drive", *drive, ParamMap::Unit, false, ds.in_("drive"));
+                self.knob(key, "tone", *tone, ParamMap::Unit, false, ds.in_("tone"));
                 self.constant(map::drive_mode_cv(mode.index()), ds.id(), "mode")?;
                 // Fully wet. quiver's `mix` blends the shaped signal back
                 // against the dry one, which is a *second* wet/dry control on
@@ -2583,7 +2627,7 @@ impl Compiler {
                     ds.in_("drive"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(ds.out("out")))
             }
             AudioNode::Bitcrush {
@@ -2597,7 +2641,7 @@ impl Compiler {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let bc = self.patch.add(format!("{key}:crush"), Bitcrusher::new());
                 self.feed(in_out, bc.in_("in"))?;
-                self.knob(key, "bits", *bits, ParamMap::Unit, false, bc.in_("bits"))?;
+                self.knob(key, "bits", *bits, ParamMap::Unit, false, bc.in_("bits"));
                 self.knob(
                     key,
                     "dsamp",
@@ -2605,7 +2649,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     bc.in_("downsample"),
-                )?;
+                );
                 self.wire_mod(
                     modulation,
                     key,
@@ -2613,7 +2657,7 @@ impl Compiler {
                     bc.in_("bits"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(bc.out("out")))
             }
             AudioNode::Phaser {
@@ -2630,7 +2674,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:phaser"), Phaser::new(self.sr()));
                 self.feed(in_out, ph.in_("in"))?;
-                self.knob(key, "prate", *rate, ParamMap::Unit, false, ph.in_("rate"))?;
+                self.knob(key, "prate", *rate, ParamMap::Unit, false, ph.in_("rate"));
                 self.knob(
                     key,
                     "pdepth",
@@ -2638,7 +2682,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ph.in_("depth"),
-                )?;
+                );
                 self.knob(
                     key,
                     "pfb",
@@ -2646,7 +2690,7 @@ impl Compiler {
                     ParamMap::FeedbackBipolar,
                     true,
                     ph.in_("feedback"),
-                )?;
+                );
                 self.constant(PHASER_STAGES, ph.id(), "stages")?;
                 self.constant(PHASER_SPREAD, ph.id(), "spread")?;
                 self.constant(PHASER_MIX, ph.id(), "mix")?;
@@ -2657,7 +2701,7 @@ impl Compiler {
                     ph.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Ports 11/12 are the spread pair; port 10 is the mono sweep
                 // and discards the decorrelation `spread` exists to create.
                 Ok(Sig::stereo(ph.out("left"), ph.out("right")))
@@ -2676,7 +2720,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:flanger"), Flanger::new(self.sr()));
                 self.feed(in_out, fl.in_("in"))?;
-                self.knob(key, "frate", *rate, ParamMap::Unit, false, fl.in_("rate"))?;
+                self.knob(key, "frate", *rate, ParamMap::Unit, false, fl.in_("rate"));
                 self.knob(
                     key,
                     "fdepth",
@@ -2684,7 +2728,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     fl.in_("depth"),
-                )?;
+                );
                 // A `CvBipolar` port, exactly as on the phaser: negative
                 // feedback deepens the notches, positive one sharpens the
                 // peaks, and knob centre is neither.
@@ -2695,7 +2739,7 @@ impl Compiler {
                     ParamMap::FeedbackBipolar,
                     true,
                     fl.in_("feedback"),
-                )?;
+                );
                 self.constant(FLANGER_MIX, fl.id(), "mix")?;
                 self.constant(FLANGER_SPREAD, fl.id(), "spread")?;
                 self.wire_mod(
@@ -2705,7 +2749,7 @@ impl Compiler {
                     fl.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 // Ports 11/12 are the spread pair; port 10 is bit-identical to
                 // `left` and throws the decorrelation away.
                 Ok(Sig::stereo(fl.out("left"), fl.out("right")))
@@ -2724,7 +2768,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:tremolo"), Tremolo::new(self.sr()));
                 self.feed(in_out, tr.in_("in"))?;
-                self.knob(key, "trate", *rate, ParamMap::Unit, false, tr.in_("rate"))?;
+                self.knob(key, "trate", *rate, ParamMap::Unit, false, tr.in_("rate"));
                 self.knob(
                     key,
                     "tdepth",
@@ -2732,7 +2776,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     tr.in_("depth"),
-                )?;
+                );
                 // Sine at 0, triangle at 1 — the difference between a breathing
                 // amplitude and a stepped one at the same rate.
                 self.knob(
@@ -2742,7 +2786,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     tr.in_("shape"),
-                )?;
+                );
                 self.wire_mod(
                     modulation,
                     key,
@@ -2750,7 +2794,7 @@ impl Compiler {
                     tr.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(tr.out("out")))
             }
             AudioNode::Vibrato {
@@ -2767,7 +2811,7 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:vibrato"), Vibrato::new(self.sr()));
                 self.feed(in_out, vb.in_("in"))?;
-                self.knob(key, "vrate", *rate, ParamMap::Unit, false, vb.in_("rate"))?;
+                self.knob(key, "vrate", *rate, ParamMap::Unit, false, vb.in_("rate"));
                 self.knob(
                     key,
                     "vdepth",
@@ -2775,13 +2819,13 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     vb.in_("depth"),
-                )?;
+                );
                 // Kept as a knob rather than pinned wet, because the whole
                 // travel is musical — it is just that the interesting half is
                 // the top. Below ~0.7 the dry copy beats against the shifted
                 // one and the module becomes a chorus, which is a different
                 // module in this palette.
-                self.knob(key, "vmix", *mix, ParamMap::Unit, false, vb.in_("mix"))?;
+                self.knob(key, "vmix", *mix, ParamMap::Unit, false, vb.in_("mix"));
                 self.wire_mod(
                     modulation,
                     key,
@@ -2789,7 +2833,7 @@ impl Compiler {
                     vb.in_("depth"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(vb.out("out")))
             }
             AudioNode::Eq {
@@ -2817,7 +2861,7 @@ impl Compiler {
                     ParamMap::GainBipolar,
                     true,
                     eq.in_("low_gain"),
-                )?;
+                );
                 self.knob(
                     key,
                     "mid",
@@ -2825,7 +2869,7 @@ impl Compiler {
                     ParamMap::GainBipolar,
                     true,
                     eq.in_("mid_gain"),
-                )?;
+                );
                 self.knob(
                     key,
                     "high",
@@ -2833,7 +2877,7 @@ impl Compiler {
                     ParamMap::GainBipolar,
                     true,
                     eq.in_("high_gain"),
-                )?;
+                );
                 self.constant(EQ_LOW_FREQ, eq.id(), "low_freq")?;
                 self.constant(EQ_MID_FREQ, eq.id(), "mid_freq")?;
                 self.constant(EQ_MID_Q, eq.id(), "mid_q")?;
@@ -2848,7 +2892,7 @@ impl Compiler {
                     eq.in_("mid_gain"),
                     Some(in_out),
                     DepthScale::Gain,
-                )?;
+                );
                 Ok(Sig::mono(eq.out("out")))
             }
             AudioNode::Granular {
@@ -2875,8 +2919,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     gr.in_("position"),
-                )?;
-                self.knob(key, "gsize", *size, ParamMap::Unit, false, gr.in_("size"))?;
+                );
+                self.knob(key, "gsize", *size, ParamMap::Unit, false, gr.in_("size"));
                 self.knob(
                     key,
                     "gdens",
@@ -2884,7 +2928,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     gr.in_("density"),
-                )?;
+                );
                 self.constant(GRANULAR_PITCH, gr.id(), "pitch")?;
                 self.constant(GRANULAR_SPRAY, gr.id(), "spray")?;
                 self.constant(GRANULAR_FREEZE, gr.id(), "freeze")?;
@@ -2899,7 +2943,7 @@ impl Compiler {
                     gr.in_("position"),
                     Some(in_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(gr.out("out")))
             }
             AudioNode::RingMod { mix, a, b, .. } => {
@@ -2917,7 +2961,7 @@ impl Compiler {
                 let xf = self.patch.add(format!("{key}:rgmix"), Crossfader::new());
                 self.feed(a_out, xf.in_("a"))?;
                 self.patch.connect(rm.out("out"), xf.in_("b"))?;
-                self.knob(key, "rgmix", *mix, ParamMap::XfadePos, true, xf.in_("pos"))?;
+                self.knob(key, "rgmix", *mix, ParamMap::XfadePos, true, xf.in_("pos"));
                 Ok(Sig::mono(xf.out("out")))
             }
             AudioNode::Shift {
@@ -2945,7 +2989,7 @@ impl Compiler {
                     ParamMap::Semitones,
                     true,
                     ps.in_("shift"),
-                )?;
+                );
                 self.knob(
                     key,
                     "window",
@@ -2953,8 +2997,8 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ps.in_("window"),
-                )?;
-                self.knob(key, "smix", *mix, ParamMap::Unit, false, ps.in_("mix"))?;
+                );
+                self.knob(key, "smix", *mix, ParamMap::Unit, false, ps.in_("mix"));
                 self.wire_mod(
                     modulation,
                     key,
@@ -2962,7 +3006,7 @@ impl Compiler {
                     ps.in_("shift"),
                     Some(in_out),
                     DepthScale::Shift,
-                )?;
+                );
                 Ok(Sig::mono(ps.out("out")))
             }
             AudioNode::Comp {
@@ -2994,8 +3038,8 @@ impl Compiler {
                     ParamMap::DetectorThreshold,
                     false,
                     cp.in_("threshold"),
-                )?;
-                self.knob(key, "ratio", *ratio, ParamMap::Unit, false, cp.in_("ratio"))?;
+                );
+                self.knob(key, "ratio", *ratio, ParamMap::Unit, false, cp.in_("ratio"));
                 self.knob(
                     key,
                     "makeup",
@@ -3003,7 +3047,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     cp.in_("makeup"),
-                )?;
+                );
                 self.constant(COMP_ATTACK, cp.id(), "attack")?;
                 self.constant(COMP_RELEASE, cp.id(), "release")?;
                 // Threshold is the slot: moving it is what turns a static gain
@@ -3017,7 +3061,7 @@ impl Compiler {
                     cp.in_("threshold"),
                     Some(in_out),
                     DepthScale::Detector,
-                )?;
+                );
                 Ok(Sig::mono(cp.out("out")))
             }
             AudioNode::Duck {
@@ -3047,7 +3091,7 @@ impl Compiler {
                     ParamMap::DuckAmount,
                     true,
                     dk.in_("amount"),
-                )?;
+                );
                 self.knob(
                     key,
                     "dthresh",
@@ -3055,7 +3099,7 @@ impl Compiler {
                     ParamMap::DuckThreshold,
                     true,
                     dk.in_("threshold"),
-                )?;
+                );
                 self.knob(
                     key,
                     "drel",
@@ -3063,7 +3107,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     dk.in_("release"),
-                )?;
+                );
                 self.constant(DUCK_ATTACK, dk.id(), "attack")?;
                 self.wire_mod(
                     modulation,
@@ -3072,7 +3116,7 @@ impl Compiler {
                     dk.in_("amount"),
                     Some(in_out),
                     DepthScale::ParamCv,
-                )?;
+                );
                 Ok(Sig::mono(dk.out("out")))
             }
             AudioNode::Gate {
@@ -3102,8 +3146,8 @@ impl Compiler {
                     ParamMap::DetectorThreshold,
                     false,
                     ng.in_("threshold"),
-                )?;
-                self.knob(key, "range", *range, ParamMap::Unit, false, ng.in_("range"))?;
+                );
+                self.knob(key, "range", *range, ParamMap::Unit, false, ng.in_("range"));
                 self.knob(
                     key,
                     "grel",
@@ -3111,7 +3155,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     ng.in_("release"),
-                )?;
+                );
                 self.constant(GATE_ATTACK, ng.id(), "attack")?;
                 self.wire_mod(
                     modulation,
@@ -3120,7 +3164,7 @@ impl Compiler {
                     ng.in_("threshold"),
                     Some(in_out),
                     DepthScale::Detector,
-                )?;
+                );
                 Ok(Sig::mono(ng.out("out")))
             }
             AudioNode::Vocoder {
@@ -3140,7 +3184,7 @@ impl Compiler {
                     .add(format!("{key}:vocoder"), Vocoder::new(self.sr()));
                 self.feed(carrier_out, vc.in_("carrier"))?;
                 self.feed(mod_out, vc.in_("modulator"))?;
-                self.knob(key, "bands", *bands, ParamMap::Unit, false, vc.in_("bands"))?;
+                self.knob(key, "bands", *bands, ParamMap::Unit, false, vc.in_("bands"));
                 self.knob(
                     key,
                     "vatt",
@@ -3148,7 +3192,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     vc.in_("attack"),
-                )?;
+                );
                 self.knob(
                     key,
                     "vrel",
@@ -3156,7 +3200,7 @@ impl Compiler {
                     ParamMap::Unit,
                     false,
                     vc.in_("release"),
-                )?;
+                );
                 // Band count is the slot. quiver quantizes it (`round(4 +
                 // 12·cv)`), so this is the one mod destination in the grammar
                 // that steps rather than sweeps — which is the honest thing
@@ -3174,7 +3218,7 @@ impl Compiler {
                     // follows.
                     Some(carrier_out),
                     DepthScale::Normalized,
-                )?;
+                );
                 Ok(Sig::mono(vc.out("out")))
             }
             // The input plays `/0`. The tracker is built on `/1` first, and
@@ -3225,7 +3269,7 @@ impl Compiler {
                         ParamMap::TrackSensitivity,
                         false,
                         tr.in_("threshold"),
-                    )?;
+                    );
                     (tr.out("voct"), tr.out("gate"), tr.out("level"))
                 };
                 let keys = (self.pitch_out, self.gate_out);
@@ -3258,7 +3302,7 @@ impl Compiler {
                     ParamMap::TrackDynamics,
                     false,
                     depth.in_("level"),
-                )?;
+                );
                 let cv = self.patch.add(format!("{key}:tcv"), Offset::new(10.0));
                 self.patch.connect(depth.out("out"), cv.in_("in"))?;
                 let left = self.track_vca(key, "", played.left, cv.out("out"))?;
@@ -3544,7 +3588,7 @@ fn compile_voice(
     let audio_out = c.build(&tree.root, "node")?;
 
     // Mandatory voice stage: amp ADSR → VCA → limiter → stereo out.
-    let adsr = c.patch.add("voice:adsr", Adsr::new(sample_rate));
+    let adsr = c.patch.add(AMP_ADSR, Adsr::new(sample_rate));
     c.patch.connect(c.gate_out, adsr.in_("gate"))?;
     // A TRACK's gate opens the voice the way a key does. quiver sums every
     // cable into a port, and the envelope reads anything above 2.5 V as high,
@@ -3560,7 +3604,7 @@ fn compile_voice(
         ParamMap::Unit,
         false,
         adsr.in_("attack"),
-    )?;
+    );
     c.knob(
         "amp",
         "decay",
@@ -3568,7 +3612,7 @@ fn compile_voice(
         ParamMap::Unit,
         false,
         adsr.in_("decay"),
-    )?;
+    );
     c.knob(
         "amp",
         "sustain",
@@ -3576,7 +3620,7 @@ fn compile_voice(
         ParamMap::Unit,
         false,
         adsr.in_("sustain"),
-    )?;
+    );
     c.knob(
         "amp",
         "release",
@@ -3584,7 +3628,7 @@ fn compile_voice(
         ParamMap::Unit,
         false,
         adsr.in_("release"),
-    )?;
+    );
     // Exponential contour. quiver's `shape` is a gate, not a curve amount: at
     // its 0 V default the whole instrument ran linear envelopes, and a linear
     // decay sounds like a fader being pulled, not like a note dying.
@@ -3616,6 +3660,9 @@ fn compile_voice(
     if let Some(r) = right {
         c.patch.connect(r, out.in_("right"))?;
     }
+    // A step that recorded its fault rather than stop the build: the build
+    // is done, and that error is its result.
+    c.take_fault()?;
 
     // Every pinned constant still drives its port now that the whole patch is
     // wired: a cable connected to a pinned port *after* the pin would shadow
@@ -3632,6 +3679,12 @@ fn compile_voice(
         );
     }
 
+    let amp = AmpEnvelope {
+        adsr: adsr.id(),
+        attack: c.params["amp#attack"].clone(),
+        decay: c.params["amp#decay"].clone(),
+        sustain: c.params["amp#sustain"].clone(),
+    };
     let params = std::mem::take(&mut c.params);
     let records = std::mem::take(&mut c.records);
     let track_feeds = std::mem::take(&mut c.track_feeds);
@@ -3674,6 +3727,7 @@ fn compile_voice(
         trackers,
         warnings,
         taps,
+        amp,
     })
 }
 
