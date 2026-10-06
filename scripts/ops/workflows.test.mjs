@@ -213,7 +213,7 @@ test('every saved workflow has its stages in the table above, and no other', () 
 
 // The labels whose prompts need no advisor line: a pure listing, and a run
 // that only counts mutants.
-const NO_ADVISOR = [/^list open issues$/, /^measure #\d+$/]
+const NO_ADVISOR = [/^list open issues$/, /^measure \S+$/]
 const other = m => (m === 'opus' ? 'sonnet' : 'opus')
 
 // A run on rich scripted agents (every array one element long, every boolean
