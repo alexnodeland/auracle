@@ -4617,10 +4617,13 @@ fn a_restore_mends_what_it_can_and_says_what_it_mended() {
 fn a_clip_a_listener_cannot_be_measured_with_leaves_it_as_it_was() {
     let (mut engine, listens, deaf) = listening_engine();
     let spec = engine.cfg.phrase.clone();
+    // A sine's RMS is its peak over √2: this clip sits just above the floor
+    // a clip and a sound share, and the notes' gaps take the render under it.
+    let peak = 1.5 * auracle_features::VetConfig::default().rms_floor;
     let faint: Vec<f32> = (0..spec.total_samples())
         .map(|i| {
             let t = i as f64 / spec.sample_rate;
-            (1.5e-4 * (std::f64::consts::TAU * 220.0 * t).sin()) as f32
+            (peak * (std::f64::consts::TAU * 220.0 * t).sin()) as f32
         })
         .collect();
     let clip = auracle_features::AuditionClip::from_interleaved(&faint, 1, spec.sample_rate, &spec)
