@@ -177,20 +177,31 @@ generations or PERFORM's offers. It does not block the merge.
 
 ## 6. The merge, waited on by state
 
-The PR's own `CI` is the fast lane (a few minutes). Green, the PR is in the
-queue, which tests it in a batch of up to three (a release PR alone) on a
-draft PR (the full gate, about twelve minutes, from a `mergify/merge-queue/`
-branch) and merges each PR of a green batch. Wait until it merges, its own `CI` or
-`PR checks` goes red, or it leaves the queue:
+The PR's own `CI` is the fast lane (a few minutes). Green, with its
+`PR checks` green too, the PR is in the queue, which tests it in a batch of
+up to three (a release PR alone) on a draft PR (the full gate, about twelve
+minutes, from a `mergify/merge-queue/` branch) and merges each PR of a green
+batch. Wait until it merges, its own `CI` or `PR checks` goes red, or it
+leaves the queue:
 
 ```bash
 until r=$(gh -R alexnodeland/auracle pr view <n> --json state,labels,statusCheckRollup -q '
+    def red($check): [.statusCheckRollup[] | select(.name == $check)]
+      | sort_by(.detailsUrl | capture("/runs/(?<run>[0-9]+)/job/(?<job>[0-9]+)") | [(.run | tonumber), (.job | tonumber)])
+      | last | .conclusion == "FAILURE" or .conclusion == "TIMED_OUT";
     if .state != "OPEN" then .state
     elif any(.labels[]; .name == "dequeued") then "dequeued"
-    elif any(.statusCheckRollup[]; .name == "CI" and (.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")) then "CI red"
-    elif any(.statusCheckRollup[]; .name == "PR checks" and (.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")) then "PR checks red"
+    elif red("CI") then "CI red"
+    elif red("PR checks") then "PR checks red"
     else empty end'); [ -n "$r" ]; do sleep 30; done; echo "$r"
 ```
+
+Each check is read by its latest run. The rollup keeps every run of a check
+on the PR's head commit, and an edit to the title or body runs `PR checks`
+again on the same commit, so the red run the edit put right stays in the
+list. The latest is the one with the highest run id (then job id), both in
+its link; a start time doesn't order them, since a skipped job's can come
+after its end.
 
 Run the wait in the background; never sleep a fixed time and assume.
 
@@ -207,8 +218,10 @@ Run the wait in the background; never sleep a fixed time and assume.
   the queue. `gh -R alexnodeland/auracle pr checks <n>` links the run, and
   its failed step says what to write. Put the title or the body right with
   `gh -R alexnodeland/auracle pr edit <n> --title "…"` or `--body-file`:
-  the edit runs it again, and no push is needed. Green, the PR enters the
-  queue by itself.
+  the edit runs it again, and no push is needed. Start the wait again once
+  `gh -R alexnodeland/auracle pr checks <n>` shows the new run of
+  `PR checks` pending; started sooner, it finds only the red run and stops
+  at once. Green, the PR enters the queue by itself.
 - **`dequeued`:** it left the queue without merging. Red in the queue (the
   full gate failed on its batch, and the split narrowed the failure to this
   PR), a conflict, or a run that was cancelled.
