@@ -24099,6 +24099,7 @@ bootMidi();
       // Hand the app over at 8 vetted patches and let the other 32 land behind
       // it. A duel needs a bank wide enough to hold an interesting question, not
       // a full one — and 8 arrives in seconds where 40 takes half a minute.
+      // Not below the engine's `NAME_FLOOR` (worker.js `PLAYABLE_AT`).
       playableAt: 8,
       saved: saved && saved.session ? saved.session : null,
       // One end of each farm channel. Transferring them *into* the engine

@@ -51,7 +51,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calib::{calibration, Calibration, Forecast};
 use crate::farm::{draw_seed, Draw, PreFeaturized};
-use crate::naming::{claim_name, NameScale};
+use crate::naming::{claim_name, NameScale, NAME_FLOOR};
 use crate::walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult};
 
 /// The φ coordinate names, as owned strings (what the log records).
@@ -615,8 +615,8 @@ pub struct Candidate {
     /// User-given name (frontends fall back to `tree.signature()`).
     pub name: Option<String>,
     /// The generated name this patch was given, kept from then on (see
-    /// [`Engine::fix_names`]). `None` until the bank is first handed over, and
-    /// for a patch with a name of its own.
+    /// [`Engine::fix_names`]). `None` until the bank is first handed over with
+    /// [`NAME_FLOOR`] sounds in it, and for a patch with a name of its own.
     pub auto_name: Option<String>,
     /// The user asked to keep this one: [`Engine::insert_candidate`] will never
     /// evict it.
@@ -3928,8 +3928,9 @@ impl Engine {
     /// renamed patches that had not changed: the one on the bench went from
     /// `Soft Drone` to `Soft Lead` as the generation landed, and numerals
     /// shifted when the name they counted from left. Only a patch not yet
-    /// named (the bank not yet handed over) gets a provisional name, read off
-    /// the pool as it stands.
+    /// named (the bank not yet handed over, or handed over with fewer than
+    /// [`NAME_FLOOR`] sounds in it) gets a provisional name, read off the pool
+    /// as it stands.
     pub fn display_names(&self) -> HashMap<u64, String> {
         let mut taken: HashSet<String> = HashSet::new();
         let mut out: HashMap<u64, String> = HashMap::new();
@@ -3971,9 +3972,22 @@ impl Engine {
     /// Names start being kept once the bank is handed over — a standardizer
     /// exists: the fill has finished, or a progressive boot made the partial
     /// pool duel-able ([`Engine::standardize_now`]) — which is when a player
-    /// first sees them. Called wherever the pool grows after that, so which
-    /// name a patch gets depends only on the order the engine took patches
-    /// in, never on when a frontend asked (ADR-001).
+    /// first sees them. Called wherever the pool grows after that.
+    ///
+    /// Which name a patch gets depends only on the patches and the order the
+    /// engine took them in, never on when a frontend asked (ADR-001). The
+    /// handover is a when: a progressive boot hands the bank over at the
+    /// first batch of farm results that reaches its threshold, so the bank it
+    /// holds then can be 8 sounds on one run and more on the next. Reading
+    /// every name off that bank named one seeded pool differently from run to
+    /// run (#154). So the first names wait for [`NAME_FLOOR`] sounds (or a fill
+    /// that can add no more), and each patch is read off the members that
+    /// joined no later than it, and at least the first `NAME_FLOOR`: ids are
+    /// handed out in the order patches join, which in a fill is the seed's
+    /// draw order. A handover at 8, at 15 or at the end of the fill gives the
+    /// same names, and so does a fill folded in one at a time or two at a
+    /// time. A patch that joins after the fill has the newest id, so it is
+    /// read off the whole pool.
     fn fix_names(&mut self) {
         if self.standardizer.is_none()
             || self
@@ -3983,7 +3997,22 @@ impl Engine {
         {
             return;
         }
-        let scale = NameScale::fit(self.pool.iter().map(|c| &c.features));
+        // The session's first names (none kept yet) wait for a bank the seed
+        // decides, not the one the handover happened to catch.
+        let first = self.pool.iter().all(|c| c.auto_name.is_none());
+        let floor = NAME_FLOOR.min(self.cfg.pool_size).max(1);
+        let fill_spent = self.draw_cursor >= self.cfg.max_draws as u64;
+        if first && self.pool.len() < floor && !fill_spent {
+            return;
+        }
+        // The newest member a fresh patch is read against: itself (the bank
+        // as it stood when it joined), or the `floor`-th to join, whichever
+        // came later.
+        let floor_id = {
+            let mut ids: Vec<u64> = self.pool.iter().map(|c| c.id).collect();
+            ids.sort_unstable();
+            ids[floor.min(ids.len()) - 1]
+        };
         let mut taken: HashSet<String> = self
             .pool
             .iter()
@@ -3993,8 +4022,15 @@ impl Engine {
             .filter(|&i| self.pool[i].name.is_none() && self.pool[i].auto_name.is_none())
             .collect();
         fresh.sort_by_key(|&i| self.pool[i].id);
+        let mut scale: Option<(u64, NameScale)> = None;
         for i in fresh {
-            let name = claim_name(&scale.name(&self.pool[i].features), &mut taken);
+            let upto = self.pool[i].id.max(floor_id);
+            if scale.as_ref().map(|(u, _)| *u) != Some(upto) {
+                let joined = self.pool.iter().filter(|c| c.id <= upto);
+                scale = Some((upto, NameScale::fit(joined.map(|c| &c.features))));
+            }
+            let (_, by) = scale.as_ref().expect("fit above");
+            let name = claim_name(&by.name(&self.pool[i].features), &mut taken);
             self.pool[i].auto_name = Some(name);
         }
     }

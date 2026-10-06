@@ -20,6 +20,14 @@
 //! patch whose sound had not changed — and did, every time a generation
 //! replaced part of the bank.
 //!
+//! What a name is read against is the bank as it stood when the patch joined
+//! it, and the first [`NAME_FLOOR`] sounds a session deals are read against
+//! each other. Both are decided by the order patches joined, which for a fill
+//! is the seed's draw order, never by when the app was handed the bank: a
+//! progressive boot hands it over at whatever count the render farm has
+//! folded in by then, and reading every name off *that* bank named one seeded
+//! pool differently from run to run (#154).
+//!
 //! ## Why the buckets are quantiles and not thresholds
 //!
 //! The obvious implementation — a ladder of `if` tests against absolute
@@ -76,6 +84,20 @@
 
 use auracle_features::Features;
 use std::collections::HashSet;
+
+/// The fewest sounds a session's first generated names are read against: the
+/// first names wait until this many sounds are in the bank (or the fill can
+/// add no more), and the first this-many are named against each other.
+///
+/// It matches the bank the app is handed at boot (`PLAYABLE_AT` in
+/// `apps/web/worker.js`, `playableAt` in `main.js`), so the names a player
+/// first sees are already the kept ones. It must not exceed that: a handover
+/// below the floor shows provisional names until the floor is reached.
+///
+/// A constant rather than the handover's count because that count is timing:
+/// the farm folds results in batches, and the app takes the bank at the first
+/// batch that reaches its threshold, however far past it that batch goes.
+pub const NAME_FLOOR: usize = 8;
 
 /// Role grid, indexed `[attack tercile][sustain tercile]` — articulation is
 /// what decides what you would reach for a sound *to do*.
