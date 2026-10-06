@@ -60,7 +60,16 @@ and takes); the fixtures several files share, `fast()`, `ground_truth()`,
 `taught()`, `contrary_picks()`, `sweep_clip()` and `restore()`/`reload()`,
 are in `src/testkit.rs`. The Makefile names the slow tier's tests by path
 (`SLOW_TESTS`, `SEARCH_FLOOR`), so a test moved or renamed there moves in
-the Makefile too. `make search-check`,
+the Makefile too.
+
+The crate is held at 100% of lines and functions by its own fast tier
+(`make coverage`; `crates/AGENTS.md` § Coverage). The slow tier's tests
+check outcomes in σ over many presets and seeds; each mechanism they run
+also has a fast test sized to its claim beside its module (PERFORM's on
+one preset and a few steps, its wiring arithmetic on a Jacobian built by
+hand). A generic function (a walk, a drift) is counted by its most-covered
+instantiation, so one fitness type has to take every path of it.
+`make search-check`,
 `make climb` and `make islands` measure the search; the examples in
 `examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
 `offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and

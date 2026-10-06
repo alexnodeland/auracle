@@ -840,3 +840,616 @@ fn a_job_keeps_the_target_it_began_on() {
     while job.step(&mut r, 2) {}
     assert_eq!(job.finish(), want);
 }
+
+// ---- the wiring's arithmetic, on a Jacobian built by hand ----
+
+/// Acid Line, whose cutoff (`node#cut`, Bright's site) sits low and whose
+/// release (`amp#release`, Space's) sits low, beside a Jacobian built by
+/// hand: the cutoff moves z along Bright's axis at 2σ per unit of travel,
+/// the release along Space's at 3σ, and its other knobs move nothing.
+fn acid_by_hand() -> (PatchTree, Jacobian) {
+    let tree = preset_bank()
+        .into_iter()
+        .find(|p| p.name == "Acid Line")
+        .expect("a preset")
+        .tree;
+    let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+    let knobs = live_knobs(&tree, PhraseSpec::default().sample_rate);
+    let (bright, space) = (
+        direction(&CONTROLS[0], &names),
+        direction(&CONTROLS[5], &names),
+    );
+    let cols = knobs
+        .iter()
+        .map(|(a, _)| match a.as_str() {
+            "node#cut" => bright.iter().map(|x| 2.0 * x).collect(),
+            "amp#release" => space.iter().map(|x| 3.0 * x).collect(),
+            _ => vec![0.0; names.len()],
+        })
+        .collect();
+    let jac = Jacobian {
+        addrs: knobs.iter().map(|(a, _)| a.clone()).collect(),
+        values: knobs.iter().map(|(_, v)| *v).collect(),
+        z: vec![0.0; names.len()],
+        names,
+        cols,
+    };
+    (tree, jac)
+}
+
+/// The standardized audio φ the hand-built Jacobian says `t` measures: its
+/// cutoff's and release's travel from Acid Line's, times their columns,
+/// passed through `bend` (each knob's travel in, the travel heard out).
+fn by_hand(jac: &Jacobian, t: &PatchTree, bend: &dyn Fn(&str, f64) -> f64) -> Vec<f64> {
+    let now = continuous_knobs(t);
+    let mut z = jac.z.clone();
+    for (k, a) in jac.addrs.iter().enumerate() {
+        let v = now
+            .iter()
+            .find(|(b, _)| b == a)
+            .map_or(jac.values[k], |x| x.1);
+        let heard = bend(a, v - jac.values[k]);
+        for (zi, ci) in z.iter_mut().zip(&jac.cols[k]) {
+            *zi += ci * heard;
+        }
+    }
+    z
+}
+
+/// **A control is wired to the knob that moves its axis, named first.**
+/// Bright takes the cutoff and Space the release, each at the full
+/// `MAX_TRAVEL` (the knob doing the work sets the scale), with the reach
+/// their columns give it and a purity of 1; a control no knob moves is a
+/// search control with nothing wired. Every wiring that is not a search
+/// clears the gate. Applying a turn moves exactly the wired knobs, by the
+/// turn times their travel, clamped to the knob's range; a turn of zero and
+/// a search control move nothing.
+#[test]
+fn a_control_is_wired_to_the_knob_that_moves_its_axis() {
+    let (_, jac) = acid_by_hand();
+    let wiring = wire(&jac);
+    assert_eq!(wiring.len(), CONTROLS.len());
+    let by = |name: &str| wiring.iter().find(|w| w.name == name).unwrap();
+    let (bright, space) = (by("Bright"), by("Space"));
+    assert_eq!(bright.knobs, [("node#cut".to_string(), MAX_TRAVEL)]);
+    assert_eq!(space.knobs, [("amp#release".to_string(), MAX_TRAVEL)]);
+    assert!((bright.reach - 2.0 * MAX_TRAVEL).abs() < 1e-9);
+    assert!((space.reach - 3.0 * MAX_TRAVEL).abs() < 1e-9);
+    assert!((bright.purity - 1.0).abs() < 1e-9 && !bright.search);
+    assert_eq!((bright.index, space.index), (Some(0), Some(5)));
+    for w in &wiring {
+        if w.search {
+            assert_eq!(w.range(), (0.0, 0.0), "{} turns while a search", w.name);
+        } else {
+            assert!(
+                w.reach >= REACH_FLOOR && w.purity >= PURITY_FLOOR,
+                "{}",
+                w.name
+            );
+        }
+    }
+    let snap = by("Snap");
+    assert!(snap.search && snap.knobs.is_empty(), "no knob moves Snap");
+
+    let cut = jac.values[jac.addrs.iter().position(|a| a == "node#cut").unwrap()];
+    let turned = apply(&jac, &wiring, &[1.0, 1.0, 0.0, 0.0, 0.0, -2.0]);
+    let rel = jac.values[jac.addrs.iter().position(|a| a == "amp#release").unwrap()];
+    assert_eq!(
+        turned,
+        [
+            (
+                "amp#release".to_string(),
+                (rel - MAX_TRAVEL).clamp(0.0, KNOB_MAX)
+            ),
+            ("node#cut".to_string(), cut + MAX_TRAVEL),
+        ],
+        "not the wired knobs, by the turn"
+    );
+    assert!(apply(&jac, &wiring, &[0.0; 6]).is_empty());
+}
+
+/// **Two controls that would be one gesture are told apart.** A later
+/// control whose predicted movement is collinear with an earlier one's,
+/// either sign, is a search control on this patch. The prior toward the
+/// knobs a control names is a soft one: with no prior at all, the same
+/// Jacobian wires the same knobs.
+#[test]
+fn two_controls_that_would_be_one_gesture_are_told_apart() {
+    let (_, jac) = acid_by_hand();
+    let mut twice = wire_set(&jac, &[PALETTE[0], PALETTE[0]], SEMANTIC_RIDGE);
+    assert!(
+        !twice[0].search && twice[1].search,
+        "Bright twice was two gestures"
+    );
+    twice[1].search = false;
+    twice[1].moved = twice[0].moved.iter().map(|x| -x).collect();
+    separate(&mut twice);
+    assert!(twice[1].search, "the opposite gesture was kept");
+    let flat = wire_with(&jac, 1.0);
+    for (a, b) in flat.iter().zip(wire(&jac)) {
+        assert_eq!(
+            a.knobs.iter().map(|k| &k.0).collect::<Vec<_>>(),
+            b.knobs.iter().map(|k| &k.0).collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(palette_index(&PALETTE[7]), Some(7));
+    let tried = NamedControl {
+        name: "Tried",
+        axis: &[("centroid_mean", -1.0)],
+        ..PALETTE[0]
+    };
+    assert_eq!(palette_index(&tried), None, "a direction being tried out");
+}
+
+/// **Verification confirms a half the sound moves the asked way, closes
+/// one it does not, and retries at half travel.** On a patch that answers
+/// its knobs exactly as the Jacobian says, both halves of Bright and Space
+/// are confirmed at the reach predicted. Where turning the cutoff down
+/// changes nothing, that half is closed and the control turns up only.
+/// Where the full turn overshoots and comes back, the control keeps half
+/// its travel and the reach that goes with it. While a render is still
+/// owed, nothing is decided.
+#[test]
+fn verification_confirms_closes_or_halves_each_half() {
+    let (tree, jac) = acid_by_hand();
+    let straight = |_: &str, d: f64| d;
+    let mut wiring = wire(&jac);
+    assert!(verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &straight))
+    }));
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert!((bright.up.unwrap() - bright.reach).abs() < 1e-9);
+    // Turned down, the cutoff stops at the bottom of its range: the half is
+    // confirmed at the reach that is left.
+    let cut = jac.values[jac.addrs.iter().position(|a| a == "node#cut").unwrap()];
+    assert!((bright.down.unwrap() - 2.0 * cut.min(MAX_TRAVEL)).abs() < 1e-9);
+    assert_eq!(bright.range(), (-1.0, 1.0));
+
+    let floor_down = |a: &str, d: f64| if a == "node#cut" { d.max(0.0) } else { d };
+    let mut wiring = wire(&jac);
+    verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &floor_down))
+    });
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert_eq!((bright.down, bright.range()), (Some(0.0), (0.0, 1.0)));
+
+    // The cutoff's effect rises to a quarter turn and falls back past it.
+    let overshoot = |a: &str, d: f64| {
+        if a == "node#cut" {
+            d.signum() * (0.25 - (d.abs() - 0.25).abs())
+        } else {
+            d
+        }
+    };
+    let mut wiring = wire(&jac);
+    verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &overshoot))
+    });
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert_eq!(bright.knobs, [("node#cut".to_string(), MAX_TRAVEL / 2.0)]);
+    assert!(
+        (bright.reach - 2.0 * MAX_TRAVEL / 2.0).abs() < 1e-9,
+        "the reach was not halved"
+    );
+    assert!(!bright.search);
+
+    let mut wiring = wire(&jac);
+    let complete = verify_by(&tree, &jac, &mut wiring, &mut |_| Look::Pending);
+    assert!(!complete);
+    assert!(wiring.iter().all(|w| w.up.is_none() && w.down.is_none()));
+}
+
+// ---- PERFORM through the engine, sized to the claim ----
+
+fn preset_named(name: &str) -> PatchTree {
+    preset_bank()
+        .into_iter()
+        .find(|p| p.name == name)
+        .expect("a preset")
+        .tree
+}
+
+/// A shipped preset under filters stacked two levels past the depth
+/// ceiling: a patch a session saved by an older build can hold, which the
+/// grammar's prior gives no mass.
+fn too_deep() -> PatchTree {
+    let mut deep = preset_named("Folded Lead");
+    while deep.root.depth() < auracle_grammar::mutate::MAX_DEPTH + 2 {
+        deep.root = AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: auracle_grammar::term::FilterKind::SvfLp,
+            cutoff: 0.6,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(deep.root),
+            modulation: ModNode::None,
+        };
+    }
+    deep
+}
+
+/// **A measurement planned and rendered elsewhere is the measurement.**
+/// Before a scale there is nothing to measure or plan. Then, on Folded Lead
+/// (seven live knobs): the plan, rendered round by round into the memo,
+/// finishes without a render and gives exactly what measuring in one call
+/// gives. Its Jacobian is one-sided finite differences of the live knobs,
+/// each stepped toward the inside of its range. A render known not to vet
+/// is not made, and its knob moves nothing in the measurement. Wiring no
+/// control measures the patch alone; a patch that does not vet has no
+/// measurement.
+#[test]
+fn a_measurement_planned_and_rendered_elsewhere_is_the_measurement() {
+    use crate::engine::{Engine, SessionConfig};
+    let tree = preset_named("Folded Lead");
+    let none = HashSet::new();
+    let mut engine = Engine::new(
+        auracle_grammar::PatchGrammarPrior::default(),
+        SessionConfig::default(),
+    );
+    assert!(engine.wire_controls(&tree).is_none() && engine.jacobian(&tree).is_none());
+    assert!(engine.wire_plan(&tree, &none).is_empty());
+    let spec = engine.cfg.phrase.clone();
+    engine.standardizer = Some(Arc::new(preset_standardizer_in(&spec, engine.memo(), 8)));
+
+    let mut failed = HashSet::new();
+    let mut rounds = 0;
+    loop {
+        let need = engine.wire_plan(&tree, &failed);
+        if need.is_empty() {
+            break;
+        }
+        rounds += 1;
+        assert!(rounds <= 3, "a measurement is at most three rounds");
+        for (key, t) in need {
+            assert_eq!(key, render_key(&t, &spec));
+            if featurize_memo(&t, &spec, engine.memo(), false).is_err() {
+                failed.insert(key);
+            }
+        }
+    }
+    let renders = engine.memo().stats().misses;
+    let (jac, wiring) = engine.wire_controls_known(&tree, &failed).expect("it vets");
+    assert_eq!(engine.memo().stats().misses, renders, "finishing rendered");
+    let (jac1, wiring1) = engine.wire_controls(&tree).unwrap();
+    assert_eq!(
+        serde_json::to_string(&(&jac, &wiring)).unwrap(),
+        serde_json::to_string(&(&jac1, &wiring1)).unwrap()
+    );
+    assert!(
+        wiring.iter().any(|w| w.up.is_some()),
+        "nothing was verified"
+    );
+
+    let live = live_knobs(&tree, spec.sample_rate);
+    assert_eq!(
+        jac.addrs,
+        live.iter().map(|(a, _)| a.clone()).collect::<Vec<_>>()
+    );
+    let std = engine.standardizer().unwrap();
+    let z = |t: &PatchTree| audio_z(t, &spec, engine.memo(), std).unwrap();
+    assert_eq!(jac.z, z(&tree));
+    for (k, (addr, v)) in live.iter().enumerate() {
+        let h = if *v < 0.5 {
+            JACOBIAN_STEP
+        } else {
+            -JACOBIAN_STEP
+        };
+        let nudged = set_param(&tree, addr, ParamValue::Continuous(v + h)).unwrap();
+        let want: Vec<f64> = z(&nudged)
+            .iter()
+            .zip(&jac.z)
+            .map(|(a, b)| (a - b) / h)
+            .collect();
+        assert_eq!(jac.cols[k], want, "{addr}");
+    }
+    assert_eq!(engine.jacobian(&tree).unwrap().cols, jac.cols);
+
+    let (addr, v) = &live[0];
+    let h = if *v < 0.5 {
+        JACOBIAN_STEP
+    } else {
+        -JACOBIAN_STEP
+    };
+    let nudged = set_param(&tree, addr, ParamValue::Continuous(v + h)).unwrap();
+    let skip: HashSet<String> = [render_key(&nudged, &spec)].into();
+    let (blind, _) = engine.wire_controls_known(&tree, &skip).unwrap();
+    assert!(
+        blind.cols[0].iter().all(|x| *x == 0.0),
+        "a known failure moved a knob"
+    );
+
+    let (bare, wired) = engine.wire_named(&tree, &[], &none).unwrap();
+    assert!(bare.cols.is_empty() && wired.is_empty());
+    assert!(engine.wire_plan_named(&tree, &[], &none).is_empty());
+    let silent = PatchTree {
+        amp: tree.amp.clone(),
+        root: AudioNode::Silence { uid: Uid::NEW },
+    };
+    assert!(engine.wire_controls(&silent).is_none());
+}
+
+/// **An offer, a drift and an aimed offer, stepped, are the one call**, and
+/// say where they stand: one walk for an offer or a drift, at most the
+/// walks asked for an aimed one, the steps left falling to none, done at
+/// the end. A drift turns live knobs only, never a locked one, and with
+/// every live knob locked has nothing to turn. An aimed offer's movement is
+/// the engine's own measure of it; aimed at a control the palette does not
+/// hold it is the plain offer, and has nothing to measure. A patch the
+/// prior gives no mass cannot be walked from at all.
+#[test]
+fn an_offer_a_drift_and_an_aimed_offer_stepped_are_the_one_call() {
+    use crate::testkit::taught;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    let engine = taught(0x9E0);
+    assert!(engine.has_taste());
+    let tree = preset_named("Folded Lead");
+    let stepped = |mut job: PerformJob, seed: u64| {
+        let mut r = StdRng::seed_from_u64(seed);
+        assert!(!job.is_done() && job.walks() == 1);
+        let mut left = job.left();
+        while job.step(&mut r, 1) {
+            assert!(job.walks() > 1 || job.left() < left, "a step took nothing");
+            left = job.left();
+        }
+        assert!(job.is_done() && job.left() == 0);
+        job
+    };
+
+    let want = engine.offer(&mut StdRng::seed_from_u64(1), &tree, &[], 4);
+    let job = stepped(engine.offer_job(&tree, &[], 4).unwrap(), 1);
+    assert_eq!(job.walks(), 1);
+    assert_eq!(job.finish(), want);
+
+    let live: Vec<String> = live_knobs(&tree, engine.cfg.phrase.sample_rate)
+        .into_iter()
+        .map(|(a, _)| a)
+        .collect();
+    let locks = vec![live[0].clone()];
+    let want = engine.drift(&mut StdRng::seed_from_u64(2), &tree, &locks, 8, 0.2);
+    let job = stepped(engine.drift_job(&tree, &locks, 8, 0.2).unwrap(), 2);
+    let drifted = job.finish();
+    assert_eq!(drifted, want);
+    let drifted = drifted.expect("eight drift steps moved nothing");
+    let before: std::collections::HashMap<String, f64> =
+        continuous_knobs(&tree).into_iter().collect();
+    for (a, v) in continuous_knobs(&drifted) {
+        assert!(
+            v == before[&a] || (live.contains(&a) && a != live[0]),
+            "{a} moved"
+        );
+    }
+    assert_eq!(structural_addrs(&drifted), structural_addrs(&tree));
+    assert_eq!(
+        engine.drift_job(&tree, &live, 4, 0.2).err(),
+        Some(RefineOutcome::NoMove)
+    );
+
+    let aimed = (0..8u64)
+        .find_map(|seed| {
+            let job = engine
+                .offer_aimed_job(&tree, &[], 2, 0, 1.0, AIM_GAMMA, 2)
+                .unwrap();
+            let job = stepped(job, seed);
+            assert!(job.walks() <= 2);
+            match job.finish_moved() {
+                (Ok(t), moved) => Some((t, moved)),
+                (Err(_), moved) => {
+                    assert_eq!(moved, None);
+                    None
+                }
+            }
+        })
+        .expect("no aimed offer moved");
+    assert_eq!(aimed.1, engine.moved_along(&tree, &aimed.0, 0));
+    assert!(aimed.1.is_some());
+    assert_eq!(
+        engine.offer_toward(&mut StdRng::seed_from_u64(3), &tree, &[], 3, 999, 1.0),
+        engine.offer(&mut StdRng::seed_from_u64(3), &tree, &[], 3)
+    );
+    assert_eq!(engine.moved_along(&tree, &tree, 999), None);
+    let (_, plain) = engine.offer_job(&tree, &[], 2).unwrap().finish_moved();
+    assert_eq!(plain, None, "an offer not aimed has no movement to report");
+
+    let deep = too_deep();
+    assert_eq!(
+        engine.offer_job(&deep, &[], 2).err(),
+        Some(RefineOutcome::OutsideSupport)
+    );
+    assert_eq!(
+        engine.drift_job(&deep, &[], 2, 0.2).err(),
+        Some(RefineOutcome::OutsideSupport)
+    );
+    assert_eq!(
+        engine
+            .offer_aimed_job(&deep, &[], 2, 0, 1.0, AIM_GAMMA, 2)
+            .err(),
+        Some(RefineOutcome::OutsideSupport)
+    );
+}
+
+/// **Before the first fit PERFORM explores the vetted prior.** With a
+/// scale and no taste, an offer, a drift and an aimed offer still walk (on
+/// the prior restricted to sounds that vet), and each comes back as a sound
+/// that vets or with the reason it did not move.
+#[test]
+fn before_the_first_fit_perform_explores_the_vetted_prior() {
+    use crate::engine::{Engine, SessionConfig};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    let mut engine = Engine::new(
+        auracle_grammar::PatchGrammarPrior::default(),
+        SessionConfig::default(),
+    );
+    let spec = engine.cfg.phrase.clone();
+    engine.standardizer = Some(Arc::new(preset_standardizer_in(&spec, engine.memo(), 8)));
+    assert!(!engine.has_taste());
+    let tree = preset_named("Folded Lead");
+    let mut r = StdRng::seed_from_u64(4);
+    let walked = [
+        engine.offer(&mut r, &tree, &[], 3),
+        engine.drift(&mut r, &tree, &[], 4, 0.2),
+        engine.offer_toward(&mut r, &tree, &[], 3, 4, -1.0),
+    ];
+    for w in &walked {
+        match w {
+            Ok(t) => assert!(featurize_memo(t, &spec, engine.memo(), false).is_ok()),
+            Err(why) => assert_eq!(*why, RefineOutcome::NoMove),
+        }
+    }
+    assert!(
+        walked.iter().any(|w| w.is_ok()),
+        "nothing moved: nothing was checked"
+    );
+}
+
+/// **A control with nothing to turn, or only a way back, is a search.** A
+/// patch with no live knob wires no control. A Jacobian whose best solve,
+/// clamped to each knob's travel, would move the sound against the
+/// control's direction (a strong knob that must be held back, and a weak
+/// one pushed past its travel) wires nothing for it either: it asks for an
+/// offer instead. A direction over coordinates the measurement does not
+/// name is no direction at all, and does not divide by its zero length.
+#[test]
+fn a_control_with_nothing_to_turn_or_only_a_way_back_is_a_search() {
+    let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+    let none = Jacobian {
+        addrs: Vec::new(),
+        values: Vec::new(),
+        names: names.clone(),
+        z: vec![0.5; names.len()],
+        cols: Vec::new(),
+    };
+    for w in wire(&none) {
+        assert!(
+            w.search && w.knobs.is_empty(),
+            "{} wired on no knob",
+            w.name
+        );
+    }
+
+    let d = direction(&PALETTE[0], &names);
+    let off: Vec<usize> = (0..names.len()).filter(|&i| d[i] == 0.0).collect();
+    let col = |along: f64, parts: &[(usize, f64)]| {
+        let mut c: Vec<f64> = d.iter().map(|x| along * x).collect();
+        for &(k, v) in parts {
+            c[off[k]] += v;
+        }
+        c
+    };
+    let back = Jacobian {
+        addrs: ["node#cut", "node#k1", "node#k2"]
+            .map(String::from)
+            .to_vec(),
+        values: vec![0.5; 3],
+        names: names.clone(),
+        z: vec![0.0; names.len()],
+        cols: vec![
+            col(-0.1, &[(2, 1.0)]),
+            col(0.0, &[(1, -10.0), (2, -10.0)]),
+            col(-10.0, &[(1, -110.0)]),
+        ],
+    };
+    let bright = &wire_set(&back, &[PALETTE[0]], SEMANTIC_RIDGE)[0];
+    assert!(bright.search && bright.knobs.is_empty() && bright.reach == 0.0);
+
+    let nowhere = direction(&PALETTE[0], &["nothing".to_string()]);
+    assert_eq!(nowhere, [0.0]);
+}
+
+/// The solve leaves a coordinate it cannot determine at zero: a system
+/// with a zero pivot solves the rest and keeps that one still, rather than
+/// dividing by zero. This pins `solve`'s own contract; no caller reaches the
+/// case today (the wiring's systems carry a ridge on every diagonal entry).
+#[test]
+fn a_zero_pivot_keeps_its_coordinate_still() {
+    assert_eq!(
+        solve(vec![vec![2.0, 0.0], vec![0.0, 0.0]], vec![4.0, 1.0]),
+        [2.0, 0.0]
+    );
+}
+
+/// A patch the compiler refuses (nested past what it builds) has no live
+/// knob: PERFORM turns only knobs a voice can take live.
+#[test]
+fn a_patch_the_compiler_refuses_has_no_live_knob() {
+    let mut deep = preset_named("Folded Lead");
+    let sr = PhraseSpec::default().sample_rate;
+    while auracle_grammar::compile(&deep, sr).is_ok() {
+        deep.root = AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: auracle_grammar::term::FilterKind::SvfLp,
+            cutoff: 0.6,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(deep.root),
+            modulation: ModNode::None,
+        };
+    }
+    assert!(!continuous_knobs(&deep).is_empty());
+    assert!(live_knobs(&deep, sr).is_empty());
+}
+
+/// **Verification counts a point that does not vet as no movement.** With
+/// every render refused, neither half of a control moves, nor does its
+/// retry at half travel: each control is closed both ways and becomes a
+/// search. `verify` is `verify_by` on real renders: it decides a wiring
+/// exactly as the measurement does.
+#[test]
+fn verification_counts_a_point_that_does_not_vet_as_no_movement() {
+    let (tree, jac) = acid_by_hand();
+    let mut wiring = wire(&jac);
+    assert!(verify_by(&tree, &jac, &mut wiring, &mut |_| Look::Fails));
+    for w in &wiring {
+        assert!(w.search, "{} turns with nothing heard", w.name);
+        if !w.knobs.is_empty() {
+            assert_eq!((w.up, w.down), (Some(0.0), Some(0.0)));
+        }
+    }
+    assert!(
+        wiring.iter().any(|w| !w.knobs.is_empty()),
+        "nothing was verified"
+    );
+
+    use crate::engine::{Engine, SessionConfig};
+    let mut engine = Engine::new(
+        auracle_grammar::PatchGrammarPrior::default(),
+        SessionConfig::default(),
+    );
+    let spec = engine.cfg.phrase.clone();
+    engine.standardizer = Some(Arc::new(preset_standardizer_in(&spec, engine.memo(), 8)));
+    let tree = preset_named("Folded Lead");
+    let (jac, measured) = engine.wire_controls(&tree).unwrap();
+    let mut wiring = wire(&jac);
+    verify(
+        &tree,
+        &jac,
+        &mut wiring,
+        &spec,
+        engine.memo(),
+        engine.standardizer().unwrap(),
+    );
+    assert_eq!(
+        serde_json::to_string(&wiring).unwrap(),
+        serde_json::to_string(&measured).unwrap()
+    );
+    // A plan names no render already known not to vet.
+    let need = engine.wire_plan(&tree, &HashSet::new());
+    assert!(need.is_empty(), "the measurement left renders owed");
+    let nudge = &jac.addrs[0];
+    let h = if jac.values[0] < 0.5 {
+        JACOBIAN_STEP
+    } else {
+        -JACOBIAN_STEP
+    };
+    let t = set_param(&tree, nudge, ParamValue::Continuous(jac.values[0] + h)).unwrap();
+    let mut fresh = Engine::new(
+        auracle_grammar::PatchGrammarPrior::default(),
+        SessionConfig::default(),
+    );
+    fresh.standardizer = engine.standardizer.clone();
+    let failed: HashSet<String> = [render_key(&t, &spec)].into();
+    let plan = fresh.wire_plan(&tree, &failed);
+    assert!(plan.iter().all(|(k, _)| !failed.contains(k)));
+    assert!(!plan.is_empty());
+}
