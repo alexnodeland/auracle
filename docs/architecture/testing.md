@@ -293,10 +293,10 @@ run fits when it is small (a docs or app PR) and waits for a few runners
 when it is wide. Before two lanes, every PR's run was the full gate at 19
 (the two plain Test runners as well), and a second PR in CI could not fit
 beside it. *Mutants* adds a runner for each crate PR in flight: a crate
-PR's fast lane (seven) and its *Mutants* job are eight, two such PRs
-sixteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
-fast lanes are done, nineteen. On Saturdays the weekly run's two leave
-eighteen: a queue run fits beside it with one *Mutants* job, and a crate
+PR's fast lane (eight) and its *Mutants* job are nine, two such PRs
+eighteen, and a queue run beside two crate PRs' *Mutants* jobs, once their
+fast lanes are done, twenty. On Saturdays the weekly run's two leave
+eighteen: a queue run just fits beside it, and a *Mutants* job or a crate
 PR's fast lane then waits for runners. At night the *Flake hunt* holds four
 and its *Speed budgets* two, beside *Search health*'s three long jobs: nine
 in all.
