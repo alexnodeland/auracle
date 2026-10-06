@@ -310,7 +310,14 @@ number:
   player's, or another in the background) is not queued again, and the
   player's takes the place of a queued background one. Its one reply's `re`
   lists every number it answers;
-- a request that arrives before the engine is up gets `not_ready`.
+- a request that arrives before the engine is up gets `not_ready`, and is
+  never run. It names the request as `engine_error` does (`request`, its
+  `re`, and PERFORM's `req`), and main sees to what waited on it
+  (`notReady` in `main.js`): the preset list is asked again, a face when a
+  slot next wants it, and a PERFORM question is answered as one the engine
+  could not run (`perform.requestFailed`, through `releaseRequest`), so a
+  measurement's "listening…" or "re-checking" and an offer growing are let
+  go. Nothing failed, so no toast says so.
 
 Never answered, by design: `log_edit`, `log_event`, `duel_shown` and
 `set_style_name` (main waits on none of them), `farm_lost` and `farm_ports`
@@ -323,7 +330,8 @@ Main still matches a reply by what it is about (an id, a `token`, PERFORM's
 `req`); `re` names the request itself. The browser specs read it, through
 the fixture's `app.replyTo` and `app.answered` (`tests/web/AGENTS.md`).
 `apps/web/tests/worker-protocol.test.mjs` runs `send` and the reply path as
-written, the bench's cases and a generation's replies among them, and holds
+written, the bench's cases, a generation's replies and `not_ready` (the
+worker's answer and main's `notReady`) among them, and holds
 the never-answered list (the fixture's `UNANSWERED`) to the worker both
 ways: each request on it posts no reply of its own, and each one the
 worker's source leaves unanswered is on it (a case that hands its request
