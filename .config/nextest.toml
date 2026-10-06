@@ -35,13 +35,18 @@ path = "junit.xml"
 # the test takes that many of the pool's slots (all of them, at most).
 #
 # Declared is a test whose work runs in threads of its own for the whole
-# test: one per seed, preset or core. A test that starts them for one phase
-# is left at one: the generation tests (an engine taught on one thread, then
-# its five walks at once, `farm_walks`) measured about two busy threads over
-# their run, and declared at five they would hold the slots idle through the
-# rest, in CI's fast tier too.
+# test: one per seed, preset or core. A test that starts them for a phase
+# is left at one. Among those are the session's generation tests: four
+# teach two to four engines at once, a thread each (`taught_n`), and most
+# walk a generation the farm's way, a thread for each of its walks
+# (`farm_walks`, five at once), with phases on one thread between. They
+# measured about two busy threads over their run. Declared at four or five,
+# they would hold the slots idle through their one-thread phases, in CI's
+# fast tier too; left at one, they oversubscribe the pool while they teach
+# or walk. The wasm crate's `twins` (two engines taught at once) and the
+# tilted walks in the session's own tests are left at one the same way.
 #
-# They also run first (`priority`). nextest starts tests in order and
+# Declared tests also run first (`priority`). nextest starts tests in order and
 # starts nothing new while the next one waits for its slots, so a test that
 # takes the whole pool, met midway, left the pool draining around it: the
 # search floor started after 340 others and ran alone, at a load average of
