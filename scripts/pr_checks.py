@@ -287,7 +287,7 @@ class Api:
             sep = "&" if "?" in path else "?"
             status, data = self.get(f"{path}{sep}per_page=100&page={page}")
             if status != 200 or not isinstance(data, list):
-                return status, items
+                return (status if status != 200 else 0), items
             items += data
             if len(data) < 100:
                 return 200, items
@@ -342,6 +342,15 @@ def on_merge(
         log(f"#{n}: commented: {text}" if status in (200, 201) else f"#{n}: the comment failed (HTTP {status})")
         failed = failed or status not in (200, 201)
 
+    def is_issue(n: int, status: int, issue: object) -> bool:
+        if status != 200 or not isinstance(issue, dict):
+            log(f"#{n}: couldn't be read (HTTP {status}): skipped")
+            return False
+        if issue.get("pull_request"):
+            log(f"#{n}: a pull request, not an issue: skipped")
+            return False
+        return True
+
     if pr.author == DEPENDABOT:
         log(f"#{pr.number} is Dependabot's: its body is the upstream release notes, and names no issue here")
         return 0
@@ -360,8 +369,7 @@ def on_merge(
     issues: dict[int, dict] = {}
     for n in links.closes:
         status, issue = api.get(f"repos/{repo}/issues/{n}")
-        if status != 200 or not isinstance(issue, dict) or issue.get("pull_request"):
-            log(f"#{n}: not an issue here (HTTP {status}): skipped")
+        if not is_issue(n, status, issue):
             failed = failed or status not in (200, 404, 410)
             continue
         issues[n] = issue
@@ -431,8 +439,7 @@ def on_merge(
         if n in links.closes:
             continue
         status, issue = api.get(f"repos/{repo}/issues/{n}")
-        if status != 200 or not isinstance(issue, dict) or issue.get("pull_request"):
-            log(f"#{n}: not an issue here (HTTP {status}): skipped")
+        if not is_issue(n, status, issue):
             failed = failed or status not in (200, 404, 410)
             continue
         lines.setdefault(n, []).insert(0, f"Advanced by #{pr.number}, merged: {pr.title}")
