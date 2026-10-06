@@ -227,8 +227,9 @@ fn a_hand_built_mod_term_is_read_in_its_canonical_form() {
 
 /// **Every module opens its s-expression with the token the app counts it
 /// by.** The readout shows the s-expression, and the pool's "how often the
-/// model has seen a module" counts `(<token> ` in it (`main.js`'s
-/// `nbSupport`, `sx || kind`). Pinned as a literal table: the match is
+/// model has seen a module" finds a module in it by its token
+/// (`apps/web/support.js`'s `sexprHead`, held to these tokens through the
+/// fixture the next test writes). Pinned as a literal table: the match is
 /// exhaustive, so a new kind does not compile until it has its token.
 #[test]
 fn every_module_opens_its_sexpr_with_the_token_the_app_counts() {
@@ -283,6 +284,134 @@ fn every_module_opens_its_sexpr_with_the_token_the_app_counts() {
         let s = tree.root.to_sexpr();
         assert!(s.contains(&want), "{mk:?}: {s}");
     }
+}
+
+/// Every name serde accepts for `T`, in declaration order, read off its
+/// refusal of an unknown one: the wire's own list, so a kind left out of a
+/// hand-kept list (`ModKind::ALL` does not hold `Steps`) is still here.
+fn wire_names<T: serde::de::DeserializeOwned>() -> Vec<String> {
+    let refusal = serde_json::from_str::<T>("\"no such kind\"")
+        .err()
+        .expect("an unknown name is refused")
+        .to_string();
+    let (_, listed) = refusal
+        .split_once("expected one of")
+        .unwrap_or_else(|| panic!("serde's refusal changed its wording: {refusal}"));
+    listed
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(String::from)
+        .collect()
+}
+
+/// The token after each `(`, in the order they are written.
+fn sexpr_heads(sexpr: &str) -> Vec<&str> {
+    sexpr
+        .split('(')
+        .skip(1)
+        .map(|t| t.split([' ', ')']).next().unwrap_or(""))
+        .collect()
+}
+
+/// **The app's table of those tokens is the grammar's.** The app finds a
+/// module in a ranked row's s-expression by the token its term opens with
+/// (`apps/web/support.js`, `sexprHead`), and its hand-kept table of the
+/// tokens that are not the kind's name had distortion's `dist` and missed
+/// AUDIO IN's `audioin` (#202). So this writes the grammar's own table,
+/// keyed by the names the wire knows the kinds by (the app's catalog keys),
+/// to `apps/web/tests/fixtures/sexpr-heads.json`, with two patches'
+/// s-expressions and the kinds the rack description reads in them, and
+/// `apps/web/tests/support.test.mjs` holds the app to it. Fails when the
+/// grammar has moved and the fixture has not; `AURACLE_UPDATE_FIXTURES=1`
+/// rewrites it.
+#[test]
+fn the_sexpr_heads_fixture_is_current() {
+    let saw = voice(default_fragment(NodeKind::Vco));
+    let apply = |tree: &PatchTree, op: StructOp| {
+        apply_struct_op(tree, &op).unwrap_or_else(|e| panic!("{op:?}: {e}"))
+    };
+    let mut table = serde_json::Map::new();
+    for name in wire_names::<NodeKind>() {
+        let kind: NodeKind = serde_json::from_value(name.clone().into()).unwrap();
+        let s = default_fragment(kind).to_sexpr();
+        table.insert(name, sexpr_heads(&s)[0].into());
+    }
+    // A modulator, set on the saw's slot: the saw's token comes first, then
+    // the slot's (a shaper or a combiner wraps a source of its own, after it).
+    for name in wire_names::<ModKind>().into_iter().filter(|n| n != "none") {
+        let kind: ModKind = serde_json::from_value(name.clone().into()).unwrap();
+        let tree = apply(
+            &saw,
+            StructOp::SetMod {
+                key: "node".into(),
+                kind,
+            },
+        );
+        let s = tree.root.to_sexpr();
+        let heads = sexpr_heads(&s);
+        assert_eq!(heads[0], "vco", "{s}");
+        table.insert(name, heads[1].into());
+    }
+
+    let sample = |about: &str, tree: &PatchTree| {
+        let kinds: Vec<String> = describe::describe(tree)
+            .modules
+            .into_iter()
+            .map(|m| m.kind)
+            .filter(|k| k != "amp")
+            .collect();
+        serde_json::json!({"about": about, "sexpr": tree.to_sexpr(), "kinds": kinds})
+    };
+    let filtered = apply(
+        &saw,
+        StructOp::Replace {
+            key: "node".into(),
+            kind: NodeKind::Filter,
+        },
+    );
+    let listening = apply(
+        &filtered,
+        StructOp::Replace {
+            key: "node/0".into(),
+            kind: NodeKind::AudioIn,
+        },
+    );
+    let driven = apply(
+        &saw,
+        StructOp::Insert {
+            key: "node".into(),
+            kind: NodeKind::Distortion,
+        },
+    );
+    let folded = apply(
+        &driven,
+        StructOp::Insert {
+            key: "node".into(),
+            kind: NodeKind::Fold,
+        },
+    );
+    let json = serde_json::to_string(&serde_json::json!({
+        "about": "The token each module's term opens with in PatchTree::to_sexpr, by the name the wire knows its kind by, and two patches' s-expressions with the kinds describe() reads in them. Written by auracle-grammar's term::tests::the_sexpr_heads_fixture_is_current; do not edit.",
+        "heads": table,
+        "patches": [
+            sample("an AUDIO IN through a filter", &listening),
+            sample("a wavefolder over a distortion over a saw: two modules of one φ family", &folded),
+        ],
+    }))
+    .unwrap();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/web/tests/fixtures/sexpr-heads.json");
+    if std::env::var_os("AURACLE_UPDATE_FIXTURES").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("{json}\n")).unwrap();
+    }
+    let have = std::fs::read_to_string(&path).unwrap_or_default();
+    assert_eq!(
+        have.trim_end(),
+        json,
+        "the fixture is stale: run with AURACLE_UPDATE_FIXTURES=1"
+    );
 }
 
 /// The s-expression's format, pinned on one patch: the envelope, each knob
