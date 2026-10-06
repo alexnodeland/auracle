@@ -433,8 +433,10 @@ fitted anything there is no lean, and nothing is drawn.
 A lean is about your taste, not the knobs. An amber, dashed search control
 has one too: its knobs can’t move the sound that way, but your taste may
 still lean there. Let go of <kbd>⌥</kbd> and the lines under the controls are
-back. The lean is asked for as the view comes up, and again when the model
-learns from a pick or fits again.
+back. The lean is asked for as the view comes up, and again when the sound in
+your hands changes (for a sound with an input, a new clip too) or the model
+learns from a pick or fits again. Open a taste file and the leans go until the
+model has fitted it.
 
 ```admonish info collapsible=true title="How it works: a lean"
 Each control is a fixed direction in the measurements the model hears. Its

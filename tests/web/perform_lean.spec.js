@@ -8,15 +8,19 @@
 // zero is a guess: its arc dashed, its words ending in "?". Before the first
 // fit the engine has no lean, and nothing is drawn. It is asked when the view
 // comes up over PERFORM and again when the posterior moves (a pick's
-// reweighting), never per frame, and nothing of it shows at rest.
+// reweighting, a taste file opened) or the sound is measured through
+// another audition clip, never per frame, and nothing of it shows at rest.
 //
 // What each lean is (the claiming lens, the weights) is the engine's, pinned
 // in auracle-taste and auracle-session; which end a lean names and how a
 // guess is marked are words.js's and taste-geom.js's, unit-tested. This holds
 // the wiring: the gesture asks, the reply is drawn on the control it names,
 // and a guess looks like one.
+const fs = require("fs");
+const path = require("path");
 const { test, expect, PERFORM_SEED } = require("./fixtures");
 const { modelView, bankTab } = require("./shell");
+const { STUB } = require("./audio_in_stub.js");
 
 const SIX = [0, 1, 2, 3, 4, 5];
 const knob = (page, k) => page.locator(`.pf-knob[data-index="${k}"]`);
@@ -120,4 +124,79 @@ test("under the model view each of PERFORM's controls carries its lean, a guess 
   await expect(bright.locator(".pf-k-leanw")).toBeHidden();
   await expect(bright.locator(".pf-k-sub")).toBeVisible();
   await expect(bright).not.toHaveAttribute("aria-description");
+});
+
+test("a taste file opened over PERFORM takes the leans away with the posterior it replaces", async ({ page, app }) => {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
+  await app.warmStart();
+  await app.openOnPerform("Glass Pad", { reach: false });
+  await modelView(page, true);
+  await app.reply("perform_leaned", { where: (r) => Array.isArray(r.lean) });
+  await expect(page.locator(".pf-knob.leaning")).toHaveCount(6);
+
+  // A file with nothing taught in it: the engine's posterior goes with the
+  // profile it replaces (`Engine::import_profile`), and no refit follows.
+  const t0 = await app.now();
+  await page.locator("#import-input").setInputFiles({
+    name: "nothing-taught.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ log: { observations: [] }, standardizer: null })),
+  });
+  await page.locator("#alarm").getByRole("button", { name: "replace it" }).click();
+  const imported = await app.reply("imported", { after: t0 });
+  expect(imported.ok).toBe(true);
+  expect(imported.status.observations).toBe(0);
+  const { reply } = await leanAfter(app, t0);
+  expect(reply.lean, "the engine has no lean once the file has replaced the posterior").toBeNull();
+  await expect(page.locator(".pf-knob.leaning")).toHaveCount(0);
+  const bright = knob(page, 0);
+  await expect(bright.locator(".pf-k-leanw")).toBeHidden();
+  await expect(bright).not.toHaveAttribute("aria-description");
+
+  // Down and up again: nothing comes back, and nothing more is asked.
+  const asked = await app.sentCount("perform_lean");
+  await modelView(page, false);
+  await modelView(page, true);
+  await app.quiet();
+  await expect(page.locator(".pf-knob.leaning")).toHaveCount(0);
+  expect(await app.sentCount("perform_lean"), "the lean was asked again with nothing changed").toBe(asked);
+});
+
+test("a new audition clip asks again for the lean of a sound in hand that listens", async ({ page, app }, info) => {
+  // The microphone, stubbed as granted (audio_in_stub.js): its tone is what
+  // the first listen captures as the session's audition clip.
+  await page.addInitScript(`try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`);
+  await page.addInitScript(STUB);
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed: false });
+  await app.warmStart();
+  // The engine's word on the capture waits until the lean under the
+  // reference clip is drawn.
+  await app.hold({ type: "audition_clip" });
+  // A sound that listens: a saw beside AUDIO IN.
+  const amp = { attack: 0.01, decay: 0.3, sustain: 0.95, release: 0.05 };
+  const saw = { Vco: { wave: "Saw", octave: 0, detune: 0.5, mod_depth: 0, modulation: "None" } };
+  const ain = { AudioIn: { input: 0, gain: 24 / 36, channel: "Both" } };
+  const data = { name: "One Ear", tree: { amp, root: { Mix: { balance: 0.5, a: saw, b: ain } } } };
+  fs.mkdirSync(info.outputDir, { recursive: true });
+  const file = path.join(info.outputDir, "One-Ear.json");
+  fs.writeFileSync(file, JSON.stringify(data));
+  await page.locator("#patch-import-input").setInputFiles(file);
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("One Ear", { timeout }), { ms: 60_000 });
+  await app.level("perform");
+  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("One Ear", { timeout }), { ms: 30_000 });
+  const t0 = await app.now();
+  await modelView(page, true);
+  const first = await leanAfter(app, t0);
+  expect(first.reply.lean.map((l) => l.index)).toEqual(SIX);
+  await expect(page.locator(".pf-knob.leaning")).toHaveCount(6);
+
+  // The capture has gone to the engine, which measured this sound through
+  // it: once main hears so, the same sound's lean is asked again.
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).filter((h) => h.type === "audition_clip").length, { timeout }).toBe(1), { ms: 60_000 });
+  const t1 = await app.now();
+  await app.release();
+  const again = await leanAfter(app, t1);
+  expect(again.ask.tree, "the sound in hand, asked again").toBe(first.ask.tree);
+  expect(again.reply.lean.map((l) => l.index)).toEqual(SIX);
+  await expect(page.locator(".pf-knob.leaning")).toHaveCount(6);
 });

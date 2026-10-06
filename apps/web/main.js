@@ -2235,6 +2235,10 @@ worker.onmessage = (e) => {
       if (m.views) applyViews(m.views);
       if (m.status) applyStatus(m.status);
       audioIn.clip(m);
+      // A sound in hand that listens is measured through the clip, so its
+      // lean under the model view is asked again (PERFORM's key for it
+      // carries the clip, as its wiring's does).
+      if (perform) perform.clipChanged();
       if (m.ok) scheduleSave();
       break;
     }
@@ -3451,6 +3455,11 @@ worker.onmessage = (e) => {
         // The next map TASTE keeps is this file's: a boundary on its track.
         if (taste) taste.markFile();
         send({ type: "taste_views" });
+        // The posterior went with the profile the file replaced
+        // (`Engine::import_profile`), refit or not: PERFORM's lean is asked
+        // again, and is none until a `fitted` (none at all for a file with
+        // nothing taught in it, which asks for no fit).
+        if (perform) perform.posteriorChanged();
         // An import clears the fitted model (the engine refits from the log),
         // and nothing asked for a fit: TASTE sat on "nothing predicted yet"
         // over a profile of 58 picks until six more had been made. It refits

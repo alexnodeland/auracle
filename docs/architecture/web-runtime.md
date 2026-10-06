@@ -118,7 +118,8 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   panel's set, and
   answered `{lean: [{index, name, mean, std}]}`, the posterior slope of the
   utility along each control's direction through the lens that claims the
-  sound, or `lean: null` before the first fit. `paintLean` draws it on the
+  sound, or `lean: null` with no posterior (before the first fit, and after a
+  taste file is opened until its refit lands). `paintLean` draws it on the
   dial (`.pf-k-lean`, an arc from 12 o'clock toward the end it leans to with
   its ±σ interval, on one scale for the panel: taste-geom's `leanMarks`) and
   the model's words over the caption (`.pf-k-leanw`, `words.leanWord`: *it
@@ -126,12 +127,15 @@ the scope and picture panels and TASTE's selected point among them). Main does t
   `pullMark` makes it (dashed, faint, its words ending in "?"). CSS shows it
   only under the view. It is asked when the view comes up over PERFORM,
   when PERFORM comes into sight with the view up, when the sound or the
-  panel changes, and when main reports the posterior moved
-  (`perform.posteriorChanged`: on `fitted`, and on a `status` carrying
-  `ratings`); once per sound, posterior and panel (`leanAsked`), never per
-  frame. A lean of the same sound stays drawn until a newer one lands; one
-  asked under another posterior or panel is not shown when the view comes
-  up.
+  panel changes (a sound that listens included, when main reports a new
+  audition clip: `perform.clipChanged` on `audition_clip`), and when main
+  reports the posterior moved (`perform.posteriorChanged`: on `fitted`, on
+  a `status` carrying `ratings`, and on `imported`, whose engine has no
+  posterior until its refit); once per sound, posterior and panel
+  (`leanAsked`, keyed as the sound's wiring is, `wireKey`, so the clip is
+  part of a listening sound's key), never per frame. A lean of the same
+  sound stays drawn until a newer one lands; one asked under another
+  posterior or panel is not shown when the view comes up.
 
 ## The worker's lanes
 
@@ -1372,9 +1376,10 @@ the voices' input in the worklet, and the clip in the engine.
   engine worker, in the `now` lane. The reply is `audition_clip` with `ok`,
   the engine's `note`, `clip`, `remeasured` and `unmeasured`, `farmResent`
   (how many farm workers were handed the new phrase) and, when listeners were
-  measured again, `views` and `status`; main applies them and saves the
-  session, which carries the clip. Restores and `ready` post `audition_clip`
-  with the status only.
+  measured again, `views` and `status`; main applies them, tells PERFORM
+  (`perform.clipChanged`: the lean of a sound in hand that listens is asked
+  again under the model view) and saves the session, which carries the clip.
+  Restores and `ready` post `audition_clip` with the status only.
 - **The farm's phrase.** The phrase carries the clip, so the worker sends the
   `phrase` handshake again to the crew standing after a clip is taken
   (`farmResendPhrase`), and in a staged restore right after

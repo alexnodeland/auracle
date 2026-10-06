@@ -922,15 +922,19 @@ $\pm 1$ SD interval behind it, every control of the panel on one scale. A lean
 whose interval crosses zero ($\lvert \text{mean} \rvert < \text{SD}$) is
 drawn as a guess, the rule LEARNING’s weights and PATCH’s worth chips use.
 Before the first fit there is no posterior and `perform_lean` answers `null`:
-nothing is drawn.
+nothing is drawn. Opening a taste file takes the posterior away until it is
+fitted again from the file (a file with nothing taught in it asks for no
+fit), and the leans go with it.
 
 The lean is taken at the tree PERFORM measures, with no overrides. That
 tree's render is in the engine's memo once PERFORM has measured it (the
 measurement renders it first) or the bench has opened it, and then the lean
 is a few dot products per draw; a tree not in the memo costs one render, as
 ▶ does. A control turned since is not part of it, and it is asked again when
-the view comes up, the sound or the panel changes, and the posterior moves (a
-refit, or a pick’s reweighting), never per frame.
+the view comes up, the sound or the panel changes (for a sound with an AUDIO
+IN, a new [audition clip](../audition/clips.md) too, since it is
+measured through it), and the posterior moves (a refit, a pick’s
+reweighting, a taste file opened), never per frame.
 
 ## What is not done
 

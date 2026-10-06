@@ -296,8 +296,8 @@ export function createPerform(host) {
     // asked of, or null before one lands (and before the first fit, when
     // the engine has none). Asked only while the view is up and PERFORM
     // shows (`askLean`), once per sound, posterior and panel (`leanAsked`,
-    // the key it was last asked for; `leanRev` counts the posterior's
-    // changes main reports), never per frame.
+    // the key it was last asked for, `leanKey`; `leanRev` counts the
+    // posterior's changes main reports), never per frame.
     lean: null,
     leanAsked: null,
     leanRev: 0,
@@ -773,17 +773,20 @@ export function createPerform(host) {
     if (host.modelOn?.()) k.wrap.setAttribute("aria-description", words);
     else k.wrap.removeAttribute("aria-description");
   }
-  // What the lean in hand was asked for: the sound (its patch and its tree
-  // as it stands, the tree PERFORM measures, whose render is in the
-  // engine's memo once measured or opened on the bench), the posterior, and
-  // the panel's set.
-  const leanKey = () => `${state.gen}|${state.leanRev}|${setOf(state.panel).join(",")}|${state.cur ? state.cur.json : ""}`;
+  // What the lean in hand was asked for: the posterior, and the sound and
+  // the panel's set as its wiring is keyed (`wireKey`: the tree PERFORM
+  // measures, whose render is in the engine's memo once measured or opened
+  // on the bench, with the audition clip for a sound that listens, which is
+  // measured through it).
+  const leanKey = () => `${state.gen}|${state.leanRev}|${state.cur ? wireKey(state.cur.json, state.panel) : ""}`;
   // Ask the engine for the lean, when the model view is up over PERFORM and
   // the one in hand is not for this sound, posterior and panel: when the
   // view comes up (`modelViewChanged`), PERFORM comes into sight (`show`),
-  // the sound or the panel changes (`patchChanged`, `setPanel`) and the
-  // posterior moves (`posteriorChanged`: a refit, or a pick's reweighting).
-  // A lean of this sound already drawn stays until the new one lands.
+  // the sound or the panel changes (`patchChanged`, a Keep, `setPanel`, a
+  // new clip for a sound that listens: `clipChanged`) and the posterior moves
+  // (`posteriorChanged`: a refit, a pick's reweighting, a taste file
+  // opened). A lean of this sound already drawn stays until the new one
+  // lands.
   function askLean() {
     if (!state.visible || !state.cur || !host.modelOn?.()) return;
     const key = leanKey();
@@ -4695,11 +4698,19 @@ export function createPerform(host) {
       knobs.forEach(paintKnob);
       if (on) askLean();
     },
-    // The posterior moved (main: a refit's `fitted`, or a pick's
-    // reweighting, the `status` that carries `ratings`): the lean is asked
+    // The posterior moved (main: a refit's `fitted`, a pick's reweighting,
+    // the `status` that carries `ratings`, or a taste file opened, which
+    // takes the posterior away until its refit lands): the lean is asked
     // again while the view is up, and when it next comes up otherwise.
     posteriorChanged() {
       state.leanRev += 1;
+      askLean();
+    },
+    // The audition clip changed (main's `audition_clip`: a capture, NEW
+    // CLIP, a restore). A sound in hand that listens is measured through
+    // it, so its lean is asked again (its key carries the clip, `wireKey`);
+    // any other sound's is the same, and nothing is asked.
+    clipChanged() {
       askLean();
     },
   };

@@ -11,6 +11,8 @@
   The model view showed what the model believes everywhere else (the bank,
   TASTE, EVOLVE, PATCH), but on PERFORM it had nothing to say per control,
   because the engine couldn't say it. It is asked for when the view comes
-  up, when the sound in your hands changes, and when a pick or a refit
-  teaches the model; turning a control doesn't redraw it
-  (`perform_lean.spec.js`, the worker's `lanes.test.mjs`, #140).
+  up, when the sound in your hands changes (for a sound with an input, a
+  new clip too), and when a pick or a refit teaches the model; opening a
+  taste file takes the leans away until the model has fitted it, and
+  turning a control doesn't redraw it (`perform_lean.spec.js`, the
+  worker's `lanes.test.mjs`, #140).
