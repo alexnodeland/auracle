@@ -30,6 +30,14 @@
 //   switching the layout to chain slides the amp back out to the end of the
 //   row, and the cable keeps that run while the amp is behind its source,
 //   then curves.
+// - What sits on a cable moves with it. Through a slide (an insert's, a
+//   layout switch's) each audio cable's level mark is on its cable's middle
+//   on every frame, and a modulation cable's words (*depth 25% · 0.51 Hz*)
+//   beside its middle. They used to stay where the build drew them for the
+//   whole slide (the marks where their cables started, the words where their
+//   cable comes to rest), up to about 200 units off it, and jump on the
+//   last frame. A module dragged by hand carries them the same way while it
+//   is held; the words used to stay behind until it was let go.
 //
 // The frames are the page's own: an observer on the rack (installed before
 // boot) samples it as each build lands, in the task that drew it and set its
@@ -49,9 +57,15 @@ const { openPreset, rackAtRest } = require("./patch_page");
  *  amp's centre in rack units and its opacity, whether the cable into the
  *  amp is a curve (` C `) or a routed path, and where that cable leaves its
  *  source's out jack and lands in the amp's in jack (`ends`: the x of its
- *  path's first point and of its last, in rack units). Moving is any of: a build
- *  just landed, a departing copy, a plate under a moving transform, an
- *  animation that ends (an arrival's fade). */
+ *  path's first point and of its last, in rack units). And what sits on the
+ *  cables: each cable's middle as drawn (`middles`, by its ends, audio and
+ *  modulation apart), how many audio cables have a level mark and how many
+ *  have none (`marks`, `unmarked`), the farthest a mark is from its cable's
+ *  middle (`markOff`), and how many modulation cables' words there are and
+ *  the farthest any is from where it sits beside a modulation cable's middle
+ *  (`words`, `wordsOff`: 8 right and 4 down of it, as the build sets them).
+ *  Moving is any of: a build just landed, a departing copy, a plate under a
+ *  moving transform, an animation that ends (an arrival's fade). */
 function recordRack() {
   const frames = (window.__rackFrames = []);
   let lastAmp = null;
@@ -66,6 +80,39 @@ function recordRack() {
     const m = new DOMMatrix(t === "none" ? undefined : t);
     const p = m.transformPoint(new DOMPoint(Number(plate.getAttribute("width")) / 2, Number(plate.getAttribute("height")) / 2));
     return { x: p.x, y: p.y };
+  };
+  // What sits on the rack's own cables (`:scope >`: not a departing copy's),
+  // each cable's middle being half its length along it.
+  const onCables = (svg) => {
+    const middles = {};
+    for (const ink of svg.querySelectorAll(":scope > g.rack-wires > path.wire[data-from]")) {
+      const len = ink.getTotalLength();
+      if (!len) continue;
+      const p = ink.getPointAtLength(len / 2);
+      middles[`${ink.classList.contains("mod") ? "mod" : "audio"} ${ink.dataset.from}>${ink.dataset.to}`] = [p.x, p.y];
+    }
+    const marks = [...svg.querySelectorAll(":scope > g.cable-marks > g.cable-mark")];
+    const markAt = new Map(marks.map((g) => [`audio ${g.dataset.from}>${g.dataset.to}`, (g.getAttribute("transform").match(/-?\d+(?:\.\d+)?/g) || []).map(Number)]));
+    let markOff = 0;
+    let unmarked = 0;
+    const modMiddles = [];
+    for (const [key, p] of Object.entries(middles)) {
+      if (key.startsWith("mod ")) {
+        modMiddles.push(p);
+        continue;
+      }
+      const m = markAt.get(key);
+      if (!m) unmarked += 1;
+      else markOff = Math.max(markOff, Math.hypot(m[0] - p[0], m[1] - p[1]));
+    }
+    const words = [...svg.querySelectorAll(":scope > g.rack-wires > text.mod-cable-label")];
+    let wordsOff = 0;
+    for (const t of words) {
+      const x = Number(t.getAttribute("x")) - 8;
+      const y = Number(t.getAttribute("y")) - 4;
+      wordsOff = Math.max(wordsOff, Math.min(...modMiddles.map((p) => Math.hypot(p[0] - x, p[1] - y))));
+    }
+    return { middles, marks: marks.length, unmarked, markOff, words: words.length, wordsOff };
   };
   const sample = () => {
     const svg = document.getElementById("rack-svg");
@@ -92,6 +139,7 @@ function recordRack() {
       ampOpacity: Number(getComputedStyle(amp).opacity),
       curve: cable ? / C /.test(d) : null,
       ends: n.length >= 4 ? { out: n[0], in: n[n.length - 2] } : null,
+      ...onCables(svg),
     });
     return !rest;
   };
@@ -111,6 +159,9 @@ function recordRack() {
   });
   // The amp's centre now, for a read at rest.
   window.__rackAmp = () => centre(document.querySelector('#rack-svg .rack-plates g[data-kind="amp"]'));
+  // What sits on the cables now, for a read mid-drag (a plate moved by hand
+  // moves no transform the record follows).
+  window.__rackCables = () => onCables(document.getElementById("rack-svg"));
 }
 
 /** The frames recorded so far, taken (the next read starts empty). */
@@ -162,6 +213,28 @@ function expectSlid(motion, from, to, name) {
   expect(Math.round(away(motion[0], from)), `${name}: the amp as it lands`).toBe(0);
   expect(Math.round(away(motion[motion.length - 1], to)), `${name}: the amp as its motion ends`).toBe(0);
   expect(motion.map((f) => f.curve), `${name}: the cable into the amp is a curve`).toEqual(motion.map(() => true));
+}
+
+/** The farthest any cable of `kind` ("audio" or "mod") on the rack at rest
+ *  has its middle from where it was as the motion's build landed, in rack
+ *  units: how far the slide carried what sits on it. */
+function travel(motion, kind) {
+  const first = motion[0].middles;
+  const last = motion[motion.length - 1].middles;
+  const keys = Object.keys(last).filter((k) => k.startsWith(`${kind} `) && first[k]);
+  return Math.max(0, ...keys.map((k) => Math.hypot(last[k][0] - first[k][0], last[k][1] - first[k][1])));
+}
+/** As near as a mark's or the words' position, written to a tenth of a unit,
+ *  is to the middle it was placed by. */
+const ON = 0.5;
+
+/** A slide, as asserted on every frame of its motion: every audio cable
+ *  carries its level mark on its middle, and every modulation cable's words
+ *  sit beside the middle of one. */
+function expectCarried(motion, name) {
+  expect(motion.map((f) => f.marks > 0 && f.unmarked === 0), `${name}: every audio cable has its mark`).toEqual(motion.map(() => true));
+  expect(motion.filter((f) => f.markOff >= ON).map((f) => f.markOff), `${name}: the frames on which a mark is off its cable's middle`).toEqual([]);
+  expect(motion.filter((f) => f.wordsOff >= ON).map((f) => f.wordsOff), `${name}: the frames on which a modulation cable's words are off its middle`).toEqual([]);
 }
 
 test("a sound opened over an unrelated one fades up in place: nothing of the last one fades out, and its amp does not slide across", async ({ page, app }) => {
@@ -240,6 +313,61 @@ test("within one sound the rack still moves, the cable into the amp a curve all 
   const back = motionOf(await takeFrames(page), rackOf("Reese", 6));
   expect(back[0].exit, "the empty socket fading out as BACK TO lands").toBeGreaterThan(0);
   expectSlid(back, emptyAgain, await ampAt(page), "BACK TO Reese");
+});
+
+test("what sits on a cable moves with it: through an insert and a layout switch each level mark stays on its cable's middle, and a modulation cable's words beside it, on every frame, as they do under a module dragged by hand", async ({ page, app }) => {
+  await page.addInitScript(recordRack);
+  await app.boot();
+  await openPreset(app, "Reese");
+
+  // A distortion inserted before the amp (as above): the amp slides one
+  // column along, carrying the cable into it and its mark.
+  const filter = page.locator('#rack-svg .rack-controls g.mod-group[data-kind="filter"]');
+  await filter.focus();
+  await page.keyboard.press("F2");
+  await page.locator("#ctx-menu .cm-item").filter({ hasText: /^insert after/ }).click();
+  await expect(page.locator("#nodebank")).toBeVisible();
+  await rackAtRest(page);
+  await takeFrames(page);
+  await page.locator('#nb-groups .nb-item[data-kind="distortion"]').click();
+  await app.engine((timeout) => expect(page.locator('#rack-svg g.mod-group[data-kind="distortion"]')).toHaveCount(1, { timeout }), { ms: 30_000 });
+  await rackAtRest(page);
+  const inserted = motionOf(await takeFrames(page), rackOf("Reese (edited)", 7));
+  expect(travel(inserted, "audio"), "the insert: the farthest an audio cable's middle slid").toBeGreaterThan(50);
+  expectCarried(inserted, "the insert");
+
+  // Chain to compact: every module moves, and Reese's modulation cable, its
+  // words and every audio cable's mark with them.
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="compact"]').click();
+  await expect(page.locator("#rack-layout")).toHaveText(/^compact/);
+  await rackAtRest(page);
+  const packed = motionOf(await takeFrames(page), rackOf("Reese (edited)", 7));
+  expect(travel(packed, "audio"), "chain → compact: the farthest an audio cable's middle slid").toBeGreaterThan(50);
+  expect(travel(packed, "mod"), "chain → compact: the farthest a modulation cable's middle slid").toBeGreaterThan(50);
+  expect(packed.map((f) => f.words > 0), "chain → compact: a modulation cable's words on every frame").toEqual(packed.map(() => true));
+  expectCarried(packed, "chain → compact");
+
+  // By hand, the lfo picked up by its plate's lower edge (clear of its
+  // knob, as the amp is above) and held 80 px lower: its cable into the
+  // filter's cutoff moves, and its words and every mark with it, before
+  // it is let go.
+  await page.locator("#rack-layout").click();
+  await page.locator('#pt-laymenu [data-layout="freeform"]').click();
+  await expect(page.locator("#rack-layout")).toHaveText(/^by hand/);
+  await rackAtRest(page);
+  const atRest = await page.evaluate(() => window.__rackCables());
+  const lfo = await page.locator('#rack-svg .rack-plates g[data-kind="lfo"] .mod-plate').boundingBox();
+  await page.mouse.move(lfo.x + 10, lfo.y + lfo.height - 6);
+  await page.mouse.down();
+  await page.mouse.move(lfo.x + 10, lfo.y + lfo.height + 74, { steps: 8 });
+  await expect(page.locator("#rack-scroll")).toHaveClass(/\bmoving-plate\b/);
+  const held = await page.evaluate(() => window.__rackCables());
+  await page.mouse.up();
+  await rackAtRest(page);
+  expect(travel([atRest, held], "mod"), "the lfo held lower: how far its cable's middle moved").toBeGreaterThan(20);
+  expect(held.words, "the lfo held lower: a modulation cable's words").toBeGreaterThan(0);
+  expectCarried([held], "the lfo held lower");
 });
 
 test("a cable already on the rack is never a curve drawn backwards: switching a layout by hand to chain, the cable into an amp put behind its source runs below the plates until the amp is out ahead", async ({ page, app }) => {

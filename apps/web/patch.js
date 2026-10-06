@@ -165,6 +165,21 @@ export function createPatch(host) {
     drawMarks(svg, frame);
   }
 
+  // Each level mark drawn, by the rack's record of its cable (`frame.wires`),
+  // so the rack's motion can carry it (`platesMoving`). A rebuilt rack's
+  // records are new, and have no mark until `drawMarks` draws theirs.
+  let markOf = new WeakMap();
+
+  /** Where a level mark sits on its cable as the cable is drawn now: half
+   *  its length along it. `null` for a cable with no length. */
+  function markAt(ink) {
+    let len = 0;
+    try { len = ink.getTotalLength(); } catch (_) { len = 0; }
+    if (!len) return null;
+    const p = ink.getPointAtLength(len / 2);
+    return `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`;
+  }
+
   // The level mark: three bars on the cable's middle, lit by its measured
   // level (`edit_cable_levels`' `rms_db`), its number on hover. Hollow while
   // the patch has changed since it was measured, and on a structure not yet
@@ -175,17 +190,16 @@ export function createPatch(host) {
       layer = svgEl("g", { "aria-hidden": "true" }, "cable-marks");
       svg.appendChild(layer);
     } else layer.replaceChildren();
+    markOf = new WeakMap();
     for (const it of frame.wires) {
       if (it.w.kind === "mod") continue;
-      let len = 0;
-      try { len = it.inkEl.getTotalLength(); } catch (_) { len = 0; }
-      if (!len) continue;
-      const p = it.inkEl.getPointAtLength(len / 2);
+      const at = markAt(it.inkEl);
+      if (!at) continue;
       const db = probe.levels ? probe.levels.get(wireKey(it.w)) : null;
       const known = db != null && !probe.stale;
       const lv = known ? gainOf(db) : 0;
       const g = svgEl("g", {
-        transform: `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`,
+        transform: at,
         "data-from": it.w.from, "data-to": it.w.to,
         "data-db": db == null ? null : db.toFixed(1),
       }, `cable-mark${known ? "" : " unknown"}`);
@@ -201,6 +215,7 @@ export function createPatch(host) {
         : probe.levels && probe.stale ? "changed since it was measured" : "not measured yet";
       g.appendChild(t);
       layer.appendChild(g);
+      markOf.set(it, g);
     }
   }
 
@@ -1274,6 +1289,27 @@ export function createPatch(host) {
     drawGuess();
   }
 
+  /** A frame of the rack's motion (`startRackMotion`), its cables just
+   *  redrawn where the plates are on that frame: each level mark moves to
+   *  its cable's middle as drawn. Without it the marks stayed where they
+   *  were drawn as the build landed, on the cables where they started, up
+   *  to 125 units off them by the slide's end, and jumped as the plates came
+   *  to rest. One attribute per audio cable, nothing built and nothing
+   *  measured but the cable's length (0.15 ms a frame for the eight audio
+   *  cables of a fifteen-module patch): the marks are drawn again when the
+   *  plates come to rest (`platesMoved`). The guess is not carried: it is
+   *  placed again at rest. */
+  function platesMoving() {
+    const frame = host.rackFrame();
+    if (!frame) return;
+    for (const it of frame.wires) {
+      const g = markOf.get(it);
+      if (!g) continue;
+      const at = markAt(it.inkEl);
+      if (at) g.setAttribute("transform", at);
+    }
+  }
+
   function onWorker(m) {
     switch (m.type) {
       case "cable_levels":
@@ -1362,6 +1398,7 @@ export function createPatch(host) {
     clearHere,
     asking: () => guess.at,
     platesMoved,
+    platesMoving,
     cameraMoved,
     restLevel,
     subject,
