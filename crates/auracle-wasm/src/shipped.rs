@@ -153,6 +153,8 @@ pub fn session(e: &WasmEngine) -> &auracle_session::Engine {
 ///
 /// Each result is set once, into a slot of its own: there is no lock, so
 /// nothing to poison. A job that panics panics the scope, and so the caller.
+/// One thread is a scope of one: the same path at every width, so a
+/// machine's core count changes the time, never which code ran.
 #[cfg(not(target_arch = "wasm32"))]
 fn par_map<T: Sync, U: Send + Sync>(
     items: &[T],
@@ -162,9 +164,6 @@ fn par_map<T: Sync, U: Send + Sync>(
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::OnceLock;
     let threads = threads.clamp(1, items.len().max(1));
-    if threads == 1 {
-        return items.iter().map(job).collect();
-    }
     let next = AtomicUsize::new(0);
     let out: Vec<OnceLock<U>> = items.iter().map(|_| OnceLock::new()).collect();
     std::thread::scope(|s| {
