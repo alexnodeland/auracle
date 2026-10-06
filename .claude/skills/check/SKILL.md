@@ -14,10 +14,10 @@ proves is `docs/architecture/testing.md`.
 
 CI is the gate for everything else, in two lanes. A PR's own run, the fast
 lane, runs what the change reaches: the Rust jobs when Rust changed, the site,
-the browser specs `make browser-changed` would pick (up to four runners), and
-the smoke pair when the app, the engine or what runs the specs changed. The
-merge queue's run is the full gate: everything, the browser tier dealt to
-twelve runners by time. The slow tier runs on a PR only with the `full-ci`
+the browser specs `make browser-changed` would pick before it follows the
+views (up to four runners), and the smoke pair when the app, the engine or
+what runs the specs changed. The merge queue's run is the full gate:
+everything, the browser tier dealt to twelve runners by time. The slow tier runs on a PR only with the `full-ci`
 label.
 Locally, run what your change reaches, never the full browser suite
 (`docs/process.md` § Building).
@@ -34,13 +34,13 @@ git diff --stat HEAD
 | Changed | Run |
 | --- | --- |
 | `crates/<crate>/**` | `make test-crate CRATE=<crate>` (optimized, on the pinned compiler, without building the examples no test runs), then `make lint`; before review, `make coverage`: every crate at its floor and every changed line covered by a test that asserts what it does (`crates/AGENTS.md` § Coverage); and `make mutants DIFF=1` (on a shared machine, `nice -n 19`): every mutant of the changed code caught, each survivor killed or answered (`crates/AGENTS.md` § Mutation testing) |
-| Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test |
+| Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test (`make wasm-dev` builds in seconds for trying it by hand in `make serve`; the specs and films refuse it) |
 | φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
-| `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed`, or by name for `main.js` (the `browser-test` skill) |
+| `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed` (for `main.js`, the specs of the views its changed sections draw; the `browser-test` skill) |
 | `apps/web/worker.js`, `farm.js`, `tests/worker/**` | also `make worker-test` (the worker in Node over `pkg/`, no page; `make wasm` first) |
-| `tests/web/**` | `make spec-lint` (the after-edit hook lints each file as you edit it; a fixed violation is recorded with `npx eslint --prune-suppressions` in `tests/web`, `tests/web/AGENTS.md` § The lint), then the specs you changed, through the queue; `--repeat-each=3` for one you made less flaky |
+| `tests/web/**` | `make spec-lint` (the after-edit hook lints each file as you edit it; a fixed violation is recorded with `npx eslint --prune-suppressions` in `tests/web`, `tests/web/AGENTS.md` § The lint), then the specs you changed, through the queue (`make browser-changed`); `REPEAT=3` for one you made less flaky |
 | `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |

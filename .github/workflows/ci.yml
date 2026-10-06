@@ -283,16 +283,18 @@ jobs:
             worker=false
           fi
 
-          # The specs the change reaches, as `make browser-changed` picks
-          # them (tests/web/changed.mjs): a changed spec, the specs that
-          # require a changed helper, the specs named for a changed app
-          # module. main.js, worker.js, index.html, style.css, the config and
-          # the engine reach every level and select nothing, and say so
-          # below. More than twenty files (a helper nearly every spec
-          # requires, or that many specs changed at once) is the tier in all
-          # but name: the smoke pair runs here instead, whatever changed, and
-          # the queue runs them all. One runner per spec file, at most four,
-          # dealt by time like the full tier.
+          # The specs the change reaches (tests/web/changed.mjs, as `make
+          # browser-changed` picks them before it follows the views): a
+          # changed spec, the specs that require a changed helper, the specs
+          # named for a changed app module. main.js, worker.js, index.html,
+          # style.css, the config and the engine reach every level and select
+          # nothing here, and say so below; locally, `make browser-changed`
+          # runs the specs of the views they reach. More than twenty files
+          # (a helper nearly every spec requires, or that many specs changed
+          # at once) is the tier in all but name: the smoke pair runs here
+          # instead, whatever changed, and the queue runs them all. One
+          # runner per spec file, at most four, dealt by time like the full
+          # tier.
           browser=false
           specs=""
           n=1
