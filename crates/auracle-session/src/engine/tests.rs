@@ -1337,10 +1337,11 @@ fn a_save_made_mid_generation_is_never_retired() {
 /// **A ⚡ seed is not replaced while its walk is out.** The patch the
 /// model likes least is the one every insert evicts first, so it is the
 /// seed most at risk: in the control twin a run of preset loads retires
-/// it. With a ⚡ job drawn from it, the same loads, a whole generation and
-/// its finish all pass it over, and the walk, when it lands, is absorbed
-/// against its seed instead of being thrown away as `unknown_seed`. Once
-/// absorbed (or cancelled) the seed is an ordinary member again.
+/// it. With a ⚡ job drawn from it, the same loads pass it over, and the
+/// walk, when it lands, is absorbed against its seed instead of being
+/// thrown away as `unknown_seed`. Once absorbed (or cancelled) the seed is
+/// an ordinary member again. A generation's finish passes it over too:
+/// `may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving`.
 #[test]
 fn a_seed_evolving_is_never_evicted_until_its_walk_lands() {
     let mut twins = taught_n(0xE70F, 2);
@@ -1368,18 +1369,6 @@ fn a_seed_evolving_is_never_evicted_until_its_walk_lands() {
     assert!(
         evolving.find(doomed).is_some(),
         "a preset load evicted the seed of a ⚡ in flight"
-    );
-    let (gctx, jobs) = evolving
-        .refine_jobs(&mut StdRng::seed_from_u64(2))
-        .expect("taught");
-    let order: Vec<usize> = (0..jobs.len()).collect();
-    for r in farm_walks(&gctx, &jobs, &order) {
-        evolving.refine_absorb(r);
-    }
-    evolving.refine_finish();
-    assert!(
-        evolving.find(doomed).is_some(),
-        "a generation's end retired the seed of a ⚡ in flight"
     );
 
     let result = run_walk(&ctx, &job, &auracle_features::RenderMemo::default());
