@@ -105,7 +105,7 @@ the fast tier and the PR checks alone.
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
 | PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, and tells each closed issue's parent its count of sub-issues closed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` browser spec (six runners, three at a time, dealt by time); then the `@quarantine` ones on a runner of their own, whose failures are said on each test's issue and never turn the run red ([Flakes](#flakes)). On a PR only with the `full-ci` label | No |
-| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
 
@@ -177,8 +177,9 @@ uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). The summary also lists every
 speed budget a test recorded over its limit (`shard.mjs budgets`), which the
 gate records and never fails on. In the merge queue's run and on main it
-also folds the run's times into the timings the next run deals by (*The
-timings come from the queue's run*, below). A runner that would
+also folds the run's times into the timings the next run deals by, each
+test's time from its runs that passed (*The timings come from the queue's
+run*, below). A runner that would
 outlast its job ends first: Playwright's global timeout
 (`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
 a minute before it `shard.mjs` interrupts the run, so the test that was
@@ -235,11 +236,16 @@ run on main anyway: their caches are saved from main only, under a key that
 holds the compiler's release and the lockfile, so reused they would never be
 saved for a new compiler or a bumped dependency.
 
-**The timings come from the queue's run.** Main no longer runs the browser
-tier when it reuses the queue's verdict, so the queue run's *Browser report*
-folds its times into main's timings and keeps the file as an artifact, and
-main's *What changed* job saves it to the cache the next run deals from (a
-cache saved by a pull_request run is restored by that PR's runs only).
+**The timings come from the queue's run, and from the nightly hunt.** Main
+no longer runs the browser tier when it reuses the queue's verdict, so the
+queue run's *Browser report* folds its times into main's timings and keeps
+the file as an artifact, and main's *What changed* job saves it to the cache
+the next run deals from (a cache saved by a pull_request run is restored by
+that PR's runs only). The nightly *Flake hunt* runs the whole tier on main
+three times, and its report folds in each test's median of the runs that
+passed, so the timings stay current when main's pushes skip the tier
+(reused, or superseded by a newer push). A test that never passed keeps the
+time it had.
 
 **The workflows themselves.** Each workflow's token is read-only unless a
 job needs more (filing an issue, deploying Pages). Every job runs on
@@ -474,9 +480,18 @@ from it ([Rules](#rules)).
   (`tests/web/fixtures.js` `SEED`, the same pool and sides every run;
   PERFORM's specs `PERFORM_SEED`, whose first offer is a typical one), so a
   spec that only holds for one pool shows up here. A spec that names its own
-  `random:` seed keeps it in both. A failure files a *Flake hunt found a
-  flaky test* issue whose run links one report naming each failed test and
-  which of its runs failed.
+  `random:` seed keeps it in both. Each test that fails gets its own issue,
+  `Flaky: <file> '<test title>'`, or a comment on the one open for it
+  (`tests/web/flakes.mjs` finds it: the issue the test's annotation names,
+  or an open issue under that title, cut short with … as a hand-written one
+  may be). The comment names the test, how many of its three runs failed,
+  what the first line of each failure said and the machine it failed on (the
+  fixture's `runner` annotation), and the run, whose summary links one report
+  with the traces. Every test there passed the gate on that commit, so one
+  that failed all three runs is filed the same way: the hunt's seed differs
+  from the gate's. What no one test accounts for (the engine's build, a
+  runner cut short or lost, an error outside any test, or more than five
+  tests failing in one night) files *Flake hunt failing on main* instead.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
   speed bound asserted where a budget belongs ([Rules](#rules)).

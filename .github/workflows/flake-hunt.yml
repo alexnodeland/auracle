@@ -5,10 +5,18 @@ name: Flake hunt
 #
 # The gate (ci.yml) runs each test once with no retries, so a test that fails
 # one run in thirty shows up only as a red PR now and then, and is easy to
-# re-run past. Here it fails three times as often, and a failure files an
-# issue. The fix is to the test or the app; while it is being fixed the test
-# can be tagged @quarantine, which moves it from the gate to the Slow suite
-# (docs/architecture/testing.md § Flakes).
+# re-run past. Here it fails three times as often, and each test that fails
+# gets an issue of its own, `Flaky: <file> '<test title>'`, or a comment on
+# the one already open (tests/web/flakes.mjs finds it). Every test here passed
+# the gate on this very commit, so even one that failed all three runs is a
+# flake to the gate: the hunt boots unseeded, and the gate's seed may be the
+# one it holds for. The fix is to the test or the app; while it is being
+# fixed the test can be tagged @quarantine with its issue named, which moves
+# it from the gate to the Slow suite (docs/architecture/testing.md § Flakes).
+#
+# Its passing runs also keep the fast tier's timings current: the median of
+# each test's three, folded into the timings the gate deals by, whether or
+# not main's last push ran the tier.
 #
 # Its own workflow, not a job in the Slow suite, so its hour never holds that
 # workflow's queue on main.
@@ -191,24 +199,91 @@ jobs:
             app got slower or the runner was slow. A failure there that is not
             a budget is the Flake hunt's to find.
 
-  # Which tests failed, and on which of their three runs, in one report.
+  # Which tests failed, and on which of their three runs, in one report; the
+  # issue each goes to (tests/web/flakes.mjs: the one its annotation names,
+  # else the open `Flaky:` issue titled for it, else a new one); and, on
+  # main, the times of the runs that passed folded into the fast tier's
+  # timings and saved for the gate's next deal.
   report:
     name: Flake hunt report
     needs: hunt
     if: ${{ !cancelled() && needs.hunt.result != 'skipped' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      flaky: ${{ steps.who.outputs.flaky }}
+      unexplained: ${{ steps.who.outputs.unexplained }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/browser-report
         with:
           name: hunt
           failed: ${{ needs.hunt.result == 'failure' }}
+          timings: ${{ github.ref == 'refs/heads/main' && 'fast' || '' }}
+      # The open issues, for a flake's issue opened by hand under its title.
+      # Without them, a test with no open issue of the hunt's own gets a new
+      # one.
+      - name: Which issue each failed test goes to
+        id: who
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ needs.hunt.result }}
+        run: |
+          cd tests/web
+          gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title > open-issues.json || echo '[]' > open-issues.json
+          node flakes.mjs hunt merged.json --open open-issues.json --outcome "$OUTCOME"
 
+  # Each test that failed, on its own issue: a comment on the one open for it,
+  # or a new `Flaky:` issue (labelled flake). Two at a time.
+  file-flaky:
+    name: File a flaky test (${{ strategy.job-index }})
+    needs: report
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      needs.report.outputs.flaky != '' && needs.report.outputs.flaky != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.report.outputs.flaky) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
+        with:
+          issue: ${{ matrix.issue }}
+          title: ${{ matrix.title }}
+          labels: flake,area:tests
+          failed: ${{ matrix.failed }}
+          detail: ${{ matrix.detail }}
+          advice: >-
+            This test passed the gate on this commit and failed here on main,
+            where nothing changed but the machine and the seed: the hunt boots
+            unseeded, so a test that failed every run may hold only for the
+            gate's seed. The run's summary links one report with each failed
+            run's trace. Fix the test or the app; while it is being fixed,
+            quarantine it: the @quarantine tag, with this issue named beside it
+            (`annotation: { type: "issue", description: "#<this issue>" }`),
+            and the issue labelled quarantined (docs/process.md § Flakes).
+
+  # What no one test accounts for: the engine's build, a runner cut short or
+  # lost, an error outside any test, or more tests failing at once than a
+  # few flakes would (flakes.mjs MANY), which is one thing wrong with main or
+  # the machines.
   file:
-    name: File what it found
-    needs: [engine, hunt]
-    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    name: File what no test accounts for
+    needs: [engine, hunt, report]
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (needs.engine.result == 'failure' || needs.report.result == 'failure' ||
+      needs.report.outputs.unexplained == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -218,12 +293,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/file-issue
         with:
-          title: Flake hunt found a flaky test
+          title: Flake hunt failing on main
           results: ${{ toJSON(needs) }}
           advice: >-
-            Each of these tests passes the gate on most runs and failed here on
-            main, where nothing changed but the machine. The run's summary links
-            one report naming each failed test and which of its three runs
-            failed, with traces. Fix the test or the app; while it is being
-            fixed, tag it @quarantine with a comment naming this issue
-            (docs/architecture/testing.md § Flakes).
+            The hunt failed in a way no one test's issue holds: the engine's
+            build, a runner cut short or lost, an error outside any test, or
+            more tests at once than a few flakes would be. The run's summary
+            says which, and links one report of every runner, with traces.

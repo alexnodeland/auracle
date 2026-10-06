@@ -50,7 +50,8 @@ The suite is about an hour and a half in one worker, so CI splits it
   (`.github/workflows/slow-suite.yml`) runs them on main, nightly, and on a
   PR labelled `full-ci`, and on no other PR, the quarantined ones in a job of
   their own. It does not block merging. A separate nightly flake hunt
-  (`flake-hunt.yml`) runs the fast tier three times over.
+  (`flake-hunt.yml`) runs the fast tier three times over, and files each
+  test that fails on its own `Flaky:` issue (`flakes.mjs`).
 
 CI runs every browser job in Playwright's image
 (`mcr.microsoft.com/playwright:v<version>-noble`), at the `@playwright/test`

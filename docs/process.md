@@ -65,7 +65,9 @@ in a plan's prose, a session's notes or a conversation.
   "Films: Wave 3", "fugue 0.2.3"). An issue with no milestone is the backlog:
   real, not yet scheduled.
 - **Titles** say the outcome, not the activity: "Faces on the PRESETS rows",
-  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`.
+  not "Work on preset faces". A flake's title is `Flaky: <file> '<test title>'`
+  (the file without `.spec.js`; the title may be cut short with … and a note
+  may follow it): the nightly *Flake hunt* finds an open flake's issue by it.
 - **Bodies** follow the templates in `.github/ISSUE_TEMPLATE/`: a task names
   its plan, its brief and what done means; a flake names the test, the run
   that caught it, why it fails, the fix, and whether it is quarantined.
@@ -402,7 +404,8 @@ how long something took is a budget, not a gate assertion.
    the PR's.
 
 The nightly *Flake hunt* runs the gate's browser tests three times each
-against `main` and files an issue when one fails.
+against `main`, and files each test that fails on its own `Flaky:` issue, or
+comments on the one open for it.
 
 ## Dependencies
 

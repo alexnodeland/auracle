@@ -20,6 +20,16 @@
 //       no issue owns (a test naming none, a test cut short, an error outside
 //       any test, or a run that failed with no failed test in its report):
 //       those are not a known flake, and the job turns the suite red on them
+//   node flakes.mjs hunt report.json [--open issues.json] [--outcome failure]
+//       the nightly Flake hunt (flake-hunt.yml): each test that failed, with
+//       the `Flaky:` issue it goes to (the one its annotation names, else an
+//       open one titled for it, `gh issue list --json number,title`, else a
+//       title to open one under), as `flaky=<json>`; and `unexplained=true`
+//       when the run failed in a way no test accounts for: an error outside
+//       any test, a test cut short, a failed run with no failed test, or
+//       more than MANY tests failing in one night, which is one thing wrong
+//       with main or the machines rather than that many flakes (those are
+//       listed in the run's summary, and no issue is filed for each)
 //
 // The report is Playwright's JSON, a run's blobs merged (`npx playwright
 // merge-reports --reporter json`). A test's repeats (`--repeat-each`) are one
@@ -30,6 +40,10 @@ import { dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+/** GitHub's longest issue title. */
+const TITLE_MAX = 256;
+/** More tests than this failing in one hunt are not each a flake. */
+export const MANY = 5;
 
 const plain = (s) => String(s ?? "").replace(/\u001b\[[0-9;]*m/g, "");
 
@@ -81,6 +95,7 @@ export function testsIn(report) {
   return [...byKey.values()];
 }
 
+const stem = (file) => String(file).replace(/^.*\//, "").replace(/\.spec\.js$/, "");
 const runsSaid = (t) => (t.runs === 1 ? "its one run" : t.failed === t.runs ? `all ${t.runs} of its runs` : `${t.failed} of its ${t.runs} runs`);
 
 /** One failed test, as the comment's first line says it. */
@@ -98,6 +113,29 @@ export function detailOf(tests) {
     lines.length ? ["```", ...lines, "```"].join("\n") : "",
     runners.length ? `Failed on ${runners.join("; ")}.` : "",
   ].filter(Boolean).join("\n\n");
+}
+
+/** The title a flake's issue has (docs/process.md § Issues): `Flaky: <file>
+ *  '<test title>'`, the file without `.spec.js`, the title cut short with …
+ *  to fit GitHub's limit. */
+export function flakyTitle(t) {
+  const head = `Flaky: ${stem(t.file)} '`;
+  const room = TITLE_MAX - head.length - 1;
+  const title = t.title.length > room ? `${t.title.slice(0, room - 1)}…` : t.title;
+  return `${head}${title}'`;
+}
+
+/** Whether an issue's title is this test's flake: `Flaky: <file> '<title>'`,
+ *  the file with or without `.spec.js`, the quoted title the test's own or
+ *  its start cut short with …, and anything after the closing quote a note
+ *  (`(no child budded)`), as a title written by hand reads. */
+export function titledFor(issueTitle, t) {
+  const m = /^Flaky: (\S+) '(.*)'(\s.*)?$/.exec(String(issueTitle).trim());
+  if (!m || stem(m[1]) !== stem(t.file)) return false;
+  const quoted = m[2];
+  if (!quoted.endsWith("…")) return quoted === t.title;
+  const start = quoted.slice(0, -1);
+  return start.length > 0 && t.title.startsWith(start);
 }
 
 /** The Slow suite's quarantine job: each issue with its quarantined tests
@@ -120,6 +158,20 @@ export function quarantined(report) {
     detail: detailOf(ts),
   }));
   return { issues, unowned, failed: tests.filter((t) => t.failed > 0).length };
+}
+
+/** The nightly hunt: each failed test with the issue it goes to (`issue`,
+ *  or "" for a new one under `title`), and whether the run failed in a way
+ *  no test accounts for. `open`: the open issues, [{ number, title }]. */
+export function hunt(report, open = []) {
+  const tests = testsIn(report);
+  const flaky = tests.filter((t) => t.failed > 0).map((t) => {
+    const titled = open.filter((i) => titledFor(i.title, t)).sort((a, b) => a.number - b.number)[0];
+    return { issue: t.issue ?? (titled ? titled.number : ""), title: flakyTitle(t), failed: failedSaid(t), detail: detailOf([t]) };
+  });
+  const many = flaky.length > MANY;
+  const unexplained = many || (report.errors || []).length > 0 || tests.some((t) => t.interrupted > 0);
+  return { flaky: many ? [] : flaky, unexplained, failed: flaky };
 }
 
 /** The tests tagged @quarantine that do not name their issue. */
@@ -189,11 +241,28 @@ function cmdQuarantined(opts) {
   return 0;
 }
 
-const commands = { check: cmdCheck, quarantined: cmdQuarantined };
+function cmdHunt(opts) {
+  const report = readReport(opts._[0]);
+  const open = opts.open && existsSync(opts.open) ? JSON.parse(readFileSync(opts.open, "utf8")) : [];
+  if (!report) {
+    output("flaky", []);
+    output("unexplained", String(opts.outcome === "failure"));
+    return 0;
+  }
+  const h = hunt(report, open);
+  const unexplained = h.unexplained || (opts.outcome === "failure" && !h.failed.length);
+  output("flaky", h.flaky);
+  output("unexplained", String(unexplained));
+  if (h.flaky.length) summary(`### Failed in the hunt\n\n${h.flaky.map((f) => `- ${f.failed}: ${f.issue ? `#${f.issue}` : `a new issue, ${f.title}`}`).join("\n")}\n`);
+  else if (h.failed.length) summary(`### Failed in the hunt: ${h.failed.length} tests, more than ${MANY}\n\nOne thing wrong with main or the machines, not that many flakes: no issue is filed for each.\n\n${h.failed.map((f) => `- ${f.failed}`).join("\n")}\n`);
+  return 0;
+}
+
+const commands = { check: cmdCheck, quarantined: cmdQuarantined, hunt: cmdHunt };
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
   const { cmd, opts } = parseArgs(process.argv.slice(2));
   if (!commands[cmd]) {
-    console.error("usage: node flakes.mjs check|quarantined … (see the header)");
+    console.error("usage: node flakes.mjs check|quarantined|hunt … (see the header)");
     process.exit(2);
   }
   try {

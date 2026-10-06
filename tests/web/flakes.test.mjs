@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { issueOf, quarantined, testsIn, unnamed } from "./flakes.mjs";
+import { MANY, flakyTitle, hunt, issueOf, quarantined, testsIn, titledFor, unnamed } from "./flakes.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RED = "\u001b[31m";
@@ -104,6 +104,63 @@ test("a test's repeats are one test: inside a file and inside a describe, where 
 test("a test expected to fail that fails is not a failure", () => {
   const r = report([{ title: "known", file: "taste_learning.spec.js", line: 1, tags: [], tests: [{ annotations: [], expectedStatus: "failed", results: [{ status: "failed", duration: 1, annotations: [] }] }] }]);
   assert.equal(testsIn(r)[0].failed, 0);
+});
+
+test("the hunt files each failed test under its Flaky: title, with how many of its runs failed", () => {
+  const h = hunt(report([spec("x", 3, [passed(), failed("boom"), passed()]), spec("y", 4, [failed("a"), failed("a"), failed("a")]), spec("z", 5, [passed(), passed(), passed()])]));
+  assert.equal(h.unexplained, false);
+  assert.deepEqual(h.flaky.map((f) => [f.issue, f.title, f.failed]), [
+    ["", "Flaky: taste_learning 'x'", "`taste_learning.spec.js:3` 'x', 1 of its 3 runs"],
+    ["", "Flaky: taste_learning 'y'", "`taste_learning.spec.js:4` 'y', all 3 of its runs"],
+  ]);
+  // The same error three times is said once.
+  assert.equal(h.flaky[1].detail, "```\ntaste_learning.spec.js:4: Error: a\n```");
+});
+
+test("the hunt finds a flake's open issue by its title as a person writes it: cut short with …, a note after it, the file with or without .spec.js", () => {
+  const t = { file: "bank_lineage.spec.js", title: "a generation's children land in New with their seed and what changed, and Replaced names what it replaced" };
+  assert.ok(titledFor("Flaky: bank_lineage 'a generation's children land in New with their seed and what changed…' (no child budded)", t));
+  assert.ok(titledFor(`Flaky: bank_lineage.spec.js '${t.title}'`, t));
+  assert.ok(titledFor(flakyTitle(t), t));
+  assert.ok(!titledFor("Flaky: bank_lineage 'a generation's children land in New with their seed and what changed'", t), "a whole title is the whole title");
+  assert.ok(!titledFor("Flaky: bank_kept 'a generation's children land…'", t), "another file");
+  assert.ok(!titledFor("Flaky: bank_lineage '…'", t), "an empty start names every test");
+  assert.ok(!titledFor("bank_lineage: a generation's children land… (flaky)", t));
+});
+
+test("the hunt comments on the issue a test names, else on its open Flaky: issue, else opens one", () => {
+  const r = report([
+    spec("named", 1, [failed("a")], { annotations: [issue(40)] }),
+    spec("titled by hand, long ago", 2, [failed("b")]),
+    spec("new", 3, [failed("c")]),
+  ]);
+  const open = [
+    { number: 41, title: "Flaky: taste_learning 'titled by hand…' (seen once)" },
+    { number: 42, title: "Flaky: taste_learning 'named'" },
+  ];
+  assert.deepEqual(hunt(r, open).flaky.map((f) => f.issue), [40, 41, ""]);
+});
+
+test("a hunt that failed in a way no test accounts for says so", () => {
+  assert.equal(hunt(report([spec("a", 1, [{ status: "interrupted", duration: 1, annotations: [] }])])).unexplained, true);
+  assert.equal(hunt(report([], { errors: [{ message: "worker crashed" }] })).unexplained, true);
+});
+
+test("more tests failing in one hunt than a few are one thing wrong, not that many flakes: no issue for each", () => {
+  const some = Array.from({ length: MANY }, (_, i) => spec(`t${i}`, i + 1, [failed("x")]));
+  assert.equal(hunt(report(some)).flaky.length, MANY);
+  const h = hunt(report([...some, spec("one more", 99, [failed("x")])]));
+  assert.deepEqual(h.flaky, []);
+  assert.equal(h.unexplained, true);
+  assert.equal(h.failed.length, MANY + 1);
+});
+
+test("a Flaky: title fits GitHub's 256 characters, cut short with …", () => {
+  const t = { file: "x.spec.js", title: "w".repeat(400) };
+  const title = flakyTitle(t);
+  assert.equal(title.length, 256);
+  assert.match(title, /^Flaky: x 'w+…'$/);
+  assert.ok(titledFor(title, t));
 });
 
 test("the check names each quarantined test that names no issue, and why", () => {
