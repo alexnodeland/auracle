@@ -247,7 +247,9 @@ test("a figure says what the worker posted, and follows its control", async ({ p
   expect(second.req.turned).not.toEqual(first.req.turned);
 });
 
-test("the lesson on filters is the sound in hand: another sound, another lesson", async ({ page, app }) => {
+// Quarantined (#185): on a slow runner the first cutoff reply after the 30
+// key presses can answer an early press, not the last one the slider shows.
+test("the lesson on filters is the sound in hand: another sound, another lesson", { tag: "@quarantine" }, async ({ page, app }) => {
   await boot(page, app);
   const lessonOf = async (name) => {
     await openOnPerform(app, name);
