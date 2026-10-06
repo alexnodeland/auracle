@@ -79,6 +79,7 @@ make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
 make coverage       # the Rust's coverage from the fast tier: each crate's floor, every changed line
+make mutants DIFF=1 # mutation testing of the Rust you changed: would a test notice it broken?
 ```
 
 The site is a second, independent gate:
@@ -179,6 +180,15 @@ line the change adds or changes in `crates/` is run by a fast-tier test that
 checks what it does. `make coverage` runs the same locally, with the HTML
 report in `target/llvm-cov/html/`
 ([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)).
+
+Coverage says a test ran a line, not that it checked it. `make mutants
+DIFF=1` changes the code you changed one small way at a time (a `<` made
+`<=`, a function returning a default) and runs its crate's fast tier on
+each change; a change no test fails on survives, and review treats a
+survivor as a finding. The *Mutants* workflow runs the same on a PR that
+changes a crate, and weekly on a part of the workspace, all of it every
+twelve weeks; it is not part of `CI`
+([`crates/AGENTS.md` § Mutation testing](crates/AGENTS.md#mutation-testing)).
 
 Changes that touch `www/`, `apps/web/` or any public API must also pass `make
 site && make site-check`. If you changed a doc comment that the reference

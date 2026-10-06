@@ -20,7 +20,11 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   from types, `u32` ids at the boundary, audio thread allocation- and
   clock-free, generated files untouched.
 - **Tests**: a test that fails without the fix; optimized profile; browser
-  specs that assert what a player sees, with slack for load.
+  specs that assert what a player sees, with slack for load. In Rust, a
+  mutant of the changed code that survived (the builder's
+  `make mutants DIFF=1`, or the *Mutants* job's summary on the PR) is a
+  finding unless it was killed or answered (`crates/AGENTS.md` § Mutation
+  testing).
 - **Drop nothing**: everything the change moved or retired still works by
   mouse, keyboard and touch. Check the builder's before → after table against
   the old code, not only against the report.

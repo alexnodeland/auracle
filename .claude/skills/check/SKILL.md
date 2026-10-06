@@ -33,7 +33,7 @@ git diff --stat HEAD
 
 | Changed | Run |
 | --- | --- |
-| `crates/<crate>/**` | `make test-crate CRATE=<crate>` (optimized, on the pinned compiler, without building the examples no test runs), then `make lint`; before review, `make coverage`: every crate at its floor and every changed line covered by a test that asserts what it does (`crates/AGENTS.md` § Coverage) |
+| `crates/<crate>/**` | `make test-crate CRATE=<crate>` (optimized, on the pinned compiler, without building the examples no test runs), then `make lint`; before review, `make coverage`: every crate at its floor and every changed line covered by a test that asserts what it does (`crates/AGENTS.md` § Coverage); and `make mutants DIFF=1` (on a shared machine, `nice -n 19`): every mutant of the changed code caught, each survivor killed or answered (`crates/AGENTS.md` § Mutation testing) |
 | Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test |
 | φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |

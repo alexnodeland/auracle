@@ -425,7 +425,7 @@ mutants-installed:
 ## mutants: mutation testing against the fast tier: `make mutants CRATE=auracle-taste`
 ## for one crate, `make mutants DIFF=1` for the code changed since BASE
 ## (origin/main), uncommitted changes included; both together for one crate's
-## changes; neither for the workspace (days of CPU: CI's weekly run). Survivors
+## changes; neither for the workspace (a day or two; CI's weekly run takes a part). Survivors
 ## in mutants.out/missed.txt. Long: on a shared machine, `nice -n 19 make mutants …`
 mutants: nextest-installed mutants-installed
 ifneq ($(DIFF),)
