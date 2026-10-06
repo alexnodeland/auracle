@@ -33,10 +33,11 @@ const callsIn = (trace, from, to) => trace.slice(from + 1, to).filter((e) => e.e
 const inOf = (trace, type) => trace.findIndex((e) => e.ev === "in" && e.type === type);
 
 /** Deal the cards (`order`), then ask for a pool member's sound in the
- *  background, as main asks for a dealt pair's: it waits behind the first
- *  card's measurement, so by its answer a card has been measured, or none
- *  will be. Its arrival also sets a second loop serving the lane (the pump)
- *  beside the one measuring the cards, as the app's do. */
+ *  background, as main asks for a dealt pair's: it waits behind every card
+ *  still queued (each card measured queues the next ahead of the lane's
+ *  other background work, `warmCard`), so by its answer a card has been
+ *  measured, or none will be. Its arrival also sets a second loop serving
+ *  the lane (the pump) beside the one measuring the cards, as the app's do. */
 async function deal(w, cards) {
   w.post({ type: "warm_cards", order: cards });
   await w.send({ type: "render", id: 1, bg: true });

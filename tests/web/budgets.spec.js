@@ -13,9 +13,11 @@
 //   and the bench.
 // - A warm-start pick's controls are live the moment PERFORM names it, and
 //   within a second of "teach it": its insert is the first thing the worker
-//   does, and a memo hit, the engine having measured the cards while they
-//   were chosen (`warm_cards`, the picks first; what is left is the render in
-//   progress when "teach it" arrives, #221).
+//   does, and a memo hit when the pick's card was measured before "teach it"
+//   arrived (the engine measures the cards while they are chosen,
+//   `warm_cards`, the picks first). This spec presses it about half a second
+//   after the deal, and the card usually was; what is left then is the
+//   render in progress when "teach it" arrives (#221).
 // - A pick puts the next pair up in the click's own task, with no deal
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
 //   sounds fetched, ahead. Within 0.3 s and 0.15 s.
