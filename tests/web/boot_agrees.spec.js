@@ -1,20 +1,25 @@
 // Does the browser's engine deal what the native one deals, and draw what the
 // native one drew?
 //
-// A seed is a promise that the same session deals the same pool, and the page
-// runs the engine as wasm while the tests, the diagnostics and the shipped
-// PERFORM wirings run it natively. They parted once: rand draws a `usize`
-// from the stream through `next_u32` on wasm32 and `next_u64` on a 64-bit
-// machine, so the prior's module picks dealt another tree from the same seed,
-// and the page's pool, standardizer and wirings were not the ones the shipped
-// file was measured under.
+// A seed is a promise that the same session deals the same pool, fits the
+// same taste and breeds the same sounds, and the page runs the engine as wasm
+// while the tests, the diagnostics and the shipped PERFORM wirings run it
+// natively. They parted once: rand draws a `usize` from the stream through
+// `next_u32` on wasm32 and `next_u64` on a 64-bit machine, so the prior's
+// module picks dealt another tree from the same seed, and the page's pool,
+// standardizer and wirings were not the ones the shipped file was measured
+// under. fugue-ppl made the same draw for the site each Metropolis step moves
+// until 0.2.3, so a seeded fit, walk or PERFORM offer parted too.
 //
 // This is the wasm half of the check. `boot_probe` (crates/auracle-wasm/src/
-// shipped.rs) digests the first 400 draws of the fill stream and fills a small
-// pool from the shipped seed; the native half (crates/auracle-wasm/tests/
+// shipped.rs) digests the first 400 draws of the fill stream, fills a small
+// pool from the shipped seed and deals its first duels, then makes an offer
+// from that pool, fits the taste to the duels' picks and walks from the
+// member it ranks best; the native half (crates/auracle-wasm/tests/
 // boot_agrees.rs) pins its output to tests/boot_probe.json, and here the built
-// wasm must produce the same one: the same trees and vet decisions exactly,
-// the standardizer's spreads to within the tolerance the shipped wirings use.
+// wasm must produce the same one: the same trees, vet decisions and choices
+// exactly, the numbers (spreads, utilities, knobs) to within the tolerance the
+// shipped wirings use.
 //
 // The presets' faces are the same kind of promise. The page draws a preset's
 // face from apps/web/preset-faces.json, rendered natively (`make preset-faces`,
@@ -32,11 +37,12 @@
 // no browser. If the probe fails and the native test passes, the two targets
 // deal differently, and the message names the first field that does: a
 // draw's digest is the stream itself (a draw whose width depends on the
-// target), `kept` or `draws_consumed` a render or a vetting decision, and
-// `spread` alone the features in their last digits. If a family's faces fail
-// and shipped_faces.rs passes, the wasm renders those presets otherwise than
-// the native build, and the page draws them from a face its engine does not
-// make.
+// target), `kept` or `draws_consumed` a render or a vetting decision,
+// `spread` alone the features in their last digits; in `offer`, `taste` or
+// `walk`, a `shape` is a Metropolis step that chose otherwise, and a number
+// alone the arithmetic after it. If a family's faces fail and
+// shipped_faces.rs passes, the wasm renders those presets otherwise than the
+// native build, and the page draws them from a face its engine does not make.
 //
 // The one spec off the fixture (./fixtures): its automatic `pageErrors`
 // watches the test's browser context, so a test taking `test` from there
@@ -109,11 +115,11 @@ function presets(engine) {
   return list;
 }
 
-test("the shipped seed deals the pinned pool in the built wasm, as it does natively", async () => {
+test("the shipped seed deals the pinned session in the built wasm, as it does natively", async () => {
   const engine = await builtEngine();
   const pinned = JSON.parse(fs.readFileSync(PINNED, "utf8"));
   const difference = firstDifference(pinned, JSON.parse(engine.boot_probe()), "probe");
-  expect(difference, "the wasm engine deals a different pool than the native one").toBe("");
+  expect(difference, "the wasm engine deals a different session than the native one").toBe("");
 });
 
 test("the presets' shipped faces are the built wasm's library, in its order, each preset in a family rendered below", async () => {
