@@ -42,7 +42,8 @@ fi
 # outside the tree, where no Playwright run can pick them up: a violation the
 # copy's suppressions hold passes, a new one fails, a clean spec passes.
 web="$root/tests/web"
-if [ -x "$web/node_modules/.bin/eslint" ] && [ -d "$web/node_modules/eslint-plugin-playwright" ]; then
+nm="$web/node_modules"
+if [ -x "$nm/.bin/eslint" ] && [ -d "$nm/eslint-plugin-playwright" ] && [ -d "$nm/@eslint-community/eslint-plugin-eslint-comments" ]; then
   lint="$tmp/tests/web"
   mkdir -p "$lint" && cp "$web/eslint.config.mjs" "$lint/" && ln -s "$web/node_modules" "$lint/node_modules"
   waits='const { test, expect } = require("./fixtures");\n\ntest("waits", async ({ page }) => {\n  await page.waitForTimeout(100);\n  await expect(page.locator("#a")).toBeVisible();\n});\n'
