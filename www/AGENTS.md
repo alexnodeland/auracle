@@ -62,8 +62,9 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   is a token first, then `make tokens`. `make dev-check` fails on a colour
   written in the landing page, the docs theme, the live figures
   (`www/viz/`), the brand page and its raster source, the 404, the stage,
-  the kit or a film, and on a token a figure reads that one of the pages
-  loading it (the docs' Rack and Paper, the landing page) does not define
+  the kit or a film, and on a token, or an alias of one such as `--code-bg`,
+  that a figure reads and one of the pages loading it (the docs' Rack and
+  Paper, the landing page) does not define
   ([`brand/README.md`](brand/README.md#the-tokens)).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in

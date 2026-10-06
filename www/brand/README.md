@@ -171,11 +171,17 @@ script's color property. `transparent`, `currentColor` and `inherit` pass,
 comments are not read, and a word like "green" in prose or a script's own
 names is not a color. It also fails when a script reads a token its surface
 does not define, when a stylesheet uses a token another surface owns, when a
-figure reads a token one of the pages that load it does not define (the
-figures' rules hold on all three at once, so a token Paper lacks would paint
-nothing on Paper; `ON_EVERY` in `tokens.py`), when a `theme-color` is not the
-rack, and when a hex quoted in prose (`<code>#0c0d10</code>`) is not a
-token's value.
+figure reads a name one of the pages that load it does not define (`ON_EVERY`
+in `tokens.py`), when a `theme-color` is not the rack, and when a hex quoted
+in prose (`<code>#0c0d10</code>`) is not a token's value.
+
+The figures' rules hold on the docs' Rack, the docs' Paper and the landing
+page at once, so every name they read must be on all three: a token in the
+page's block, and an alias such as `--fg`, `--code-bg` or `--mono-font` in the
+page's own stylesheet, in `:root` or in its theme's rule (`html.light` for
+Paper). On a page that lacks one, a tile's fill would turn black (an SVG
+`fill` falls back to the one it inherits) and the stage would lose its
+ground. A `var()` with a fallback of its own is held to the same rule.
 
 A page that has to hold colors of its own while a token is decided goes on
 `NOT_YET` in `tokens.py`, with why; it is not scanned, and `--check` names it

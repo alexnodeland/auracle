@@ -67,9 +67,9 @@ and printed key hints are built here; its other contracts stay in
      its tiles with `--phos-a-10` and `--phos-b-10`, which on Paper are
      Paper's own green and amber; Paper has a `--bezel`, dark on purpose, for
      a film's ground; `www/brand/render.html` reads the brand page's tokens
-     from a generated block. The live figures are held to the tokens every
-     page that loads them defines (`ON_EVERY`). On the Rack theme nothing
-     renders differently.
+     from a generated block. The live figures are held to the tokens, and
+     the aliases of them, that every page loading them defines
+     (`ON_EVERY`). On the Rack theme nothing renders differently.
    - *Still to do:* move the landing page, the docs theme, the live figures,
      the brand page and its raster source, the 404 and the films onto the
      scale (their counts are in the baseline, listed by every `--check`)

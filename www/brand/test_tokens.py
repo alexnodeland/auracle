@@ -185,6 +185,33 @@ class TheCheck(unittest.TestCase):
             got = t.problems()
             self.assertTrue(any(p.startswith("www/viz/viz.css:") and "var(--popup) is not defined on docs, landing," in p for p in got), got)
 
+    def test_a_figure_reading_an_alias_one_of_its_pages_lacks_fails_the_check(self):
+        # The stage's ground is `var(--code-bg)`, an alias each page defines
+        # beside its tokens; without it the landing page's stage has none.
+        with Tree() as t:
+            t.edit("www/landing/style.css", lambda s: s.replace("  --code-bg: var(--white-02);\n", "", 1))
+            got = t.problems()
+            self.assertTrue(
+                any(
+                    p.startswith("www/viz/viz.css:")
+                    and "var(--code-bg) is not defined on landing, which loads this file; define it in www/landing/style.css (:root)" in p
+                    for p in got
+                ),
+                got,
+            )
+        # Rack and Paper share a stylesheet: an alias Paper's rule lacks is
+        # missing on Paper alone, though Rack's rule defines it.
+        with Tree() as t:
+
+            def drop_paper_fg(s):
+                at = s.rindex("html.light {")  # the hand rule, after the block's
+                return s[:at] + s[at:].replace("    --fg: var(--silk);\n", "", 1)
+
+            t.edit("www/theme/css/variables.css", drop_paper_fg)
+            got = [p for p in t.problems() if "var(--fg)" in p]
+            self.assertTrue(got, "no report of --fg")
+            self.assertTrue(all("is not defined on docs-paper, which loads this file; define it in www/theme/css/variables.css (html.light)" in p for p in got), got)
+
     def test_a_value_that_is_not_a_colour_is_reported_as_one(self):
         # Even when opacities are derived from it: a friendly line, not a traceback.
         for bad in ("#12345", "rgb(1, 2)", "blue"):
