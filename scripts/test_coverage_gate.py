@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -48,17 +49,20 @@ def summary(root, files):
     return {"data": [{"files": out, "totals": {}}], "type": "llvm.coverage.json.export"}
 
 
-# The environment every git command here runs in: none of git's own variables
-# (see Tree.git), no system or global config, and a test identity.
-TEST_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-TEST_ENV.update(
-    GIT_CONFIG_NOSYSTEM="1",
-    GIT_CONFIG_GLOBAL=os.devnull,
-    GIT_AUTHOR_NAME="t",
-    GIT_AUTHOR_EMAIL="t@example.com",
-    GIT_COMMITTER_NAME="t",
-    GIT_COMMITTER_EMAIL="t@example.com",
-)
+def test_env():
+    """The environment every git command here runs in, made from the
+    environment as it is at the call: none of git's own variables (see
+    Tree.git), no system or global config, and a test identity."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_AUTHOR_NAME="t",
+        GIT_AUTHOR_EMAIL="t@example.com",
+        GIT_COMMITTER_NAME="t",
+        GIT_COMMITTER_EMAIL="t@example.com",
+    )
+    return env
 
 
 class Tree(unittest.TestCase):
@@ -95,11 +99,11 @@ class Tree(unittest.TestCase):
         repository."""
         if args[0] != "init":
             top = subprocess.run(
-                ["git", "-C", self.root, "rev-parse", "--absolute-git-dir"], env=TEST_ENV, capture_output=True, text=True
+                ["git", "-C", self.root, "rev-parse", "--absolute-git-dir"], env=test_env(), capture_output=True, text=True
             ).stdout.strip()
             if os.path.realpath(top) != os.path.realpath(os.path.join(self.root, ".git")):
                 raise AssertionError(f"refusing to run git outside the test's own repository (found {top!r})")
-        subprocess.run(["git", "-C", self.root, *args], env=TEST_ENV, check=True, capture_output=True)
+        subprocess.run(["git", "-C", self.root, *args], env=test_env(), check=True, capture_output=True)
 
 
 class Paths(unittest.TestCase):
@@ -454,6 +458,73 @@ class Changed(Tree):
         self.assertIn("4 of the 5 changed lines the run measured (against `main`):", text)
         self.assertIn("- [`crates/a/src/lib.rs:5`](https://x/blob/abc/crates/a/src/lib.rs#L5): `pub fn sub(a: i32, b: i32) -> i32 { a - b }`", text)
         self.assertIn("- [`crates/a/src/more.rs:1-3`](https://x/blob/abc/crates/a/src/more.rs#L1-L3): `pub fn m(a: i32) -> i32 {`", text)
+
+
+class NoOtherRepository(Tree):
+    """The incident this guards against: the pre-commit hook ran these tests
+    with GIT_DIR, GIT_INDEX_FILE and GIT_WORK_TREE naming the repository
+    being committed, and the tests' git commands wrote to it. Here those
+    variables name a victim repository while the tests' helpers and every
+    path of the script that runs git do their work, and the victim must come
+    out byte for byte as it went in."""
+
+    VICTIM_FILES = ("config", "index", "HEAD", "refs/heads/main")
+
+    def setUp(self):
+        super().setUp()
+        self.victim = tempfile.mkdtemp(prefix="coverage-victim-")
+        for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "victim"]):
+            if args[0] == "add":
+                with open(os.path.join(self.victim, "f"), "w") as f:
+                    f.write("x\n")
+            subprocess.run(["git", "-C", self.victim, *args], env=test_env(), check=True, capture_output=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.victim)
+        super().tearDown()
+
+    def snapshot(self):
+        out = {}
+        for rel in self.VICTIM_FILES:
+            with open(os.path.join(self.victim, ".git", rel), "rb") as f:
+                out[rel] = f.read()
+        return out
+
+    def test_git_variables_naming_another_repository_change_nothing_in_it(self):
+        before = self.snapshot()
+        hook = {
+            "GIT_DIR": os.path.join(self.victim, ".git"),
+            "GIT_INDEX_FILE": os.path.join(self.victim, ".git", "index"),
+            "GIT_WORK_TREE": self.victim,
+        }
+        with mock.patch.dict(os.environ, hook):
+            # The tests' helpers: init, config, add, commit, branch, mv.
+            self.git("init", "-q", "-b", "main")
+            self.git("config", "diff.noprefix", "true")
+            self.write("crates/a/Cargo.toml", "[package]\n")
+            self.write("crates/a/src/lib.rs", LIB_BEFORE)
+            self.floors_file({"a": {"lines": 90.0, "functions": 90.0}})
+            self.git("add", "-A")
+            self.git("commit", "-q", "-m", "base")
+            self.git("checkout", "-q", "-b", "change")
+            self.write("crates/a/src/lib.rs", LIB_AFTER)
+            self.git("commit", "-q", "-am", "change")
+            # Every path of the script that runs git: diff (merge-base,
+            # diff, ls-files) and floors --base (merge-base, show).
+            lcov_path = self.write("lcov.info", lcov(self.root, {"crates/a/src/lib.rs": ({1: 1, 2: 1, 3: 1, 5: 0}, {})}))
+            code, _, err = self.run_main("diff", lcov_path, "--base", "main")
+            self.assertEqual(code, 1)
+            self.assertIn("1 not covered", err)
+            s = self.write("summary.json", json.dumps(summary(self.root, {"crates/a/src/lib.rs": (100, 95, 10, 10)})))
+            code, _, err = self.run_main("floors", s, "--base", "main")
+            self.assertEqual(code, 0, err)
+        self.assertEqual(self.snapshot(), before)
+        # And the work happened where it should have.
+        log = subprocess.run(["git", "-C", self.root, "log", "--format=%s"], env=test_env(), capture_output=True, text=True)
+        self.assertEqual(log.stdout.split(), ["change", "base"])
+
+    def floors_file(self, data):
+        self.write(C.BASELINE, C.write_floors(data))
 
 
 class Parsing(unittest.TestCase):
