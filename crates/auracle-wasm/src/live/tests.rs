@@ -217,6 +217,7 @@ fn long_tail_json() -> String {
 /// player's hands while the trill played on.
 #[test]
 fn held_notes_survive_a_trill_over_them() {
+    quiver::rng::seed(7);
     let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
     poly.note_on(48, 1.0);
     poly.note_on(52, 1.0);
@@ -247,6 +248,7 @@ fn held_notes_survive_a_trill_over_them() {
 /// held note gives way to it.
 #[test]
 fn a_note_past_the_polyphony_takes_the_oldest_held() {
+    quiver::rng::seed(7);
     let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
     for n in [48, 52, 55, 59] {
         poly.note_on(n, 1.0);
@@ -370,6 +372,7 @@ fn sync_snaps_to_the_nearest_division() {
 /// and sync off returns every sequencer to free-running at its own rate.
 #[test]
 fn sync_drives_every_voice_from_one_transport() {
+    quiver::rng::seed(7);
     use auracle_grammar::steps::{rate_hz, SYNC_FREE};
     let (_, tree) = auracle_grammar::presets()
         .into_iter()
@@ -435,6 +438,7 @@ fn sync_drives_every_voice_from_one_transport() {
 /// off, however it was turned off.
 #[test]
 fn velocity_touch_offsets_its_own_voice_only() {
+    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
     let json = serde_json::to_string(&PatchTree {
@@ -534,6 +538,7 @@ fn velocity_touch_offsets_its_own_voice_only() {
 /// not.
 #[test]
 fn a_held_pad_keeps_its_envelope_across_a_patch_swap() {
+    quiver::rng::seed(7);
     let json = pad_json();
     let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
     poly.note_on(60, 1.0);
@@ -615,6 +620,7 @@ fn swap_quanta(poly: &mut LivePoly, quanta: usize) -> (f32, usize, usize) {
 /// failed patch is dropped with it.
 #[test]
 fn a_patch_that_does_not_compile_keeps_the_voices_playing() {
+    quiver::rng::seed(7);
     let mut poly = steady_pad(0.5);
     let (before, _, _) = swap_quanta(&mut poly, 16);
     assert_eq!(poly.last_error(), "", "no error before one");
@@ -640,6 +646,7 @@ fn a_patch_that_does_not_compile_keeps_the_voices_playing() {
 /// refuses. Natively the reason is the same `String`.
 #[test]
 fn an_instrument_that_cannot_be_built_says_why() {
+    quiver::rng::seed(7);
     let unread = LivePoly::new("not json", 44_100.0, 4).err().unwrap();
     assert!(unread.contains("expected"), "serde's reason: {unread}");
     let deep = serde_json::to_string(&crate::tests::too_deep()).unwrap();
@@ -655,6 +662,7 @@ fn an_instrument_that_cannot_be_built_says_why() {
 /// newest (its filter's cutoff is a live knob; the pad has none).
 #[test]
 fn a_swap_sent_during_a_rebuild_lands_instead_of_it() {
+    quiver::rng::seed(7);
     let mut poly = steady_pad(0.5);
     assert!(!poly.set_param("node#cut", 0.5), "the pad has no filter");
     assert!(poly.set_patch(&pad_json()));
@@ -675,6 +683,7 @@ fn a_swap_sent_during_a_rebuild_lands_instead_of_it() {
 /// at its own level, and the new one plays at the new makeup.
 #[test]
 fn a_makeup_sent_with_a_swap_waits_for_it() {
+    quiver::rng::seed(7);
     let mut poly = steady_pad(0.25);
     let (before, _, _) = swap_quanta(&mut poly, 16);
     assert!(poly.set_patch(&pad_json()));
@@ -698,6 +707,7 @@ fn a_makeup_sent_with_a_swap_waits_for_it() {
 /// shelf: a note swapped 30 ms into a 1 s attack must keep rising.
 #[test]
 fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
+    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
     let json = serde_json::to_string(&PatchTree {
@@ -757,6 +767,7 @@ fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
 /// swap is reported.
 #[test]
 fn table_and_oct_are_live_at_index_scale() {
+    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, TableShape, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
     let tree = |root| PatchTree {
@@ -894,6 +905,7 @@ fn the_arp_cycles_a_held_chord_and_off_re_presses_it() {
 /// conversion because the old ceiling was above 1.0.
 #[test]
 fn chord_never_exceeds_full_scale() {
+    quiver::rng::seed(7);
     let mut rng = StdRng::seed_from_u64(0xC401);
     for i in 0..8 {
         let json = tree_json(&mut rng);
@@ -926,6 +938,7 @@ fn chord_never_exceeds_full_scale() {
 /// falling-then-rising gate edge.
 #[test]
 fn stolen_voice_retriggers_its_envelope() {
+    quiver::rng::seed(7);
     let json = plucked_json();
     let mut poly = LivePoly::new(&json, 44_100.0, 1).unwrap();
     poly.note_on(60, 1.0);
@@ -1043,6 +1056,7 @@ fn arp_gate_octaves_and_swing() {
 /// spreads the voices non-uniformly.
 #[test]
 fn unison_detune_is_wide_and_non_uniform() {
+    quiver::rng::seed(7);
     let json = plucked_json();
     let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
     p.set_unison(true, 1.0, 0.5);
@@ -1165,6 +1179,7 @@ fn live_stress_survives_chaos() {
 /// a tune started dead on pitch and the fader did nothing you could hear.
 #[test]
 fn glide_slides_a_line_but_not_a_chord() {
+    quiver::rng::seed(7);
     let json = plucked_json();
 
     // A line: press, release, press. The second note starts an octave
@@ -1250,6 +1265,7 @@ fn glide_slides_a_line_but_not_a_chord() {
 /// it, through `meter_ptr` and `meter_len`.
 #[test]
 fn meter_reads_levels_off_interior_ports() {
+    quiver::rng::seed(7);
     use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
     use auracle_grammar::{AudioNode, ModNode, PatchTree};
     quiver::rng::seed(7);
@@ -1352,6 +1368,7 @@ fn held(json: &str, makeup: f64, leveler: bool, secs: f64) -> Vec<f64> {
 /// ceiling instead of at the brickwall.
 #[test]
 fn a_held_note_past_the_ceiling_settles_at_it() {
+    quiver::rng::seed(7);
     use auracle_features::{integrated_lufs, TARGET_LUFS};
     let json = sustained_json();
     let settled = |leveler: bool| {
@@ -1374,6 +1391,7 @@ fn a_held_note_past_the_ceiling_settles_at_it() {
 /// on and off is the same samples.
 #[test]
 fn a_note_under_the_leveler_ceiling_is_untouched() {
+    quiver::rng::seed(7);
     let json = sustained_json();
     let (on, off) = (held(&json, 0.1, true, 2.0), held(&json, 0.1, false, 2.0));
     assert!(on.iter().any(|s| s.abs() > 1e-3), "the note is silent");
@@ -1451,6 +1469,7 @@ fn quantum_with_input(poly: &mut LivePoly, t0: usize, write: bool) -> f32 {
 /// falls silent rather than looping.
 #[test]
 fn the_live_voice_hears_its_input() {
+    quiver::rng::seed(7);
     let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
     assert!(poly.input_capacity() >= 128);
     poly.set_leveler(false);
@@ -1508,6 +1527,7 @@ fn loudest_with_input(poly: &mut LivePoly, from: usize, quanta: usize) -> f32 {
 /// closing it lets it ring out and park.
 #[test]
 fn the_open_voice_plays_the_input_with_no_key() {
+    quiver::rng::seed(7);
     let mut poly = LivePoly::new(&input_patch(), 44_100.0, 4).expect("compiles");
     poly.set_leveler(false);
     let closed = loudest_with_input(&mut poly, 0, 20);
@@ -1570,6 +1590,7 @@ fn the_open_voice_plays_the_input_with_no_key() {
 /// patch that listens opens one, which a swap away lets go.
 #[test]
 fn only_a_patch_that_listens_is_held_open() {
+    quiver::rng::seed(7);
     let mut poly = LivePoly::new(&pad_json(), 44_100.0, 4).expect("compiles");
     poly.set_leveler(false);
     poly.set_open(true);
@@ -1657,6 +1678,7 @@ fn tracked_open(json: &str) -> LivePoly {
 /// and the level stood at five voices'.)
 #[test]
 fn a_tracked_patch_has_one_tracked_voice_and_the_keys_do_not_stack() {
+    quiver::rng::seed(7);
     let mut poly = tracked_open(&tracked_patch());
     let alone = loudest_with_input(&mut poly, 120, 40);
     assert!(
@@ -1774,6 +1796,7 @@ fn assert_plays_the_input(x: &[f32], when: &str) {
 /// a key's voice is never given a pitch or a gate.
 #[test]
 fn a_chord_under_track_plays_the_inputs_pitch() {
+    quiver::rng::seed(7);
     let mut poly = tracked_open(&tracked_patch());
     for n in CHORD {
         poly.note_on(n, 1.0);
@@ -1791,6 +1814,7 @@ fn a_chord_under_track_plays_the_inputs_pitch() {
 /// alone on an instrument of its own.
 #[test]
 fn a_tracked_patch_swaps_with_keys_held_and_they_still_follow() {
+    quiver::rng::seed(7);
     // The same patch with a saw for the sine: a structural swap.
     let swapped = tracked_patch().replace("\"Sine\"", "\"Saw\"");
     assert_ne!(swapped, tracked_patch());
@@ -1853,6 +1877,7 @@ fn capture_patch() -> String {
 /// for bit; a key with no CAPTURE renders none.
 #[test]
 fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
+    quiver::rng::seed(7);
     let tree = capture_patch();
     // Live: a key held at C4, the gate raised, 100 quanta of the tone.
     let mut live = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
@@ -1880,6 +1905,7 @@ fn a_take_rendered_from_the_recorded_input_is_the_live_take() {
 /// not silent. A key with no capture records nothing.
 #[test]
 fn a_capture_records_and_reads_back_its_take() {
+    quiver::rng::seed(7);
     let tree = capture_patch();
     let mut poly = LivePoly::new(&tree, 44_100.0, 1).expect("compiles");
     assert!(
@@ -1955,6 +1981,7 @@ fn no_voices_intern_no_knobs() {
 /// taps read what they read without it.
 #[test]
 fn the_meter_reads_levels_and_nothing_else() {
+    quiver::rng::seed(7);
     let read = |scope: bool| {
         quiver::rng::seed(7);
         let mut poly = LivePoly::new(&pad_json(), 44_100.0, 1).unwrap();
@@ -2005,6 +2032,7 @@ fn the_meter_follows_the_open_voice_when_no_key_sounds() {
 /// that is no position (below 0, not a number) changes nothing.
 #[test]
 fn the_transport_restarts_and_another_instrument_joins_it() {
+    quiver::rng::seed(7);
     let mut a = loom_synced();
     a.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
     a.note_on(60, 0.8);
@@ -2127,6 +2155,7 @@ fn the_arp_takes_the_chord_and_gives_it_back() {
 /// play alike (no clock reaches the audio thread).
 #[test]
 fn the_arp_plays_its_patterns() {
+    quiver::rng::seed(7);
     let up = arp_notes(&mut chord_arp(0, 0.5), 600);
     assert_eq!(&up[..6], &[52, 55, 48, 52, 55, 48], "{up:?}");
     let down = arp_notes(&mut chord_arp(1, 0.5), 600);
@@ -2156,6 +2185,7 @@ fn the_arp_plays_its_patterns() {
 /// lands on its pitch at once; with glide up it portamentos there.
 #[test]
 fn a_tied_arp_slides_one_voice() {
+    quiver::rng::seed(7);
     for glide in [0.0, 0.2] {
         let mut p = chord_arp(0, 1.0);
         p.set_glide(glide);
@@ -2185,6 +2215,7 @@ fn a_tied_arp_slides_one_voice() {
 /// once, and leaves another knob's ramp running.
 #[test]
 fn a_rate_knob_ramps_free_and_snaps_synced() {
+    quiver::rng::seed(7);
     use auracle_grammar::steps::rate_hz;
     let mut p = loom_synced();
     p.set_sync(false);
@@ -2221,6 +2252,7 @@ fn a_rate_knob_ramps_free_and_snaps_synced() {
 /// presses its next step on them; the swap is reported as any is.
 #[test]
 fn a_swap_under_the_arp_keeps_it_stepping() {
+    quiver::rng::seed(7);
     let mut p = chord_arp(0, 0.5);
     let _ = arp_notes(&mut p, 40);
     assert!(p.set_patch(&first_bass()));
@@ -2286,6 +2318,7 @@ fn a_held_note_no_voice_sounded_starts_fresh_after_a_swap() {
 /// keys' voices hold the last frame the lead tracked for the rest of it.
 #[test]
 fn a_block_longer_than_the_lead_buffer_plays_on() {
+    quiver::rng::seed(7);
     let mut poly = tracked_open(&tracked_patch());
     for n in CHORD {
         poly.note_on(n, 1.0);
