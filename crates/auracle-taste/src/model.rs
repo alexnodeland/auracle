@@ -308,15 +308,11 @@ impl TasteSample {
 fn dot(a: &[f64], b: &[f64]) -> f64 {
     // `zip` truncates silently, which would turn a posterior loaded for a
     // different feature set into a utility over a prefix of φ. Every caller
-    // pairs a θ with a φ of the posterior's own dimension; say so where it is
-    // cheapest to hear.
-    debug_assert_eq!(
-        a.len(),
-        b.len(),
-        "θ and φ dimensions disagree ({} vs {})",
-        a.len(),
-        b.len()
-    );
+    // pairs a θ with a φ of the posterior's own dimension: that is the
+    // callers' contract, and nothing here checks it. (A `debug_assert` did,
+    // in no build this repository makes: the tests build under test-fast,
+    // which keeps release's `debug-assertions = false`, and the app ships
+    // release.)
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
@@ -467,8 +463,8 @@ impl SiteAddrs {
     /// groups. At K = 5, d = 44, S = 1 and one brightness group that is
     /// 220 + 1 + 5 + 5 = **231**; without the group it is the 226 the module
     /// doc quotes. (φ was 40 coordinates when these numbers were first
-    /// written; `fusing_costs_one_site_per_style_and_nothing_when_unused`
-    /// now computes them from the live feature set.)
+    /// written; `the_site_counts_the_docs_quote_are_the_live_phis` now
+    /// checks them against the live feature set.)
     pub fn site_count(&self) -> usize {
         self.theta.len() + self.tau.len() + self.cut.len() + self.mu.len()
     }
@@ -777,11 +773,10 @@ impl TastePosterior {
     /// draw count for uniform weights and collapses toward 1 as the weights
     /// concentrate — the trigger for paying for a full MCMC refit.
     pub fn ess(&self) -> f64 {
-        let n = self.samples.len();
-        if n == 0 {
-            return 0.0;
-        }
-        let sq: f64 = (0..n).map(|i| self.weight(i) * self.weight(i)).sum();
+        // With no draws the sum is empty, so `sq` is 0 and the ESS is too.
+        let sq: f64 = (0..self.samples.len())
+            .map(|i| self.weight(i) * self.weight(i))
+            .sum();
         if sq <= 0.0 {
             0.0
         } else {
@@ -805,10 +800,9 @@ impl TastePosterior {
     /// every other stochastic step in this engine is seeded and reproducible
     /// and this one has no reason not to be.
     pub fn resampled(&self) -> TastePosterior {
+        // With no draws the loop below never runs, and this is the empty
+        // posterior it was given.
         let n = self.samples.len();
-        if n == 0 {
-            return self.clone();
-        }
         let step = 1.0 / n as f64;
         let mut u = 0.5 * step;
         let mut cum = 0.0;
@@ -852,10 +846,8 @@ impl TastePosterior {
         session: usize,
         absent: &[usize],
     ) -> TastePosterior {
+        // With no draws every vector below is empty, and so is the result.
         let n = self.samples.len();
-        if n == 0 {
-            return self.clone();
-        }
         let ll: Vec<f64> = self
             .samples
             .iter()
@@ -1097,3 +1089,6 @@ impl TastePosterior {
         Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
     }
 }
+
+#[cfg(test)]
+mod tests;
