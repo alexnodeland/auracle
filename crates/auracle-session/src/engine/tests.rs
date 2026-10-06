@@ -305,7 +305,10 @@ fn session_state_roundtrips() {
         assert_eq!(a.name, b.name);
         assert_eq!(a.origin, b.origin);
         assert_eq!(a.pinned, b.pinned, "a pin did not survive the reload");
-        // φ must be re-standardized under the SAME standardizer.
+        // φ must be re-standardized under the SAME standardizer, every
+        // coordinate of it: a restore that left φ empty would zip to nothing.
+        assert_eq!(a.phi_std.len(), b.phi_std.len(), "phi lost across restore");
+        assert!(!b.phi_std.is_empty());
         for (x, y) in a.phi_std.iter().zip(&b.phi_std) {
             assert!((x - y).abs() < 1e-9, "phi drifted across restore");
         }
