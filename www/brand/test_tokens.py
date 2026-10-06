@@ -4,9 +4,14 @@
     python3 www/brand/test_tokens.py      (run by `make dev-check`)
 
 The check's cases run on a throwaway copy of every file it reads, so a
-planted colour never touches the tree. Python 3 standard library only.
+planted colour never touches the tree. Each case runs the whole check on its
+copy, about a third of a second each, so run as a script the cases are
+spread over worker processes, one per core: seconds, not the half minute they
+take one after another. `python3 -m unittest` still runs them in one process.
+Python 3 standard library only.
 """
 
+import concurrent.futures
 import contextlib
 import io
 import os
@@ -32,10 +37,15 @@ class Tree:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copyfile(os.path.join(T.ROOT, rel), dst)
         self.real, T.ROOT = T.ROOT, self.root
+        # The check globs the scanned files again for each file it counts. A
+        # case edits files but never adds or removes one: glob the copy once.
+        self.globbed = T.scanned_files
+        scanned = self.globbed()
+        T.scanned_files = lambda: list(scanned)
         return self
 
     def __exit__(self, *exc):
-        T.ROOT = self.real
+        T.ROOT, T.scanned_files = self.real, self.globbed
         shutil.rmtree(self.root)
 
     def edit(self, rel, fn):
@@ -377,12 +387,29 @@ class TheDriftsItClosed(unittest.TestCase):
         self.assertRegex(brand, r"\.versus \.no \.wm b \{[^}]*?\bcolor: var\(--phos-b\);")
 
 
+def case_ids(suite):
+    for t in suite:
+        yield from case_ids(t) if isinstance(t, unittest.TestSuite) else [t.id()]
+
+
+def run_one(name):
+    """One case, in a worker. By its name within the module: a spawned worker
+    imports this file as `__mp_main__`, not `__main__`."""
+    out = io.StringIO()
+    case = unittest.defaultTestLoader.loadTestsFromName(name, sys.modules[__name__])
+    result = unittest.TextTestRunner(stream=out, verbosity=2).run(case)
+    return result.testsRun, result.wasSuccessful(), out.getvalue()
+
+
 if __name__ == "__main__":
     # One line when they pass, like the rest of `make dev-check`; everything
-    # unittest says when one fails.
-    out = io.StringIO()
-    result = unittest.TextTestRunner(stream=out, verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]))
-    if not result.wasSuccessful():
-        sys.stderr.write(out.getvalue())
+    # unittest says about each case that fails.
+    names = [i.split(".", 1)[1] for i in case_ids(unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]))]
+    cores = getattr(os, "process_cpu_count", os.cpu_count)() or 1
+    with concurrent.futures.ProcessPoolExecutor(max_workers=min(cores, len(names))) as pool:
+        results = list(pool.map(run_one, names))
+    failed = [out for _, ok, out in results if not ok]
+    if failed:
+        sys.stderr.write("".join(failed))
         sys.exit(1)
-    print(f"  tokens tests: {result.testsRun} passed")
+    print(f"  tokens tests: {sum(n for n, _, _ in results)} passed")
