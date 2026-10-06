@@ -81,11 +81,14 @@ fn live_poly_plays_and_parks() {
     );
 }
 
-/// Live params: setting a knob mid-note ramps the sound smoothly to the
-/// mapped target without resetting the voice, and junk/enum addresses
-/// are refused.
+/// Live params: a knob written mid-note ramps to its mapped target, the
+/// value the voice reads moving part of the way each quantum and never in
+/// one jump, and the change is heard; it does not reset the voice: a
+/// plucked note that has decayed to silence stays silent through the write,
+/// where a retrigger would sound it again. Enum sites are refused.
 #[test]
 fn live_params_ramp_without_retrigger() {
+    quiver::rng::seed(7);
     let (_, tree) = auracle_grammar::presets()
         .into_iter()
         .find(|(n, _)| *n == "First Bass")
@@ -97,23 +100,29 @@ fn live_params_ramp_without_retrigger() {
     b.note_on(48, 1.0);
     let _ = a.process(2048);
     let _ = b.process(2048);
+    let cut = |p: &LivePoly| p.voices[0].voice.params["node#cut"].value.get();
+    let start = cut(&a);
     assert!(a.set_param("node#cut", 1.0), "cutoff handle missing");
     assert!(
         !a.set_param("node#wave", 0.5),
         "enum sites must not be live"
     );
-    // Ramp converges to the mapped target.
+    let mut path = vec![start];
     for _ in 0..64 {
         let _ = a.process(128);
+        path.push(cut(&a));
     }
-    let cut = a.voices[0]
-        .voice
-        .params
-        .get("node#cut")
-        .unwrap()
-        .value
-        .get();
-    assert!((cut - 1.0).abs() < 1e-3, "smoother never converged: {cut}");
+    let end = *path.last().unwrap();
+    assert!((end - 1.0).abs() < 1e-3, "smoother never converged: {end}");
+    assert!(
+        path[1] > start && path[1] < end - 0.1 * (end - start),
+        "the first quantum jumped: {start} -> {} of {end}",
+        path[1]
+    );
+    assert!(
+        path.windows(2).all(|w| w[1] >= w[0]),
+        "the ramp went back: {path:?}"
+    );
     let out_a = a.process(4096);
     let out_b = b.process(4096);
     let diff: f64 = out_a
@@ -122,8 +131,21 @@ fn live_params_ramp_without_retrigger() {
         .map(|(x, y)| ((x - y) as f64).abs())
         .sum();
     assert!(diff > 1e-3, "cutoff change was inaudible (diff {diff})");
-    let energy: f64 = out_a.iter().map(|s| (*s as f64).powi(2)).sum();
-    assert!(energy > 1e-8, "voice died on param change");
+    assert!(energy(&out_a) > 1e-8, "voice died on param change");
+
+    // No retrigger: a pluck decayed to silence, its gate still high.
+    let mut pluck = LivePoly::new(&plucked_json(), 44_100.0, 1).unwrap();
+    pluck.note_on(60, 1.0);
+    for _ in 0..40 {
+        let _ = pluck.process(512);
+    }
+    let decayed = energy(&pluck.process(4096));
+    assert!(pluck.set_param("node#cut", 1.0));
+    let after = energy(&pluck.process(4096));
+    assert!(
+        after <= decayed.max(1e-12) * 4.0,
+        "a knob write sounded a decayed note again: {after:.3e} after, {decayed:.3e} before"
+    );
 }
 
 /// Patch swap: output fades (no hard discontinuity), the swap completes
