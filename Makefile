@@ -29,6 +29,24 @@ else
 RUSTUP_NOTE = $(eval RUSTUP_NOTE :=)$(warning no cargo in $(CARGO_BIN): cargo and rustc come from PATH, and rust-toolchain.toml applies only if they are rustup's proxies)
 CARGO = $(RUSTUP_NOTE)cargo
 endif
+# sccache, opt-in: with AURACLE_SCCACHE=1 in the environment (and sccache
+# installed: `scripts/setup.sh --sccache`), every cargo call here compiles
+# through it, unless RUSTC_WRAPPER already names a wrapper. A new worktree's
+# first build then takes the crates.io dependencies from its cache instead of
+# compiling them again. It is safe with a target directory per worktree,
+# where sharing one target directory is not (docs/architecture/testing.md §
+# The local loop): sccache keys each compile by its inputs, the CARGO_*
+# variables among them, so a workspace crate, whose path differs in each
+# worktree, never hits another worktree's entry, and an incremental compile
+# (the workspace's crates under test-fast) is not cached at all.
+ifeq ($(AURACLE_SCCACHE),1)
+SCCACHE := $(firstword $(wildcard $(CARGO_BIN)/sccache) $(shell command -v sccache 2>/dev/null))
+ifeq ($(SCCACHE),)
+$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh --sccache; building without it)
+else
+export RUSTC_WRAPPER ?= $(SCCACHE)
+endif
+endif
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
 FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
@@ -96,7 +114,8 @@ help:
 
 ## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
 ## checks on staged files before each commit. Opt-in, per clone.
-## setup: install what the engine, the app and its tests need (scripts/setup.sh)
+## setup: install what the engine, the app and its tests need (scripts/setup.sh),
+## and sccache when AURACLE_SCCACHE=1 is set (opt-in)
 setup:
 	scripts/setup.sh
 
