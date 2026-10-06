@@ -213,8 +213,9 @@ impl NodeKind {
 // declared after the last entry is the one case a const cannot see, and
 // `node_kind_all_names_every_kind` catches it by asking serde for every name.
 const _: () = {
-    const fn named(k: NodeKind) {
-        match k {
+    let mut i = 0;
+    while i < NodeKind::ALL.len() {
+        match NodeKind::ALL[i] {
             NodeKind::Vco
             | NodeKind::Supersaw
             | NodeKind::Noise
@@ -246,10 +247,6 @@ const _: () = {
             | NodeKind::Track
             | NodeKind::Capture => {}
         }
-    }
-    let mut i = 0;
-    while i < NodeKind::ALL.len() {
-        named(NodeKind::ALL[i]);
         assert!(
             NodeKind::ALL[i] as usize == i,
             "NodeKind::ALL must list every kind once, in declaration order"
@@ -363,8 +360,9 @@ impl ModKind {
 // crate compiles, as `NodeKind::ALL` is above; `mod_kind_all_names_every_kind`
 // catches a kind declared after the last entry.
 const _: () = {
-    const fn named(k: ModKind) {
-        match k {
+    let mut i = 0;
+    while i < ModKind::ALL.len() {
+        match ModKind::ALL[i] {
             ModKind::None
             | ModKind::Lfo
             | ModKind::Env
@@ -383,10 +381,6 @@ const _: () = {
             | ModKind::Switch
             | ModKind::Steps => {}
         }
-    }
-    let mut i = 0;
-    while i < ModKind::ALL.len() {
-        named(ModKind::ALL[i]);
         assert!(
             ModKind::ALL[i] as usize == i,
             "ModKind::ALL must list every kind once, in declaration order"
