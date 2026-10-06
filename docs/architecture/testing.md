@@ -421,6 +421,14 @@ leaves its part to the next cycle. A run on `main` that finds a survivor,
 or a shard that left no outcomes, files or comments on *Mutants that
 survive*, naming its part.
 
+**A burn-down, by hand:** the `crates` input runs every shard of the crates
+it names instead of a part, and `parallel` sets how many at once (two by
+default, at most twelve). Each shard uploads its own outcomes as it ends, so
+its survivors can be killed while the others still run. Twelve runners leave
+the queue's full gate eight, so a batch waits for runners while a wide
+burn-down runs. Run from a branch, it files nothing; the burn-down's PRs
+carry the survivors (#181).
+
 **How long.** Measured on Oct 6 on a 16-core Mac shared with other work,
 two mutants at a time. The runs at `db2103f` were at `nice -n 19`, under a
 load of 17 to 76, with the timeout at 3 times the unmutated time (it is 5

@@ -43,6 +43,14 @@ on:
         description: "The part of the cycle to run, from 1 (each run's plan job lists every part in its summary); empty for this week's"
         required: false
         default: ""
+      crates:
+        description: "Instead of a part: every shard of these crates, comma-separated (e.g. auracle-grammar,auracle-wasm), for a burn-down"
+        required: false
+        default: ""
+      parallel:
+        description: "Shards at once (1 to 12); the account runs 20 jobs, and the queue's full gate takes about 18 at its widest"
+        required: false
+        default: "2"
 
 # It reads the code; only the issue job writes, and it asks for that itself.
 permissions:
@@ -238,6 +246,7 @@ jobs:
       PLAN: '{"auracle-taste": 1, "auracle-grammar": 4, "auracle-features": 16, "auracle-session": 26, "auracle-wasm": 11}'
       PER_WEEK: 4
       PART: ${{ github.event.inputs.part }}
+      CRATES: ${{ github.event.inputs.crates }}
     steps:
       - id: plan
         run: |
@@ -249,6 +258,21 @@ jobs:
           parts = [shards[i : i + per] for i in range(0, len(shards), per)]
           def name(p):
               return ", ".join(f"{s['crate']} {s['k']}/{s['n']}" for s in p)
+          # A burn-down asks for whole crates instead of a part: every shard
+          # of each, in the plan's order.
+          crates = [c.strip() for c in os.environ.get("CRATES", "").split(",") if c.strip()]
+          if crates:
+              unknown = [c for c in crates if c not in plan]
+              if unknown:
+                  sys.exit(f"crates {unknown}: the plan has {list(plan)}")
+              chosen = [s for s in shards if s["crate"] in crates]
+              with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+                  out.write("shards=" + json.dumps(chosen) + "\n")
+                  out.write(f"part=every shard of {', '.join(crates)}\n")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+                  out.write(f"This run: every shard of {', '.join(crates)} ({len(chosen)} shards), for a burn-down.\n")
+              print(f"every shard of {', '.join(crates)}: {len(chosen)}")
+              sys.exit(0)
           asked = os.environ.get("PART", "").strip()
           if asked and not (asked.isdigit() and 1 <= int(asked) <= len(parts)):
               sys.exit(f"part {asked!r}: the cycle has parts 1 to {len(parts)}")
@@ -281,7 +305,10 @@ jobs:
       CAP: 330
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # Two by default, so a week's part leaves the runners to the queue and
+      # the PRs; a burn-down by hand may ask for more (`parallel`, at most
+      # twelve), at the cost of the queue's full gate waiting for runners.
+      max-parallel: ${{ fromJSON(github.event.inputs.parallel != '' && github.event.inputs.parallel || '2') > 12 && 12 || fromJSON(github.event.inputs.parallel != '' && github.event.inputs.parallel || '2') }}
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.shards) }}
     steps:
