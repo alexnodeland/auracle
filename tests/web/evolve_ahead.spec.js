@@ -5,7 +5,8 @@
 // and then for its two sounds to render. Now, while a pair is on the table,
 // the next is dealt and both its sounds fetched; a pick or ↻ puts it up at
 // once, and the one after is dealt behind it. A pick taken back puts its pair
-// back and keeps the other as the next; a patch cut meanwhile is never put up.
+// back, and the pair that replaced it is the next (or, when the table was
+// still waiting on a deal, that deal); a patch cut meanwhile is never put up.
 //
 // Pairs go up in the order the engine dealt them, whatever the timing. A pick
 // made while the next deal is still out (a generation holds deals behind the
