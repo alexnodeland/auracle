@@ -136,10 +136,9 @@ jobs:
           # Rust change is also a site change. The browser smoke test runs
           # with the site (the Browser smoke job, after Site), so its own
           # sources count as site changes too.
-          # The agent docs, the Claude Code setup, the engineering record and
-          # the changelog's assembler (scripts/) are checked in the web job
-          # (make dev-check), so they count too.
-          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/|docs/|\.claude/|scripts/)|(^|/)(AGENTS|CLAUDE)\.md$'; then
+          # The agent docs, the Claude Code setup and the engineering record
+          # are checked in the web job (make dev-check), so they count too.
+          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$'; then
             site=true
           else
             site=false
@@ -245,10 +244,14 @@ jobs:
 
       # A change's changelog entry waits in changelog.d/ until a release
       # moves it into CHANGELOG.md (scripts/changelog.py). A PR whose entry
-      # sits beside only a README change skips the web job too, so every
-      # entry's shape is checked here, on every PR, in well under a second.
-      - name: The changelog's entries (scripts/changelog.py --check)
-        run: python3 scripts/changelog.py --check
+      # sits beside only a README change skips the web job, and so does one
+      # that changes only the assembler, so the entries' shape and the
+      # assembler's own tests are checked here, on every PR, in about three
+      # seconds.
+      - name: The changelog's entries and assembler (scripts/changelog.py)
+        run: |
+          python3 scripts/changelog.py --check
+          python3 scripts/test_changelog.py
 
   # Formatting and lints share a job: `cargo fmt --check` needs no dependency
   # graph and finishes in seconds, so giving it its own runner spent more on
