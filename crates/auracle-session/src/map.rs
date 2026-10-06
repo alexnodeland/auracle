@@ -376,10 +376,16 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64, b
     // Pin the sign: largest-magnitude component positive. Applied after the
     // iteration rather than inside it, because the iteration does not care and
     // flipping mid-loop would only confuse the convergence test above.
-    // `d` is at least 1 here, so there is a pivot.
-    let pivot = (0..d)
-        .max_by(|&i, &j| v[i].abs().total_cmp(&v[j].abs()))
-        .unwrap_or(0);
+    // The pivot is the last of the largest components, as `max_by` picks
+    // it, found by a fold that starts at component 0 (`d` is at least 1
+    // here), so there is no `Option` to unwrap.
+    let pivot = (1..d).fold(0, |p, i| {
+        if v[i].abs().total_cmp(&v[p].abs()).is_ge() {
+            i
+        } else {
+            p
+        }
+    });
     if v[pivot] < 0.0 {
         for vi in v.iter_mut() {
             *vi = -*vi;

@@ -226,7 +226,9 @@ where
         if f <= QUARANTINE_FITNESS {
             return f;
         }
-        // What the inner fitness heard vets, so it measures.
+        // A genome scored above quarantine vets, so it measures; the case
+        // where it would not is folded into the `map_or` (no pull toward the
+        // sound) rather than given a branch of its own.
         featurize_memo(genome, &self.phrase, &self.memo, false).map_or(f, |(cf, _)| {
             let d = self
                 .toward

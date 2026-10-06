@@ -169,7 +169,9 @@ where
         if f <= QUARANTINE_FITNESS {
             return f;
         }
-        // What the inner fitness heard vets, so it has a place on the axis.
+        // A genome scored above quarantine vets, so `along` answers; the case
+        // where it would not is folded into the `map_or` (the tilt adds
+        // nothing) rather than given a branch of its own.
         f + self
             .along(genome)
             .map_or(0.0, |a| self.gamma * self.sign * a)
@@ -935,7 +937,10 @@ pub(crate) fn jacobian_by(
 
 /// Solve the symmetric positive-definite system `M x = b` (Gaussian
 /// elimination with partial pivoting; the systems here are at most a few
-/// dozen square).
+/// dozen square). A coordinate with no pivot is left at zero: a defensive
+/// guard no caller reaches today, since [`ridge`] adds `RIDGE` times the
+/// penalty share (at least 0.0125 at the shipped share) to every diagonal
+/// entry; `a_zero_pivot_keeps_its_coordinate_still` pins it.
 fn solve(mut m: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
     let n = b.len();
     for c in 0..n {

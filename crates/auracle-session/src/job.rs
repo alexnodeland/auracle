@@ -355,9 +355,10 @@ where
         + 'static,
 {
     /// One proposal: a free knob, moved by `σ·N(0, 1)` and reflected into
-    /// its range. `None` if the knob cannot be read or written, which a
-    /// drift's own knobs always can be: they are the tree's live knobs, and
-    /// a drift turns knobs only.
+    /// its range. `None` if the knob cannot be read or written, a case folded
+    /// into the expression (`?`, `.ok()`) rather than given a branch: no
+    /// drift reaches it today, since its free knobs are the tree's live knobs
+    /// and a drift turns knobs only.
     fn propose(&self, rng: &mut dyn RngCore) -> Option<PatchTree> {
         let mut rng = rng;
         let rng = &mut rng;

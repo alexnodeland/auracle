@@ -1358,9 +1358,9 @@ fn a_control_with_nothing_to_turn_or_only_a_way_back_is_a_search() {
 }
 
 /// The solve leaves a coordinate it cannot determine at zero: a system
-/// with a zero pivot (a knob that moves nothing) solves the rest and keeps
-/// that one still, rather than dividing by zero. (The wiring's own systems
-/// carry a ridge, so they never have one.)
+/// with a zero pivot solves the rest and keeps that one still, rather than
+/// dividing by zero. This pins `solve`'s own contract; no caller reaches the
+/// case today (the wiring's systems carry a ridge on every diagonal entry).
 #[test]
 fn a_zero_pivot_keeps_its_coordinate_still() {
     assert_eq!(
