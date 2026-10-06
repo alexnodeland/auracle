@@ -13190,7 +13190,8 @@ syncLodBtn();
 function beliefResolved(m, sup) {
   const spec = MOD_BY_KIND[m.kind];
   if (!spec || !spec.phi) return null;
-  const t = nbTheta(m.kind);
+  // The patch's own style, as its worth chips read it (`benchTheta`).
+  const t = benchTheta(m.kind);
   if (beliefState(t, sup.byPhi[spec.phi] || 0) !== "resolved") return null;
   return { spec, t };
 }
@@ -18519,11 +18520,13 @@ function specRest() {
 /** The kind the dock is currently describing, or null for the resting line. */
 let specSubject = null;
 
-/** Everything both surfaces say about a module, derived once. */
-function specParts(m) {
+/** Everything both surfaces say about a module, derived once. Its lean is
+ *  read with `theta`: your taste across the bank (`nbTheta`) in the
+ *  catalog, the patch's own style (`benchTheta`) for a module in it. */
+function specParts(m, theta = nbTheta) {
   const { byPhi, total } = nbSupport();
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
-  const t = nbTheta(m.kind);
+  const t = theta(m.kind);
   // Several modules share one coordinate on purpose (see structural.rs). Saying
   // "the model likes distortion" when the coefficient cannot separate it from a
   // wavefolder would be the surface claiming a resolution the model lacks.
@@ -18787,7 +18790,7 @@ function moduleModelHTML(mod) {
     ? `<span class="pr-part"><b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ` +
       `${PRICE_SIGN(c.contribution)} of this patch’s utility.</span><br>`
     : "";
-  return `<div class="pr-model sd-model mono">${part}${specParts(spec).belief}</div>`;
+  return `<div class="pr-model sd-model mono">${part}${specParts(spec, benchTheta).belief}</div>`;
 }
 
 // ---- the selection: plates on the canvas ----
@@ -18870,21 +18873,32 @@ function hoverPlate(key) {
 // guess line above the rack — deliberately, so "drive +0.09" up there and
 // "+0.04" down here are the same kind of quantity and can be added.
 
-/** The θ row a placement is priced from — under the **bench's** lens, so the
- *  price and the number it promises to move come from the same decomposition.
- *  Falls back to the lens that claims most of the bank before the first bench
- *  featurize, which is the same one the chips read. */
-function priceTheta(kind) {
+/** The θ row the patch in hand is read from, for a module's family: under
+ *  the **bench's** style (the one that rates the patch highest, `belief`'s),
+ *  so a price, the number it promises to move and the belief line's parts
+ *  come from the same decomposition. Falls back to the style that claims
+ *  most of the bank before the bench's first rating. Under the model view
+ *  PATCH reads its leans (each plate's edge), its worth chips and a selected
+ *  module's lean from this one row, so a settled chip never sits under "no
+ *  settled lean" (#153); the catalog's θ cell speaks for your taste across
+ *  the bank (`nbTheta`, the largest style). */
+function benchTheta(kind) {
   const phi = MOD_BY_KIND[kind]?.phi;
   if (!phi || !views || !views.styles || views.styles.length === 0) return null;
-  const scale = views.scale ? views.scale[phi] : null;
-  if (!scale || !(scale > 0)) return null;
   const k =
     belief.styleK != null && views.styles[belief.styleK] ? belief.styleK : (activeStyles()[0] || {}).k;
   const s = k != null ? views.styles[k] : null;
   const row = s && s.theta ? s.theta.find((t) => t.name === phi) : null;
   if (!row) return null;
-  return { phi, scale, style: k, mean: row.mean, std: row.std, share: s.share };
+  return { phi, style: k, mean: row.mean, std: row.std, share: s.share };
+}
+
+/** The θ row a placement is priced from (`benchTheta`), with its scale. */
+function priceTheta(kind) {
+  const t = benchTheta(kind);
+  const scale = t && views.scale ? views.scale[t.phi] : null;
+  if (!scale || !(scale > 0)) return null;
+  return { ...t, scale };
 }
 
 /** What placing `kind` at `key` is worth, and — when it is not a number — why.

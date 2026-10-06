@@ -332,6 +332,9 @@ by 2*), the same wherever they sit. A figure the model isn't sure of is dashed
 and says *a guess*; a family too thin to price gets no chip. It is the price
 the catalog quotes for a module in your hand.
 
+The edges, the chips and a selected module's note all read one style: the
+one that rates the patch highest, which the readout names.
+
 **The guess's runners-up.** Beside the model's guess, the two it ranks next,
 fainter and smaller, each with its lower bound (*2 · DELAY, lower bound
 +0.03*): the guess is ranked by that bound, what it expects the module to add

@@ -166,3 +166,51 @@ test("under the model view a new patch's subtitle, and sound A's in TEACH, follo
   await expect.poll(lead).toBe('"· "');
 });
 
+/** A fit with two styles that disagree about `phi`: the bank's largest
+ *  (style 0, all of the pool) has only a guess, and style 1, which the
+ *  engine's rating of the bench is said to use (`bench.explain.style`), is
+ *  settled toward it. Two styles that disagree are a state a fit reaches by
+ *  chance, so the fit's own first style is pinned twice over, handed to main
+ *  as the worker would post it, every later fit's styles and every rating of
+ *  the bench rewritten to it. */
+async function pinStylesApart(app, phi) {
+  const f = await app.page.evaluate(() => {
+    const fit = window.__tap.last.fitted;
+    return { views: fit.views, status: fit.status };
+  });
+  const guess = [{ name: phi, mean: 0.4, std: 0.6 }];
+  const settled = [{ name: phi, mean: 0.5, std: 0.1 }];
+  const base = f.views.styles[0];
+  const styles = [{ ...base, share: 1, theta: guess }, { ...base, share: 0, theta: settled }];
+  await app.amend({ views: true }, { "views.styles": styles });
+  await app.amend({ type: "bench" }, { "explain.style": 1 });
+  await app.amend({ type: "fitted" }, { "bench.explain.style": 1 });
+  await app.inject({ type: "fitted", views: { ...f.views, styles }, status: f.status });
+}
+
+// The plates' leans, the worth chips and a selected module's note all read
+// the patch's own style (#153): the leans used to read the bank's largest
+// style and the chips the bench's, so a settled chip could sit under "no
+// settled lean on anything in this patch yet".
+test("under the model view a patch's leans, its worth chips and a module's note read one θ", { tag: "@slow" }, async ({ page, app }) => {
+  test.setTimeout(120_000);
+  await app.boot({ warmed: false });
+  await app.warmStart();
+  await pinStylesApart(app, "n_filter");
+  await openPreset(app, "Sub & Sparkle");
+  await page.mouse.move(4, 400);
+  await modelView(page, true);
+  // The filter's family is settled in the patch's style: a solid chip, the
+  // plate's edge, and no note saying nothing is settled.
+  const chip = page.locator('#pt-worth .pt-worth-chip[data-phi="n_filter"]');
+  await app.engine((timeout) => expect(chip).toHaveCount(1, { timeout }), { ms: 30_000 });
+  await expect(chip).not.toHaveClass(/\bguess\b/);
+  await expect(page.locator('#rack-svg .rack-plates g[data-kind="filter"] .belief-edge.pos')).toHaveCount(1);
+  await expect(page.locator("#pt-worth .pt-worth-none")).toHaveCount(0);
+  // The filter selected: its note leans the same way, in the same style.
+  const plate = page.locator('#rack-svg .rack-plates g[data-kind="filter"] .mod-plate').first();
+  const b = await plate.boundingBox();
+  await page.mouse.click(b.x + 10, b.y + b.height - 6);
+  await page.mouse.move(4, 400);
+  await expect(page.locator("#pt-read .pr-model .sp-belief")).toHaveText(/you lean toward it \(θ \+0\.50 ± 0\.10\)\.$/);
+});
