@@ -37,10 +37,13 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   failures before queueing another.
 - **Run what the change reaches, not the suite:** `make browser-changed`
   (changed specs, the specs of a changed helper, the specs named for a changed
-  app module; `BASE=` to diff against something other than `origin/main`), or
-  name them (`npx playwright test patch_ perform_layout.spec.js`). The full
-  tier is CI's job: about seventy-five minutes in one worker, twelve runners
-  wide in the merge queue's run.
+  app module; for `main.js` the specs of the views its changed sections draw,
+  and for `worker.js`, the page or the engine each view's sample;
+  `BASE=` to diff against something other than `origin/main`), or name them
+  (`npx playwright test patch_ perform_layout.spec.js`). `REPEAT=3` runs each
+  three times, as the `ship` skill does before a push; `--repeat-each=3` by
+  name. The full tier is CI's job: about seventy-five minutes in one worker,
+  twelve runners wide in the merge queue's run.
 
 ## In CI
 

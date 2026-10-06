@@ -291,7 +291,9 @@ an alias for notes written before the rename).
    is CI's Lint, Web and Rust jobs. CI also runs the site and the browser
    specs: on your PR only the specs it reaches, and in the merge queue all of
    them, twelve runners wide. Locally, run the specs your change reaches
-   (`make browser-changed`). If you
+   (`make browser-changed`; for `main.js`, the specs of the views your change
+   touched), and before you push, each of them three times
+   (`make browser-changed REPEAT=3`). If you
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it

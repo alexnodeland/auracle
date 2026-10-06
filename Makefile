@@ -172,9 +172,10 @@ sound:
 	@python3 www/brand/sound.py
 
 ## web-check: every web module parses (js-check), the pure-logic modules'
-## unit tests pass, and the browser specs pass their lint (spec-lint)
+## unit tests pass, the browser specs pass their lint (spec-lint), and
+## `make browser-changed`'s selection its tests (tests/web/changed.test.mjs)
 web-check: js-check spec-lint
-	node --test apps/web/tests/*.test.mjs
+	node --test apps/web/tests/*.test.mjs tests/web/changed.test.mjs
 
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no
@@ -490,14 +491,20 @@ browser-fast:
 	$(PLAYWRIGHT) --grep-invert "@slow|@quarantine" --reporter=line
 
 ## browser-changed: the specs your change reaches against BASE (origin/main):
-## changed specs, the specs of a changed helper or app module (tests/web/changed.mjs)
+## changed specs, the specs of a changed helper or app module, for main.js
+## the specs of the views its changed sections draw, and for worker.js, the
+## page or the engine each view's sample (tests/web/changed.mjs --views).
+## REPEAT=n runs each of them n times (the ship skill's REPEAT=3 before a push)
 BASE ?= origin/main
+REPEAT ?= 1
 browser-changed:
+	@case "$(REPEAT)" in ''|*[!0-9]*|0) printf '  REPEAT is how many times each spec runs (1, 3 …), not "%s"\n' "$(REPEAT)"; exit 2;; esac
 	$(RELEASE_ENGINE)
-	@specs="$$(cd tests/web && node changed.mjs $(BASE))"; \
+	@specs="$$(cd tests/web && node changed.mjs --views $(BASE))" || exit $$?; \
 	if [ -z "$$specs" ]; then printf '  no spec to run for this change\n'; exit 0; fi; \
-	printf '  %s\n' $$specs; \
-	$(PLAYWRIGHT) $$specs --reporter=line
+	printf '  spec files: %s, each run %s time(s)\n' "$$(printf '%s\n' $$specs | wc -l | tr -d ' ')" "$(REPEAT)"; \
+	printf '    %s\n' $$specs; \
+	$(PLAYWRIGHT) $$(printf '/%s ' $$specs) --repeat-each=$(REPEAT) --reporter=line
 
 ## browser-slow: browser specs tagged @slow or @quarantine, CI's slow tier (~35 min serially)
 browser-slow:

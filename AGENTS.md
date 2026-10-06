@@ -118,7 +118,7 @@ contributor guide; this file does not repeat it.
 | Browser tests | `cd tests/web && AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test [spec]` |
 | One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow` or `@quarantine`) |
 | Rust coverage, as CI holds it | `make coverage` (each crate at its floor, every changed line covered; `make coverage-floors` in a PR that raises one; [`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)) |
-| The specs a change reaches | `make browser-changed` (against `origin/main`; `BASE=` for another) |
+| The specs a change reaches | `make browser-changed` (against `origin/main`, `BASE=` for another; for `main.js` the specs of the views it changed; `REPEAT=3` before a push) |
 | The instrument, locally | `make serve`, then <http://localhost:8642> |
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
