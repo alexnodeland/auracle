@@ -70,7 +70,10 @@ in a plan's prose, a session's notes or a conversation.
   may follow it): the nightly *Flake hunt* finds an open flake's issue by it.
 - **Bodies** follow the templates in `.github/ISSUE_TEMPLATE/`: a task names
   its plan, its brief and what done means; a flake names the test, the run
-  that caught it, why it fails, the fix, and whether it is quarantined.
+  that caught it, why it fails, the fix, and whether it is quarantined. A
+  flake's issue the *Flake hunt* opens begins as its first report instead
+  (the run, the test, how many of its runs failed, the first error line, the
+  CPU); whoever takes it adds the template's sections.
 - **Plans link their issues.** A plan's progress table has an issue column,
   and each task row links its issue and, once merged, its PR. The plan stays
   the design; the issue tracks the work.
