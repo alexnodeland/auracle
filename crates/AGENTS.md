@@ -71,9 +71,14 @@ contract, and it lives at the lowest level that can prove it:
 In the crates:
 
 - **Tests sit beside their module.** A module's tests are in `<module>/tests.rs`
-  (`#[cfg(test)] mod tests;`), not in `lib.rs` and not inline; fixtures that
-  several test files share are in a `src/testkit.rs` (`#[cfg(test)] mod
-  testkit;`), which is measured, so each of its helpers runs in the fast tier.
+  (`#[cfg(test)] mod tests;`), not in `lib.rs` and not inline. Fixtures that
+  several test files share sit in one of two places. A fixture that only
+  builds data goes in `src/tests.rs`, which coverage leaves out by its name
+  (`auracle-features` keeps its shared trees there). A fixture that holds
+  logic worth measuring (a taught engine, a reload that shares the memo, the
+  synthetic listener) goes in `src/testkit.rs` (`#[cfg(test)] mod testkit;`),
+  which is measured like the code, so each of its helpers has to run in the
+  fast tier (`auracle-taste` and `auracle-session` keep theirs there).
 - **A statistical bound comes from a sweep of seeds**, never from the seed the
   test ships with. Run the claim over many seeds (or simulate the rule), set
   the bound where it fails on a negligible share of them, and say in the test
@@ -189,8 +194,11 @@ PR that brought one to 100% (auracle-features):
   Every caller must recover through `into_inner`, and no test may assert the
   lock is unpoisoned.
 
-The other sites are `auracle-session/src/map.rs` and `engine.rs`, and
-`auracle-wasm/src/shipped.rs`; each crate's coverage PR applies the rule.
+`auracle-session` routes its one lock, the taste map's remembered axes,
+through one helper, `Engine::drawn_axes`, which
+`a_panic_that_poisons_the_maps_memory_costs_nothing` poisons on purpose.
+The other site is `auracle-wasm/src/shipped.rs`; its crate's coverage PR
+applies the rule.
 
 **An error no tree reaches records its fault, and the build returns it.**
 A step that only a mistake in the engine's own code can make fail (a
