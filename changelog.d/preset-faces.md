@@ -19,10 +19,11 @@
 - **Esc closes the nearest thing first at every level, and a tapped model
   view goes last.** In PATCH one press closed one thing and the view
   outlasted it, but elsewhere the same press that put PERFORM's XY or How
-  it works away, folded a bank row's ★, closed the ? card, the scope or
-  picture panel, or a sound's card on TASTE's map also ended the view. After a press on HOW IT
-  WORKS, Esc didn't put the face back at all (`model_view_esc.spec.js`,
-  #153).
+  it works away, closed the ? card, the scope or picture panel, or a
+  sound's card on TASTE's map also ended the view. A press that folded a
+  bank row's ★ took a second thing with it at every level: the view, or in
+  PATCH the module you had selected. After a press on HOW IT WORKS, Esc
+  didn't put the face back at all (`model_view_esc.spec.js`, #153).
 - **Under the model view, a new patch's subtitle and sound A's in TEACH
   follow the belief line after a "·".** They were written as one bare
   line, so a new patch read *nothing to rate: no source reaches the output*
