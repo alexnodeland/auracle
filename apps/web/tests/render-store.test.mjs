@@ -182,11 +182,34 @@ test("a store that cannot be opened is null, never a rejection", async () => {
   assert.equal(closed, 1, "the late connection was left open");
 });
 
+// How the engine worker hands a crew the phrase, read from its source. The
+// order the tests below check is the app's only while these hold: `init` gives
+// boot's crew its ports through `farmBoot`, which waits for the stamp, and
+// `farmSetup` (which posts the phrase) is called from `farmBoot` and `crewUp`
+// alone. `init` calling `farmSetup` on its ports itself, as it did before
+// #200, fails here.
+function phraseOnlyThroughTheStamp() {
+  assert.ok(
+    /^\s*farmed = await farmBoot\(m\.farmPorts, ns\);$/m.test(workerSrc),
+    "init does not hand boot's crew its ports through farmBoot",
+  );
+  const calls = (src) => (src.match(/\bfarmSetup\(/g) || []).length;
+  assert.equal(
+    calls(workerSrc) - 1, // its own definition
+    calls(lift(workerSrc, "farmBoot")) + calls(lift(workerSrc, "crewUp")),
+    "farmSetup hands a crew the phrase from somewhere other than farmBoot and crewUp",
+  );
+}
+
 // The engine worker's side of boot's crew, as written: `farmBoot` and what it
 // calls, over `engine` and `glue` stand-ins, and `farmHandshake` answered at
 // once. `renderStoreModule` is render-store.js itself, or `module`.
 function engineWorker(idb, { module = async () => renderStore } = {}) {
-  assert.match(workerSrc, /^const renderStoreModule = \(\) => import\(`\.\/render-store\.js\?v=\$\{V\}`\);$/m);
+  assert.ok(
+    /^const renderStoreModule = \(\) => import\(`\.\/render-store\.js\?v=\$\{V\}`\);$/m.test(workerSrc),
+    "worker.js does not import render-store.js as renderStoreModule",
+  );
+  phraseOnlyThroughTheStamp();
   return new Function(
     "self", "engine", "glue", "renderStoreModule", "farmHandshake", "FARM_HANDSHAKE_MS", "onFarmMessage",
     [
@@ -213,7 +236,7 @@ function engineWorker(idb, { module = async () => renderStore } = {}) {
 // One farm worker, as written: `onJob` (its phrase) and `cacheOpen`, with its
 // wasm instance computing this build's namespace and render-store.js imported.
 function farmWorker(idb, who) {
-  assert.match(farmSrc, /import\(`\.\/render-store\.js\?v=\$\{V\}`\)/);
+  assert.ok(/import\(`\.\/render-store\.js\?v=\$\{V\}`\)/.test(farmSrc), "farm.js does not import render-store.js");
   const port = { postMessage: (msg) => idb.log.push({ who, op: "said", type: msg.type }) };
   return new Function(
     "self", "wasm", "port", "store",
