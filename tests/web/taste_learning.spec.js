@@ -501,13 +501,15 @@ test("SOUND shows the sounds as they are, and TASTE dims each by how little it i
 
 // Pointing at a weight (or Tab to it) shades the small map by each sound's z
 // on that feature, as the engine posted it (`views.features`,
-// `WasmEngine::pool_features`). How each dot is shaded is taste-geom's
-// `poolShades` and `shadeOf`, pinned in taste-geom.test.mjs; this checks the
-// wiring. The legend turns to *dots: <feature>* only while the feature pointed
-// at is one the engine posted a z for, and names it. No pixel is read (#173):
-// the map redraws as the pool and the fit move on, a dot's centre pixel can be
-// its edge, and a gap between the brightest dots and the dimmest is set by the
-// pool's z, not by the app (CI read 196 against 136).
+// `WasmEngine::pool_features`). Which column of z the dots take, and how each
+// dot is shaded by it, are taste-geom's `zByFeature`, `poolShades` and
+// `shadeOf`, pinned in taste-geom.test.mjs. This test checks only the legend
+// and what the map says aloud: the legend turns to *dots: <feature>* only
+// while `zByFeature` finds a z for the feature pointed at, and names it. No
+// dot is read (#173): the map redraws as the pool and the fit move on, a
+// dot's centre pixel can be its edge, and a gap between the brightest dots
+// and the dimmest is set by the pool's z, not by the app (CI read 196
+// against 136).
 /** A string as a pattern's source that matches it and nothing else. */
 const literal = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

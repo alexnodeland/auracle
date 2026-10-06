@@ -1130,10 +1130,10 @@ export function createTaste(host) {
     const r = ratingsNow();
     const isFit = fitted();
     // A weight pointed at: every sound shaded by its z on that feature, as
-    // the engine posted it (`WasmEngine::pool_features`).
-    const f = host.views()?.features;
-    const zi = barHover && f && Array.isArray(f.names) ? f.names.indexOf(barHover) : -1;
-    const zOf = zi >= 0 ? new Map(f.rows.map((row) => [row.id, row.z[zi]])) : null;
+    // the engine posted it (`WasmEngine::pool_features`), against the
+    // largest |z| among the sounds drawn (taste-geom `zByFeature`,
+    // `poolShades`).
+    const zOf = geom.zByFeature(host.views()?.features, barHover);
     const shades = zOf ? geom.poolShades(pos.keys(), zOf) : null;
     for (const [id, q] of pos) {
       if (shades) {

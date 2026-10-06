@@ -28,6 +28,7 @@ import {
   miniLayout,
   shadeOf,
   poolShades,
+  zByFeature,
   HISTORY_MAX,
   newHistory,
   readHistory,
@@ -387,6 +388,28 @@ test("a dot's shade runs with its z, from the floor at −zmax to whole at +zmax
   assert.deepEqual(shadeOf(null, 2), shadeOf(0, 2));
   assert.deepEqual(shadeOf(undefined, 2), shadeOf(0, 2));
   assert.deepEqual(shadeOf(0, 0), shadeOf(0, 2));
+});
+
+test("the small map reads each sound's z from the column of the feature pointed at", () => {
+  // As `WasmEngine::pool_features` posts it: each row's z in the order of
+  // `names`, so a feature's column is its place there.
+  const features = {
+    names: ["amp_sustain", "grit", "n_vco"],
+    rows: [{ id: 7, z: [1.5, -2, 0.25] }, { id: 9, z: [-0.5, 3, 0] }],
+  };
+  assert.deepEqual([...zByFeature(features, "grit")], [[7, -2], [9, 3]], "the second column for the second name");
+  assert.deepEqual([...zByFeature(features, "amp_sustain")], [[7, 1.5], [9, -0.5]]);
+  assert.deepEqual([...zByFeature(features, "n_vco")], [[7, 0.25], [9, 0]]);
+  // And the dots are shaded by that column: grit's largest |z| is sound 9's.
+  const sh = poolShades([7, 9], zByFeature(features, "grit"));
+  assert.equal(sh.get(9).alpha, 1);
+  assert.deepEqual(sh.get(7), shadeOf(-2, 3));
+  // Nothing pointed at, or a feature the engine posted no z for: no shading
+  // (and the legend keeps the arrow's).
+  assert.equal(zByFeature(features, null), null);
+  assert.equal(zByFeature(features, "a:p2"), null);
+  assert.equal(zByFeature(null, "grit"), null);
+  assert.equal(zByFeature({ rows: features.rows }, "grit"), null);
 });
 
 test("the small map shades each sound drawn against the largest |z| among them", () => {

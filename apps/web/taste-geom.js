@@ -222,6 +222,17 @@ export function shadeOf(z, zmax) {
   return { v, alpha: 0.15 + 0.85 * (v * 0.5 + 0.5), r: 1.6 + 2.6 * Math.max(0, v) };
 }
 
+/** Each sound's z on one feature, from the table the engine posts with every
+ *  views post (`WasmEngine::pool_features`: `{names, rows: [{id, z}]}`, each
+ *  row's z in φ's order, the order of `names`): a Map from id to the z in the
+ *  column `name` heads. Null when no feature is named or the engine posted no
+ *  z for it: the small map is shaded, and its legend says "dots:", only when
+ *  this is not null. */
+export function zByFeature(features, name) {
+  const zi = name && features && Array.isArray(features.names) ? features.names.indexOf(name) : -1;
+  return zi >= 0 ? new Map(features.rows.map((row) => [row.id, row.z[zi]])) : null;
+}
+
 /** Every sound's mark on the small map while a weight is pointed at: each of
  *  `ids` (the sounds drawn) by its z on that feature (`zOf`, a Map from id to
  *  z as `WasmEngine::pool_features` posted it; a sound with none is drawn at
