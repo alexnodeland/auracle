@@ -34,8 +34,13 @@
 //   (`app.inject`, `app.fail`), dispatched on the worker as the worker posts
 //   them, because the shipped engine answers every measurement it runs and
 //   cannot be made to trap.
+// - A measurement asked for before the engine has booted (the worker answers
+//   it `not_ready`, naming it by `req`, and never runs it) is let go the same
+//   way: the status stops saying "listening…" and says it couldn't (#138).
 //
 // What PERFORM asks the engine for is read through the tap too.
+const fs = require("fs");
+const path = require("path");
 const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 // PERFORM's requests to the engine (worker.js's perform_* types): what a
@@ -378,6 +383,33 @@ test("a first measurement a crashed engine never answers is let go: the status s
   await expect(page.locator("#alarm")).toContainText(/engine crashed/i, { timeout: 5_000 });
   await expect(status).toHaveText("couldn’t measure this patch", { timeout: 5_000 });
   expect(await page.locator(".pf-knob.waiting").count(), "no control still says listening…").toBe(0);
+});
+
+// A preset's tree, as the engine hands one over (the shipped file keeps each
+// preset's).
+const presetTree = (name) =>
+  JSON.parse(fs.readFileSync(path.join(__dirname, "../../apps/web/perform-wirings.json"), "utf8")).presets.find((p) => p.name === name).tree;
+
+test("a measurement asked before the engine has booted is let go: the status stops listening and says it couldn't", async ({ page, app }) => {
+  // The engine never boots: its `init` is kept from the worker (the tap's
+  // stall), so the worker answers every request as it does while its wasm
+  // loads, `not_ready`. No shipped wiring, so the patch is measured.
+  await page.route("**/perform-wirings.json*", (r) => r.abort());
+  await app.stall("init");
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, query: "?farm=0", wait: false });
+  await app.stalled();
+  // PERFORM is built with the voices, which need no engine. The app hands it
+  // a patch only from the engine's replies; the tap hands it one now, as the
+  // engine does (`tree_json`), so PERFORM asks for a measurement too early.
+  await expect(page.locator(".pf-knob").first()).toBeAttached();
+  await app.inject({ type: "tree_json", json: presetTree("Glass Pad"), makeup: 1 });
+  await expect.poll(async () => (await app.sent("perform_wire")).length, { message: "the measurement was asked for" }).toBeGreaterThan(0);
+  const [asked] = await app.sent("perform_wire");
+  const answer = await app.replyTo(asked, { timeout: 30_000 });
+  expect(answer, "the worker's answer names PERFORM's question").toMatchObject({ type: "not_ready", request: "perform_wire", req: asked.req });
+  // Let go: it said "listening to this sound…" for good.
+  await expect(page.locator(".pf-status")).toHaveText("couldn’t measure this patch");
+  await expect(page.locator(".pf-knob.waiting"), "no control still says listening…").toHaveCount(0);
 });
 
 // A crashed engine is asked nothing more. Each request sent to it came back
