@@ -125,7 +125,8 @@ per crate (lines, functions and regions, each with what it misses, and the
 floors) and every uncovered changed line with its text (in CI, a link to
 it). The HTML report, `target/llvm-cov/html/index.html` (in CI the
 `coverage-report` artifact), shows each file with the lines no test ran in
-red.
+red. Codecov's comment on a PR shows the same lcov, as a view: the gate is
+`scripts/coverage_gate.py`, and Codecov's statuses never block.
 
 A closure that never ran, on a line whose other code did, is counted three
 ways. The HTML report (and its lcov) shows the line covered, with a `^0`

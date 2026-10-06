@@ -1,0 +1,45 @@
+name: Coverage to Codecov
+description: >
+  Upload one lcov to Codecov under one flag (`rust`, `web` or `worker`), for
+  the PR's comment and the trend on main. A view of coverage, never a gate:
+  the gate is scripts/coverage_gate.py, in the Coverage job.
+
+# codecov.yml at the root says what Codecov does with it: a condensed
+# comment, statuses that only inform, and each flag carried forward on a
+# commit that did not upload it (a PR's fast lane runs only the jobs the
+# change reaches).
+#
+# Never a red run, by construction: `fail_ci_if_error` is off, and each caller
+# sets `continue-on-error` and a `timeout-minutes` on its step, since the
+# action also exits 1 on its own when the runner lacks a tool it wants. With
+# no token (a fork's PR, which gets no secrets) the action uploads tokenless,
+# as Codecov takes from forks of a public repository.
+#
+# Only the file named (`disable_search`): left to search the checkout, it
+# would upload every coverage file it finds under this one flag, and on main
+# the What changed job holds all three lcovs at once. The CLI it downloads
+# goes to a temporary directory (`cleanup`), not into the checkout.
+
+inputs:
+  file:
+    description: "The lcov file, relative to the checkout"
+    required: true
+  flag:
+    description: "`rust`, `web` or `worker` (codecov.yml)"
+    required: true
+  token:
+    description: "secrets.CODECOV_TOKEN (a composite action cannot read secrets itself)"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+      with:
+        token: ${{ inputs.token }}
+        files: ${{ inputs.file }}
+        flags: ${{ inputs.flag }}
+        disable_search: true
+        cleanup: true
+        fail_ci_if_error: false

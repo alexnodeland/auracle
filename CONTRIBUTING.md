@@ -183,7 +183,10 @@ coverage falls below its floor in `crates/coverage-baseline.json`, and every
 line the change adds or changes in `crates/` is run by a fast-tier test that
 checks what it does. `make coverage` runs the same locally, with the HTML
 report in `target/llvm-cov/html/`
-([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)).
+([`crates/AGENTS.md` § Coverage](crates/AGENTS.md#coverage)). Codecov
+also comments on your PR with its coverage: the Rust's, and what the app's
+Node tests run of `apps/web` (not the browser specs, which it can't see).
+It is there to read, and never blocks a merge.
 
 Coverage says a test ran a line, not that it checked it. `make mutants
 DIFF=1` changes the code you changed one small way at a time (a `<` made

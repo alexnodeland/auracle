@@ -36,6 +36,15 @@ name: CI
 # again (the `changes` job says which), and the site deploys from this run's
 # own build once `CI` is green (the `deploy` job).
 #
+# Coverage also goes to Codecov (codecov.yml, .github/actions/codecov), a
+# view and never a gate: Coverage's Rust lcov, and an lcov each from Web's
+# unit tests and from Worker protocol, each uploaded by a step at the end of
+# its job, under a flag of its own (rust, web, worker). From a PR's own run
+# and from main, not from the queue's: its draft PR's commit never reaches
+# main. When main reuses the queue's verdict, the `changes` job uploads the
+# queue run's reports as main's, measured on the same files. An upload never
+# fails a job.
+#
 # Every job in every workflow runs on `ubuntu-24.04`, not `ubuntu-latest`:
 # the label's move to a new image is its own PR, with a Flake hunt run, not a
 # change that lands under whichever PR happens to be in CI that day. The jobs
@@ -417,6 +426,57 @@ jobs:
           path: tests/web/timings-fast.json
           key: browser-timings-fast-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # Codecov keeps coverage by commit, and a run on main that reuses the
+      # queue's verdict runs none of Coverage, Web and Worker protocol, whose
+      # steps upload it: main would have no report, and a PR's comment no
+      # base to compare with. The queue's run kept its reports, measured on
+      # these exact files (the `coverage-report` artifact, and `coverage-web`
+      # and `coverage-worker`), so each reused job's is uploaded here, as this
+      # commit's. A job not reused runs on main and uploads its own. An error
+      # costs Codecov this commit's report, never this run its answer.
+      - id: queue-coverage
+        name: The queue run's coverage, for Codecov
+        if: steps.reuse.outputs.coverage == 'true' || steps.reuse.outputs.web == 'true' || steps.reuse.outputs.worker == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ steps.reuse.outputs.run }}
+          RUST: ${{ steps.reuse.outputs.coverage }}
+          WEB: ${{ steps.reuse.outputs.web }}
+          WORKER: ${{ steps.reuse.outputs.worker }}
+        run: |
+          if [ "$RUST" = true ]; then gh run download "$RUN" --repo "$REPO" -n coverage-report -D target/llvm-cov || echo "no Rust coverage from run $RUN"; fi
+          if [ "$WEB" = true ]; then gh run download "$RUN" --repo "$REPO" -n coverage-web -D target/js-cov || echo "no web coverage from run $RUN"; fi
+          if [ "$WORKER" = true ]; then gh run download "$RUN" --repo "$REPO" -n coverage-worker -D target/js-cov || echo "no worker coverage from run $RUN"; fi
+      - name: Coverage to Codecov (rust, from the queue's run)
+        if: steps.queue-coverage.outcome == 'success' && hashFiles('target/llvm-cov/lcov.info') != ''
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/llvm-cov/lcov.info
+          flag: rust
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Coverage to Codecov (web, from the queue's run)
+        if: steps.queue-coverage.outcome == 'success' && hashFiles('target/js-cov/web.lcov') != ''
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/js-cov/web.lcov
+          flag: web
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Coverage to Codecov (worker, from the queue's run)
+        if: steps.queue-coverage.outcome == 'success' && hashFiles('target/js-cov/worker.lcov') != ''
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/js-cov/worker.lcov
+          flag: worker
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       # The voice check (www/brand/voice.md) reads the README and the
       # changelog as well as the site and the app, and a PR that touches only
       # those skips the web job's `make dev-check`. It takes a second, so it
@@ -514,8 +574,31 @@ jobs:
             fi
             exit "$s"
           }
-      - run: make web-check BASE=HEAD^1
+      # COVERAGE=1: the unit tests' coverage of apps/web as an lcov too
+      # (target/js-cov/web.lcov), for Codecov (the Makefile's NODE_COV).
+      - id: units
+        run: make web-check BASE=HEAD^1 COVERAGE=1
       - run: make -j4 -O dev-check
+      # Uploaded once the unit tests passed, whatever dev-check said: the
+      # numbers are the tests', not the job's. The queue's run uploads
+      # nothing and keeps the lcov for main's (the changes job).
+      - name: Coverage to Codecov (web)
+        if: ${{ !cancelled() && steps.units.outcome == 'success' && needs.changes.outputs.lane != 'queue' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/js-cov/web.lcov
+          flag: web
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - if: ${{ !cancelled() && steps.units.outcome == 'success' && needs.changes.outputs.lane == 'queue' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-web
+          path: target/js-cov/web.lcov
+          retention-days: 7
+          if-no-files-found: ignore
 
   # The doctests, which nextest does not run. There are none today, and this
   # is what keeps that a fact rather than an assumption. A job of its own:
@@ -680,6 +763,8 @@ jobs:
           BASE=origin/${{ github.base_ref || 'main' }}
           COV_MARKDOWN="$GITHUB_STEP_SUMMARY"
           COV_LINK="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}"
+      # The queue's run keeps it for main's too, which uploads it to Codecov
+      # when it reuses this verdict (the changes job).
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -687,6 +772,18 @@ jobs:
           path: target/llvm-cov/
           retention-days: 7
           if-no-files-found: ignore
+      # The same lcov the gate read, uploaded even when the gate failed: the
+      # tests passed (a failing one fails its runner, and this job does not
+      # run), so the numbers are true. Not from the queue's run.
+      - name: Coverage to Codecov (rust)
+        if: ${{ !cancelled() && needs.changes.outputs.lane != 'queue' && hashFiles('target/llvm-cov/lcov.info') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/llvm-cov/lcov.info
+          flag: rust
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # No separate wasm32 check: when Rust changed, the cache key of the engine
   # job below (crates/**, Cargo.*, the Makefile) misses and it runs
@@ -893,7 +990,29 @@ jobs:
         with:
           name: web-engine
           path: apps/web/pkg
-      - run: make worker-test
+      # COVERAGE=1: what the tests ran of apps/web (worker.js, in its thread)
+      # as an lcov too (target/js-cov/worker.lcov), for Codecov. The time is
+      # the engine's wasm, which JavaScript coverage does not instrument.
+      - run: make worker-test COVERAGE=1
+      # Not from the queue's run, which keeps the lcov for main's (the
+      # changes job).
+      - name: Coverage to Codecov (worker)
+        if: needs.changes.outputs.lane != 'queue'
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/codecov
+        with:
+          file: target/js-cov/worker.lcov
+          flag: worker
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - if: needs.changes.outputs.lane == 'queue'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-worker
+          path: target/js-cov/worker.lcov
+          retention-days: 7
+          if-no-files-found: ignore
 
   # The engine for the fast browser tier and Worker protocol, built once per
   # run (see the action's comment): restored from the cache when no crate

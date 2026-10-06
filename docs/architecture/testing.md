@@ -19,9 +19,9 @@ this table.
 | Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
 | Lint | `make lint` | clippy with `-D warnings` | Any Rust |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
-| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
+| Web units | `make web-check` (`COVERAGE=1` also writes what the unit tests ran of `apps/web` as an lcov, for Codecov: [Coverage](#coverage)) | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below, plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
 | Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`); every test tagged `@quarantine` names its issue (`flakes.mjs check`, [Flakes](#flakes)) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
-| Worker protocol | `make worker-test` (after `make wasm`) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
+| Worker protocol | `make worker-test` (after `make wasm`; `COVERAGE=1` as for the web units) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
@@ -109,6 +109,7 @@ the fast tier and the PR checks alone.
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
+| Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, in *What changed* when it reuses the queue's verdict | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on the PR, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane:
 
@@ -376,6 +377,42 @@ whole tier, writes `target/llvm-cov/html/index.html`, `lcov.info` and
 another). `make coverage-report` runs the gate again without the tests, and
 `make coverage-floors` raises the floors to the last run's values.
 `make setup` installs cargo-llvm-cov and the `llvm-tools` component.
+
+**Codecov, a view.** The gate is `scripts/coverage_gate.py`, above, and
+nothing else. Codecov (`codecov.yml`) shows coverage on a PR and over time
+on `main`, and never holds up a merge: its project and patch statuses are
+informational, and each upload is a step that cannot fail its job
+(`continue-on-error`, in `.github/actions/codecov`). Three lcovs go up, one
+flag each:
+
+| Flag | From | Measures |
+| --- | --- | --- |
+| `rust` | *Coverage*: the lcov the gate reads (`target/llvm-cov/lcov.info`) | The fast tier's Rust tests over `crates/` |
+| `web` | *Web*: `make web-check COVERAGE=1` (`target/js-cov/web.lcov`) | What the unit tests in `apps/web/tests/` run of `apps/web` |
+| `worker` | *Worker protocol*: `make worker-test COVERAGE=1` (`target/js-cov/worker.lcov`) | What `tests/worker/` runs of `worker.js`, in its thread |
+
+The two JavaScript lcovs are Node's own coverage (`--experimental-test-coverage`),
+with the tests and the generated `pkg/` left out. They count what the Node
+tests reach, not what is tested: the browser specs run most of `apps/web`
+and are not measured. A line of `perform.js` that only a spec runs reads
+as uncovered, and a file no Node test loads (`main.js`) is not in the
+report at all. That is why Codecov's annotations on the diff are off.
+
+The uploads go from a PR's own run and from `main`, never from the merge
+queue's run, whose draft PR's commit never lands on `main`. `main` usually
+reuses the queue's verdict and runs none of the three jobs, so *What
+changed* uploads the queue run's reports as `main`'s, measured on the same
+files (the `coverage-report`, `coverage-web` and `coverage-worker`
+artifacts). A PR's fast lane runs only the jobs its change reaches; a flag
+a commit didn't upload is carried forward from its parent, so it doesn't
+read as a drop. Each upload is a step in a job already counted under
+[Runners](#ci-tiers), not a job of its own. A PR from a fork gets no
+secrets, so its upload goes without the token, as Codecov allows from
+forks of a public repository.
+
+Locally, `make web-check COVERAGE=1` and `make worker-test COVERAGE=1`
+write the two JavaScript lcovs (Node 22.5 or later); without `COVERAGE`
+the gates run as before, with no coverage.
 
 ## Mutants
 

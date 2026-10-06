@@ -1,0 +1,69 @@
+# Codecov (https://about.codecov.io): coverage as a view, on a PR and over
+# time. Never a gate. The gate is scripts/coverage_gate.py in CI's Coverage
+# job: each crate at its floor (crates/coverage-baseline.json) and every
+# changed line in crates/ covered (docs/architecture/testing.md § Coverage).
+#
+# Three uploads, one flag each, from ci.yml (.github/actions/codecov):
+# - rust: Coverage's lcov, the fast tier's Rust tests (cargo-llvm-cov);
+# - web: Web's, apps/web's unit tests (make web-check COVERAGE=1);
+# - worker: Worker protocol's, worker.js under tests/worker
+#   (make worker-test COVERAGE=1).
+# The browser specs, which run most of apps/web, are not measured, so the
+# web and worker numbers are what Node's tests reach, not what is tested.
+
+codecov:
+  # Post as each upload lands. By default Codecov waits for every other
+  # check on the commit to finish (wait_for_ci), and its statuses for them
+  # to pass (require_ci_to_pass): Mutants runs for up to forty minutes
+  # beside CI, and the PR is often queued before then.
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
+
+coverage:
+  # Informational: each status passes whatever the numbers, so Codecov never
+  # holds up a merge (the ruleset requires `CI` alone).
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# A PR's fast lane runs only the jobs its change reaches, so a commit often
+# uploads one flag or none. Carried forward, a flag not uploaded keeps its
+# parent commit's numbers rather than reading as a drop to zero.
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: rust
+      paths:
+        - crates/
+    - name: web
+      paths:
+        - apps/web/
+    - name: worker
+      paths:
+        - apps/web/
+
+# One condensed comment, edited in place as the uploads land.
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  behavior: default
+  require_changes: false
+
+# No line annotations on the diff: a line of apps/web the browser specs test
+# would be marked uncovered, and the Rust's uncovered changed lines are in
+# the Coverage job's summary already.
+github_checks:
+  annotations: false
+
+# The tests themselves, the examples and the generated engine glue.
+ignore:
+  - "apps/web/pkg"
+  - "apps/web/tests"
+  - "tests"
+  - "crates/*/tests/**"
+  - "crates/*/examples/**"
