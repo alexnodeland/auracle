@@ -83,6 +83,19 @@ export function kindsInLog(observations) {
   return k;
 }
 
+/** Reset your taste's question (the ⋯ menu): what it forgets, counted by
+ *  kind, and what it keeps. `picks`, `stars` and `cuts` are TAUGHT's
+ *  (main.js `taughtKinds`, a pick still in its undo window among them),
+ *  `generations` the engine's count and `saved` how many saved sounds stay.
+ *  The crashed engine's question names no counts, and is main.js's. */
+export function resetQuestion({ picks = 0, stars = 0, cuts = 0, generations = 0, saved = 0 } = {}) {
+  const forgotten = `Your ${count(picks, "pick")}, ${count(stars, "star")}, ${count(cuts, "cut")}, and ${count(generations, "generation")} are forgotten`;
+  return saved > 0
+    ? `Reset your taste? ${forgotten}, with every sound you haven’t saved. ` +
+        `Your ${count(saved, "saved sound stays", "saved sounds stay")}. A copy of your taste downloads first.`
+    : `Reset your taste? ${forgotten}, and the bank starts afresh. A copy of your taste downloads first.`;
+}
+
 // What each walk of a generation that joined nothing came back as, from the
 // engine's reason for it (`RefineOutcome` in engine.rs, posted per walk by
 // worker.js `genLanded`).
@@ -168,6 +181,64 @@ export function evolveRefusal(reason, name) {
     default:
       return `⚡${from} came back unchanged. Try again, or loosen some locks.`;
   }
+}
+
+// ---- EVOLVE's table: how the pair was chosen ----
+// The engine says, on every deal, which rule dealt the pair (`meta.method`):
+// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
+// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
+// "unbiased probe" mark over the forecast line, captioned "about one duel in
+// ten is dealt at random rather than by the acquisition rule". Under the
+// default rule, `Acquisition::Random`, that caption was false: *every* pair is
+// dealt at random, which is the reason it is the default (engine.rs). So the
+// mark was hidden after five deals as saying nothing, never drawn on the deal
+// after a vote (the forecast held its slot), and the rule in use went unsaid.
+//
+// Now the rule is stated on its own line (`#duel-rule`), where it holds its
+// place while forecasts come and go above it. Under the default it is one
+// fact about every pair — the model does not choose what you hear, which is
+// what makes every pick a fair test of its forecast — and it does not change
+// from deal to deal. The one-in-ten ◇ mark is kept for what it is true of: a
+// check dealt at random under a rule that otherwise chooses.
+//
+// The rule is read from the deals themselves, as the method of the last deal
+// that was not a scheduled check. Under `Random` the engine says "random" of
+// every pair, the scheduled slot included (auracle-session's
+// `the_default_rule_deals_every_pair_at_random_and_says_so` pins it); a
+// "check" that reached the page under `Random` all the same would still not
+// be taken for a change of rule. (An engine's first deal is never a check.)
+
+/** The line's words for each rule, and for a check under a choosing rule. */
+export const DEAL_RULE = Object.freeze({
+  random: {
+    text: "◇ random pair · a fair test",
+    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and its forecasts in LEARNING are graded on them all.",
+  },
+  bald: {
+    text: "chosen where it’s least sure",
+    title: "The model dealt this pair where its guess is closest to a coin flip: the question it learns most from. About one pair in ten is dealt at random instead, as a fair test (◇).",
+  },
+  thompson: {
+    text: "chosen from its best guesses",
+    title: "The model drew two likely versions of your taste and dealt the sound each rates highest. About one pair in ten is dealt at random instead, as a fair test (◇).",
+  },
+  check: {
+    text: "◇ fair test · dealt at random",
+    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in LEARNING.",
+  },
+});
+
+/** The line for a deal whose `meta.method` is `method`, after deals that
+ *  read as `rule` (the method of the last one that was not a check, or null
+ *  before any). Returns the rule read with this deal counted (`rule`, kept
+ *  for the next), the words to show (`said`, one of `DEAL_RULE`'s, or null
+ *  for a method it has none for: the line stays as it was) and whether they
+ *  are a check's (`check`, the ◇ mark's class). */
+export function dealRule(method, rule = null) {
+  const now = method !== "check" ? method : rule;
+  // A scheduled check is only news under a rule that otherwise chooses.
+  const said = DEAL_RULE[method === "check" && now !== "random" ? "check" : now || method] || null;
+  return { rule: now, said, check: said === DEAL_RULE.check };
 }
 
 // ---- AUDIO IN: your input in the patch (Plan-007 task 4) ----
@@ -362,6 +433,18 @@ export function walkSaid(child, reason) {
  *  absorbed in order, so the third to come back is the third walk). */
 export function walkLabel(done, total) {
   return `walk ${done} of ${total}`;
+}
+
+/** The job slot's estimate of what a generation still owes: "about 40 s"
+ *  for a remaining time in ms (rounded to 5 s, never under 5), "about 2 min"
+ *  from a minute on, "almost done" under 3 s, and "" when there is no
+ *  estimate (null, or not a finite number). */
+export function jobEta(ms) {
+  if (ms == null || !Number.isFinite(ms)) return "";
+  const s = ms / 1000;
+  if (s < 3) return "almost done";
+  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
+  return `about ${Math.round(s / 60)} min`;
 }
 
 /** Under the bank's New group: the children of its generation that are not

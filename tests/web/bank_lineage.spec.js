@@ -495,9 +495,14 @@ test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound i
   test.skip(!m.walking, "⚡ landed before the marks were read");
   expect(m.seed).toEqual([seedId]);
   expect(m.status.pool, "the pool is not full, so ⚡ would replace nothing").toBeGreaterThanOrEqual(m.status.pool_target);
-  const want = m.mayReplace.filter((id) => id !== seedId).slice(0, m.status.pool + 1 - m.status.pool_target);
-  expect(m.may).toEqual(want);
-  expect(m.words).toEqual(want.map(() => "may be replaced"));
+  // Which of the ratings' \`may_replace\` its child would replace (the seed
+  // passed over, as many as it puts the pool over size) is
+  // apps/web/tests/marks.test.mjs's; here, that the page marks them from
+  // what the engine sent, while ⚡ walks.
+  expect(m.may.length, "nothing marked as what ⚡'s child would replace").toBeGreaterThan(0);
+  expect(m.may, "the seed marked as what its child would replace").not.toContain(seedId);
+  expect(m.may.filter((id) => !m.mayReplace.includes(id)), "marked, though not the engine's may_replace").toEqual([]);
+  expect(m.words).toEqual(m.may.map(() => "may be replaced"));
   // When the child lands, what it replaced is what was marked (the model has
   // not moved: no pick since).
   await page.mouse.move(5, 5);
@@ -505,7 +510,7 @@ test("pointing at EVOLVE POOL while ⚡ walks marks its seed and the one sound i
   console.log(`⚡ from ${seedId}: child ${done.childId}, reason ${done.reason}; marked ${JSON.stringify(m.may)}`);
   if (done.childId > 0) {
     const pool = new Set(done.views.ranked.map((r) => r.id));
-    expect(want.filter((id) => !pool.has(id)), "what ⚡'s child replaced").toEqual(want);
+    expect(m.may.filter((id) => !pool.has(id)), "what ⚡'s child replaced").toEqual(m.may);
   }
 });
 
@@ -574,8 +579,10 @@ test("a sound saved while a generation runs loses its mark, and the one that wil
   await expect.poll(() => page.evaluate((id) => window.__pwSaves.some((s) => s.id === id), target)).toBe(true);
   const saved = await page.evaluate((id) => window.__pwSaves.filter((s) => s.id === id).pop(), target);
   expect(saved.breeding, "the generation ended before the save's reply").toBe(true);
-  const want = saved.retiring.filter((id) => saved.rows.includes(id) && !saved.seed.includes(id)).sort((a, b) => a - b);
-  expect(saved.may, "the marks are not what the save says will be replaced").toEqual(want);
+  // That the marks are the reply's list whole (a seed marked a seed, never
+  // also as one that will go) is apps/web/tests/marks.test.mjs's; here, that
+  // the page took the save's reply for them.
+  expect(saved.may.filter((id) => !saved.retiring.includes(id)), "marked, though the save says it will not be replaced").toEqual([]);
   expect(saved.may, "the saved sound kept its mark").not.toContain(target);
   // One sound not marked before is marked now: the one that will go instead.
   console.log(`saved ${target}; marked before ${JSON.stringify(snap.may)}, after ${JSON.stringify(saved.may)}`);

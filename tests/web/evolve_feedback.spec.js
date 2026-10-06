@@ -250,7 +250,6 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   const RANDOM = "◇ random pair · a fair test";
   await expect(rule).toHaveText(RANDOM);
   expect(await rule.getAttribute("title")).toContain("every pair is dealt at random");
-  expect(await rule.getAttribute("title")).not.toContain("one pair in ten");
 
   // Through votes and skips it holds its place — on the deal after a vote
   // too, where the old mark was never drawn.
@@ -272,11 +271,15 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   // In the model's voice: the side it guessed, its probability, and a word.
   await expect(pred).toHaveText(/^it guessed (this|the other) · \d+% · (a hunch|leaning|fairly sure)$/, { timeout: 5_000 });
   await expect(rule).toHaveText(RANDOM);
+  // The default's line is never a check's.
+  await expect(rule).not.toHaveClass(/\bcheck\b/);
 
   // Under Random the engine says "random" of every pair (auracle-session's
-  // the_default_rule_deals_every_pair_at_random_and_says_so pins it), so a
-  // "check" is injected here: should one reach the page under Random, it
-  // must not read as a change of rule.
+  // the_default_rule_deals_every_pair_at_random_and_says_so pins it), so the
+  // rules that choose are injected here. Which words each rule gets, and
+  // that a "check" reaching the page under Random reads as Random, are
+  // words.js's (`dealRule`, apps/web/tests/words.test.mjs); here, that a
+  // deal's rule reaches the line, and a check its mark.
   //
   // A pair reaches the table the way the engine deals it: one is up and the
   // next is already dealt, waiting. So the deals from here on are tagged with
@@ -291,17 +294,12 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
     }
     await app.engine((timeout) => expect(page.locator("#choose-a")).toBeEnabled({ timeout }), { ms: 30_000 });
   };
-  await deal("check");
-  await expect(rule).toHaveText(RANDOM);
-  await expect(rule).not.toHaveClass(/\bcheck\b/);
-
   // Under a choosing rule, the one-in-ten mark means what it says.
   await deal("bald");
   await expect(rule).toHaveText("chosen where it’s least sure");
   await deal("check");
   await expect(rule).toHaveText("◇ fair test · dealt at random");
   await expect(rule).toHaveClass(/\bcheck\b/);
-  expect(await rule.getAttribute("title")).toContain("one pair in ten");
 });
 
 test("a bank row's ▶ lights while it plays and stops on a second press; ▶ SAMPLE too", async ({ page, app }) => {

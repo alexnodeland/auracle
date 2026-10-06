@@ -171,9 +171,6 @@
     },
     "playwright/no-wait-for-timeout": {
       "count": 1
-    },
-    "playwright/prefer-to-have-count": {
-      "count": 1
     }
   },
   "explain.spec.js": {

@@ -66,13 +66,16 @@ test("Reset asks with the counts, downloads the profile first, and keeps the sav
   await row.locator(".bi-save").click();
   await app.engine((timeout) => expect(page.locator('.btab .bt-n[data-n="saved"]')).toHaveText("1", { timeout }), { ms: 20_000 });
 
-  // The question names what goes and what stays, and "keep it" keeps it.
+  // The question names what goes and what stays, with the counts, and
+  // "keep it" keeps it. Its sentence for any counts is words.js's
+  // (`resetQuestion`, apps/web/tests/words.test.mjs); here, that this
+  // session's counts reach it.
   await menu(page, "taste-reset-btn");
   const alarm = page.locator("#alarm");
-  await expect(alarm).toContainText(
-    "Reset your taste? Your 2 picks, 0 stars, 0 cuts, and 0 generations are forgotten, with every sound you haven’t saved. " +
-      "Your 1 saved sound stays. A copy of your taste downloads first.",
-  );
+  const question = await page.evaluate(async () =>
+    (await import("/words.js")).resetQuestion({ picks: 2, stars: 0, cuts: 0, generations: 0, saved: 1 }));
+  await expect(alarm).toContainText("Reset your taste?");
+  await expect(alarm).toContainText(question);
   await expect(alarm.locator("button", { hasText: "download & reset" })).toBeVisible();
   await alarm.locator("button", { hasText: "keep it" }).click();
   await expect(alarm).toHaveClass(/\bhidden\b/);
