@@ -1458,6 +1458,60 @@ fn a_lightning_child_replaces_the_first_it_may_replace_and_never_its_seed() {
     assert_eq!(engine.pool.len(), engine.cfg.pool_size);
 }
 
+/// **A child the pool would not take is refused, and leaves no trace.** A
+/// walk that lands on a patch the pool already holds reads `Duplicate`; one
+/// whose child rates no higher than the member it would displace reads
+/// `NotAdmitted` (EVOLVE shows the bud beside its seed, and says why). Either
+/// way the pool, the lineage and the generation count are as they were.
+#[test]
+fn a_child_the_pool_would_not_take_is_refused_and_leaves_no_trace() {
+    let mut engine = taught(0xAD7);
+    let ranked = engine.ranked();
+    let seed = engine.pool[ranked[0].0].id;
+    let (low, bar) = (
+        &engine.pool[ranked[ranked.len() - 1].0],
+        ranked[ranked.len() - 1].1,
+    );
+    let landing = |child: PatchTree| WalkResult {
+        generation: engine.generation,
+        index: 0,
+        parent_id: seed,
+        child: Some(child),
+        reason: None,
+        cached: None,
+    };
+    let twin = landing(engine.pool[ranked[1].0].tree.clone());
+    // The lowest member with one knob moved, rating no higher than it: the
+    // member the child would displace, with the seed spared.
+    let sz = engine.standardizer.clone().unwrap();
+    let under = [0.002, 0.03, 0.2, 0.5, 0.9]
+        .iter()
+        .map(|&a| {
+            let mut t = low.tree.clone();
+            t.amp.attack = a;
+            t
+        })
+        .find(|t| {
+            let (cf, _) = featurize_memo(t, &engine.cfg.phrase, engine.memo(), false).unwrap();
+            *t != low.tree && engine.utility_of(&sz.transform(&cf.features.phi())) <= bar
+        })
+        .map(landing)
+        .expect("no knob setting rates under the lowest member");
+    let state = |e: &Engine| {
+        let ids: Vec<u64> = e.pool.iter().map(|c| c.id).collect();
+        (ids, e.lineage.len(), e.generation)
+    };
+    let before = state(&engine);
+    for (result, want) in [
+        (twin, RefineOutcome::Duplicate),
+        (under, RefineOutcome::NotAdmitted),
+    ] {
+        assert_eq!(engine.refine_from_absorb(seed, result), None);
+        assert_eq!(engine.last_refine(), want);
+        assert_eq!(state(&engine), before, "{want:?} left a trace");
+    }
+}
+
 /// **A bred child's lineage names its seed, what changed, and both
 /// ratings.** For a ⚡ child and for every child of a generation, the event
 /// the bank's lineage shows has the job's parent, the diff from the seed's
