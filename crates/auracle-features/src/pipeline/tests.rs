@@ -31,13 +31,14 @@ fn an_all_silence_tree_is_quarantined_as_silent() {
         },
         root: AudioNode::Silence { uid: Uid::NEW },
     };
-    match featurize(&tree, &PhraseSpec::default()) {
-        Err(e) => assert!(
-            e.to_string().contains("silent"),
-            "an empty patch must fail as silent, not as {e}"
+    let got = featurize(&tree, &PhraseSpec::default()).map(|_| ());
+    assert!(
+        matches!(
+            got,
+            Err(FeaturizeError::Quarantined(VetFailure::Silent { .. }))
         ),
-        Ok(_) => panic!("a patch of nothing but holes passed the vet gate"),
-    }
+        "a patch of nothing but holes must fail the vet gate as silent: {got:?}"
+    );
 }
 
 /// A hole inside a live patch is *not* quarantined — it is one muted
