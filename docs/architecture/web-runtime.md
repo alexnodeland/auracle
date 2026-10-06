@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-10-05
+last_updated: 2026-10-06
 related_adrs: [1, 2, 7, 12, 15, 17, 18]
 ---
 
@@ -151,6 +151,32 @@ a CI runner). The jobs cut this way are
 PERFORM's measurement (`measure`, a render at a time), the model's guess and
 PERFORM's offers and drifts (`walkRun`, an MH step, one proposal and so at
 most one render, at a time; below).
+
+So a `now` request waits for the one call in progress when it arrives, then
+for the `now` requests queued ahead of it (first come, first served), and
+then runs. With the worker instrumented at `AURACLE_CPU_THROTTLE=4` on a
+16-core M3 Max (the farm slowed fourfold too), the calls it can wait behind
+took:
+
+- a render of a measurement or of the guess's floor: 0.5 to 3.1 s, by the
+  sound;
+- a step of an offer or a drift: up to 2.1 s;
+- a background render of a dealt pair's sound: up to 1.6 s (1.7 s at 6×);
+- a cable probe: up to 0.95 s (3.6 s at 6×);
+- a refit, one MCMC call: 0.75 s;
+- a preset's insert (an open's, which is a `now` request ahead of it, or a
+  booth pre-warm's): up to 1.4 s (1.8 s at 6×); the warm start inserts nine
+  in one call, 8 s;
+- with no farm (`?farm=0`), while the bank fills, one step of the fill, which
+  renders until two draws are admitted: 0.2 to 0.9 s unthrottled.
+
+On CI the waits seen had the same shape: an edit answered 1.35 s after the
+drag that made it (#174, #182), and an unplug's tree in the voices 2.2 to
+2.9 s after the click (#176), each behind one call. The rule is held by
+`apps/web/tests/worker-lanes.test.mjs`, which runs the worker's own
+`yieldToQueue`, `serveNow`, `breathe`, `holdFloor`, `guessRun` and
+`measure`: a request posted during a render is delivered at the job's next
+breath and answered before the next render.
 
 ### Offers and drifts are jobs
 

@@ -5,16 +5,19 @@
 // written, beside a model of how the worker serves its lanes: every `now`
 // request first, in arrival order, then the first `soon` (then `later`)
 // request that is not blocked. That model is `serveNow` and `nextLong`.
+// The rule for a request that arrives while a long job holds the floor runs
+// the worker's own `serveNow`, `breathe`, `guessRun` and `measure` (below).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const src = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
 
-// The source of `function name(…) { … }`, braces matched.
+// The source of `[async ]function name(…) { … }`, braces matched.
 function lift(name) {
-  const at = src.indexOf(`function ${name}(`);
+  let at = src.indexOf(`function ${name}(`);
   assert.ok(at >= 0, `worker.js has no function ${name}`);
+  if (src.slice(at - 6, at) === "async ") at -= 6;
   let depth = 0;
   for (let i = src.indexOf("{", at); i < src.length; i++) {
     if (src[i] === "{") depth++;
@@ -101,4 +104,97 @@ test("a face the player is looking at goes before a measurement nobody waits on,
   ["recheck", "bank"]);
   // And a measurement nobody waits on gives way to a looked-at face mid-run.
   assert.match(lift("measure"), /idleOnly\(m\) && \(laterWaiting\(\) \|\| seenFaceWaiting\(lanes\)\)/);
+});
+
+// A request the player makes while a long job holds the floor (the model's
+// guess, PERFORM's measurement) is served before that job's next render, so
+// it waits at most for the render in progress when it arrived: a wasm call
+// cannot be interrupted, and the job answers the `now` lane between renders
+// (`breathe`). The worker's own `yieldToQueue`, `serveNow`, `breathe`,
+// `holdFloor`, `guessRun` and `measure` run here, over an engine that records
+// each render and the requests it served. A request "posted during render n"
+// is queued on a later turn of the event loop, as a message posted to a
+// worker that is inside a call is delivered only once the job gives the
+// event loop a turn: so the job must yield (`yieldToQueue`) and then serve
+// the lane (`serveNow`), or the request waits for the next render too.
+const line = (re) => {
+  const m = src.match(re);
+  assert.ok(m, `worker.js has no ${re}`);
+  return m[0];
+};
+
+function floorJobs() {
+  const log = [];
+  const lanes = [[], [], [], []];
+  const owed = new Set();
+  const during = new Map();
+  let renders = 0;
+  const jobs = () => [...owed].map((t) => ({ key: t, tree: t }));
+  const engine = {
+    memo_render(tree) {
+      log.push(`render ${tree}`);
+      owed.delete(tree);
+      const posted = during.get(++renders);
+      if (posted) setTimeout(() => lanes[laneOf(posted)].push(posted), 0);
+      return true;
+    },
+    guess_plan: () => JSON.stringify({ jobs: jobs() }),
+    guess_rank: () => JSON.stringify({ guesses: [] }),
+    edit_tree_json: () => "the bench",
+    perform_wire_plan: () => JSON.stringify(jobs()),
+    perform_wire_known: () => "{}",
+  };
+  const fns = new Function(
+    "NOW", "SOON", "LATER", "FACES", "lanes", "floor", "walking", "bootCrewLive", "engine", "post", "runMessage", "schedulePump", "beginLongOp", "endLongOp",
+    [
+      line(/^const yieldToQueue = .*$/m), line(/^const GUESS_FLOOR = .*$/m), line(/^const GUESS_BUDGET_MS = .*$/m),
+      line(/^const idleOnly = .*$/m), line(/^const laterWaiting = .*$/m), line(/^const bgWaits = .*$/m),
+      lift("laneOf"), lift("blocked"), lift("seenFaceWaiting"), lift("isFatal"), lift("performReply"),
+      lift("serveNow"), lift("breathe"), lift("holdFloor"), lift("guessRun"), lift("measure"),
+      // Each holding the floor, as `dispatch` runs them.
+      "return { guessRun: (m) => holdFloor(m, () => guessRun(m)), measure: (m) => holdFloor(m, () => measure(m)) };",
+    ].join("\n"),
+  )(
+    NOW, SOON, LATER, 3, lanes, null, () => false, () => false, engine,
+    (m) => log.push(`reply ${m.type}`),
+    async (m) => log.push(`served ${m.type}`),
+    () => {},
+    () => {},
+    () => {},
+  );
+  return {
+    ...fns,
+    log,
+    lanes,
+    owe: (...trees) => trees.forEach((t) => owed.add(t)),
+    // `m` is posted to the worker while render `n` runs.
+    during: (n, m) => during.set(n, m),
+  };
+}
+
+test("a knob turned while the model's guess renders is answered before the guess's next render", async () => {
+  const w = floorJobs();
+  w.owe("g1", "g2", "g3");
+  w.during(1, { type: "edit_param" });
+  await w.guessRun({ type: "guess" });
+  assert.deepEqual(w.log, ["render g1", "served edit_param", "render g2", "render g3", "reply guess"]);
+});
+
+test("an open while PERFORM's background measurement renders is answered before its next render", async () => {
+  const w = floorJobs();
+  w.owe("p1", "p2", "p3");
+  w.during(2, { type: "edit_begin" });
+  await w.measure({ type: "perform_wire", bg: true, req: 1, tree: "t" });
+  assert.deepEqual(w.log, ["render p1", "render p2", "served edit_begin", "render p3", "reply perform_wired"]);
+});
+
+test("the guess gives way to long work the player asks for, at the front of later with what it spent", async () => {
+  const w = floorJobs();
+  w.owe("g1", "g2");
+  w.during(1, { type: "explain" });
+  const guess = { type: "guess" };
+  await w.guessRun(guess);
+  assert.deepEqual(w.log, ["render g1"]);
+  assert.equal(w.lanes[LATER][0], guess);
+  assert.equal(typeof guess.spent, "number");
 });

@@ -33,10 +33,7 @@ const drawn = (page) =>
     })),
   }));
 
-// Quarantined (#182): on a slow runner the knob turn below waited over 30 s
-// behind the model's guess for the open (#174), so the marks never went
-// hollow inside the wait.
-test("cables carry light by the levels the engine measured, keyed as the rack draws them, and modulation cables carry none", { tag: "@quarantine" }, async ({ page, app }) => {
+test("cables carry light by the levels the engine measured, keyed as the rack draws them, and modulation cables carry none", async ({ page, app }) => {
   await app.boot({ busy: true });
   await openPreset(app, "Reese");
   // The levels measured on the tree the rack is drawing (an earlier reply can
@@ -68,23 +65,39 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   }
 
   // One probe for the open, not one per knob step: a drag of ten steps asks
-  // once, after it settles. The probe is slow at the engine from here, so the
-  // hollow marks stand until it answers: an engine that measures fast closes
-  // that window between two polls (CI saw it never hollow).
-  await app.busy({ cable_levels: 2500 });
+  // once, after it settles. While the change is unmeasured the marks are
+  // hollow: they go hollow when the edit's answer lands, and are lit again
+  // when a probe has measured the tree the edit left. Every paint of them is
+  // recorded rather than polled for, because that window can be one render
+  // long: a probe already out when the knob turns waits in `later` behind
+  // the edit and measures the turned tree. On CI the marks were hollow for
+  // 0.6 s, between two polls a second apart, and the edit had been answered
+  // 1.3 s after the drag (#182, #174).
   const asked = () => app.sentCount("cable_levels");
   const before = await asked();
+  await page.evaluate(() => {
+    const svg = document.getElementById("rack-svg");
+    const paints = (window.__pwMarks = []);
+    new MutationObserver(() => {
+      const marks = [...svg.querySelectorAll(".cable-mark")];
+      paints.push({ t: performance.now(), hollow: marks.length > 0 && marks.every((m) => m.classList.contains("unknown")) });
+    }).observe(svg, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  });
+  const t0 = await app.now();
   const knob = page.locator("#rack-svg g[data-addr] .knob-hit").first();
   const box = await knob.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 4);
   await page.mouse.up();
-  // While the change is unmeasured, the marks are hollow. They go hollow when
-  // the edit's answer lands, an engine wait: the model's guess for the open
-  // can still be out, and on a slow runner the edit waited behind it for
-  // longer than 15 s (CI: the page sent the edit, and nothing came back).
-  await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => m.unknown), { timeout }).toBe(true), { ms: 30_000 });
+  // The edit's answer waits for the call the engine is in when it arrives (a
+  // probe, a measurement's render, a dealt pair's sound rendered in the
+  // background): an engine wait. The rack is drawn for it in the task that
+  // hands it to the page, so the first paint after it is that.
+  const edit = await app.reply("bench", { where: { edited: true }, after: t0, timeout: 30_000 });
+  const painted = await page.evaluate((at) => window.__pwMarks.find((p) => p.t >= at) || null, edit._at);
+  expect(painted, "the rack was drawn for the edit's answer").not.toBeNull();
+  expect(painted.hollow, "the marks went hollow when the edit's answer landed").toBe(true);
   await app.engine((timeout) => expect.poll(asked, { timeout }).toBeGreaterThan(before), { ms: 30_000 });
   await app.engine((timeout) => expect.poll(async () => (await drawn(page)).marks.every((m) => !m.unknown), { timeout }).toBe(true), { ms: 30_000 });
   // Not one per step. At most one probe at the engine and one owed
