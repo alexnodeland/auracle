@@ -70,7 +70,15 @@ all: check
 
 ## check: everything CI runs — format, lints as errors, the app's syntax and
 ## its pure-logic unit tests, the tooling's own checks, the wasm target, full
-## test suite
+## test suite. `make -j check` runs the parts side by side
+#
+# Side by side, the parts don't wait for one another: cargo locks each
+# profile's directory on its own, so lint (target/debug), wasm-check (the
+# wasm32 release build) and test (target/test-fast) build at once, beside
+# web-check and dev-check. Plain -j: macOS ships GNU Make 3.81, which has no
+# -O and prints its usage instead. On GNU Make 4, `make -j -O check` also
+# keeps each part's output together, as CI's Web job runs dev-check
+# (`make -j4 -O dev-check`).
 check: fmt-check lint web-check dev-check wasm-check test
 
 ## check-changed: the parts of `make check` your change reaches since BASE
@@ -126,7 +134,7 @@ install-hooks:
 ## plain `make dev-check` runs them one after another as before. CI runs
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
-## run plain `make -j8 dev-check`.
+## run plain `make -j8 dev-check` (the pre-commit hook does).
 DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-changes dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-wasm-pkg
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
