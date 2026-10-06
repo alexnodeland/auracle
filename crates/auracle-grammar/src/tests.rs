@@ -83,9 +83,11 @@ fn every_prior_sample_compiles() {
     }
 }
 
-/// Compiled patches make sound and stay bounded: gate a note, tick a
+/// Compiled patches make sound and stay bounded: gate a note, tick half a
 /// second of audio, assert finite output everywhere, a bounded peak, and
-/// that a healthy fraction of patches are audible.
+/// that a healthy fraction of patches are audible. Quiver's noise and S&H
+/// draw from its own generator, seeded per draw so the render is the same
+/// on every run.
 #[test]
 fn compiled_patches_sound_and_stay_bounded() {
     let prior = PatchGrammarPrior::default();
@@ -94,6 +96,7 @@ fn compiled_patches_sound_and_stay_bounded() {
     let mut audible = 0;
     for i in 0..n {
         let (tree, _) = draw(&prior, &mut rng);
+        quiver::rng::seed(0x50_0D00 + i as u64);
         let mut voice = compile(&tree, SR).expect("compiles");
         voice.gate.set(5.0);
         voice.pitch.set(0.0); // C4
@@ -121,7 +124,7 @@ fn compiled_patches_sound_and_stay_bounded() {
     // the vetting gate (M2) will quarantine them. But most must sound.
     assert!(
         audible * 2 > n,
-        "only {audible}/{n} patches audible in 1s — grammar is generating duds"
+        "only {audible}/{n} patches audible in half a second — grammar is generating duds"
     );
 }
 
@@ -780,8 +783,10 @@ fn a_vocoder_placed_on_a_chain_keeps_it_as_its_carrier() {
     );
 }
 
-/// The loudest sample of `tree` over half a second of a held C4.
+/// The loudest sample of `tree` over half a second of a held C4, quiver's
+/// generator seeded so the render is the same on every run.
 fn held_peak_dbfs(tree: &PatchTree) -> f64 {
+    quiver::rng::seed(0x9EA4_5EED);
     let mut v = compile(tree, SR).expect("compiles");
     v.pitch.set(0.0);
     v.gate.set(5.0);

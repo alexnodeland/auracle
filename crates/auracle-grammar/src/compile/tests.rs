@@ -7,6 +7,11 @@ use crate::PARAM_MAX;
 
 const SR: f64 = 44_100.0;
 
+/// Quiver's generator seed for a test that ticks audio and has no reason to
+/// pick its own: noise, S&H and the analog models draw from it, and unseeded
+/// it starts from the clock.
+const SEED: u64 = 0x5EED_C0DE;
+
 /// The compiler's recursion stays cheap per level. A wavetable under a
 /// sixteen-deep filter stack (over twice the depth ceiling) compiles on a
 /// 512 KiB thread. While `Wavetable` and `PitchShifter` were built inside
@@ -198,6 +203,9 @@ fn taps_name_a_live_port_on_every_term_node() {
             color: NoiseColor::White,
         }),
     });
+    // The noise draws from quiver's generator: seeded, the render is the
+    // same on every run.
+    quiver::rng::seed(0x7A95_5EED);
     let mut v = compile(&tree, SR).expect("compiles");
 
     for key in ["node", "node/0", "node/1"] {
@@ -298,6 +306,7 @@ fn filter_tracks_the_keyboard() {
 /// on every note.
 #[test]
 fn dc_blocker_removes_the_ladder_offset() {
+    quiver::rng::seed(SEED);
     let tree = sustained(AudioNode::Filter {
         uid: Uid::NEW,
         kind: FilterKind::Ladder,
@@ -324,6 +333,7 @@ fn dc_blocker_removes_the_ladder_offset() {
 /// a mono tree still normals right to left rather than going silent.
 #[test]
 fn stereo_tanks_reach_the_output() {
+    quiver::rng::seed(SEED);
     let mut wide = compile(
         &sustained(AudioNode::Reverb {
             uid: Uid::NEW,
@@ -359,6 +369,7 @@ fn stereo_tanks_reach_the_output() {
 /// silently dead exactly when a mod source was attached.
 #[test]
 fn fold_threshold_stays_live_under_modulation() {
+    quiver::rng::seed(SEED);
     let tree = sustained(AudioNode::Fold {
         uid: Uid::NEW,
         threshold: 0.5,
@@ -426,6 +437,7 @@ fn crossings_per_window(buf: &[(f64, f64)], windows: usize) -> Vec<usize> {
 /// not depend on where its phase starts.
 #[test]
 fn pitch_modulation_spans_exactly_one_octave_at_full_depth() {
+    quiver::rng::seed(SEED);
     let vco = |mod_depth: f64| AudioNode::Vco {
         uid: Uid::NEW,
         wave: Waveform::Sine,
@@ -494,6 +506,7 @@ fn pitch_modulation_spans_exactly_one_octave_at_full_depth() {
 /// so what the swing reports is the cut half reaching its full −12 dB.
 #[test]
 fn eq_modulation_reaches_the_bands_own_volt_scale() {
+    quiver::rng::seed(SEED);
     let eq = |mod_depth: f64| AudioNode::Eq {
         uid: Uid::NEW,
         low: 0.5,
@@ -570,6 +583,7 @@ fn tone_mag(buf: &[(f64, f64)], hz: f64, sr: f64) -> f64 {
 /// the note would measure the limiter, not the filter.
 #[test]
 fn lowpass_response_is_the_compiled_filter() {
+    quiver::rng::seed(SEED);
     let c4 = 261.625_565;
     let gain_at = |h: &[f64], hz: f64| {
         let (mut re, mut im) = (0.0, 0.0);
@@ -677,6 +691,7 @@ fn window_rms(tree: &PatchTree, voct: f64, n: usize) -> Vec<f64> {
 /// boundaries cross zero too.
 #[test]
 fn pitch_shift_lands_on_quivers_semitone_scale() {
+    quiver::rng::seed(SEED);
     // C4 held two octaves up, so a 1 s window resolves the interval and
     // the grain-rate sidebands sit further from the fundamental.
     let base = 261.625_565 * 4.0;
@@ -714,6 +729,7 @@ fn pitch_shift_lands_on_quivers_semitone_scale() {
 /// render measures both designs.
 #[test]
 fn pitch_shift_modulation_reaches_the_ports_own_semitone_scale() {
+    quiver::rng::seed(SEED);
     let base = 261.625_565 * 4.0;
     let span = |mod_depth: f64| {
         let tree = sustained(AudioNode::Shift {
@@ -969,6 +985,7 @@ fn tree_params(tree: &PatchTree) -> Vec<String> {
 /// starting level halfway through the decay.
 #[test]
 fn amp_contour_is_exponential() {
+    quiver::rng::seed(SEED);
     let tree = PatchTree {
         amp: AmpEnv {
             attack: 0.0,
@@ -1020,6 +1037,7 @@ fn amp_contour_is_exponential() {
 /// one whose spectrum reaches far above the offset itself.
 #[test]
 fn dc_blocker_removes_the_tube_distortion_offset() {
+    quiver::rng::seed(SEED);
     let raw_offset = |mode_cv: f64| {
         let mut p = Patch::new(SR);
         p.set_validation_mode(ValidationMode::Warn);
@@ -1107,6 +1125,7 @@ fn dc_blocker_removes_the_tube_distortion_offset() {
 /// degrades to silence rather than to a panic where there is no input.
 #[test]
 fn the_follower_reads_the_signal_below_it() {
+    quiver::rng::seed(SEED);
     // A lowpass whose cutoff is opened by the level of what it is
     // filtering. Playing louder is not available, so the counterfactual is
     // the same tree with the depth knob at zero: identical graph, one
@@ -1195,6 +1214,7 @@ fn every_wavetable_shape_lands_on_its_own_table() {
 /// instrument actually plays.
 #[test]
 fn dc_blocker_keeps_the_bass() {
+    quiver::rng::seed(SEED);
     let tree = PatchTree {
         amp: AmpEnv {
             attack: 0.1,
@@ -1300,6 +1320,7 @@ fn gate_edges(out: &[(f64, f64)], windows: usize) -> usize {
 /// than a ramp.
 #[test]
 fn the_quantizer_lands_a_pitch_cable_on_whole_semitones() {
+    quiver::rng::seed(SEED);
     let lfo = || ModNode::Lfo {
         uid: Uid::NEW,
         wave: Waveform::Triangle,
@@ -1374,6 +1395,7 @@ fn the_quantizer_lands_a_pitch_cable_on_whole_semitones() {
 /// produce.
 #[test]
 fn the_euclid_clock_spans_the_ports_own_tempo_range() {
+    quiver::rng::seed(SEED);
     let edges = |rate: f64| {
         let m = ModNode::Euclid {
             uid: Uid::NEW,
@@ -1405,6 +1427,7 @@ fn the_euclid_clock_spans_the_ports_own_tempo_range() {
 /// this checks all four corners.
 #[test]
 fn every_corner_of_the_euclid_knobs_still_makes_a_rhythm() {
+    quiver::rng::seed(SEED);
     let edges = |steps: f64, pulses: f64| {
         let m = ModNode::Euclid {
             uid: Uid::NEW,
@@ -1464,6 +1487,7 @@ fn frame_rms(out: &[(f64, f64)], frame: usize) -> Vec<f64> {
 /// amp envelope is still attacking through it.
 #[test]
 fn a_step_pattern_on_the_cutoff_alternates_at_the_step_rate() {
+    quiver::rng::seed(SEED);
     let mut v = compile(&stepped_filter(dark_bright(0.0)), SR).expect("compiles");
     let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
     let step = (SR * 0.5) as usize;
@@ -1508,6 +1532,7 @@ fn a_step_pattern_on_the_cutoff_alternates_at_the_step_rate() {
 /// leaving the total travel alone.
 #[test]
 fn full_slew_is_smoother_than_hard_steps() {
+    quiver::rng::seed(SEED);
     let jump = |slew: f64| {
         let mut v = compile(&stepped_filter(dark_bright(slew)), SR).expect("compiles");
         let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
@@ -1535,6 +1560,7 @@ fn full_slew_is_smoother_than_hard_steps() {
 /// swap per pointer move.
 #[test]
 fn every_steps_site_is_live_and_a_step_moves_without_a_recompile() {
+    quiver::rng::seed(SEED);
     let tree = stepped_filter(dark_bright(0.0));
     let params = tree_params(&tree);
     for site in STEPS_SITES {
@@ -1588,6 +1614,7 @@ fn every_steps_site_is_live_and_a_step_moves_without_a_recompile() {
 /// prove `a` is alive is to change only `a`.
 #[test]
 fn the_switch_is_not_stuck_on_one_branch() {
+    quiver::rng::seed(SEED);
     let render = |a_rate: f64| {
         let m = ModNode::Pair {
             uid: Uid::NEW,
@@ -1634,6 +1661,7 @@ fn the_switch_is_not_stuck_on_one_branch() {
 /// nearly stopped the modulator.
 #[test]
 fn the_slew_knob_spends_its_travel_on_audible_glide_times() {
+    quiver::rng::seed(SEED);
     // Movement per window: how far the pitch jumps between adjacent
     // 50 ms windows. A stepped source jumps; a slewed one ramps.
     // The *largest* jump between adjacent 50 ms windows, which is the
@@ -1688,6 +1716,7 @@ fn the_slew_knob_spends_its_travel_on_audible_glide_times() {
 /// one 2C knob with no live handle.
 #[test]
 fn the_three_rectifier_modes_are_three_different_signals() {
+    quiver::rng::seed(SEED);
     let track = |mode: f64| {
         let m = ModNode::Op {
             uid: Uid::NEW,
@@ -1754,6 +1783,7 @@ fn the_three_rectifier_modes_are_three_different_signals() {
 /// dropping a level and wiring the leaf straight to the attenuverter.
 #[test]
 fn a_two_deep_mod_chain_reaches_the_destination_through_every_stage() {
+    quiver::rng::seed(SEED);
     let chain = ModNode::Op {
         uid: Uid::NEW,
         kind: ModOp::Slew,
@@ -2048,6 +2078,7 @@ fn table_and_oct_going_live_moved_no_sample() {
 /// its channel the one it names.
 #[test]
 fn audio_in_compiles_to_a_bound_input() {
+    quiver::rng::seed(SEED);
     use quiver::prelude::AudioInputStream;
     use std::sync::Arc;
     let level = |tree: &PatchTree, stream: Option<&Arc<AudioInputStream>>, gain: Option<f64>| {
@@ -2098,6 +2129,7 @@ fn audio_in_compiles_to_a_bound_input() {
 /// beside the TRACK is still played by the keys.
 #[test]
 fn track_plays_its_branch_from_the_input() {
+    quiver::rng::seed(SEED);
     use quiver::prelude::AudioInputStream;
     use std::sync::Arc;
     let n = (SR * 0.8) as usize;
@@ -2169,6 +2201,7 @@ fn track_plays_its_branch_from_the_input() {
 /// is ignored, all the way up a quiet input plays the branch quieter.
 #[test]
 fn track_dynamics_follow_the_input_level() {
+    quiver::rng::seed(SEED);
     use std::sync::Arc;
     let n = (SR * 0.6) as usize;
     let level = |dynamics: f64, amplitude: f32| {
@@ -2205,6 +2238,7 @@ fn track_dynamics_follow_the_input_level() {
 /// the gate leaves the take as it was.
 #[test]
 fn capture_records_and_plays_back_bit_exactly() {
+    quiver::rng::seed(SEED);
     let n = 3_000;
     let x = tone(n, 330.0);
     let stream = stream_of(&x);
@@ -2257,6 +2291,7 @@ fn capture_records_and_plays_back_bit_exactly() {
 /// at 48 kHz, and the take reads back.
 #[test]
 fn a_long_recording_into_an_enlarged_buffer_stops_at_the_bound() {
+    quiver::rng::seed(SEED);
     let hi = 96_000.0;
     let long = Take::from_samples(&tone((TAKE_SECONDS * hi) as usize, 330.0), hi).unwrap();
     let sr = 48_000.0;
@@ -2282,6 +2317,7 @@ fn a_long_recording_into_an_enlarged_buffer_stops_at_the_bound() {
 /// note, held until the note ends, and round and round while held.
 #[test]
 fn capture_plays_once_hold_and_loop() {
+    quiver::rng::seed(SEED);
     let take = Take::from_samples(&tone(1_000, 440.0), SR).unwrap();
     let heard = |play: term::CaptureMode| {
         let mut p = compile(&patch(captured(play, take.clone())), SR).unwrap();
