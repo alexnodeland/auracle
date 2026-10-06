@@ -127,6 +127,98 @@ fn mixed() -> PatchTree {
     })
 }
 
+/// **Every edit refuses a key that names no module, and says so**: a key
+/// that is not a key, one past a module's last input (a mix's `/2`, a
+/// ducker's `/2`, a filter's `/1`) and one below a source. The refusal is
+/// `NoSuchNode`, the toast's "that module is not in the patch", never an
+/// edit somewhere else.
+#[test]
+fn every_edit_refuses_a_key_that_names_no_module() {
+    let ducked = patch(graft(default_fragment(NodeKind::Duck), sine_vco()).unwrap());
+    let take = Take::from_samples(&tone(100, 330.0), SR).unwrap();
+    let ops = |key: &str| {
+        let key = key.to_string();
+        vec![
+            StructOp::Replace {
+                key: key.clone(),
+                kind: NodeKind::Filter,
+            },
+            StructOp::Insert {
+                key: key.clone(),
+                kind: NodeKind::Filter,
+            },
+            StructOp::Delete { key: key.clone() },
+            StructOp::SetMod {
+                key: key.clone(),
+                kind: ModKind::Lfo,
+            },
+            StructOp::SwapMix { key: key.clone() },
+            StructOp::ReplaceTree {
+                key: key.clone(),
+                node: sine_vco(),
+            },
+            StructOp::InsertTree {
+                key: key.clone(),
+                node: default_fragment(NodeKind::Filter),
+            },
+            StructOp::SetModTree {
+                key: key.clone(),
+                m: default_steps(),
+            },
+            StructOp::SetTake {
+                key,
+                take: take.clone(),
+            },
+        ]
+    };
+    for (tree, key) in [
+        (&mixed(), "nowhere"),
+        (&mixed(), "node/2"),
+        (&mixed(), "node/0/1"),
+        (&mixed(), "node/1/0"),
+        (&mixed(), "node/0/0/0/1"),
+        (&ducked, "node/2"),
+    ] {
+        for op in ops(key) {
+            let refused = mutate::apply_struct_op(tree, &op);
+            assert!(
+                matches!(&refused, Err(StructError::NoSuchNode(k)) if k == key),
+                "{op:?}: {refused:?}"
+            );
+            assert_eq!(
+                refused.unwrap_err().to_string(),
+                "that module is not in the patch"
+            );
+        }
+    }
+}
+
+/// **Insert and Delete undo each other**, for every kind a hand can insert:
+/// inserting a module over a chain and deleting it again gives the chain
+/// back, because a delete keeps the branch you hear (a mix's or ring
+/// mod's first input, a dynamics module's or vocoder's signal, the branch a
+/// TRACK plays, the chain a CAPTURE records).
+///
+/// At the root and under a one-input module; under a two-input one a delete
+/// takes the whole branch (`a_delete_under_a_binary_takes_the_branch`).
+#[test]
+fn an_insert_then_a_delete_gives_the_patch_back() {
+    let tree = patch(graft(default_fragment(NodeKind::Reverb), mixed().root).unwrap());
+    for kind in NodeKind::ALL.into_iter().filter(|k| !k.is_source()) {
+        for key in ["node", "node/0"] {
+            let op = StructOp::Insert {
+                key: key.into(),
+                kind,
+            };
+            let inserted = mutate::apply_struct_op(&tree, &op)
+                .unwrap_or_else(|e| panic!("{kind:?} at {key}: {e}"));
+            let back = mutate::apply_struct_op(&inserted, &StructOp::Delete { key: key.into() })
+                .unwrap_or_else(|e| panic!("delete {kind:?} at {key}: {e}"));
+            assert_eq!(back, tree, "{kind:?} at {key}");
+        }
+    }
+}
+
 /// Deleting one input of a two-input module takes that whole branch and
 /// leaves the other in the module's place (pulling the key out of a ducker
 /// leaves the pad), whichever of the two is named; a third is refused, not
@@ -142,4 +234,36 @@ fn a_delete_under_a_binary_takes_the_branch() {
     assert_eq!(del("node/0").unwrap().root, b);
     assert_eq!(del("node/1").unwrap().root, a);
     assert!(matches!(del("node/2"), Err(StructError::NoSuchNode(_))));
+}
+
+/// Swapping the inputs of a module that has one is refused, and says why.
+#[test]
+fn swapping_a_one_input_module_is_refused() {
+    let refused = mutate::apply_struct_op(
+        &mixed(),
+        &StructOp::SwapMix {
+            key: "node/0".into(),
+        },
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "this module has only one input, so there is nothing to swap"
+    );
+}
+
+/// A fragment that is a source has no input for the chain below it, so
+/// splicing one in is refused, and says why, rather than dropping the chain.
+#[test]
+fn a_source_cannot_be_spliced_into_a_wire() {
+    let refused = mutate::apply_struct_op(
+        &mixed(),
+        &StructOp::InsertTree {
+            key: "node/0".into(),
+            node: sine_vco(),
+        },
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "a source has no input to splice into"
+    );
 }
