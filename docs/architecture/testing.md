@@ -109,7 +109,7 @@ the fast tier and the PR checks alone.
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time; each test that fails is filed on its own `Flaky:` issue, and the runs that pass refresh the fast tier's timings ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
 | Mutants | `.github/workflows/mutants.yml`, *Mutants* | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | No: review treats a survivor as a finding. Required once the crates are clean (#181) |
-| Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, in *What changed* when it reuses the queue's verdict | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on the PR, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
+| Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on the PR, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
 **The two lanes.** One workflow, and its *What changed* job picks the lane:
 
@@ -294,7 +294,8 @@ offers. Otherwise the push to `main` is where a slow test catches it.
   three browser runners; the quarantined tests' runner starts once all six
   browser runners are done), on `main`, latest only.
 - **After a merge**, main's `CI` reuses the queue's verdict and runs the
-  engine and Site for the deploy: two.
+  engine and Site for the deploy, and beside them the upload of the queue
+  run's coverage to Codecov ([Coverage](#coverage)): three.
 - ***Mutants*** ([Mutants](#mutants)) holds one runner a PR for up to
   forty minutes (the job's limit; the run inside stops at 25), well after a
   crate PR's fast lane is done, and for about a minute on a PR that changes
@@ -381,9 +382,11 @@ another). `make coverage-report` runs the gate again without the tests, and
 **Codecov, a view.** The gate is `scripts/coverage_gate.py`, above, and
 nothing else. Codecov (`codecov.yml`) shows coverage on a PR and over time
 on `main`, and never holds up a merge: its project and patch statuses are
-informational, and each upload is a step that cannot fail its job (each
-calls `.github/actions/codecov` with `continue-on-error` and a three-minute
-limit). Three lcovs go up, one flag each:
+informational, and no upload can fail a job: each calls
+`.github/actions/codecov` in a step with `continue-on-error` and a
+three-minute limit, which its job's own limit has room for (a job that
+reaches its limit is cancelled whatever its steps say). Three lcovs go up,
+one flag each:
 
 | Flag | From | Measures |
 | --- | --- | --- |
@@ -400,15 +403,18 @@ report at all. That is why Codecov's annotations on the diff are off.
 
 The uploads go from a PR's own run and from `main`, never from the merge
 queue's run, whose draft PR's commit never lands on `main`. `main` usually
-reuses the queue's verdict and runs none of the three jobs, so *What
-changed* uploads the queue run's reports as `main`'s, measured on the same
-files (the `coverage-report`, `coverage-web` and `coverage-worker`
-artifacts). A PR's fast lane runs only the jobs its change reaches; a flag
-a commit didn't upload is carried forward from its parent, so it doesn't
-read as a drop. Each upload is a step in a job already counted under
-[Runners](#ci-tiers), not a job of its own. A PR from a fork gets no
-secrets, so its upload goes without the token, as Codecov allows from
-forks of a public repository.
+reuses the queue's verdict and runs none of the three jobs, so a job of its
+own, *Codecov from the queue's run*, uploads the queue run's reports as
+`main`'s, measured on the same files (the `coverage-report`, `coverage-web`
+and `coverage-worker` artifacts). Neither `CI` nor the deploy waits for it,
+so a stalled upload can't hold up either: it holds `main`'s run open for up
+to the job's fifteen minutes (a push meanwhile waits, as `main` runs one at
+a time), and with `continue-on-error` on the job, a failure there leaves the
+run green. Elsewhere each upload is a step in a job already counted under
+[Runners](#ci-tiers). A PR's fast lane runs only the jobs its change
+reaches; a flag a commit didn't upload is carried forward from its parent,
+so it doesn't read as a drop. A PR from a fork gets no secrets, so its upload goes
+without the token, as Codecov allows from forks of a public repository.
 
 Locally, `make web-check COVERAGE=1` and `make worker-test COVERAGE=1`
 write the two JavaScript lcovs (Node 22.5 or later); without `COVERAGE`

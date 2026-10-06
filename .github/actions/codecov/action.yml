@@ -10,14 +10,19 @@ description: >
 # change reaches).
 #
 # Never a red run, by construction: `fail_ci_if_error` is off, and each caller
-# sets `continue-on-error` and a `timeout-minutes` on its step, since the
-# action also exits 1 on its own when the runner lacks a tool it wants. With
-# no token (a fork's PR, which gets no secrets) the action uploads tokenless,
-# as Codecov takes from forks of a public repository.
+# sets `continue-on-error` and a `timeout-minutes` on its step. The action
+# also exits 1 on its own when the runner lacks a tool it wants, and nothing
+# it runs is sure to cut short a host that holds a connection open without
+# answering (its curl calls set no --max-time): the step's limit does. A
+# step's limit counts against its job's, so each caller's job has room for
+# it; a job that reaches its own limit is cancelled, whatever its steps'
+# `continue-on-error` says. With no token (a fork's PR, which gets no
+# secrets) the action uploads tokenless, as Codecov takes from forks of a
+# public repository.
 #
 # Only the file named (`disable_search`): left to search the checkout, it
 # would upload every coverage file it finds under this one flag, and on main
-# the What changed job holds all three lcovs at once. The CLI it downloads
+# the codecov-main job holds all three lcovs at once. The CLI it downloads
 # goes to a temporary directory (`cleanup`), not into the checkout.
 
 inputs:
