@@ -259,7 +259,7 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     the tap and the rack's tweens read.
   - *A measurement of the machine's speed* ("within 300 ms") is a budget,
     never an `expect`: `app.budget(name, ms, limit)`, or `budget` from
-    `./fixtures` in a spec not on the fixture yet. It records `budget: <name>
+    `./fixtures` in a helper handed no `app`. It records `budget: <name>
     <ms> ms of <limit> ms` on the test (the merged report shows it, and the
     run's summary lists those over) and never fails the gate;
     `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does (at
@@ -302,10 +302,6 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
   but `rackAtRest` takes the test's `app`.
 - **A spec for every fix** of user-visible behaviour, named for the behaviour
   (`a bank row's cut appears on hover and can be pressed`).
-- Not yet on the fixture (#170): `audio_in*`, `smoke`, `failure_flows` and
-  the shell's and views' other specs (the lint's suppressions hold their
-  imports and their `pageerror` listeners until they move). A spec moved onto
-  it keeps every test's title (the timings and `testing.md` key on them).
 
 ## The lint
 

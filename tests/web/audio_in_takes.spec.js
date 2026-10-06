@@ -30,75 +30,38 @@
 //   goes into a module's controls and the arrows reach them after its knobs,
 //   Enter or Space presses them, and the focus stays on a button the press
 //   redrew.
+//
+// The engine worker, what main asked of it and heard, and the toasts are the
+// fixture's tap; the boot is seeded, the warm start and the tours seen, and
+// AURACLE_CPU_THROTTLE runs the page and the engine worker that many times
+// slower (the fixture's boot), so the races a slower CI runner loses show up
+// on a fast machine.
 const fs = require("fs");
 const path = require("path");
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab, openCatalog } = require("./shell");
-const { budget } = require("./fixtures");
-const { SLOW_ENGINE } = require("./perform_budget");
+const { test, expect, goLevel, bankTab, openCatalog, openApp } = require("./fixtures");
+const { rackAtRest } = require("./patch_page");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
-const { STUB, INIT } = require("./audio_in_stub.js");
+const { STUB, SPY, loudest } = require("./audio_in_stub.js");
 
 const GRANTED = `try { sessionStorage.setItem("__pwMicGranted", "1"); } catch (_) {}`;
 
-// The engine's replies kept from main, in order, from the first of the type
-// named in `window.__pwHoldFrom` on, until `window.__pwRelease()` hands them
-// over: what main sees of a worker that is slow to answer. INIT's listener
-// runs first, so `__pwLast` still records a reply as it arrives.
-const HOLD = `(() => {
-  const Inner = window.Worker;
-  function Holding(url, opts) {
-    const w = new Inner(url, opts);
-    if (!/worker\\.js/.test(String(url))) return w;
-    const held = [];
-    let holding = false;
-    w.addEventListener("message", (e) => {
-      if (e.__pwReplay || !e.data) return;
-      if (!holding && window.__pwHoldFrom && e.data.type === window.__pwHoldFrom) holding = true;
-      if (!holding) return;
-      e.stopImmediatePropagation();
-      held.push(e.data);
-    });
-    window.__pwRelease = () => {
-      holding = false;
-      window.__pwHoldFrom = null;
-      for (const data of held.splice(0)) {
-        const ev = new MessageEvent("message", { data });
-        ev.__pwReplay = true;
-        w.dispatchEvent(ev);
-      }
-    };
-    return w;
-  }
-  Holding.prototype = Inner.prototype;
-  window.Worker = Holding;
-})();`;
+/** Three keys held over the tracked voice before its level is read. */
+const KEYS_HELD_MS = 1200;
+/** RECORD lit while the input plays into it, before STOP. */
+const RECORD_HELD_MS = 1500;
+/** RECORD lit a while before the player moves to another sound, or presses
+ *  Enter again from the keyboard. */
+const RECORD_A_WHILE_MS = 1200;
 
-// AURACLE_CPU_THROTTLE=4 runs the page and the engine worker four times
-// slower, as the fixture's boot does, so the races a slower CI runner loses
-// show up on a fast machine.
-const THROTTLE = Number(process.env.AURACLE_CPU_THROTTLE || 0);
-
-async function boot(page, { granted = false, hold = false } = {}) {
-  const errors = [];
-  page.on("pageerror", (err) => errors.push(err.message));
+/** Boot (`granted`: the browser has granted the input for this tab), with
+ *  the stub and the spies, and go to PATCH. */
+async function boot(page, app, { granted = false } = {}) {
   if (granted) await page.addInitScript(GRANTED);
   await page.addInitScript(STUB);
-  await page.addInitScript(INIT);
-  if (hold) await page.addInitScript(HOLD);
-  if (THROTTLE > 1) {
-    await page.route(/\/worker\.js(\?|$)/, async (route) => {
-      const resp = await route.fetch();
-      await route.fulfill({ response: resp, body: SLOW_ENGINE(THROTTLE) + (await resp.text()), contentType: "text/javascript" });
-    });
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
-  }
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await page.addInitScript(SPY);
+  await app.boot();
   await goLevel(page, "patch");
-  return errors;
 }
 
 const amp = { attack: 0.01, decay: 0.3, sustain: 0.95, release: 0.05 };
@@ -109,30 +72,35 @@ async function openFile(page, data, dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${data.name.replace(/\s/g, "-")}.json`);
   fs.writeFileSync(file, JSON.stringify(data));
-  await page.setInputFiles("#patch-import-input", file);
+  await page.locator("#patch-import-input").setInputFiles(file);
 }
 
-const at = (page, hz) => page.evaluate((h) => window.__pwAt(h), hz);
-/** The loudest reading over `ms` (read every 100 ms): at `hz` (dB), or with
- *  `{ rms: true }` the whole output's RMS (dBFS). */
-async function loudest(page, hz, ms = 1200, { rms = false } = {}) {
-  let db = -Infinity;
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    const r = await at(page, hz);
-    if (r) db = Math.max(db, rms ? r.rms : r.db);
-    await page.waitForTimeout(100);
-  }
-  return db;
+/** The level at `hz` holding (two readings in a row within `db`): the voice
+ *  sounding as it will, the output's leveler settled on it. */
+async function steady(page, hz, { db = 1, ms = 600 } = {}) {
+  let was = await loudest(page, hz, ms);
+  await expect
+    .poll(async () => {
+      const now = await loudest(page, hz, ms);
+      const moved = Math.abs(now - was);
+      was = now;
+      return moved;
+    }, { message: `the level at ${hz} Hz holding` })
+    .toBeLessThan(db);
 }
 const takes = (page) => page.evaluate(() => window.__aur.takes());
+/** A lane of the rack drawn, from a file opened or a sound reopened: the
+ *  engine's to finish. */
+const shows = (app, locator, ms = 60_000) => app.engine((timeout) => expect(locator).toBeVisible({ timeout }), { ms });
+const live = (app, locator, ms = 30_000) => app.engine((timeout) => expect(locator).toHaveAttribute("data-state", "live", { timeout }), { ms });
+const says = (app, locator, text, ms = 30_000) => app.engine((timeout) => expect(locator).toHaveText(text, { timeout }), { ms });
 
-// AURACLE_SHOTS=dir saves the states a reviewer looks at, each after the rack
-// has settled (a placement moves the plates).
+// AURACLE_SHOTS=dir saves the states a reviewer looks at, each once the rack
+// has come to rest (a placement moves the plates).
 const SHOTS = process.env.AURACLE_SHOTS || null;
 async function shotOf(page, name, boxes, { scroll = false } = {}) {
   if (!SHOTS || boxes.length === 0) return;
-  await page.waitForTimeout(1500);
+  await rackAtRest(page);
   // A list's rows: brought into view once the list has settled.
   if (scroll) await boxes[0].evaluate((el) => el.scrollIntoView({ block: "center" }));
   const bs = (await Promise.all(boxes.map((l) => l.boundingBox()))).filter(Boolean);
@@ -174,11 +142,11 @@ function takeOf(n) {
   return { format: "f32le-base64", sample_rate: 44_100, length: n, data: Buffer.from(f.buffer).toString("base64") };
 }
 
-test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an input", async ({ page }) => {
-  const errors = await boot(page);
+test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an input", async ({ page, app }) => {
+  await boot(page, app);
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Glass Pad", { timeout }), { ms: 60_000 });
   await openCatalog(page);
   for (const kind of ["track", "capture"]) {
     await expect(page.locator(`.nb-item[data-kind="${kind}"]`)).toHaveCount(1);
@@ -189,35 +157,40 @@ test("TRACK and CAPTURE are in the module rail, and placing TRACK asks for an in
   await chip.click();
   await page.locator("#rack-svg .jack.legal[data-childkey]").first().click();
   await expect.poll(() => page.evaluate(() => window.__pwMic.calls.length), { timeout: 10_000 }).toBe(1);
-  await expect(page.locator("#rack-svg g.mod-group[data-kind='track']")).toHaveCount(1, { timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-svg g.mod-group[data-kind='track']")).toHaveCount(1, { timeout }), { ms: 30_000 });
   await expect(page.locator("#rack-svg g.mod-group[data-kind='audio_in']")).toHaveCount(1);
-  expect(errors).toEqual([]);
 });
 
-test("a tracked sound plays from the input with one voice, and keys over it stop with their keys", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+test("a tracked sound plays from the input with one voice, and keys over it stop with their keys", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   // A saw VCO played by the pitch of input 1 (a 440 Hz tone).
   await openFile(page, {
     name: "Sung Saw",
     tree: { amp, root: { Track: { band: "mid", sensitivity: 0.5, dynamics: 0, input: saw, listen: ain(0) } } },
   }, info.outputDir);
   const lane = page.locator("#rack-svg .ain-lane").first();
-  await expect(lane).toHaveAttribute("data-state", "live", { timeout: 60_000 });
-  await page.waitForTimeout(1500);
-  const off = await loudest(page, 440);
+  await live(app, lane, 60_000);
+  // Unmonitored, nothing of it is heard, however long it is given.
+  await app.quiet();
+  const off = await loudest(page, 440, 1200);
   await lane.locator(".ain-monitor").click();
   await expect.poll(() => loudest(page, 440, 600), { timeout: 15_000 }).toBeGreaterThan(-60);
-  await page.waitForTimeout(1500);
+  await steady(page, 440);
   await shotOf(page, "track-plate", [plate(page, "track"), plate(page, "audio_in")]);
   const alone = await loudest(page, 440, 1500);
   const lead = await loudest(page, 440, 1500, { rms: true });
   // Keys over it: three held, then let go.
   for (const k of ["a", "d", "g"]) await page.keyboard.down(k);
-  await page.waitForTimeout(1200);
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- three keys held over the tracked voice, a gesture
+  await page.waitForTimeout(KEYS_HELD_MS);
   const held = await loudest(page, 440, 800, { rms: true });
   for (const k of ["a", "d", "g"]) await page.keyboard.up(k);
-  await page.waitForTimeout(2500);
-  const after = await loudest(page, 440, 1500);
+  // And they stop with their keys: the tracked voice alone again, once
+  // their release and the leveler's have passed.
+  let after = -Infinity;
+  await expect
+    .poll(async () => Math.abs((after = await loudest(page, 440, 1500)) - alone), { timeout: 15_000, message: "the tracked voice alone again" })
+    .toBeLessThan(1);
   console.log(`440 Hz: unmonitored ${off.toFixed(1)} dB, the tracked voice ${alone.toFixed(1)} dB, keys let go ${after.toFixed(1)} dB; ` +
     `RMS: the tracked voice ${lead.toFixed(1)} dBFS, keys held ${held.toFixed(1)} dBFS (${(held - lead).toFixed(1)} dB)`);
   expect(off).toBeLessThan(-100);
@@ -234,13 +207,10 @@ test("a tracked sound plays from the input with one voice, and keys over it stop
   // as voices of the tracked note, and no more than three of them.
   expect(held).toBeGreaterThan(lead - 3);
   expect(held).toBeLessThan(lead + 11);
-  // And they stop with their keys: the tracked voice alone again.
-  expect(Math.abs(after - alone)).toBeLessThan(1);
-  expect(errors).toEqual([]);
 });
 
-test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
     // A short take to start from (a sound that plays nothing is not
@@ -248,10 +218,10 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
   const lane = page.locator("#rack-svg .take-lane").first();
-  await expect(lane).toBeVisible({ timeout: 60_000 });
+  await shows(app, lane);
   await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
   // Its input is open (the sound listens), so RECORD records the tone.
-  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await live(app, page.locator("#rack-svg .ain-lane").first());
   // When RECORD and STOP were pressed, by the page's clock: the take is as
   // long as the time between them. Playwright's own steps between the two
   // clicks took half a second on a loaded CI runner, so a fixed "1.x s" read
@@ -263,13 +233,13 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   await lane.locator(".take-rec").click();
   await expect(lane.locator(".take-rec")).toHaveClass(/\bon\b/);
   await expect(lane.locator(".take-line")).toHaveText("recording…");
-  await page.waitForTimeout(1500);
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- RECORD lit while the input plays into it, a gesture
+  await page.waitForTimeout(RECORD_HELD_MS);
   await lane.locator(".take-rec").click();
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
-    .toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  await app.toast(/Recorded \d\.\d s into CAPTURE\./, { timeout: 20_000 });
   const [recAt, stopAt] = await page.evaluate(() => window.__recClicks);
   const held = (stopAt - recAt) / 1000;
-  await expect(lane.locator(".take-line")).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
+  await says(app, lane.locator(".take-line"), /^take · \d\.\d s$/);
   const said = Number((await lane.locator(".take-line").textContent()).match(/(\d\.\d) s/)[1]);
   console.log(`RECORD held ${held.toFixed(2)} s; the take says ${said} s`);
   expect(Math.abs(said - held), `a take of ${said} s for RECORD held ${held.toFixed(2)} s`).toBeLessThanOrEqual(0.15);
@@ -281,25 +251,29 @@ test("CAPTURE's RECORD puts a take of its input in the sound, and a key plays it
   console.log(`recorded ${len.toFixed(2)} s`);
   expect(len).toBeGreaterThan(1.0);
   // A key plays it: the tone (440 Hz) comes back from the take, with
-  // nothing monitored.
-  await page.waitForTimeout(1000);
-  await page.keyboard.down("a");
-  const played = await loudest(page, 440, 800);
-  await page.keyboard.up("a");
+  // nothing monitored, once the voices have the edit (pressed again until
+  // they do).
+  let played = -Infinity;
+  await expect
+    .poll(async () => {
+      await page.keyboard.down("a");
+      played = await loudest(page, 440, 800);
+      await page.keyboard.up("a");
+      return played;
+    }, { message: "a key plays the take" })
+    .toBeGreaterThan(-60);
   console.log(`the take, played from C4: ${played.toFixed(1)} dB at 440 Hz`);
-  expect(played).toBeGreaterThan(-60);
-  expect(errors).toEqual([]);
 });
 
-test("a STOP before anything was recorded leaves the take as it was, and says nothing was recorded", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+test("a STOP before anything was recorded leaves the take as it was, and says nothing was recorded", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
   const lane = page.locator("#rack-svg .take-lane").first();
-  await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s", { timeout: 60_000 });
-  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await says(app, lane.locator(".take-line"), "take · 0.1 s", 60_000);
+  await live(app, page.locator("#rack-svg .ain-lane").first());
   // The worklet's answer to a STOP before its first quantum is no frames
   // (apps/web/tests/worklet-take.test.mjs holds that exactly; a browser can
   // only race for it). Here the page is handed that answer while RECORD
@@ -315,68 +289,66 @@ test("a STOP before anything was recorded leaves the take as it was, and says no
     }));
     live.takeStop("node"); // the worklet's own recording ends (its answer finds nothing rolling)
   });
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 10_000 })
-    .toContain("Nothing was recorded. Play into the capture’s input while STOP is lit, then try again.");
+  await app.toast("Nothing was recorded. Play into the capture’s input while STOP is lit, then try again.");
   await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
-  await page.waitForTimeout(1000);
-  expect(await page.evaluate(() => window.__pwToasts.join("\n"))).not.toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  await app.quiet();
+  expect((await app.toasts()).join("\n")).not.toMatch(/Recorded \d\.\d s into CAPTURE\./);
   await expect(lane.locator(".take-line")).toHaveText("take · 0.1 s");
-  expect(errors).toEqual([]);
 });
 
-test("a recording stops when you move to another sound, and its take lands on neither", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+test("a recording stops when you move to another sound, and its take lands on neither", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   // Two sounds with a CAPTURE at the same key: A holds 0.1 s, B 0.2 s.
   const capture = (n) => ({ amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(n) } } });
+  const subject = page.locator("#rack-subject");
   await openFile(page, { name: "Loop A", tree: capture(4000) }, info.outputDir);
-  await expect(page.locator("#rack-subject")).toContainText("Loop A", { timeout: 60_000 });
+  await app.engine((timeout) => expect(subject).toContainText("Loop A", { timeout }), { ms: 60_000 });
   await openFile(page, { name: "Loop B", tree: capture(8000) }, info.outputDir);
-  await expect(page.locator("#rack-subject")).toContainText("Loop B", { timeout: 60_000 });
+  await app.engine((timeout) => expect(subject).toContainText("Loop B", { timeout }), { ms: 60_000 });
   const lane = page.locator("#rack-svg .take-lane").first();
   const line = lane.locator(".take-line");
   await expect(line).toHaveText("take · 0.2 s");
   await bankTab(page, "pool");
   const open = async (name) => {
     await page.locator("#bank-list .bank-item", { hasText: name }).first().locator(".bi-name").click();
-    await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
+    await app.engine((timeout) => expect(subject).toContainText(name, { timeout }), { ms: 60_000 });
   };
 
   // Recording on A, then B opened before STOP.
   await open("Loop A");
-  await expect(line).toHaveText("take · 0.1 s", { timeout: 30_000 });
-  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await says(app, line, "take · 0.1 s");
+  await live(app, page.locator("#rack-svg .ain-lane").first());
   await lane.locator(".take-rec").click();
   await expect(line).toHaveText("recording…");
-  await page.waitForTimeout(1200);
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- RECORD lit a while before the player moves on, a gesture
+  await page.waitForTimeout(RECORD_A_WHILE_MS);
   await open("Loop B");
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 10_000 })
-    .toContain("Recording stopped: you moved to another sound.");
+  await app.toast("Recording stopped: you moved to another sound.");
   // B is as it was: its own take, RECORD not lit, and no take lands on it.
-  await expect(line).toHaveText("take · 0.2 s", { timeout: 30_000 });
+  await says(app, line, "take · 0.2 s");
   await expect(lane.locator(".take-rec")).not.toHaveClass(/\bon\b/);
   await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
-  await page.waitForTimeout(1500);
+  await app.quiet();
   await expect(line).toHaveText("take · 0.2 s");
-  const toasts = await page.evaluate(() => window.__pwToasts.join("\n"));
+  const toasts = (await app.toasts()).join("\n");
   expect(toasts).not.toMatch(/Recorded \d\.\d s into CAPTURE\./);
   // …and A keeps its old take.
   await open("Loop A");
-  await expect(line).toHaveText("take · 0.1 s", { timeout: 30_000 });
-  expect(errors).toEqual([]);
+  await says(app, line, "take · 0.1 s");
 });
 
 /** A sound kept safe: Mic Loop saved on a first visit with its take made
  *  unreadable, then a new visit (`extra`: an init script for it, after the
- *  stub) that keeps it safe. Returns the new visit, at the pool, its kept-safe
- *  row on screen. */
-async function keptSafeVisit(page, browser, info, { granted = true, extra = null } = {}) {
+ *  stub) in a context of its own that keeps it safe. Returns the new visit,
+ *  at the pool, its kept-safe row on screen. */
+async function keptSafeVisit(page, app, newContext, info, { granted = true, extra = null } = {}) {
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
-  await expect(page.locator("#rack-subject")).toContainText("Mic Loop", { timeout: 60_000 });
-  const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Mic Loop", { timeout }), { ms: 60_000 });
+  const saves = await app.count("saved");
+  await app.engine((timeout) => expect.poll(() => app.count("saved"), { timeout }).toBeGreaterThan(saves), { ms: 30_000 });
   // The saved session, with that take made unreadable (its length no longer
   // agrees with its data).
   const record = await page.evaluate(() => new Promise((resolve) => {
@@ -389,15 +361,14 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
   expect(record.session).toContain('"length":4000');
   record.session = record.session.replace('"length":4000', '"length":4001');
 
-  // A new visit with that save.
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // A new visit with that save, its page errors the test's (`newContext`).
+  const ctx = await newContext({ viewport: { width: 1440, height: 900 } });
   const next = await ctx.newPage();
-  const errors = [];
-  next.on("pageerror", (err) => errors.push(err.message));
+  const nextApp = await openApp(next);
   if (granted) await next.addInitScript(GRANTED);
   await next.addInitScript(STUB);
   if (extra) await next.addInitScript(extra);
-  await next.addInitScript(INIT);
+  await next.addInitScript(SPY);
   await next.goto("/pkg/build.json");
   await next.evaluate((rec) => new Promise((resolve) => {
     const req = indexedDB.open("auracle", 1);
@@ -408,31 +379,30 @@ async function keptSafeVisit(page, browser, info, { granted = true, extra = null
       tx.oncomplete = () => { req.result.close(); resolve(); };
     };
   }), record);
-  await next.goto("/");
-  await expect(next.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
-    .toContain("One sound’s take couldn’t be read. It’s kept safe until you record it again.");
+  await nextApp.boot();
+  await nextApp.toast("One sound’s take couldn’t be read. It’s kept safe until you record it again.", { timeout: 30_000 });
   await goLevel(next, "patch");
   await bankTab(next, "pool");
   const row = next.locator("#bank-list .kept-row", { hasText: "Mic Loop" });
   await expect(row).toBeVisible({ timeout: 30_000 });
-  return { ctx, next, row, errors };
+  return { ctx, next, nextApp, row };
 }
 
+// The keep lands while RECORD records, however long the engine takes to keep
+// the sound: everything the engine says from the keep's request on is held
+// from main (`app.hold`) until RECORD is rolling. With RECORD pressed first
+// and the keep's whole round trip after it, STOP came after RECORD's 4 s
+// limit on a slow runner (#243: a keep of 3.2 s on CI, then a fixed 1.2 s),
+// so RECORD had stopped itself and the click started another recording. Now
+// STOP is pressed once the kept sound is in hand and its lane is lit: on a
+// 16-core M3 Max 0.6 s into the recording, and 1.0 s at
+// AURACLE_CPU_THROTTLE=4.
 /** A player's beat between RECORD and STOP: the take is then longer than the
  *  0.1 s one the CAPTURE holds, and the two can't be read for each other. */
 const RECORD_BEAT_MS = 500;
 
-// The keep lands while RECORD records, however long the engine takes to keep
-// the sound: its answer is held from main (HOLD) until RECORD is rolling.
-// With RECORD pressed first and the keep's whole round trip after it, STOP
-// came after RECORD's 4 s limit on a slow runner (#243: a keep of 3.2 s on
-// CI, then a fixed 1.2 s), so RECORD had stopped itself and the click
-// started another recording. Now STOP is pressed once the kept sound is in
-// hand and its lane is lit: on a 16-core M3 Max 0.6 s into the recording,
-// and 1.0 s at AURACLE_CPU_THROTTLE=4.
-test("a recording goes on through a keep as new, and its take lands on the kept sound", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true, hold: true });
+test("a recording goes on through a keep as new, and its take lands on the kept sound", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
@@ -442,22 +412,17 @@ test("a recording goes on through a keep as new, and its take lands on the kept 
   const lane = page.locator("#rack-svg > :not(.rack-exit) .take-lane").first();
   const rec = lane.locator(".take-rec");
   const line = lane.locator(".take-line");
-  await expect(line).toHaveText("take · 0.1 s", { timeout: 60_000 });
-  await expect(page.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await says(app, line, "take · 0.1 s", 60_000);
+  await live(app, page.locator("#rack-svg .ain-lane").first());
   // An edit to keep: CAPTURE's PLAY from hold to the next.
   await page.locator('#rack-svg g[data-addr$="#play"]').first().click();
-  await expect(page.locator("#rack-commit")).toBeEnabled({ timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-commit")).toBeEnabled({ timeout }), { ms: 30_000 });
   // Kept as new (the express path: no card). The engine answers; main has
   // not heard it yet, and Mic Loop is still in hand.
-  const before = await page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null));
-  await page.evaluate(() => {
-    window.__pwHoldFrom = "committed";
-    document.getElementById("improve-check").checked = true;
-  });
+  await app.hold({}, { from: "edit_commit" });
+  await page.evaluate(() => { document.getElementById("improve-check").checked = true; });
   await page.locator("#rack-commit").click();
-  await expect.poll(() => page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null)), { timeout: 60_000 })
-    .not.toBe(before);
-  const kept = await page.evaluate(() => window.__pwLast.committed.id);
+  await app.engine((timeout) => expect.poll(async () => (await app.held()).map((h) => h.type), { timeout }).toContain("committed"), { ms: 60_000 });
   await expect(page.locator("#live-label")).toContainText("Mic Loop");
   // RECORD, while the keep is on its way.
   await rec.click();
@@ -466,7 +431,9 @@ test("a recording goes on through a keep as new, and its take lands on the kept 
   await page.waitForTimeout(RECORD_BEAT_MS);
   // The keep lands: the kept sound is in hand, and its CAPTURE's RECORD is
   // still lit, recording.
-  await page.evaluate(() => window.__pwRelease());
+  await app.release();
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
+  const kept = (await app.last("committed")).id;
   const name = await page.locator(`#bank-list .bank-item[data-id="${kept}"] .bi-name`).first().textContent();
   await expect(page.locator("#live-label")).toContainText(name);
   await expect(page.locator("#rack-subject")).toContainText(name);
@@ -476,24 +443,22 @@ test("a recording goes on through a keep as new, and its take lands on the kept 
   // STOP: the take is rendered and lands on the kept sound, as an edit.
   await rec.click();
   await expect.poll(async () => (await takes(page)).rolling, { timeout: 10_000 }).toBe(null);
-  await expect(line).not.toHaveText("take · 0.1 s", { timeout: 30_000 });
+  await app.engine((timeout) => expect(line).not.toHaveText("take · 0.1 s", { timeout }), { ms: 30_000 });
   await expect(line).toHaveText(/^take · \d\.\d s$/);
   await expect(page.locator("#rack-subject")).toContainText(name);
-  expect(await page.evaluate(() => window.__pwToasts.join("\n"))).not.toContain("you moved to another sound");
-  expect(errors).toEqual([]);
+  expect((await app.toasts()).join("\n")).not.toContain("you moved to another sound");
 });
 
-test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, browser }, info) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { granted: true });
-  const { ctx, next, row, errors: errors2 } = await keptSafeVisit(page, browser, info);
+test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings it back", async ({ page, app, newContext }, info) => {
+  await boot(page, app, { granted: true });
+  const { ctx, next, nextApp, row } = await keptSafeVisit(page, app, newContext, info);
   await expect(next.locator("#bank-list .bank-group.kept")).toContainText("kept safe");
   await shotOf(next, "kept-safe", [next.locator("#bank-list .bank-group.kept"), row], { scroll: true });
   expect(await next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).count()).toBe(0);
 
   // The bench reads input 2 (Fake Interface B), and Mic Loop input 1.
   await openFile(next, { name: "Line B", tree: { amp, root: ain(1) } }, info.outputDir);
-  await expect(next.locator("#rack-svg .ain-lane").first()).toHaveAttribute("data-state", "live", { timeout: 60_000 });
+  await live(nextApp, next.locator("#rack-svg .ain-lane").first(), 60_000);
   await bankTab(next, "pool");
   await expect(row).toBeVisible({ timeout: 30_000 });
   const ins = () => next.evaluate(() => window.__aur.audioIn());
@@ -504,7 +469,7 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   await next.evaluate(() => { window.__pwMic.hold = new Promise((r) => (window.__pwRelease = r)); });
   await row.locator(".kept-rec").click();
   await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toMatchObject({ waiting: true });
-  await next.waitForTimeout(1500);
+  await nextApp.quiet();
   expect((await takes(next)).rolling).toMatchObject({ waiting: true });
   expect((await ins()).recordId).toBe(null);
   await next.evaluate(() => window.__pwRelease());
@@ -513,24 +478,21 @@ test("a sound whose take couldn't be read is kept safe, and RECORD AGAIN brings 
   const st = await ins();
   expect(st.recordId).toBe("mic-a");
   expect(st.voiceId).toBe("mic-b");
-  await next.waitForTimeout(1500);
+  // RECORD AGAIN lit while the input plays into it, a gesture.
+  await next.waitForTimeout(RECORD_HELD_MS);
   await row.locator(".kept-rec").click();
-  await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 30_000 })
-    .toContain("Mic Loop has a new take, and it’s back in the pool.");
-  await expect(next.locator("#bank-list .kept-row")).toHaveCount(0, { timeout: 30_000 });
-  await expect(next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).first()).toBeVisible({ timeout: 30_000 });
+  await nextApp.toast("Mic Loop has a new take, and it’s back in the pool.", { timeout: 30_000 });
+  await nextApp.engine((timeout) => expect(next.locator("#bank-list .kept-row")).toHaveCount(0, { timeout }), { ms: 30_000 });
+  await nextApp.engine((timeout) => expect(next.locator("#bank-list .bank-item", { hasText: "Mic Loop" }).first()).toBeVisible({ timeout }), { ms: 30_000 });
   expect((await takes(next)).held).toEqual([]);
   // The input lent for it is closed again: the bench reads only input 2.
   await expect.poll(async () => (await ins()).open, { timeout: 10_000 }).toEqual(["mic-b"]);
   await ctx.close();
-  expect(errors).toEqual([]);
-  expect(errors2).toEqual([]);
 });
 
-test("RECORD AGAIN says plainly when the browser refuses the input, and records nothing", async ({ page, browser }, info) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { granted: true });
-  const { ctx, next, row, errors: errors2 } = await keptSafeVisit(page, browser, info, {
+test("RECORD AGAIN says plainly when the browser refuses the input, and records nothing", async ({ page, app, newContext }, info) => {
+  await boot(page, app, { granted: true });
+  const { ctx, next, nextApp, row } = await keptSafeVisit(page, app, newContext, info, {
     granted: false,
     extra: "window.__pwMic.refuse = true;",
   });
@@ -546,28 +508,25 @@ test("RECORD AGAIN says plainly when the browser refuses the input, and records 
   await expect(next.locator("#bank-list")).toHaveAttribute("aria-activedescendant", await row.getAttribute("id"));
   console.log(`the kept-safe row is ${presses} arrows down`);
   await next.keyboard.press("Enter");
-  await expect.poll(() => next.evaluate(() => window.__pwToasts.join("\n")), { timeout: 15_000 })
-    .toContain("The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.");
+  await nextApp.toast("The browser was refused the input, so nothing was recorded. Allow the microphone in this site’s settings, then press RECORD again.", { timeout: 15_000 });
   await expect.poll(async () => (await takes(next)).rolling, { timeout: 10_000 }).toBe(null);
   // Still kept safe, and RECORD AGAIN is there to press once it's allowed.
   await expect(row).toBeVisible();
   await expect(row.locator(".kept-rec")).toHaveText(/record again/i);
   expect((await takes(next)).held.length).toBe(1);
   await ctx.close();
-  expect(errors).toEqual([]);
-  expect(errors2).toEqual([]);
 });
 
-test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed with it", async ({ page }, info) => {
-  const errors = await boot(page, { granted: true });
+test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed with it", async ({ page, app }, info) => {
+  await boot(page, app, { granted: true });
   await openFile(page, {
     name: "Mic Loop",
     tree: { amp, root: { Capture: { play: "hold", input: ain(0), take: takeOf(4000) } } },
   }, info.outputDir);
   const take = page.locator("#rack-svg .take-lane").first();
   const input = page.locator("#rack-svg .ain-lane").first();
-  await expect(take).toBeVisible({ timeout: 60_000 });
-  await expect(input).toHaveAttribute("data-state", "live", { timeout: 30_000 });
+  await shows(app, take);
+  await live(app, input);
 
   // CAPTURE: from its plate, Enter into its controls, past its knob, to
   // RECORD; Enter rolls, Enter stops, and the take lands.
@@ -577,17 +536,17 @@ test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed
   expect((await focused(page)).tab).toBe("0");
   await page.keyboard.press("Enter");
   await expect(take.locator(".take-rec")).toHaveClass(/\bon\b/);
-  await page.waitForTimeout(1200);
+  // eslint-disable-next-line playwright/no-wait-for-timeout -- RECORD lit a while from the keyboard, a gesture
+  await page.waitForTimeout(RECORD_A_WHILE_MS);
   await page.keyboard.press("Enter");
-  await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
-    .toMatch(/Recorded \d\.\d s into CAPTURE\./);
+  await app.toast(/Recorded \d\.\d s into CAPTURE\./, { timeout: 20_000 });
   // A new take, at least a second long: the keys held RECORD for 1.2 s. How
   // much longer it is, is Playwright's pace between the two keys on this
   // machine ("1.x s" read that as a bound): a budget (ADR-022).
-  await expect(take.locator(".take-line")).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
+  await says(app, take.locator(".take-line"), /^take · \d\.\d s$/);
   const took = Number((await take.locator(".take-line").textContent()).match(/(\d\.\d) s/)[1]);
   expect(took, "the take is as long as RECORD was held from the keyboard").toBeGreaterThanOrEqual(1.0);
-  budget("RECORD held 1.2 s from the keyboard → the take's length", took * 1000, 1999);
+  app.budget("RECORD held 1.2 s from the keyboard → the take's length", took * 1000, 1999);
   // The take is an edit, so the rack was drawn again: the keyboard is still
   // on RECORD.
   await expect.poll(async () => (await focused(page)).stop, { timeout: 10_000 }).toBe("take-rec");
@@ -617,5 +576,4 @@ test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed
   await page.keyboard.press("Escape");
   expect(await page.evaluate(() => document.activeElement?.getAttribute("data-kind"))).toBe("audio_in");
   console.log(`arrows from the plate: ${toRec} to RECORD, ${toLine} to AUDIO IN's input line`);
-  expect(errors).toEqual([]);
 });

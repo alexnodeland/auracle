@@ -2,46 +2,16 @@
   "audio_in.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 2
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/no-runner-clock": {
-      "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 13
-    },
-    "playwright/prefer-locator": {
-      "count": 1
     }
   },
   "audio_in_takes.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 4
     },
-    "auracle/no-own-pageerror": {
-      "count": 2
-    },
     "auracle/no-read-after-action": {
       "count": 1
     },
-    "auracle/no-runner-clock": {
-      "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
     "playwright/no-conditional-in-test": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 12
-    },
-    "playwright/prefer-locator": {
       "count": 1
     },
     "playwright/prefer-to-have-count": {

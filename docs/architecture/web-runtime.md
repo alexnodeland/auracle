@@ -1485,8 +1485,7 @@ that pick commits (`settleFit`), so it keeps its window too.
   (`tests/web/fixtures.js` `SEED`: `?seed=` and the page's Math.random, as
   the films seed it), so it starts from the same pool, warm start and sides
   on every run; the nightly flake hunt boots those unseeded. A spec that
-  names its own `random:` seed keeps it, and a spec not yet on the fixture
-  boots unseeded.
+  names its own `random:` seed keeps it.
 - Booth mode (the ⋯ menu) plays itself when idle and hides links out of the
   instrument.
 - `window.__aur` is the debugging handle; browser tests wrap `Worker` instead
