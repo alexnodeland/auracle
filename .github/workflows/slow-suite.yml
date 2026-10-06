@@ -26,7 +26,8 @@ name: Slow suite
 #   runners from the gate on every PR push that reaches what it covers. Add
 #   `full-ci` to a PR that changes what these tests cover, the paths this
 #   workflow used to run a PR for: any crate, Cargo.toml or Cargo.lock,
-#   rust-toolchain.toml, the Makefile, this workflow or .github/actions/;
+#   rust-toolchain.toml, the Makefile, .config/nextest.toml (the slow
+#   tests' threads and time limits), this workflow or .github/actions/;
 #   apps/web's worker.js, farm.js, perform.js, patch.js, live-audio.js,
 #   audio-in.js, explain.js, faces.js or vessel.js; tests/web's fixtures.js,
 #   playwright.config.js, package.json or package-lock.json; or a spec file
@@ -89,7 +90,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # The test-fast profile is incremental for a workstation (Cargo.toml);
+  # here every build starts from a cache, as in ci.yml.
   CARGO_INCREMENTAL: 0
+  # nextest's ci profile (.config/nextest.toml), as in ci.yml.
+  NEXTEST_PROFILE: ci
   CARGO_NET_RETRY: 10
 
 jobs:

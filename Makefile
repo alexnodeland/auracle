@@ -29,6 +29,24 @@ else
 RUSTUP_NOTE = $(eval RUSTUP_NOTE :=)$(warning no cargo in $(CARGO_BIN): cargo and rustc come from PATH, and rust-toolchain.toml applies only if they are rustup's proxies)
 CARGO = $(RUSTUP_NOTE)cargo
 endif
+# sccache, opt-in: with AURACLE_SCCACHE=1 in the environment (and sccache
+# installed: `scripts/setup.sh --sccache`), every cargo call here compiles
+# through it, unless RUSTC_WRAPPER already names a wrapper. A new worktree's
+# first build then takes the crates.io dependencies from its cache instead of
+# compiling them again. It is safe with a target directory per worktree,
+# where sharing one target directory is not (docs/architecture/testing.md §
+# The local loop): sccache keys each compile by its inputs, the CARGO_*
+# variables among them, so a workspace crate, whose path differs in each
+# worktree, never hits another worktree's entry, and an incremental compile
+# (the workspace's crates under test-fast) is not cached at all.
+ifeq ($(AURACLE_SCCACHE),1)
+SCCACHE := $(firstword $(wildcard $(CARGO_BIN)/sccache) $(shell command -v sccache 2>/dev/null))
+ifeq ($(SCCACHE),)
+$(warning AURACLE_SCCACHE=1, but there is no sccache: run scripts/setup.sh --sccache; building without it)
+else
+export RUSTC_WRAPPER ?= $(SCCACHE)
+endif
+endif
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
 FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
@@ -51,7 +69,7 @@ WASM_STACK := 8388608
 # helper only the native-only items use) must fail.
 WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: setup film-setup web-check spec-lint all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: setup film-setup web-check spec-lint all check check-changed build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools worker-test \
         test-crate nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         llvm-cov-installed coverage coverage-run coverage-archive coverage-report coverage-floors \
@@ -71,8 +89,24 @@ all: check
 
 ## check: everything CI runs — format, lints as errors, the app's syntax and
 ## its pure-logic unit tests, the tooling's own checks, the wasm target, full
-## test suite
+## test suite. `make -j check` runs the parts side by side
+#
+# Side by side, the parts don't wait for one another: cargo locks each
+# profile's directory on its own, so lint (target/debug), wasm-check (the
+# wasm32 release build) and test (target/test-fast) build at once, beside
+# web-check and dev-check. Plain -j: macOS ships GNU Make 3.81, which has no
+# -O and prints its usage instead. On GNU Make 4, `make -j -O check` also
+# keeps each part's output together, as CI's Web job runs dev-check
+# (`make -j4 -O dev-check`).
 check: fmt-check lint web-check dev-check wasm-check test
+
+## check-changed: the parts of `make check` your change reaches since BASE
+## (origin/main), uncommitted and untracked files included, by the classifier
+## CI's fast lane uses (scripts/changes.py), and what else CI runs for it.
+## `make -j check-changed` runs them side by side
+check-changed:
+	@parts="$$(python3 scripts/changes.py check --base $(BASE))" || exit 1; \
+	if [ -n "$$parts" ]; then $(MAKE) --no-print-directory $$parts; fi
 
 ## help: every target with a description, in the order this file defines them
 help:
@@ -81,7 +115,8 @@ help:
 
 ## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
 ## checks on staged files before each commit. Opt-in, per clone.
-## setup: install what the engine, the app and its tests need (scripts/setup.sh)
+## setup: install what the engine, the app and its tests need (scripts/setup.sh),
+## and sccache when AURACLE_SCCACHE=1 is set (opt-in)
 setup:
 	scripts/setup.sh
 
@@ -147,7 +182,8 @@ worktree-rm:
 ## changelog (every entry waiting in changelog.d/ parses, and the assembler's
 ## own tests), the PR checks' own tests (scripts/test_pr_checks.py: a PR's
 ## title, its issue links, the changelog's warning, what a merge does to the
-## issues), the Claude Code hooks against inputs they must block and pass,
+## issues), the path classifier's tests (scripts/test_changes.py: what each
+## kind of change reaches), the Claude Code hooks against inputs they must block and pass,
 ## the syntax of every film tool, the film tools' own tests (on .venv-voice
 ## when it exists), the tests of the coverage gate's, the mutation
 ## report's, CI stats', the engine stamp's and the release's scripts
@@ -163,8 +199,8 @@ worktree-rm:
 ## plain `make dev-check` runs them one after another as before. CI runs
 ## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
 ## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
-## run plain `make -j8 dev-check`.
-DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-ops dev-wasm-pkg dev-release
+## run plain `make -j8 dev-check` (the pre-commit hook does).
+DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-changelog dev-pr-checks dev-changes dev-hooks dev-syntax dev-film-tests dev-coverage dev-mutants dev-ci-stats dev-ops dev-wasm-pkg dev-release
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
 
@@ -188,6 +224,8 @@ dev-changelog:
 	@python3 scripts/test_changelog.py
 dev-pr-checks:
 	@python3 scripts/test_pr_checks.py
+dev-changes:
+	@python3 scripts/test_changes.py
 dev-hooks:
 	@bash .claude/checks/test_hooks.sh
 # The stage's scripts are ES modules: `node --check` on a .js with an
@@ -330,13 +368,14 @@ worker-test:
 	$(JS_COV_MKDIR)
 	node --test --test-concurrency=4 $(call NODE_COV,worker) tests/worker/*.test.mjs
 
-## test: optimized — the grammar/features/session tests render real audio
-## sample-by-sample; debug-mode DSP is ~20× slower
+## test: every Rust test, optimized (the grammar/features/session tests render
+## real audio sample by sample; debug-mode DSP is ~20× slower), on nextest,
+## then the doctests. Needs cargo-nextest (`make setup`)
 #
 # `test-fast` is release codegen without release's shipping flags (see the
 # profile in Cargo.toml). Same opt-level, so the suite runs at the same speed it
-# always did; no fat LTO, so it stops paying a serialized link for five test
-# binaries. CI builds the tests under this profile too — one definition of what
+# always did; no fat LTO, so it stops paying a serialized link for each test
+# binary. CI builds the tests under this profile too — one definition of what
 # an optimized test build is.
 #
 # The test builds name their targets (TEST_TARGETS): the libraries, the
@@ -345,13 +384,25 @@ worker-test:
 # workspace's compile CPU. `make lint` (clippy --all-targets) still compiles
 # them. Naming targets turns the doctests off, so `test` runs them on their
 # own (there are none today; CI's Doctests job checks that the same way).
+#
+# nextest runs every test in the workspace in one pool, each in a process of
+# its own, where `cargo test` ran the workspace's test binaries one after
+# another and waited on the slowest test of each before starting the next. What a
+# test needs from that pool (the threads it starts, how long before it is
+# slow, and when a hung one is stopped) is in .config/nextest.toml. nextest
+# runs no doctests, hence the second line. It stops starting tests at the
+# first failure, where `cargo test` finished the failing binary:
+# `NEXTEST_ARGS=--no-fail-fast` runs them all (NEXTEST_ARGS takes any of
+# nextest's options, a filter too).
 TEST_TARGETS := --lib --bins --tests
-test:
-	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS)
+test: nextest-installed
+	$(NEXTEST) $(NEXTEST_ARGS)
 	$(CARGO) test --workspace --profile test-fast --doc
 
-test-verbose:
-	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS) -- --nocapture
+# Every test's output, printed as it finishes (nextest's --no-capture would
+# run them one at a time).
+test-verbose: nextest-installed
+	$(NEXTEST) --success-output immediate --failure-output immediate $(NEXTEST_ARGS)
 
 ## test-crate: one crate's tests, optimized, with the pinned compiler:
 ## `make test-crate CRATE=auracle-session` (FILTER= a test name filter;
@@ -428,8 +479,12 @@ test-slow-rest: nextest-installed
 # once into a nextest archive (COV_ARCHIVE), `coverage-run` runs one
 # partition of it on each runner (NEXTEST_ARGS='--partition slice:k/N'), and
 # `coverage-report` reads every runner's profiles against the archive.
+#
+# Not incremental, as in CI (CARGO_INCREMENTAL=0 there): each run starts
+# from `llvm-cov clean`, so test-fast's incremental state would be written
+# and never read.
 LLVM_COV_VERSION := 0.9.1
-COV := $(CARGO) llvm-cov
+COV := CARGO_INCREMENTAL=0 $(CARGO) llvm-cov
 COV_DIR := target/llvm-cov
 COV_SUMMARY := $(COV_DIR)/summary.json
 COV_LCOV := $(COV_DIR)/lcov.info

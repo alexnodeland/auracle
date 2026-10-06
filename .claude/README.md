@@ -141,7 +141,9 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
   comes back to you at once, not at `make check` time.
 - **Before a Bash command** (`guard-bash.sh`): refuses `cargo test` on any
   crate without `--release`, `--profile` or `--doc` (use
-  `--profile test-fast`), and refuses `playwright test` outside
+  `--profile test-fast`), and `cargo nextest run` or `list` without
+  `--release`, `--cargo-profile` or `--archive-file` (use
+  `--cargo-profile test-fast`), and refuses `playwright test` outside
   `one_browser.sh` (a `--list` and `make smoke` are let through). Each refusal
   says the right command.
 
