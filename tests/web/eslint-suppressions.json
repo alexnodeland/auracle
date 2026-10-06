@@ -39,7 +39,7 @@
       "count": 1
     },
     "playwright/no-wait-for-timeout": {
-      "count": 13
+      "count": 12
     },
     "playwright/prefer-locator": {
       "count": 1
