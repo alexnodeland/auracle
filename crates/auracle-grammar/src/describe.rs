@@ -233,9 +233,10 @@ fn describe_mod(
     parent_structural: &mut Vec<String>,
 ) {
     let mut structural = vec![format!("{key}#mod")];
+    let mut lane = None;
     // The recursive arms push their own module and then recurse, so they
     // return early rather than falling through to the leaf tail.
-    match m {
+    let (kind, title, knobs) = match m {
         ModNode::None => {
             // The empty slot's choice site belongs to the parent: locking the
             // parent pins "no modulation" in place.
@@ -341,12 +342,6 @@ fn describe_mod(
             describe_mod(b, &kb, key, column + 1, out, &mut ignored);
             return;
         }
-        _ => {}
-    }
-    let mut lane = None;
-    let (kind, title, knobs) = match m {
-        // Handled above; the compiler cannot see that.
-        ModNode::None | ModNode::Op { .. } | ModNode::Pair { .. } => return,
         ModNode::Lfo { wave, rate, .. } => (
             "lfo",
             "lfo",
