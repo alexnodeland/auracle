@@ -542,6 +542,9 @@ export function createTaste(host) {
       e.preventDefault();
       host.open(active);
     } else if (e.key === "Escape" && active != null) {
+      // The press spent on the point (the model view, which takes Esc last,
+      // waits for the next one).
+      e.preventDefault();
       setActive(null);
     }
   });

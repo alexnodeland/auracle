@@ -76,8 +76,11 @@ An empty space means one of three things:
 
 - **The face is on its way.** A sound from an earlier session, or a preset
   you haven’t heard, is rendered for it once the bank has finished arriving,
-  after anything else the engine has to do. A preset row scrolled past before
-  its face came asks again when you scroll back.
+  after anything else the engine has to do (at the start, that includes
+  PERFORM’s measurement of the sound it opens with). One render serves every
+  place that shows the same sound: a preset’s row, its row in the pool once
+  you’ve heard it, and the sound you’re playing. A preset row scrolled past
+  before its face came asks again when you scroll back.
 - **The sound doesn’t play.** An edit the instrument refuses to play has no
   render, so it has no face.
 - **There is nothing to compare with yet.** A face is drawn against your bank,

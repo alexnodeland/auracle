@@ -12,6 +12,7 @@
 // "lens" (www/brand/voice.md).
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab, modelView } = require("./shell");
+const { rackAtRest } = require("./patch_page");
 const fs = require("fs");
 const path = require("path");
 
@@ -51,6 +52,14 @@ async function boot(page) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript(INIT);
+  // AURACLE_CPU_THROTTLE=4 runs the page's main thread four times slower
+  // (CDP), as patch_page.js's boot does, so a race a slower runner loses
+  // (a press aimed at a rack still moving) shows up on a fast machine.
+  const rate = Number(process.env.AURACLE_CPU_THROTTLE || 0);
+  if (rate > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+  }
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
   return errors;
@@ -269,7 +278,11 @@ test("in PATCH Esc closes what is nearer before it ends a tapped model view, and
   const btn = page.locator("#model-btn");
   await btn.click();
   await expect(body(page)).toHaveClass(/\bmodel-view\b/);
-  // The selection goes first, the view stays.
+  // The selection goes first, the view stays. The press is aimed at the
+  // rack at rest: the name changes as Reese lands, while the camera is
+  // still on its way from the last sound's fit and that sound's plates are
+  // still leaving, so a plate's box read then is not where it is clicked.
+  await rackAtRest(page);
   const plate = page.locator('#rack-svg .rack-plates g[data-kind="filter"] .mod-plate').first();
   const b = await plate.boundingBox();
   await page.mouse.click(b.x + 10, b.y + b.height - 6);

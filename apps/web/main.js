@@ -1988,10 +1988,12 @@ const patchView = createPatch({
   paintFace: (slot) => setFaceSlot(slot, "out", wb.rack && wb.subjectId != null ? (benchTreeJson ? { tree: benchTreeJson } : { id: wb.subjectId }) : null),
   benchState: () => ({ dirty: !!wb.dirty, pending: !!editPending || !laneFree() }),
   closeCatalog: () => closeCatalog(),
+  // Whatever main's Esc chain would close first (`escFloats`, `escSteps`:
+  // the same lists, so the two cannot drift), a module in hand, a cable
+  // being dragged, or a rack control the press backs out of.
   escBusy: () =>
-    !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogOpen() || plateSel != null ||
-    !$("ctx-menu").classList.contains("hidden") ||
-    !$("ovf-menu").classList.contains("hidden") ||
+    !!(armed || wire) ||
+    escFloats().some(([isOpen]) => isOpen()) || escSteps().some(([isOpen]) => isOpen()) ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
 });
 
@@ -5546,6 +5548,63 @@ function attachPianoPointers(piano) {
 // and a note looked up by the character then never let go.
 const downComputerKeys = new Map(); // event.code -> midi
 const physicalKey = (e) => e.code || e.key.toLowerCase();
+
+/** What floats over the levels, each `[isOpen, close]`: Esc closes every one
+ *  that is open in one press, before anything in `escSteps`, a new patch
+ *  (patch.js, through `escBusy`), PERFORM's well modes or the model view.
+ *  `escBusy` reads this list and the chain closes from it, so the two
+ *  cannot disagree about what is waiting for Esc. The order is the order
+ *  they close in: where two hand the focus back, the later one keeps it. */
+function escFloats() {
+  const shown = (id) => !$(id).classList.contains("hidden");
+  return [
+    // A waiting handoff, or a cable half made.
+    [() => !!pendingTarget || !!connectPick, () => { cancelPending(); endConnectPick(); }],
+    // A bank row's ★, folded out where it is drawn.
+    [() => ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating"), foldStars],
+    [() => compareId != null, closeCompare],
+    [() => shown("lineage-pop"), () => { setLineageOpen(false); $("lineage-btn").focus(); }],
+    [() => shown("ovf-menu"), () => {
+      $("ovf-menu").classList.add("hidden");
+      $("ovf-btn").setAttribute("aria-expanded", "false");
+      $("ovf-btn").focus();
+    }],
+    // The scope and picture panels, never by listeners of their own: those
+    // heard Esc after this chain had put PATCH's selected module down for
+    // the same press. The focus goes back to ⋯, which they hang off (the
+    // item that opened each is in the menu, hidden now).
+    [() => panelOpen("scope-panel") || panelOpen("image-panel"), () => {
+      closeScopePanel();
+      closeImagePanel();
+      $("ovf-btn").focus();
+    }],
+    [() => shown("bank-tour"), () => { endBankTour(); $("bank-tour-btn").focus(); }],
+    [keysPopOpen, () => {
+      const inside = $("keys-pop").contains(document.activeElement);
+      setKeysPop(false);
+      if (inside) $("keys-btn").focus();
+    }],
+    // The structure menu (F2, ⋯): its own keydown leaves Esc to this chain.
+    [() => shown("ctx-menu"), closeMenu],
+  ];
+}
+
+/** After the floats, one thing a press, each `[isOpen, close]`, the first
+ *  open one closing: PATCH's menus and folds, then its chain (the
+ *  specimen's): a selected module, then the catalog; a new patch after all
+ *  of them (patch.js, through `escBusy`). */
+function escSteps() {
+  const patchHere = () => currentView === "patch" && !armed;
+  return [
+    [layoutMenuOpen, () => setLayoutMenu(false)],
+    [shelfOpen, () => setShelf(false)],
+    [() => teachOpen && currentView === "patch", () => setTeach(false)],
+    [evolveMenuOpen, () => setEvolveMenu(false)],
+    [() => patchHere() && plateSel != null, () => selectPlate(null)],
+    [() => patchHere() && catalogOpen(), () => closeCatalog()],
+  ];
+}
+
 document.addEventListener("keydown", (e) => {
   // ⌘Z: first the newest teaching act still inside its undo window, in any
   // view; then, in PATCH only, the edit undo.
@@ -5585,52 +5644,20 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it — one thing a
-    // press: a menu or a waiting handoff closed is that press spent, and
-    // PATCH's chain (selection, then the catalog) waits for the next one.
-    const handoff = !!pendingTarget || !!connectPick;
-    cancelPending();
-    endConnectPick();
-    foldStars(); // a bank row's ★, open
-    let spent = handoff;
-    if (compareId != null) { closeCompare(); spent = true; }
-    if (!$("lineage-pop").classList.contains("hidden")) {
-      setLineageOpen(false);
-      $("lineage-btn").focus();
-      spent = true;
-    }
-    if (!$("ovf-menu").classList.contains("hidden")) {
-      $("ovf-menu").classList.add("hidden");
-      $("ovf-btn").setAttribute("aria-expanded", "false");
-      $("ovf-btn").focus();
-      spent = true;
-    }
-    if (!$("bank-tour").classList.contains("hidden")) {
-      endBankTour();
-      $("bank-tour-btn").focus();
-      spent = true;
-    }
-    if (keysPopOpen()) {
-      const inside = $("keys-pop").contains(document.activeElement);
-      setKeysPop(false);
-      if (inside) $("keys-btn").focus();
-      spent = true;
-    }
-    if (!$("ctx-menu").classList.contains("hidden")) spent = true;
+    // press: whatever floats closed is that press spent, and the steps after
+    // it (PATCH's selection, then the catalog) wait for the next one. Both
+    // lists are `escFloats` and `escSteps`, which `escBusy` reads too.
+    const open = escFloats().filter(([isOpen]) => isOpen());
+    for (const [, close] of open) close();
+    // A ★ left marked for a row not drawn (another tab, a row cut) is
+    // nothing to see, so it spent nothing above; it is let go all the same.
+    foldStars();
     // What this press closed is said with `preventDefault`, so the model
     // view (shell.js, which takes Esc last) stays up for it and goes on the
     // press that has nothing nearer left to close.
-    if (spent) { e.preventDefault(); closeMenu(); return; }
-    let closed = true;
-    if (layoutMenuOpen()) setLayoutMenu(false);
-    else if (shelfOpen()) setShelf(false);
-    else if (teachOpen && currentView === "patch") setTeach(false);
-    else if (evolveMenuOpen()) setEvolveMenu(false);
-    // PATCH's chain (the specimen's): a selected module, then the catalog;
-    // a new patch after both (patch.js).
-    else if (currentView === "patch" && !armed && plateSel != null) selectPlate(null);
-    else if (currentView === "patch" && !armed) closed = closeCatalog();
-    else closed = false;
-    if (closed) e.preventDefault();
+    if (open.length) { e.preventDefault(); closeMenu(); return; }
+    const step = escSteps().find(([isOpen]) => isOpen());
+    if (step) { step[1](); e.preventDefault(); }
     closeMenu();
     return;
   }
@@ -11181,8 +11208,9 @@ function renderSubject() {
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
     fam("");
-    metaEl.textContent =
-      benchBeforeAudition != null ? `← back returns to ${nameOf(benchBeforeAudition)}` : "";
+    // A state, in a span as every other is: under the model view the belief
+    // line comes first, and this follows it after a "·" (style.css).
+    metaSpans(metaEl, benchBeforeAudition != null ? [["", `← back returns to ${nameOf(benchBeforeAudition)}`]] : []);
     return;
   }
   nameEl.classList.remove("hearing");
@@ -11200,7 +11228,9 @@ function renderSubject() {
     nameEl.textContent = fresh.name;
     nameEl.title = fresh.name;
     fam("from nothing");
-    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
+    // Its counts are what the belief line stands in for under the model
+    // view (`pt-made`); what is happening to it stays after it.
+    metaSpans(metaEl, [["pt-made", fresh.made], ...[...fresh.states, laneWaitingText()].filter(Boolean).map((t) => ["", t])]);
     return;
   }
   // The rack's own counts: modules in the audio path (not the amp, not an
@@ -11231,15 +11261,21 @@ function renderSubject() {
   // model view's belief line can stand in for the counts alone (`pt-made`,
   // style.css) and every state stays in sight beside it.
   const lf = lineageFacts();
-  const parts = [
+  metaSpans(metaEl, [
     ...(lf ? [["pt-from", bredLine(lf.seedName, lf.changes)]] : []),
     ["pt-made", `${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`],
     ...states.map((t) => ["", t]),
-  ];
+  ]);
+  syncEditBar();
+}
+
+/** PATCH's subtitle, one span per part (`[class, words]`), each after the
+ *  first with its "·", so the model view's belief line can stand in for the
+ *  counts alone (`pt-made`) and every state stays in sight beside it. */
+function metaSpans(metaEl, parts) {
   metaEl.innerHTML = parts
     .map(([cls, t], i) => `<span class="pm${cls ? ` ${cls}` : ""}">${i ? `<i class="pm-sep"> · </i>` : ""}${esc(t)}</span>`)
     .join("");
-  syncEditBar();
 }
 
 /** The edit bar (`#pt-editbar`): shown once the bench has been edited, as
@@ -13181,7 +13217,8 @@ syncLodBtn();
 function beliefResolved(m, sup) {
   const spec = MOD_BY_KIND[m.kind];
   if (!spec || !spec.phi) return null;
-  const t = nbTheta(m.kind);
+  // The patch's own style, as its worth chips read it (`benchTheta`).
+  const t = benchTheta(m.kind);
   if (beliefState(t, sup.byPhi[spec.phi] || 0) !== "resolved") return null;
   return { spec, t };
 }
@@ -15495,7 +15532,10 @@ $("ctx-menu").addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowUp") return go(i <= 0 ? items.length - 1 : i - 1);
   if (ev.key === "Home") return go(0);
   if (ev.key === "End") return go(items.length - 1);
-  if (ev.key === "Escape") { ev.preventDefault(); return closeMenu(); }
+  // Esc is left to main's Esc chain, which closes the menu as one of
+  // `escFloats` (the focus back where `closeMenu` puts it) and spends the
+  // press there. Closed here, it was gone before the chain looked, so the
+  // chain took the press for the next thing: PATCH's selected module.
   // Type-ahead: the verbs are words, and a menu of words that cannot be
   // reached by typing them is a menu that only a mouse can read.
   if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
@@ -18510,11 +18550,13 @@ function specRest() {
 /** The kind the dock is currently describing, or null for the resting line. */
 let specSubject = null;
 
-/** Everything both surfaces say about a module, derived once. */
-function specParts(m) {
+/** Everything both surfaces say about a module, derived once. Its lean is
+ *  read with `theta`: your taste across the bank (`nbTheta`) in the
+ *  catalog, the patch's own style (`benchTheta`) for a module in it. */
+function specParts(m, theta = nbTheta) {
   const { byPhi, total } = nbSupport();
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
-  const t = nbTheta(m.kind);
+  const t = theta(m.kind);
   // Several modules share one coordinate on purpose (see structural.rs). Saying
   // "the model likes distortion" when the coefficient cannot separate it from a
   // wavefolder would be the surface claiming a resolution the model lacks.
@@ -18778,7 +18820,7 @@ function moduleModelHTML(mod) {
     ? `<span class="pr-part"><b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ` +
       `${PRICE_SIGN(c.contribution)} of this patch’s utility.</span><br>`
     : "";
-  return `<div class="pr-model sd-model mono">${part}${specParts(spec).belief}</div>`;
+  return `<div class="pr-model sd-model mono">${part}${specParts(spec, benchTheta).belief}</div>`;
 }
 
 // ---- the selection: plates on the canvas ----
@@ -18861,21 +18903,32 @@ function hoverPlate(key) {
 // guess line above the rack — deliberately, so "drive +0.09" up there and
 // "+0.04" down here are the same kind of quantity and can be added.
 
-/** The θ row a placement is priced from — under the **bench's** lens, so the
- *  price and the number it promises to move come from the same decomposition.
- *  Falls back to the lens that claims most of the bank before the first bench
- *  featurize, which is the same one the chips read. */
-function priceTheta(kind) {
+/** The θ row the patch in hand is read from, for a module's family: under
+ *  the **bench's** style (the one that rates the patch highest, `belief`'s),
+ *  so a price, the number it promises to move and the belief line's parts
+ *  come from the same decomposition. Falls back to the style that claims
+ *  most of the bank before the bench's first rating. Under the model view
+ *  PATCH reads its leans (each plate's edge), its worth chips and a selected
+ *  module's lean from this one row, so a settled chip never sits under "no
+ *  settled lean" (#153); the catalog's θ cell speaks for your taste across
+ *  the bank (`nbTheta`, the largest style). */
+function benchTheta(kind) {
   const phi = MOD_BY_KIND[kind]?.phi;
   if (!phi || !views || !views.styles || views.styles.length === 0) return null;
-  const scale = views.scale ? views.scale[phi] : null;
-  if (!scale || !(scale > 0)) return null;
   const k =
     belief.styleK != null && views.styles[belief.styleK] ? belief.styleK : (activeStyles()[0] || {}).k;
   const s = k != null ? views.styles[k] : null;
   const row = s && s.theta ? s.theta.find((t) => t.name === phi) : null;
   if (!row) return null;
-  return { phi, scale, style: k, mean: row.mean, std: row.std, share: s.share };
+  return { phi, style: k, mean: row.mean, std: row.std, share: s.share };
+}
+
+/** The θ row a placement is priced from (`benchTheta`), with its scale. */
+function priceTheta(kind) {
+  const t = benchTheta(kind);
+  const scale = t && views.scale ? views.scale[t.phi] : null;
+  if (!scale || !(scale > 0)) return null;
+  return { ...t, scale };
 }
 
 /** What placing `kind` at `key` is worth, and — when it is not a number — why.
@@ -21216,6 +21269,18 @@ function startScope() {
 // ---------- the scope's settings panel ----------
 // Hung off the header's ⋯ rather than given its own gear on the rack: it is a
 // preference, and preferences live where the app's other preferences live.
+
+/** Whether the panel `id` (the scope's, the picture's) is open. */
+function panelOpen(id) {
+  const el = $(id);
+  return !!el && !el.classList.contains("hidden");
+}
+
+function closeScopePanel() {
+  $("scope-panel")?.classList.add("hidden");
+  $("scope-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function scopePanelInit() {
   const panel = $("scope-panel");
   if (!panel) return;
@@ -21242,10 +21307,7 @@ function scopePanelInit() {
   bind("sp-trigger", (e) => { e.checked = !!scopeState.trigger; }, (e) => { scopeState.trigger = e.checked; });
   bind("sp-glow", (e) => { e.checked = !!scopeState.glow; }, (e) => { scopeState.glow = e.checked; });
   bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("scope-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeScopePanel;
   $("scope-close").onclick = close;
   $("scope-btn").onclick = (ev) => {
     ev.stopPropagation();
@@ -21262,9 +21324,7 @@ function scopePanelInit() {
     if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
     close();
   });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { close(); $("scope-btn").focus(); }
-  });
+  // Esc closes it in main's Esc chain, with whatever else floats.
 }
 
 // Audio cables only look alive while audio is actually flowing — before this,
@@ -23034,6 +23094,11 @@ async function runCardExport() {
   }
 }
 
+function closeImagePanel() {
+  $("image-panel")?.classList.add("hidden");
+  $("image-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function imagePanelInit() {
   const panel = $("image-panel");
   if (!panel) return;
@@ -23048,14 +23113,12 @@ function imagePanelInit() {
   bind("ix-scale", (e) => { e.value = String(imageState.scale); }, (e) => { imageState.scale = Number(e.value); });
   bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
   bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("image-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeImagePanel;
   // Focus goes back to the ⋯, not to the menu item that opened this: the item
   // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
   // and `focus()` on a `display:none` element is a no-op that drops the
   // keyboard on the body. The ⋯ is the visible control this panel hangs off.
+  // (Esc does the same, in main's Esc chain, for this panel and the scope's.)
   const dismiss = () => { close(); $("ovf-btn")?.focus(); };
   $("image-close").onclick = dismiss;
   $("ix-go").onclick = runImageExport;
@@ -23063,7 +23126,7 @@ function imagePanelInit() {
     ev.stopPropagation();
     $("ovf-menu").classList.add("hidden");
     $("ovf-btn").setAttribute("aria-expanded", "false");
-    $("scope-panel")?.classList.add("hidden");
+    closeScopePanel();
     const shut = panel.classList.toggle("hidden");
     $("image-btn").setAttribute("aria-expanded", String(!shut));
     if (!shut) { imageSync(); $("ix-scope").focus(); }
@@ -23073,9 +23136,6 @@ function imagePanelInit() {
     if (panel.classList.contains("hidden")) return;
     if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
     close();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) dismiss();
   });
 }
 
@@ -23724,7 +23784,12 @@ document.addEventListener("keydown", (e) => {
   // Same optional-chaining as the note-key guard: a keydown targeting the
   // document has no `closest`, and the throw stopped `?` opening help.
   if (e.key === "?" && !e.target?.closest?.("input")) showHelp(true);
-  if (e.key === "Escape") showHelp(false);
+  // Only a press that closed it is spent (`preventDefault`): with the card
+  // away, Esc goes on to what it closes elsewhere, the model view last.
+  if (e.key === "Escape" && !$("help").classList.contains("hidden")) {
+    e.preventDefault();
+    showHelp(false);
+  }
 });
 
 // ---------- resize ----------
