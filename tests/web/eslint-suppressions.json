@@ -584,7 +584,7 @@
       "count": 1
     },
     "playwright/no-wait-for-selector": {
-      "count": 2
+      "count": 1
     },
     "playwright/no-wait-for-timeout": {
       "count": 1

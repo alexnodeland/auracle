@@ -12,28 +12,25 @@
 // in pieces with the player's requests answered in between (worker.js, "the
 // queue: the player first").
 //
+// What the worker does with a request, the player's first and in what order,
+// is held by the worker's own tests (tests/worker): a ▶ asked for during
+// PERFORM's measurement is answered before its next render
+// (lanes.test.mjs), and a measurement `retire` demoted is the player's again
+// after `promote` (background.test.mjs). This holds the page's half.
+//
 // Every timing claim here is an *ordering*: a reply that lands before another,
 // not a number of seconds, so a slow runner cannot pass a regression or fail
 // a fix. The engine worker is reached through the fixture's tap: what was
 // asked and answered, and when, in the page's clock.
-const { test, expect, PERFORM_SEED, bankTab } = require("./fixtures");
+const { test, expect, PERFORM_SEED } = require("./fixtures");
 
 // The controls as the player first sees them after a Take: a beat after the
 // swap, inside the taken offer's own measurement (seconds of renders).
 const AFTER_SWAP_MS = 300;
 
-// `shipped: false` blocks the presets' shipped wirings, so a preset is
-// measured as a patch never seen before is. `warmed: false` shows the warm
-// start.
-async function boot(page, app, { warmed = true, shipped = true, slowEngine = 0 } = {}) {
-  if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
-  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed, slowEngine });
-}
-
-async function openPreset(page, app, name) {
-  await bankTab(page, "presets");
-  await page.locator(".bank-item.preset-item", { hasText: name }).first().click();
-  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 90_000 });
+// `warmed: false` shows the warm start.
+async function boot(page, app, { warmed = true } = {}) {
+  await app.boot({ seed: PERFORM_SEED, random: PERFORM_SEED, warmed });
 }
 
 /** The measurement the page asked for first after `after` (a Take's). */
@@ -41,35 +38,6 @@ async function wireAfter(app, after) {
   const [w] = await app.sent({ type: "perform_wire" }, { after });
   return w ? w.req : null;
 }
-
-test("a player's ▶ is answered while PERFORM is still listening to a patch", async ({ page, app }) => {
-  await boot(page, app, { shipped: false });
-  await openPreset(page, app, "Glass Pad");
-  await app.level("perform");
-  await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout }), { ms: 30_000 });
-  // A fresh profile has no wiring cached (and the shipped one is blocked):
-  // the measurement is thirty-odd renders. Ask for a render of another patch
-  // while it runs.
-  await app.engine((timeout) => expect(page.locator(".pf-status")).toContainText("listening to this sound", { timeout }), { ms: 30_000 });
-  await bankTab(page, "pool");
-  const target = await page.evaluate(() =>
-    [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((e) => Number(e.dataset.id)).find((x) => x > 0));
-  expect(target, "a pool patch to render").toBeGreaterThan(0);
-  // Straight to the worker, as a bank row's ▶ asks: `{type:"render", id}`,
-  // in the same breath as the status is read.
-  const { askedAt, measuringAtAsk } = await page.evaluate((i) => {
-    const askedAt = performance.now();
-    window.__tap.engine.postMessage({ type: "render", id: i });
-    return { askedAt, measuringAtAsk: /listening to this sound/.test(document.querySelector(".pf-status").textContent) };
-  }, target);
-  expect(measuringAtAsk, "the measurement was over before the render was asked for").toBe(true);
-  // The render is answered, and before the measurement it was queued behind.
-  const render = await app.reply("render", { where: { id: target }, after: askedAt, timeout: 60_000 });
-  const [wired] = await app.replies("perform_wired", { after: askedAt });
-  expect(!wired || render._at < wired._at, "the render waited for the measurement").toBe(true);
-  // …and the measurement still lands, whole.
-  await app.reached();
-});
 
 test("a warm-start ▶ that was superseded, or whose card closed, never plays", async ({ page, app }) => {
   await boot(page, app, { warmed: false });
@@ -183,47 +151,33 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
 // from the sound before, as they do through a re-check), but the player is
 // waiting on it: the controls the taken patch lost read listening… until it
 // lands. A look at PATCH drops PERFORM's measurements into the engine's
-// background lane (`hide`), and coming back must give this one back to the
-// player (`show`). It used to stay there, so it gave way to anything that
-// arrived in `later` and started only when nothing else there was waiting:
-// here a drift of the same patch, posted the way Wander posts one, landed
-// before it.
+// background lane (`retire`), and coming back must give this one back to the
+// player (`promote`). It used to stay there, because it is quiet like a
+// re-check, so it gave way to anything that arrived in `later` and started
+// only when nothing else there was waiting: a drift of the same patch, posted
+// the way Wander posts one, landed before it. What the worker does with the
+// two is held in tests/worker/background.test.mjs; here the page must send
+// them for the Take's measurement. That measurement is kept from the engine
+// (`app.stall`), so it is still out when PERFORM comes back, on any machine.
 test("a Take's measurement is the player's again when PERFORM comes back into sight", { tag: "@slow" }, async ({ page, app }) => {
-  // About 62 to 202 s on CI: the engine slowed fourfold, and the step
-  // `app.offerBudget` measures on it is not an engine wait the fixture credits.
-  test.setTimeout(400_000);
-  // The engine slowed fourfold, so the measurement is still running when
-  // PERFORM is back (AURACLE_CPU_THROTTLE takes over when it is larger).
-  await boot(page, app, { slowEngine: 4 });
+  await boot(page, app);
   await app.openOnPerform("Glass Pad");
-  // The offer growing waits on the budget; the measurement's reply is an
-  // `app.reply`, which adds its own time.
+  // The offer growing is engine growth: the budget's.
   const OFFER_MS = await app.offerBudget({ waits: 1 });
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
-  await page.waitForSelector(".pf-offer.ready", { timeout: OFFER_MS });
+  await expect(page.locator(".pf-offer")).toHaveClass(/\bready\b/, { timeout: OFFER_MS });
+  await app.stall({ type: "perform_wire" });
   const takenAt = await app.now();
   await page.locator(".pf-pad", { hasText: "Take" }).click();
+  const { req } = await app.stalled();
+  expect(await wireAfter(app, takenAt), "the measurement kept back was the Take's").toBe(req);
   await app.engine((timeout) => expect(page.locator(".pf-name")).toHaveText("Glass Pad (taken offer)", { timeout }), { ms: 30_000 });
-  const req = await wireAfter(app, takenAt);
-  expect(req, "the Take asked for the taken offer's measurement").not.toBeNull();
-  // To PATCH and back while it runs.
+  // To PATCH: out of sight, it goes to the engine's background lane.
+  const leftAt = await app.now();
   await app.level("patch");
+  await expect.poll(async () => (await app.sent({ type: "retire" }, { after: leftAt })).some((m) => m.reqs.includes(req))).toBe(true);
+  // Back in sight: it is the player's again.
+  const backAt = await app.now();
   await app.level("perform");
-  // Background work asked for after PERFORM is back: a drift of the taken
-  // patch (the tree the Take's measurement was asked about), in `later`,
-  // posted only if the measurement is still out (read in the same breath).
-  const DRIFT = 9_100_001;
-  const posted = await page.evaluate(
-    ([r, id]) => {
-      if (window.__tap.replies.some((x) => x.type === "perform_wired" && !x.injected && x.d.req === r)) return false;
-      window.__tap.engine.postMessage({ type: "perform_drift", req: id, tree: window.__pbTree, overrides: [], locks: [], steps: 12, sigma: 0.05 });
-      return true;
-    },
-    [req, DRIFT],
-  );
-  expect(posted, "the Take's measurement was over before PERFORM came back").toBe(true);
-  const wired = await app.reply("perform_wired", { where: { req }, timeout: OFFER_MS });
-  const [drifted] = await app.replies("perform_drifted", { where: { req: DRIFT } });
-  expect(!drifted || wired._at < drifted._at, "the drift, asked for after it in the background, landed first").toBe(true);
-  await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 10_000 });
+  await expect.poll(async () => (await app.sent({ type: "promote", kind: "perform_wire", req }, { after: backAt })).length).toBe(1);
 });
