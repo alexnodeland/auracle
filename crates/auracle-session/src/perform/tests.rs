@@ -136,11 +136,6 @@ fn purity_keeps_the_six_and_extends_to_the_palette() {
     assert!(leaning >= 10, "only {leaning} leaning pairs were checked");
 }
 
-/// PERFORM only turns knobs the voices can take live. Every live knob has
-/// a compiled handle, and on the shipped presets there are continuous
-/// sites without one (a modulation depth with nothing to modulate): those
-/// are exactly what the old list wrote, missed, and answered with a patch
-/// reload mid-phrase. A drift may move nothing else.
 /// A control the knobs cannot reach may be given something to turn, and
 /// the EQ that does it for Bright and Body is inaudible until turned: on
 /// every preset that has no EQ, the grafted patch vets and its audio φ
@@ -248,6 +243,11 @@ fn an_unheard_eq_does_not_stop_the_graft() {
     );
 }
 
+/// PERFORM only turns knobs the voices can take live. Every live knob has
+/// a compiled handle, and on the shipped presets there are continuous
+/// sites without one (a modulation depth with nothing to modulate): those
+/// are exactly what the old list wrote, missed, and answered with a patch
+/// reload mid-phrase. A drift may move nothing else.
 #[test]
 fn performance_touches_live_knobs_only() {
     let sr = PhraseSpec::default().sample_rate;

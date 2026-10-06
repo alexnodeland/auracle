@@ -199,6 +199,7 @@ fn every_unit_name_is_a_live_coordinate() {
     }
 }
 
+/// A profile written before raw-φ logging still loads and still means
 /// something: its standardized vectors are inverted back to raw values,
 /// re-projected by name, and the votes survive the feature-set change
 /// that motivated the whole exercise.

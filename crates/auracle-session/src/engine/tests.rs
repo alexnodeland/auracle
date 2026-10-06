@@ -156,9 +156,12 @@ fn a_pinned_patch_survives_eviction_pressure() {
     );
 }
 
-/// The budget is a real ceiling and refuses out loud. A `set_pinned` that
-/// silently no-ops at the cap would reproduce, in the fix, the exact class
-/// of bug the fix exists to remove.
+/// Every fit records what share of the pool each lens claimed, as a
+/// distribution over the lenses it was allowed; a second fit appends rather
+/// than replacing, and the register survives a save and reload. The open
+/// question on `SessionConfig::k_styles` is about shares across real
+/// sessions, so a register that kept only the latest, or ended with the
+/// session, could not answer it.
 #[test]
 fn every_fit_records_what_each_lens_claimed() {
     let mut rng = StdRng::seed_from_u64(0x5747);
@@ -209,6 +212,9 @@ fn every_fit_records_what_each_lens_claimed() {
     );
 }
 
+/// The budget is a real ceiling and refuses out loud. A `set_pinned` that
+/// silently no-ops at the cap would reproduce, in the fix, the exact class
+/// of bug the fix exists to remove.
 #[test]
 fn the_pin_budget_is_capped_and_refusal_is_reported() {
     let mut rng = StdRng::seed_from_u64(0x9112);
@@ -766,9 +772,10 @@ fn closed_loop_learns_synthetic_taste() {
 /// has a heavy left tail that makes a mean over any affordable number of
 /// seeds a coin flip. [`MEDIAN_GAIN_GATE`] has the measurement.
 ///
-/// Sixteen seeds, run concurrently: ~70 s wall, which is affordable in a
-/// suite that already renders real audio, and enough that the middle of the
-/// distribution is stable.
+/// Sixteen seeds, run concurrently, one thread each: enough that the middle
+/// of the distribution is stable, and about 330 s on a CI runner, so it is
+/// the slow tier's search floor and has a runner to itself (`SEARCH_FLOOR`
+/// in the Makefile).
 #[test]
 fn refinement_improves_pool() {
     const SEEDS: [u64; 16] = [
