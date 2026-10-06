@@ -145,7 +145,10 @@ fn the_vet_hears_the_clip() {
         crate::featurize(&tree, &spec).is_ok(),
         "the reference is heard"
     );
-    let gap = (1.85 * spec.sample_rate) as usize..(1.95 * spec.sample_rate) as usize;
+    // The middle half of the first note's rest, wherever the phrase puts it.
+    let first = &spec.notes[0];
+    let at = |s: f64| (s * spec.sample_rate) as usize;
+    let gap = at(first.on_s + 0.25 * first.off_s)..at(first.on_s + 0.75 * first.off_s);
     let between: Vec<f32> = (0..spec.total_samples())
         .map(|i| if gap.contains(&i) { 0.5 } else { 0.0 })
         .collect();
