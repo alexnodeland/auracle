@@ -655,6 +655,45 @@ fn switching_what_touch_plays_puts_the_first_knob_back() {
     );
 }
 
+/// **A knob turned under touch.** A ramp starts from the knob, not from
+/// whatever a note's touch left on the first voice: with a soft note's
+/// offset there, turning the knob moves a voice touch never reached only
+/// from where the knob was toward where it is going, never down toward
+/// that note's dark.
+#[test]
+fn a_knob_turned_under_touch_ramps_from_the_knob() {
+    quiver::rng::seed(7);
+    let mut poly = LivePoly::new(&ladder_json(), 44_100.0, 2).unwrap();
+    let (home, to) = (
+        knob_at(&poly, "node#cut", 0.5),
+        knob_at(&poly, "node#cut", 0.55),
+    );
+    assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
+    poly.note_on(60, 0.05);
+    assert_eq!(poly.voices[0].note, Some(60), "the first voice took it");
+    assert!(
+        knob_on(&poly, 60, "node#cut") < home,
+        "the note is not dark"
+    );
+    let untouched = |poly: &LivePoly| poly.voices[1].voice.params["node#cut"].value.get();
+    assert!(poly.set_param("node#cut", 0.55));
+    for _ in 0..200 {
+        let _ = poly.process(128);
+        let v = untouched(&poly);
+        assert!(
+            home <= v && v <= to,
+            "{v} is off the way from {home} to {to}"
+        );
+        if poly.smoothers.is_empty() {
+            break;
+        }
+    }
+    assert!(
+        (untouched(&poly) - to).abs() < 1e-9,
+        "the turn never landed"
+    );
+}
+
 /// **The envelope carry.** Swapping the patch under a held pad used to
 /// re-press every held note on the new voices, which restarts their ADSRs
 /// from zero — so every structural edit made the pad swell in again from

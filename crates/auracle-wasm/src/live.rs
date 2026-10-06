@@ -1761,7 +1761,10 @@ impl LivePoly {
         }
         let p = &self.param_slots[slot];
         let target = p.map.apply(p.map.clamp_input(value));
-        let current = p.values.first().map_or(target, |v| v.get());
+        // A ramp starts from the knob, not from voice 0, which may hold a
+        // note's touch: from there the ramp's first step pulled every voice
+        // toward that note's offset.
+        let current = p.knob;
         if let Some(s) = self.smoothers.iter_mut().find(|s| s.slot == slot) {
             s.target = target;
         } else {
