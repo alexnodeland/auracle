@@ -156,17 +156,20 @@ Findings come back ranked, and review is **one round**:
 ## Pull requests
 
 - The operator pushes an agent's branch and opens the PR, in the merge queue:
-  `gh pr create --base main --head claude/<topic> --title "<what is true now>" --body-file <file> --label queue`.
+  `gh pr create --base main --head claude/<topic> --title "<what is true now>" --body-file <file> --label queue`,
+  then comments `@mergifyio queue` on it, which queues it until the label
+  alone does ([CI and merging](#ci-and-merging)).
   A contributor opens theirs from their own branch or fork, and the
-  maintainer adds the label once it is reviewed.
+  maintainer adds the label and the comment once it is reviewed.
 - **The body** says what changed for a player or a contributor, why, how
   (the decisions a reviewer should look at), and what was checked (gates,
   specs and their counts, the review and what it found). It closes the issues
   it finishes (`Closes #N`). Most PRs have one; a Dependabot bump, or a small
   fix seen in passing, may stand alone, and its body says why it is needed.
   When an agent session made the PR, the body ends with the session's link
-  line. The body becomes the squash commit's body on `main`, under the
-  subject `<title> (#<n>)`.
+  line. The body stays on the PR: the squash commit on `main` is
+  `<title> (#<n>)` with the PR's commit messages as its body (the
+  repository's squash setting), so each commit's why reaches `main`.
 - `.github/PULL_REQUEST_TEMPLATE.md` is the checklist.
 
 ## CI and merging
@@ -179,10 +182,13 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   site, the docs or the app changed; Browser smoke when the app, the engine or
   what runs the specs changed; and the browser specs the change reaches
   (`tests/web/changed.mjs`, as `make browser-changed` picks them), on up to
-  four runners. About five minutes without Rust, about nine with it.
+  four runners. About five minutes for docs; up to about ten when Rust
+  changed (Coverage sets the length) or an app module's specs run (`patch.js`
+  reaches about 23 test-minutes, on four runners).
   - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
     `style.css`, a crate) runs the smoke and no other spec. So does a helper
-    that more than twenty spec files require.
+    that more than twenty spec files require, or a change to more than
+    twenty spec files.
   - A change to CI itself (`.github/workflows/`, `.github/actions/`) runs the
     full gate in its own lane.
   - **A green PR is fit to queue, not proven.** The fast lane is quick word on
@@ -214,21 +220,28 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   ([ADR-021](decisions/021-merges-go-through-mergifys-queue.md),
   [ADR-023](decisions/023-the-gate-runs-in-the-queue.md)). Mergify's queue,
   set up in `.mergify.yml`, is how a PR reaches `main`:
-  - A reviewed PR is opened with the `queue` label; adding it is the one act
-    of enqueueing. A `@mergifyio queue` comment does the same. (The label
-    works through Mergify's auto-merge conditions, which act while Merge
-    Protections is active for the repository in Mergify's dashboard.)
+  - A reviewed PR is opened with the `queue` label, and a
+    `@mergifyio queue` comment queues it. The comment is the act of
+    enqueueing for now: the label queues a PR through Mergify's auto-merge
+    conditions, which act only while Merge Protections is active for the
+    repository in Mergify's dashboard, and that is the maintainer's to switch
+    on. Once it is, the label alone queues a PR, and the comment is only for
+    putting one back.
   - It enters the queue once its fast lane's `CI` is green.
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
     at most three minutes for company. One batch is tested at a time.
   - Green, the queue squash-merges each PR of the batch on its own, the head
     that was tested, so nothing pushed after the check merges unchecked. Each
-    commit is `<title> (#<n>)` with the PR's body. The queue never pushes to
+    commit is `<title> (#<n>)` with the PR's commit messages. The queue never pushes to
     a PR's branch.
   - A PR labelled `priority`, a fix to CI or to a flaky test, goes into the
     next batch ahead of everything else queued. The batch being tested goes
     on.
+  - A release PR (labelled `release`: `CONTRIBUTING.md` § Cutting a release)
+    is queued on its own, tested alone and merged alone, also ahead of the
+    rest, so its merge commit's tree is exactly the tree the full gate
+    tested.
 - **A PR can be green on its own run and red in the queue.** Then its batch
   is split: Mergify tests the parts, the first part first, merges a part that
   passes and splits a part that fails again. A PR that fails on its own is
@@ -242,9 +255,12 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     ([Flakes](#flakes)).
   - It goes back in with `@mergifyio queue` (the `queue` label stays on).
     A run that was cancelled rather than failed goes back in as it is.
-  - A batch that goes red and whose parts then all pass was a flake: every
-    PR in it merges, and the batch's red run is read and the test quarantined
-    like any other.
+  - A flake in the queue lands on someone: Mergify doesn't run the red batch
+    again, so the PR it was last narrowed to is dequeued, though it changed
+    nothing the failed test covers. A dequeued PR whose red run failed a
+    test it doesn't touch, for a cause outside it, is a flake case
+    ([Flakes](#flakes), step 4): the test is quarantined with one commit on
+    that PR, and the PR goes back in.
   - A PR whose own fast lane is red never entered the queue: it enters once a
     fix makes `CI` green.
 - **Merge at green.** A PR whose `CI` is green and that has no blocking
@@ -269,8 +285,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   workflow: a run by hand is the full gate), and once that run and the PR's
   `CI` are green,
   `gh pr merge <n> --squash --match-head-commit <sha> --subject "<title> (#<n>)"`.
-  A merge from outside the queue makes the queue start over on the new
-  `main`.
+  Nothing enforces the full run first: the ruleset requires only `CI` on
+  the PR's head, the fast lane, so a merge by hand without it lands code
+  that only the fast lane has seen. A merge from outside the queue makes
+  the queue start over on the new `main`.
 - **Linear:** one merge queue, at most two streams of work in flight and
   never two touching the same files.
 - **On `main`**, a job the queue's run already passed is not run again when
@@ -306,8 +324,9 @@ how long something took is a budget, not a gate assertion.
    says what goes in it), tag the test `@quarantine` with a comment naming the
    issue, label the issue `quarantined`. It leaves the gate and runs in the
    *Slow suite*. The PR that fixes it removes the tag and closes the issue.
-4. **On a PR, an unrelated failure is quarantined on sight.** The failure
-   qualifies when all three hold:
+4. **On a PR, an unrelated failure is quarantined on sight**, on its own run
+   or in the queue's run that dequeued it. The failure qualifies when all
+   three hold:
    - the test is in a file the PR doesn't touch;
    - it fails on behaviour the PR doesn't change;
    - its trace shows a cause outside the PR.
@@ -324,9 +343,9 @@ against `main` and files an issue when one fails.
 Dependabot opens one grouped PR a week for the actions and one for
 `tests/web`'s npm packages. They are handled like any PR, one at a time and
 behind the work in flight: their CI runs are cancelled while they would take
-runners from active work, then rebased (`@dependabot rebase`) and given the
-`queue` label. A major version gets its release notes read before it is
-queued.
+runners from active work, then rebased (`@dependabot rebase`), given the
+`queue` label and queued. A major version gets its release notes read before
+it is queued.
 
 ## Releases and publishing
 

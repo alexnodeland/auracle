@@ -56,12 +56,12 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
 | Docs, the site, `.claude/` or an `AGENTS.md` | Web, the engine (restored), Site |
-| Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four) |
+| Spec files only | Web, the engine, Site, and those specs (one runner per file, up to four); more than twenty, Browser smoke instead |
 | `main.js`, `worker.js`, `index.html`, `style.css` | Web, the engine, Site, then Browser smoke; no other spec |
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke |
-| `scripts/` | Lint, Coverage, the Doctests, Web, the engine, Site |
+| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site |
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
@@ -69,12 +69,13 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
   changed spec, the specs that require a changed helper, the specs named for
   a changed app module, one runner per file up to four, dealt by time. A
   change that reaches every level (`main.js`, `worker.js`, the engine) picks
-  none, and gets the smoke only; so does a helper that more than twenty spec
-  files require. A green fast lane puts the PR in the queue. It is not the
+  none, and gets the smoke only; so does a change that reaches more than
+  twenty spec files (a helper nearly every spec requires, or that many specs
+  changed at once). A green fast lane puts the PR in the queue. It is not the
   gate: a `main.js` change has run two specs when it enters the queue.
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
-  opens for a batch of up to three PRs, from a branch under
-  `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that
+  opens for a batch of up to three PRs (a release PR alone), from a branch
+  under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that
   lands. There is no Browser smoke job there, since the browser tier runs its
   two specs itself. The `Full gate` job, green when `CI` is, is the check
   the queue merges on; it is a check of its own because Mergify merges a
@@ -88,8 +89,10 @@ twelve runners planned at about six minutes each (the hosted runners differ
 in speed by about two times, and each shard's log and the run's summary name
 its CPU). Coverage takes about nine, estimated (a build, three runners and a
 report: [Coverage](#coverage)); the Doctests two or three (a compile); Web
-and Site two to three. So a PR's fast lane is about five minutes without
-Rust, and about nine with it, Coverage setting its length.
+and Site two to three. So a PR's fast lane is about five minutes for docs,
+and up to about ten when Rust changed (Coverage sets the length) or an app
+module's specs run (`patch.js` reaches about 23 test-minutes, on four
+runners).
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
 equal count, which left one of five runners with twice another's work.
@@ -161,9 +164,10 @@ and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. Lint, the
 Doctests and Coverage are reused only while `rust-toolchain.toml` still
 pins the release they ran on (the record keeps `rustc --version`). After a
-batch that changed `rust-toolchain.toml`, Lint and Coverage run on main
-anyway: their caches are saved from main only, under a key that holds the
-compiler's release, so reused they would never be saved for the new one.
+batch that changed `rust-toolchain.toml` or `Cargo.lock`, Lint and Coverage
+run on main anyway: their caches are saved from main only, under a key that
+holds the compiler's release and the lockfile, so reused they would never be
+saved for a new compiler or a bumped dependency.
 
 **The timings come from the queue's run.** Main no longer runs the browser
 tier when it reuses the queue's verdict, so the queue run's *Browser report*
@@ -182,7 +186,8 @@ a commit SHA with its version in a comment; Dependabot
 one for `tests/web`'s npm packages (whose `@playwright/test` is also the
 tag of the browser jobs' image, so its bump is one PR).
 
-**When the slow tier runs.** On every push to `main` and nightly, in full; a
+**When the slow tier runs.** On `main`, in full: the newest push (its run
+covers the pushes before it; [Latest only](#ci-tiers)), and nightly. A
 failure there opens an issue titled *Slow suite failing on main*, or comments
 on the open one. On demand from the Actions tab. On a PR, only when the PR
 carries the `full-ci` label: adding it starts a run, and every push to the

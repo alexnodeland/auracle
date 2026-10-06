@@ -19,13 +19,15 @@ Accepted by the maintainer on 2026-10-06 (#177). It amends
   three PRs, checked on a draft PR of the queue's own;
 - its rule 2 changes in what a PR's `CI` means: a green fast lane enters the
   queue, and the full gate's green on the batch merges it;
+- its rule 4 (a merge by hand only when Mergify is down, at green) now asks
+  for the full gate first: a run of CI by hand on the PR's branch, green,
+  before the merge. A PR's own green `CI` is only the fast lane;
 - its consequences about a second run when `main` moved, and about the queue
   force-pushing a PR's branch, no longer hold.
 
-ADR-021's rules 3 and 4 stand: no retries, and a merge by hand only when
-Mergify is down. So do [ADR-020](020-merge-at-green-one-pr-in-ci.md)'s rules
-1, 2 and 5: merge at green, one review round, quarantine an unrelated failure
-on sight.
+ADR-021's rule 3 stands: no retries. So do
+[ADR-020](020-merge-at-green-one-pr-in-ci.md)'s rules 1, 2 and 5: merge at
+green, one review round, quarantine an unrelated failure on sight.
 
 ## Context
 
@@ -67,19 +69,26 @@ second has to be everything.
    - each PR is squash-merged on its own, `<title> (#<number>)` as before.
      The ruleset's required `CI` is met by each PR's own head, which carries
      its green fast lane.
-3. **A red batch is split, and the PR at fault leaves the queue.** Mergify
-   splits a failed batch and tests the parts, the first part first; a part
-   that passes merges, and one that fails is split again. A PR that fails on
-   its own is the one at fault: it gets the `dequeued` label and Mergify's
-   comment says why. The others go on. Mergify's automatic retries stay off.
+3. **A red batch is split, and the PR it narrows to leaves the queue.**
+   Mergify splits a failed batch and tests the parts, the first part first; a
+   part that passes merges, and one that fails is split again. A PR that
+   fails on its own, or that the split leaves last, is dequeued: it gets the
+   `dequeued` label and Mergify's comment says why. The others go on.
+   Mergify's automatic retries stay off.
 4. **One full run per batch on `main` too.** `main` reuses the queue run's
    record when its tree is the tree the queue tested, which is the last merge
    of every batch. `main` and the Slow suite keep the latest run only: a run
    in progress finishes, the newest waiting run replaces any older one, and a
    run whose commit `main` has already moved past runs nothing.
 5. **A fix to CI or a flake goes first:** the `priority` label puts a PR at
-   the front of the queue, into the next batch.
-6. **The plain Test jobs fold into Coverage**, which runs the same tests
+   the front of the queue, into the next batch. **A release goes alone:** a
+   PR labelled `release` has a queue rule of its own with batches of one, so
+   its merge commit's tree is exactly the tree the full gate tested, and the
+   tag goes on that commit.
+6. **A merge by hand runs the full gate first.** When Mergify is down, the
+   operator runs CI by hand on the PR's branch, up to date with `main`, and
+   merges only once that run is green.
+7. **The plain Test jobs fold into Coverage**, which runs the same tests
    instrumented, and the doctests get a job of their own.
 
 ## Options Considered
@@ -102,11 +111,14 @@ second has to be everything.
 ## Consequences
 
 - **A PR can be green on its own run and red in the queue.** Its batch is
-  split, the PR at fault is dequeued and says why, and the operator reads the
-  red run on the draft PR. Flakes are rare now (#177), so a split is seldom
-  spent on one; when it is, every part passes and merges, and the batch's red
-  run is read and the test quarantined like any flake. Each part of a split is
-  another full run, so a red batch of three costs two or three.
+  split, the PR the split narrows to is dequeued and says why, and the
+  operator reads the red run on the draft PR. Each part of a split is another
+  full run, so a red batch of three costs two or three.
+- **A flake in the queue dequeues somebody.** Mergify doesn't run a red batch
+  again, so a flake leaves the PR it was last narrowed to dequeued, though
+  that PR changed nothing the failed test covers. That is ADR-020's rule 5
+  case: the test is quarantined with one commit on that PR, and the PR is
+  queued again. Flakes are rare now (#177), so this is seldom.
 - **A PR's first answer is minutes sooner,** and its second, the queue's,
   covers up to three PRs at once.
 - **The queue no longer pushes to a PR's branch.** A worktree fixing a
@@ -122,3 +134,15 @@ second has to be everything.
   batch's earlier merges are never tested alone, as with any batch; their run
   runs nothing once `main` has moved past them. The browser tier's timings
   come from the queue's run, saved by `main`'s.
+- **A merge by hand isn't enforced.** The ruleset requires `CI` on a PR's
+  head, and that is the fast lane: GitHub's merge button lands code that only
+  the fast lane has seen. Rule 6 is the operator's to keep.
+- **Noted, not built:**
+  - When a batch is reset (a merge from outside the queue, or a PR pushed or
+    dequeued while its batch runs), the draft PR it was testing is closed,
+    and its CI run is left to finish or be cancelled with nothing reading it.
+  - A run on `main` that starts before a batch's next merge lands finds
+    `main` not yet past it, and runs in full: a cost, not a gap.
+  - A change to a workflow runs the full gate on its own PR, from its own
+    copy of the workflow, and in the queue the draft PR runs it too. What
+    holds a workflow change to the rules is review, as for any other change.

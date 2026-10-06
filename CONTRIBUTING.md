@@ -152,13 +152,15 @@ The **fast tier** is the required `CI` check: the jobs above, the Rust tests
 except the slow ones (instrumented, for coverage), and every browser spec not
 tagged `@slow` or `@quarantine`, dealt to twelve runners by time, about
 twelve minutes. It runs in two lanes. Your PR's own run is the fast lane,
-the part of it your change reaches, in about five minutes (nine when Rust
-changed); green, it puts the PR in the merge queue. The merge queue's run is
+the part of it your change reaches: about five minutes for docs, up to about
+ten when Rust changed or an app module's specs run; green, it puts the PR in
+the merge queue. The merge queue's run is
 the full gate, on your PR together with up to two others queued beside it,
 on top of `main`, and it is what merges them. A PR may merge on the fast tier alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
-on every push to `main` and nightly, where a failure opens an issue; on a PR
+on `main` (the newest push, whose run covers the ones before it) and
+nightly, where a failure opens an issue; on a PR
 only when you add the `full-ci` label. Add it when the PR changes what those
 tests cover: any crate, `Cargo.toml` or `Cargo.lock`, `rust-toolchain.toml`,
 the `Makefile`, `slow-suite.yml` or `.github/actions/`; `apps/web/`'s
@@ -296,10 +298,11 @@ an alias for notes written before the rename).
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
-   label. When its CI is green it enters the queue, which runs the full gate
+   label and queues it. When its CI is green it enters the queue, which runs the full gate
    on it together with up to two other queued PRs, on top of `main`, and
-   squash-merges each as `<title> (#<number>)` with the PR's description as
-   the commit's body. A PR green on its own run can be red there: the queue
+   squash-merges each as `<title> (#<number>)`, with the PR's commit messages
+   as the commit's body (the repository's squash setting), so write each
+   commit message to say why. A PR green on its own run can be red there: the queue
    then finds the PR at fault and takes it out, with a comment saying why; a
    fix and `@mergifyio queue` put it back.
 
@@ -311,8 +314,9 @@ Conventional-commit style prefixes are used loosely (`feat:`, `fix:`, `docs:`,
 
 ## Cutting a release
 
-A release is **one gesture: push a `vX.Y.Z` tag on a green `main`.** One
-workflow watches that tag and nothing else has to be done by hand:
+A release is **one gesture: push a `vX.Y.Z` tag on the release PR's merge
+commit.** One workflow watches that tag and nothing else has to be done by
+hand:
 
 - [`release.yml`](.github/workflows/release.yml) builds the wasm through the
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
@@ -325,14 +329,19 @@ nothing and the last green build stays live. To redeploy by hand, run the *CI*
 workflow on `main` from the Actions tab: it checks everything, then deploys. It
 deliberately does **not** run on the tag. The `github-pages` environment permits
 deployments from `main` only, so a tag-triggered deploy is rejected by protection
-rules; and it is not needed, because the tag is cut from a green `main` and that
-commit has therefore already deployed from the branch.
+rules; and it is not needed, because the tagged commit is on `main`, and the
+site deploys from `main` once its CI is green.
+
+The release PR carries the `release` label, which puts it in a queue of its
+own (`.mergify.yml`): the merge queue tests it alone and merges it alone, never
+in a batch. So its merge commit's tree is exactly the tree the queue's full
+gate tested, and that commit is the one to tag.
 
 The steps, in order:
 
-1. **Land everything first.** The tag is cut from `main`, and CI must be green
-   on the commit you are about to tag. The release workflow does not re-run the
-   test suite, it packages what is already there.
+1. **Land everything first.** The tag goes on the release PR's merge commit,
+   which the queue's full gate tested. The release workflow does not re-run
+   the test suite, it packages what is already there.
 2. **Bump the version** in the workspace `Cargo.toml`: `[workspace.package]
    version`, *and* the `version = "…"` on each intra-workspace dependency in
    `[workspace.dependencies]` and in `crates/auracle-wasm/Cargo.toml`. Cargo
@@ -347,8 +356,10 @@ The steps, in order:
    and prints the order it used. Then write the short paragraph under the new
    heading that says what this release *is*. This text becomes the release
    notes verbatim, so write it for someone who has never seen the repo.
-4. **Open a PR for 2 and 3 with the `queue` label, and wait for the queue to
-   merge it and for `main` to go green.**
+4. **Open a PR for 2 and 3 with the `release` and `queue` labels**, queue it
+   (`@mergifyio queue`, until the label alone does: `docs/process.md` § CI and
+   merging), and wait for the queue to merge it. The operator creates the
+   `release` label once.
 5. **Tag the release PR's merge commit, and push the tag:**
 
    ```bash
@@ -361,15 +372,16 @@ The steps, in order:
    (`gh pr view <n> --json mergeCommit -q .mergeCommit.oid`), not `main`'s
    tip: a change merged after it ships in the next release. To take one into
    this release after all, run step 3's command again, with the same version,
-   in a new PR. While `## [X.Y.Z]` is the section under `[Unreleased]` and
-   `vX.Y.Z` isn't tagged, it folds what has merged since into the top of that
-   section. Then tag that PR's merge commit.
+   in a new PR, labelled `release` too. While `## [X.Y.Z]` is the section
+   under `[Unreleased]` and `vX.Y.Z` isn't tagged, it folds what has merged
+   since into the top of that section. Then tag that PR's merge commit.
 
 6. **Watch the release workflow**, then check the things a green run does not
    prove:
    download the attached zip, serve it, and confirm the app boots from the
-   bundle; and load the live site (`/`, `/play/`, `/docs/`, `/reference/` and
-   `/reference/api/`) to confirm the deploy landed and the routes resolve.
+   bundle; and, once `main`'s CI is green and has deployed, load the live site
+   (`/`, `/play/`, `/docs/`, `/reference/` and `/reference/api/`) to confirm
+   the deploy landed and the routes resolve.
 
 The release workflow **fails before building** if the tag and the workspace
 version disagree, if `CHANGELOG.md` has no section for the tag, or if

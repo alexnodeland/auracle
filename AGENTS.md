@@ -113,7 +113,7 @@ contributor guide; this file does not repeat it.
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
 | A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
-| A merge | Open the PR with `--label queue` (or comment `@mergifyio queue`); it enters the merge queue once its own `CI` (the fast lane) is green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
+| A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane) is green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
 
 The `check` skill picks the right subset for what changed.
 
