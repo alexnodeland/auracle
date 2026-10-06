@@ -73,7 +73,7 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 `fix/arp-gate-length`, `docs/…`), then:
 
 ```bash
-make check          # fmt + clippy -D warnings + node --check + dev-check + wasm32 check + tests (CI gate)
+make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)
 make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument

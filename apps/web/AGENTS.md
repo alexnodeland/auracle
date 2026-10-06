@@ -140,5 +140,6 @@ the long-form notes are this directory's `README.md`.
 
 ## Tests
 
-`make web-check` (syntax plus the pure-module unit tests in `tests/`), then the
-browser specs in [`tests/web`](../../tests/web/AGENTS.md).
+`make web-check` (syntax, the pure-module unit tests in `tests/` and the
+browser specs' lint), then the browser specs in
+[`tests/web`](../../tests/web/AGENTS.md).

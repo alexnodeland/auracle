@@ -31,15 +31,17 @@ case "$file" in
       */apps/web/*.js) out=$(node --check --input-type=module < "$file" 2>&1) ;;
       *) out=$(node --check "$file" 2>&1) ;;
     esac || fail "node --check failed for $file:" "$out"
-    # A spec or helper in tests/web is linted as make web-check lints it (its
-    # eslint.config.mjs, from its directory, where the suppressions are): a
+    # A file in tests/web is linted as make web-check lints it: from
+    # tests/web, where its eslint.config.mjs and the suppressions are, in a
     # few tenths of a second for one file. Skipped where tests/web's packages
     # are not installed (npm ci there); make web-check says so.
     case "$file" in
       */tests/web/*.js|*/tests/web/*.mjs)
-        web="$(dirname "$file")"
-        if [ -x "$web/node_modules/.bin/eslint" ] && [ -f "$web/eslint.config.mjs" ]; then
-          out=$(cd "$web" && node_modules/.bin/eslint --no-warn-ignored "$(basename "$file")" 2>&1) || fail \
+        web="${file%/tests/web/*}/tests/web"
+        nm="$web/node_modules"
+        if [ -f "$web/eslint.config.mjs" ] && [ -x "$nm/.bin/eslint" ] && [ -d "$nm/eslint-plugin-playwright" ] \
+          && [ -d "$nm/@eslint-community/eslint-plugin-eslint-comments" ]; then
+          out=$(cd "$web" && node_modules/.bin/eslint --no-warn-ignored "${file#"$web"/}" 2>&1) || fail \
             "ESLint failed for $file:" "$out" \
             "Fix it rather than suppress it (tests/web/AGENTS.md § The lint). A count that fell is recorded with: cd tests/web && npx eslint --prune-suppressions"
         fi
