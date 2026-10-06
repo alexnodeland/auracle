@@ -2618,9 +2618,9 @@ worker.onmessage = (e) => {
           // Another sound: the rack drawn next is another patch's unless a
           // module carried its identity across (`captureRackMotion`). The
           // sound on the bench opened again (BACK TO ‹name› from a new patch
-          // started from it, or its row clicked) is that sound with its edits
-          // taken back at once, as ⌘Z all the way would take them, and its
-          // rack moves as an undo's does.
+          // started from it, or any other open of it, its row clicked say) is
+          // that sound with its edits taken back at once, as ⌘Z all the way
+          // would take them, and its rack moves as an undo's does.
           benchOpens += 1;
         }
         wb.subjectId = m.subject;
