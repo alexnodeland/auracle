@@ -14,8 +14,10 @@
 //
 // - After a click on the wave chip or the filter-mode chip, focus is not on
 //   the chip, Space plays (the output sounds) and the chip keeps what it says,
-//   and Space again stops it (quiet within 400 ms of its keydown, timed in
-//   the page, while the phrase still sounded).
+//   and Space again stops it: the phrase still sounded when its keydown
+//   landed, the app then stopped its source (a phrase that ends by itself is
+//   never stopped), and the output goes quiet. Quiet within 400 ms of the
+//   keydown is a budget (ADR-022).
 // - A chip reached with the keyboard follows ARIA's button pattern: Space and
 //   Enter cycle it, and with Shift they go back. Neither plays. Its name
 //   carries its value ("VCO wave, sin"), and each cycle is said on the rack's
@@ -31,8 +33,17 @@
 // sound as edited, in every view).
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab } = require("./shell");
+const { budget } = require("./fixtures");
 
 const INIT = `(() => {
+  // When the app stops a sound it started (\`stop()\` on a buffer source): a
+  // phrase that ends by itself never calls it.
+  const stops = (window.__pwStops = []);
+  const stop = AudioScheduledSourceNode.prototype.stop;
+  AudioScheduledSourceNode.prototype.stop = function (...a) {
+    stops.push(performance.now());
+    return stop.apply(this, a);
+  };
   const connect = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (dest, ...rest) {
     const r = connect.call(this, dest, ...rest);
@@ -94,11 +105,12 @@ async function quiet(page) {
 }
 
 /** Space, and the output sounds within a few seconds; Space again, and it
- *  stops. The second press is timed in the page, not across round trips to
- *  it (a loaded machine stretches those): the phrase is still sounding when
- *  its keydown lands, and the output is quiet within 400 ms of it. The stop
- *  fades in 20 ms, and the analyser's window is 43 ms; a phrase that ended
- *  by itself would have to do so in that same 400 ms. `where` names the
+ *  stops. The second press is watched in the page, not across round trips
+ *  to it (a loaded machine stretches those): the phrase is still sounding
+ *  when its keydown lands, the app stops its source after it (`stop()`,
+ *  which a phrase that ends by itself never calls), and the output goes
+ *  quiet. How long from the keydown to quiet is a budget, 400 ms: the stop
+ *  fades in 20 ms, and the analyser's window is 43 ms. `where` names the
  *  moment for the failure message. */
 async function spacePlays(page, where) {
   await quiet(page);
@@ -123,9 +135,10 @@ async function spacePlays(page, where) {
   await expect
     .poll(() => page.evaluate(() => window.__pwStop.quietAt), { timeout: 10_000, message: `the second Space stops it, ${where}` })
     .not.toBeNull();
-  const stop = await page.evaluate(() => window.__pwStop);
+  const stop = await page.evaluate(() => ({ ...window.__pwStop, stopped: window.__pwStops.filter((t) => t >= window.__pwStop.at).length }));
   expect(stop.peak, `still sounding when the second Space landed, ${where}`).toBeGreaterThan(-50);
-  expect(stop.quietAt - stop.at, `quiet within 400 ms of the second Space, ${where}`).toBeLessThan(400);
+  expect(stop.stopped, `the second Space stopped the phrase, ${where}`).toBeGreaterThan(0);
+  budget(`the second Space → quiet, ${where}`, stop.quietAt - stop.at, 400);
 }
 
 /** The rack's chip for the first knob whose address ends in `#site`. */

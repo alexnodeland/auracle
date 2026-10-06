@@ -34,6 +34,7 @@ const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 const { goLevel, bankTab, openCatalog } = require("./shell");
+const { budget } = require("./fixtures");
 
 // The stub, and the page's spies, as audio_in.spec.js uses them.
 const { STUB, INIT } = require("./audio_in_stub.js");
@@ -498,7 +499,13 @@ test("AUDIO IN's and CAPTURE's buttons are reached from the keyboard and pressed
   await page.keyboard.press("Enter");
   await expect.poll(() => page.evaluate(() => window.__pwToasts.join("\n")), { timeout: 20_000 })
     .toMatch(/Recorded \d\.\d s into CAPTURE\./);
-  await expect(take.locator(".take-line")).toHaveText(/^take · 1\.\d s$/, { timeout: 30_000 });
+  // A new take, at least a second long: the keys held RECORD for 1.2 s. How
+  // much longer it is, is Playwright's pace between the two keys on this
+  // machine ("1.x s" read that as a bound): a budget (ADR-022).
+  await expect(take.locator(".take-line")).toHaveText(/^take · \d\.\d s$/, { timeout: 30_000 });
+  const took = Number((await take.locator(".take-line").textContent()).match(/(\d\.\d) s/)[1]);
+  expect(took, "the take is as long as RECORD was held from the keyboard").toBeGreaterThanOrEqual(1.0);
+  budget("RECORD held 1.2 s from the keyboard → the take's length", took * 1000, 1999);
   // The take is an edit, so the rack was drawn again: the keyboard is still
   // on RECORD.
   await expect.poll(async () => (await focused(page)).stop, { timeout: 10_000 }).toBe("take-rec");
