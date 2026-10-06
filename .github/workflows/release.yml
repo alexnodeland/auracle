@@ -1,11 +1,14 @@
 name: Release
 
-# A release is one gesture: push a `vX.Y.Z` tag on a green main. This workflow
-# packages the prebuilt web instrument and publishes the GitHub Release. The
-# live site is NOT deployed from here: ci.yml's deploy job publishes it from
-# green runs on `main` only (the github-pages environment rejects deployments
-# from a tag), and the tag is cut from a green `main` that has therefore
-# already deployed. See CONTRIBUTING.md § Cutting a release.
+# A release is one gesture: push a `vX.Y.Z` tag on the release PR's merge
+# commit. The release PR carries the `release` label, so the merge queue tests
+# it alone and merges it alone (.mergify.yml): the tagged commit's tree is
+# exactly the tree the queue's full gate tested, and nothing here tests it
+# again. This workflow packages the prebuilt web instrument and publishes the
+# GitHub Release. The live site is NOT deployed from here: ci.yml's deploy job
+# publishes it from green runs on `main` only (the github-pages environment
+# rejects deployments from a tag), and the tagged commit is on `main`. See
+# CONTRIBUTING.md § Cutting a release.
 
 on:
   push:
