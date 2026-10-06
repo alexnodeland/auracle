@@ -110,6 +110,25 @@ The max-shift before exponentiating is the usual guard. Log-likelihoods here
 are bounded above by 0, so it is not strictly needed for duels, but it keeps
 mixed modalities safe.
 
+### A total contradiction keeps the weights
+
+The denominator can be zero, or not a number. That happens when no draw still
+carrying weight can account for the observation: a vote on a $\varphi$ that is
+not finite (which [vetting](../audition/vetting.md) exists to prevent), where
+every likelihood is NaN, or a vote that every weighted draw rules out so firmly
+that each product $w_s \, p(y \mid \theta_s)$, taken after the max-shift,
+falls under the smallest double (about $e^{-745}$) and rounds to zero. The
+draw that scores best is then one with no weight left.
+
+Then the update **keeps the previous weights**. The draws have nothing to say
+about the observation, so what the votes since the last fit taught them stays,
+and the observation waits in the log for the next fit.
+ESS is unchanged: a contradiction by itself never makes it fall, and never
+calls for a [resample](#systematic-resampling). The update used to reset the
+weights to uniform here, which threw that evidence away and claimed a full ESS
+besides (`a_total_contradiction_keeps_the_previous_weights` in
+`auracle-taste`).
+
 ### What the app is sent after each pick
 
 The reweighted draws are the posterior the engine holds until the next fit,
@@ -198,7 +217,10 @@ pub fn needs_refit(&self) -> bool {
 The engine’s condition is not a count of picks. It is **“the weights have had
 to be resampled at least once since the last real fit”**, that is, the cheap
 path has provably run out of road. With no posterior yet, it is true as soon as
-the log holds anything. The engine reports it in its status.
+the log holds anything. The engine reports it in its status. A
+[total contradiction](#a-total-contradiction-keeps-the-weights) does not arm
+it, since it leaves the weights as they were, but the picks after it reweight
+from those weights as usual.
 
 The app does not wait for it. Every sixth pick refits (`FIT_EVERY`, 6, in
 `apps/web/main.js`), and PERFORM’s answered offers count as picks. Two other

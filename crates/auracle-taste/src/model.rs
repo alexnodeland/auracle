@@ -830,6 +830,15 @@ impl TastePosterior {
     /// refit costs seconds of MCMC and cannot run per-vote; without this the
     /// acquisition function reads a frozen posterior and re-asks the same
     /// question until the next refit.
+    ///
+    /// An observation that no draw still carrying weight can account for, a
+    /// total contradiction, leaves the weights as they were. That is a vote
+    /// on a φ that is not finite (every likelihood is NaN), or one that every
+    /// weighted draw rules out so firmly that each product underflows to
+    /// zero. The draws have nothing to say about it, so the update keeps
+    /// what the votes since the last fit gathered, and the observation waits
+    /// in the caller's log for the next fit. The effective sample size is
+    /// unchanged: a contradiction by itself never makes it fall.
     pub fn reweighted(&self, feedback: &Feedback, session: usize) -> TastePosterior {
         self.reweighted_with(feedback, session, &[])
     }
@@ -863,7 +872,11 @@ impl TastePosterior {
                 *wi /= sum;
             }
         } else {
-            w = vec![1.0 / n as f64; n];
+            // A total contradiction: keep the previous weights, one per draw
+            // (a posterior persisted before reweighting existed stores none,
+            // which reads as uniform). Resetting to uniform here, as this
+            // used to, threw away the evidence gathered since the last fit.
+            w = (0..n).map(|i| self.weight(i)).collect();
         }
         TastePosterior {
             cfg: self.cfg.clone(),

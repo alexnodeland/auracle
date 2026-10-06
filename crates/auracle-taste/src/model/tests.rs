@@ -959,6 +959,80 @@ fn reweighting_always_leaves_a_distribution() {
     assert!(is_distribution(&decided.reweighted(&contradiction, 0)));
 }
 
+/// An observation that no draw still carrying weight can account for, a
+/// total contradiction, leaves the weights as they were: the evidence the
+/// votes since the last fit gathered is kept, and the observation waits in
+/// the log for the next fit. Resetting them to uniform threw that evidence
+/// away and claimed a full effective sample size besides. A contradiction
+/// the weighted draws can still rank moves the weights as the update says.
+///
+/// The kept weights are a copy, not a computation, so they are compared
+/// exactly.
+#[test]
+fn a_total_contradiction_keeps_the_previous_weights() {
+    // Three draws, each with both lenses on dimension 0: two that love it,
+    // holding all the weight, and one that hates it, holding none.
+    let draw = |love: f64| {
+        let mut t = vec![0.0; D];
+        t[0] = love;
+        TasteSample {
+            theta: vec![t.clone(), t],
+            tau: vec![0.3],
+            cuts: vec![-1.0, 0.0, 1.5],
+        }
+    };
+    let previous = vec![0.7, 0.3, 0.0];
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(D, 2),
+        samples: vec![draw(50.0), draw(40.0), draw(-50.0)],
+        weights: previous.clone(),
+    };
+    // A vote against dimension 0, at a utility gap of 100·x under the first
+    // draw and 80·x under the second.
+    let against = |x: f64| {
+        let (mut a, mut b) = (vec![0.0; D], vec![0.0; D]);
+        a[0] = x;
+        b[0] = -x;
+        Feedback::Duel {
+            a,
+            b,
+            chose_a: false,
+        }
+    };
+
+    // At x = 30 the weighted draws' likelihoods are e^−3000 and e^−2400,
+    // far below the smallest double (about e^−745), while the draw with no
+    // weight scores about 1: every product underflows to zero.
+    assert_eq!(p.reweighted(&against(30.0), 0).weights, previous);
+
+    // A φ that is not finite gives every draw a NaN likelihood. A posterior
+    // persisted before reweighting existed stores no weights (uniform), and
+    // keeps them as one weight per draw.
+    let mut nan = vec![0.0; D];
+    nan[3] = f64::NAN;
+    let unreadable = Feedback::Duel {
+        a: nan,
+        b: vec![0.0; D],
+        chose_a: true,
+    };
+    assert_eq!(p.reweighted(&unreadable, 0).weights, previous);
+    let older = TastePosterior {
+        weights: Vec::new(),
+        ..p.clone()
+    };
+    assert_eq!(older.reweighted(&unreadable, 0).weights, vec![1.0 / 3.0; 3]);
+
+    // At x = 3 the same vote is a strong contradiction but not a total one
+    // (e^−300 and e^−240): the update moves the weight to the draw that
+    // contradicts it least, by `w_s · p(y | θ_s)` renormalized, so the
+    // first draw keeps (0.7 / 0.3)·e^−60 of the second's.
+    let moved = p.reweighted(&against(3.0), 0).weights;
+    assert!((moved[1] - 1.0).abs() < 1e-12, "weights {moved:?}");
+    let ratio = moved[0] / moved[1] / ((0.7 / 0.3) * (-60.0f64).exp());
+    assert!((ratio - 1.0).abs() < 1e-9, "weights {moved:?}");
+    assert_eq!(moved[2], 0.0, "weights {moved:?}");
+}
+
 /// Every per-style summary is importance-weighted, as the crate's rule
 /// asks: between fits the draws stop being equally probable, and an
 /// unweighted mean or spread describes a posterior nobody holds. Checked
