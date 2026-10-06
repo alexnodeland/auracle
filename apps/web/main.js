@@ -23709,7 +23709,7 @@ function farmOverride() {
  *  the console and ignored (params.js `seedOverride`, which says why the
  *  page's own draws stay random). Read at boot, never saved. */
 function seedOverride() {
-  return bootParams.seedOverride(location.search);
+  return bootParams.seedOverride(location.search, (said) => console.warn(said));
 }
 
 /** Reload as a fresh start: Reset your taste and a booth's next visitor.
