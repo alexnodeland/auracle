@@ -296,9 +296,10 @@ fn fast_attacks_are_resolved_not_floored() {
 }
 
 /// The v1 stimulus, kept as a fixture: the phrase whose blind spots the
-/// v2 default exists to remove. The gates below assert both directions —
-/// that v2 discriminates, *and* that v1 could not, so the next person
-/// reading a failure knows what the segment is for.
+/// v2 default exists to remove. The test below prints what v1 measured
+/// beside what v2 does, so the next person reading a failure knows what the
+/// segment is for; it asserts only v2, because an `attack_s` that also
+/// resolved v1's short note would be a better measurement, not a broken one.
 fn v1_spec() -> PhraseSpec {
     use crate::phrase::Note;
     PhraseSpec {
@@ -363,13 +364,12 @@ fn slow_attacks_resolve_beyond_the_old_window() {
     let (v1, v2) = (v1_spec(), PhraseSpec::default());
     let v1_gap = attack_under(&v1, 0.82) - attack_under(&v1, 0.7);
     let v2_gap = attack_under(&v2, 0.82) - attack_under(&v2, 0.7);
-    assert!(
-        v1_gap.abs() < 0.05,
-        "v1 no longer saturates ({v1_gap:.3}) — this gate's premise moved"
-    );
+    // Context, not a claim: under v1 the two attacks measured within a few
+    // hundredths of each other (the window closed while both still rose).
+    println!("attack 0.7 → 0.82 moves attack_s by {v1_gap:.3} under v1, {v2_gap:.3} under v2");
     assert!(
         v2_gap > 0.10,
-        "v2 fails to separate slow attacks ({v2_gap:.3})"
+        "v2 fails to separate slow attacks ({v2_gap:.3}; v1 moved {v1_gap:.3})"
     );
     // And the axis stays monotone through the newly-resolved range.
     let (a, b, c) = (
