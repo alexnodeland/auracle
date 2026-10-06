@@ -141,11 +141,13 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
   const restores = await app.sentCount("edit_set_tree");
   await page.keyboard.press("Control+z");
   await expect(page.locator("#toasts .toast-msg")).toHaveText("Nothing to undo here. PATCH edits undo in PATCH.", { timeout: 1_500 });
-  // Pressed again, it is said once, not queued twice.
+  // Pressed again, it still sends no edit undo. That it is said once, the
+  // second taking the first's place rather than a turn behind it, is the
+  // lane's `replace` on a refusal (apps/web/tests/toasts.test.mjs); the lane
+  // keeps a waiting toast out of the page, so a count here could not see it.
   await page.keyboard.press("Control+z");
   await app.quiet();
   expect(await app.sentCount("edit_set_tree"), "⌘Z in EVOLVE sent an edit undo").toBe(restores);
-  expect(await page.locator("#toasts .toast").count()).toBe(1);
 
   // Back in PATCH the edit is still there, and ⌘Z there does undo it.
   await goLevel(page, "patch");
