@@ -78,6 +78,7 @@ make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
+make worker-test    # the engine worker in Node against pkg/, no page: its replies and lanes
 make coverage       # the Rust's coverage from the fast tier: each crate's floor, every changed line
 make mutants DIFF=1 # mutation testing of the Rust you changed: would a test notice it broken?
 ```

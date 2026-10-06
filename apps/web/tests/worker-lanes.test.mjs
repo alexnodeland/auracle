@@ -1,8 +1,9 @@
 // The worker's lanes, read out of worker.js itself. Run: node --test apps/web/tests
 //
-// worker.js is not a module a test can import (it boots an engine on load),
-// so this lifts `laneOf` and `blocked` out of its source and runs them as
-// written, beside a model of how the worker serves its lanes: every `now`
+// worker.js boots an engine on load: tests/worker runs it whole, over the
+// built engine (`make worker-test`). This needs no engine and runs in
+// milliseconds: it lifts `laneOf` and `blocked` out of its source and runs
+// them as written, beside a model of how the worker serves its lanes: every `now`
 // request first, in arrival order, then the first `soon` (then `later`)
 // request that is not blocked. That model is `serveNow` and `nextLong`.
 // The rule for a request that arrives while a long job holds the floor runs

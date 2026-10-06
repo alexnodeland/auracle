@@ -21,6 +21,7 @@ this table.
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint below | Any JS |
 | Spec lint | `make spec-lint` (in `make web-check`; needs `npm ci` in `tests/web`) | ESLint over `tests/web` (`eslint.config.mjs`): the Playwright plugin's recommended rules (no fixed wait, no missing `await`, web-first assertions, no assertion in a branch) and the house rules (the fixture, not `@playwright/test`; no `pageerror` listener of a spec's own; no clock on the runner; no `expect(await …)` straight after an action; a duration bound only as a budget, [ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md); `window.__aur` only through named helpers). No file's count of a rule moves from `tests/web/eslint-suppressions.json` unrecorded: a rise fails, a fall is recorded with `--prune-suppressions`; against the merge base with `BASE` the file itself gains nothing (no count up, no new entry, no key for a file that is gone: `suppressions.mjs`); the lint's own tests pass (`eslint.test.mjs`) ([`tests/web/AGENTS.md` § The lint](../../tests/web/AGENTS.md#the-lint)) | Any change in `tests/web` (the after-edit hook lints a file there as it is edited) |
+| Worker protocol | `make worker-test` (after `make wasm`) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
@@ -40,6 +41,52 @@ this table.
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
 | φ | `make revalidate` (both sides, diff), then `make perform-wirings`, then `cargo run -p auracle-features --example file_phi --release` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ; `FILE_MASKED` still names what a recording cannot measure (the mask gate test fails until it does) | Any φ, phrase, vetting or normalization change |
 | Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
+
+## The levels
+
+A behaviour is tested once, at the lowest level that can prove it (#178):
+
+| Level | Proves | Where |
+| --- | --- | --- |
+| Rust unit | One module's logic | The module's crate (`make test-crate`) |
+| Rust engine | Engine behaviour through the crates' public API: the pool, duels, fits, walks, offers, names, persistence | The crates (`make test`) |
+| Wasm binding | Only what the binding adds: shapes, errors, `u64` at the boundary | `crates/auracle-wasm` |
+| Worker protocol | A message to `worker.js` and its reply, its lanes and its scheduling, with no page | `tests/worker/` (`make worker-test`) |
+| JS unit | Pure logic in an `apps/web` module | `apps/web/tests/` (`make web-check`) |
+| Browser | The wiring from a gesture to the engine and back, and what a player sees and hears: one spec for each wiring, not one for each engine case | `tests/web/` |
+
+**The worker-protocol level.** `tests/worker/harness.mjs` runs
+`apps/web/worker.js`, unchanged, as the module worker `main.js` starts, in a
+Node `worker_threads` thread over the built engine in `apps/web/pkg`. It
+gives the worker what a Web Worker has and Node does not (`self` with
+`postMessage`, `onmessage` and `location`, the `unhandledrejection` event, a
+`fetch` of the app's own files), compiles the wasm in the thread and hands
+it to `init` as main does, and answers `farm_want` with no crew, as
+`?farm=0` does. A test boots it (`workerFor`), sends what main sends (`send`
+returns the replies that answer a request; `post`, `reply`, `until`) and
+reads the thread's timeline (`trace`): every call the worker makes into
+`WasmEngine`, in order with the messages it took and posted, noted from
+outside on the glue's class. A request can be posted while a given engine
+call runs (`post`'s `during`), as one of main's arrives mid-render, so a
+lane rule is an order of events on one thread, and a slow machine makes it
+slower, never wrong. A farm is ports the test holds (`fakeCrew`): what
+reaches a farm worker, and in what order, is what its port heard. Replies
+are matched to requests by type and by what they echo (`req`, `token`,
+`id`) until every reply names its request.
+
+It has no page, no Web Audio or AudioWorklet, no media stream, no
+IndexedDB (the face store is off) and no `farm.js`: what needs them stays in
+the browser. A behaviour that moves here leaves its spec a check of the
+page's wiring, or nothing where another spec already holds that.
+`apps/web/tests/worker-lanes.test.mjs` and `worker-perform-replies.test.mjs`
+still lift the worker's functions over a stub engine: milliseconds, and an
+engine that traps on demand.
+
+| File | Pins |
+| --- | --- |
+| `tests/worker/lanes.test.mjs` | A request posted during PERFORM's measurement, during the guess's renders, or during a spare offer's steps (a pick) is handed to the worker when the call in progress ends, before any other engine call, and answered before the job's next one; leaving the patch (`retire`) drops the spare at that breath, with no further step; with no crew the guess ranks the likeliest eight |
+| `tests/worker/background.test.mjs` | A measurement nobody waits on (`bg`) gives way to a cable probe asked for during it and finishes after it, where PERFORM's own keeps the floor; a measurement `retire` demoted is the player's again after `promote`, landing before a drift asked for after it, and without `promote` the drift lands first; an Offer asked for while the guess waits for its crew begins before the guess renders anything |
+| `tests/worker/farm.test.mjs` | A capture hands every farm worker standing the phrase with the clip, and `farmResent` counts them; a restore of a session saved with a captured clip hands boot's crew that phrase before the first of the bank's renders |
 
 ## CI tiers
 
@@ -504,7 +551,10 @@ from it ([Rules](#rules)).
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
   boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
-  about 28% of the fast tier's test time).
+  about 28% of the fast tier's test time). What the engine worker answers,
+  and in what order, is a worker-protocol test (`tests/worker/`,
+  [The levels](#the-levels)), not a spec that boots the app to read
+  `app.reply`.
 - **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named

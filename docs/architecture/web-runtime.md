@@ -175,8 +175,13 @@ drag that made it (#174, #182), and an unplug's tree in the voices 2.2 to
 2.9 s after the click (#176), each behind one call. The rule is held by
 `apps/web/tests/worker-lanes.test.mjs`, which runs the worker's own
 `yieldToQueue`, `serveNow`, `breathe`, `holdFloor`, `guessRun` and
-`measure`: a request posted during a render is delivered at the job's next
-breath and answered before the next render.
+`measure` over a stub engine: a request posted during a render is delivered
+at the job's next breath and answered before the next render. And end to
+end by `tests/worker/lanes.test.mjs`, which runs `worker.js` itself over the
+built engine and posts the request while a given engine call runs: during
+PERFORM's measurement, the guess's renders and a spare offer's steps, the
+request is handed over when that call ends, before any other, and answered
+before the job's next one.
 
 ### Offers and drifts are jobs
 
