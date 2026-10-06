@@ -1150,6 +1150,31 @@ impl TastePosterior {
         (self.summarize_values(&us), resp)
     }
 
+    /// Posterior mean and std of the utility's slope along a direction `d`
+    /// at the candidate `phi`: how much the model's rating moves per unit
+    /// moved along `d`, starting from that sound. PERFORM's lean on a
+    /// control is this along the control's direction (`Engine::lean` in
+    /// `auracle-session`).
+    ///
+    /// The utility is a max of experts, `u(φ) = max_k θ_k·φ`, so it is
+    /// piecewise linear and its slope along `d` at `φ` is `θ_k·d` for the
+    /// lens `k` that claims `φ`. The lens is chosen **per draw**
+    /// ([`TasteSample::best_style`]: at a tie, the lens
+    /// [`Self::responsibilities`] counts), so a draw in which another lens
+    /// rates this sound highest answers with that lens's slope. That makes
+    /// it the slope near this sound, not along the whole of a direction: a
+    /// move far enough can hand the sound to another lens. Which lens a draw
+    /// names does not depend on how its lenses are labelled, so this needs
+    /// no alignment. Weighted by the importance weights, as every summary
+    /// here is.
+    ///
+    /// `d` is over φ's own coordinates, as `phi` is (`cfg.n_features` of
+    /// each: the callers' contract, as for every utility here). A unit `d`
+    /// gives the slope in utility per σ moved.
+    pub fn slope(&self, phi: &[f64], d: &[f64]) -> (f64, f64) {
+        self.summarize(|s| dot(&s.theta[s.best_style(phi)], d))
+    }
+
     fn summarize(&self, f: impl Fn(&TasteSample) -> f64) -> (f64, f64) {
         let us: Vec<f64> = self.samples.iter().map(f).collect();
         self.summarize_values(&us)
