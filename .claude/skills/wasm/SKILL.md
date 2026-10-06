@@ -26,18 +26,34 @@ current.
 
 ```bash
 make wasm          # wasm-pack --release with the 8 MB stack, then the build stamp
+make pkg-reuse     # in a worktree that changed no Rust: the main checkout's build, in a second
+make wasm-dev      # a quick build for trying an engine edit by hand; the specs refuse it
 ```
 
 If it stops with "failed to download … binaryen", the proxy is in the way of
 wasm-pack's own downloader: `docs/runbooks/wasm-opt-download.md` (fetch the
-same release with curl and put it on `PATH`; never disable wasm-opt).
+same release with curl and put it on `PATH`; never disable wasm-opt in the
+release build).
 
 - Always through `make`: it sets `WASM_STACK`. A plain `wasm-pack build` ships
-  a 1 MB stack that overflows on large patches.
-- It takes about a minute. Run it before queueing browser work, not while a
-  recording is running.
+  a 1 MB stack that overflows on large patches, and leaves no stamp.
+- It takes about a minute (more with every crate to compile). Run it before
+  queueing browser work, not while a recording is running.
+- **`make pkg-reuse`** copies the main checkout's release build into a
+  worktree and stamps it with the worktree's own app scripts, when
+  `pkg/build.json` says it was built from the same Rust and build command
+  (its `source`, a hash of `crates/`, the Cargo files and the toolchain as
+  the working tree has them, uncommitted edits included). Otherwise it says
+  why, and `make wasm` builds one. `PKG_FROM=<dir>` takes another
+  checkout's.
+- **`make wasm-dev`** builds with test-fast's codegen (no LTO, 16 codegen
+  units), incremental, and no wasm-opt: an engine edit reaches `make serve`
+  in seconds rather than a minute. Its stamp says `"profile": "dev"`, and the
+  `make browser-*` targets, the Playwright config, rehearsals and recordings
+  refuse it, naming `make wasm`; the session-start hook reports it.
 - After a **JS-only** change, `make -s wasm-stamp` refreshes the build stamp
-  so browsers refetch the changed scripts.
+  so browsers refetch the changed scripts. It keeps the stamp's profile and
+  source: the engine is the same.
 
 ## Then
 

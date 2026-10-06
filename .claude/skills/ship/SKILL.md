@@ -53,11 +53,17 @@ edit the body to fill the template's sections.
 git -C "$REPO" fetch -q origin
 git -C "$REPO" worktree add -q -b claude/<topic> "$WT" origin/main
 (cd "$WT/tests/web" && npm ci --no-audit --no-fund)
+make -C "$WT" pkg-reuse || nice -n 10 make -C "$WT" wasm
 ```
 
-The last line installs `tests/web`'s packages in the new worktree
+The third line installs `tests/web`'s packages in the new worktree
 (`node_modules` is per checkout): without them `make web-check` stops at the
-specs' lint, and the after-edit hook does not lint a spec.
+specs' lint, and the after-edit hook does not lint a spec. The last gives it
+an engine: the main checkout's release build, copied in about a second, when
+it was built from the same Rust (`make pkg-reuse` compares the two, and says
+why not when it can't); otherwise a build of its own (about a minute, more
+with every crate to compile). A builder that changes Rust builds again with
+`make wasm`.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,

@@ -42,6 +42,8 @@ while [ $# -gt 0 ]; do
 done
 cd "$ROOT/www/video"
 if [ "$REC" = 1 ]; then
+  # On the release engine (footage.mjs refuses a make wasm-dev build too).
+  python3 "$ROOT/scripts/wasm_pkg.py" check
   tools/one_browser.sh node tools/footage.mjs "$F" ${SHOTS[@]+"${SHOTS[@]}"} 2>&1 | tee "out/$F/record.log" | grep -v '^\s*$' | tail -40
 fi
 python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"

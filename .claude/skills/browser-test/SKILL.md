@@ -14,13 +14,16 @@ in `docs/architecture/testing.md`.
 ## Run
 
 ```bash
-make wasm                  # only if Rust the app calls changed (see the wasm skill)
+make wasm                  # only if Rust the app calls changed (see the wasm skill);
+                           # in a fresh worktree, `make pkg-reuse` may take the main checkout's
 cd tests/web
 AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
   npx playwright test <spec.js ...> --reporter=line > <scratch>/run.log 2>&1
 grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
 ```
 
+- **The release engine.** A `make wasm-dev` build is refused (by the
+  config, before a browser starts): its times are not the app's.
 - **Own port** (`AURACLE_TEST_PORT`), always from a worktree, and whenever
   another server may be on `:8642`. A branch's brief gives it one (8771 and
   up); set in the environment, it reaches `make browser-changed`,

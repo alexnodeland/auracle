@@ -146,6 +146,20 @@ if (!film || film.startsWith("--")) {
   console.error("usage: footage.mjs FILM [--shot ID[,ID…]] [--dry]");
   process.exit(2);
 }
+// A recording, and the rehearsal that predicts it, run on the release engine:
+// a quick build (`make wasm-dev`: no LTO, no wasm-opt) keeps other times.
+{
+  let profile = "release";
+  try {
+    profile = JSON.parse(fs.readFileSync(path.join(ROOT, "apps/web/pkg/build.json"), "utf8")).profile || "release";
+  } catch {
+    /* no stamp: the app says there is no engine */
+  }
+  if (profile !== "release") {
+    console.error(`footage.mjs: apps/web/pkg is a ${profile} build (\`make wasm-dev\`), and rehearsals and recordings run on the release build: run \`make wasm\` first`);
+    process.exit(2);
+  }
+}
 const only = (() => {
   const i = process.argv.indexOf("--shot");
   return i > 0 ? new Set(process.argv[i + 1].split(",")) : null;

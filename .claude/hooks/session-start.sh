@@ -6,7 +6,7 @@ set -u
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$root" 2>/dev/null || exit 0
 
-# 1. Is the app's engine older than the Rust it is built from?
+# 1. Is the app's engine older than the Rust it is built from, or a dev build?
 wasm="apps/web/pkg/auracle_wasm_bg.wasm"
 if [ ! -f "$wasm" ]; then
   echo "apps/web/pkg has no built engine: run \`make wasm\` before serving the app or running browser tests."
@@ -15,6 +15,11 @@ else
   [ -n "$newer" ] || newer=$(find Cargo.lock Cargo.toml crates \( -name Cargo.toml -o -name Cargo.lock \) -newer "$wasm" 2>/dev/null | head -1)
   if [ -n "$newer" ]; then
     echo "apps/web/pkg is older than the Rust sources (e.g. ${newer%%$'\n'*}). If the change reaches the app, run \`make wasm\` before any browser test or film rehearsal."
+  fi
+  # A quick build (make wasm-dev) is for trying an engine edit by hand; the
+  # browser targets, the specs and the films refuse it.
+  if grep -qE '"profile": *"dev"' apps/web/pkg/build.json 2>/dev/null; then
+    echo "apps/web/pkg is a dev build (\`make wasm-dev\`): the browser tests, rehearsals and recordings refuse it. Run \`make wasm\` before them."
   fi
 fi
 

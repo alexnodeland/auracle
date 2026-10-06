@@ -50,7 +50,8 @@ contributor guide; this file does not repeat it.
    grammar suite. A hook enforces this.
 4. **Rebuild the wasm after Rust changes the app uses.** `apps/web/pkg` is
    generated and ignored by git: `make wasm`, then reload. A session-start hook
-   warns when it is older than the Rust sources.
+   warns when it is older than the Rust sources, or a quick `make wasm-dev`
+   build, which the browser specs and the films refuse.
 5. **Browser jobs take a ticket.** Run every browser job through
    `www/video/tools/one_browser.sh` (a first-come, first-served line):
    rehearsals and recordings get the machine to themselves, browser tests run
@@ -109,7 +110,8 @@ contributor guide; this file does not repeat it.
 | --- | --- |
 | A new machine (idempotent) | `make setup`; for the films `make film-setup` (`scripts/setup.sh --help`) |
 | Before any commit | `make check` (fmt, clippy `-D warnings`, `node --check`, the specs' lint, dev-check, wasm32 check, all Rust tests) |
-| After changing Rust the app calls | `make wasm` |
+| After changing Rust the app calls | `make wasm` (`make wasm-dev` to try it by hand in seconds; the specs and films refuse that build) |
+| An engine for a new worktree that changed no Rust | `make pkg-reuse` (the main checkout's build, when it was built from the same Rust; else it says to `make wasm`) |
 | Only JS changed | `make web-check` |
 | `worker.js`'s replies or lanes | `make worker-test` (after `make wasm`) |
 | One crate's tests | `make test-crate CRATE=auracle-<crate>` (`FILTER=` a test name) |

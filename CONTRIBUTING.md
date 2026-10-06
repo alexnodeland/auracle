@@ -76,6 +76,7 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 make check          # fmt + clippy -D warnings + node --check + the specs' lint + dev-check + wasm32 check + tests (CI gate)
 make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
+make wasm-dev       # a quick engine build for trying a Rust change by hand (the browser specs refuse it)
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
 make worker-test    # the engine worker in Node against pkg/, no page: its replies and lanes
