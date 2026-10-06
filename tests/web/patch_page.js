@@ -13,7 +13,7 @@ const { goLevel, bankTab } = require("./shell");
 
 /** PATCH, with the preset `name` opened from PRESETS and its rack drawn and
  *  at rest (`rackAtRest`): the camera travels from the last sound's fit to
- *  this one's, and the seeded boot's sound has fifteen modules, so a press
+ *  this one's, and the seeded boot's sound has fourteen modules, so a press
  *  aimed at a plate, or a size read, mid-way is aimed or read at a zoom
  *  between the two. The open is a render behind whatever the engine is
  *  doing: an engine wait. */
