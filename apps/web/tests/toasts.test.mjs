@@ -484,7 +484,8 @@ test("trim: past three refusals waiting it cuts the oldest refusal, never a rema
   for (const r of ["refused 1", "refused 2", "refused 3"]) l.say(r, { urgent: true });
   assert.deepEqual(l.waiting(), ["refused 2", "refused 1", saved]);
   // A fourth refusal makes four waiting before it takes the screen: the trim
-  // has only refusals to cut among them, and takes the one at the back.
+  // has only refusals to cut among them, and takes the last refusal, passing
+  // over the remark about the player's sounds behind it.
   l.say("refused 4", { urgent: true });
   assert.deepEqual(l.waiting(), ["refused 3", "refused 2", saved]);
   l.wait(NEVER);

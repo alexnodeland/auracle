@@ -1138,13 +1138,15 @@ A toast that reports a change to the player's sounds (`bank: true`: a sound
 joined or left the pool, or was saved or released) has its turn whatever
 comes after it, since for a replaced sound it is the only place the sound is
 named (#129, #183). It is never dropped for its age; the cut neither takes
-it nor counts it among the three, so a burst of them each shows in turn; a
-later toast on its `replace` key does not take its place, and waits its turn
-at the back when it has no other toast on that key to replace; and a refusal
-on its key interrupts it as it would any toast, rather than removing it. It
-still takes the place of an earlier toast on its own key that is not one of
-these (the warm start's result, a keep's after its reveal). Its caller can
-still take it down when what it says stops being true (an undone cut).
+it nor counts it among the three, so a burst of them each shows in turn, and
+holds the lane until each has had its window (eight cuts in a row are about
+a minute of toasts); a later toast on its `replace` key does not take its
+place, and waits its turn at the back when it has no other toast on that key
+to replace; and a refusal on its key interrupts it as it would any toast,
+rather than removing it. It still takes the place of an earlier toast on its
+own key that is not one of these (the warm start's result, a keep's after
+its reveal). Its caller can still take it down when what it says stops being
+true (an undone cut).
 
 The queue is `apps/web/toasts.js` (`createToastLane`, unit-tested in
 `apps/web/tests/toasts.test.mjs`); read its rules before adding a toast.
