@@ -6161,6 +6161,37 @@ html.handheld .handheld-gate {
 }
 .pf-k-wait:empty { display: none; }
 .pf-knob.waiting .pf-k-sub { visibility: hidden; }
+/* The model view's lean on a control (perform.js `paintLean`): which way your
+   taste leans along it at the sound in hand, an arc from 12 o'clock toward
+   the end it leans to, just outside the ring, its interval behind it, and
+   the model's words over the line under the control in place of the
+   caption. Amber, the model's colour. A guess (its interval crosses zero)
+   is dashed and faint with its interval at full strength (their opacities
+   are taste-geom's `pullMark`, set on the paths). Only under the model view,
+   and only once the engine has a lean: before the first fit nothing. */
+.pf-k-lean { display: none; }
+body.model-view .pf-knob.leaning .pf-k-lean { display: inline; }
+.pf-k-lean-iv { fill: none; stroke: var(--phos-b); stroke-width: 1; stroke-linecap: round; }
+.pf-k-lean-bar { fill: none; stroke: var(--phos-b); stroke-width: 2.5; stroke-linecap: round; }
+.pf-k-lean-cut { stroke: var(--phos-b); stroke-width: 1.5; stroke-linecap: round; }
+.pf-k-lean-at { fill: var(--phos-b); }
+.pf-knob.lean-guess .pf-k-lean-bar { stroke-dasharray: 3 3; stroke-linecap: butt; }
+.pf-knob.lean-guess .pf-k-lean-at { fill: none; stroke: var(--phos-b); stroke-width: 1; }
+.pf-k-leanw {
+  position: absolute;
+  inset: 0 0 auto 0;
+  display: none;
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-body);
+  line-height: 1.3;
+  text-align: center;
+  color: var(--phos-b);
+}
+.pf-knob.lean-guess .pf-k-leanw { color: var(--phos-b-dim); }
+body.model-view .pf-knob.leaning .pf-k-leanw { display: block; }
+body.model-view .pf-knob.leaning .pf-k-sub,
+body.model-view .pf-knob.leaning .pf-k-wait { visibility: hidden; }
 
 /* The palette: a panel over the deck, never a modal; a sheet on a narrow
    screen. Among the popovers on the ladder above (40–45). */

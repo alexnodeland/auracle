@@ -2421,6 +2421,8 @@ worker.onmessage = (e) => {
       // The styles under the reweighted draws, for LEARNING's bars and its
       // replay: answered in the worker's `later` lane.
       if (m.ratings) send({ type: "styles" });
+      // …and PERFORM's lean on each control, under the model view.
+      if (m.ratings && perform) perform.posteriorChanged();
       // The engine took nothing: the patch left the pool between the gesture
       // and the end of its undo window. The UI has already acted as if the
       // vote were taken — put that back, and say so.
@@ -2464,6 +2466,7 @@ worker.onmessage = (e) => {
       // pair on the table asked again under the model just fitted.
       shell.modelTagChanged();
       askPairGuess();
+      if (perform) perform.posteriorChanged();
       refreshInstruments();
       scheduleSave();
       // A sixth pick made while this fit ran was told a redraw was coming;
@@ -4938,6 +4941,8 @@ async function bootPerform() {
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,
+    // The model view is up (shell.js): PERFORM draws each control's lean.
+    modelOn: () => modelOn,
     // Another patch is on its way to the bench: PERFORM holds a measurement
     // of the one in hand, which is about to be replaced.
     opening: () => openingNow(),
@@ -21473,7 +21478,9 @@ function styleName(s, k) {
 // - PATCH: each plate's family lean (`paintLeans`), the belief line in the
 //   subtitle (`renderBelief`, CSS) and what the model makes of the selection
 //   in the readout (`renderSpecDock`);
-// - PERFORM: nothing per control, until the engine exposes a control's lean.
+// - PERFORM: each control's lean, which way your taste leans along it at the
+//   sound in hand (`perform.modelViewChanged`, `perform_lean`), asked when
+//   the view comes up over PERFORM and again when the posterior moves.
 function modelViewChanged(on) {
   modelOn = on;
   flipBank(() => renderBank());
@@ -21485,6 +21492,7 @@ function modelViewChanged(on) {
   paintRackFacts();
   patchView.modelViewChanged();
   renderSpecDock();
+  if (perform) perform.modelViewChanged(on);
 }
 /** Redraw the bank, and let each row that moved glide from where it was.
  *  Under reduced motion (`motionMs` 0) the rows are simply in their places. */
