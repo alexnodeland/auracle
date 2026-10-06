@@ -18,8 +18,8 @@
 - **Esc closes the nearest thing first at every level, and a tapped model
   view goes last.** In PATCH one press closed one thing and the view
   outlasted it, but elsewhere the same press that put PERFORM's XY or How
-  it works away, closed the ? card, the scope or picture panel, or a
-  sound's card on TASTE's map also ended the view. After a press on HOW IT
+  it works away, folded a bank row's ★, closed the ? card, the scope or
+  picture panel, or a sound's card on TASTE's map also ended the view. After a press on HOW IT
   WORKS, Esc didn't put the face back at all (`model_view_esc.spec.js`,
   #153).
 - **Under the model view, a new patch's subtitle and sound A's in TEACH

@@ -5,8 +5,9 @@
 // is model_view.spec.js's; here, the closers outside it that once let the
 // same press end the view too: PERFORM's well modes (XY, How it works), the
 // ? card, the scope panel, the picture panel and TASTE's selected point; and
-// with two open (KEYS ⋯ over PERFORM's XY), a press closes the nearer only.
-const { test, expect, modelView, openKeys } = require("./fixtures");
+// with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY), a press closes
+// the nearer only.
+const { test, expect, modelView, openKeys, bankTab } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
   await app.boot();
@@ -30,6 +31,18 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
   await escCloses(() => expect(page.locator("#keys-pop")).toBeHidden(), "KEYS ⋯");
   await expect(well).toHaveAttribute("data-mode", "xy");
   await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "PERFORM's XY");
+  // A bank row's ★ folded out over XY is nearer: that press folds it, and XY
+  // stays for the next.
+  await bankTab(page, "pool");
+  await page.locator(".pf-xy-btn").click();
+  await expect(well).toHaveAttribute("data-mode", "xy");
+  const row = page.locator("#bank-list .bank-item[data-id]").first();
+  await row.hover();
+  await row.locator(".bi-star").click();
+  await expect(row).toHaveClass(/\brating\b/);
+  await escCloses(() => expect(row).not.toHaveClass(/\brating\b/), "a bank row's ★");
+  await expect(well, "the press that folded the ★ left XY up").toHaveAttribute("data-mode", "xy");
+  await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "PERFORM's XY, after the ★");
   await page.locator(".pf-why-btn").click();
   await expect(well).toHaveAttribute("data-mode", "how");
   await escCloses(() => expect(well).toHaveAttribute("data-mode", "face"), "How it works");

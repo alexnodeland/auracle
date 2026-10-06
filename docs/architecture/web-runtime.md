@@ -93,8 +93,8 @@ view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
 (Esc any view, held or tapped, once nothing nearer took the press: the shell
 hears Esc last, on the window in the bubble phase, and leaves a press a
 closer used, which says so with `preventDefault` or stops it on its way; at
-every level, PATCH's chain, PERFORM's well modes, the ? card, the scope and
-picture panels and TASTE's selected point among them). Main does the rest in
+every level, a bank row's ★, PATCH's chain, PERFORM's well modes, the ? card,
+the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
 - **The bank** redraws through `flipBank`: under the view, once fitted, the

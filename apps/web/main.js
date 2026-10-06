@@ -5588,10 +5588,13 @@ document.addEventListener("keydown", (e) => {
     // press: a menu or a waiting handoff closed is that press spent, and
     // PATCH's chain (selection, then the catalog) waits for the next one.
     const handoff = !!pendingTarget || !!connectPick;
+    // A bank row's ★, folded out where it is drawn: folding it is the press
+    // spent too, so PERFORM's XY or a tapped model view waits for the next.
+    const stars = ratingId != null && !!bankRowEl(ratingId)?.classList.contains("rating");
     cancelPending();
     endConnectPick();
-    foldStars(); // a bank row's ★, open
-    let spent = handoff;
+    foldStars();
+    let spent = handoff || stars;
     if (compareId != null) { closeCompare(); spent = true; }
     if (!$("lineage-pop").classList.contains("hidden")) {
       setLineageOpen(false);
