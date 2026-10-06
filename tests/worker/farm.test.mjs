@@ -13,7 +13,8 @@ import assert from "node:assert/strict";
 import { workerFor, fakeCrew } from "./harness.mjs";
 
 const SEED = 1;
-const TIMEOUT = 300_000;
+// A test that hangs fails here, well inside the CI job's limit.
+const TIMEOUT = 150_000;
 
 /** Six seconds of a tone on two channels, as AUDIO IN's capture sends it. */
 function capture(rate = 48_000) {

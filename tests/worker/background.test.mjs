@@ -13,7 +13,8 @@ import assert from "node:assert/strict";
 import { workerFor, callsBetween, outOf } from "./harness.mjs";
 
 const SEED = 1;
-const TIMEOUT = 300_000;
+// A test that hangs fails here, well inside the CI job's limit.
+const TIMEOUT = 150_000;
 
 async function treeOf(w, id) {
   const [r] = await w.send({ type: "tree_json", id });

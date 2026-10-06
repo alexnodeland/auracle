@@ -72,7 +72,10 @@ outside on the glue's class. A request can be posted while a given engine
 call runs (`post`'s `during`), as one of main's arrives mid-render, so a
 lane rule is an order of events on one thread, and a slow machine makes it
 slower, never wrong. A farm is ports the test holds (`fakeCrew`): what
-reaches a farm worker, and in what order, is what its port heard. Replies
+reaches a farm worker, and in what order, is what its port heard. Its
+workers render nothing: each render is answered as a draw that did not vet
+(`ok: false`), so a restore on that crew takes the worker's own
+`bank_render` path for every entry, never `bank_absorb`. Replies
 are matched to requests by type and by what they echo (`req`, `token`,
 `id`) until every reply names its request.
 

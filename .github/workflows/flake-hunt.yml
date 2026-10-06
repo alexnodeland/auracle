@@ -52,11 +52,12 @@ jobs:
   # minutes a shard, so the job limit leaves room for a slow runner. Four at a
   # time (`max-parallel`), in three rounds of about twenty minutes: it runs at
   # night beside Search health, which holds three runners for hours, and the
-  # speed budgets' two, so together they hold nine of the account's 20 and
-  # leave a PR's `CI` (16 at its widest) nearly all it needs. At eight wide
-  # the hunt would be over sooner but hold thirteen, and a PR pushed then
-  # would wait for runners. The Slow suite's nightly run (04:23 UTC, about
-  # twenty minutes) is over before this one starts (05:41 UTC).
+  # speed budgets' two, so together they hold nine of the account's 20, and a
+  # PR pushed then can wait for runners at its widest (slow-suite.yml counts
+  # the lanes'). At eight wide the hunt would be over sooner but hold
+  # thirteen, and a PR pushed then would wait for more. The Slow suite's
+  # nightly run (04:23 UTC, about twenty minutes) is over before this one
+  # starts (05:41 UTC).
   hunt:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine

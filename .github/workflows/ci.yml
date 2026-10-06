@@ -871,13 +871,15 @@ jobs:
   # apps/web, tests/worker or the engine: changed.mjs picks no spec for
   # worker.js (the smoke only), so this is the fast lane's real check of it.
   # In the full gate, always; on main, not again when the queue's run passed
-  # it on these files (the changes job).
+  # it on these files (the changes job). Its files run side by side and a
+  # test fails at 150 s, so the slowest file (three tests) is reported within
+  # eight minutes, before the job's limit.
   worker:
     name: Worker protocol
     needs: [changes, engine]
     if: needs.changes.outputs.worker == 'true' && needs.changes.outputs.reuse_worker != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

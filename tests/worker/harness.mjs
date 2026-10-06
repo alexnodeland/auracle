@@ -35,8 +35,10 @@ const GLUE = new URL("pkg/auracle_wasm.js", WEB).href;
 const V = "harness";
 
 /** How long a wait on the engine may take before the test fails: renders on
- *  a loaded runner, never a claim about speed. */
-export const ENGINE_MS = 180_000;
+ *  a loaded runner, never a claim about speed. The slowest whole test seen
+ *  took 66 s (at a load average of 115); under the tests' own 150 s, so a
+ *  wait that hangs names the reply it missed. */
+export const ENGINE_MS = 120_000;
 
 if (!isMainThread && workerData && workerData.auracleWorker) await host();
 
@@ -233,8 +235,11 @@ class EngineWorker {
 
   /** Send `msg` to the worker. With `during: { call, nth }` it is posted when
    *  the `nth` call (1 by default) of the engine's `call` from now begins,
-   *  and arrives once that call is over. Returns the count of replies so far,
-   *  a mark for `after`. */
+   *  and arrives once that call is over. It lands before `breathe`'s 1 ms
+   *  timer only when the armed call runs in a timer turn (`pump`, or a job
+   *  going on after `breathe`), as every call these tests arm does; a call
+   *  made inside a `now` request served on arrival can lose to that timer.
+   *  Returns the count of replies so far, a mark for `after`. */
   post(msg, { during, transfer } = {}) {
     const at = this.replies.length;
     if (during) {
