@@ -13,6 +13,8 @@
 1. `make wasm` (it also rewrites `apps/web/pkg/build.json`).
 2. Reload the app; `serve.py` sends no-store, and the build stamp changes the
    worker and wasm URLs, so the browser fetches the new binary.
-3. In a worktree, remember `pkg/` is per checkout: build it there too.
+3. In a worktree, remember `pkg/` is per checkout: build it there too
+   (`make pkg-reuse` takes the main checkout's when it was built from the
+   same Rust, and says so when it wasn't).
 4. Re-run the browser test on its own port (`AURACLE_TEST_PORT`), so it is
    not served by another checkout.
