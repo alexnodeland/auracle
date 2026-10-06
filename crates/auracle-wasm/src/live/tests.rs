@@ -719,9 +719,8 @@ fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
     .unwrap();
     let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
     poly.note_on(60, 1.0);
-    let mut before = 0.0;
     for _ in 0..20 {
-        before = energy(&poly.process(128));
+        let _ = poly.process(128);
     }
     let phase_before = poly.voices[0].voice.env_phase();
     assert!(
@@ -750,7 +749,6 @@ fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
         poly.voices[0].voice.env_phase() > phase_after * 1.2,
         "the envelope stopped rising after the swap"
     );
-    let _ = before;
 }
 
 /// The two categorical sites that went live are reachable through the live
