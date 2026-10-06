@@ -381,9 +381,9 @@ another). `make coverage-report` runs the gate again without the tests, and
 **Codecov, a view.** The gate is `scripts/coverage_gate.py`, above, and
 nothing else. Codecov (`codecov.yml`) shows coverage on a PR and over time
 on `main`, and never holds up a merge: its project and patch statuses are
-informational, and each upload is a step that cannot fail its job
-(`continue-on-error`, in `.github/actions/codecov`). Three lcovs go up, one
-flag each:
+informational, and each upload is a step that cannot fail its job (each
+calls `.github/actions/codecov` with `continue-on-error` and a three-minute
+limit). Three lcovs go up, one flag each:
 
 | Flag | From | Measures |
 | --- | --- | --- |
