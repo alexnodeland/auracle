@@ -405,12 +405,18 @@ where
         self.left -= 1;
         let mut rng = rng;
         let rng = &mut rng;
-        if let Some(cand) = self.propose(rng) {
+        // Metropolis on the target's weight; a proposal that cannot be made
+        // (see `propose`) is no move, like one refused.
+        let scored = self.propose(rng).map(|cand| {
             let nw = self.model.score(&cand).1.total_log_weight();
-            if nw.is_finite() && (nw >= self.w || rng.gen::<f64>().ln() < nw - self.w) {
-                self.cur = cand;
-                self.w = nw;
-            }
+            (cand, nw)
+        });
+        let w = self.w;
+        if let Some((cand, nw)) =
+            scored.filter(|(_, nw)| nw.is_finite() && (*nw >= w || rng.gen::<f64>().ln() < nw - w))
+        {
+            self.cur = cand;
+            self.w = nw;
         }
     }
 
