@@ -1059,7 +1059,13 @@ fn tail_report(seeds: &[u64]) {
         "steps", "landed", "rate", "beat parent", "rate"
     );
     let shipped = SessionConfig::default().refine_steps;
-    for steps in [shipped / 2, shipped, 2 * shipped, 4 * shipped] {
+    let budgets = [shipped / 2, shipped, 2 * shipped, 4 * shipped];
+    // Each budget's (landed, beat parent, tries) per seed, in seed order:
+    // the per-seed rows below are what two runs (two arms of a change) are
+    // paired on, seed for seed, since the totals pool seeds that share a
+    // pool across every budget.
+    let mut by_seed: Vec<Vec<(usize, usize, usize)>> = Vec::new();
+    for steps in budgets {
         let rs: Vec<(usize, usize, usize)> = std::thread::scope(|s| {
             let hs: Vec<_> = seeds
                 .iter()
@@ -1079,8 +1085,22 @@ fn tail_report(seeds: &[u64]) {
             format!("{i}/{t}"),
             100.0 * i as f64 / t.max(1) as f64,
         );
+        by_seed.push(rs);
     }
     println!("(* = shipped SessionConfig::refine_steps)");
+    println!("\nbeat parent, per seed (of each seed's tries), by steps:");
+    print!("{:<8}", "seed");
+    for steps in budgets {
+        print!(" {steps:>5}");
+    }
+    println!();
+    for (k, seed) in seeds.iter().enumerate() {
+        print!("{seed:<8x}");
+        for row in &by_seed {
+            print!(" {:>2}/{:<2}", row[k].1, row[k].2);
+        }
+        println!();
+    }
 }
 
 fn main() {
