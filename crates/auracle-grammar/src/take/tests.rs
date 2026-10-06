@@ -180,3 +180,83 @@ fn a_corrupt_take_loads_the_patch_with_the_take_empty() {
     assert!(!serde_json::to_string(&back).unwrap().contains("\"take\""));
     assert!(compile(&back, SR).is_ok());
 }
+
+/// A saved take that claims no samples (and holds none) loads as the empty
+/// take: a file written as `length: 0` rather than `null` is still
+/// nothing recorded, and not a refusal.
+#[test]
+fn a_saved_take_of_no_samples_loads_empty() {
+    let saved = SavedTake {
+        format: TAKE_FORMAT.into(),
+        sample_rate: 48_000.0,
+        length: 0,
+        data: String::new(),
+    };
+    let t = Take::from_saved(&saved).expect("an empty take is a take");
+    assert!(t.is_empty() && t.unreadable().is_none());
+}
+
+/// Data of the right length whose padding is wrong is refused, not read
+/// short: four samples are sixteen bytes, twenty-four characters with two
+/// `=`; the same characters with the padding written as data decode to
+/// eighteen bytes, and padding in the middle decodes to nothing.
+#[test]
+fn data_padded_wrong_is_refused() {
+    let take = Take::from_samples(&[0.25, -0.5, 0.75, -1.0], 48_000.0).unwrap();
+    let good = take.to_saved().unwrap();
+    assert!(good.data.ends_with("=="), "{}", good.data);
+    let with = |data: String| SavedTake {
+        data,
+        ..good.clone()
+    };
+    assert_eq!(Take::from_saved(&good).unwrap(), take);
+    let unpadded = with(good.data.replace('=', "A"));
+    assert_eq!(Take::from_saved(&unpadded), Err(TakeError::Data(4)));
+    let mid = with(format!("====={}", &good.data[5..]));
+    assert_eq!(Take::from_saved(&mid), Err(TakeError::Data(4)));
+}
+
+/// The take's codec is standard base64: it round-trips every length, and
+/// refuses text that is not whole quads, holds a character outside the
+/// alphabet, or pads anywhere but the end and by more than two.
+#[test]
+fn the_codec_is_base64_and_refuses_what_base64_is_not() {
+    for n in 0..12u8 {
+        let bytes: Vec<u8> = (0..n)
+            .map(|i| i.wrapping_mul(97).wrapping_add(13))
+            .collect();
+        let text = base64::encode(&bytes);
+        assert_eq!(text.len(), bytes.len().div_ceil(3) * 4);
+        assert_eq!(base64::decode(&text), Some(bytes), "{n} bytes");
+    }
+    // RFC 4648's own vectors.
+    assert_eq!(base64::encode(b"foobar"), "Zm9vYmFy");
+    assert_eq!(base64::encode(b"fo"), "Zm8=");
+    assert_eq!(base64::decode("Zm8="), Some(b"fo".to_vec()));
+    for bad in ["Zm8", "Zm9vY", "Zm*=", "Z===", "Zm8=Zm8=", "=m8A"] {
+        assert_eq!(base64::decode(bad), None, "{bad}");
+    }
+}
+
+/// A take printed with `{:?}` (inside any term that holds one) says what it
+/// is, not what it holds: its length and rate, and why when it could not
+/// be read, never the samples.
+#[test]
+fn a_take_prints_what_it_is_not_what_it_holds() {
+    let take = Take::from_samples(&awkward(300), 48_000.0).unwrap();
+    assert_eq!(
+        format!("{take:?}"),
+        "Take { samples: 300, sample_rate: Some(48000.0) }"
+    );
+    assert_eq!(
+        format!("{:?}", Take::empty()),
+        "Take { samples: 0, sample_rate: None }"
+    );
+    let lost: Take = serde_json::from_str("5").unwrap();
+    let shown = format!("{lost:?}");
+    assert!(
+        shown.starts_with("Take { samples: 0, sample_rate: None, unreadable: \"")
+            && shown.contains("not a saved take"),
+        "{shown}"
+    );
+}
