@@ -4559,3 +4559,130 @@ fn a_session_saved_mid_generation_reloads_over_size_and_is_trimmed() {
     assert!(back.find(saved).is_some(), "a saved sound was trimmed");
     assert_eq!(back.retired(), &gone[..]);
 }
+
+/// **A restore mends what it can, and says what it mended.** A saved knob
+/// outside its range loads clamped and counts as a repaired term; an
+/// implicit event's φ with a bounded coordinate out of range is pulled back
+/// into it and counts as a repaired cell, once per side; a sound held for an
+/// unreadable take is reported as held, not also as repaired, though the
+/// clamp mended it too.
+#[test]
+fn a_restore_mends_what_it_can_and_says_what_it_mended() {
+    let (engine, id, _) = capture_only_engine();
+    let names = phi_names();
+    let at = names
+        .iter()
+        .position(|n| n == "amp_attack")
+        .expect("φ has it");
+    let mut poisoned = vec![0.5; names.len()];
+    poisoned[at] = 1e30;
+    let (mut saved, _) = with_corrupt_take(&engine, id);
+    for e in saved["bank"].as_array_mut().unwrap() {
+        e["tree"]["amp"]["attack"] = 5.0.into();
+    }
+    saved["events"] = serde_json::json!([{
+        "kind": "revert", "id": 0, "value": 1.0, "session": 0, "detail": "",
+        "phi_before": poisoned, "phi_after": poisoned,
+    }]);
+    let state: SessionState = serde_json::from_value(saved).unwrap();
+    let back = restore(&engine, state);
+    assert_eq!(back.held().len(), 1, "the unreadable take was not held");
+    let mended = back.pool.len();
+    assert_eq!(
+        back.repair_report(),
+        (mended, 2, 0),
+        "each pool member clamped once, the held one not, both event sides"
+    );
+    assert!(back
+        .pool
+        .iter()
+        .all(|c| c.tree.domain_violations().is_empty()));
+    let ev = &back.export_state().events[0];
+    assert!(ev.phi_before[at] <= 1.0 && ev.phi_after[at] <= 1.0);
+}
+
+/// **A clip the listeners cannot be measured with leaves them as they
+/// were, and says which.** A clip just above the level a clip must have to
+/// be heard is a clip, but a patch that plays it only while its notes sound
+/// renders it below the level a sound must have: the vet refuses it, and
+/// that member keeps the measurement it had and is reported unmeasured; it
+/// is never deleted.
+#[test]
+fn a_clip_a_listener_cannot_be_measured_with_leaves_it_as_it_was() {
+    let (mut engine, listens, deaf) = listening_engine();
+    let spec = engine.cfg.phrase.clone();
+    let faint: Vec<f32> = (0..spec.total_samples())
+        .map(|i| {
+            let t = i as f64 / spec.sample_rate;
+            (1.5e-4 * (std::f64::consts::TAU * 220.0 * t).sin()) as f32
+        })
+        .collect();
+    let clip = auracle_features::AuditionClip::from_interleaved(&faint, 1, spec.sample_rate, &spec)
+        .expect("a faint clip is still heard");
+    let before = engine.pool[engine.find(listens).unwrap()].features.phi();
+    let change = engine.set_audition_clip(Some(clip));
+    assert_eq!(change.unmeasured, vec![listens]);
+    assert!(change.remeasured.is_empty());
+    let c = &engine.pool[engine.find(listens).expect("a listener was deleted")];
+    assert_eq!(c.features.phi(), before);
+    assert!(engine.find(deaf).is_some());
+}
+
+/// A saved clip that is not a clip at all (the wrong shape, not merely bad
+/// data) restores as the reference, and the status says why.
+#[test]
+fn a_saved_clip_of_the_wrong_shape_restores_as_the_reference() {
+    let (engine, _, _) = listening_engine();
+    let mut state = engine.export_state();
+    state.audition_clip = Some(serde_json::json!("not a clip"));
+    let back = restore(&engine, state);
+    let status = back.audition_clip_status();
+    assert_eq!(status.source, auracle_features::ClipSource::Reference);
+    assert!(status.unreadable.is_some(), "the reason was not kept");
+}
+
+/// **A held sound comes back only with a take it can play.** A take of
+/// silence leaves it silent, which the vet refuses: it stays held, with the
+/// reason. A held sound with no unreadable take left to replace (built by
+/// hand: a restore only holds a sound for one) is refused as such.
+#[test]
+fn a_held_sound_comes_back_only_with_a_take_it_can_play() {
+    let (engine, id, take) = capture_only_engine();
+    let (saved, _) = with_corrupt_take(&engine, id);
+    let mut back = restore(&engine, serde_json::from_value(saved).unwrap());
+    let rate = take.sample_rate().expect("a recorded take");
+    let silence = auracle_grammar::Take::from_samples(&vec![0.0; take.len()], rate).unwrap();
+    match back.readmit_held(id, silence) {
+        Err(ReadmitError::DoesNotVet(why)) => assert!(!why.is_empty()),
+        other => panic!("a silent take readmitted: {other:?}"),
+    }
+    assert_eq!(back.held().len(), 1);
+    assert!(back.held[0].tree.replace_lost_take(&take));
+    assert_eq!(
+        back.readmit_held(id, take),
+        Err(ReadmitError::NothingToReplace)
+    );
+    assert_eq!(back.held().len(), 1);
+}
+
+/// **A draw the farm could not measure is passed over.** A farm job that
+/// reports no measurement for a draw that does not listen (it did not vet)
+/// spends its index and lands nothing; one offered out of turn is refused
+/// and spends nothing.
+#[test]
+fn a_draw_the_farm_could_not_measure_is_passed_over() {
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 4,
+            ..fast()
+        },
+    );
+    engine.set_fill_seed(0xFA4);
+    assert!(!engine.draw_at(0).unwrap().listens());
+    assert_eq!(engine.absorb_prior(1, None), None);
+    assert_eq!(engine.draw_cursor(), 0, "an index out of turn was spent");
+    assert_eq!(engine.absorb_prior(0, None), None);
+    assert_eq!(engine.draw_cursor(), 1);
+    assert!(engine.pool.is_empty());
+}
