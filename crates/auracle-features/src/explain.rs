@@ -247,12 +247,9 @@ fn frame_power(x: &[f64], pos: usize, hann: &[f64]) -> (Vec<f64>, f64) {
     (power, total)
 }
 
+/// The RMS of `seg`; 0 for no samples.
 fn rms(seg: &[f64]) -> f64 {
-    if seg.is_empty() {
-        0.0
-    } else {
-        (seg.iter().map(|s| s * s).sum::<f64>() / seg.len() as f64).sqrt()
-    }
+    (seg.iter().map(|s| s * s).sum::<f64>() / seg.len().max(1) as f64).sqrt()
 }
 
 /// The portrait of a render whose audio φ is `phi` (both from one

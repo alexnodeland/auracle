@@ -102,6 +102,65 @@ fn facts_read_phi_in_its_units() {
     assert!((f.motion_oct[1] - 0.01).abs() < 1e-9);
 }
 
+/// **A rest is a gap, not a level.** The held note's tracks are `null`
+/// where its frames are silent, and its onset curve is the first note's
+/// alone: past the second onset it reads nothing, not the next note. A render
+/// that never sounds draws every spectrum at the floor and no track at all.
+#[test]
+fn a_rest_is_a_gap_and_silence_is_the_floor() {
+    let sr = 44_100.0;
+    let at = |s: f64| (s * sr) as usize;
+    let tone = |i: usize| 0.5 * (std::f64::consts::TAU * 440.0 * i as f64 / sr).sin();
+    // 0.3 s of A4, 0.3 s of digital silence, 0.4 s of A4: the held span is
+    // the first 0.6 s, and the second note starts at 0.3 s.
+    let x: Vec<f64> = (0..at(1.0))
+        .map(|i| {
+            if (at(0.3)..at(0.6)).contains(&i) {
+                0.0
+            } else {
+                tone(i)
+            }
+        })
+        .collect();
+    let r = RenderedPhrase {
+        samples: x,
+        sample_rate: sr,
+        note_onsets: vec![0, at(0.3)],
+        spans: vec![NoteSpan {
+            voct: 0.0,
+            chord: 0,
+            on_start: 0,
+            on_end: at(0.6),
+        }],
+    };
+    let p = portrait(&r, &crate::audio::audio_features(&r));
+    let sounding = p.bright.iter().filter(|b| b.is_some()).count();
+    let gaps = p.bright.iter().filter(|b| b.is_none()).count();
+    assert!(sounding > 0 && gaps > 0, "{sounding} sounding, {gaps} gaps");
+    assert_eq!(
+        p.bright.iter().map(Option::is_none).collect::<Vec<_>>(),
+        p.loud.iter().map(Option::is_none).collect::<Vec<_>>(),
+        "a silent frame is null in both tracks"
+    );
+    assert!(p.bright.first().unwrap().is_some() && p.bright.last().unwrap().is_none());
+    let past = ((0.3 - ONSET_WIN_S) / ONSET_STEP_S).ceil() as usize + 1;
+    assert!(p.onset[..past - 1].iter().any(|v| *v > 0.5));
+    assert!(
+        p.onset[past..].iter().all(|v| *v == 0.0),
+        "the onset curve went on past its note: {:?}",
+        &p.onset[past..]
+    );
+
+    let silent = RenderedPhrase {
+        samples: vec![0.0; at(1.0)],
+        ..r
+    };
+    let q = portrait(&silent, &crate::audio::audio_features(&silent));
+    assert!(q.bands.iter().all(|d| *d == FLOOR_DB), "{:?}", q.bands);
+    assert!(q.held.iter().all(|d| *d == FLOOR_DB), "{:?}", q.held);
+    assert!(q.bright.iter().all(Option::is_none) && q.loud.iter().all(Option::is_none));
+}
+
 /// An impulse passes every band at 0 dB.
 #[test]
 fn an_impulse_has_a_flat_response() {
