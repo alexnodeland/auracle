@@ -169,3 +169,143 @@ fn sync_puts_voices_on_one_grid() {
         transport += block;
     }
 }
+
+/// `rate_site` is `rate_hz`'s inverse across the knob, so a rate snapped to
+/// the tempo lands on the knob position that plays it; a rate past either
+/// end lands on that end, and one that is not a rate at all (zero,
+/// negative, not finite) on the slowest.
+#[test]
+fn rate_site_is_the_rate_maps_inverse() {
+    for i in 0..=100 {
+        let x = i as f64 / 100.0;
+        assert!((rate_site(rate_hz(x)) - x).abs() < 1e-12, "at {x}");
+    }
+    assert_eq!(rate_site(0.1), 0.0);
+    assert_eq!(rate_site(100.0), 1.0);
+    for nonsense in [0.0, -2.0, f64::NAN, f64::INFINITY] {
+        assert_eq!(rate_site(nonsense), 0.0, "{nonsense}");
+    }
+}
+
+/// A host rate that is not one (zero, negative, not finite), at
+/// construction or later, plays as 44.1 kHz rather than stopping the clock
+/// or dividing by zero.
+#[test]
+fn a_host_rate_that_makes_no_sense_plays_at_44_1_khz() {
+    let play = |mut m: StepsCv| {
+        let mut inp = PortValues::new();
+        inp.set(PORT_RATE, 0.4);
+        inp.set(PORT_LENGTH, 0.0);
+        inp.set(PORT_S0 + 1, 1.0);
+        let mut out = PortValues::new();
+        (0..44_100)
+            .map(|_| {
+                m.tick(&inp, &mut out);
+                out.get(PORT_OUT).unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    let at_44_1 = play(StepsCv::new(44_100.0));
+    // Two steps a second: both values play within the second.
+    assert!(at_44_1.contains(&5.0) && at_44_1.contains(&0.0));
+    for bad in [0.0, -48_000.0, f64::NAN] {
+        assert_eq!(play(StepsCv::new(bad)), at_44_1, "new({bad})");
+        let mut m = StepsCv::new(44_100.0);
+        m.set_sample_rate(bad);
+        assert_eq!(play(m), at_44_1, "set_sample_rate({bad})");
+    }
+    let mut m = StepsCv::new(44_100.0);
+    m.set_sample_rate(22_050.0);
+    assert_ne!(play(m), at_44_1, "a real rate is taken");
+}
+
+/// Turning `length` down past the step that is playing wraps the pattern
+/// at once: the next sample is step 0, not the rest of a step the player
+/// just removed.
+#[test]
+fn shortening_the_pattern_past_the_playing_step_wraps_at_once() {
+    let sr = 48_000.0;
+    let mut m = StepsCv::new(sr);
+    let mut inp = PortValues::new();
+    inp.set(PORT_RATE, 0.4); // 2 Hz
+    inp.set(PORT_LENGTH, 1.0); // all eight
+    inp.set(PORT_SLEW, 0.0);
+    for i in 0..8 {
+        inp.set(PORT_S0 + i, i as f64 / 7.0);
+    }
+    let mut out = PortValues::new();
+    // 2.75 s at two steps a second: the middle of step 5.
+    for _ in 0..(2.75 * sr) as usize {
+        m.tick(&inp, &mut out);
+    }
+    assert_eq!(out.get(PORT_OUT), Some(step_volts(5.0 / 7.0)));
+    inp.set(PORT_LENGTH, 0.0); // two steps
+    m.tick(&inp, &mut out);
+    assert_eq!(out.get(PORT_OUT), Some(step_volts(0.0)));
+}
+
+/// A transport position on another step re-seats the pattern there, and
+/// with glide on, the output glides to it from wherever it was rather than
+/// jumping: the sample after the re-seat is the sample before it, and the
+/// new step's value arrives by the end of the glide.
+#[test]
+fn a_reseat_on_another_step_glides_from_where_the_output_was() {
+    let sr = 48_000.0;
+    let mut m = StepsCv::new(sr);
+    let mut inp = PortValues::new();
+    inp.set(PORT_RATE, 0.4); // 2 Hz
+    inp.set(PORT_LENGTH, 1.0);
+    inp.set(PORT_SLEW, 0.5); // the first half of each step glides
+    for i in 0..8 {
+        inp.set(PORT_S0 + i, i as f64 / 7.0);
+    }
+    let mut out = PortValues::new();
+    // The middle of step 1, its glide done.
+    for _ in 0..(0.85 * sr) as usize {
+        m.tick(&inp, &mut out);
+    }
+    let before = out.get(PORT_OUT).unwrap();
+    assert_eq!(before, step_volts(1.0 / 7.0));
+    inp.set(PORT_SYNC, 6.0); // step 6, at its start
+    m.tick(&inp, &mut out);
+    assert_eq!(out.get(PORT_OUT), Some(before), "the re-seat jumped");
+    // Half a step (a quarter second) later the glide has arrived.
+    for _ in 0..(0.25 * sr) as usize {
+        m.tick(&inp, &mut out);
+    }
+    assert!((out.get(PORT_OUT).unwrap() - step_volts(6.0 / 7.0)).abs() < 1e-9);
+}
+
+/// A host so slow that one sample is several steps (4 Hz against 16 steps a
+/// second) still plays the pattern, a step per sample, rather than stalling
+/// on one.
+#[test]
+fn a_host_slower_than_the_steps_still_plays_the_pattern() {
+    let mut m = StepsCv::new(4.0);
+    let mut inp = PortValues::new();
+    inp.set(PORT_RATE, 1.0); // 16 Hz
+    inp.set(PORT_LENGTH, 1.0);
+    inp.set(PORT_SLEW, 0.0);
+    for i in 0..8 {
+        inp.set(PORT_S0 + i, i as f64 / 7.0);
+    }
+    let mut out = PortValues::new();
+    let played: Vec<f64> = (0..16)
+        .map(|_| {
+            m.tick(&inp, &mut out);
+            out.get(PORT_OUT).unwrap()
+        })
+        .collect();
+    let want: Vec<f64> = (0..16).map(|i| step_volts((i % 8) as f64 / 7.0)).collect();
+    assert_eq!(played, want);
+}
+
+/// The sequencer names itself in quiver's views of a patch (its debug
+/// listing, a saved patch definition), rather than as quiver's `unknown`.
+#[test]
+fn the_sequencer_names_itself_to_quiver() {
+    let mut patch = quiver::prelude::Patch::new(48_000.0);
+    patch.add("seq", StepsCv::new(48_000.0));
+    let listing = format!("{patch:?}");
+    assert!(listing.contains("seq (auracle_steps)"), "{listing}");
+}

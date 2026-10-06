@@ -265,15 +265,14 @@ impl GraphModule for StepsCv {
         outputs.set(PORT_OUT, out);
         self.last_out = out;
 
+        // The step is finite and positive (the rate is clamped and the host
+        // rate made sane), so the phase is never NaN and the clock cannot
+        // stall. At 16 steps a second no real host rate wraps more than once
+        // a sample; one so slow that the phase is still past 1 after the wrap
+        // simply wraps again on the next sample, a step per sample.
         self.phase += rate / self.sample_rate;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
-            // At 16 steps a second no sane host rate can skip a whole step,
-            // but a phase that somehow is not below one after the wrap must
-            // not stall the clock.
-            if self.phase >= 1.0 || !self.phase.is_finite() {
-                self.phase = 0.0;
-            }
             self.index = (self.index + 1) % len;
             self.from = out;
         }
