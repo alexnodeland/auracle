@@ -68,7 +68,12 @@ REPO = "alexnodeland/auracle"
 # history uses, and `release`, which a release PR's title starts with
 # (CONTRIBUTING.md § Cutting a release; `release: cut 0.2.0`). Lower case.
 TYPES = ("feat", "fix", "docs", "tests", "test", "ci", "build", "refactor", "perf", "chore", "revert", "style", "release")
-TITLE = re.compile(r"(?P<type>[A-Za-z]+)(?:\((?P<scope>[^()\s][^()]*)\))?(?P<bang>!)?: (?P<subject>\S.*)")
+TITLE = re.compile(r"(?P<type>[A-Za-z]+)(?:\((?P<scope>[^()\s]+)\))?(?P<bang>!)?: (?P<subject>\S.*)")
+# A title that starts like a prefix and isn't quite one: each part is read
+# loosely, so the failure can say which part is off.
+LOOSE = re.compile(r"(?P<type>[A-Za-z]+)(?P<gap>\s*)(?:\((?P<scope>[^()]*)\))?(?P<bang>!)?(?P<before>\s*):(?P<after>\s*)(?P<subject>.*)")
+# GitHub's Revert button titles its PR this way.
+REVERT = re.compile(r'Revert "(?P<title>.+)"')
 EXAMPLE = "fix(web): a toast that names a replaced sound is never dropped"
 
 DEPENDABOT = "dependabot[bot]"
@@ -115,15 +120,45 @@ def check_title(title: str) -> list[str]:
         f"`<type>(<scope>): <subject>`, the type one of {', '.join(TYPES)}. "
         f"For example `{EXAMPLE}`."
     )
-    m = TITLE.fullmatch(title.strip())
+    text = title.strip()
+    m = TITLE.fullmatch(text)
     if not m:
+        revert = REVERT.fullmatch(text)
+        if revert:
+            return [
+                f"GitHub's Revert button titles a PR `Revert \"…\"`, which has no type. A revert's title is "
+                f"`revert: <subject>`, here `revert: {revert.group('title')}`."
+            ]
+        loose = LOOSE.fullmatch(text)
+        if loose and loose.group("type").lower() in TYPES:
+            prefix = text[: loose.start("after")]
+            return [f"The title's prefix `{prefix}` is almost right: {off(loose)}. {want}"]
         return [f"The title `{title}` has no conventional prefix. {want}"]
     kind = m.group("type")
     if kind.lower() in TYPES and kind != kind.lower():
-        return [f"The title's type `{kind}` is written in lower case: `{kind.lower()}`. {want}"]
+        return [f"The title's type `{kind}` has capital letters; types are lower case: `{kind.lower()}`. {want}"]
     if kind not in TYPES:
-        return [f"The title's type `{kind}` is not one of the types. {want}"]
+        return [
+            f"The title's type `{kind}` is not one of the types. A topic such as `{kind.lower()}` can be the scope: "
+            f"`<type>({kind.lower()}): <subject>`. {want}"
+        ]
     return []
+
+
+def off(m: re.Match) -> str:
+    """What is off in a prefix LOOSE read and TITLE didn't."""
+    scope = m.group("scope")
+    if m.group("gap"):
+        return "no space goes between the type and the `(`"
+    if scope is not None and not scope.strip():
+        return "the `()` is empty; name a scope in it, or leave it out"
+    if scope is not None and re.search(r"\s", scope):
+        return "a scope has no spaces in it"
+    if m.group("before"):
+        return "no space goes before the colon"
+    if not m.group("subject").strip():
+        return "the subject after the colon is missing"
+    return "one space goes after the colon, then the subject"
 
 
 # ─── the links ───────────────────────────────────────────────────────────────

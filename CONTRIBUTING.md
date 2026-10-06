@@ -342,7 +342,11 @@ Conventional-commit style prefixes are used loosely (`feat:`, `fix:`, `docs:`,
 *why*. A PR's title takes a prefix too, since it becomes its squash commit's
 subject: one of `feat`, `fix`, `docs`, `tests`, `test`, `ci`, `build`,
 `refactor`, `perf`, `chore`, `revert`, `style` or `release`, then an optional
-`(scope)` and `: `. `PR checks` fails a title without one.
+`(scope)` and `: `. `PR checks` fails a title without one. A topic that isn't
+a type is a scope: `feat(tokens): …`. A PR made with GitHub's Revert button is
+titled `Revert "<title>"`: retitle it `revert: <title>`, and give its body a
+`Refs #N` or a `No issue:` line, since the `Reverts …#N` it writes names a
+PR.
 
 ## Cutting a release
 

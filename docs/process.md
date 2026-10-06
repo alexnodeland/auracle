@@ -166,7 +166,11 @@ Findings come back ranked, and review is **one round**:
   `tests`, `test`, `ci`, `build`, `refactor`, `perf`, `chore`, `revert`,
   `style`, or `release` for a release PR), an optional `(scope)`, then
   `: ` and what is true now: `fix(web): a toast that names a replaced sound
-  is never dropped`.
+  is never dropped`. A topic that isn't a type is a scope:
+  `feat(tokens): …`. A revert's title is `revert: <the title it reverts>`;
+  GitHub's Revert button writes `Revert "<title>"` instead, so retitle the
+  PR it opens, and give its body a `Refs #N` or a `No issue:` line, since
+  the `Reverts <owner>/<repo>#N` it writes names a PR, not an issue.
 - **The body** says what changed for a player or a contributor, why, how
   (the decisions a reviewer should look at), and what was checked (gates,
   specs and their counts, the review and what it found). It names its

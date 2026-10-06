@@ -129,17 +129,39 @@ class Title(unittest.TestCase):
         self.assertIn("`<type>(<scope>): <subject>`", problem)
         self.assertIn("fix(web):", problem)
 
-    def test_an_unknown_type_fails(self):
+    def test_an_unknown_type_fails_and_offers_it_as_the_scope(self):
         (problem,) = P.check_title("wip: half of it")
         self.assertIn("`wip` is not one of the types", problem)
+        (problem,) = P.check_title("tokens: every styled page is checked for color")
+        self.assertIn("`<type>(tokens): <subject>`", problem)
 
-    def test_a_type_in_capitals_fails_with_its_lower_case(self):
-        (problem,) = P.check_title("CI: read Rust's stable channel whole")
-        self.assertIn("`ci`", problem)
+    def test_a_type_with_capitals_fails_with_its_lower_case(self):
+        for title, kind in [("CI: read Rust's stable channel whole", "ci"), ("Fix(web): a toast", "fix")]:
+            (problem,) = P.check_title(title)
+            self.assertIn(f"has capital letters; types are lower case: `{kind}`", problem, title)
 
-    def test_malformed_prefixes_fail(self):
-        for t in ["fix:no space", "fix: ", "fix (web): a space before the scope", "fix(): an empty scope", "(web): no type", "fix(web) : a space before the colon"]:
-            self.assertEqual(len(P.check_title(t)), 1, t)
+    def test_a_prefix_almost_right_says_which_part_is_off(self):
+        for title, off in [
+            ("fix:no space", "one space goes after the colon"),
+            ("fix(web):  two spaces", "one space goes after the colon"),
+            ("fix: ", "the subject after the colon is missing"),
+            ("fix (web): a space before the scope", "no space goes between the type and the `(`"),
+            ("fix(): an empty scope", "the `()` is empty"),
+            ("fix(we b): a space in the scope", "a scope has no spaces in it"),
+            ("fix(web) : a space before the colon", "no space goes before the colon"),
+        ]:
+            (problem,) = P.check_title(title)
+            self.assertIn(f"is almost right: {off}", problem, title)
+
+    def test_what_isnt_a_typed_prefix_has_none(self):
+        for title in ["(web): no type", "PATCH keeps the quiet window", "wip (x): y"]:
+            (problem,) = P.check_title(title)
+            self.assertIn("has no conventional prefix", problem, title)
+
+    def test_githubs_revert_title_fails_with_the_title_to_give_it(self):
+        (problem,) = P.check_title('Revert "fix(web): a toast is never dropped"')
+        self.assertIn("`revert: fix(web): a toast is never dropped`", problem)
+        self.assertEqual(P.check_title("revert: fix(web): a toast is never dropped"), [])
 
 
 class Parse(unittest.TestCase):

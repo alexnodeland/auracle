@@ -78,7 +78,8 @@ contributor guide; this file does not repeat it.
 8. **Commits explain why.** Loose conventional prefixes (`feat:`, `fix(web):`,
    `docs:` …), an imperative subject, a body that says what was wrong and why
    this is the fix. A PR's title is its squash commit's subject, so it
-   carries a prefix too, and its body names each issue it finishes as
+   carries a prefix too, its type from a fixed list (a topic such as
+   `tokens` is a scope: `feat(tokens): …`), and its body names each issue it finishes as
    `Closes #n`, one keyword per issue, and each it advances as `Refs #n` (or
    says why on a `No issue:` line); the `PR checks` workflow checks both
    ([`docs/process.md` § Pull requests](docs/process.md#pull-requests)).
