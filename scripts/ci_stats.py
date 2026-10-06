@@ -19,20 +19,25 @@ run, and the files, timeline and comments of a closed PR. A second run over
 the same window fetches only the lists and what is still in flight.
 
 What it counts, with the definitions #177's numbers used:
-- A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job: green
+- A run is a `ci.yml` run. Its verdict is its first attempt's `CI` job (on a
+  queue batch, its `Full gate` job, the check the queue merges on): green
   (success), red (failure or timed out) or cancelled. A re-run is counted
   (`reruns`), not believed.
-- The kind of PR comes from the PR's files, the first match winning: Rust
+- Two lanes (ADR-023). A PR's own run is the fast lane, reported by the kind
+  of PR, which comes from the PR's files, the first match winning: Rust
   (crates/, Cargo.*, rust-toolchain), CI (.github/, .mergify.yml, Makefile,
   scripts/, .config/), web (apps/web/, tests/web/), and docs only (anything
   else). A run belongs to the PR whose branch it ran on while the PR was open.
-  A push to main has no PR: it is a row of its own.
-- CI wall time: the run created to its `CI` job completed, on green and red
-  runs.
+  The merge queue's runs, on its draft PRs from branches under
+  `mergify/merge-queue/`, are the full gate: a row of their own (queue
+  batch), belonging to no PR. A push to main is a row of its own too.
+- CI wall time: the run created to its `CI` job completed (a queue batch's
+  `Full gate`), on green and red runs.
 - Runner wait: each job's start minus its creation, summed per run; and the
   longest one in the run (the last shard to get a runner); and every job's.
 - Red rate: red runs of the green and red ones; cancelled runs are left out.
-- Runs per PR: the `ci.yml` runs on a merged PR's branch while it was open.
+- Runs per PR: the `ci.yml` runs on a merged PR's branch while it was open
+  (its fast lane; the queue's batches are counted on their own row).
 - Open to merge, PRs merged a day, and open to the first red (that run's
   `CI` completed): over the PRs merged in the window.
 - main red: from a red run's `CI` completed on main to the next green run's
@@ -40,10 +45,10 @@ What it counts, with the definitions #177's numbers used:
 - Queue time: from the PR's first `queue` label (its timeline) or
   `@mergifyio queue` comment, whichever is first, to the merge; n/a when it
   has neither (a merge by hand, before Mergify).
-- Shards: each `Browser (k/N)` job's time on the green PR runs that ran all N,
-  grouped by N. The spread is a run's slowest shard minus its fastest. The
-  headlines read the largest N, the whole tier (a PR that changes only specs
-  runs fewer).
+- Shards: each `Browser (k/N)` job's time on the green PR and queue runs that
+  ran all N, grouped by N. The spread is a run's slowest shard minus its fastest. The
+  headlines read the largest N, the whole tier (a fast lane runs only the
+  specs its change reaches, on fewer).
 - Jobs: each job's time on green runs, by name with the shard numbers folded
   (`Browser (k/12)`); the Coverage chain from its build's start to its
   report's end; and the Slow suite's and the Flake hunt's runs, created to
@@ -75,15 +80,22 @@ UTC = dt.timezone.utc
 DAY = dt.timedelta(days=1)
 
 # The rows of the main table, in order, and what each is called.
-ROWS = ("rust", "ci", "web", "docs", "unmatched", "main")
+ROWS = ("rust", "ci", "web", "docs", "unmatched", "queue", "main")
 LABEL = {
     "rust": "Rust",
     "ci": "CI",
     "web": "Web",
     "docs": "Docs only",
     "unmatched": "No PR found",
+    "queue": "Queue batch",
     "main": "main (push)",
 }
+# The merge queue's draft PRs come from branches under this prefix
+# (.mergify.yml's queue_branch_prefix, which ci.yml's `changes` job reads too).
+QUEUE_BRANCH = "mergify/merge-queue/"
+# The jobs that answer for a run, not jobs of their own: `CI`, which every
+# check needs, and `Full gate`, which a queue run's merge waits on.
+AGGREGATES = ("CI", "Full gate")
 # The other workflows whose runs the budgets need.
 OTHER = (("slow-suite.yml", "Slow suite"), ("flake-hunt.yml", "Flake hunt"))
 # How far before --since a merged PR's runs are still read (runs per PR, and
@@ -184,29 +196,37 @@ def first_attempt(jobs) -> list:
     return [j for j in jobs or [] if j.get("run_attempt", 1) == 1]
 
 
-def ci_job(run) -> dict | None:
-    for j in first_attempt(run.get("jobs")):
-        if j.get("name") == "CI":
-            return j
-    return None
+def is_queue(run) -> bool:
+    """A run of the merge queue's full gate, on one of its draft PRs."""
+    return run.get("event") == "pull_request" and (run.get("head_branch") or "").startswith(QUEUE_BRANCH)
+
+
+def gate_job(run) -> dict | None:
+    """The first attempt's job that answers for the run: `Full gate` on a
+    queue run (falling back on `CI` before it ran), `CI` on any other."""
+    jobs = {j.get("name"): j for j in first_attempt(run.get("jobs"))}
+    if is_queue(run) and "Full gate" in jobs:
+        return jobs["Full gate"]
+    return jobs.get("CI")
 
 
 def verdict(run) -> str | None:
-    """green, red or cancelled, from the first attempt's `CI` job; None while
-    it runs. `CI` fails when a job it needs was cancelled, with nothing else
-    failed: that run was cancelled when the run itself was (a newer push
-    replaced it), and red otherwise (a job reached its time limit). A run
-    with no jobs read falls back on its own conclusion."""
+    """green, red or cancelled, from the first attempt's `CI` job (`Full
+    gate` on a queue run); None while it runs. It fails when a job it needs
+    was cancelled, with nothing else failed: that run was cancelled when the
+    run itself was (a newer push replaced it), and red otherwise (a job
+    reached its time limit). A run with no jobs read falls back on its own
+    conclusion."""
     if run.get("status") != "completed":
         return None
-    j = ci_job(run)
+    j = gate_job(run)
     if j is None:
         if run.get("run_attempt", 1) == 1 or not run.get("jobs"):
             return VERDICT.get(run.get("conclusion"))
         return None
     v = VERDICT.get(j.get("conclusion"))
     if v == "red" and not any(
-        x.get("conclusion") in ("failure", "timed_out") for x in first_attempt(run.get("jobs")) if x.get("name") != "CI"
+        x.get("conclusion") in ("failure", "timed_out") for x in first_attempt(run.get("jobs")) if x.get("name") not in AGGREGATES
     ):
         if run.get("run_attempt", 1) == 1 and run.get("conclusion") == "cancelled":
             return "cancelled"
@@ -214,9 +234,9 @@ def verdict(run) -> str | None:
 
 
 def ci_done(run) -> dt.datetime | None:
-    """When the first attempt's `CI` job completed (the run's last update
-    when its jobs were not read)."""
-    j = ci_job(run)
+    """When the first attempt's `CI` job (`Full gate` on a queue run)
+    completed; the run's last update when its jobs were not read."""
+    j = gate_job(run)
     if j is not None:
         return ts(j.get("completed_at"))
     return ts(run.get("updated_at")) if not run.get("jobs") else None
@@ -241,12 +261,14 @@ def waits(run) -> list:
 
 
 def failed_jobs(run) -> list:
-    """The first attempt's failed jobs; when only `CI` failed, the jobs that
-    were cancelled under it (at their time limit), marked so."""
+    """The first attempt's failed jobs; when only `CI` or `Full gate`
+    failed, the jobs that were cancelled under it (at their time limit),
+    marked so."""
     jobs = first_attempt(run.get("jobs"))
-    names = [j["name"] for j in jobs if j.get("conclusion") in ("failure", "timed_out") and j.get("name") != "CI"]
+    failed = [j["name"] for j in jobs if j.get("conclusion") in ("failure", "timed_out")]
+    names = [n for n in failed if n not in AGGREGATES]
     if not names:
-        names = [f"{j['name']} (cancelled)" for j in jobs if j.get("conclusion") == "cancelled"] or ["CI"]
+        names = [f"{j['name']} (cancelled)" for j in jobs if j.get("conclusion") == "cancelled"] or failed
     return sorted(names, key=natural)
 
 
@@ -275,8 +297,9 @@ def by_branch(prs) -> dict:
 def pr_for(run, branches) -> dict | None:
     """The PR whose branch the run ran on while it was open (from two
     minutes before it was opened, as a run can be created just ahead of
-    the PR's record, to when it closed)."""
-    if run.get("event") != "pull_request":
+    the PR's record, to when it closed). A queue run has none: its draft PR
+    is the queue's, and the PRs in the batch are counted by their merge."""
+    if run.get("event") != "pull_request" or is_queue(run):
         return None
     t = ts(run["created_at"])
     for p in branches.get(run.get("head_branch"), []):
@@ -292,6 +315,8 @@ def row_of(run, branches) -> str | None:
         return "main"
     if run.get("event") != "pull_request":
         return None
+    if is_queue(run):
+        return "queue"
     p = pr_for(run, branches)
     return p["kind"] if p else "unmatched"
 
@@ -362,7 +387,7 @@ def measure(data: dict, since: dt.datetime, until: dt.datetime) -> dict:
     runs = [r for r in data["ci"] if r.get("status") == "completed"]
     window = [r for r in runs if in_window(r, since, until)]
 
-    # By kind of PR.
+    # By kind of PR (the fast lane), the queue's batches, and main.
     rows: dict = {}
     red_runs, failing = [], Counter()
     grouped = defaultdict(list)
@@ -625,10 +650,11 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
     w("")
     w(
         "*`scripts/ci_stats.py`: `ci.yml` runs created in the window, the PRs merged in it, minutes "
-        "unless marked. A run's verdict is its first attempt's `CI` job.*"
+        "unless marked. A run's verdict and wall time are its first attempt's `CI` job (a queue batch's "
+        "`Full gate`, the check the queue merges on).*"
     )
     w("")
-    w("### By kind of PR")
+    w("### By kind of PR (the fast lane), the queue, and main")
     w("")
     w(
         "| Kind | Runs | Green | Red | Cancelled | Red rate | CI wall, median / p90 | Runner wait per run, median / p90 "
@@ -696,10 +722,10 @@ def markdown(s: dict, cmp: list | None = None, base_name: str | None = None) -> 
             end = f"green at {x['to']} (run {x['green_run']})" if x["to"] else "still red at the window's end"
             w(f"- from {x['from']}, {num(x['minutes'])} min, {end}; red runs {', '.join(map(str, x['red_runs']))}")
     w("")
-    w("### Browser shards, on green PR runs that ran every shard")
+    w("### Browser shards, on green PR and queue runs that ran every shard")
     w("")
     if not s["shards"]:
-        w("No green PR run ran the whole browser tier.")
+        w("No green PR or queue run ran the whole browser tier.")
     for n, g in sorted(s["shards"].items(), key=lambda kv: -kv[1]["runs"]):
         w(
             f"**{n} shard{'s' if n != '1' else ''}**, {g['runs']} run(s). A shard: median {num(g['all']['median'])}, max {num(g['all']['max'])}. "

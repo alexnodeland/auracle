@@ -541,21 +541,32 @@ from it ([Rules](#rules)).
 ## Budgets
 
 How long each tier may take, so a slow run is seen rather than felt. Each
-budget is the p90 that `scripts/ci_stats.py` measured on the last week's
-green runs in today's shape (those since #177's wave 0 merged, 2026-10-06
-02:31 to 09:00 UTC, every one of them finished), plus a fifth, rounded up to
-a whole minute.
+budget is a figure plus a fifth, rounded up to a whole minute. Where the
+shape of a run is what it was before the two lanes, the figure is the p90
+that `scripts/ci_stats.py` measured on green runs since #177's wave 0 merged
+(2026-10-06 02:31 to 09:00 UTC, every one of them finished). The two lanes'
+answers have no runs to measure yet, so their figure is the design's
+([*How long*](#ci-tiers) above), until the nightly measures them.
 
-| Tier | Budget | Measured: median / p90 / max | Of |
+| Tier | Budget | From | Of |
 | --- | --- | --- | --- |
-| The PR's `CI` answer: the run created to `CI` done, on a PR that changes Rust, CI or the app | 28 min | 19.6 / 23.0 / 26.4 min | 20 runs |
-| The Rust fast tier: each `Test (k/2)` runner | 9 min | 6.2 / 6.8 / 7.5 min | 36 jobs |
-| The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | 7.6 / 8.4 / 9.8 min | 228 shards |
-| The browser fast tier in total: the first shard's start to the last one's end | 19 min | 12.4 / 15.7 / 19.0 min | 19 runs |
-| The browser fast tier in total: runner-minutes a run | 108 | 86.4 / 89.9 / 94.0 | 19 runs |
-| Coverage: *Coverage build*'s start to *Coverage*'s end | 20 min | 13.2 / 16.5 / 16.9 min | 10 runs |
-| The *Slow suite*: a green run, created to its last job done | 67 min | 33.2 / 55.2 / 77.8 min | 7 runs |
-| The nightly *Flake hunt*: created to its last job done | 75 min | not run yet | its design: 12 shards three times over, 4 at a time, about 20 minutes a round |
+| The fast lane's `CI` answer, a docs-only PR: the run created to `CI` done | 6 min | the design: about 5 | not measured yet |
+| The fast lane's `CI` answer, a web PR (the app or its specs) | 12 min | the design: up to about 10 | not measured yet |
+| The fast lane's `CI` answer, a Rust PR | 12 min | the design: up to about 10 (Coverage sets it) | not measured yet |
+| The fast lane's `CI` answer, a CI PR (a workflow or an action runs the full gate) | 15 min | the design: about 12 | not measured yet |
+| The queue's run: created to `Full gate` done | 15 min | the design: about 12 | not measured yet |
+| The Rust fast tier: each `Coverage (k/3)` runner | 6 min | measured: 3.8 / 4.3 / 4.5 min | 30 jobs |
+| Coverage: *Coverage build*'s start to *Coverage*'s end | 20 min | measured: 13.2 / 16.5 / 16.9 min | 10 runs |
+| The browser fast tier, a shard: each `Browser (k/12)` runner | 11 min | measured: 7.6 / 8.4 / 9.8 min | 228 shards |
+| The browser fast tier in total: the first shard's start to the last one's end | 19 min | measured: 12.4 / 15.7 / 19.0 min | 19 runs |
+| The browser fast tier in total: runner-minutes a run | 108 | measured: 86.4 / 89.9 / 94.0 | 19 runs |
+| The *Slow suite*: a green run, created to its last job done | 67 min | measured: 33.2 / 55.2 / 77.8 min | 7 runs |
+| The nightly *Flake hunt*: created to its last job done | 75 min | the design: 12 shards three times over, 4 at a time, about 20 minutes a round | not run yet |
+
+Measured figures are median / p90 / max. The design's figures leave out the
+wait for a runner: under wave 0, when every PR's own run was the full gate,
+it took a median of 19.6 minutes (p90 23.0, 20 runs) against a plan of
+about twelve, and its longest job wait was a median of 6.6 minutes.
 
 A budget is where a run starts to be slow, not the goal: #177's targets are a
 PR's `CI` answer in a median of 11 minutes (p90 13) and a required job
@@ -564,7 +575,8 @@ lands, each from a new measurement.
 
 **Reading it.** `python3 scripts/ci_stats.py` measures the last 7 days
 (`--since` and `--until` take dates): `CI`'s wall time, runner waits, red
-runs and the job that failed, and runs per PR, by kind of PR; open to merge,
+runs and the job that failed, and runs per PR, by kind of PR for the fast
+lane, and the same for the queue's runs (*Queue batch*); open to merge,
 PRs merged a day, open to the first red, the queue's time, and how long
 `main` stayed red; each browser shard's time and their spread; and each
 job's time on green runs. `--format json` keeps a run, and `--compare` sets

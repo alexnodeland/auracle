@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ci_stats.py's tests: the kind of PR, the quantiles, a run's verdict, main's
 red stretches, the queue time, the whole measurement on a small week, the
-comparison with a saved run, and the cache.
+queue's lane, the comparison with a saved run, and the cache.
 
     python3 scripts/test_ci_stats.py      (run by `make dev-check`)
 
@@ -349,6 +349,79 @@ class Measure(unittest.TestCase):
         self.assertIn("**3 shards**, 2 run(s)", md)
         self.assertNotIn("Against", md)
         json.loads(json.dumps(self.s))
+
+
+def queue_run(rid, created, gate_done, red=False, branch="mergify/merge-queue/0a1b2c"):
+    """A run of the queue's full gate on its draft PR: two shards, `CI`, then
+    `Full gate`, done at `gate_done`. Red, its second shard fails."""
+    jobs = [job(f"Browser ({k}/2)", created, created + 1, created + 9, "failure" if red and k == 2 else "success") for k in (1, 2)]
+    jobs.append(job("CI", created + 9, created + 9, created + 10, "failure" if red else "success"))
+    jobs.append(job("Full gate", created + 10, created + 10, gate_done, "failure" if red else "success"))
+    return run(rid, created, jobs, branch=branch, conclusion="failure" if red else "success")
+
+
+class QueueLane(unittest.TestCase):
+    """Two-speed CI (ADR-023): a PR's own run is the fast lane, and the
+    queue's runs on its draft PRs are the full gate, a row of their own."""
+
+    def data(self):
+        data = week()
+        # The queue's draft PR is a PR in the list, closed and never merged.
+        data["prs"].append(pr(50, "mergify/merge-queue/0a1b2c", 69, None, "docs"))
+        data["prs"][-1]["closed_at"] = at(130)
+        data["ci"] += [queue_run(30, 70, 85), queue_run(31, 90, 102, red=True)]
+        return data
+
+    def test_the_queue_is_its_own_row(self):
+        s = S.measure(self.data(), BASE, BASE + dt.timedelta(days=1))
+        q = s["rows"]["queue"]
+        self.assertEqual((q["runs"], q["green"], q["red"], q["red_rate"]), (2, 1, 1, 0.5))
+        # Wall time runs to `Full gate`, the check the queue merges on.
+        self.assertEqual(q["wall"]["median"], 13.5)
+        self.assertNotIn("runs_per_pr", q)
+        # The fast lane's rows and runs per PR are as they were without it.
+        self.assertEqual(s["rows"]["rust"]["runs_per_pr"]["median"], 2)
+        self.assertEqual(s["rows"]["unmatched"]["runs"], 1)
+        self.assertNotIn("docs", s["rows"])
+        self.assertIn("| Queue batch | 2 | 1 | 1 | 0 | 50% | 13.5 / 14.7 |", S.markdown(s))
+        self.assertIn("rows.queue.wall.median", [k for k, *_ in S.headline(s)])
+
+    def test_a_red_batch_names_the_job_not_the_gate(self):
+        s = S.measure(self.data(), BASE, BASE + dt.timedelta(days=1))
+        [red] = [r for r in s["red_runs"] if r["row"] == "queue"]
+        self.assertEqual((red["run"], red["pr"], red["jobs"]), (31, None, ["Browser (2/2)"]))
+        self.assertEqual(s["failing_jobs"]["Browser (k/2)"], 3)
+
+    def test_a_green_batch_counts_toward_the_shards(self):
+        s = S.measure(self.data(), BASE, BASE + dt.timedelta(days=1))
+        self.assertEqual(s["shards"]["2"]["runs"], 1)
+
+    def test_a_queue_run_belongs_to_no_pr(self):
+        data = self.data()
+        r = data["ci"][-1]
+        self.assertTrue(S.is_queue(r))
+        self.assertIsNone(S.pr_for(r, S.by_branch(data["prs"])))
+        self.assertFalse(S.is_queue(data["ci"][0]))
+        self.assertFalse(S.is_queue(dict(r, event="push")))
+
+    def test_the_gate_before_it_ran_and_a_cancelled_batch(self):
+        r = queue_run(32, 0, 12)
+        self.assertEqual(S.gate_job(r)["name"], "Full gate")
+        r["jobs"] = [j for j in r["jobs"] if j["name"] != "Full gate"]
+        self.assertEqual(S.gate_job(r)["name"], "CI")
+        # Taken out of the queue mid-run: a shard cancelled, the gate failed
+        # on it, and the run itself cancelled.
+        cancelled = run(
+            33,
+            0,
+            [job("Browser (1/2)", 0, 1, 4, "cancelled"), job("CI", 4, 4, 5, "failure"), job("Full gate", 5, 5, 6, "failure")],
+            branch="mergify/merge-queue/0a1b2c",
+            conclusion="cancelled",
+        )
+        self.assertEqual(S.verdict(cancelled), "cancelled")
+        cancelled["conclusion"] = "failure"
+        self.assertEqual(S.verdict(cancelled), "red")
+        self.assertEqual(S.failed_jobs(cancelled), ["Browser (1/2) (cancelled)"])
 
 
 class Compare(unittest.TestCase):
