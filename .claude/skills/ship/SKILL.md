@@ -127,6 +127,11 @@ The body: what changed, why, how (what a reviewer should look at), checks
 (gates, specs and counts, the review and its findings), `Closes #<n>`, and,
 when an agent session made it, the session's link line last.
 
+A PR that changes EVOLVE's generations, PERFORM's offers or the engine under
+them, or a test tagged `@slow` or `@quarantine`, also gets the `full-ci`
+label (`gh -R alexnodeland/auracle pr edit <n> --add-label full-ci`): the
+*Slow suite* runs on a PR only with it. It does not block the merge.
+
 ## 6. CI, waited on by state
 
 ```bash

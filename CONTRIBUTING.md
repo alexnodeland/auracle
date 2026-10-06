@@ -144,14 +144,14 @@ wasm built and the first needs the pinned doc toolchain.
 
 CI runs in two tiers
 ([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
-The **fast tier** is the required `CI` check, about ten minutes: the jobs
+The **fast tier** is the required `CI` check, about eleven minutes: the jobs
 above, the Rust tests except the slow ones, and every browser spec not tagged
-`@slow` or `@quarantine`, dealt to eight runners by time. A PR may merge on it
+`@slow` or `@quarantine`, dealt to twelve runners by time. A PR may merge on it
 alone. The **slow tier** (the *Slow suite* workflow) runs the search floor, the
 other Rust tests over a minute and the `@slow` and `@quarantine` browser specs
-on every push to `main` and nightly, where a failure opens an issue; on a PR it
-runs when the diff reaches what those tests cover, or when you add the
-`full-ci` label. A flaky test is fixed or quarantined, never retried
+on every push to `main` and nightly, where a failure opens an issue; on a PR
+only when you add the `full-ci` label, which a PR that changes EVOLVE's
+generations, PERFORM's offers or the engine under them should carry. A flaky test is fixed or quarantined, never retried
 ([§ Flakes](docs/architecture/testing.md#flakes)). Locally, `make check` still runs every
 Rust test; `make test-fast-tier` / `make test-slow-tier` and
 `make browser-fast` / `make browser-slow` run one tier the way CI does.
@@ -246,7 +246,7 @@ an alias for notes written before the rename).
 
 1. Keep PRs focused; separate refactors from behavior changes.
 2. Run `make check` locally before you push your branch and open the PR: it
-   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, eight runners wide;
+   is CI's Lint, Web and Rust jobs. CI also runs the site and the browser specs, twelve runners wide;
    locally, run the specs your change reaches (`make browser-changed`). If you
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).

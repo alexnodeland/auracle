@@ -43,14 +43,16 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
-| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by hash); every browser spec not tagged `@slow` or `@quarantine` (eight runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
-| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, dealt by time) | No |
-| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main ([Flakes](#flakes)) | No |
+| Fast | `.github/workflows/ci.yml`, the `CI` check | The voice check (in *What changed*, on every PR); Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine, with `make smoke`); the Rust tests not named slow (`make test-fast-tier`, split over two runners by slice); every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time) | Yes. The branch ruleset requires `CI`; every job above is inside it |
+| Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
+| Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 
-**How long.** The fast tier's browser tests are about seventy minutes of
-test time in one worker (272 tests at `f6f4612`, each a fresh boot), so they
-set the check's length: about ten minutes, the engine job and eight runners
-of about nine minutes each. Rust takes about seven and a half (a two-minute compile,
+**How long.** The fast tier's browser tests are about seventy-five minutes
+of test time in one worker (284 tests at `42bd322`, each a fresh boot), so
+they set the check's length: about eleven minutes, the engine job and twelve
+runners planned at about six minutes each (the hosted runners differ in
+speed by about two times, and each shard's log and the run's summary name
+its CPU). Rust takes about seven and a half (a two-minute compile,
 then the tests); Web and Site take two to three.
 
 **Dealt by time.** Playwright's `--shard=k/N` cuts the list into runs of
@@ -62,17 +64,24 @@ timings, so the engine job reads them once per run (from the Actions cache)
 and uploads them as an artifact every runner downloads, a re-run's included;
 each runner prints the plan's hash, the same on every runner of a run. A
 test with no time yet weighs the median; with no timings the split is by
-count. `node shard.mjs plan --shards 8 -- --grep-invert "@slow|@quarantine"`
+count. `node shard.mjs plan --shards 12 -- --grep-invert "@slow|@quarantine"`
 in `tests/web` prints a split without running it.
 
-**One report.** Each runner keeps a blob report; the *Browser report* job
-merges a run's into one HTML report, every test with the traces of what
-failed, uploaded when a runner failed and linked from the run's summary
+**One report.** Each runner keeps a blob report, uploaded whatever its
+end, a failed or cancelled job's included; the *Browser report* job merges a
+run's into one HTML report, every test with the traces of what failed,
+uploaded when a runner failed and linked from the run's summary
 (`npx playwright show-report <dir>` opens it). On main it also folds the
-run's times into the timings the next run deals by.
+run's times into the timings the next run deals by. A runner that would
+outlast its job ends first: Playwright's global timeout
+(`AURACLE_GLOBAL_TIMEOUT_MIN`) sits five minutes under the job's limit, and
+a minute before it `shard.mjs` interrupts the run, so the test that was
+running is reported as interrupted, with its trace. The setup's network
+steps (npm, Playwright's download, the apt mirror) are each cut at three
+minutes, with a message naming the server.
 
 **A PR that changes only specs** runs those specs and nothing else, on one
-runner per spec up to eight: no other spec's code changed, and the app it
+runner per spec up to twelve: no other spec's code changed, and the app it
 runs against is main's. A change to a spec's helpers, the config or anything
 else the browser tier reads runs the whole tier; main always does.
 
@@ -109,21 +118,19 @@ one for `tests/web`'s npm packages.
 
 **When the slow tier runs.** On every push to `main` and nightly, in full; a
 failure there opens an issue titled *Slow suite failing on main*, or comments
-on the open one. On demand from the Actions tab. On a PR, when the diff
-reaches what the slow tests cover, or when the PR carries the `full-ci` label
-(adding it starts a run):
+on the open one. On demand from the Actions tab. On a PR, only when the PR
+carries the `full-ci` label: adding it starts a run, and every push to the
+labelled PR runs it again; a PR without it runs nothing there. Add it to a
+PR that changes EVOLVE's generations, PERFORM's offers or the engine under
+them (`worker.js`, `farm.js`, `perform.js`, `crates/auracle-session`,
+`crates/auracle-wasm`), or a test tagged `@slow` or `@quarantine`; otherwise
+the push to `main` is where a slow test catches it.
 
-- the slow Rust tests run on a change to any crate, `Cargo.toml`/`Cargo.lock`,
-  the `Makefile`, or the workflow and its actions. Every one of them walks the
-  whole pipeline (grammar edits, rendering and φ, the taste model, the
-  session), so no crate is outside what they cover;
-- the `@slow` browser specs run on a change to `apps/web/worker.js`,
-  `farm.js`, `perform.js`, `patch.js`, `live-audio.js`, `explain.js`, `faces.js` or `vessel.js`, to the spec fixture (`tests/web/fixtures.js`), to `crates/auracle-session` or
-  `crates/auracle-wasm`, to a spec file holding an `@slow` or `@quarantine`
-  test, or to the suite's config and lockfile. Not `main.js`: every view
-  lives there, so it would make nearly every app PR a slow run. A `main.js`
-  change that reaches EVOLVE's generations or PERFORM's offers should carry
-  `full-ci`; otherwise the push to `main` is where it is caught.
+**Runners.** The account runs at most 20 jobs at once. A PR's `CI` at its
+widest holds 16 (twelve browser runners, Site, the two Rust test runners and
+one more); the *Slow suite* holds at most four (`max-parallel`: one Rust leg
+and three browser runners), so beside a push to `main` the two fit. The
+nightly *Flake hunt* holds four, beside *Search health*'s three long jobs.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
@@ -242,7 +249,8 @@ waits run to two minutes).
   in a pure module under `apps/web/` with a `node:test` in `apps/web/tests/`,
   which `make web-check` runs in milliseconds. A browser spec proves that the
   module is wired in and what a player sees and hears, not its arithmetic: a
-  boot costs seconds here and tens of seconds on a CI runner.
+  boot costs seconds, here and on a CI runner (a median of 4 to 5 s there,
+  about 28% of the fast tier's test time).
 - **One fixture layer for the browser specs** (`tests/web/fixtures.js`):
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named

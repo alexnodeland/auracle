@@ -13,7 +13,8 @@ committing anything that touches Rust. The full table of gates and what each
 proves is `docs/architecture/testing.md`.
 
 CI is the gate for everything else: the full browser tier runs there, dealt to
-eight runners by time, and a PR that changes only specs runs only those specs.
+twelve runners by time, and a PR that changes only specs runs only those specs.
+The slow tier runs on a PR only with the `full-ci` label.
 Locally, run what your change reaches, never the full browser suite
 (`docs/process.md` § Building).
 

@@ -9,9 +9,9 @@
 // weighed by its time on main's last run and the runners are filled longest
 // test first, each test to the emptiest runner (LPT), so they finish together.
 //
-//   node shard.mjs run --shard 3/8 [--timings t.json] [--files "a.spec.js …"] [-- <playwright options>]
-//       list the tests the files and options select, pick shard 3 of 8, run it
-//   node shard.mjs plan --shards 8 [--timings t.json] [--files "…"] [-- <playwright options>]
+//   node shard.mjs run --shard 3/12 [--timings t.json] [--files "a.spec.js …"] [-- <playwright options>]
+//       list the tests the files and options select, pick shard 3 of 12, run it
+//   node shard.mjs plan --shards 12 [--timings t.json] [--files "…"] [-- <playwright options>]
 //       print how the tests would split, and run nothing
 //
 // Spec files go in --files, not after `--`: Playwright ORs its positional

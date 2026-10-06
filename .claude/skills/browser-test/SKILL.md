@@ -36,16 +36,20 @@ grep -aE "passed|failed|✘|Expected|Received" <scratch>/run.log | tail
   (changed specs, the specs of a changed helper, the specs named for a changed
   app module; `BASE=` to diff against something other than `origin/main`), or
   name them (`npx playwright test patch_ perform_layout.spec.js`). The full
-  tier is CI's job: about seventy minutes in one worker, eight runners wide
-  there.
+  tier is CI's job: about seventy-five minutes in one worker, twelve runners
+  wide there.
 
 ## In CI
 
 - The fast tier (every spec not tagged `@slow` or `@quarantine`) is inside the
-  required `CI` check, dealt to eight runners by main's last timings
+  required `CI` check, dealt to twelve runners by main's last timings
   (`tests/web/shard.mjs`). A PR that changes only specs runs only those specs.
-- The *Slow suite* runs `@slow` and `@quarantine`; the nightly *Flake hunt*
-  runs the fast tier three times each.
+- The *Slow suite* runs `@slow` and `@quarantine` on `main`, nightly, and on
+  a PR only with the `full-ci` label; the nightly *Flake hunt* runs the fast
+  tier three times each.
+- A runner that runs out of time still reports: it is interrupted a minute
+  before Playwright's global timeout, and the test it was running is
+  reported as interrupted, with its trace.
 - A failed run's summary links one HTML report of every runner, with the
   failed tests' traces: download it, then `npx playwright show-report <dir>`
   in `tests/web`. `gh run view <id> --log-failed` shows the failing assertion.

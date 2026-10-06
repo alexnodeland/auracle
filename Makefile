@@ -104,8 +104,11 @@ install-hooks:
 ## exists)
 ##
 ## Its parts write nothing in the tree but Python's bytecode caches (written
-## atomically), so they are prerequisites that `make -j` runs side by side (CI runs `make -j4 -O dev-check`); a plain
-## `make dev-check` runs them one after another as before.
+## atomically), so they are prerequisites that `make -j` runs side by side; a
+## plain `make dev-check` runs them one after another as before. CI runs
+## `make -j4 -O dev-check` on Linux (GNU Make 4, where `-O` keeps each part's
+## output together); macOS ships GNU Make 3.81, which has no `-O`, so locally
+## run plain `make -j8 dev-check`.
 DEV_CHECKS := dev-docs dev-names dev-tokens dev-voice dev-sound dev-hooks dev-syntax dev-film-tests
 dev-check: $(DEV_CHECKS)
 .PHONY: $(DEV_CHECKS)
@@ -219,7 +222,7 @@ test-verbose:
 # ─── CI's two tiers ──────────────────────────────────────────────────────────
 #
 # CI splits the tests into a fast tier that gates merging and a slow tier that
-# runs on main, nightly, and on a PR that touches what it covers (see
+# runs on main, nightly, and on a PR labelled `full-ci` (see
 # docs/architecture/testing.md § CI tiers). These targets run each tier the
 # way CI does, so "green in CI" can be reproduced by name. `make test` and
 # `make check` still run every Rust test; nothing here replaces them.
@@ -329,7 +332,7 @@ clippy: lint
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
 # always-on floors under all of this and they DO run in `make check`, and in
-# CI's slow tier (on main, nightly, and on any PR that touches crates/). Floors,
+# CI's slow tier (on main, nightly, and on a PR labelled `full-ci`). Floors,
 # not the measurement: they catch a loop that stopped working, not one that
 # quietly got worse.
 SEEDS ?= 16
