@@ -28,10 +28,9 @@
 //   key held. Monitoring starts off on every load, and a sound that listens
 //   opened after a reload gets its input without a prompt.
 // - The first listen captures a clip and the engine takes it as the
-//   session's audition clip; NEW CLIP captures another.
-// - After a restore that installs a captured clip, the farm is handed the
-//   new phrase before the bank's renders go out; after a capture, the crew
-//   standing is handed it (@slow: a crew stands only after a walk).
+//   session's audition clip; NEW CLIP captures another. (That the farm is
+//   then handed the phrase with the clip, after a capture or a restore, is
+//   the engine worker's: tests/worker/farm.test.mjs.)
 // - An unplugged input silences its module and says so; plugged back in, it
 //   is reopened and heard again.
 // - The browser's "default" is numbered as the input it stands for, even when
@@ -49,25 +48,18 @@ const { goLevel, bankTab, openCatalog } = require("./shell");
 
 const SHOTS = process.env.AURACLE_SHOTS || null;
 
-const { STUB, INIT, PHRASE_SPY } = require("./audio_in_stub.js");
-
-const WORKER_JS = path.join(__dirname, "..", "..", "apps", "web", "worker.js");
+const { STUB, INIT } = require("./audio_in_stub.js");
 
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-async function boot(page, { query = "", spy = false } = {}) {
+async function boot(page) {
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await page.addInitScript(STUB);
   await page.addInitScript(INIT);
-  if (spy) {
-    const body = PHRASE_SPY + fs.readFileSync(WORKER_JS, "utf8");
-    await page.route(/\/worker\.js(\?|$)/, (route) =>
-      route.fulfill({ status: 200, body, contentType: "text/javascript", headers: { "Cache-Control": "no-store" } }));
-  }
-  await page.goto(`/${query}`);
+  await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   return errors;
 }
@@ -339,57 +331,6 @@ test("the first listen captures a clip, and the engine measures with it", async 
   await lane(page).locator(".ain-clip").click();
   await expect.poll(() => page.evaluate(() => window.__pwSent.length), { timeout: 20_000 }).toBe(2);
   await expect.poll(() => page.evaluate(() => window.__pwCounts.audition_clip), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
-  expect(errors).toEqual([]);
-});
-
-test("a restore that installs a captured clip hands the farm the new phrase", async ({ page }) => {
-  test.setTimeout(300_000);
-  const errors = await boot(page, { query: "?farm=2", spy: true });
-  await openPreset(page, "Glass Pad");
-  await placeAudioIn(page);
-  await expect.poll(() => page.evaluate(() => window.__pwLast.audition_clip && window.__pwLast.audition_clip.ok), { timeout: 40_000 }).toBe(true);
-  // The clip is saved with the session.
-  const saves = await page.evaluate(() => window.__pwCounts.saved || 0);
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.saved || 0), { timeout: 30_000 }).toBeGreaterThan(saves);
-
-  await page.reload();
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
-  const phrases = await page.evaluate(() => window.__pwPhrases);
-  const restored = await page.evaluate(() => window.__aur.audioIn().clipSource);
-  console.log(`phrases to the farm: ${phrases.length} (${phrases.filter((p) => p.clip).length} with the clip); clip restored: ${restored}`);
-  expect(restored).toBe("captured");
-  // The handshake (before the restore, no clip), then the clip's phrase.
-  expect(phrases.some((p) => !p.clip)).toBe(true);
-  expect(phrases.filter((p) => p.clip).length).toBeGreaterThan(0);
-  expect(errors).toEqual([]);
-});
-
-test("a capture hands the farm crew standing the new phrase", { tag: "@slow" }, async ({ page }) => {
-  test.setTimeout(600_000);
-  const errors = await boot(page, { query: "?farm=2", spy: true });
-  // A crew stands only after a walk: six picks, their fit, then ⚡.
-  await page.waitForFunction(() => window.__pwLast.duel && window.__pwLast.duel.pair, null, { timeout: 60_000 });
-  await goLevel(page, "evolve");
-  for (let i = 1; i <= 6; i++) {
-    await expect(page.locator(i % 2 ? "#choose-a" : "#choose-b")).toBeEnabled({ timeout: 30_000 });
-    await page.locator(i % 2 ? "#choose-a" : "#choose-b").click();
-  }
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.fitted || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  await goLevel(page, "patch");
-  await expect(page.locator("#rack-evolve")).toBeEnabled({ timeout: 60_000 });
-  await page.locator("#rack-evolve").click();
-  await expect.poll(() => page.evaluate(() => window.__pwCounts.evolved_from || 0), { timeout: 120_000 }).toBeGreaterThan(0);
-  const before = (await page.evaluate(() => window.__pwPhrases)).filter((p) => p.clip).length;
-  expect(before).toBe(0);
-
-  await openPreset(page, "Glass Pad");
-  await placeAudioIn(page);
-  await expect.poll(() => page.evaluate(() => window.__pwLast.audition_clip && window.__pwLast.audition_clip.ok), { timeout: 40_000 }).toBe(true);
-  const reply = await page.evaluate(() => window.__pwLast.audition_clip);
-  const after = (await page.evaluate(() => window.__pwPhrases)).filter((p) => p.clip).length;
-  console.log(`after the capture: ${reply.farmResent} workers handed the phrase, ${after} phrases with the clip`);
-  expect(reply.farmResent).toBeGreaterThan(0);
-  expect(after).toBe(reply.farmResent);
   expect(errors).toEqual([]);
 });
 

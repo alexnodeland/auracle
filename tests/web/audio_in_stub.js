@@ -6,8 +6,7 @@
 // tones (never a real microphone), as Chrome and Edge answer: an
 // unconstrained ask opens the pseudo-device "default", and the list carries
 // it. INIT wraps the engine worker, records toasts and the clip's tap
-// messages, and taps the output. PHRASE_SPY is prepended to worker.js to
-// report the farm's phrase handshakes.
+// messages, and taps the output.
 
 const STUB = `(() => {
   const granted0 = (() => { try { return sessionStorage.getItem("__pwMicGranted") === "1"; } catch (_) { return false; } })();
@@ -140,7 +139,6 @@ const INIT = `(() => {
   const last = (window.__pwLast = {});
   const counts = (window.__pwCounts = {});
   const sent = (window.__pwSent = []);
-  const phrases = (window.__pwPhrases = []);
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     if (/worker\\.js/.test(String(url))) {
@@ -166,7 +164,6 @@ const INIT = `(() => {
         }
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
-        if (d.type === "__pw_phrase") phrases.push({ t: performance.now(), clip: d.clip });
       });
     }
     return w;
@@ -236,15 +233,4 @@ const INIT = `(() => {
   } catch (_) {}
 })();`;
 
-// Prepended to worker.js: every phrase handshake the engine worker posts to a
-// farm worker's port is reported to the page, with whether it carries a clip.
-const PHRASE_SPY = `{
-  const post = MessagePort.prototype.postMessage;
-  MessagePort.prototype.postMessage = function (m, ...rest) {
-    if (m && m.type === "phrase") self.postMessage({ type: "__pw_phrase", clip: typeof m.json === "string" && m.json.includes('"clip"') });
-    return post.call(this, m, ...rest);
-  };
-}
-`;
-
-module.exports = { STUB, INIT, PHRASE_SPY };
+module.exports = { STUB, INIT };

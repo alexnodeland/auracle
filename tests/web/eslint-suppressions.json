@@ -1,7 +1,7 @@
 {
   "audio_in.spec.js": {
     "auracle/no-aur-in-spec": {
-      "count": 3
+      "count": 2
     },
     "auracle/no-own-pageerror": {
       "count": 1
