@@ -76,7 +76,8 @@ give each branch a worktree of its own inside the checkout, at
 `make worktree TOPIC=tempo-lfo BRANCH=feature/tempo-synced-lfo` makes it from
 `origin/main` and installs `tests/web`'s packages there, and
 `make worktree-rm TOPIC=tempo-lfo` removes it and the branch it is on once
-that is merged. Keep the main checkout itself on `main`.
+that is merged. When you use worktrees, keep the main checkout itself on
+`main`.
 Then:
 
 ```bash

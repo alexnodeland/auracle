@@ -95,9 +95,16 @@ in a plan's prose, a session's notes or a conversation.
 - **The main checkout stays on `main`, clean and current:**
   `git -C <main checkout> merge --ff-only origin/main` after each fetch. A
   session or an agent in a worktree inside it also loads the main checkout's
-  `CLAUDE.md` and `AGENTS.md` files, as ancestors of its directory, beside its
-  worktree's own; kept current, they say the same. Where they differ, the
-  worktree's own `AGENTS.md` is the one to follow: it is the branch's.
+  root `CLAUDE.md` (and the `AGENTS.md` it imports), from an ancestor
+  directory, beside its worktree's own files; kept current, they say the
+  same. Where they differ, the worktree's own `AGENTS.md` is the one to
+  follow: it is the branch's. The hooks and settings are the session's: an
+  agent that a session in the main checkout starts in a worktree runs the
+  main checkout's `.claude/settings.json` and the hooks it names
+  (`$CLAUDE_PROJECT_DIR/.claude/hooks/`). A branch that changes them is live
+  in its own worktree only once it merges and the main checkout is
+  fast-forwarded; until then `make dev-check` tries the branch's own hooks
+  (`.claude/checks/test_hooks.sh`).
 - **Each worktree is a checkout of its own.** Its build output (`target/`,
   `apps/web/pkg/`, `tests/web/node_modules/`) is its own: cargo, rustup, Node
   and the specs' server find its files before the main checkout's. The

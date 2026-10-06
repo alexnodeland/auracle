@@ -91,10 +91,10 @@ contributor guide; this file does not repeat it.
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
    own worktree, at `.claude/worktrees/<topic>` inside the main checkout,
    which git ignores (`make worktree TOPIC=<topic>`). An agent there also
-   loads the main checkout's `AGENTS.md` files, as ancestors; where they
-   differ, its worktree's own are the ones to follow. An agent commits in
-   its worktree and never pushes, opens a PR or merges; the operator pushes
-   it and opens the PR in the merge queue (a
+   loads the main checkout's root `AGENTS.md`, from an ancestor directory;
+   where the two differ, its worktree's own is the one to follow. An agent
+   commits in its worktree and never pushes, opens a PR or merges; the
+   operator pushes it and opens the PR in the merge queue (a
    human contributor pushes their own branch). Every branch an agent builds
    is reviewed before its PR, and a PR merges through Mergify's queue: its
    own `CI` is a fast lane that, with `PR checks`, puts it in the queue, and

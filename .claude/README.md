@@ -11,9 +11,10 @@ you work on files there. Every `CLAUDE.md`, the root one too, is that one
 line: the rules are in the `AGENTS.md` files, which other agents read as well.
 
 A session in a worktree (`.claude/worktrees/<topic>`, inside the main
-checkout) loads its worktree's files and, as ancestors of its directory, the
-main checkout's too. The main checkout is kept on `main` and current, so the
-two agree; where they differ, the worktree's own are the ones to follow
+checkout) loads its worktree's files and, from an ancestor directory, the
+main checkout's root `CLAUDE.md` (and the `AGENTS.md` it imports). The main
+checkout is kept on `main` and current, so the two agree; where they differ,
+the worktree's own is the one to follow
 ([`docs/process.md` § Building](../docs/process.md#building)).
 
 ## Worktrees (`.claude/worktrees/`)
@@ -26,7 +27,12 @@ Code puts the worktrees it makes itself here too (a subagent's
 `isolation: worktree`, `EnterWorktree`, `claude --worktree`). Each is a
 checkout of its own, with its own `target/`, `apps/web/pkg/` and
 `node_modules/`; the checks and the hooks below never read from one checkout
-into another.
+into another. The hooks and settings are the session's: an agent that a
+session in the main checkout starts in a worktree runs the main checkout's
+`settings.json` and hooks (`$CLAUDE_PROJECT_DIR`), so a branch that changes
+them is live in its worktree only once it merges and the main checkout is
+fast-forwarded. Before that, `make dev-check` tries the branch's own
+(`.claude/checks/test_hooks.sh`).
 
 ## Skills (`.claude/skills/`)
 

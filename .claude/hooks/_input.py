@@ -2,6 +2,7 @@
 
     python3 _input.py file_path     -> tool_input.file_path
     python3 _input.py command       -> tool_input.command
+    python3 _input.py cwd           -> cwd (the session's directory, top level)
 
 Prints nothing when the field is absent, so a hook can treat "" as "not mine".
 """

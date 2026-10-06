@@ -59,8 +59,9 @@ inside the main checkout where git ignores it, and installs `tests/web`'s
 packages there (`node_modules` is per checkout): without them
 `make web-check` stops at the specs' lint, and the after-edit hook does not
 lint a spec. The second keeps the main checkout on `main` and current: an
-agent in `$WT` also loads its `AGENTS.md` files, as ancestors, and follows
-its worktree's own where they differ.
+agent in `$WT` also loads its root `AGENTS.md`, from an ancestor directory,
+and runs its hooks and settings; it follows its worktree's own `AGENTS.md`
+where the two differ.
 
 Pick a free port for the branch's browser runs (8771 and up) and put it in the
 brief as `AURACLE_TEST_PORT`: Playwright and `make browser-changed`,
