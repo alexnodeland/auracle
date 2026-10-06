@@ -162,6 +162,23 @@ fn the_bands_span_the_range_in_equal_steps() {
     let e = band_edges_hz();
     assert_eq!(e.len(), FACE_BANDS + 1);
     assert!((e[0] - FACE_LO_HZ).abs() < 1e-9 && (e[FACE_BANDS] - FACE_HI_HZ).abs() < 1e-6);
+    // Equal steps on the log axis, which is what the app's live meter and the
+    // explain figures assume: every band is the same ratio wide (linear
+    // spacing between the same ends would fail at the first band), and that
+    // ratio is the module doc's "about a fifth of an octave".
+    let step = (e[1] / e[0]).ln();
+    for b in 0..FACE_BANDS {
+        let this = (e[b + 1] / e[b]).ln();
+        assert!(
+            (this - step).abs() < 1e-12,
+            "band {b} is {this} wide, not {step}"
+        );
+    }
+    let octaves = step / std::f64::consts::LN_2;
+    assert!(
+        (octaves - 0.2).abs() < 0.03,
+        "a band is {octaves:.3} octave"
+    );
     // Every band has weight: none is empty, however narrow.
     assert!(band_weights(SR).iter().all(|w| !w.is_empty()));
 }
