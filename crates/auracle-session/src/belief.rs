@@ -92,11 +92,9 @@ impl Engine {
             let pts: Vec<[f64; 3]> = rows
                 .iter()
                 .filter_map(|&(i, mean, _, _)| {
-                    let c = &self.pool[i];
-                    if c.phi_std.is_empty() {
-                        return None;
-                    }
-                    let (x, y) = self.map_coordinates(&c.phi_std)?;
+                    // A member never standardized has no place on the map:
+                    // `map_coordinates` reads only a φ of the axes' width.
+                    let (x, y) = self.map_coordinates(&self.pool[i].phi_std)?;
                     Some([x, y, 1.0 / (1.0 + (-mean).exp())])
                 })
                 .collect();
