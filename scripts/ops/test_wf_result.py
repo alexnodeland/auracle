@@ -136,6 +136,23 @@ class FinishedRun(Base):
         # The session link given on the command line is added to a body without one.
         self.assertEqual(self.read("pr-300.md").rstrip().splitlines()[-1], SESSION)
 
+    def test_blocking_findings_no_re_check_confirmed_are_a_problem(self):
+        # A run from before ship-issues flagged a fix or a re-check that did
+        # not return: `ready`, with the review's blocking finding never checked.
+        item = {"issue": 300, "branch": "claude/thing", "worktree": "/w/x", "status": "ready", "problems": [], "final": report(), "review": review(), "verify": None}
+        path = self.write_output({"workflow": "ship-issues", "session": SESSION, "items": [item]}, {"session": SESSION})
+        _, said = self.run_main(path)
+        self.assertIn("re-check: NOT done", said)
+        self.assertIn("PROBLEM: 1 blocking finding(s), and no re-check says they are fixed", said)
+        item.update(verify={"all_resolved": False, "remaining": [review()["blocking"][0]], "notes": ""})
+        _, said = self.run_main(self.write_output({"workflow": "ship-issues", "items": [item]}, {}))
+        self.assertIn("re-check: NOT resolved", said)
+        self.assertIn("PROBLEM: the re-check says 1 blocking finding(s) remain", said)
+        # The workflow's own word on it is not said twice.
+        item.update(problems=["1 blocking finding(s) remain after 2 fix round(s)"])
+        _, said = self.run_main(self.write_output({"workflow": "ship-issues", "items": [item]}, {}))
+        self.assertEqual(said.count("blocking finding(s) remain"), 1)
+
     def test_the_first_ship_issues_list_is_read_too(self):
         # 2026-10-06's runs returned a list, with the session added by hand.
         old = [{"issue": 173, "branch": "claude/a", "worktree": "/w/a", "final": report(pr_body="Closes #300\nRefs #177\n"), "review": review(0), "verify": None}, {"issue": 174, "failed": True}]
@@ -210,6 +227,35 @@ class Journal(Base):
         self.assertIn("#301  claude/other  running (build #301)", said)
         self.assertEqual(self.read("pr-300.md").rstrip().splitlines()[-1], SESSION)
         self.assertFalse(os.path.exists(os.path.join(self.out, "pr-301.md")))
+
+    def test_an_agent_that_failed_did_not_return_and_nothing_runs(self):
+        # The journal's record for an agent that was skipped or died: its
+        # stage got null and the run went on, here to finalize.
+        started = lambda key, label: {"type": "started", "key": key, "agentId": key, "label": label, "phase": "x"}  # noqa: E731
+        done = lambda key, result: {"type": "result", "key": key, "agentId": key, "result": result}  # noqa: E731
+        failed = lambda key: {"type": "failed", "key": key, "agentId": key}  # noqa: E731
+        records = [
+            started("k1", "build #300"), done("k1", report()),
+            started("k2", "review #300"), done("k2", review()),
+            started("k3", "fix #300"), failed("k3"),
+            started("k4", "finalize #300"), done("k4", report()),
+            started("k5", "build #301"), failed("k5"),
+            started("k6", "triage #5"), failed("k6"),
+            # Failed, then started again by a resumed run, and back.
+            started("k7", "build #302"), failed("k7"), started("k7", "build #302"), done("k7", report(closes=[302], pr_body=f"Closes #302\nRefs #177\n\n{SESSION}")),
+        ]
+        prompt = "Worktree: /w/auracle-wt-thing (branch claude/thing, already created from origin/main)."
+        run = self.write_journal(records, {"k1": prompt})
+        _, said = self.run_main(run, "--session", SESSION)
+        self.assertNotIn("running", said, "nothing is running: the fix failed")
+        self.assertIn("#300  claude/thing  done, read from the journal", said)
+        self.assertIn("PROBLEM: fix #300 did not return", said)
+        self.assertIn("review: 1 blocking, 1 should-fix, 0 for the maintainer, 2 nits; re-check: NOT done", said)
+        self.assertIn("PROBLEM: 1 blocking finding(s), and no re-check says they are fixed", said)
+        # A branch whose build died is said, not dropped; a triage's agent is not a branch.
+        self.assertIn("#301    failed\n  problem: build #301 did not return", said)
+        self.assertNotIn("#5", said)
+        self.assertNotIn("build #302 did not return", said)
 
     def test_the_journal_is_found_by_run_id(self):
         home = os.path.join(self.dir, "home")

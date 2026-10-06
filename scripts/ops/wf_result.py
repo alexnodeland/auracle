@@ -19,7 +19,11 @@ journal gives each agent's result as it came back, read by its label
 (`<stage> <key>[ …]`: `build #177`, `fix #177 r2`, `finalize patch_facts`):
 for each key, the latest result shaped as a report (a head, a title and a
 body), the latest review and the latest re-check. A key with agents still
-running says so, and its report is only as far as it got.
+running says so, and its report is only as far as it got. An agent that
+failed (the journal's `failed` record: skipped, or dead on an API error) is
+done and gave nothing, and its item says `<label> did not return`. A review
+with blocking findings and no re-check that says they are fixed is a
+problem: the re-check is `NOT done`, never `none needed`.
 
 For each branch it writes, into DIR (default: <tmp>/auracle-ops/<run id>):
 
@@ -82,8 +86,11 @@ def read_output(path: str) -> tuple[object, dict, str]:
 
 
 def read_journal(path: str) -> list[dict]:
-    """Each agent of a run, in the order they started: label, phase and
-    result (None while it runs, or when it failed)."""
+    """Each agent of a run, in the order they started: label, phase, whether
+    it is done, and its result (None while it runs). An agent that failed
+    (skipped, or dead on an API error: a `failed` record) is done, with no
+    result, and `failed`: its stage got null, and the run went on without
+    it."""
     agents: dict[str, dict] = {}
     with open(path) as f:
         for line in f:
@@ -91,12 +98,15 @@ def read_journal(path: str) -> list[dict]:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            key = rec.get("key")
-            if rec.get("type") == "started" and key:
-                agents.setdefault(key, {"label": rec.get("label") or "", "phase": rec.get("phase"), "id": rec.get("agentId"), "done": False, "result": None})
-            elif rec.get("type") == "result" and key in agents:
-                agents[key]["done"] = True
-                agents[key]["result"] = rec.get("result", rec.get("value"))
+            key, kind = rec.get("key"), rec.get("type")
+            if kind == "started" and key:
+                a = agents.setdefault(key, {"label": rec.get("label") or "", "phase": rec.get("phase"), "id": rec.get("agentId"), "done": False, "failed": False, "result": None})
+                if a["failed"]:  # started again, by a resumed run
+                    a.update(done=False, failed=False)
+            elif kind == "result" and key in agents:
+                agents[key].update(done=True, failed=False, result=rec.get("result", rec.get("value")))
+            elif kind == "failed" and key in agents:
+                agents[key].update(done=True, failed=True, result=None)
     return list(agents.values())
 
 
@@ -122,9 +132,16 @@ def is_report(r: object) -> bool:
     return isinstance(r, dict) and all(k in r for k in ("head", "pr_title", "pr_body"))
 
 
+# The stages of the workflows that build a branch (ship-issues, fix-flake,
+# mutants-burndown). A key whose agents are all elsewhere (a triage's, a
+# review-pr's lenses and refuters) is not a branch.
+BRANCH_STAGES = {"build", "diagnose", "measure", "kill", "fix", "prove", "verify", "finalize"}
+
+
 def items_from_journal(agents: list[dict], journal: str = "") -> list[dict]:
     """A ship-shaped item per key, from the agents' labels and results; its
-    branch and worktree from its first agent's prompt."""
+    branch and worktree from its first agent's prompt. An agent that failed
+    is a problem of its item's: `<label> did not return`."""
     items: dict[str, dict] = {}
     for a in agents:
         words = a["label"].split()
@@ -134,12 +151,14 @@ def items_from_journal(agents: list[dict], journal: str = "") -> list[dict]:
         if it is None:
             prompt = prompt_of(journal, a.get("id")) if journal else ""
             wt, br = WORKTREE.search(prompt), BRANCH.search(prompt)
-            it = items[words[1]] = {"key": words[1], "running": [], "final": None, "review": None, "verify": None}
+            it = items[words[1]] = {"key": words[1], "running": [], "failed": [], "final": None, "review": None, "verify": None}
             if wt and br:
                 it.update(worktree=wt.group(1), branch=br.group(1))
         r = a["result"]
         if not a["done"]:
             it["running"].append(a["label"])
+        elif a.get("failed"):
+            it["failed"].append(a["label"])
         elif is_report(r):
             it["final"] = r
         elif isinstance(r, dict) and "blocking" in r:
@@ -148,9 +167,14 @@ def items_from_journal(agents: list[dict], journal: str = "") -> list[dict]:
             it["verify"] = r
     out = []
     for it in items.values():
-        if not it["final"] and not it["running"]:
+        branch_work = any(label.split()[0] in BRANCH_STAGES for label in it["failed"])
+        if not it["final"] and not it["running"] and not branch_work:
             continue  # a key with no report: not a branch (a triage's or a review's agents)
-        it["status"] = f"running ({', '.join(it['running'])})" if it["running"] else "done, read from the journal"
+        it["problems"] = [f"{label} did not return" for label in it["failed"]]
+        if it["running"]:
+            it["status"] = f"running ({', '.join(it['running'])})"
+        else:
+            it["status"] = "done, read from the journal" if it["final"] else "failed"
         out.append(it)
     return out
 
@@ -230,6 +254,21 @@ def count(review: dict | None) -> str:
     return ", ".join(parts)
 
 
+def recheck_of(review: dict | None, verify: dict | None) -> tuple[str, str | None]:
+    """What the re-check of the review's blocking findings says, and the
+    problem when none confirms them fixed: a fix or a re-check that did not
+    return leaves no verdict, and that is not `none needed`."""
+    blocking = len((review or {}).get("blocking") or [])
+    if verify:
+        if verify.get("all_resolved"):
+            return "all resolved", None
+        left = len(verify.get("remaining") or []) or blocking
+        return "NOT resolved", f"the re-check says {left} blocking finding(s) remain"
+    if blocking:
+        return "NOT done", f"{blocking} blocking finding(s), and no re-check says they are fixed"
+    return "none needed", None
+
+
 def summarize_item(item: dict, session: str | None, out_dir: str) -> list[str]:
     final = item.get("final")
     key = item["key"]
@@ -241,12 +280,14 @@ def summarize_item(item: dict, session: str | None, out_dir: str) -> list[str]:
     for p in problems_of(final, session):
         if not any(p in q or q in p for q in problems):
             problems.append(p)
+    recheck, unconfirmed = recheck_of(item.get("review"), item.get("verify"))
+    if unconfirmed and not any("blocking" in p for p in problems):
+        problems.append(unconfirmed)
     need = final.get("needs_full_ci") if isinstance(final.get("needs_full_ci"), dict) else {}
     lines.append(f"  head {str(final.get('head', ''))[:12]}" + (f"  on origin/main {str(final['base'])[:12]}" if final.get("base") else "  (not rebased by the run)"))
     lines.append(f"  closes {' '.join(f'#{n}' for n in final.get('closes') or []) or 'none'}; refs {' '.join(f'#{n}' for n in final.get('refs') or []) or 'none'}")
     lines.append(f"  full-ci: {'yes' if full_ci(item, final) else 'no'}{' (' + need['reason'] + ')' if need.get('reason') else ''}")
-    verify = item.get("verify")
-    lines.append(f"  review: {count(item.get('review'))}; re-check: {'none needed' if not verify else 'all resolved' if verify.get('all_resolved') else 'NOT resolved'}")
+    lines.append(f"  review: {count(item.get('review'))}; re-check: {recheck}")
     if final.get("conflicts") and final["conflicts"].strip().lower() != "none":
         lines.append(f"  rebase: {final['conflicts']}")
     lines += [f"  PROBLEM: {p}" for p in problems]
