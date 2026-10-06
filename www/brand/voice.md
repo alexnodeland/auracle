@@ -543,7 +543,7 @@ banned-words check in `make dev-check` reads the list after it.
 | *silent without it* / *without it, it fails the safety check* / **Dashed at OUT: without the selected module, measured** | PATCH: the readout's words when the patch without the selected module has no face to draw, and HOW TO READ THIS's row for the face it does draw | approximate, estimated |
 | **BRIGHT and SPACE turn this cutoff** / **BRIGHT turns its cutoff and res; SPACE turns its decay** | PATCH's readout: which of PERFORM's controls turn a knob, or a module's knobs, as PERFORM measured them | mapped to, assigned to |
 | **Hold ⌥: what the model believes (your lean on each kind, what one more is worth, its next guesses)** / **A tick on a module: the generation that bred this sound changed it** / **A pale tick on a knob: where it was when you opened the sound; on a bred sound as bred, where its seed had it** | HOW TO READ THIS's rows for the model view, what a generation changed, and the pale pointer | |
-| **couldn’t measure this patch** / **couldn’t re-check this patch** | PERFORM's status line when the engine failed a measurement of the sound in hand and none is out now: *measure* when there is no wiring to play, *re-check* (after the count, *4 of 6 controls reach this patch · …*) when the controls still play on their last measurement | measurement failed, error, unavailable |
+| **couldn’t measure this patch** / **couldn’t re-check this patch** | PERFORM's status line when the engine failed a measurement of the sound in hand, or wasn't ready to take one, and none is out now: *measure* when there is no wiring to play, *re-check* (after the count, *4 of 6 controls reach this patch · …*) when the controls still play on their last measurement | measurement failed, error, unavailable |
 | **the engine crashed: reload to continue** | B's line, or a control's toast after *nothing changed.*, for something asked of PERFORM after the engine crashed; the alarm's own words | try again (it can't), engine unavailable |
 | **your taste**, **the model** | What it has learned; the thing that learns it | posterior, belief, profile (outside the reference) |
 | **LEARNING** | The level above TASTE, the model room | the model page |
@@ -698,8 +698,9 @@ The check counts the British spellings listed in `BRITISH` in `www/checkwords.py
   - the sound's name;
   - what happened, then what you can do.
 
-  A later toast about the same thing replaces the earlier one. A refusal jumps
-  the queue and says why.
+  A later toast about the same thing replaces the earlier one, unless the
+  earlier one says what happened to your sounds: that one still has its
+  turn. A refusal jumps the queue and says why.
 
 ### The landing page
 

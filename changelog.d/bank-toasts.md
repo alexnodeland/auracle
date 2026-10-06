@@ -1,0 +1,25 @@
+### Fixed: a toast about your sounds isn't taken away by the toasts after it
+
+- **A toast that says what happened to your sounds now has its turn,
+  whatever is said after it.** Toasts show one at a time, and three rules of
+  that queue could still take one of these away before you read it, so you
+  weren't told which sound was replaced. Keep a sound as new, then keep
+  another before the first toast showed, and the second keep's reveal
+  (*B was your edit, and you picked it.*) took the place of *Kept Noisy
+  Pluck as new. It replaced the lowest-rated sound it could: Woodblock.*
+  When ⚡ couldn't start because a generation was breeding, the toast
+  saying so took the one about the sound ⚡ had just bred off the screen or
+  out of the queue, with its **OPEN IT**. And *Opened the preset as …*,
+  waiting behind another toast, was cut when you cut three sounds straight
+  after. Now a later toast about the same thing no longer takes its place,
+  a refusal shows first and, unless its time was up, the toast comes back
+  after it with its button, and however many of these toasts wait, none is
+  cut (`toasts.test.mjs`, #183).
+
+### Fixed: holding m in the bank saves a sound once
+
+- **Holding m in the bank saves or releases the sound once.** A held key
+  repeats, and in the bank every repeat saved or released the sound again,
+  each time with a toast saying so, which now all wait their turn. The bank
+  now answers a press once, as m does everywhere else
+  (`bank_row.spec.js`, #183).

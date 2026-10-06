@@ -40,23 +40,40 @@
 // would undo the third; the warm start's result ("18 preferences learned")
 // waited out the "Loading those in…" it answered while PICKS already read 18.
 // A toast given `replace: key` takes the place of any earlier toast with the
-// same key, on screen or queued: on screen it takes the floor at once with
-// its own full window, queued it takes the earlier one's place in line.
+// same key (but one about the player's sounds: rule 6), on screen or queued:
+// on screen it takes the floor at once with its own full window, queued it
+// takes the earlier one's place in line.
 //
-// Rule 6, from #129: A CHANGE TO THE PLAYER'S SOUNDS IS NOT NARRATION. The
-// stale drop is right for a remark a newer state has overtaken, and wrong for
-// one that says a sound joined or left the pool, or was saved or released:
-// that stays true however long it waits, and for a sound that was replaced
-// the toast is the only place the player hears it (it has no row left). On a
-// fast machine "Opened the preset as … It replaced … Tine" was said behind
-// three plain remarks, reached the head of the queue 10.5 s later, and was
-// dropped. A toast given `bank: true` is never dropped for its age, and the
-// backlog's trim spends the plain remarks before it, as it does before an
-// undo. The other rules still apply to it: a later toast with its `replace`
-// key takes its place (rule 5), and with no plain remark waiting the trim
-// can cut it.
+// Rule 6, from #129 and #183: A CHANGE TO THE PLAYER'S SOUNDS IS NOT
+// NARRATION. The stale drop is right for a remark a newer state has
+// overtaken, and wrong for one that says a sound joined or left the pool, or
+// was saved or released: that stays true however long it waits, and for a
+// sound that was replaced the toast is the only place the player hears it (it
+// has no row left). On a fast machine "Opened the preset as … It replaced …
+// Tine" was said behind three plain remarks, reached the head of the queue
+// 10.5 s later, and was dropped. A toast given `bank: true` is never dropped
+// for its age, and no other rule of the queue takes it off before it has had
+// its window either (its caller still can, when what it says stops being
+// true: `retire`, `drop`). Each of these did, and Woodblock or Tine went
+// unnamed:
+//
+//   - Rule 5 passes it over: a later word on the same key no longer takes
+//     this toast's place (a second keep's reveal took "Kept … It replaced
+//     Woodblock"), and with no other word on its key to replace, it waits
+//     its turn at the back. This toast still takes the place of an earlier
+//     word on its own key that is not about the player's sounds (the warm
+//     start's result, a keep after its reveal).
+//   - A refusal on its key interrupts it as rule 4 interrupts anything, rather
+//     than taking it down ("⚡ bred … It replaced Tine" lost its OPEN IT to
+//     "⚡ didn't start"): it comes back behind the refusal with a fresh
+//     window, unless it was already fading.
+//   - The backlog's trim never cuts it, and it is not counted against
+//     MAX_TOASTS: a preset's toast behind an undo was cut by the three cuts
+//     said after it. A burst of these each has its turn, and the cap still
+//     holds for the toasts around them.
 
-/** How many toasts may wait behind the one on screen. */
+/** How many toasts may wait behind the one on screen, not counting those
+ *  about the player's sounds (`bank`, rule 6), which are never cut. */
 export const MAX_TOASTS = 3;
 /** One window, shared by the toast and by whatever it is holding back. */
 export const UNDO_WINDOW_MS = 7000;
@@ -101,11 +118,13 @@ export function createToastLane({
     return entry;
   }
 
-  /** Rule 5: put `entry` where the last toast with its `replace` key is. False
-   *  when there is none, and the caller queues it as usual. */
+  /** Rule 5: put `entry` where the earlier word with its `replace` key is.
+   *  False when there is none, and the caller queues it as usual. A toast
+   *  about the player's sounds is not an earlier word here (rule 6): it keeps
+   *  its place, and `entry` waits behind it. */
   function supersede(entry) {
     const key = entry.opts.replace;
-    const same = (t) => t.opts.replace === key;
+    const same = (t) => t.opts.replace === key && !t.opts.bank;
     const held = live && same(live) ? live : null;
     const at = queue.findIndex(same);
     // Every earlier word on it goes; only the newest is ever said.
@@ -129,14 +148,17 @@ export function createToastLane({
   }
 
   /** Every toast with this `replace` key goes, on screen or queued, with no
-   *  successor put in its place (the caller is about to say it again). */
+   *  successor put in its place (the caller is about to say it again). Not
+   *  one about the player's sounds (rule 6): on screen, the refusal pre-empts
+   *  it as it does any toast, and it comes back behind it. */
   function dropReplaced(key) {
+    const same = (t) => t.opts.replace === key && !t.opts.bank;
     for (let i = queue.length - 1; i >= 0; i--) {
-      if (queue[i].opts.replace !== key) continue;
+      if (!same(queue[i])) continue;
       view.remove(queue[i].el);
       queue.splice(i, 1);
     }
-    if (live && live.opts.replace === key) {
+    if (live && same(live)) {
       cancel(live.timer);
       view.remove(live.el);
       live = null;
@@ -185,16 +207,24 @@ export function createToastLane({
   }
 
   /** Keep the backlog shallow, and spend the cut on remarks rather than on
-   *  anything still carrying an action, or a change to the player's sounds
-   *  (rule 6) — or on a refusal, which is the one thing in the lane that
-   *  cannot be said later instead. */
+   *  anything still carrying an action — or on a refusal, which is the one
+   *  thing in the lane that cannot be said later instead. A change to the
+   *  player's sounds (rule 6) is neither cut nor counted. */
   function trim() {
-    while (queue.length > MAX_TOASTS) {
-      let i = queue.findIndex((t) => !t.opts.undo && !t.opts.urgent && !t.opts.bank);
-      if (i < 0) i = queue.findIndex((t) => !t.opts.urgent);
+    const counted = (t) => !t.opts.bank;
+    let n = queue.filter(counted).length;
+    while (n > MAX_TOASTS) {
+      let i = queue.findIndex((t) => counted(t) && !t.opts.undo && !t.opts.urgent);
+      if (i < 0) i = queue.findIndex((t) => counted(t) && !t.opts.urgent);
       // Last resort takes from the back, never the front: the head is where the
-      // refusal that just pre-empted is sitting.
-      queue.splice(i >= 0 ? i : queue.length - 1, 1);
+      // refusal that just pre-empted is sitting. The back may be a toast about
+      // the player's sounds, pushed there by the refusals: it is passed over.
+      if (i < 0) {
+        i = queue.length - 1;
+        while (!counted(queue[i])) i--;
+      }
+      queue.splice(i, 1);
+      n--;
     }
     renderStack();
   }
