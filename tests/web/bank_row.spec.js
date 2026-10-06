@@ -3,7 +3,8 @@
 // is on it or the keyboard cursor is, and not at rest, when they can't be
 // pressed either. Cut can then be pressed. Its reveal rules once lost to the
 // rule that hides it (CSS specificity), so the control could never appear.
-// ★ folds the five stars out in the actions' place, and a star rates.
+// ★ folds the five stars out in the actions' place, and a star rates. And
+// m in the list saves the row under the cursor once a press, held or not.
 const { test, expect } = require("./fixtures");
 
 test("a bank row's cut appears on hover and can be pressed", async ({ page, app }) => {
@@ -53,6 +54,39 @@ test("a bank row's actions show on the keyboard cursor, and its ★ folds out th
   await page.keyboard.press("2");
   await expect(page.locator("#toasts .toast").last()).toContainText(/Rated .+ 2★\./);
   await expect(r.locator(".star.lit")).toHaveCount(2);
+});
+
+// m in the list saves the sound under the cursor, as the global m does. Held,
+// the key repeats, and the list's m answered every repeat: the sound was
+// saved or released again each time, each with a toast about it, and the
+// lane shows every one of those in turn (#183). A press saves once.
+test("a held m in the bank list saves the sound once, not again on every repeat", async ({ page, app }) => {
+  await app.boot();
+  await app.engine((timeout) => expect(page.locator("#bank-list .bank-item[data-id]").first()).toBeVisible({ timeout }));
+  await page.mouse.move(5, 5);
+  await page.locator("#bank-list").focus();
+  await page.keyboard.press("ArrowDown");
+  const row = page.locator("#bank-list .bank-item.kbd");
+  await expect(row).toHaveCount(1);
+  const id = Number(await row.getAttribute("data-id"));
+  const sent0 = await app.sentCount("set_pinned");
+  const t0 = await app.now();
+  await page.keyboard.press("m");
+  const first = await app.reply("pinned", { after: t0 });
+  expect(first.id).toBe(id);
+  // The key held down: the keydowns a browser sends while it repeats.
+  await page.locator("#bank-list").evaluate((el) => {
+    for (let i = 0; i < 5; i++) {
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "m", repeat: true, bubbles: true, cancelable: true }));
+    }
+  });
+  // Pressed again, it does the other half of the toggle. The engine answers
+  // in order, so by this reply anything a repeat sent has been answered too.
+  const t1 = await app.now();
+  await page.keyboard.press("m");
+  const second = await app.reply("pinned", { after: t1 });
+  expect(second.pinned, "a repeat saved or released the sound").toBe(!first.pinned);
+  expect(await app.sentCount("set_pinned") - sent0, "a repeat asked the engine again").toBe(2);
 });
 
 // The pool stands in the order it joined at rest, so the sound boot opens,

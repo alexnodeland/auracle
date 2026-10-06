@@ -4037,7 +4037,8 @@ function firstNotePlayed() {
 // here is the DOM: the toast's element (`note`), and where the lane sits
 // (rules 1 and 2, `positionToastLane` below). A toast that says a sound
 // joined or left the pool, or was saved or released, is given `bank: true`
-// (rule 6): it is never dropped for having waited.
+// (rule 6): nothing in the queue takes it off before its turn, neither its
+// age, the backlog's trim, nor a later word or a refusal on its key.
 const toastLane = createToastLane({
   view: {
     show(el) {
@@ -8801,9 +8802,13 @@ $("bank-list").addEventListener("keydown", (e) => {
     // letters through even when a control has focus, so binding it here would
     // have both saved the patch and played a D, and silently cost a player one
     // key of their keyboard whenever the bank had focus.
+    //
+    // Once a press, as the global handler's `m` is: a held key repeats, and
+    // each repeat saved or released the sound again, each with its toast
+    // about the player's sounds, which the lane shows every one of (#183).
     e.preventDefault();
     e.stopPropagation();
-    saveCursorRow();
+    if (!e.repeat) saveCursorRow();
   } else if (/^[1-5]$/.test(e.key)) {
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere

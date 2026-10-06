@@ -54,8 +54,11 @@ the long-form notes are this directory's `README.md`.
   says why and jumps the queue (`urgent`), and an undo retires the receipt of
   what it undid. A confirmation must not queue behind stale news. A toast
   that reports a change to the player's sounds (a sound joined or left the
-  pool, or was saved or released) is given `bank: true`, and is never
-  dropped for having waited.
+  pool, or was saved or released) is given `bank: true`, and has its turn
+  however many toasts come after it: it is never dropped for having waited
+  or cut from the backlog, a later word on its key never takes its place
+  (it waits behind it when there is nothing else on that key to replace),
+  and a refusal on its key interrupts it rather than taking it down.
 - **One language across the views**
   ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
   words, colours (green sound, amber the model, red danger, silk you), undo,
