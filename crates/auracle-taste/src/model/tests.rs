@@ -787,8 +787,15 @@ fn mixture_captures_bimodal_taste() {
     }
     let acc1 = correct[0] as f64 / n_test as f64;
     let acc2 = correct[1] as f64 / n_test as f64;
+    // Swept over sixteen seeds (this one and 1 to 15): the mixture's lead
+    // ran 0.118 to 0.208 (this one 0.150; mean 0.157, SD 0.024), its
+    // accuracy 0.845 to 0.915, and the weaker style came back at cos 0.927
+    // to 0.972 (mean 0.954, SD 0.015). The lead's bound sits 3.6 SDs under
+    // its mean and the cosine's 6.8, where a mixture that had lost most of
+    // its advantage, or recovered a style only roughly, fails; the 0.02 and
+    // 0.6 they replace passed both.
     assert!(
-        acc2 > acc1 + 0.02,
+        acc2 > acc1 + 0.07,
         "mixture ({acc2}) does not beat linear ({acc1}) on a bimodal user"
     );
     assert!(acc2 > 0.75, "mixture accuracy {acc2} too low");
@@ -802,7 +809,7 @@ fn mixture_captures_bimodal_taste() {
     };
     let (ca, cb) = (best_cos(&theta_a), best_cos(&theta_b));
     assert!(
-        ca > 0.6 && cb > 0.6,
+        ca > 0.85 && cb > 0.85,
         "style recovery too weak: cos_a={ca:.2} cos_b={cb:.2}"
     );
 }
