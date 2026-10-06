@@ -210,7 +210,7 @@ function sceneTitle({ stage, beat, line }) {
       const M = { cx: 960, cy: 470, size: 300 };
       const mk = mark(svg, M);
       const lock = place(el("div", { class: "lk" }, layer), { x: 0, y: 0 });
-      lock.style.fontSize = "150px";
+      lock.style.fontSize = "var(--t-frame-14)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const desc = textBlock(layer, { x: 960, y: 700, w: 1600, cls: "mono", size: 27, align: "center", ax: 0.5, ay: 0.5 });
       desc.style.letterSpacing = "0.26em";
@@ -221,7 +221,7 @@ function sceneTitle({ stage, beat, line }) {
       // Final lockup geometry (measured once, at the final tracking).
       wm.style.letterSpacing = "0.095em";
       const wmW = wm.getBoundingClientRect().width;
-      const fs = 150;
+      const fs = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
       const markPx = 1.28 * fs;
       const gap = 0.62 * fs;
       const total = markPx + gap + wmW;
@@ -420,7 +420,7 @@ function sceneGrow({ stage, beat, line }) {
       ];
       const out = el("div", { class: "silk" }, over, "OUT ▸");
       place(out, { x: 1660, y: 526, ay: 0.5 });
-      Object.assign(out.style, { fontSize: "22px", color: ink("--phos-a-dim"), letterSpacing: "0.2em" });
+      Object.assign(out.style, { fontSize: "var(--t-frame-3)", color: ink("--phos-a-dim"), letterSpacing: "0.2em" });
       const outCable = cable(svg, { p0: plates[3].out, p1: [1648, 526], sag: 8 });
       // Lineage: what each generation changed, in the app's own words.
       const gens = [
@@ -687,7 +687,7 @@ function sceneDepth({ stage, beat, line }) {
           const kx = [560 + 175, 0, 1460 + 175][i];
           place(tg, { x: kx, y: 262, ax: 0.5, ay: 1 });
           tg.style.opacity = i === 1 ? 0 : fade(tl, 1.3 + i * 0.3, 1.8 + i * 0.3, L2 - 0.6, L2 - 0.1);
-          tg.style.fontSize = "19px";
+          tg.style.fontSize = "var(--t-frame-3)";
           void pk;
         });
         // The forecast and the score.
@@ -744,7 +744,7 @@ function sceneClose({ stage, beat, line }) {
         const d = place(el("div", { class: "screen" }, under), { x, y, w: 360, h: 180 });
         const lbl = el("div", { class: "mono" }, under, n);
         place(lbl, { x: x + 14, y: y + 12 });
-        Object.assign(lbl.style, { fontSize: "19px", color: ink("--phos-a-dim"), zIndex: 2 });
+        Object.assign(lbl.style, { fontSize: "var(--t-frame-3)", color: ink("--phos-a-dim"), zIndex: 2 });
         const tr = scope(svg, { x: x + 20, y: y + 46, w: 320, h: 110, width: 2.5, points: 220, wave: voiceWave({ f: 1.2 + (i % 5) * 0.5, bright: 0.2 + ((i * 37) % 10) / 12, seed: 60 + i }) });
         return { d, lbl, tr };
       });
@@ -801,11 +801,12 @@ function sceneEnd({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const M = { cx: 0, cy: 420, size: 150 };
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "110px";
+      lock.style.fontSize = "var(--t-frame-12)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 110;
-      const gap = 0.62 * 110;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       M.cx = left + markPx / 2;
       const mk = mark(svg, { cx: M.cx, cy: M.cy, size: markPx });
@@ -817,7 +818,7 @@ function sceneEnd({ stage, beat, line }) {
       const sp = words(say, "Play it *today*.");
       const url = el("div", { class: "pill a" }, over, "auracle.alexnodeland.com  ▸");
       place(url, { x: 960, y: 740, ax: 0.5, ay: 0.5 });
-      Object.assign(url.style, { fontSize: "30px", padding: "16px 34px" });
+      Object.assign(url.style, { fontSize: "var(--t-frame-5)", padding: "var(--s4) var(--s6)" });
       void under;
       return (tl, t) => {
         const u = ramp(tl, -0.3, 0.6, E.out4);

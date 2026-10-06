@@ -29,6 +29,12 @@ music changes.
   the app and the brand (`www/brand/`). There is no third colour. Every colour
   is a token of `stage.css`'s, generated from `www/brand/tokens.json`; the kit
   and the films read them with `ink()` and `inkA()`, never as literals.
+- the type scale, in frame pixels. A size a film writes into a style comes
+  from the same tokens: text from the frame's own tier, `--t-frame-n` (step n
+  of the scale's ratio, 12 × 1.2ⁿ, in pixels of the 1920 × 1080 frame), and
+  spaces and corners from the shared steps. The drawing helpers (the kit's
+  `textBlock()`, a film's `label()` or `txt()`) still take a number for a
+  label's size, which the token check does not count (#291).
 
 `stage/walk.js` turns recorded footage into a walkthrough. It adds a slow
 camera, callouts that point at the thing being named, a chapter label and

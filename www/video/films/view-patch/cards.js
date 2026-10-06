@@ -54,7 +54,7 @@ export function cards(stage) {
  *  the captions below the window stay as they are. */
 function veil(layer, { a = 0.62, blur = 5 } = {}) {
   const v = place(el("div", {}, layer), { x: 120, y: 70, w: 1680, h: 945 });
-  v.style.borderRadius = "14px";
+  v.style.borderRadius = "var(--r3)";
   v.style.background = `radial-gradient(120% 95% at 32% 50%, ${inkA("--bezel", a)} 0%, ${inkA("--bezel", Math.min(0.92, a + 0.18))} 100%)`;
   v.style.backdropFilter = `blur(${blur}px) saturate(0.85)`;
   return v;
@@ -163,7 +163,7 @@ function sceneTurn(stage, beat, c) {
       if (c.n) {
         for (let i = 1; i <= COUNT; i++) {
           const p = place(el("div", {}, layer), { x: X + (i - 1) * 44, y: 700, w: 34, h: 18 });
-          p.style.borderRadius = "4px";
+          p.style.borderRadius = "var(--r1)";
           p.style.background = i === c.n ? PHOS.a : i < c.n ? PHOS_DEEP.a : ink("--plate-off");
           p.style.border = `1px solid ${i === c.n ? PHOS.a : ink("--plate-off-edge")}`;
           if (i === c.n) p.style.boxShadow = `0 0 12px ${inkA("--phos-a", 0.7)}`;
@@ -211,10 +211,10 @@ function sceneOutro(stage, beat) {
       const over = el("div", { class: "layer" }, layer);
       // The five verbs, lit as they are said.
       const row = place(el("div", {}, over), { x: 960, y: 330, ax: 0.5, ay: 0.5 });
-      Object.assign(row.style, { display: "flex", gap: "22px" });
+      Object.assign(row.style, { display: "flex", gap: "var(--s5)" });
       const chips = VERBS.map((v) => {
         const p = el("div", { class: "pill a" }, row, v);
-        Object.assign(p.style, { fontSize: "34px", padding: "16px 34px" });
+        Object.assign(p.style, { fontSize: "var(--t-frame-6)", padding: "var(--s4) var(--s6)" });
         return { p, at: wordTime(l1, v) };
       });
       // Next: EVOLVE, and where the guide keeps PATCH.
@@ -225,14 +225,15 @@ function sceneOutro(stage, beat) {
       nextSub.style.color = ink("--silk");
       const guide = el("div", { class: "pill" }, over, "the guide · The instrument › PATCH");
       place(guide, { x: 960, y: 790, ax: 0.5, ay: 0.5 });
-      Object.assign(guide.style, { fontSize: "24px", padding: "12px 28px" });
+      Object.assign(guide.style, { fontSize: "var(--t-frame-4)", padding: "var(--s3) var(--s6)" });
       // The lockup, small, to sign off.
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
-      lock.style.fontSize = "40px";
+      lock.style.fontSize = "var(--t-frame-7)";
       const wm = el("span", { class: "wm" }, lock, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
-      const markPx = 1.28 * 40;
-      const gap = 0.62 * 40;
+      const lockPx = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
+      const markPx = 1.28 * lockPx;
+      const gap = 0.62 * lockPx;
       const left = 960 - (markPx + gap + wmW) / 2;
       const mk = mark(svg, { cx: left + markPx / 2, cy: 900, size: markPx });
       place(lock, { x: left + markPx + gap, y: 900, ay: 0.5 });

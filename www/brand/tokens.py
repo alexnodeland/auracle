@@ -75,11 +75,13 @@ happens, not how long it moves), a `.font` on anything but a canvas
 context, lengths that are not one of the four kinds (widths, heights,
 offsets, shadows), and spacing in em.
 
-Today's surfaces predate the scale, so this is a ratchet, as the voice check
-is: the check fails when a file's count rises, when a file the baseline does
-not list has any, and when a count falls below the baseline (a move lowers
-the baseline in the same change, with `--update`), so the floor only goes
-down. `--check` lists the files not yet moved every time it runs.
+It is a ratchet, as the voice check is: the check fails when a file's count
+rises, when a file the baseline does not list has any, and when a count
+falls below the baseline (a move lowers the baseline in the same change,
+with `--update`), so the floor only goes down. The floor is zero: every
+scanned file is on the scale and the baseline is empty, so a new literal
+fails unless it says why. `--check` names any file the baseline holds a
+count for every time it runs.
 
 Python 3 standard library only.
 """
@@ -108,14 +110,19 @@ SIZE_KINDS = ("font", "space", "radius", "time")
 
 # Each consumer: its stylesheet, and the rules its block holds, as
 # (selector, surface). A rule with no surface holds the font families only;
-# otherwise the families go in the first rule. `indent` is the rule's own
-# indentation inside the file (a <style> element indents its rules).
+# otherwise the families go in the first rule. The rule that holds the
+# families holds the sizes too, and writes its surface's own; a consumer whose
+# families' rule has no surface names the surface whose sizes it writes with
+# `sizes` (the docs' two themes share one set of sizes, in `:root`). `indent`
+# is the rule's own indentation inside the file (a <style> element indents
+# its rules).
 CONSUMERS = [
     {"file": "apps/web/style.css", "rules": [(":root", "app")], "indent": "", "step": "  "},
     {"file": "www/landing/style.css", "rules": [(":root", "landing")], "indent": "", "step": "  "},
     {
         "file": "www/theme/css/variables.css",
         "rules": [(":root", None), ("html.coal", "docs"), ("html.light", "docs-paper")],
+        "sizes": "docs",
         "indent": "",
         "step": "    ",
     },
@@ -372,7 +379,10 @@ def is_length(v: str) -> bool:
 
 
 def sizes_surface(c: dict) -> str | None:
-    """The surface whose own sizes a consumer writes: its families' rule's."""
+    """The surface whose own sizes a consumer writes: the one it names, or
+    its families' rule's."""
+    if "sizes" in c:
+        return c["sizes"]
     i = next((i for i, (_, s) in enumerate(c["rules"]) if s is None), 0)
     return c["rules"][i][1]
 
@@ -398,8 +408,18 @@ def size_sections(src: dict, surface: str | None) -> list[tuple[str, list[tuple[
     return out
 
 
+def sized_as(surface: str) -> str:
+    """The surface whose sizes a surface's pages read: the one its consumer
+    writes, which for the docs' Paper is the docs' (both themes share the
+    :root that holds them)."""
+    for c in CONSUMERS:
+        if any(s == surface for _, s in c["rules"]):
+            return sizes_surface(c) or surface
+    return surface
+
+
 def size_names(src: dict, surface: str | None) -> dict[str, str]:
-    return {n: v for _, toks in size_sections(src, surface) for n, v, _ in toks}
+    return {n: v for _, toks in size_sections(src, sized_as(surface) if surface else None) for n, v, _ in toks}
 
 
 def reduced_motion(src: dict) -> list[tuple[str, str]]:
@@ -500,7 +520,7 @@ def render_group(title: str, toks: list[tuple[str, str, str]], d: str) -> list[s
     return lines
 
 
-def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, indent: str, step: str) -> list[str]:
+def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, indent: str, step: str, sizes: str | None = None) -> list[str]:
     d = indent + step
     lines = [f"{indent}{selector} {{"]
     groups = sections(src, surface) if surface else []
@@ -519,7 +539,7 @@ def render_rule(src: dict, selector: str, surface: str | None, fonts: bool, inde
         for n, t in src["fonts"].items():
             decl = f"--font-{n}: {t['value']};"
             lines.append(f"{d}{decl}")
-        for title, toks in size_sections(src, surface):
+        for title, toks in size_sections(src, sizes):
             lines.append("")
             lines += render_group(title, toks, d)
     lines.append(f"{indent}}}")
@@ -531,7 +551,7 @@ def render_block(src: dict, c: dict) -> str:
     fonts_rule = next((i for i, (_, s) in enumerate(c["rules"]) if s is None), 0)
     out = [f"{ind}{BEGIN}"]
     for i, (sel, surface) in enumerate(c["rules"]):
-        out += render_rule(src, sel, surface, i == fonts_rule, ind, step)
+        out += render_rule(src, sel, surface, i == fonts_rule, ind, step, sizes_surface(c))
     still = " ".join(f"--{n}: {v};" for n, v in reduced_motion(src))
     out += [
         f"{ind}@media (prefers-reduced-motion: reduce) {{",
@@ -1178,7 +1198,10 @@ def main(argv: list[str]) -> int:
         if NOT_YET:
             print(f"  tokens: not yet checked: {', '.join(f for f, _ in NOT_YET)} (tokens.py NOT_YET)")
         total = sum(sum(r.values()) for r in now.values())
-        print(f"  tokens: sizes not yet moved onto the scale ({total} literals, {SIZES_BASELINE}): {', '.join(f'{rel} ({sum(r.values())})' for rel, r in now.items())}")
+        if now:
+            print(f"  tokens: sizes not yet moved onto the scale ({total} literals, {SIZES_BASELINE}): {', '.join(f'{rel} ({sum(r.values())})' for rel, r in now.items())}")
+        else:
+            print(f"  tokens: no literal size or duration the check counts in the {n} files, but those that say why")
     return 0
 
 

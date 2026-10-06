@@ -82,13 +82,13 @@
        under the scale at 11 px, the floor for text in a page; the rack, drawn
        to its zoom, has sizes of its own, and a lone glyph is sized to its
        button */
-    --t-label: 11px;   /* silk caps: panel labels, tabs, buttons; the floor for text */
-    --t-value: 12px;   /* mono values, readouts, small print */
-    --t-body: 14px;    /* prose, names, hints */
-    --t-voice: 17px;   /* the model speaking (Newsreader italic), and nothing else */
-    --t-title: 21px;   /* a title: a sound's name, a card's heading, the wordmark */
-    --t-display: 52px; /* a level's one headline */
-    --t-canvas: 12px;  /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
+    --t-label: 0.6875rem; /* 404: 11 px, in rem, so the page follows the reader's font size */
+    --t-value: 12px;      /* mono values, readouts, small print */
+    --t-body: 0.875rem;   /* 404: 14 px, in rem, as above */
+    --t-voice: 17px;      /* the model speaking (Newsreader italic), and nothing else */
+    --t-title: 21px;      /* a title: a sound's name, a card's heading, the wordmark */
+    --t-display: 52px;    /* a level's one headline */
+    --t-canvas: 12px;     /* the smallest text drawn on a canvas (TA20 found 10 px too small) */
 
     /* space: a 4 px grid to 16, then wider. Under the first step (1 to 3 px)
        is an optical nudge, not a space, and is written as it is */
@@ -113,6 +113,9 @@
     --d-move: 320ms;                /* something moving: a view, a panel, a card arriving */
     --e-settle: cubic-bezier(0.2, 0.8, 0.2, 1); /* arriving and coming to rest */
     --e-swap: cubic-bezier(0.6, 0, 0.2, 1); /* one thing giving way to another */
+
+    /* 404: sizes only this surface uses */
+    --t-h1: clamp(1.7rem, 5vw, 2.4rem); /* the page's one line */
   }
   @media (prefers-reduced-motion: reduce) {
     :root { --d-press: 0ms; --d-state: 0ms; --d-move: 0ms; }
@@ -129,7 +132,7 @@
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 24px;
+    padding: var(--s5);
     color: var(--silk);
     font-family: var(--font-silk);
     font-weight: 300;
@@ -144,7 +147,7 @@
     display: inline-flex;
     align-items: center;
     gap: .62em;
-    font-size: 1rem;
+    font-size: 1rem; /* token-exempt: the site bar's lockup, at the landing page's size (its --t-body, 1rem), so the mark reads the same on both */
     font-weight: 500;
     letter-spacing: .145em;
     color: var(--silk);
@@ -152,21 +155,21 @@
   }
   .mark svg { width: 1.28em; height: 1.28em; flex: none; transform: translateY(-.035em); }
   .code {
-    margin: 28px 0 10px;
+    margin: var(--s6) 0 var(--s3);
     /* Its own stack, not --font-mono: this page loads no faces, so the
        fallbacks are what shows, and these are the ones it has always had. */
     font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-    font-size: .7rem;
+    font-size: var(--t-label);
     letter-spacing: .16em;
     text-transform: uppercase;
     color: var(--silk-mute);
   }
-  h1 { margin: 0 0 14px; font-size: clamp(1.7rem, 5vw, 2.4rem); font-weight: 300; letter-spacing: -.015em; }
-  p { margin: 0 0 22px; color: var(--silk-dim); }
-  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  h1 { margin: 0 0 var(--s4); font-size: var(--t-h1); font-weight: 300; letter-spacing: -.015em; }
+  p { margin: 0 0 var(--s5); color: var(--silk-dim); }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s3); }
   a.go { color: var(--phos-a); text-decoration-color: var(--phos-a-deep); text-underline-offset: .18em; }
   a.go:hover { text-decoration-color: currentColor; }
-  .hint { margin-top: 26px; font-size: .82rem; color: var(--silk-mute); }
+  .hint { margin-top: var(--s5); font-size: var(--t-body); color: var(--silk-mute); }
 </style>
 </head>
 <body>

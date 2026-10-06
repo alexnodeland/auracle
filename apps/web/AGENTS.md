@@ -137,9 +137,9 @@ the long-form notes are this directory's `README.md`.
   `.font` on anything but a canvas context, widths, heights, offsets,
   shadows or spacing in em. Where the scale has no step (a loop's period, a
   glyph sized to its box), the declaration says why with a trailing
-  `/* token-exempt: … */`, which covers that declaration only. The other
-  surfaces whose sizes are not yet on the scale are listed in
-  [`www/brand/README.md`](../../www/brand/README.md#the-tokens). Two rules
+  `/* token-exempt: … */`, which covers that declaration only. Every other
+  styled surface is held to the same rule
+  ([`www/brand/README.md`](../../www/brand/README.md#the-tokens)). Two rules
   fighting over one element is usually a specificity mistake (the bank row's
   cut was invisible for that reason).
 - **The build stamp** (`pkg/build.json`) hashes the wasm and every app
