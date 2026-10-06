@@ -1,0 +1,99 @@
+# What the Rust tests need from nextest's pool. `make test`, CI's tiers
+# (`make test-fast-tier`, the Coverage jobs, the Slow suite) and
+# cargo-mutants all run nextest, and it reads this file from the workspace
+# root. docs/architecture/testing.md § The local loop says what each part
+# bought, measured.
+#
+# Which test is slow (the CI tiers) is named in the Makefile (SEARCH_FLOOR,
+# SLOW_TESTS) and nowhere else; nothing here moves a test between tiers.
+
+# `priority` below came in nextest 0.9.91, and an older one runs the tests
+# without it: the tests that take the whole pool are met midway again, and
+# the pool drains around them. This makes an older nextest say so, and run
+# as before. `make setup` installs nextest only when it is missing: upgrade
+# with `cargo install cargo-nextest --locked`.
+nextest-version = { recommended = "0.9.91" }
+
+[profile.default]
+# A test running past a minute is reported as slow, every minute it runs,
+# and stopped at twenty: a hung test ends with its name in the report,
+# instead of holding the run until someone stops it. Generous, because a
+# workstation is shared: on a 16-core Mac at a load average of 90 to 150,
+# the longest fast-tier test took 170 s and the search floor 422 s.
+slow-timeout = { period = "60s", terminate-after = 20 }
+
+# CI's runs (NEXTEST_PROFILE=ci, set in ci.yml and slow-suite.yml): stopped
+# at ten minutes, so a hung test ends inside its job's limit (twenty minutes
+# for a Coverage runner) and the job reports it, where the limit would cut
+# the job off with no report. On a runner the longest fast-tier test took
+# 70 s, instrumented (a queue run on Oct 6), and the longest slow one about
+# three minutes, the search floor aside. The JUnit file (junit.xml under
+# nextest's ci directory in the target directory) has every test's time.
+[profile.ci]
+slow-timeout = { period = "60s", terminate-after = 10 }
+
+[profile.ci.junit]
+path = "junit.xml"
+
+# Tests that start threads of their own declare how many (`threads-required`):
+# nextest counts a test as one thread, and beside fifteen others a test's
+# own threads oversubscribe the machine, so it and every test around it run
+# slower than alone, and a test's time stops saying what it costs. Declared,
+# the test takes that many of the pool's slots (all of them, at most).
+#
+# Declared is a test whose work runs in threads of its own for the whole
+# test: one per seed, preset or core. A test that starts them for a phase
+# is left at one. Among those are the session's generation tests: four
+# teach two to four engines at once, a thread each (`taught_n`), and most
+# walk a generation the farm's way, a thread for each of its walks
+# (`farm_walks`, five at once), with phases on one thread between. They
+# measured about two busy threads over their run. Declared at four or five,
+# they would hold the slots idle through their one-thread phases, in CI's
+# fast tier too; left at one, they oversubscribe the pool while they teach
+# or walk. The wasm crate's `twins` (two engines taught at once) and the
+# walks of the `own` module's tilt test (auracle-session's own/tests.rs, a
+# thread per walk for a phase) are left at one the same way; the tilted
+# walk declared below (`walk::tests`) runs its three threads throughout.
+#
+# Declared tests also run first (`priority`). nextest starts tests in order and
+# starts nothing new while the next one waits for its slots, so a test that
+# takes the whole pool, met midway, left the pool draining around it: the
+# search floor started after 340 others and ran alone, at a load average of
+# 70 to 140. First, it starts while the pool is empty.
+#
+# These overrides are the default profile's, so the ci profile has them too.
+
+# The search floor: sixteen seeds, a thread each. Its own limit, since on a
+# slow runner it can come near ten minutes (about five and a half on a
+# typical one).
+[[profile.default.overrides]]
+filter = 'test(=engine::tests::refinement_improves_pool)'
+threads-required = "num-test-threads"
+priority = 100
+slow-timeout = { period = "60s", terminate-after = 20 }
+
+# A thread per core (`available_parallelism`).
+[[profile.default.overrides]]
+filter = 'test(=file::tests::the_mask_is_what_survives_a_recording) | test(=shipped_preset_wirings_measure_the_same_today)'
+threads-required = "num-test-threads"
+priority = 100
+
+# A thread for each seed, preset or session.
+[[profile.default.overrides]]
+filter = 'test(=engine::tests::closed_loop_learns_synthetic_taste)'
+threads-required = 5
+priority = 100
+
+[[profile.default.overrides]]
+filter = 'test(=perform::tests::named_controls_move_the_sound_they_name)'
+threads-required = 4
+priority = 100
+
+[[profile.default.overrides]]
+filter = """
+test(=engine::tests::closed_loop_learns_motion_rate)
+| test(=guess::tests::a_seeded_session_guesses_the_same)
+| test(=walk::tests::a_tilted_walk_carries_and_hears_the_takes)
+"""
+threads-required = 3
+priority = 100

@@ -31,7 +31,8 @@ for f in $(printf '%s\n' "$staged" | grep -E '\.sh$|^\.githooks/' || true); do
 done
 
 if printf '%s\n' "$staged" | grep -qE '(^|/)(AGENTS|CLAUDE)\.md$|^docs/|^\.claude/|^www/(docs|reference)/src/|^www/video/tools/'; then
-  make -s dev-check >/dev/null 2>&1 || { echo "pre-commit: make dev-check fails (run it to see why)"; fail=1; }
+  # Its parts side by side; plain -j, since macOS's GNU Make 3.81 has no -O.
+  make -s -j8 dev-check >/dev/null 2>&1 || { echo "pre-commit: make dev-check fails (run it to see why)"; fail=1; }
 fi
 
 [ "$fail" = 0 ] || echo "pre-commit: fix the above, or commit with --no-verify to skip once."

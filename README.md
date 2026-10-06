@@ -174,7 +174,7 @@ is. See [Your data](https://auracle.alexnodeland.com/docs/your-data.html).
 
 ```bash
 make check   # the CI gate: fmt-check, clippy (-D warnings), app syntax, the specs' lint, dev-check, wasm32, and the tests
-make test    # cargo test --workspace --profile test-fast (the DSP tests need optimized code)
+make test    # every Rust test on nextest, optimized (the DSP tests need it), then the doctests
 make fmt     # rustfmt
 make lint    # clippy
 make help    # every target, with what it does

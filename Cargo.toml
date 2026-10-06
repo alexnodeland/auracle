@@ -42,10 +42,19 @@ panic = "abort"
 # lowering the first makes the suite slower than fat LTO ever made it faster, and
 # enabling the second changes which paths the tests exercise. `panic` is not
 # inherited — cargo forces `unwind` for test harnesses regardless.
+#
+# `incremental` is for the edit-and-test loop on a workstation: after an edit
+# to a function's body, rustc reuses what it compiled of the unchanged code
+# instead of compiling the edited crate and every crate after it whole
+# (docs/architecture/testing.md § The local loop has the times). It applies to
+# the workspace's crates only; the dependencies are compiled once either way.
+# CI sets CARGO_INCREMENTAL=0, which overrides it: there every build starts
+# from a cache, and the incremental state would only make each cache bigger.
 [profile.test-fast]
 inherits = "release"
 lto = false
 codegen-units = 16
+incremental = true
 
 [workspace.dependencies]
 # In-house foundations, from crates.io.

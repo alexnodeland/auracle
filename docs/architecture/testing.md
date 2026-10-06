@@ -19,7 +19,7 @@ ignored; φ last). Add a row in its place, not at the end: two PRs that each
 add one then conflict only when no row sorts between theirs. -->
 | Gate | Command | Proves | Run when |
 | --- | --- | --- | --- |
-| All tests | `make test` | The workspace, optimized (the examples are not built: `make lint` compiles them), and the doctests; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
+| All tests | `make test` (needs `cargo-nextest`: `make setup`) | The workspace, optimized, on nextest, every test in its own process ([The local loop](#the-local-loop)), and then the doctests (the examples are not built: `make lint` compiles them); includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `make browser-fast`, `make browser-slow` (see `tests/web/AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; in CI the fast tier is part of the required `CI` check and the `@slow` and `@quarantine` specs run in the *Slow suite* ([CI tiers](#ci-tiers), [Flakes](#flakes)) |
 | Browser, what a change reaches | `make browser-changed` (`REPEAT=3` runs the spec files the branch adds or edits three times each, and the rest once; [The two lanes](#ci-tiers), below) | The specs CI's fast lane picks, and for `main.js` the specs of the views its changed sections draw; for `worker.js`, the page or the engine, each view's sample | Every change the browser reads, before review; `REPEAT=3` before the push (the `ship` skill) |
@@ -27,7 +27,7 @@ add one then conflict only when no row sorts between theirs. -->
 | CI's Rust tiers | `make test-fast-tier`, `make test-slow-tier` | The workspace split the way CI splits it (needs `cargo-nextest`) | To reproduce a CI leg by name |
 | Coverage | `make coverage` (needs cargo-llvm-cov and the `llvm-tools` component: `make setup`) | Each crate's line and function coverage from the fast tier is at its floor (`crates/coverage-baseline.json`), and every line changed in `crates/` since `origin/main` (`BASE=` for another) is covered; the HTML report is `target/llvm-cov/html/index.html` ([Coverage](#coverage)) | Any Rust change, before review; `make coverage-floors` in a PR that raises a crate's coverage |
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
-| Everything CI runs | `make check` | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
+| Everything CI runs | `make check`; `make -j check` runs its parts side by side ([The local loop](#the-local-loop)) | fmt, lint, js, the spec lint, wasm32, tests | Before every commit |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
@@ -45,6 +45,7 @@ add one then conflict only when no row sorts between theirs. -->
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Web units | `make web-check` (`COVERAGE=1` also writes what the unit tests ran of `apps/web` as an lcov, for Codecov: [Coverage](#coverage)) | Syntax, plus the pure modules' unit tests (`apps/web/tests/`), plus the spec lint (the *Spec lint* row), plus the tests of CI's flake routing: which issue a failed test is said on (`tests/web/flakes.test.mjs`) and how (`.github/actions/file-issue/file-issue.test.mjs`); plus the timings the browser runners are dealt by, each test's median over its runs that passed (`tests/web/shard.test.mjs`); plus the tests of the specs a change selects (`tests/web/changed.test.mjs`: CI's selection names no spec for `main.js`, `worker.js` or the engine; `make browser-changed`'s follows the views, and tells the specs a branch edits, which `REPEAT` repeats, from those it reaches; every spec has a view, and every rule for `main.js`'s headings wins one) | Any JS, the Slow suite's or the Flake hunt's filing, the browser runners' deal |
+| What a change reaches | `make check-changed` (since `origin/main`, `BASE=` for another; uncommitted and untracked files count); `-j` side by side | The parts of `make check` the change reaches, by the classifier CI's fast lane uses (`scripts/changes.py`), and the fast lane's jobs beyond `make check` it reaches, each with its command | Between edits; a change to Rust or to CI reaches all of `make check` |
 | Worker protocol | `make worker-test` (after `make wasm`; `COVERAGE=1` as for the web units) | `apps/web/worker.js`, unchanged, in a Node worker thread over the built engine with no page: what it answers and in what order, its lanes and scheduling, and what reaches the farm's ports ([The levels](#the-levels)) | `worker.js`, `farm.js`'s messages, or Rust the worker calls (after `make wasm`) |
 | Workflows and ops scripts | `make dev-check` (its `dev-ops` part): `node scripts/ops/check_workflows.mjs`, its tests (`scripts/ops/check_workflows.test.mjs`), the workflows' own tests (`scripts/ops/workflows.test.mjs`), and `scripts/ops/test_*.py`; the after-edit hook runs the check on a workflow as it is edited | Each saved Claude Code workflow (`.claude/workflows/`) parses; its `meta` is a pure literal the Workflow tool can read, with the file's name; every phase it names is declared and every declared one named; it calls no `Date.now()`, `Math.random()`, argless `new Date()` or Node API; and it runs to its end on stubbed agents for each sample of `args`, four ways (agents answering with the most data their schema allows, the least, none, and all but one, each in turn), with no stage throwing on valid data or on one agent's null, a stage's null ending its item as in the tool, every agent call labelled with the tool's options, a schema it accepts and no `undefined` in its prompt, and args passed as a string refused before any agent is spent. The check's own tests show it refusing each. The workflows' own tests run the real files on scripted agents: in `ship-issues`, `fix-flake` and `mutants-burndown` an item is `ready` only when every agent it needed came back (each agent killed in turn; a fix, a second round or a re-check that did not return leaves its blocking findings unresolved, and a fix that did not return leaves the should-fix ones undone), and `review-pr` puts each finding to a refuter of its own, two at one place too. The operator's scripts: `rows_resolve.py`'s resolutions (a row edited on one side and one added on the other, rows added at one place, words added to one line, repeated lines) and refusals (a real overlap, no base); `queue_state.py`'s rule (each check by its latest run, a stale `dequeued` label, a `full-ci` PR's Slow suite once its run is complete); `ship_pr.sh` on a scratch repository and a fake `gh` (a PR opened by `gh pr create`, or through the REST API when that fails, or found by its branch when the REST create answers nothing; labelled, queued unless `--full-ci`, and nothing labelled when no PR is found); `wf_result.py` on an output file and a running run's journal (an agent that failed is said and does not read as running; blocking findings no re-check confirmed are a problem) ([`docs/process.md` § Waves](../process.md#waves)) | A workflow, a script in `scripts/ops/` |
 | φ | `make revalidate` (both sides, diff), then `make perform-wirings`, then `cargo run -p auracle-features --example file_phi --release` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ; `FILE_MASKED` still names what a recording cannot measure (the mask gate test fails until it does) | Any φ, phrase, vetting or normalization change |
@@ -104,6 +105,85 @@ engine that traps on demand.
 | `tests/worker/bank.test.mjs` | A patch file opened twice lands once, and the second `import_patch` answers 0 with the sound it landed as (`duplicate`), though the import put the file in normal form (a quantizer over nothing folded away), so main opens that sound rather than call the file refused |
 | `tests/worker/warm_start.test.mjs` | The warm start's cards are measured while the player chooses, a pick's card next; *teach it* is handed to the worker when the card being measured ends, inserts its first pick and the other cards measured with no render (the rest rendered once each), and measures no card after; with every card measured ahead, *teach it*'s replies, the saved session and the first fit are the ones a worker that measured nothing makes |
 
+## The local loop
+
+What a workstation runs between edits, and what keeps it short (#177 § 6).
+The times are from the maintainer's 16-core Mac, which other work shares:
+each comparison was taken back to back, with the load average beside it.
+
+- **`make test` runs nextest**, every test in the workspace in one pool,
+  each in a process of its own, then the doctests with `cargo test --doc`
+  (nextest runs none; there are none today). `cargo test` ran the
+  workspace's test binaries one after another, each waiting on its slowest
+  test before the next began: 204 s against nextest's 158 s on a quiet machine (#177). At a
+  load average of 46 to 143, three runs of each could not tell them apart
+  (`cargo test` 390, 504 and 512 s; nextest 346, 487 and 609 s), and
+  nextest used no more CPU (2,096 and 2,113 s against 2,139 and 2,145 s).
+  It stops starting tests at the first failure, where `cargo test`
+  finished the failing binary: `NEXTEST_ARGS=--no-fail-fast` runs them all.
+- **`.config/nextest.toml` says what a test needs from that pool.** A test
+  whose work runs in threads of its own for the whole test, one per seed,
+  preset or core, declares how many (`threads-required`), so it doesn't
+  slow every test beside it, and its time says what it costs: beside
+  fifteen other tests the search floor took 422 s (at a load average of 90
+  to 150), and declared, it ran alone in 112 and 164 s (46 to 98). Those
+  tests run first (`priority`), while the pool is empty: nextest starts
+  nothing new while a test waits for its slots. A test past a minute is
+  reported slow, and one past twenty minutes is stopped, so a hung test
+  ends with its name in the report. CI selects the file's `ci` profile
+  (`NEXTEST_PROFILE=ci`): stopped at ten minutes, inside a job's limit, and
+  a JUnit file with every test's time. cargo-mutants keeps the default
+  profile, where its own time limit comes first. Which tier a test is in is
+  still the `Makefile`'s (`SEARCH_FLOOR`, `SLOW_TESTS`).
+- **Test builds are incremental** (`incremental = true` in
+  `[profile.test-fast]`). After an edit to a function's body, the test binaries rebuild in 10 s
+  instead of 61 (an edit to the grammar, which three other crates build
+  on) and in 11 s instead of 41 (the session crate): medians of six each,
+  at a load average of 77 to 136. The tests run as fast: six of the
+  heaviest used 83 and 86 s of CPU built incremental, 84 and 82 s built
+  whole. It costs disk: 0.9 GB of the 1.3 GB under `target/test-fast`.
+  CI sets `CARGO_INCREMENTAL=0`, which overrides it, since every build
+  there starts from a cache that the incremental state would only bloat;
+  `make coverage` sets it too, since each of its runs starts clean.
+- **`make -j check` runs its parts side by side.** Cargo locks each
+  profile's directory on its own, so `lint` (debug), `wasm-check` (the
+  wasm32 release build) and `test` (`test-fast`) build at once, beside
+  `web-check` and `dev-check`, and no cargo waits on another's directory.
+  What that saves is small now: with incremental builds the rebuild after
+  an edit takes seconds, and the test run is most of `make check`. After
+  an edit to the session crate, at load averages of 32 to 122, `make check`
+  took 559 and 575 s and `make -j check` 538 and 704 s; in the first pair
+  the test run was 464 and 517 s of it. Plain `-j`: macOS ships GNU Make
+  3.81, which has no `-O`; on GNU Make 4, `-j -O` keeps each part's output
+  together. The pre-commit hook runs `dev-check` with `-j8`.
+- **`make check-changed` runs the parts of `make check` your change
+  reaches**, since the merge base with `origin/main` (`BASE=` for another),
+  uncommitted and untracked files included, by the classifier CI's fast lane
+  uses (`scripts/changes.py`, [The two lanes](#ci-tiers)). Rust or CI
+  reaches all of it; the app, the docs, the specs or a script, `web-check`
+  and `dev-check`; anything else (a changelog entry, the worker-protocol
+  tests) the voice and the changelog's checks that CI runs on every PR. It
+  also names the fast lane's jobs beyond `make check` that the change
+  reaches (Site, Worker protocol, Browser smoke, the specs it reaches), each
+  with its local command. `make -j check-changed` runs the parts side by
+  side.
+- **sccache, opt-in.** With `AURACLE_SCCACHE=1` in the environment (put it
+  in your shell's profile; `make setup` then installs sccache, as
+  `scripts/setup.sh --sccache` does), every cargo call `make` makes
+  compiles through it. Each worktree keeps its own `target/`: one target
+  directory shared between worktrees is not safe here, since cargo judges
+  freshness by file times and bakes `CARGO_MANIFEST_DIR` into test binaries
+  (the main checkout once ran a test binary built from a copy of the
+  workspace, which read the copy's fixture). sccache keys each compile by
+  its inputs, the `CARGO_*` variables among them, so only what is the same
+  in every worktree, crates.io's dependencies, comes back from its cache,
+  and an incremental compile (the workspace's crates under `test-fast`) is
+  never cached. A new worktree's first builds (the tests, clippy and the
+  wasm32 check, as `make check` builds them) took 99, 130 and 146 s from a
+  warm cache against 117, 160 and 160 s without one, at load averages of
+  27 to 59: 146 of the 198 compiles it can cache came back from it, and it
+  never caches a build script or a procedural macro (161 calls).
+
 ## CI tiers
 
 CI runs in two tiers, and the PR checks and the PR's *Mutants* job run
@@ -123,7 +203,7 @@ scripts/ops/rows_resolve.py keeps both. -->
 | Mutants | `.github/workflows/mutants.yml`, *Mutants*, on a PR; `.github/workflows/mutants-weekly.yml`, *Mutants weekly*, weekly and by hand | On every PR, the mutants in the changed code (`make mutants DIFF=1`'s; none when no Rust changed) on one runner for at most 25 minutes, red when one survived; weekly and by hand, one part of the workspace (four shards, two runners at a time; a fifteen-week cycle aims to cover it all), or by hand every shard of the crates named, a survivor on `main` filing *Mutants that survive* ([Mutants](#mutants)) | Yes, on a PR. Mergify's queue conditions require its `Mutants in the changed code` (`.mergify.yml`, #181), so a PR enters the queue only once it is green: red on a survivor in the changed code or a broken run, never on time alone. Not the ruleset, and not the queue's merge conditions (on the draft PR it passes at once). *Mutants weekly* gates nothing |
 | Codecov | Steps in `ci.yml`'s Coverage, Web and Worker protocol jobs (`.github/actions/codecov`), set up by `codecov.yml`; on `main`, when it reuses the queue's verdict, a job of its own (*Codecov from the queue's run*) that nothing waits for | Uploads three lcovs, one flag each (`rust`, `web`, `worker`), from a PR's own run and from `main`, not from the queue's run. Codecov comments on a PR whose run uploaded one, condensed, and keeps the trend on `main` ([Coverage](#coverage)) | No: its statuses are informational, an upload never fails a job, and the gate is `scripts/coverage_gate.py` |
 
-**The two lanes.** One workflow, and its *What changed* job picks the lane:
+**The two lanes.** One workflow, and its *What changed* job picks the lane. A PR's paths are classified by `scripts/changes.py`, which `make check-changed` runs on a workstation too, so the two agree on what a change reaches:
 
 | Change | A PR's own run (the fast lane) |
 | --- | --- |
@@ -134,11 +214,11 @@ scripts/ops/rows_resolve.py keeps both. -->
 | An app module `changed.mjs` maps (`patch.js`, `perform.js`, `faces.js` …) | Web, the engine, Site, then Browser smoke, Worker protocol, and that module's specs on up to four runners |
 | A test helper (`fixtures.js`, `shell.js`), the Playwright config, the lockfile | Web, the engine, Site, then Browser smoke; the specs a helper reaches when they are twenty files or fewer |
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
-| The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
+| The coverage gate's scripts, `scripts/setup.sh`, nextest's config (`.config/nextest.toml`) | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
 | The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
 | Another script (`scripts/*.py`: the changelog's assembler, the PR checks, and their tests; anything in `scripts/ops/`: the operator's scripts and the workflows' check) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
-| A workflow or an action (`.github/`) | The full gate, as the queue runs it |
+| A workflow or an action (`.github/`), or the classifier (`scripts/changes.py`) | The full gate, as the queue runs it |
 
 - **The fast lane** narrows by the paths the PR changed. Its browser specs
   are the ones `tests/web/changed.mjs` picks: a changed spec, the specs that
@@ -296,7 +376,8 @@ PR carries the `full-ci` label: adding it starts a run, and every push to
 the labelled PR runs it again; a PR without it runs nothing there. Add it to
 a PR that changes what the slow tests cover, the paths the workflow used to
 run a PR for: any crate, `Cargo.toml` or `Cargo.lock`,
-`rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or `.github/actions/`;
+`rust-toolchain.toml`, the `Makefile`, `.config/nextest.toml`, `slow-suite.yml`
+or `.github/actions/`;
 `apps/web/`'s `worker.js`, `farm.js`, `perform.js`, `patch.js`,
 `live-audio.js`, `audio-in.js`, `explain.js`, `faces.js` or `vessel.js`;
 `tests/web/`'s `fixtures.js`, `playwright.config.js`, `package.json` or

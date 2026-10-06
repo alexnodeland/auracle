@@ -29,6 +29,13 @@ git status --short
 git diff --stat HEAD
 ```
 
+`make check-changed` answers the same question the way CI's fast lane does
+(`scripts/changes.py`, since the merge base with `origin/main`, uncommitted
+and untracked files included): it runs the parts of `make check` the change
+reaches, and names the fast lane's other jobs it reaches with their
+commands. The table below is for what it can't pick: a measurement, a
+browser spec by name, a film.
+
 ## 2. Run the gates for those paths
 
 | Changed | Run |
@@ -41,7 +48,8 @@ git diff --stat HEAD
 | `apps/web/*.js`, `style.css`, `index.html` | `make web-check` (the pure modules' unit tests), then the browser specs the change reaches: `make browser-changed` (for `main.js`, the specs of the views its changed sections draw; the `browser-test` skill) |
 | `apps/web/worker.js`, `farm.js`, `tests/worker/**` | also `make worker-test` (the worker in Node over `pkg/`, no page; `make wasm` first) |
 | `tests/web/**` | `make spec-lint` (the after-edit hook lints each file as you edit it; a fixed violation is recorded with `npx eslint --prune-suppressions` in `tests/web`, `tests/web/AGENTS.md` § The lint), then the specs you changed, through the queue (`make browser-changed`); `REPEAT=3` for one you made less flaky |
-| `.github/workflows/**`, `.github/actions/**` | `actionlint` if installed (`brew install actionlint`); the PR's own CI run is the test (a workflow change runs everything) |
+| `.github/workflows/**`, `.github/actions/**`, `scripts/changes.py` | `actionlint` if installed (`brew install actionlint`); `python3 scripts/test_changes.py` for the classifier (in `make dev-check`); the PR's own CI run is the test (a change to either runs everything) |
+| `.config/nextest.toml` | `make test` (a filter that names a test matches it: `cargo nextest list --workspace --cargo-profile test-fast --lib --bins --tests -E '<filter>'`); the PR's fast lane runs Coverage on it |
 | `www/**` or public API docs | `make site && make site-check` |
 | `www/video/films/<film>/**` | `node www/video/tools/validate.mjs <film>`, then a rehearsal (the `film` skill) |
 | `www/video/tools/**` | syntax (`node --check`, `py_compile`, `bash -n`) and a rehearsal of one shot that uses the tool |
@@ -52,8 +60,10 @@ git diff --stat HEAD
 
 ## 3. Before committing
 
-- `make check` when Rust changed; `make web-check` is enough for JS-only,
-  unless a string changed: then `make dev-check` too, for the voice check.
+- `make check` when Rust changed (`make -j check` runs its parts side by
+  side); `make web-check` is enough for JS-only, unless a string changed:
+  then `make dev-check` too, for the voice check. `make check-changed` picks
+  these the way CI does.
   `make web-check` (and so `make check`) includes the spec lint, which needs
   `npm ci` in `tests/web` once (it says so when that is missing).
 - A user-visible change also needs its descriptions updated (`truth-pass`)

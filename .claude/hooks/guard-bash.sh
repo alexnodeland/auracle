@@ -7,10 +7,18 @@ cmd="$(python3 "$here/_input.py" command)"
 [ -n "$cmd" ] || exit 0
 
 # 1. Rust tests in a debug build: ~20x slower on audio, and the grammar suite
-#    overflows its stack (docs/decisions/005-tests-run-optimized.md).
+#    overflows its stack (docs/decisions/005-tests-run-optimized.md). By
+#    `cargo test`, or by nextest (`make test` runs it), whose profile option
+#    is --cargo-profile; a run from an archive compiles nothing.
 if printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|\s)cargo(\s+\+\S+)?\s+test\b'; then
   if ! printf '%s' "$cmd" | grep -Eq -- '--release|--profile|--doc'; then
     echo "Rust tests run optimized here: use \`make test-crate CRATE=auracle-grammar\` (optimized, on the pinned compiler) or \`make test\`, or add \`--profile test-fast\`. Debug builds are ~20x slower on audio and overflow the grammar suite's stack." >&2
+    exit 2
+  fi
+fi
+if printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|\s)cargo(\s+\+\S+)?\s+nextest\s+(run|list)\b'; then
+  if ! printf '%s' "$cmd" | grep -Eq -- '--release|--cargo-profile|--archive-file'; then
+    echo "Rust tests run optimized here: use \`make test\` or \`make test-fast-tier\` (optimized, on the pinned compiler), or add \`--cargo-profile test-fast\`. Debug builds are ~20x slower on audio and overflow the grammar suite's stack." >&2
     exit 2
   fi
 fi
