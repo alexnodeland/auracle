@@ -104,9 +104,6 @@
     }
   },
   "evolve_breeds_beside_you.spec.js": {
-    "auracle/budget-not-expect": {
-      "count": 1
-    },
     "auracle/no-aur-in-spec": {
       "count": 4
     },
