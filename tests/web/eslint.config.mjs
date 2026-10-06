@@ -10,8 +10,11 @@
 // it; when you fix one, `npx eslint --prune-suppressions` records the fall
 // (the lint fails until it does). `--suppress-all` is not run again: it
 // would take every new violation into the baseline (a rule new to the set
-// takes in its findings once, by name: `--suppress-rule <rule>`). How to fix
-// each rule is in tests/web/AGENTS.md § The lint.
+// takes in its findings once, by name: `--suppress-rule <rule>`), and
+// suppressions.mjs fails a count or an entry the merge base did not have.
+// eslint.test.mjs tests each rule set here. How to fix each rule is in
+// tests/web/AGENTS.md § The lint.
+import comments from "@eslint-community/eslint-plugin-eslint-comments";
 import { defineConfig } from "eslint/config";
 import playwright from "eslint-plugin-playwright";
 
@@ -30,9 +33,11 @@ const restrict = (description, message, ...selectors) => ({
   create: (context) => Object.fromEntries(selectors.map((s) => [s, (node) => context.report({ node, message })])),
 });
 
-// Code a spec hands the page to run: what it reads is the page's clock and
-// the page's state, not the runner's.
-const PAGE_SIDE = `CallExpression[callee.property.name=/^(evaluate|evaluateAll|evaluateHandle|addInitScript|waitForFunction|\\$eval|\\$\\$eval)$/] *`;
+// The function a spec hands the page to run: what its body reads is the
+// page's clock and the page's state, not the runner's. Only the function:
+// the call's other arguments (`page.evaluate(fn, Date.now())`) are worked
+// out on the runner.
+const PAGE_SIDE = `CallExpression[callee.property.name=/^(evaluate|evaluateAll|evaluateHandle|addInitScript|waitForFunction|\\$eval|\\$\\$eval)$/] > :function *`;
 // main.js's debug hook, under both its names.
 const AUR = "/^__(aur|ric)$/";
 const AUR_READ = `MemberExpression:matches([object.object.name="window"][object.property.name=${AUR}], [object.name=${AUR}])`;
@@ -42,10 +47,28 @@ const AUR_ALLOWED = ["audioCtx", "audioIn", "getLive", "marks", "patch", "takes"
 // What a player does to the page: Playwright's actions.
 const ACTIONS =
   "/^(click|dblclick|tap|press|pressSequentially|type|fill|clear|check|uncheck|setChecked|selectOption|selectText|setInputFiles|hover|focus|blur|dragTo|dispatchEvent|down|up|move|wheel|insertText)$/";
-const EXPECT = 'CallExpression:matches([callee.name="expect"], [callee.object.name="expect"][callee.property.name="soft"])';
-// A name that holds a duration: ms, took, elapsed, waitedMs, pickMs, OPEN_MS.
+// A statement that is `expect(await …).matcher(…)`, `.not` and `expect.soft`
+// too, by its own path: a check inside a callback (toPass's, poll's) is not
+// the statement's.
+const READ_ONCE = ["expression.callee.object", "expression.callee.object.object"]
+  .flatMap((e) => [
+    `[${e}.callee.name="expect"][${e}.arguments.0.type="AwaitExpression"]`,
+    `[${e}.callee.object.name="expect"][${e}.callee.property.name="soft"][${e}.arguments.0.type="AwaitExpression"]`,
+  ])
+  .join(", ");
+// A block expect retries as a whole: an action and a read inside it are not
+// a race.
+const RETRIED = 'CallExpression[callee.property.name="toPass"] *, CallExpression[callee.object.name="expect"][callee.property.name="poll"] *';
+// The expect whose first argument a matcher judges: `expect(x)` or
+// `expect.soft(x)`, as the matcher call's callee.object.
+const BOUNDED = 'CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/]:matches([callee.object.callee.name="expect"], [callee.object.callee.object.name="expect"][callee.object.callee.property.name="soft"])';
+// A name that holds a duration: ms, took, elapsed, waitedFor, pickMs, OPEN_MS.
 const DURATION =
-  "/^(ms|dt|took|elapsed|waited|latency|duration|delay|lag)$|(Ms|MS|_ms|Elapsed|Took|Latency|Duration|Delay|Lag|Waited)$|^(ms|elapsed|took|latency|duration|delay|lag)[A-Z_]/";
+  "/^(ms|dt|took|elapsed|waited|latency|duration|delay|lag)$|(Ms|MS|_ms|Elapsed|Took|Latency|Duration|Delay|Lag|Waited)$|^(ms|elapsed|took|waited|latency|duration|delay|lag)[A-Z_]/";
+// The test's fixture waits that fail when what they wait for never comes:
+// for expect-expect, as good as an expect. Matched by the called name
+// (app.reply, app.toast, …).
+const ASSERTING_WAITS = ["booted", "engine", "filled", "fullPool", "poolRows", "quiet", "reached", "reply", "toast"];
 
 const house = {
   meta: { name: "auracle" },
@@ -79,13 +102,14 @@ const house = {
     "no-read-after-action": restrict(
       "no one-shot expect(await …) straight after an action",
       "A one-shot read straight after an action races the app's answer to it. Wait for the state: await expect(locator).toHaveText(…) (or toHaveAttribute, toHaveCount, …), expect.poll(() => …), or app.reply(…).",
-      `ExpressionStatement[expression.type="AwaitExpression"][expression.argument.callee.property.name=${ACTIONS}] + ExpressionStatement:has(${EXPECT} > AwaitExpression.arguments)`,
+      `ExpressionStatement[expression.type="AwaitExpression"][expression.argument.callee.property.name=${ACTIONS}] + ExpressionStatement:matches(${READ_ONCE}):not(${RETRIED})`,
     ),
     "budget-not-expect": restrict(
       "a bound on how long something took is a budget",
       "How long something took is a budget, never an expect (ADR-022): app.budget(name, ms, limit), or budget from ./fixtures. An order on the app's clock compares two moments, not a moment and a limit.",
-      'CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/]:matches([callee.object.callee.name="expect"], [callee.object.callee.object.name="expect"][callee.object.callee.property.name="soft"])' +
-        `:matches([callee.object.arguments.0.name=${DURATION}], [callee.object.arguments.0.property.name=${DURATION}])` +
+      // A duration's name, or a difference of two moments (t1 - t0), held
+      // under a number or a ..._MS constant.
+      `${BOUNDED}:matches([callee.object.arguments.0.name=${DURATION}], [callee.object.arguments.0.property.name=${DURATION}], [callee.object.arguments.0.type="BinaryExpression"][callee.object.arguments.0.operator="-"])` +
         ':matches([arguments.0.type="Literal"], [arguments.0.name=/_MS$/])',
     ),
   },
@@ -93,24 +117,28 @@ const house = {
 
 export default defineConfig([
   { ignores: ["test-results/", "playwright-report/", "blob-report/", "all-blobs/"] },
+  // Every file: a disable names its rule and says why after `--`, and one
+  // nothing needs is an error.
   {
     files: ["**/*.js", "**/*.mjs"],
     linterOptions: { reportUnusedDisableDirectives: "error" },
+    plugins: { "@eslint-community/eslint-comments": comments },
+    rules: {
+      "@eslint-community/eslint-comments/no-unlimited-disable": "error",
+      "@eslint-community/eslint-comments/require-description": "error",
+    },
   },
   // The specs and their helpers are CommonJS. The .mjs files (shard.mjs,
-  // changed.mjs, this one) are Node tools, not Playwright code: linted for
-  // what any script is, without the plugin, whose describe-callback rule
-  // takes shard.mjs's own describe() for Playwright's.
+  // changed.mjs, this one) are Node tools, not Playwright code: parsed, and
+  // held to the comment rules above, and nothing else. The plugin's
+  // describe-callback rule took shard.mjs's own describe() for Playwright's.
   {
     files: ["**/*.js"],
     languageOptions: { sourceType: "commonjs" },
     plugins: { playwright, auracle: house },
     rules: {
       ...recommended,
-      // It takes the fixture's app.last(…) (a promise) for Locator.last(),
-      // and its fix deletes the await the test needs: all five of its
-      // findings were that.
-      "playwright/no-useless-await": "off",
+      "playwright/expect-expect": ["error", { assertFunctionNames: ASSERTING_WAITS }],
       "auracle/no-own-pageerror": "error",
     },
   },

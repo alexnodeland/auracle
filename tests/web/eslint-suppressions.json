@@ -500,7 +500,7 @@
   },
   "perform_offer_latency.spec.js": {
     "auracle/budget-not-expect": {
-      "count": 1
+      "count": 2
     },
     "auracle/no-runner-clock": {
       "count": 4

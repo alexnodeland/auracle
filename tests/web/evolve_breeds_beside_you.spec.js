@@ -179,6 +179,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   // The receipt may wait its turn in the lane behind a pick's toast (on a
   // fast farm the generation ends inside a pick's undo window).
   const receipt = await app.toast(/^Generation \d+:/, { since: mark, timeout: 15_000 });
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   const refined = await app.last("refined");
   const retired = refined.retired || [];
   console.log(`receipt: ${receipt} (retired ${JSON.stringify(retired)})`);
@@ -259,6 +260,7 @@ test("stop ends with what's bred, and replaced patches leave only then", { tag: 
   await expect(page.locator("#job-stop")).toBeVisible();
   await page.locator("#job-stop").click();
   await app.engine((timeout) => expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout }), { ms: 30_000 });
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   const refined = await app.last("refined");
   const born = refined.born;
   console.log(`stopped after ${landed.length}+ jobs: kept ${JSON.stringify(born)}, retired ${JSON.stringify(refined.retired)}`);

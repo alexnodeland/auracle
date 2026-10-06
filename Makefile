@@ -167,12 +167,16 @@ web-check: js-check spec-lint
 ## spec-lint: ESLint over tests/web's specs and helpers (tests/web/eslint.config.mjs):
 ## the Playwright plugin's recommended rules and the house rules, with no
 ## file's count of a rule above tests/web/eslint-suppressions.json and none
-## below it unrecorded (tests/web/AGENTS.md § The lint). Run from tests/web,
-## where the suppressions are; needs tests/web's packages (npm ci there).
+## below it unrecorded; the lint's own tests (eslint.test.mjs); and the
+## suppressions file against the merge base with BASE (origin/main): every
+## key a file, no count risen, no file with a new entry (suppressions.mjs).
+## tests/web/AGENTS.md § The lint. Run from tests/web, where the
+## suppressions are; needs tests/web's packages (npm ci there).
+LINT_PACKAGES := .bin/eslint eslint-plugin-playwright @eslint-community/eslint-plugin-eslint-comments
 spec-lint:
-	@test -x tests/web/node_modules/.bin/eslint && test -d tests/web/node_modules/eslint-plugin-playwright || { \
-		printf '  ESLint is not installed in tests/web: run  cd tests/web && npm ci\n'; exit 1; }
-	@cd tests/web && node_modules/.bin/eslint . && printf '  tests/web: lint OK\n'
+	@for p in $(LINT_PACKAGES); do test -e tests/web/node_modules/$$p || { \
+		printf '  ESLint is not installed in tests/web (no %s): run  cd tests/web && npm ci\n' "$$p"; exit 1; }; done
+	@cd tests/web && node_modules/.bin/eslint . && node --test --test-reporter=dot eslint.test.mjs && node suppressions.mjs $(BASE)
 
 build:
 	$(CARGO) build --workspace

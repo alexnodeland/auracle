@@ -41,6 +41,7 @@ test("cables carry light by the levels the engine measured, keyed as the rack dr
   const measuredHere = () =>
     page.evaluate(() => !!window.__tap.last.cable_levels && window.__tap.last.cable_levels.tree === window.__tap.last.bench.treeJson);
   await app.engine((timeout) => expect.poll(measuredHere, { timeout }).toBe(true), { ms: 60_000 });
+  // eslint-disable-next-line playwright/no-useless-await -- app.last is the tap's (a promise), not Locator.last()
   const reply = await app.last("cable_levels");
   const levels = reply.levels.cables;
   expect(levels.length).toBeGreaterThan(0);
