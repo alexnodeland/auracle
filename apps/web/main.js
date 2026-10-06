@@ -1992,6 +1992,7 @@ const patchView = createPatch({
     !!(armed || connectPick || wire || compareId != null || pendingTarget) || catalogOpen() || plateSel != null ||
     !$("ctx-menu").classList.contains("hidden") ||
     !$("ovf-menu").classList.contains("hidden") ||
+    panelOpen("scope-panel") || panelOpen("image-panel") ||
     !!document.activeElement?.closest?.("#rack-svg [data-addr], #rack-svg [data-stop], #rack-svg g.mod-group"),
 });
 
@@ -5604,6 +5605,17 @@ document.addEventListener("keydown", (e) => {
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
+      $("ovf-btn").focus();
+      spent = true;
+    }
+    // The scope and picture panels float too, so they are closed here, in
+    // the chain, and not by listeners of their own: those heard Esc after
+    // this chain had already put PATCH's selected module down for the same
+    // press. The focus goes back to ⋯, which they hang off (the item that
+    // opened each is in the menu, hidden now).
+    if (panelOpen("scope-panel") || panelOpen("image-panel")) {
+      closeScopePanel();
+      closeImagePanel();
       $("ovf-btn").focus();
       spent = true;
     }
@@ -21242,6 +21254,18 @@ function startScope() {
 // ---------- the scope's settings panel ----------
 // Hung off the header's ⋯ rather than given its own gear on the rack: it is a
 // preference, and preferences live where the app's other preferences live.
+
+/** Whether the panel `id` (the scope's, the picture's) is open. */
+function panelOpen(id) {
+  const el = $(id);
+  return !!el && !el.classList.contains("hidden");
+}
+
+function closeScopePanel() {
+  $("scope-panel")?.classList.add("hidden");
+  $("scope-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function scopePanelInit() {
   const panel = $("scope-panel");
   if (!panel) return;
@@ -21268,10 +21292,7 @@ function scopePanelInit() {
   bind("sp-trigger", (e) => { e.checked = !!scopeState.trigger; }, (e) => { scopeState.trigger = e.checked; });
   bind("sp-glow", (e) => { e.checked = !!scopeState.glow; }, (e) => { scopeState.glow = e.checked; });
   bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("scope-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeScopePanel;
   $("scope-close").onclick = close;
   $("scope-btn").onclick = (ev) => {
     ev.stopPropagation();
@@ -21288,11 +21309,7 @@ function scopePanelInit() {
     if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
     close();
   });
-  // Esc closes it, and that is the press spent: the model view, which takes
-  // Esc last, waits for the next one.
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { ev.preventDefault(); close(); $("scope-btn").focus(); }
-  });
+  // Esc closes it in main's Esc chain, with whatever else floats.
 }
 
 // Audio cables only look alive while audio is actually flowing — before this,
@@ -23062,6 +23079,11 @@ async function runCardExport() {
   }
 }
 
+function closeImagePanel() {
+  $("image-panel")?.classList.add("hidden");
+  $("image-btn")?.setAttribute("aria-expanded", "false");
+}
+
 function imagePanelInit() {
   const panel = $("image-panel");
   if (!panel) return;
@@ -23076,14 +23098,12 @@ function imagePanelInit() {
   bind("ix-scale", (e) => { e.value = String(imageState.scale); }, (e) => { imageState.scale = Number(e.value); });
   bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
   bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
-  const close = () => {
-    panel.classList.add("hidden");
-    $("image-btn")?.setAttribute("aria-expanded", "false");
-  };
+  const close = closeImagePanel;
   // Focus goes back to the ⋯, not to the menu item that opened this: the item
   // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
   // and `focus()` on a `display:none` element is a no-op that drops the
   // keyboard on the body. The ⋯ is the visible control this panel hangs off.
+  // (Esc does the same, in main's Esc chain, for this panel and the scope's.)
   const dismiss = () => { close(); $("ovf-btn")?.focus(); };
   $("image-close").onclick = dismiss;
   $("ix-go").onclick = runImageExport;
@@ -23091,7 +23111,7 @@ function imagePanelInit() {
     ev.stopPropagation();
     $("ovf-menu").classList.add("hidden");
     $("ovf-btn").setAttribute("aria-expanded", "false");
-    $("scope-panel")?.classList.add("hidden");
+    closeScopePanel();
     const shut = panel.classList.toggle("hidden");
     $("image-btn").setAttribute("aria-expanded", String(!shut));
     if (!shut) { imageSync(); $("ix-scope").focus(); }
@@ -23101,9 +23121,6 @@ function imagePanelInit() {
     if (panel.classList.contains("hidden")) return;
     if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
     close();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { ev.preventDefault(); dismiss(); }
   });
 }
 

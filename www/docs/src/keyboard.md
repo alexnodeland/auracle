@@ -72,7 +72,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, at any level. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *Nothing to undo here. PATCH edits undo in PATCH.* |
 | <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | What the PERFORM control under the pointer, or in focus, does (its figure); anywhere else, the key map and gestures |
-| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first, and a tapped [model view](./reading-the-model.md#the-model-view) goes last. In PATCH it walks out one thing at a time: a menu, a knob, the module, the catalog, then a new patch |
+| <kbd>Esc</kbd> | Close a dialog, put PERFORM’s palette away, or put down a module you picked up: one thing a press, so an open menu or sheet goes first, and a tapped [model view](./reading-the-model.md#the-model-view) goes last. In PATCH it walks out one thing at a time: a menu or panel, a knob, the module, the catalog, then a new patch |
 
 ## In EVOLVE
 

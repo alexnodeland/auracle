@@ -11,7 +11,7 @@
 // - F2 opens the structure menu, and Delete on a two-input module asks which
 //   input survives.
 // - Esc walks out one thing at a time: the module, then the catalog, then a
-//   new patch.
+//   new patch; a panel open over the new patch goes before it.
 // - With a module in hand the arrows choose a socket and Enter places it.
 // - The keys yield to a text field (the catalog's search), and the note keys
 //   still play on a module.
@@ -136,6 +136,20 @@ test("Esc walks out one thing at a time: the module, the catalog, then a new pat
   await expect(page.locator("#rack-subject")).toHaveText("New patch");
   await page.keyboard.press("Escape");
   await expect(page.locator("#nodebank")).toBeHidden();
+  await expect(page.locator("#rack-subject")).toHaveText("New patch");
+  // The scope panel open over it is nearer: that press closes the panel and
+  // asks for no sound (the way back is `edit_begin`, sent in the same task),
+  // and the new patch waits for the next. The focus on the panel's ×: Esc in
+  // a drop-down never ends a new patch.
+  await page.locator("#ovf-btn").click();
+  await page.locator("#scope-btn").click();
+  await expect(page.locator("#scope-panel")).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#scope-close")).toBeFocused();
+  const opens = await app.sentCount("edit_begin");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#scope-panel")).toBeHidden();
+  expect(await app.sentCount("edit_begin"), "the press that closed the panel ended the new patch too").toBe(opens);
   await expect(page.locator("#rack-subject")).toHaveText("New patch");
   await page.keyboard.press("Escape");
   await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("Reese", { timeout }), { ms: 30_000 });

@@ -5,11 +5,12 @@
 // is model_view.spec.js's; here, the closers outside it that once let the
 // same press end the view too: PERFORM's well modes (XY, How it works), the
 // ? card, the scope panel, the picture panel and TASTE's selected point; and
-// with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY), a press closes
-// the nearer only. And XY goes from an axis's drop-down too, where the focus
-// stays after a choice. A step that reads the view never presses in a
-// drop-down: the shell leaves the view up for a press there (`typing`), so
-// the view would stay whatever the closer did.
+// with two open (KEYS ⋯ or a bank row's ★ over PERFORM's XY, either panel
+// over PATCH's selected module), a press closes the nearer only. And XY goes
+// from an axis's drop-down too, where the focus stays after a choice. A step
+// that reads the view never presses in a drop-down: the shell leaves the
+// view up for a press there (`typing`), so the view would stay whatever the
+// closer did.
 const { test, expect, modelView, openKeys, bankTab } = require("./fixtures");
 
 test("Esc closes what is nearer before it ends a tapped model view, at every level", async ({ page, app }) => {
@@ -68,15 +69,36 @@ test("Esc closes what is nearer before it ends a tapped model view, at every lev
 
   // The scope panel and the picture panel, from ⋯. Each opens with the focus
   // on its first drop-down; Shift+Tab takes it back to the panel's ×, which
-  // is not a field, so the press is the panel's to spend.
-  for (const [item, panel, close] of [["#scope-btn", "#scope-panel", "#scope-close"], ["#image-btn", "#image-panel", "#image-close"]]) {
+  // is not a field, so the press is the panel's to spend. The focus goes back
+  // to ⋯ (the item that opened the panel is in the menu, hidden).
+  const panels = [["#scope-btn", "#scope-panel", "#scope-close"], ["#image-btn", "#image-panel", "#image-close"]];
+  /** A panel opened from ⋯, the focus on its ×. */
+  const openPanel = async (item, panel, close) => {
     await page.locator("#ovf-btn").click();
     await page.locator(item).click();
     await expect(page.locator(panel)).toBeVisible();
     await page.keyboard.press("Shift+Tab");
     await expect(page.locator(close)).toBeFocused();
+  };
+  for (const [item, panel, close] of panels) {
+    await openPanel(item, panel, close);
     await escCloses(() => expect(page.locator(panel)).toBeHidden(), panel);
+    await expect(page.locator("#ovf-btn"), `Esc on ${panel} left the focus nowhere`).toBeFocused();
   }
+
+  // In PATCH, either panel over a selected module is nearer: that press
+  // closes the panel and the module stays selected; the next puts it down.
+  await app.level("patch");
+  await page.locator("#rack-svg .rack-controls g.mod-group").first().focus();
+  const selected = page.locator("#rack-svg .rack-plates g.selected");
+  await expect(selected).toHaveCount(1);
+  for (const [item, panel, close] of panels) {
+    await openPanel(item, panel, close);
+    await expect(selected, `opening ${panel} put the module down`).toHaveCount(1);
+    await escCloses(() => expect(page.locator(panel)).toBeHidden(), `${panel} over a selected module`);
+    await expect(selected, `the press that closed ${panel} put the module down too`).toHaveCount(1);
+  }
+  await escCloses(() => expect(selected).toHaveCount(0), "PATCH's selection");
 
   // TASTE: a point selected from the keyboard.
   await app.level("taste");

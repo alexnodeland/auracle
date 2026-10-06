@@ -623,12 +623,14 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for
-  `openStructMenu`. Esc closes one thing a press: a menu, a handoff or the
+  `openStructMenu`. Esc closes one thing a press: a menu, a handoff, the
+  scope or picture panel (closed in main's Esc chain with whatever else
+  floats, never by a listener of its own, so the selection waits) or the
   touch sheet spends it (the sheet stops the event in patch.js), then the
-  selection, then the catalog (`escBusy` holds a new patch's Esc while either
-  is up). The global Home/End focus the first and last plate only with the
-  focus on the canvas or nowhere, and never under a modal (`modalUp`);
-  ⇧Home is `fitAll`.
+  selection, then the catalog (`escBusy` holds a new patch's Esc while any
+  of these is up). The global Home/End focus the first and last plate only
+  with the focus on the canvas or nowhere, and never under a modal
+  (`modalUp`); ⇧Home is `fitAll`.
 - **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
   `#rack-map-btn`, the layout's menu `#pt-laymenu` with `setLayoutMode`),
   SET ASIDE (`renderTray` fills the shelf `#tray` and the catalog's

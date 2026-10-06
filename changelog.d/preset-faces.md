@@ -22,8 +22,11 @@
   it works away, closed the ? card, the scope or picture panel, or a
   sound's card on TASTE's map also ended the view. A press that folded a
   bank row's ★ took a second thing with it at every level: the view, or in
-  PATCH the module you had selected. After a press on HOW IT WORKS, Esc
-  didn't put the face back at all (`model_view_esc.spec.js`, #153).
+  PATCH the module you had selected. In PATCH so did a press that closed
+  the scope or picture panel: it put down the module you had selected, or
+  ended a new patch, and the scope panel left the keyboard focus nowhere
+  rather than on ⋯. After a press on HOW IT WORKS, Esc didn't put the face
+  back at all (`model_view_esc.spec.js`, `patch_keys.spec.js`, #153).
 - **Under the model view, a new patch's subtitle and sound A's in TEACH
   follow the belief line after a "·".** They were written as one bare
   line, so a new patch read *nothing to rate: no source reaches the output*
