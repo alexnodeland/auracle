@@ -322,8 +322,10 @@ an alias for notes written before the rename).
      entry in `changelog.d/` gets a warning there (item 3), not a failure.
 
    Once the PR merges, the same workflow comments on each `Refs` issue,
-   closes any `Closes` issue GitHub didn't, and tells each closed issue's
-   parent issue how many of its sub-issues are closed.
+   closes any `Closes` issue GitHub didn't, tells each closed issue's
+   parent issue how many of its sub-issues are closed, and ticks the boxes
+   in other open issues' checklists that name an issue that closed, once
+   every issue each box names is closed.
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`

@@ -24,7 +24,7 @@ It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 | 9. Checked | Green `CI` (the fast lane) and `PR checks` on the PR, then the full gate green on the queue's batch | GitHub Actions | CI |
 | 10. Merged | One squash commit on `main`, once the full gate is green on top of `main` | `main` | The merge queue (Mergify) |
 | 11. Shipped | `main` verified (reused or run), the site deployed from CI's build | GitHub Actions, Pages | CI |
-| 12. Closed | The issues it finishes closed, the ones it advances and their parents told; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
+| 12. Closed | The issues it finishes closed, the ones it advances and their parents told, the boxes naming them in other issues ticked; the plan's progress updated, the worktree removed | GitHub issues | `PR checks` on merge; the operator |
 
 Small fixes skip stages 2–4: an issue (or a failing test) is enough. Stages 2
 and 3 are for changes big enough to argue about first, as
@@ -205,9 +205,16 @@ Findings come back ranked, and review is **one round**:
   minute first, since GitHub closes them a moment after the merge), with a
   comment saying why; and tells the parent of each issue that closed
   (GitHub's sub-issues) which closed, with which PR, and how many of its
-  sub-issues are closed. A merge into another branch (a PR stacked on
-  another) closes nothing, as GitHub's own closing keywords don't. It
-  writes one comment per issue, each line in it marked: run again (a red
+  sub-issues are closed. In the other open issues (an umbrella's
+  checklist), it ticks each box that names an issue that closed, once
+  every issue the box names is closed: a box naming `#130 + #153` waits
+  for both. A PR a box names is not an issue to wait for, and a box in
+  code or an HTML comment, or one that names another repository's issue,
+  is left. It changes only the `[ ]`, and only on a line still as it was
+  read: it reads the body again just before the write. A merge into
+  another branch (a PR stacked on another) closes nothing, as GitHub's own
+  closing keywords don't. It writes one comment per issue, each line in it
+  marked (the boxes it ticked are a line of their own): run again (a red
   run is a read or a write that failed), it posts only the lines missing,
   and nothing twice. A PR from a fork gets a read-only token there, so its
   issues are updated by hand.
@@ -367,9 +374,15 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
 
 After the merge: the issues it finishes close (GitHub reads `Closes #N`, and
 `PR checks` closes any it missed), the ones it advances and their parents get a
-comment, the plan's progress table gets the PR, and the PR's branch deletes
-itself on GitHub (the repository deletes merged branches). Remove the worktree and the local branch:
-`git worktree remove ../auracle-wt-<topic>`, `git branch -D claude/<topic>`.
+comment, the boxes in other open issues that name what closed are ticked once
+every issue each names is closed, the plan's progress table gets the PR, and
+the PR's branch deletes itself on GitHub (the repository deletes merged
+branches). Tick by hand only a box the job leaves: one that names no issue
+(only PRs, or nothing), one that names another repository's issue, one whose
+issue closed without a merge, or one the run's log says changed as it was
+read (no later merge comes back for it). Remove the worktree and the local
+branch: `git worktree remove ../auracle-wt-<topic>`,
+`git branch -D claude/<topic>`.
 
 ## Flakes
 
