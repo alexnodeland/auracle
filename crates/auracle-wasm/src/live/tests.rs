@@ -920,8 +920,8 @@ fn chord_never_exceeds_full_scale() {
 }
 
 /// A stolen voice retriggers its amp envelope. On a percussive patch the
-/// voice is silent at sustain 0 by the time it is stolen, so the fifth note
-/// on a four-voice instrument is *only* audible if the ADSR sees a real
+/// voice is silent at sustain 0 by the time it is stolen, so the second note
+/// on a one-voice instrument is *only* audible if the ADSR sees a real
 /// falling-then-rising gate edge.
 #[test]
 fn stolen_voice_retriggers_its_envelope() {
