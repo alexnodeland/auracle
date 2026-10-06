@@ -73,15 +73,7 @@ defaults:
 # subject, and the body names its issues the way GitHub reads them, so no PR
 # merges under an untyped subject or leaves an issue it finishes open. Only
 # the PR's own: the merge conditions read the draft PR, where it doesn't run.
-# A PR opened before the workflow was on main has no run of it until its
-# title, body or commits change, so the PRs open when it landed are let in
-# without one: the `number <=` line in both rules below, the highest PR
-# number open when the change that brought the workflow was pushed (raised
-# to it just before the push). Any PR opened later has a number above it.
-# One opened after that push and before the workflow landed gets its run
-# from any edit: `gh pr edit <n> --body-file <its body, links put right>`,
-# or a push. Once every PR at or under the line has merged or closed, the
-# `or` and its line can go from both rules.
+# Every PR needs it, in both queues.
 queue_rules:
   # A release PR (the version bump and the changelog's new section, labelled
   # `release`: CONTRIBUTING.md § Cutting a release) is tested and merged
@@ -91,18 +83,14 @@ queue_rules:
   - name: release
     queue_conditions:
       - check-success = @github-actions/CI
-      - or:
-          - check-success = @github-actions/PR checks
-          - number <= 236
+      - check-success = @github-actions/PR checks
       - label = release
     batch_size: 1
 
   - name: default
     queue_conditions:
       - check-success = @github-actions/CI
-      - or:
-          - check-success = @github-actions/PR checks
-          - number <= 236
+      - check-success = @github-actions/PR checks
       - label != release
     # Up to three PRs in one draft PR, so one full gate for the lot: the two
     # streams of work docs/process.md allows in flight, and a Dependabot PR.
