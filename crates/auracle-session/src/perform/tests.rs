@@ -840,3 +840,201 @@ fn a_job_keeps_the_target_it_began_on() {
     while job.step(&mut r, 2) {}
     assert_eq!(job.finish(), want);
 }
+
+// ---- the wiring's arithmetic, on a Jacobian built by hand ----
+
+/// Acid Line, whose cutoff (`node#cut`, Bright's site) sits low and whose
+/// release (`amp#release`, Space's) sits low, beside a Jacobian built by
+/// hand: the cutoff moves z along Bright's axis at 2σ per unit of travel,
+/// the release along Space's at 3σ, and its other knobs move nothing.
+fn acid_by_hand() -> (PatchTree, Jacobian) {
+    let tree = preset_bank()
+        .into_iter()
+        .find(|p| p.name == "Acid Line")
+        .expect("a preset")
+        .tree;
+    let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+    let knobs = live_knobs(&tree, PhraseSpec::default().sample_rate);
+    let (bright, space) = (
+        direction(&CONTROLS[0], &names),
+        direction(&CONTROLS[5], &names),
+    );
+    let cols = knobs
+        .iter()
+        .map(|(a, _)| match a.as_str() {
+            "node#cut" => bright.iter().map(|x| 2.0 * x).collect(),
+            "amp#release" => space.iter().map(|x| 3.0 * x).collect(),
+            _ => vec![0.0; names.len()],
+        })
+        .collect();
+    let jac = Jacobian {
+        addrs: knobs.iter().map(|(a, _)| a.clone()).collect(),
+        values: knobs.iter().map(|(_, v)| *v).collect(),
+        z: vec![0.0; names.len()],
+        names,
+        cols,
+    };
+    (tree, jac)
+}
+
+/// The standardized audio φ the hand-built Jacobian says `t` measures: its
+/// cutoff's and release's travel from Acid Line's, times their columns,
+/// passed through `bend` (each knob's travel in, the travel heard out).
+fn by_hand(jac: &Jacobian, t: &PatchTree, bend: &dyn Fn(&str, f64) -> f64) -> Vec<f64> {
+    let now = continuous_knobs(t);
+    let mut z = jac.z.clone();
+    for (k, a) in jac.addrs.iter().enumerate() {
+        let v = now
+            .iter()
+            .find(|(b, _)| b == a)
+            .map_or(jac.values[k], |x| x.1);
+        let heard = bend(a, v - jac.values[k]);
+        for (zi, ci) in z.iter_mut().zip(&jac.cols[k]) {
+            *zi += ci * heard;
+        }
+    }
+    z
+}
+
+/// **A control is wired to the knob that moves its axis, named first.**
+/// Bright takes the cutoff and Space the release, each at the full
+/// `MAX_TRAVEL` (the knob doing the work sets the scale), with the reach
+/// their columns give it and a purity of 1; a control no knob moves is a
+/// search control with nothing wired. Every wiring that is not a search
+/// clears the gate. Applying a turn moves exactly the wired knobs, by the
+/// turn times their travel, clamped to the knob's range; a turn of zero and
+/// a search control move nothing.
+#[test]
+fn a_control_is_wired_to_the_knob_that_moves_its_axis() {
+    let (_, jac) = acid_by_hand();
+    let wiring = wire(&jac);
+    assert_eq!(wiring.len(), CONTROLS.len());
+    let by = |name: &str| wiring.iter().find(|w| w.name == name).unwrap();
+    let (bright, space) = (by("Bright"), by("Space"));
+    assert_eq!(bright.knobs, [("node#cut".to_string(), MAX_TRAVEL)]);
+    assert_eq!(space.knobs, [("amp#release".to_string(), MAX_TRAVEL)]);
+    assert!((bright.reach - 2.0 * MAX_TRAVEL).abs() < 1e-9);
+    assert!((space.reach - 3.0 * MAX_TRAVEL).abs() < 1e-9);
+    assert!((bright.purity - 1.0).abs() < 1e-9 && !bright.search);
+    assert_eq!((bright.index, space.index), (Some(0), Some(5)));
+    for w in &wiring {
+        if w.search {
+            assert_eq!(w.range(), (0.0, 0.0), "{} turns while a search", w.name);
+        } else {
+            assert!(
+                w.reach >= REACH_FLOOR && w.purity >= PURITY_FLOOR,
+                "{}",
+                w.name
+            );
+        }
+    }
+    let snap = by("Snap");
+    assert!(snap.search && snap.knobs.is_empty(), "no knob moves Snap");
+
+    let cut = jac.values[jac.addrs.iter().position(|a| a == "node#cut").unwrap()];
+    let turned = apply(&jac, &wiring, &[1.0, 1.0, 0.0, 0.0, 0.0, -2.0]);
+    let rel = jac.values[jac.addrs.iter().position(|a| a == "amp#release").unwrap()];
+    assert_eq!(
+        turned,
+        [
+            (
+                "amp#release".to_string(),
+                (rel - MAX_TRAVEL).clamp(0.0, KNOB_MAX)
+            ),
+            ("node#cut".to_string(), cut + MAX_TRAVEL),
+        ],
+        "not the wired knobs, by the turn"
+    );
+    assert!(apply(&jac, &wiring, &[0.0; 6]).is_empty());
+}
+
+/// **Two controls that would be one gesture are told apart.** A later
+/// control whose predicted movement is collinear with an earlier one's,
+/// either sign, is a search control on this patch. The prior toward the
+/// knobs a control names is a soft one: with no prior at all, the same
+/// Jacobian wires the same knobs.
+#[test]
+fn two_controls_that_would_be_one_gesture_are_told_apart() {
+    let (_, jac) = acid_by_hand();
+    let mut twice = wire_set(&jac, &[PALETTE[0], PALETTE[0]], SEMANTIC_RIDGE);
+    assert!(
+        !twice[0].search && twice[1].search,
+        "Bright twice was two gestures"
+    );
+    twice[1].search = false;
+    twice[1].moved = twice[0].moved.iter().map(|x| -x).collect();
+    separate(&mut twice);
+    assert!(twice[1].search, "the opposite gesture was kept");
+    let flat = wire_with(&jac, 1.0);
+    for (a, b) in flat.iter().zip(wire(&jac)) {
+        assert_eq!(
+            a.knobs.iter().map(|k| &k.0).collect::<Vec<_>>(),
+            b.knobs.iter().map(|k| &k.0).collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(palette_index(&PALETTE[7]), Some(7));
+    let tried = NamedControl {
+        name: "Tried",
+        axis: &[("centroid_mean", -1.0)],
+        ..PALETTE[0]
+    };
+    assert_eq!(palette_index(&tried), None, "a direction being tried out");
+}
+
+/// **Verification confirms a half the sound moves the asked way, closes
+/// one it does not, and retries at half travel.** On a patch that answers
+/// its knobs exactly as the Jacobian says, both halves of Bright and Space
+/// are confirmed at the reach predicted. Where turning the cutoff down
+/// changes nothing, that half is closed and the control turns up only.
+/// Where the full turn overshoots and comes back, the control keeps half
+/// its travel and the reach that goes with it. While a render is still
+/// owed, nothing is decided.
+#[test]
+fn verification_confirms_closes_or_halves_each_half() {
+    let (tree, jac) = acid_by_hand();
+    let straight = |_: &str, d: f64| d;
+    let mut wiring = wire(&jac);
+    assert!(verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &straight))
+    }));
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert!((bright.up.unwrap() - bright.reach).abs() < 1e-9);
+    // Turned down, the cutoff stops at the bottom of its range: the half is
+    // confirmed at the reach that is left.
+    let cut = jac.values[jac.addrs.iter().position(|a| a == "node#cut").unwrap()];
+    assert!((bright.down.unwrap() - 2.0 * cut.min(MAX_TRAVEL)).abs() < 1e-9);
+    assert_eq!(bright.range(), (-1.0, 1.0));
+
+    let floor_down = |a: &str, d: f64| if a == "node#cut" { d.max(0.0) } else { d };
+    let mut wiring = wire(&jac);
+    verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &floor_down))
+    });
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert_eq!((bright.down, bright.range()), (Some(0.0), (0.0, 1.0)));
+
+    // The cutoff's effect rises to a quarter turn and falls back past it.
+    let overshoot = |a: &str, d: f64| {
+        if a == "node#cut" {
+            d.signum() * (0.25 - (d.abs() - 0.25).abs())
+        } else {
+            d
+        }
+    };
+    let mut wiring = wire(&jac);
+    verify_by(&tree, &jac, &mut wiring, &mut |t| {
+        Look::Z(by_hand(&jac, t, &overshoot))
+    });
+    let bright = wiring.iter().find(|w| w.name == "Bright").unwrap();
+    assert_eq!(bright.knobs, [("node#cut".to_string(), MAX_TRAVEL / 2.0)]);
+    assert!(
+        (bright.reach - 2.0 * MAX_TRAVEL / 2.0).abs() < 1e-9,
+        "the reach was not halved"
+    );
+    assert!(!bright.search);
+
+    let mut wiring = wire(&jac);
+    let complete = verify_by(&tree, &jac, &mut wiring, &mut |_| Look::Pending);
+    assert!(!complete);
+    assert!(wiring.iter().all(|w| w.up.is_none() && w.down.is_none()));
+}
