@@ -508,9 +508,10 @@ jobs:
 
       - uses: ./.github/actions/playwright
 
-      # `make smoke`'s two specs, named here because the image has no make.
+      # `make smoke`'s two specs, from the one list both read:
+      # tests/web/package.json's `smoke` script (the image has no make).
       - name: Boot the instrument in a browser and exercise its failure flows
-        run: cd tests/web && npx playwright test smoke.spec.js failure_flows.spec.js
+        run: cd tests/web && npm run --silent smoke
 
       - name: Keep the trace of a failed boot
         if: failure()

@@ -3,7 +3,8 @@
   "private": true,
   "description": "Browser smoke test for the instrument: boots apps/web with the built wasm and requires a clean console and a registered worklet.",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "smoke": "playwright test smoke.spec.js failure_flows.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

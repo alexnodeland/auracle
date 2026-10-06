@@ -190,12 +190,15 @@ wasm-check:
 ## flows (unparseable save, engine error, refused vote, profile import) and
 ## require each to be contained. Needs `make wasm` first, Node, and
 ## Playwright's Chromium (`make smoke-tools` once).
+# The two specs are tests/web/package.json's `smoke` script, which CI's
+# Browser smoke job (ci.yml) runs too: name a spec there, not here.
 smoke:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	cd tests/web && npm ci --no-audit --no-fund && npx playwright test smoke.spec.js failure_flows.spec.js
+	cd tests/web && npm ci --no-audit --no-fund && npm run --silent smoke
 
-## smoke-tools: Playwright's Chromium, once. CI passes --with-deps for the
-## runner's system libraries; a workstation usually has them.
+## smoke-tools: Playwright's Chromium, once, on a workstation (which usually
+## has its system libraries). CI needs none: its browser jobs run in
+## Playwright's image, which has Chromium and its libraries.
 smoke-tools:
 	cd tests/web && npm ci --no-audit --no-fund && npx playwright install chromium
 
