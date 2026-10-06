@@ -265,7 +265,12 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     <ms> ms of <limit> ms` on the test (the merged report shows it, and the
     run's summary lists those over) and never fails the gate;
     `AURACLE_PERF=1` judges it, as the nightly *Speed budgets* job does (at
-    `AURACLE_CPU_THROTTLE=1`).
+    `AURACLE_CPU_THROTTLE=1`). [ADR-025](../../docs/decisions/025-every-interaction-answers-at-once.md)
+    moves where budgets are judged to a slow profile (the engine and the farm
+    slowed 4 times, `?farm=2`, the page throttled), which #299 builds. Until
+    it lands an Air-like run is `app.boot({ slowEngine: 4, query: "?farm=2" })`
+    under `AURACLE_CPU_THROTTLE=4`, which leaves the farm at full speed, and the
+    nightly still judges at throttle 1.
 - **"Nothing happens" is `app.quiet()`**: the one fixed wait, `QUIET_MS`
   (1.5 s, the slack a loaded machine needs to do the wrong thing), for a
   check that something does not occur. A longer window says why in its
