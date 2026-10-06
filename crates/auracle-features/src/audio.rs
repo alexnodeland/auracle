@@ -260,13 +260,10 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
             0.0
         } else {
             // Linear crossing between the last sub-threshold hop and this one.
+            // `idx` is the first hop at the target, so the one before it is
+            // below it: `hi > lo`, and the crossing lies between them.
             let (lo, hi) = (env[idx - 1], env[idx]);
-            let frac = if hi > lo {
-                (target - lo) / (hi - lo)
-            } else {
-                1.0
-            };
-            (idx - 1) as f64 + frac.clamp(0.0, 1.0)
+            (idx - 1) as f64 + ((target - lo) / (hi - lo)).clamp(0.0, 1.0)
         };
         (hops * hop as f64 / sr + 0.005).ln()
     };
@@ -451,13 +448,10 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
             .map(|(i, _)| i)
             .collect()
     };
+    // 0 for a span with no samples.
     let span_rms = |lo: usize, hi: usize| -> f64 {
         let seg = &x[lo.min(n)..hi.min(n)];
-        if seg.is_empty() {
-            0.0
-        } else {
-            (seg.iter().map(|s| s * s).sum::<f64>() / seg.len() as f64).sqrt()
-        }
+        (seg.iter().map(|s| s * s).sum::<f64>() / seg.len().max(1) as f64).sqrt()
     };
 
     let held = r.spans.first();
@@ -712,9 +706,6 @@ fn band_variances(track: &[f64], fps: f64) -> [f64; 3] {
         .map(|(i, y)| y - my - slope * (i as f64 - mx))
         .collect();
     let var = resid.iter().map(|r| r * r).sum::<f64>() / nf;
-    if var <= 0.0 {
-        return [0.0; 3];
-    }
     // Zero-pad to a power of two at least 4× the span, so a 1.55 s track
     // lands bins every ~0.1 Hz and the 0.5 Hz band edge is resolved.
     let len = (4 * n).next_power_of_two();
@@ -734,6 +725,8 @@ fn band_variances(track: &[f64], fps: f64) -> [f64; 3] {
     let df = fps / len as f64;
     let power: Vec<f64> = buf[1..len / 2].iter().map(|c| c.norm_sqr()).collect();
     let total: f64 = power.iter().sum();
+    // A track that does not move has no variance, so no power off DC either:
+    // nothing in any band.
     if total <= 0.0 {
         return [0.0; 3];
     }
