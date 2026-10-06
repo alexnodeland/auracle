@@ -174,10 +174,7 @@ impl IdealPointUser {
     }
 }
 
-/// Cosine similarity between two vectors (θ-recovery metric).
-pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
-    let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
-    let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
-    let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot / (na * nb + 1e-12)
-}
+/// Cosine similarity between two vectors, the θ-recovery metric. It is the
+/// one alignment matches lenses by, so a gate scores recovery by the same
+/// angle the posterior's lenses were matched with.
+pub use crate::model::cosine;

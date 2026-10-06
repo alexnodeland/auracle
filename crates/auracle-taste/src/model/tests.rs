@@ -1,6 +1,6 @@
 use super::*;
 use crate::observe::{Feedback, FitSet, Observation, ObservationLog};
-use crate::synthetic::{cosine, IdealPointUser, MixtureSyntheticUser, SyntheticUser};
+use crate::synthetic::{IdealPointUser, MixtureSyntheticUser, SyntheticUser};
 use crate::testkit::{ground_truth, random_phi, scratch_file, D};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -614,6 +614,30 @@ fn aligned_to_keeps_lens_identities_across_fits() {
         one.aligned_to(std::slice::from_ref(&b)).samples,
         one.samples
     );
+}
+
+/// Cosine similarity is the cosine of the angle between two vectors: 1
+/// along, −1 against, 0 across, the same at any length (a millionth long as
+/// well as a million), and 0 against a zero vector, which has no direction,
+/// never NaN. Alignment matches lenses by it, and the gates score recovery
+/// with it.
+#[test]
+fn cosine_is_the_angle_at_any_length() {
+    let v = [3.0, -1.0, 0.0, 2.0];
+    let across = [1.0, 3.0, 5.0, 0.0];
+    let scaled = |s: f64, x: &[f64]| -> Vec<f64> { x.iter().map(|c| s * c).collect() };
+    for (s, t) in [(1.0, 1.0), (1e-6, 1e-6), (1e6, 1e-6), (1e6, 2.0)] {
+        let a = scaled(s, &v);
+        let along = cosine(&a, &scaled(t, &v));
+        let against = cosine(&a, &scaled(-t, &v));
+        let square = cosine(&a, &scaled(t, &across));
+        assert!(
+            (along - 1.0).abs() < 1e-12 && (against + 1.0).abs() < 1e-12 && square.abs() < 1e-12,
+            "at lengths {s} and {t}: along {along}, against {against}, across {square}"
+        );
+    }
+    assert_eq!(cosine(&[0.0; 4], &v), 0.0);
+    assert_eq!(cosine(&v, &[0.0; 4]), 0.0);
 }
 
 /// M3 gate 2: all three modalities condition one posterior; recovery

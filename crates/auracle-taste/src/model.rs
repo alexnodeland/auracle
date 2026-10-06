@@ -748,11 +748,24 @@ fn permutations(k: usize) -> Vec<Vec<usize>> {
     out
 }
 
-fn cosine(a: &[f64], b: &[f64]) -> f64 {
+/// Cosine similarity of two vectors: the cosine of the angle between them,
+/// whatever their lengths, and 0 when either is zero (it has no direction).
+/// Alignment matches lenses by it ([`TastePosterior::aligned_to`]), and the
+/// gates score θ recovery with it (`synthetic::cosine` is this function).
+///
+/// A zero vector is a test, not an epsilon. Adding 1e-12 to the
+/// denominator, as this did, bent the cosine of short vectors: two parallel
+/// vectors a millionth long scored 0.5.
+pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot / (na * nb + 1e-12)
+    let norms = na * nb;
+    if norms > 0.0 {
+        dot / norms
+    } else {
+        0.0
+    }
 }
 
 impl TastePosterior {
