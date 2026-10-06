@@ -31,9 +31,7 @@
 // connects to the destination, as patch_audible.spec.js does. What it does
 // not claim: which phrase plays (patch_audible.spec.js holds that it is the
 // sound as edited, in every view).
-const { test, expect } = require("@playwright/test");
-const { goLevel, bankTab } = require("./shell");
-const { budget } = require("./fixtures");
+const { test, expect, goLevel, bankTab, budget } = require("./fixtures");
 
 const INIT = `(() => {
   // When the app stops a sound it started (\`stop()\` on a source): a phrase
@@ -76,28 +74,23 @@ const INIT = `(() => {
     for (const x of b) peak = Math.max(peak, Math.abs(x));
     return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
   };
-  try {
-    for (const k of ["auracle-warmed", "auracle-played", "auracle-bench-tour", "auracle-bank-toured"])
-      localStorage.setItem(k, "1");
-  } catch (_) {}
 })();`;
 
-async function boot(page) {
-  const errors = [];
-  page.on("pageerror", (err) => errors.push(err.message));
+/** Seeded, with the warm start and the tours seen (the fixture's
+ *  `app.boot`), the output and the sources' starts and stops watched. */
+async function boot(page, app) {
   await page.addInitScript(INIT);
-  await page.goto("/");
-  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 60_000 });
-  return errors;
+  await app.boot();
 }
 
-async function openPreset(page, name) {
+/** PATCH, with the preset `name` opened and ready to play: engine waits. */
+async function openPreset(page, app, name) {
   await goLevel(page, "patch");
   await bankTab(page, "presets");
   await page.locator(".bank-item", { hasText: name }).first().click();
-  await expect(page.locator("#rack-subject")).toContainText(name, { timeout: 60_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText(name, { timeout }), { ms: 60_000 });
   await expect(page.locator("#rack-svg .knob-hit").first()).toBeVisible();
-  await expect(page.locator("#rack-play")).toBeEnabled({ timeout: 30_000 });
+  await app.engine((timeout) => expect(page.locator("#rack-play")).toBeEnabled({ timeout }), { ms: 30_000 });
 }
 
 const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
@@ -169,10 +162,9 @@ async function chipOf(page, site) {
   return { addr, g, body: g.locator(".enum-body"), text: g.locator(".enum-text") };
 }
 
-test("Space after a click on a wave or filter-mode chip plays the sound and leaves the chip alone", async ({ page }) => {
-  test.setTimeout(90_000);
-  const errors = await boot(page);
-  await openPreset(page, "Falling Sign");
+test("Space after a click on a wave or filter-mode chip plays the sound and leaves the chip alone", async ({ page, app }) => {
+  await boot(page, app);
+  await openPreset(page, app, "Falling Sign");
   for (const site of ["wave", "fkind"]) {
     const chip = await chipOf(page, site);
     const was = (await chip.text.textContent()).trim();
@@ -181,17 +173,15 @@ test("Space after a click on a wave or filter-mode chip plays the sound and leav
     const now = (await chip.text.textContent()).trim();
     console.log(`[space_after_a_click] ${site}: ${was} → ${now}, focus on ${await focused(page)}`);
     expect(await focused(page), `a click leaves no focus on the ${site} chip`).not.toContain(chip.addr);
-    await expect(page.locator("#rack-play")).toBeEnabled({ timeout: 30_000 });
+    await app.engine((timeout) => expect(page.locator("#rack-play")).toBeEnabled({ timeout }), { ms: 30_000 });
     await spacePlays(page, `after a click on the ${site} chip`);
     await expect(chip.text, `Space left the ${site} chip alone`).toHaveText(now);
   }
-  expect(errors).toEqual([]);
 });
 
-test("a setting's chip reached with the keyboard cycles on Space and Enter, and back with Shift", async ({ page }) => {
-  test.setTimeout(90_000);
-  const errors = await boot(page);
-  await openPreset(page, "Falling Sign");
+test("a setting's chip reached with the keyboard cycles on Space and Enter, and back with Shift", async ({ page, app }) => {
+  await boot(page, app);
+  await openPreset(page, app, "Falling Sign");
   const chip = await chipOf(page, "wave");
   await expect(chip.body.locator("title")).toHaveText("wave · click to cycle");
   await expect(chip.g).toHaveAttribute("role", "button");
@@ -210,13 +200,11 @@ test("a setting's chip reached with the keyboard cycles on Space and Enter, and 
   }
   expect(await focused(page)).toContain(chip.addr);
   expect(await peakDb(page), "nothing played").toBeLessThan(-80);
-  expect(errors).toEqual([]);
 });
 
-test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, and a click on a pad", async ({ page }) => {
-  test.setTimeout(120_000);
-  const errors = await boot(page);
-  await openPreset(page, "Falling Sign");
+test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, and a click on a pad", async ({ page, app }) => {
+  await boot(page, app);
+  await openPreset(page, app, "Falling Sign");
   await goLevel(page, "perform");
   await expect(page.locator("#view-perform")).toBeVisible();
 
@@ -244,11 +232,10 @@ test("in PERFORM, Space plays after a drag on a control, a click on the XY pad, 
   await expect(wander).toHaveAttribute("data-frozen", "true");
   await spacePlays(page, "after a tap on Wander");
   await expect(wander, "Space did not tap Wander again").toHaveAttribute("data-frozen", "true");
-  expect(errors).toEqual([]);
 });
 
-test("the ⋯ menu's file items open their dialog on Enter and on Space", async ({ page }) => {
-  const errors = await boot(page);
+test("the ⋯ menu's file items open their dialog on Enter and on Space", async ({ page, app }) => {
+  await boot(page, app);
   for (const [name, key] of [["Open a taste file", "Enter"], ["Open a patch file", " "]]) {
     await page.locator("#ovf-btn").click();
     const item = page.locator("#ovf-menu label.ovf-item", { hasText: name });
@@ -260,5 +247,4 @@ test("the ⋯ menu's file items open their dialog on Enter and on Space", async 
     expect(chooser, `${key.trim() || "Space"} on ${name}…`).toBeTruthy();
     await expect(page.locator("#ovf-menu")).toBeHidden();
   }
-  expect(errors).toEqual([]);
 });

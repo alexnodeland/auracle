@@ -221,43 +221,14 @@
       "count": 5
     }
   },
-  "first_run.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 3
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 4
-    }
-  },
   "keys_are_not_notes.spec.js": {
     "auracle/no-aur-in-spec": {
       "count": 6
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 3
     }
   },
   "model_view.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
-    },
-    "playwright/no-wait-for-timeout": {
-      "count": 5
     }
   },
   "patch_audible.spec.js": {
@@ -546,14 +517,8 @@
     }
   },
   "shell_levels.spec.js": {
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
     "auracle/no-read-after-action": {
       "count": 2
-    },
-    "auracle/use-the-fixture": {
-      "count": 1
     },
     "playwright/prefer-to-have-count": {
       "count": 1
@@ -566,12 +531,6 @@
   },
   "space_after_a_click.spec.js": {
     "auracle/no-aur-in-spec": {
-      "count": 1
-    },
-    "auracle/no-own-pageerror": {
-      "count": 1
-    },
-    "auracle/use-the-fixture": {
       "count": 1
     }
   },
