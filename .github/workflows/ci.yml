@@ -81,8 +81,9 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
-  # Release-profile builds ignore it, but leaving it on has cargo write
-  # incremental state into target/ that then bloats every cache upload.
+  # The test-fast profile is incremental, for a workstation's edit-and-test
+  # loop (Cargo.toml). Here every build starts from a cache, and incremental
+  # state in target/ would only bloat every cache upload; this overrides it.
   CARGO_INCREMENTAL: 0
   # nextest's ci profile (.config/nextest.toml): a hung test is stopped
   # inside the job's limit, so the job reports it.

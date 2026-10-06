@@ -89,6 +89,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # The test-fast profile is incremental for a workstation (Cargo.toml);
+  # here every build starts from a cache, as in ci.yml.
   CARGO_INCREMENTAL: 0
   # nextest's ci profile (.config/nextest.toml), as in ci.yml.
   NEXTEST_PROFILE: ci

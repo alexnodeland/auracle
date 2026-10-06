@@ -389,8 +389,12 @@ test-slow-rest: nextest-installed
 # once into a nextest archive (COV_ARCHIVE), `coverage-run` runs one
 # partition of it on each runner (NEXTEST_ARGS='--partition slice:k/N'), and
 # `coverage-report` reads every runner's profiles against the archive.
+#
+# Not incremental, as in CI (CARGO_INCREMENTAL=0 there): each run starts
+# from `llvm-cov clean`, so test-fast's incremental state would be written
+# and never read.
 LLVM_COV_VERSION := 0.9.1
-COV := $(CARGO) llvm-cov
+COV := CARGO_INCREMENTAL=0 $(CARGO) llvm-cov
 COV_DIR := target/llvm-cov
 COV_SUMMARY := $(COV_DIR)/summary.json
 COV_LCOV := $(COV_DIR)/lcov.info
