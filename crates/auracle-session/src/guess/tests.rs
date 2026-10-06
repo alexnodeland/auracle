@@ -330,8 +330,9 @@ fn a_skip_is_that_family_at_that_socket_for_this_patch() {
 
 /// **Undoing a taken guess counts as a skip.** The memory records the skip
 /// when the patch is back to what it was before the guess (uids aside, as an
-/// undo restores it), for no other tree and no other patch, once; the guess
-/// is then planned no more.
+/// undo restores it), for no other tree and no other patch, once. A skip
+/// the memory holds is planned no more:
+/// `a_skip_is_that_family_at_that_socket_for_this_patch` shows the plan.
 #[test]
 fn undoing_a_taken_guess_counts_as_a_skip() {
     let tree = preset("Hornet");
@@ -352,14 +353,6 @@ fn undoing_a_taken_guess_counts_as_a_skip() {
     assert_eq!(mem.skips(7), [c.skip()]);
     assert_eq!(mem.observe(7, &tree), None, "counted once");
     assert!(mem.skips(8).is_empty());
-
-    let e = warm(4, false);
-    featurize_memo(&tree, &e.cfg.phrase, e.memo(), false).unwrap();
-    let plan = e
-        .guess_plan(&tree, None, mem.skips(7), &HashSet::new(), 0)
-        .unwrap();
-    assert!(plan.skipped > 0);
-    assert!(plan.jobs.iter().all(|j| j.tree != c.tree));
 
     // Two guesses taken, then undone twice: each is skipped as the undo
     // passes back through the tree before it, the newer first.

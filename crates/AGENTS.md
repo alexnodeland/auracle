@@ -54,6 +54,54 @@ each crate's own `AGENTS.md` has its rules.
   what it does, and no crate falls below its coverage floor
   ([Coverage](#coverage)). `make coverage` says so before CI does.
 
+## Writing a test
+
+What a test checks, and at which level, is the test audit's standard (#178;
+its rubric is `docs/notes/test-audit-2026-10/rubric.md`). A test checks
+something a player sees, hears or can do, an engine fact the app shows, or a
+contract, and it lives at the lowest level that can prove it:
+
+| Level | Proves | Where |
+| --- | --- | --- |
+| Rust unit | One module's logic | `<module>/tests.rs` |
+| Rust engine | Engine behavior through a crate's public API: the pool, duels, fits, walks, PERFORM's offers and measurements, names, persistence | The tests of the module that owns it (`auracle-session/src/engine/tests.rs` for most) |
+| Wasm binding | Only what the binding adds: shapes, field names, refusals, `u32` ids, the `u64` seed | `auracle-wasm`'s tests |
+| Above the crates | Pure `apps/web` logic (`node:test`); a worker message and its reply (a harness #178 plans); the wiring from a gesture to the engine and back, and what a player sees and hears (the browser) | `apps/web/tests`, `tests/web` |
+
+In the crates:
+
+- **Tests sit beside their module.** A module's tests are in `<module>/tests.rs`
+  (`#[cfg(test)] mod tests;`), not in `lib.rs` and not inline. Fixtures that
+  several test files share sit in one of two places. A fixture that only
+  builds data goes in `src/tests.rs`, which coverage leaves out by its name
+  (`auracle-features` keeps its shared trees there). A fixture that holds
+  logic worth measuring (a taught engine, a reload that shares the memo, the
+  synthetic listener) goes in `src/testkit.rs` (`#[cfg(test)] mod testkit;`),
+  which is measured like the code, so each of its helpers has to run in the
+  fast tier (`auracle-taste` and `auracle-session` keep theirs there).
+- **A statistical bound comes from a sweep of seeds**, never from the seed the
+  test ships with. Run the claim over many seeds (or simulate the rule), set
+  the bound where it fails on a negligible share of them, and say in the test
+  what the sweep measured. A bound the shipped seed happens to clear fails on
+  the next change that moves a random stream.
+- **"Every X" derives X from its `::ALL` constant** (or the type's own list),
+  never from a literal count or a list retyped in the test, so a new member is
+  swept the day it is added.
+- **An input is sized to its claim.** `N + 1` inserts turn over a pool of `N`;
+  the preset bank is a census, not a fixture; a standardizer whose units the
+  assertion does not read is fitted on a few presets; a reload whose subject
+  is not measurement shares the memo.
+- **Quiver's RNG is seeded in every test that ticks audio**
+  (`quiver::rng::seed(…)` before the render): its noise is clock-seeded
+  otherwise, and a test that passes on most clocks is flimsy.
+- **A wire-format index is pinned as a literal table**: a number that crosses
+  the wasm boundary or a saved file in place of a name (a palette index, an
+  enum's spelling) is written out in the test, index by index, so a reorder
+  fails there and not in a player's session.
+- **A binding test checks only what the binding adds** (shapes, field names,
+  refusals, `u32` ids, the `u64` seed). The engine fact it relies on has its
+  test in `auracle-session` or below.
+
 ## Coverage
 
 The fast tier's tests are measured with cargo-llvm-cov, and the *Coverage*
@@ -146,8 +194,11 @@ PR that brought one to 100% (auracle-features):
   Every caller must recover through `into_inner`, and no test may assert the
   lock is unpoisoned.
 
-The other sites are `auracle-session/src/map.rs` and `engine.rs`, and
-`auracle-wasm/src/shipped.rs`; each crate's coverage PR applies the rule.
+`auracle-session` routes its one lock, the taste map's remembered axes,
+through one helper, `Engine::drawn_axes`, which
+`a_panic_that_poisons_the_maps_memory_costs_nothing` poisons on purpose.
+The other site is `auracle-wasm/src/shipped.rs`; its crate's coverage PR
+applies the rule.
 
 **An error no tree reaches records its fault, and the build returns it.**
 A step that only a mistake in the engine's own code can make fail (a

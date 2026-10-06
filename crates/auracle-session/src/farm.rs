@@ -120,22 +120,4 @@ pub struct Draw {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Indexing must decorrelate: neighbouring indices are unrelated seeds,
-    /// and the same `(base, index)` always names the same one.
-    #[test]
-    fn draw_seed_is_pure_and_decorrelated() {
-        assert_eq!(draw_seed(7, 3), draw_seed(7, 3));
-        assert_ne!(draw_seed(7, 3), draw_seed(7, 4));
-        assert_ne!(draw_seed(7, 3), draw_seed(8, 3));
-        // Adjacent indices must not differ in a handful of bits.
-        let a = draw_seed(0xC0FFEE, 0);
-        let b = draw_seed(0xC0FFEE, 1);
-        assert!(
-            (a ^ b).count_ones() > 8,
-            "adjacent draw seeds barely differ: {a:x} vs {b:x}"
-        );
-    }
-}
+mod tests;

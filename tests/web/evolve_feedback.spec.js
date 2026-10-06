@@ -273,8 +273,10 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
   await expect(pred).toHaveText(/^it guessed (this|the other) · \d+% · (a hunch|leaning|fairly sure)$/, { timeout: 5_000 });
   await expect(rule).toHaveText(RANDOM);
 
-  // The engine tags every tenth pair "check" under Random too, though it is
-  // drawn like the rest: it must not read as a change of rule.
+  // Under Random the engine says "random" of every pair (auracle-session's
+  // the_default_rule_deals_every_pair_at_random_and_says_so pins it), so a
+  // "check" is injected here: should one reach the page under Random, it
+  // must not read as a change of rule.
   //
   // A pair reaches the table the way the engine deals it: one is up and the
   // next is already dealt, waiting. So the deals from here on are tagged with
