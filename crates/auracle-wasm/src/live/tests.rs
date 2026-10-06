@@ -736,7 +736,8 @@ fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
 
 /// The two categorical sites that went live are reachable through the live
 /// path at their *own* domain — an index, not a 0..1 knob — and neither
-/// forces a recompile.
+/// forces a recompile: the note never falls into a swap's silence, and no
+/// swap is reported.
 #[test]
 fn table_and_oct_are_live_at_index_scale() {
     use auracle_grammar::term::{AmpEnv, TableShape, Waveform};
@@ -767,9 +768,14 @@ fn table_and_oct_are_live_at_index_scale() {
     // Table 7 is the last of eight; the old blanket clamp to 0..1 would
     // have written table 1.
     assert!(poly.set_param("node#table", 7.0), "`table` has no handle");
-    for _ in 0..40 {
-        let _ = poly.process(128);
-    }
+    // No swap: a swap would fade to a silent rebuild and say it patched.
+    let unswapped = |poly: &mut LivePoly, quanta: usize| {
+        for q in 0..quanta {
+            assert!(peak(&poly.process(128)) > 0.0, "quantum {q} fell silent");
+            assert_eq!(poly.poll_event(), EVENT_NONE, "a live index write swapped");
+        }
+    };
+    unswapped(&mut poly, 40);
     let cv = poly.voices[0].voice.params["node#table"].value.get();
     assert!(
         (cv - 1.0).abs() < 1.0e-3,
@@ -792,18 +798,11 @@ fn table_and_oct_are_live_at_index_scale() {
     }
     // Index 4 is +2 octaves; the compiled octave is 0, so the trim is +2.
     assert!(poly.set_param("node#oct", 4.0), "`oct` has no handle");
-    for _ in 0..60 {
-        let _ = poly.process(128);
-    }
+    unswapped(&mut poly, 60);
     let cv = poly.voices[0].voice.params["node#oct"].value.get();
     assert!(
         (cv - 2.0).abs() < 1.0e-3,
         "oct +2 should land on a 2 V trim, not {cv}"
-    );
-    // No recompile was queued: the swap machinery never woke up.
-    assert!(
-        matches!(poly.stage, Stage::Run),
-        "a live index write started a patch swap"
     );
 }
 
