@@ -11,7 +11,8 @@
   puts it in the pool, and its row then said IN POOL under its ▶ while it
   played or kept the focus, cut by it. IN POOL now stands just left of the
   ▶ whenever the ▶ shows, at every window size, and the name stays where it
-  is (`bank_row.spec.js`, #130).
+  is. On a touch screen, where the ▶ is under the name, IN POOL stays at the
+  row's end (`bank_row.spec.js`, #130).
 
 ### Fixed: the model view's Esc, subtitle and leans
 
