@@ -3373,3 +3373,73 @@ fn every_readmit_refusal_has_its_own_sentence() {
     assert!(notes[..2].iter().all(|n| n.contains("nothing changed")));
     assert!(notes[2..].iter().all(|n| n.contains("still kept safe")));
 }
+
+/// **The bench refuses in words what it cannot take, and changes
+/// nothing.** With nothing open, an edit, a whole patch and a guess are
+/// refused with the sentence for that, a knob is refused, a revet renders
+/// nothing, a guess has `no_patch`, and there is nothing to commit,
+/// describe, measure or compare. With a sound open, an edit or a patch that
+/// does not read says so with the reader's reason, a patch past the
+/// ceilings is refused in the grammar's words, a guess or skip that does
+/// not read is refused, and before any taste a guess has `no_taste`. A
+/// patch imported that does not read, or that the bank already holds, is
+/// not admitted. Once the sound the bench was opened from has left the
+/// pool, there is nothing to compare the bench with. An event logged
+/// without φ carries none.
+#[test]
+fn the_bench_refuses_in_words_what_it_cannot_take() {
+    let mut engine = filled(0xB3C);
+    let none = "there is no sound open to edit";
+    let op = r#"{"op":"insert","key":"node","kind":"delay"}"#; // voice: name
+    let guess =
+        r#"{"op":{"op":"insert","key":"node","kind":"delay"},"socket":"out","family":"delay"}"#; // voice: name
+                                                                                                 // The member the bank lets go first: with no taste to rank by, the
+                                                                                                 // oldest.
+    let lowest = engine.engine.pool[0].id as u32;
+    let tree = engine.tree_json_of(lowest);
+    assert_eq!(engine.edit_structure_apply(op), none);
+    assert_eq!(engine.edit_set_tree_apply(&tree), none);
+    assert_eq!(engine.guess_take(guess), none);
+    assert!(!engine.edit_param_apply("amp#attack", 0.5, false));
+    engine.edit_revet();
+    assert!(engine.edit_render().is_empty() && !engine.edit_vet_ok());
+    assert_eq!(engine.guess_rank(None, "[]", 0), r#"{"reason":"no_patch"}"#);
+    assert_eq!(engine.edit_commit("heard_edited"), 0);
+    assert_eq!(engine.edit_describe(), "null");
+    assert_eq!(engine.edit_known_makeup(), -1.0);
+    assert_eq!(engine.edit_original_id(), 0);
+    assert!(!engine.edit_differs_from_original());
+
+    assert!(engine.edit_begin(lowest));
+    let unread = "the engine couldn’t read that edit (";
+    assert!(engine.edit_structure_apply("{").starts_with(unread));
+    assert!(engine.guess_take("{").starts_with(unread));
+    assert!(engine
+        .edit_set_tree_apply("{")
+        .starts_with("the engine couldn’t read that patch ("));
+    let deep = too_deep();
+    assert_eq!(
+        engine.edit_set_tree_apply(&serde_json::to_string(&deep).unwrap()),
+        validate_tree(&deep).unwrap_err()
+    );
+    assert!(!engine.guess_skip("{"));
+    assert_eq!(engine.edit_tree_json(), tree, "a refusal moved the bench");
+    assert_eq!(engine.guess_rank(None, "[]", 0), r#"{"reason":"no_taste"}"#);
+    assert_eq!(engine.import_patch("{", "x"), 0);
+    assert_eq!(engine.import_patch(&tree, "again"), 0, "the bank holds it");
+
+    engine.log_edit_event("open", lowest, 1.0, "{}", false);
+    let state: SessionState = serde_json::from_str(&engine.export_session()).unwrap();
+    let ev = state.events.last().unwrap();
+    assert_eq!(ev.kind, "open");
+    assert!(ev.phi_before.is_empty() && ev.phi_after.is_empty());
+
+    // A new sound the bank takes in, on a full pool, lets that one go.
+    let fresh = serde_json::to_string(&presets()[11].1).unwrap();
+    assert!(engine.import_patch(&fresh, "new") > 0);
+    assert!(
+        engine.engine.find(lowest as u64).is_none(),
+        "fixture: it left"
+    );
+    assert!(!engine.edit_differs_from_original());
+}
