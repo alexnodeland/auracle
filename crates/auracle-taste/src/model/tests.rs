@@ -978,6 +978,27 @@ fn per_style_summaries_are_importance_weighted() {
     );
     // No candidates: no claim.
     assert_eq!(p.style_share(&[]), vec![0.0, 0.0]);
+
+    // Alignment's second pass relabels every draw against the posterior's
+    // mean lenses, and that mean is weighted too. Here the draw weighted 0.8
+    // decides it: aligned to (1, 0, 0) and (0, 1, 0), lens 0's mean is
+    // (0.8, 0.21, −0.72); against an unweighted mean the second pass labels
+    // the draws differently and it would be (0.32, 0.45, −0.32).
+    let p = TastePosterior {
+        cfg: TasteConfig::mixture(3, 2),
+        samples: vec![
+            draw(vec![vec![0.2, 0.8, -0.2], vec![0.8, 0.5, -0.7]]),
+            draw(vec![vec![0.8, -1.0, -0.7], vec![0.3, -0.9, -0.2]]),
+            draw(vec![vec![-0.7, -0.1, 0.7], vec![0.8, -0.9, -0.9]]),
+        ],
+        weights: vec![0.8, 0.1, 0.1],
+    };
+    let mean = p
+        .aligned_to(&[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]])
+        .theta_mean(0);
+    for (m, want) in mean.iter().zip([0.8, 0.21, -0.72]) {
+        assert!((m - want).abs() < 1e-12, "aligned lens 0 is {mean:?}");
+    }
 }
 
 /// Between full refits the posterior is updated by importance
