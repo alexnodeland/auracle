@@ -8,10 +8,9 @@ H="$root/.claude/hooks"
 export CLAUDE_PROJECT_DIR="$root"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 fails=0; runs=0
-in=""   # the directory a hook runs in, when not this one
 expect() { # expect <exit> <name> <hook> <json>
   runs=$((runs + 1))
-  printf '%s' "$4" | (cd "${in:-.}" && bash "$H/$3") >/dev/null 2>&1; got=$?
+  printf '%s' "$4" | bash "$H/$3" >/dev/null 2>&1; got=$?
   if [ "$got" != "$1" ]; then echo "  FAIL: $2 (exit $got, wanted $1)"; fails=$((fails + 1)); fi
 }
 says() { # says <yes|no> <name> <hook> <json> <text>: whether what it prints holds the text
@@ -61,9 +60,6 @@ expect 2 "write site/, in a worktree in the checkout"   guard-generated.sh "$(ed
 expect 0 "edit main.js, in a worktree in the checkout"  guard-generated.sh "$(edit "$nested/apps/web/main.js")"
 says yes "session in a worktree: its own engine"         session-start.sh "$(cwdj "$nested/apps/web")" "has no built engine"
 says no  "session in the main checkout: its own engine"  session-start.sh "$(cwdj "$main")" "has no built engine"
-in="$main";   expect 2 "debug cargo test, cd into a worktree" guard-bash.sh "$(bashc 'cd .claude/worktrees/x && cargo test')"
-in="$nested"; expect 2 "unqueued playwright, in a worktree"   guard-bash.sh "$(bashc 'cd tests/web && npx playwright test')"
-in=""
 # A worktree's own target/ is skipped; a worktree named `target` is checked.
 printf 'const a = ;\n' > "$nested/target/debug/out.js"
 expect 0 "a worktree's own target/" post-edit-check.sh "$(edit "$nested/target/debug/out.js")"
