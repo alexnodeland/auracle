@@ -17,21 +17,31 @@
 //
 // The frames are the page's own: an observer on the rack (installed before
 // boot) samples it as each build lands, in the task that drew it and set its
-// motion going, and then on every animation frame while anything on the rack
-// is still animating, so no read depends on when the test looks.
+// motion going, then on every animation frame while anything on the rack is
+// still moving, and once more on the first frame on which nothing is. So a
+// motion's record starts as its build lands and ends with the rack at rest
+// (or with the next build), however late that frame comes; only how many
+// frames lie between depends on frame timing, and what is claimed of those is
+// claimed of every one.
 const { test, expect, goLevel } = require("./fixtures");
 const { openPreset, rackAtRest } = require("./patch_page");
 
 /** Installed before boot: `window.__rackFrames`, one entry for each build
- *  that replaced the rack's plates (`built`) and one for every animation
- *  frame after it while the rack is moving: the departing copies on it
- *  (`.rack-exit`), the amp's centre in rack units and its opacity, whether
- *  any plate is under a moving transform, and whether the cable into the amp
- *  is a curve (` C `) or a routed path. */
+ *  that replaced the rack's plates (`built`), one for every animation frame
+ *  after it while the rack is moving, and one for the first frame on which
+ *  it is not (`rest`): the departing copies on the rack (`.rack-exit`), the
+ *  amp's centre in rack units and its opacity, and whether the cable into
+ *  the amp is a curve (` C `) or a routed path. Moving is any of: a build
+ *  just landed, a departing copy, a plate under a moving transform, an
+ *  animation that ends (an arrival's fade). */
 function recordRack() {
   const frames = (window.__rackFrames = []);
   let lastAmp = null;
   let looping = false;
+  // Whether the last frame recorded was the rack moving: the frame on which
+  // it stops is recorded too, even when one late frame ends the slide and
+  // the fades together, so a record never stops short of the rest.
+  let moving = false;
   const centre = (g) => {
     const plate = g.querySelector(".mod-plate");
     const t = getComputedStyle(g).transform;
@@ -48,10 +58,13 @@ function recordRack() {
     const exit = svg.querySelectorAll(".rack-exit > *").length;
     const sliding = [...svg.querySelectorAll(".rack-plates g[data-key]")].some((g) => g.style.transform !== "");
     const fading = svg.getAnimations({ subtree: true }).some((a) => a.playState === "running" && a.effect && a.effect.getComputedTiming().endTime !== Infinity);
-    if (!built && !exit && !sliding && !fading) return false;
+    const rest = !built && !exit && !sliding && !fading;
+    if (rest && !moving) return false;
+    moving = !rest;
     const cable = svg.querySelector('path.wire.audio[data-to="amp"]');
     frames.push({
       built,
+      rest,
       subject: document.getElementById("rack-subject").textContent,
       plates: svg.querySelectorAll(".rack-plates g[data-key]").length,
       exit,
@@ -59,7 +72,7 @@ function recordRack() {
       ampOpacity: Number(getComputedStyle(amp).opacity),
       curve: cable ? / C /.test(cable.getAttribute("d")) : null,
     });
-    return true;
+    return !rest;
   };
   const follow = () => {
     if (looping) return;
