@@ -1120,12 +1120,13 @@ that pick commits (`settleFit`), so it keeps its window too.
   Without it every boot draws one from `Math.random`. The engine derives
   every stream from it (fills, pairs, evolution, PERFORM; a fit from it and
   its number of picks: ADR-001), so a fresh session with the same random
-  seed deals the same pool at any farm width, and what follows repeats when
-  the same requests reach the engine in the same order. Timing can still
-  move it: a deal made while the pool is filling depends on how far it has
-  got, and each PERFORM walk takes its draw when it begins. A saved session
-  comes back as it was saved; only what is dealt after boot follows it. A
-  reset is a fresh start: Reset your taste and the booth's next visitor
+  seed deals the same pool at any farm width, under the same names however
+  many sounds `playable` caught (`Engine::fix_names`), and what follows
+  repeats when the same requests reach the engine in the same order. Timing
+  can still move it: a deal made while the pool is filling depends on how
+  far it has got, and each PERFORM walk takes its draw when it begins. A
+  saved session comes back as it was saved; only what is dealt after boot
+  follows it. A reset is a fresh start: Reset your taste and the booth's next visitor
   reload without `?seed` (`reloadAfresh`), keeping the rest of the address,
   so they deal a new pool. The page's own draws stay random on purpose:
   which side of the table a sound stands on (`placePair`), the warm start's

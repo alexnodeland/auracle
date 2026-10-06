@@ -8,6 +8,18 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: the same seed gives the same names
+
+- **A session dealt from `?seed=` names its sounds the same on every run.**
+  The pool was already the same, but a sound you hadn't named took its name
+  from the bank as it stood when the app opened, and how many sounds had
+  arrived by then depended on the machine's speed: the same sound could be
+  *Soft Lead* on one run and *Bright Lead* on the next. Now each sound is
+  named from the bank as it stood when it arrived, the first eight from each
+  other, and keeps that name as before (#154,
+  `a_seed_names_its_pool_however_the_bank_was_handed_over`,
+  `session_seed.spec.js`).
+
 ### Fixed: a sound opened in PATCH isn't kept waiting behind a cable probe
 
 - After you arrive in PATCH, or a sound opens, PATCH waits 1.2 s before it
