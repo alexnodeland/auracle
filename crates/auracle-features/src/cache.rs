@@ -246,13 +246,11 @@ impl MemoInner {
 /// with nothing.
 fn evict_to<V>(map: &mut HashMap<String, (u64, V)>, cap: usize) {
     while map.len() > cap {
-        let Some(oldest) = map
+        let oldest = map
             .iter()
             .min_by_key(|(_, (t, _))| *t)
             .map(|(k, _)| k.clone())
-        else {
-            return;
-        };
+            .expect("a map over its cap holds an entry");
         map.remove(&oldest);
     }
 }

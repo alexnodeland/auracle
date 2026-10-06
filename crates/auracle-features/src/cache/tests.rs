@@ -120,6 +120,49 @@ fn caps_are_enforced() {
     assert_eq!(memo.stats().features, 0);
 }
 
+/// The audio tier is touched only by a caller that wants audio. A hit that
+/// asks for it gets the resident buffer itself, shared rather than copied;
+/// a call that does not ask gets none and leaves the tier as it was, down
+/// to which buffer is the oldest and goes next.
+#[test]
+fn only_a_caller_that_wants_audio_touches_the_audio_tier() {
+    let spec = PhraseSpec::default();
+    let memo = RenderMemo::new(8, 2);
+    let (a, c, d) = (tree(0.1), tree(0.2), tree(0.3));
+    let (_, a_audio) = featurize_memo(&a, &spec, &memo, true).unwrap();
+    let (_, again) = featurize_memo(&a, &spec, &memo, true).unwrap();
+    assert!(Arc::ptr_eq(
+        a_audio.as_ref().unwrap(),
+        again.as_ref().unwrap()
+    ));
+    featurize_memo(&c, &spec, &memo, true).unwrap();
+    // A hit on `a` that wants no audio: no buffer, and `a`'s stays the
+    // oldest, so the next buffer stored evicts it rather than `c`'s.
+    let (hit, none) = featurize_memo(&a, &spec, &memo, false).unwrap();
+    assert!(none.is_none());
+    assert_eq!(hit.key, render_key(&a, &spec));
+    featurize_memo(&d, &spec, &memo, true).unwrap();
+    assert!(memo.get_audio(&render_key(&a, &spec)).is_none());
+    assert!(memo.get_audio(&render_key(&c, &spec)).is_some());
+    assert_eq!(memo.stats().hits, 2);
+}
+
+/// A memo prints its occupancy, never its rows: an engine printed with
+/// `{:?}` would otherwise dump thousands of φ rows and a dozen buffers.
+#[test]
+fn a_memo_prints_its_occupancy_not_its_contents() {
+    let spec = PhraseSpec::default();
+    let memo = RenderMemo::default();
+    featurize_memo(&tree(0.5), &spec, &memo, true).unwrap();
+    let printed = format!("{memo:?}");
+    assert!(printed.starts_with("RenderMemo"), "{printed}");
+    assert!(
+        printed.contains(&format!("{:?}", memo.stats())),
+        "{printed}"
+    );
+    assert!(printed.len() < 200, "{} bytes: {printed}", printed.len());
+}
+
 /// A zero-cap memo is a working no-op, not a panic or a leak.
 #[test]
 fn disabled_memo_stores_nothing() {
