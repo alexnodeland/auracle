@@ -39,7 +39,8 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 - **The audio thread allocates nothing per quantum and reads no clock.**
   `LivePoly` uses a deterministic xorshift. `tests/no_alloc.rs` counts the
   allocations of a steady state of play (every per-quantum path, with notes,
-  knobs and the bend moved between quanta) and requires none; a new
+  knobs and the bend moved between quanta, and a swap's fade out and fade
+  in; not its silent rebuild, which compiles) and requires none; a new
   per-quantum path joins its phrase. The chaos test catches panics. Review
   for the clock, and for allocations in the port handler, explicitly.
 - **A panic poisons the engine.** It unwinds out of a `&mut self` binding and

@@ -12,11 +12,13 @@
 //! This counts every allocation the test's thread makes while the
 //! instruments play: each quantum's input written and `process_ptr` called,
 //! as the worklet does, with notes pressed and let go, knobs and the bend
-//! moved between quanta (the port handler's messages during play). Every
-//! path is played once first, so what is counted is the steady state, not a
-//! first use. What allocates by design is left out: a swap (it compiles),
-//! the meter while it is on, RECORD, and the settings a player changes
-//! between phrases rather than during one (`set_sync`, `set_arp`).
+//! moved between quanta (the port handler's messages during play), and a
+//! patch swap's audible quanta, its fade out and its fade in. Every path is
+//! played once first, so what is counted is the steady state, not a first
+//! use. What allocates by design is left out: a swap's silent rebuild (it
+//! compiles the new voices), the meter while it is on, RECORD, and the
+//! settings a player changes between phrases rather than during one
+//! (`set_sync`, `set_arp`).
 //!
 //! One test in this file, so no other test's thread allocates beside it.
 
@@ -77,8 +79,9 @@ const Q: usize = 128;
 const SR: f64 = 48_000.0;
 
 /// One quantum as the worklet plays it: a tone written into the input,
-/// published, then rendered through the pointer the worklet reads.
-fn quantum(poly: &mut LivePoly, t: &mut usize) {
+/// published, then rendered through the pointer the worklet reads. Returns
+/// the quantum's loudest sample.
+fn quantum(poly: &mut LivePoly, t: &mut usize) -> f32 {
     let at = poly.input_ptr();
     // The worklet's side of the contract: write wasm memory directly.
     let input = unsafe { std::slice::from_raw_parts_mut(at, Q * 2) };
@@ -91,6 +94,9 @@ fn quantum(poly: &mut LivePoly, t: &mut usize) {
     let out = poly.process_ptr(Q);
     assert!(!out.is_null());
     *t += Q;
+    // The worklet's view of the output, as it reads it.
+    let out = unsafe { std::slice::from_raw_parts(out, Q * 2) };
+    out.iter().fold(0.0f32, |m, s| m.max(s.abs()))
 }
 
 /// A phrase of play: `quanta` quanta with a note pressed and let go, a
@@ -104,7 +110,7 @@ fn phrase(poly: &mut LivePoly, knob: &str, quanta: usize, t: &mut usize) {
             30 => poly.note_off(64),
             _ => {}
         }
-        quantum(poly, t);
+        let _ = quantum(poly, t);
     }
 }
 
@@ -135,7 +141,8 @@ fn saw() -> AudioNode {
 /// Played with everything on that plays per quantum: a chord under a
 /// synced, swung, two-octave up-down arpeggio, tempo-synced sequencers and
 /// glide (Loom); a unison stack under glide; a patch that listens, held
-/// open, its input written every quantum, with a key over it.
+/// open, its input written every quantum, with a key over it; then a swap
+/// of the stack under a held note.
 #[test]
 fn a_quantum_allocates_nothing() {
     quiver::rng::seed(7);
@@ -202,4 +209,36 @@ fn a_quantum_allocates_nothing() {
     assert!(play(400), "the open voice is held");
     let n = allocations(|| assert!(play(400)));
     assert_eq!(n, 0, "{n} allocations in 1,200 quanta of play");
+
+    // A swap under a held note: the quanta it fades out through and back
+    // in through are heard, and allocate nothing; the silent rebuild between
+    // them compiles the new voices, which allocates by design, and is told
+    // apart by its silence.
+    stack.note_on(60, 1.0);
+    for _ in 0..40 {
+        let _ = quantum(&mut stack, &mut t);
+    }
+    assert!(stack.set_patch(&filtered));
+    let (mut out, mut silent, mut back, mut patched) = (0, 0, 0, false);
+    let mut heard = 0;
+    while back < 8 {
+        let mut loud = 0.0;
+        let n = allocations(|| loud = quantum(&mut stack, &mut t));
+        if loud == 0.0 {
+            silent += 1;
+        } else {
+            heard += n;
+            if silent == 0 {
+                out += 1;
+            } else {
+                back += 1;
+            }
+        }
+        // 1: the swap is done (`poll_event`).
+        patched |= stack.poll_event() == 1;
+        assert!(out + silent + back < 200, "the swap never came back");
+    }
+    assert!(patched && silent > 0, "no swap was heard");
+    assert!(out >= 2, "the swap did not fade out ({out} quanta)");
+    assert_eq!(heard, 0, "{heard} allocations in the swap's audible quanta");
 }
