@@ -22,12 +22,12 @@
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
 //   sounds fetched, ahead. Within 0.3 s and 0.15 s.
 //
-// The order is asserted; the seconds are budgets (ADR-022, fixtures.js
-// `budget`): each recorded as the test's annotation, with the insert's share
-// in its name, and judged only with AURACLE_PERF=1, by the nightly Speed
-// budgets job. Times are taken in the page's own clock, from the gesture's
+// The order is asserted; the seconds are budgets (ADR-022, `app.budget`):
+// each recorded as the test's annotation, with the insert's share in its
+// name, and judged only with AURACLE_PERF=1, by the nightly Speed budgets
+// job. Times are taken in the page's own clock, from the gesture's
 // own task, so Playwright's polling is not in them.
-const { test, expect, goLevel, bankTab, budget } = require("./fixtures");
+const { test, expect, goLevel, bankTab } = require("./fixtures");
 
 /** A key held long enough to be played. */
 const KEY_HELD_MS = 300;
@@ -146,7 +146,7 @@ test("a preset's controls are live within a second of its click", async ({ page,
     console.log(`${name}: click → named in PERFORM ${named.toFixed(0)} ms → controls live ${ms.toFixed(0)} ms (${steps}); live in the naming's task: ${liveAtName}; wired from ${how}`);
     expect(liveAtName, `${name}'s controls are live in the task PERFORM names it`).toBe(true);
     expect(how, `${name} is wired from the shipped file (the app's mark), not measured`).toBe("shipped");
-    budget(`${name}: the click → its controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
+    app.budget(`${name}: the click → its controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
     // The open settled before the next is clicked: its load and the bench's
     // edits answered.
     await app.answered({ types: ["load_preset", "edit_begin"], lanes: ["bench"] });
@@ -191,7 +191,7 @@ test("a warm-start pick's controls are live within a second of teach it", async 
   const teachAt = warm.findIndex(([type]) => type === "warm_start");
   expect(warm[teachAt - 1], "the last order before teach it").toEqual(["warm_cards", [...picks, ...dealt.filter((i) => !picks.includes(i))]]);
   expect(warm.slice(teachAt + 1), "the order after it").toEqual([["warm_cards", []]]);
-  budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
+  app.budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
 });
 
 test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 s", async ({ page, app }) => {
@@ -261,6 +261,6 @@ test("a pick puts the next pair up within 0.3 s, and its ▶ sounds within 0.15 
     await page.locator("#play-a").click(); // stop
   }
   console.log(`pick → next pair (ms): ${deals.map((x) => x.toFixed(0)).join(", ")}; ▶ → sounding (ms): ${plays.map((x) => x.toFixed(0)).join(", ")}`);
-  deals.forEach((ms, i) => budget(`pick ${i + 1} → the next pair on the table`, ms, 300));
-  plays.forEach((ms, i) => budget(`▶ after pick ${i + 1} → sounding`, ms, 150));
+  deals.forEach((ms, i) => app.budget(`pick ${i + 1} → the next pair on the table`, ms, 300));
+  plays.forEach((ms, i) => app.budget(`▶ after pick ${i + 1} → sounding`, ms, 150));
 });
