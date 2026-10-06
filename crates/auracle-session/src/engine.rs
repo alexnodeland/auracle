@@ -1053,6 +1053,18 @@ fn binary_entropy(p: f64) -> f64 {
 /// Dueling Thompson sampling, kept for the acquisition A/B (see
 /// [`Acquisition`]). Draw two posterior samples and duel each one's champion;
 /// if they agree, duel the champion against the runner-up.
+/// Two distinct candidates drawn uniformly from `cands` (at least two): the
+/// random rule's pair, and the pair a choosing rule deals when its posterior
+/// has no draws to choose with.
+fn uniform_pair<R: Rng>(rng: &mut R, cands: &[usize]) -> (usize, usize) {
+    let i = gen_index(rng, cands.len());
+    let mut j = gen_index(rng, cands.len() - 1);
+    if j >= i {
+        j += 1;
+    }
+    (cands[i], cands[j])
+}
+
 fn thompson_pair<R: Rng>(
     posterior: &TastePosterior,
     pool: &[Candidate],
@@ -1061,7 +1073,7 @@ fn thompson_pair<R: Rng>(
 ) -> (usize, usize) {
     let n = posterior.samples.len();
     if n == 0 {
-        return (cands[0], cands[1]);
+        return uniform_pair(rng, cands);
     }
     let champion = |s: &auracle_taste::TasteSample, skip: Option<usize>| -> usize {
         cands
@@ -3423,14 +3435,7 @@ impl Engine {
         if cands.len() < 2 {
             return None;
         }
-        let uniform = |rng: &mut R| -> (usize, usize) {
-            let i = gen_index(rng, cands.len());
-            let mut j = gen_index(rng, cands.len() - 1);
-            if j >= i {
-                j += 1;
-            }
-            (cands[i], cands[j])
-        };
+        let uniform = |rng: &mut R| uniform_pair(rng, &cands);
 
         let check = self.cfg.duel_check_every > 0
             && self.duels_shown > 0
@@ -3519,12 +3524,8 @@ impl Engine {
     ) -> (usize, usize, f64) {
         let s_n = posterior.samples.len();
         if s_n == 0 {
-            let i = gen_index(rng, cands.len());
-            let mut j = gen_index(rng, cands.len() - 1);
-            if j >= i {
-                j += 1;
-            }
-            return (cands[i], cands[j], 0.0);
+            let (a, b) = uniform_pair(rng, cands);
+            return (a, b, 0.0);
         }
         // u[s][c] over the *standardized* pool.
         let u: Vec<Vec<f64>> = posterior
