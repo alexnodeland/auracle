@@ -192,6 +192,10 @@ or a person, against:
   bound but a budget
   ([ADR-022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md));
   no assertion that can pass vacuously.
+- **Latency** ([ADR-025](decisions/025-every-interaction-answers-at-once.md)):
+  a change that adds a wait on a render, a measurement, a fit or a round trip
+  between a gesture and its answer is a finding, and a new interaction lands
+  with its `app.budget`.
 - **Tests that notice:** in Rust, every mutant of the changed code is
   caught (the builder's `make mutants DIFF=1`, or the PR's *Mutants*
   summary), or excluded as equivalent in `.cargo/mutants.toml` with its
