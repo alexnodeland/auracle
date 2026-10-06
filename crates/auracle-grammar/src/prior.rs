@@ -205,11 +205,12 @@ pub const PRIOR_MAX_MOD_DEPTH: usize = 2;
 ///
 /// Register comes almost entirely from the lowest oscillator's octave. Drawn
 /// uniformly, it put 30.5 % of a fresh bank mostly below 200 Hz at C4, and
-/// 16.5 % with under a fifth of its energy in 200 Hz–5 kHz, the band a
-/// laptop's speakers reproduce: sounds a player cannot hear on the machine
-/// most of them play on (#62, measured by `auracle-wasm`'s `pool_loudness`
-/// example). Octave 0 is now the common draw, one up the next, and the
-/// lowest the rarest.
+/// 17.5 % with under a fifth of its energy in 200 Hz–5 kHz, the band a
+/// laptop's speakers reproduce: sounds a laptop barely plays. These weights
+/// take the same five fresh loads to 21.5 % and 8.5 % (#62, measured by
+/// `auracle-wasm`'s `pool_loudness` example, which says why the first fell
+/// less). Octave 0 is the common draw, one up the next, and the lowest the
+/// rarest.
 ///
 /// **±2 keep a weight above zero, and must.** At 0, a preset or a saved
 /// patch with an oscillator at either edge (the shipped presets hold both)

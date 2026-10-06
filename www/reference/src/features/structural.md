@@ -182,13 +182,14 @@ per-feature weights as though they were. Dropped.
 
 ## Health of the retained set
 
-Every family coordinate came back **under 4** on the 1,200-draw sweep, the
-highest being `mod_depth_mean` at 3.8. That is the reason the families exist;
+Every family coordinate came back **at 4.1 or under** on the 1,200-draw sweep,
+the highest being `mod_depth_mean`. That is the reason the families exist;
 forty separate module columns would not have managed it.
 
-The three most recent additions: `n_mod_shape` 1.6, `n_mod_logic` 1.3,
-`mod_depth_mean` 3.8, with `mod_density` rising from 2.7 to 4.1 as the one
-visible cost of adding a second modulation-shape coordinate beside it.
+When the three most recent additions arrived they measured `n_mod_shape` 1.6,
+`n_mod_logic` 1.3 and `mod_depth_mean` 3.8, with `mod_density` rising from 2.7
+to 4.1 as the one visible cost of adding a second modulation-shape coordinate
+beside it. The same sweep today reads 1.8, 1.2, 4.1 and 4.6.
 
 Reproduce with:
 
