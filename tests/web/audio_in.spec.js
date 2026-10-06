@@ -344,8 +344,11 @@ test("the first listen captures a clip, and the engine measures with it", async 
   expect(reply.clip.source).toBe("captured");
   await app.toast("The model hears sounds with an input through the clip captured from it.", { timeout: 20_000 });
   expect((await state(page)).clipSource).toBe("captured");
-  // Only the first listen captures by itself; NEW CLIP captures again.
+  // Only the first listen captures by itself; NEW CLIP captures again. A
+  // capture is under way from the moment it is armed, six seconds before
+  // its clip is sent: none is.
   await app.quiet(2_000);
+  expect((await state(page)).capture, "a capture began by itself").toBeNull();
   expect(await clips(page)).toBe(1);
   await lane(page).locator(".ain-clip").click();
   await expect.poll(() => clips(page), { timeout: 20_000 }).toBe(2);
