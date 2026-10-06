@@ -14,6 +14,12 @@ inputs:
   advice:
     description: "What to do about it, after the run's link"
     required: true
+  run:
+    description: >-
+      What the run was, to begin the issue: "The weekly run". Left out, a
+      scheduled run is "The nightly run" and any other "The push"
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -23,6 +29,7 @@ runs:
         TITLE: ${{ inputs.title }}
         RESULTS: ${{ inputs.results }}
         ADVICE: ${{ inputs.advice }}
+        RUN: ${{ inputs.run }}
       with:
         script: |
           const title = process.env.TITLE;
@@ -33,7 +40,7 @@ runs:
             .filter(([, v]) => v.result === "failure")
             .map(([k]) => `\`${k}\``)
             .join(", ");
-          const why = context.eventName === "schedule" ? "The nightly run" : "The push";
+          const why = process.env.RUN || (context.eventName === "schedule" ? "The nightly run" : "The push");
           const body = [
             `${why} at ${context.sha.slice(0, 7)} failed: ${failed}.`,
             "",

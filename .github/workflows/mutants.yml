@@ -1,0 +1,321 @@
+name: Mutants
+
+# Mutation testing (#181 § 3): does a test notice when the code is wrong?
+# cargo-mutants changes the engine's code one small way at a time (a function
+# returns a default, a `<` becomes `<=`) and runs the changed crate's fast
+# tier on each change. A change no test fails on is a survivor: code the
+# tests run without checking what it does. Coverage counts a line a test ran;
+# this asks whether the test would have noticed. How to read a survivor, and
+# the configuration, are in crates/AGENTS.md § Mutation testing and
+# .cargo/mutants.toml; `make mutants` runs it locally the way this does.
+#
+# Two ways in:
+#
+# - pull_request touching a crate: the mutants in the code the PR changed
+#   (`make mutants DIFF=1`, against the merge base), stopped at a time cap.
+#   It is not required: it is its own workflow, so it never fails the
+#   required `CI` check. Review treats each survivor it reports as a finding.
+#   The job is red when a mutant survived, so that making it required, once
+#   the crates are clean, is a change to the ruleset and nothing here.
+# - schedule (weekly) and workflow_dispatch: one part of the workspace, four
+#   shards two runners at a time, the parts taken in turn so the whole
+#   workspace is covered once a cycle (the `plan` job says why it is not all
+#   of it each week). On main, survivors file or update one issue, "Mutants
+#   that survive".
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - ".cargo/mutants.toml"
+      - ".github/workflows/mutants.yml"
+  schedule:
+    # Saturdays at 09:17 UTC: clear of the nightly runs (Search health from
+    # 04:20 for up to four hours, the Slow suite at 04:23, the Flake hunt at
+    # 05:41). Two runners at a time, about eleven hours.
+    - cron: "17 9 * * 6"
+  workflow_dispatch:
+    inputs:
+      part:
+        description: "The part of the cycle to run, from 1 (the plan job lists them); empty for this week's"
+        required: false
+        default: ""
+
+# It reads the code; only the issue job writes, and it asks for that itself.
+permissions:
+  contents: read
+
+# A new push to a PR makes its run obsolete. A run on main is never
+# cancelled: the next waits for it.
+concurrency:
+  group: mutants-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  # No RUSTFLAGS=-Dwarnings, unlike ci.yml: a mutant that replaces a
+  # function's body leaves its arguments unused, and a warning made an error
+  # would count it unviable, never tested. Lint holds the warnings.
+
+jobs:
+  # The mutants in the code a PR changed. --in-place: the runner's checkout
+  # is thrown away after, so there is no need to copy the tree, and the
+  # build reuses the cached target/ (a copy would build from clean). In place
+  # means one mutant at a time (MUTANTS_JOBS empty); each build and test run
+  # has the runner's four cores.
+  #
+  # The cap: CAP minutes for the whole run, the unmutated build and tests
+  # included, then it is stopped and what was judged is reported.
+  # cargo-mutants writes each mutant's outcome as it goes, and an interrupt
+  # (SIGINT, from `timeout`) stops it cleanly. Mutants are tested in source
+  # order, so a stopped run has judged the first ones. Estimated from runs
+  # on a Mac (auracle-taste whole, a sample of auracle-session; testing.md
+  # § Mutants): a mutant costs a runner about 15 s in taste, 25 s in
+  # grammar, two minutes in features and wasm, three to four in session,
+  # and the unmutated tests up to about six minutes before the first. So a
+  # taste or grammar PR finishes inside the cap, and one that changes much
+  # of session judges a handful: there `make mutants DIFF=1`, run locally
+  # before review, is the complete run.
+  changed:
+    name: Mutants in the changed code
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CAP: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base has to be reachable to diff against it.
+          fetch-depth: 0
+
+      # The paths above let in a change to the configuration or to this file
+      # alone, which mutates nothing: say so and stop before the setup.
+      - id: rust
+        name: Is any Rust changed?
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          if git diff --quiet "$(git merge-base "$BASE" HEAD)" -- 'crates/*.rs'; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No Rust in crates/ changed: nothing to mutate." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust (rust-toolchain.toml)
+        if: steps.rust.outputs.changed == 'true'
+        run: rustup toolchain install --no-self-update && rustc --version
+      # Its own cache: the RUSTFLAGS above differ from ci.yml's, so ci.yml's
+      # caches would not match. Saved from main by the weekly run.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.rust.outputs.changed == 'true'
+        with:
+          shared-key: mutants
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The version the Makefile's MUTANTS_VERSION names.
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        if: steps.rust.outputs.changed == 'true'
+        with:
+          tool: cargo-mutants@27.1.0,nextest
+
+      - id: mutants
+        name: Mutants in the changed code
+        if: steps.rust.outputs.changed == 'true'
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          set +e
+          timeout -s INT -k 60 "${CAP}m" make mutants DIFF=1 BASE="$BASE" MUTANTS_JOBS= MUTANTS_ARGS=--in-place
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      # The table and every survivor, in the run's summary. cargo-mutants
+      # also marks survivors on their lines in the PR's changed files (the
+      # first ten: GitHub shows no more for one step).
+      - name: Survivors
+        if: ${{ !cancelled() && steps.mutants.outcome != 'skipped' }}
+        env:
+          CODE: ${{ steps.mutants.outputs.code }}
+          LINK: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
+        run: |
+          case "$CODE" in
+            0)
+              if [ ! -f mutants.out/outcomes.json ]; then
+                echo "No mutant in the changed code: what changed is tests, comments or declarations." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi ;;
+            2|3) ;;
+            124|137) echo "Stopped at the ${CAP}-minute cap; the mutants not reached are not judged." >> "$GITHUB_STEP_SUMMARY" ;;
+            4) echo "::error::The unmutated tests failed, so no mutant was judged: the Test job says why." ;;
+            *) echo "::error::cargo-mutants exited $CODE (5 or 6: the diff; 1: its arguments; the log says)."; exit 1 ;;
+          esac
+          python3 scripts/mutants_report.py mutants.out --markdown "$GITHUB_STEP_SUMMARY" --link "$LINK"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.mutants.outcome != 'skipped' }}
+        with:
+          name: mutants-changed
+          path: mutants.out/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # This week's part of the workspace. The whole of it does not fit in a
+  # week's runners: estimated from runs on a Mac (testing.md § Mutants), its
+  # 8,340 mutants take about 200 to 250 runner-hours, and two runners for
+  # most of a week would hold the runners a PR's `CI` needs. So the
+  # workspace is cut into PLAN's shards, each crate's mutants into as many
+  # as keep a shard inside its cap (about five and a half hours at the
+  # estimates above), and each week runs the next four, in order: crate by
+  # crate, so a shard's unmutated tests, and the time limit they set, are
+  # its own crate's. One cycle covers the workspace: PLAN's shards divided
+  # by four, in weeks. A shard stopped at its cap is the sign that its
+  # crate needs more; as the crates' PRs kill their survivors, which run
+  # every test where a caught mutant stops at the first failure, a shard
+  # costs less and the counts can come down.
+  plan:
+    name: This week's part
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      part: ${{ steps.plan.outputs.part }}
+    env:
+      PLAN: '{"auracle-taste": 1, "auracle-grammar": 3, "auracle-features": 13, "auracle-session": 20, "auracle-wasm": 9}'
+      PER_WEEK: 4
+      PART: ${{ github.event.inputs.part }}
+    steps:
+      - id: plan
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os, sys, time
+          plan = json.loads(os.environ["PLAN"])
+          per = int(os.environ["PER_WEEK"])
+          shards = [{"crate": c, "k": k, "n": n} for c, n in plan.items() for k in range(n)]
+          parts = (len(shards) + per - 1) // per
+          asked = os.environ.get("PART", "").strip()
+          if asked and not (asked.isdigit() and 1 <= int(asked) <= parts):
+              sys.exit(f"part {asked!r}: the cycle has parts 1 to {parts}")
+          # Weeks since the epoch, so each Saturday takes the next part.
+          part = int(asked) - 1 if asked else int(time.time()) // (7 * 86400) % parts
+          these = shards[part * per : part * per + per]
+          print("shards=" + json.dumps(these))
+          print(f"part=part {part + 1} of {parts}: " + ", ".join(f"{s['crate']} {s['k']}/{s['n']}" for s in these))
+          EOF
+          cat "$GITHUB_OUTPUT"
+
+  # Each shard: one crate's mutants, its k-th of n (cargo-mutants' --shard
+  # k/n counts k from 0; slices in source order).
+  shard:
+    name: Mutants (${{ matrix.crate }} ${{ matrix.k }}/${{ matrix.n }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    # GitHub's limit for a hosted job. The run inside stops at CAP minutes,
+    # so the setup, the kill's grace and the upload fit under it and what
+    # was judged is kept.
+    timeout-minutes: 360
+    env:
+      CAP: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && rustc --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: mutants
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-mutants@27.1.0,nextest
+      # Fails only when the run itself broke: survivors (2) and timeouts (3)
+      # are the report's to judge, over every shard at once.
+      - name: Mutants
+        env:
+          CRATE: ${{ matrix.crate }}
+          SHARD: ${{ matrix.k }}/${{ matrix.n }}
+        run: |
+          set +e
+          timeout -s INT -k 60 "${CAP}m" make mutants CRATE="$CRATE" MUTANTS_JOBS= MUTANTS_ARGS="--in-place --shard $SHARD"
+          code=$?
+          case "$code" in
+            0|2|3) ;;
+            124|137) echo "::warning::Stopped at the ${CAP}-minute cap; the mutants not reached are not judged, and $CRATE needs more shards in the plan." ;;
+            *) echo "::error::cargo-mutants exited $code (4: the unmutated tests failed)."; exit "$code" ;;
+          esac
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: mutants-${{ matrix.crate }}-${{ matrix.k }}-of-${{ matrix.n }}
+          path: mutants.out/
+          retention-days: 14
+          if-no-files-found: error
+
+  # Every shard's survivors in one summary, and the issue's body. Red when
+  # a mutant survived anywhere, which is what files the issue.
+  survivors:
+    name: Mutants that survive
+    needs: [plan, shard]
+    if: ${{ !cancelled() && needs.shard.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      issue: ${{ steps.report.outputs.issue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: mutants-*
+          path: shards
+      - id: report
+        env:
+          PART: ${{ needs.plan.outputs.part }}
+          LINK: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
+        run: |
+          echo "This run: $PART." >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          python3 scripts/mutants_report.py shards/*/ --markdown "$GITHUB_STEP_SUMMARY" --link "$LINK" --issue issue.md
+          code=$?
+          {
+            echo "issue<<MUTANTS_ISSUE_END"
+            cat issue.md
+            echo "MUTANTS_ISSUE_END"
+          } >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+  # One open issue, commented on by every later run on main that finds a
+  # survivor, until someone closes it (.github/actions/file-issue). Each
+  # comment names the part it covered; a cycle's comments cover the
+  # workspace.
+  file:
+    name: File the survivors
+    needs: [plan, shard, survivors]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      needs.plan.result == 'success' &&
+      contains(needs.*.result, 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/file-issue
+        with:
+          title: Mutants that survive
+          run: ${{ github.event_name == 'schedule' && 'The weekly run' || 'A run started by hand' }}
+          results: ${{ toJSON(needs) }}
+          advice: |
+            This run covered ${{ needs.plan.outputs.part }}.
+
+            Each mutant below is a change to the engine's code that no test of its crate failed on: code the tests run without checking what it does. Kill each with a test that asserts what the code does, at the lowest level that can show it, or say in the crate's PR why no behavior can show the change (crates/AGENTS.md § Mutation testing). A failed shard means the run itself broke; its log says why.
+
+            ${{ needs.survivors.outputs.issue }}
