@@ -63,7 +63,34 @@ fn bounds_are_flags() {
         featurize_file(&short, 44_100.0).unwrap_err(),
         FileError::TooShort
     );
-    assert_eq!(FileError::TooShort.code(), "too_short");
+    // Each flag's code is what the wasm reply carries and the app words, so
+    // it is pinned here as a literal, and its serialized name and its
+    // Display say the same.
+    for (e, code) in [
+        (FileError::BadRate, "bad_rate"),
+        (FileError::TooLong, "too_long"),
+        (FileError::TooShort, "too_short"),
+        (FileError::NonFinite, "non_finite"),
+        (FileError::Silent, "silent"),
+    ] {
+        assert_eq!(e.code(), code);
+        assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{code}\""));
+        assert_eq!(e.to_string(), code);
+    }
+}
+
+/// A file's φ lines up with a render's, index for index: its audio half as
+/// measured, and every structural coordinate at 0, each of them masked.
+#[test]
+fn a_files_phi_lines_up_with_a_renders() {
+    let f = featurize_file(&tone(220.0, 44_100.0, 1.0, 0.3), 44_100.0).unwrap();
+    let phi = f.phi();
+    let audio = AudioFeatures::NAMES.len();
+    assert_eq!(phi.len(), Features::phi_names().len());
+    assert_eq!(phi[..audio], f.audio.to_vec());
+    assert!(phi[audio..].iter().all(|v| *v == 0.0));
+    assert_eq!(phi.len() - audio, structural_len());
+    assert!(file_observed()[audio..].iter().all(|o| !o));
 }
 
 /// Silence around a sound is not part of it: padding a tone with two
