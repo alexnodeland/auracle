@@ -110,6 +110,29 @@ fn a_known_patch_reads_its_known_level() {
     assert_eq!(p.cables[0].peak_db, PROBE_FLOOR_DB);
 }
 
+/// **A cable the voice has no tap for reads silence.** Should the rack and
+/// the compiler ever disagree about a key, that cable reads the floor: never
+/// another cable's level, and never a panic on the audio path.
+#[test]
+fn a_cable_with_no_tap_reads_the_floor() {
+    let tree = PatchTree {
+        amp: amp(),
+        root: saw(),
+    };
+    let mut probe = Probe {
+        keys: vec!["node".into(), "node/7".into()],
+        slots: Vec::new(),
+        sum_sq: vec![0.0; 2],
+        peak: vec![0.0; 2],
+        n: 0,
+    };
+    render_phrase_observed(&tree, &mono(), &mut probe).expect("renders");
+    assert!(probe.slots[0].is_some() && probe.slots[1].is_none());
+    assert!(probe.sum_sq[0] > 0.0 && probe.peak[0] > 0.0);
+    assert_eq!((probe.sum_sq[1], probe.peak[1]), (0.0, 0.0));
+    assert_eq!(db(probe.peak[1]), PROBE_FLOOR_DB);
+}
+
 /// **The probe does not change the render,** bit for bit, on every
 /// preset, under the standard phrase (chords included).
 #[test]
