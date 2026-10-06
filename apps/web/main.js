@@ -175,6 +175,9 @@ function modalUp() {
 // The guide pill (guide.js): the first-visit steps, one at a time, bottom
 // left of the stage. PERFORM adds its three when it is built.
 const { createGuide } = await import(`./guide.js?v=${BUILD}`);
+// The toast lane's queue (toasts.js, tests/toasts.test.mjs): created with the
+// DOM it draws on, where `note()` is, below.
+const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -1270,7 +1273,7 @@ function announceRepair() {
     }
   }
   if (!bits.length) return;
-  // `urgent`, because `toastPump` drops anything that went stale in the queue
+  // `urgent`, because the lane drops a remark that went stale in the queue
   // behind the boot's own chatter, and a notice that saved evidence changed is
   // not allowed to lose that race.
   note(
@@ -2228,7 +2231,7 @@ worker.onmessage = (e) => {
       renderSubject(); // the rack stops saying "opening…"
       if (currentView === "taste") drawTaste(); // …and the map's dot stops waiting
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
-      note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
+      note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
       send({ type: "taste_views" });
       break;
     }
@@ -2244,7 +2247,7 @@ worker.onmessage = (e) => {
         const placed = adoptLayout(m.id, layout);
         quietBench.add(m.id); // the import's own toast names it
         openOnBench(m.id);
-        note(`Opened the patch file as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
+        note(`Opened the patch file as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`, { bank: true });
         scheduleSave();
       } else if (m.duplicate > 0) {
         // The bank already holds this exact patch. That is not a failure —
@@ -2504,7 +2507,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       scheduleSave();
-      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`);
+      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`, { bank: true });
       break;
     }
     case "refined": {
@@ -2563,7 +2566,7 @@ worker.onmessage = (e) => {
         // it cannot start from. The sentence says which, and how many; it
         // used to say "no move was accepted" for all of them.
         const reasons = Array.isArray(m.reasons) ? m.reasons : [];
-        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }));
+        note(emptyGeneration(m.status.generation, reasons, { stopped: wasStopped, replaced: madeRoom(evicted) }), { bank: evicted.length > 0 });
       } else if (m.born && kept.length === 0) {
         // Bred and admitted, then ranked below the rest at the finish.
         note(`Generation ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} ${bred.length === 1 ? "was" : "were"} bred, but none rated above the sounds they would replace, so the pool is as it was.`);
@@ -2578,10 +2581,10 @@ worker.onmessage = (e) => {
           wasStopped
             ? `Generation ${m.status.generation} stopped: ${plural(n, "new sound")} kept, at the top of the pool${below}.${made}`
             : `Generation ${m.status.generation}: ${plural(n, "new sound")} in the pool${below}.${made}`,
-          bankTourOffer(),
+          { ...bankTourOffer(), bank: true },
         );
       } else {
-        note(`Generation ${m.status.generation} bred.`);
+        note(`Generation ${m.status.generation} bred.`, { bank: true });
       }
       break;
     }
@@ -2667,7 +2670,7 @@ worker.onmessage = (e) => {
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
-          note(evolved.text(row ? row.name : "a new sound"), { replace: "evolve-from" });
+          note(evolved.text(row ? row.name : "a new sound"), { replace: "evolve-from", bank: true });
         } else if (!quietBench.delete(m.subject) && asked && !asked.auto &&
                    performance.now() - asked.at > OPEN_SAID_MS) {
           // No toast for an open: the header, the dock and the live row
@@ -3128,7 +3131,7 @@ worker.onmessage = (e) => {
         // edits it took in ("… TAKE IT OUT") are stale news about a patch that
         // is now committed, and this receipt used to queue behind them.
         retireEditReceipts();
-        note(`Kept ${nameOf(m.id)} as new${taught}.${madeRoom(evicted)}`, { replace: "commit" });
+        note(`Kept ${nameOf(m.id)} as new${taught}.${madeRoom(evicted)}`, { replace: "commit", bank: true });
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
@@ -3222,7 +3225,7 @@ worker.onmessage = (e) => {
         if (editedSince) {
           note(
             `⚡ bred ${nameOrKnown(m.childId) || "a new sound"}${from}: it’s at the top of the pool, and your edits are still open.${madeRoom(evolveEvicted)}`,
-            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
+            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from", bank: true },
           );
         } else {
           // Said when it is true. The child exists now, but the bench swaps
@@ -3287,15 +3290,15 @@ worker.onmessage = (e) => {
         if (rowOf(m.id)) {
           note(`That would pass your limit of ${pinBudget[1]} saved sounds. Release one first.`);
         } else {
-          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`);
+          note(`${nameOrKnown(m.id) || "That sound"} was replaced by a generation.`, { bank: true });
         }
       } else if (m.pinned) {
-        note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`);
+        note(`Saved ${nameOf(m.id)}. No generation will replace it (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
       } else {
         // Releasing is destructive in slow motion: the patch goes back into
         // the pool and the next generation may breed it away. Silence made it
         // the one half of the toggle that reported nothing.
-        note(`Released ${nameOf(m.id)}. A generation can replace it again (${pinBudget[0]} of ${pinBudget[1]} saved).`);
+        note(`Released ${nameOf(m.id)}. A generation can replace it again (${pinBudget[0]} of ${pinBudget[1]} saved).`, { bank: true });
       }
       renderPinBudget();
       renderBank();
@@ -3354,7 +3357,7 @@ worker.onmessage = (e) => {
           // The player opened something else while this was loading: it is in
           // the bank now, and the patch in their hands stays there.
           if (early) unvoiceEarly();
-          note(`${nameOf(m.id)} is in the pool now. You had moved on, so it wasn’t opened.${madeRoom(evicted)}`);
+          note(`${nameOf(m.id)} is in the pool now. You had moved on, so it wasn’t opened.${madeRoom(evicted)}`, { bank: true });
         } else {
           // Voiced from memory at the click: now it has an id.
           if (early) {
@@ -3363,7 +3366,7 @@ worker.onmessage = (e) => {
           }
           quietBench.add(m.id); // "Opened the preset as …" names it
           openOnBench(m.id);
-          note(`Opened the preset as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+          note(`Opened the preset as ${nameOf(m.id)}.${madeRoom(evicted)}`, { bank: true });
         }
         scheduleSave();
       } else {
@@ -3998,55 +4001,41 @@ function firstNotePlayed() {
 // until it is resolved. Previously both went to one line that silently
 // overwrote itself, so "cable plugged in" and "live audio engine crashed" were
 // typographically identical and both vanished on the next event.
-const MAX_TOASTS = 3;
-// One window, shared by the toast and by whatever it is holding back.
-const UNDO_WINDOW_MS = 7000;
 
 // ---------- the toast lane ----------
-// Transient chrome used to stack upward from the bottom centre of the window,
-// which is exactly where PICK A / PICK B live. The app's recovery affordance
-// was covering the app's core preference-learning action — and every "TAKE IT
-// OUT" toast landed on the one pair of buttons the whole instrument exists to
-// collect. Three rules, and the first two are geometric so the collision
-// cannot silently come back with the next feature:
-//
-//   1. ONE LANE, anchored bottom-right just above the keybar (see
-//      `positionToastLane` for why there and not the rack's top-right).
-//   2. RESERVED RECTS: whatever teaching strip is on screen — and every other
-//      surface in LANE_STRIPS / LANE_COLUMNS — is measured and the lane is
-//      pushed clear of it, whatever the window size.
-//   3. ONE VISIBLE TOAST, with a stacking counter. Three toasts saying
-//      different things at once is not three times the information.
-//
-// The queue matters for more than tidiness: a toast's time-to-live starts when
-// it becomes *visible*, so an undo that waits its turn still gets its full
-// seven seconds rather than expiring behind someone else's confirmation.
-//
-// Rule 4 arrived later, from the acceptance walkthrough: a REFUSAL IS NOT A
-// REMARK. Everything above treats the lane as first-in-first-out, which is
-// right for confirmations and wrong for the one message class that answers a
-// gesture the player has already made and still believes in. Measured on the
-// depth ceiling: the refusal surfaced eight seconds after the edit it was
-// about, and under a burst it never surfaced at all — it carries no action, so
-// the staleness drop and the backlog trim both cut exactly it. So `urgent`
-// jumps the queue, displaces what is on screen, and is exempt from both cuts.
-//
-// Rule 5, from the films: A LATER WORD ON THE SAME THING SUPERSEDES THE
-// EARLIER ONE. First-in-first-out is right for different news and wrong for
-// news about one thing that has moved on. Voting every two seconds, the lane
-// still named the first pick six seconds after the third, beside a ⌘Z that
-// would undo the third; the warm start's result ("18 preferences learned")
-// waited out the "Loading those in…" it answered while PICKS already read 18.
-// A toast given `replace: key` takes the place of any earlier toast with the
-// same key, on screen or queued: on screen it takes the floor at once with
-// its own full window, queued it takes the earlier one's place in line.
-const toastQueue = [];
-let toastLive = null;
-/** A queued remark about a patch state that has moved on is worse than
- *  silence. An undo is exempt: being still actionable is its whole point.
- *  So is a refusal — an unheard "that did not happen" is the one omission
- *  that leaves the player believing something false. */
-const TOAST_STALE_MS = 9000;
+// The lane's queue — one toast on screen, `replace`, `urgent`, the backlog's
+// trim and the stale drop — is toasts.js (`createToastLane`), with its rules
+// (read them before adding a toast) and tests/toasts.test.mjs. What stays
+// here is the DOM: the toast's element (`note`), and where the lane sits
+// (rules 1 and 2, `positionToastLane` below). A toast that says a sound
+// joined or left the pool, or was saved or released, is given `bank: true`
+// (rule 6): it is never dropped for having waited.
+const toastLane = createToastLane({
+  view: {
+    show(el) {
+      $("toasts").appendChild(el);
+      positionToastLane();
+    },
+    remove(el) {
+      el.remove();
+    },
+    // The action retires on the window boundary (toasts.js `dismiss`), and the
+    // element fades out (`.toast.out`, over `--d-move`).
+    fade(el) {
+      const b = el.querySelector(".toast-undo");
+      if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
+      el.classList.add("out");
+    },
+    stack(el, n) {
+      const c = el.querySelector(".toast-stack");
+      if (!c) return;
+      c.textContent = n ? `+${n}` : "";
+      c.classList.toggle("hidden", n === 0);
+      c.title = n ? `${n} more waiting` : "";
+    },
+  },
+  fadeMs: () => motionMs("--d-move"),
+});
 
 function note(text, opts = {}) {
   // Booth attract plays the instrument by itself; its patch loads and pad
@@ -4061,174 +4050,29 @@ function note(text, opts = {}) {
   msg.className = "toast-msg";
   msg.textContent = text;
   el.appendChild(msg);
-  const entry = { el, opts, born: Date.now(), timer: null };
+  let entry = null;
   if (opts.undo) {
     const b = document.createElement("button");
     b.className = "toast-undo";
     b.textContent = opts.undoLabel || "undo";
     b.onclick = () => {
       opts.undo();
-      dismissToast(entry, true);
+      toastLane.dismiss(entry, true);
     };
     el.appendChild(b);
   }
   const stack = document.createElement("span");
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
-  if (opts.urgent) {
-    // Rule 5 holds for refusals too: the same refusal said again (⌘Z pressed
-    // twice where there is nothing to undo) takes the earlier one's place
-    // rather than queueing a second copy behind it.
-    if (opts.replace) dropReplaced(opts.replace);
-    preemptToast(entry);
-  } else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
-  trimToastQueue();
-  toastPump();
+  // Whole before it goes in: the lane may show it at once.
+  entry = toastLane.add(el, opts);
   return el;
-}
-
-/** Rule 5: put `entry` where the last toast with its `replace` key is. False
- *  when there is none, and the caller queues it as usual. */
-function supersedeToast(entry) {
-  const key = entry.opts.replace;
-  const same = (t) => t.opts.replace === key;
-  const held = toastLive && same(toastLive) ? toastLive : null;
-  const at = toastQueue.findIndex(same);
-  // Every earlier word on it goes; only the newest is ever said.
-  for (let i = toastQueue.length - 1; i >= 0; i--) {
-    if (!same(toastQueue[i])) continue;
-    toastQueue[i].el.remove();
-    toastQueue.splice(i, 1);
-  }
-  if (held) {
-    // On screen, even mid-fade: the floor passes straight to the newer word.
-    // The old toast's timer goes with it, so it cannot dismiss its successor.
-    clearTimeout(held.timer);
-    held.el.remove();
-    toastLive = null;
-    toastQueue.unshift(entry);
-    return true;
-  }
-  if (at < 0) return false;
-  toastQueue.splice(at, 0, entry);
-  return true;
-}
-
-/** Every toast with this `replace` key goes, on screen or queued, with no
- *  successor put in its place (the caller is about to say it again). */
-function dropReplaced(key) {
-  for (let i = toastQueue.length - 1; i >= 0; i--) {
-    if (toastQueue[i].opts.replace !== key) continue;
-    toastQueue[i].el.remove();
-    toastQueue.splice(i, 1);
-  }
-  if (toastLive && toastLive.opts.replace === key) {
-    clearTimeout(toastLive.timer);
-    toastLive.el.remove();
-    toastLive = null;
-  }
 }
 
 /** Take a toast off the lane now, whether it is on screen or still waiting —
  *  for a toast whose claim stopped being true before its window ran out. */
 function dropToast(el) {
-  if (!el) return;
-  if (toastLive && toastLive.el === el) return dismissToast(toastLive, true);
-  const i = toastQueue.findIndex((t) => t.el === el);
-  if (i >= 0) toastQueue.splice(i, 1);
-  el.remove();
-  renderToastStack();
-}
-
-/** Put a refusal at the head of the lane and take the floor for it. Whatever
- *  was on screen is *interrupted*, not spent: it goes back into the queue
- *  right behind the refusal with its undo button still live, and its window
- *  restarts when it is visible again — the same rule every queued toast
- *  already gets. Cutting it instead would answer one silent failure by
- *  creating another. */
-function preemptToast(entry) {
-  toastQueue.unshift(entry);
-  const held = toastLive;
-  if (!held) return;
-  clearTimeout(held.timer);
-  held.timer = null;
-  held.el.remove();
-  toastLive = null;
-  // A toast already fading out had its whole window: it is spent, not
-  // interrupted, so it is not brought back.
-  if (held.el.classList.contains("out")) return;
-  toastQueue.splice(1, 0, held);
-}
-
-/** Keep the backlog shallow, and spend the cut on remarks rather than on
- *  anything still carrying an action — or on a refusal, which is the one
- *  thing in the lane that cannot be said later instead. */
-function trimToastQueue() {
-  while (toastQueue.length > MAX_TOASTS) {
-    let i = toastQueue.findIndex((t) => !t.opts.undo && !t.opts.urgent);
-    if (i < 0) i = toastQueue.findIndex((t) => !t.opts.urgent);
-    // Last resort takes from the back, never the front: the head is where the
-    // refusal that just pre-empted is sitting.
-    toastQueue.splice(i >= 0 ? i : toastQueue.length - 1, 1);
-  }
-  renderToastStack();
-}
-
-function toastPump() {
-  if (toastLive) return;
-  while (toastQueue.length && !toastQueue[0].opts.undo && !toastQueue[0].opts.urgent &&
-         Date.now() - toastQueue[0].born > TOAST_STALE_MS) {
-    toastQueue.shift();
-  }
-  const t = toastQueue.shift();
-  if (!t) return;
-  toastLive = t;
-  $("toasts").appendChild(t.el);
-  positionToastLane();
-  renderToastStack();
-  // Must not outlive the action it can still cancel (see the cut handler).
-  t.timer = setTimeout(() => dismissToast(t), t.opts.undo ? UNDO_WINDOW_MS : 4200);
-}
-
-function renderToastStack() {
-  const c = toastLive && toastLive.el.querySelector(".toast-stack");
-  if (!c) return;
-  const n = toastQueue.length;
-  c.textContent = n ? `+${n}` : "";
-  c.classList.toggle("hidden", n === 0);
-  c.title = n ? `${n} more waiting` : "";
-}
-
-function dismissToast(t, immediate) {
-  if (toastLive !== t) {
-    // Never made it to the lane: drop it out of the queue rather than leaving
-    // a dead entry to be shown after its moment has passed. And if it is on
-    // screen anyway, it goes: a toast is never left behind with no timer.
-    const i = toastQueue.indexOf(t);
-    if (i >= 0) toastQueue.splice(i, 1);
-    t.el.remove();
-    return;
-  }
-  clearTimeout(t.timer);
-  // Retire the *action* on the window boundary, not when the animation
-  // finishes — the fade (`--d-move`) kept a clickable undo on screen past the
-  // moment its commit had already fired.
-  const b = t.el.querySelector(".toast-undo");
-  if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
-  t.el.classList.add("out");
-  // The fade can be overtaken: a refusal may pre-empt this toast mid-fade and
-  // take the lane. Then this toast no longer owns the live slot, and clearing
-  // it would orphan the refusal on screen for the rest of the session.
-  const gone = () => {
-    t.el.remove();
-    if (toastLive !== t) return;
-    toastLive = null;
-    toastPump();
-  };
-  // Removed when the fade (`.toast.out`, over `--d-move`) has played, and at
-  // once under reduced motion, where it is 0.
-  if (immediate) gone();
-  else setTimeout(gone, motionMs("--d-move"));
+  toastLane.drop(el);
 }
 
 // What the lane may never cover, in two kinds. STRIPS are stepped over — the
@@ -4246,7 +4090,7 @@ const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", ".pf-pads", "#
 const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#keys-pop"];
 
 /** Anchor the lane, then push it clear of whatever it must not cover.
- *  Rule 2 above: the reserved rects are measured, not assumed. */
+ *  Rule 2 (toasts.js): the reserved rects are measured, not assumed. */
 function positionToastLane() {
   const holder = $("toasts");
   if (!holder || !holder.firstChild) return;
@@ -4322,10 +4166,7 @@ function retireToastUndo(el, label) {
  *  confirmed was undone. Wherever it is: on screen, or still waiting its
  *  turn in the lane, where it must not surface later as news. */
 function retireToast(el) {
-  if (!el) return;
-  const t = toastLive && toastLive.el === el ? toastLive : toastQueue.find((x) => x.el === el);
-  if (t) dismissToast(t);
-  else el.remove();
+  toastLane.retire(el);
 }
 
 // One number, one source. The menubar readout and the TRUST tab must not
@@ -8515,7 +8356,7 @@ function cutRow(r) {
   });
   // By name, never "#9": ids are hidden everywhere else. And it says what the
   // cut does, which is now true: the patch is not dealt again.
-  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo });
+  toast = note(`Cut ${r.name}. It won’t be dealt again.`, { undo, bank: true });
 }
 
 function wireRename(nameEl, r) {
@@ -23483,7 +23324,7 @@ function previewPreset(row, btn) {
 
 function warmPreviewLoaded(index, id, evicted) {
   if (id) presetIds.set(index, id);
-  if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`);
+  if (evicted && evicted.length) note(`Opened it to play it.${madeRoom(evicted)}`, { bank: true });
   if (bankFilter === "presets") renderBank(); // it can now say "in pool"
   const req = warmPreview;
   if (!req || req.index !== index) return; // superseded, taken back, or the card closed
@@ -23600,6 +23441,7 @@ function warmStartDone(m) {
     : rowOf(m.first)?.name || (warmRows || presetRows || []).find((r) => r.index === firstIdx)?.name;
   note(`Your three taught it ${m.n} picks, so it starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
     replace: "warm",
+    bank: true,
   });
 }
 

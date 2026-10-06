@@ -11,7 +11,7 @@ the long-form notes are this directory's `README.md`.
 | File | Runs on | Holds |
 | --- | --- | --- |
 | `index.html` | page | Markup for every level, the menu bar, the levels' rail, the keys bar, the dialogs |
-| `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, PATCH's canvas (the head and edit bar, the rack SVG in its well, the face at OUT, the catalog, the camera's corner, the keys) and what the engine says over it (`paintRackFacts`: the model view's leans and worth chips, what a generation changed, the face without the selected module, the readout's PERFORM controls), toasts (`note`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
+| `main.js` | main thread | The levels' side effects (`levelChanged`), EVOLVE, the bank, PATCH's canvas (the head and edit bar, the rack SVG in its well, the face at OUT, the catalog, the camera's corner, the keys) and what the engine says over it (`paintRackFacts`: the model view's leans and worth chips, what a generation changed, the face without the selected module, the readout's PERFORM controls), toasts (`note`, the element; the queue is `toasts.js`), the bench lane, persistence, the film chip, the sound in hand in the menu bar, KEYS ⋯ |
 | `patch.js` | main thread | PATCH's parts beside the rack, through its host: the model's guess at its socket (and at a place asked for, What goes here?; its runners-up under the model view), each cable's measured level, a patch from nothing (NEW PATCH, CLEAR, BACK TO), and the module sheet on touch (every setting, the lane's buttons, the bench's face) |
 | `shell.js` | main thread | Where you are (Plan-008): the level registry, `show`, `#where`, the rail and its `aria-current`, the level keys (⌥↑/⌥↓, ⌥←/⌥→, ⌥1–5, ADR-017), the saved level and the hash; the model view (hold ⌥ or MODEL: `body.model-view`, the tag; a tapped view remembered in `auracle-model-view`; Esc last, after anything nearer; what it shows is main.js's `modelViewChanged`) |
 | `levels.js` | main thread | Pure rules for the levels: the axis, `step`, `dirOf`, `railPath`, `levelForKey`, `startLevel`; unit-tested in `tests/` |
@@ -29,6 +29,7 @@ the long-form notes are this directory's `README.md`.
 | `taste-geom.js` | main thread | Pure geometry for TASTE and LEARNING (the map's layout and halos, dot sizes, a weight's bar and the settled/guess mark PATCH's θ cell shares, the direction liking rises, the forecasts' score); unit-tested in `tests/` |
 | `faces.js` | main thread | A sound's face: the engine's bytes as dB, the bank's mean and spread, whitening, the vessel's geometry; unit-tested in `tests/` |
 | `vessel.js` | main thread | The one renderer for a face at every size (`drawVessel`: slices, glow, the floor's reflection), on a canvas; unit-tested in `tests/` |
+| `toasts.js` | main thread | The toast lane's queue (`createToastLane`): one toast on screen and the rest waiting, `replace`, `urgent`, the backlog's trim and the stale drop, with the DOM, the clock and the timers handed in; unit-tested in `tests/` |
 | `words.js` | main thread | Sentences built from engine facts: a prediction's word (59% · leaning), TAUGHT's breakdown, a generation's or ⚡'s outcome, TASTE's and LEARNING's copy; unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root` (generated from `www/brand/tokens.json`: colors, type, space, radii, motion), then per-view sections |
 
@@ -45,10 +46,13 @@ the long-form notes are this directory's `README.md`.
 - **Bench edits go through the one ordered lane** in `main.js`. A drag
   starts from the value the player last set, not from the last reply, and the
   rack never rebuilds a knob under a held pointer.
-- **Toasts follow the lane's rules** (the comment above `note()`). A later
+- **Toasts follow the lane's rules** (the comments in `toasts.js`). A later
   word on the same thing replaces the earlier one (`replace: key`), a refusal
   says why and jumps the queue (`urgent`), and an undo retires the receipt of
-  what it undid. A confirmation must not queue behind stale news.
+  what it undid. A confirmation must not queue behind stale news. A toast
+  that reports a change to the player's sounds (a sound joined or left the
+  pool, or was saved or released) is given `bank: true`, and is never
+  dropped for having waited.
 - **One language across the views**
   ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
   words, colours (green sound, amber the model, red danger, silk you), undo,

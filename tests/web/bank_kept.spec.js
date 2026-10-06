@@ -94,6 +94,10 @@ test("a sound kept as new stays when a preset opens on a full pool, though it ra
   expect(gone, "the sound kept as new was replaced").not.toContain(kept);
 
   // The kept row is still in the pool, and the toast names what was replaced.
+  // It reaches the screen in its turn, behind what was said before it (the
+  // save's toast, the keep's): about 10 s on a fast machine, where it used to
+  // be dropped as stale on the way (#129). The tap logs a toast as it enters
+  // the lane on screen.
   await bankTab(page, "pool");
   await expect(row(page, kept), "the kept row left the bank").toHaveCount(1);
   const goneName = before.ranked.find((r) => r.id === gone[0]).name;
