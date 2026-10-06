@@ -1,4 +1,5 @@
 use super::*;
+use crate::mutate::{ModKind, NodeKind};
 use std::collections::HashSet;
 
 /// `0.01·3000^x` Hz, the LFO/S&H rate map (quiver `oscillators.rs`), as
@@ -292,41 +293,41 @@ struct Coverage {
     tables: HashSet<String>,
     drive_modes: HashSet<String>,
     octaves: HashSet<i8>,
-    mods: HashSet<&'static str>,
-    nodes: HashSet<&'static str>,
+    mods: HashSet<String>,
+    nodes: HashSet<String>,
 }
 
 impl Coverage {
     fn note_mod(&mut self, m: &ModNode) {
         match m {
             ModNode::None => {
-                self.mods.insert("none");
+                self.mods.insert("none".into());
             }
             ModNode::Lfo { wave, .. } => {
-                self.mods.insert("lfo");
+                self.mods.insert("lfo".into());
                 self.lfo_waves.insert(format!("{wave:?}"));
             }
             ModNode::Env { .. } => {
-                self.mods.insert("env");
+                self.mods.insert("env".into());
             }
             ModNode::Rand { .. } => {
-                self.mods.insert("rand");
+                self.mods.insert("rand".into());
             }
             ModNode::Follow { .. } => {
-                self.mods.insert("follow");
+                self.mods.insert("follow".into());
             }
             ModNode::Euclid { .. } => {
-                self.mods.insert("euclid");
+                self.mods.insert("euclid".into());
             }
             ModNode::Steps { .. } => {
-                self.mods.insert("steps");
+                self.mods.insert("steps".into());
             }
             ModNode::Op { kind, input, .. } => {
-                self.mods.insert(kind.label());
+                self.mods.insert(kind.label().into());
                 self.note_mod(input);
             }
             ModNode::Pair { kind, a, b, .. } => {
-                self.mods.insert(kind.label());
+                self.mods.insert(kind.label().into());
                 self.note_mod(a);
                 self.note_mod(b);
             }
@@ -341,7 +342,7 @@ impl Coverage {
                 modulation,
                 ..
             } => {
-                self.nodes.insert("vco");
+                self.nodes.insert("vco".into());
                 self.waves.insert(format!("{wave:?}"));
                 self.octaves.insert(*octave);
                 self.note_mod(modulation);
@@ -349,26 +350,26 @@ impl Coverage {
             AudioNode::Supersaw {
                 octave, modulation, ..
             } => {
-                self.nodes.insert("supersaw");
+                self.nodes.insert("supersaw".into());
                 self.octaves.insert(*octave);
                 self.note_mod(modulation);
             }
             AudioNode::Formant {
                 octave, modulation, ..
             } => {
-                self.nodes.insert("formant");
+                self.nodes.insert("formant".into());
                 self.octaves.insert(*octave);
                 self.note_mod(modulation);
             }
             AudioNode::Noise { color, .. } => {
-                self.nodes.insert("noise");
+                self.nodes.insert("noise".into());
                 self.colors.insert(format!("{color:?}"));
             }
             AudioNode::Silence { .. } => {
-                self.nodes.insert("silence");
+                self.nodes.insert("silence".into());
             }
             AudioNode::AudioIn { .. } => {
-                self.nodes.insert("audio_in");
+                self.nodes.insert("audio_in".into());
             }
             AudioNode::Wavetable {
                 table,
@@ -376,7 +377,7 @@ impl Coverage {
                 modulation,
                 ..
             } => {
-                self.nodes.insert("wavetable");
+                self.nodes.insert("wavetable".into());
                 self.tables.insert(format!("{table:?}"));
                 self.octaves.insert(*octave);
                 self.note_mod(modulation);
@@ -384,17 +385,17 @@ impl Coverage {
             AudioNode::Pluck {
                 octave, modulation, ..
             } => {
-                self.nodes.insert("pluck");
+                self.nodes.insert("pluck".into());
                 self.octaves.insert(*octave);
                 self.note_mod(modulation);
             }
             AudioNode::Mix { a, b, .. } => {
-                self.nodes.insert("mix");
+                self.nodes.insert("mix".into());
                 self.walk(a);
                 self.walk(b);
             }
             AudioNode::RingMod { a, b, .. } => {
-                self.nodes.insert("ringmod");
+                self.nodes.insert("ringmod".into());
                 self.walk(a);
                 self.walk(b);
             }
@@ -404,7 +405,7 @@ impl Coverage {
                 input,
                 ..
             } => {
-                self.nodes.insert("filter");
+                self.nodes.insert("filter".into());
                 self.kinds.insert(format!("{kind:?}"));
                 self.note_mod(modulation);
                 self.walk(input);
@@ -412,28 +413,28 @@ impl Coverage {
             AudioNode::Fold {
                 modulation, input, ..
             } => {
-                self.nodes.insert("fold");
+                self.nodes.insert("fold".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Delay {
                 modulation, input, ..
             } => {
-                self.nodes.insert("delay");
+                self.nodes.insert("delay".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Chorus {
                 modulation, input, ..
             } => {
-                self.nodes.insert("chorus");
+                self.nodes.insert("chorus".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Reverb {
                 modulation, input, ..
             } => {
-                self.nodes.insert("reverb");
+                self.nodes.insert("reverb".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
@@ -443,7 +444,7 @@ impl Coverage {
                 input,
                 ..
             } => {
-                self.nodes.insert("distortion");
+                self.nodes.insert("distortion".into());
                 self.drive_modes.insert(format!("{mode:?}"));
                 self.note_mod(modulation);
                 self.walk(input);
@@ -451,56 +452,56 @@ impl Coverage {
             AudioNode::Bitcrush {
                 modulation, input, ..
             } => {
-                self.nodes.insert("bitcrush");
+                self.nodes.insert("bitcrush".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Phaser {
                 modulation, input, ..
             } => {
-                self.nodes.insert("phaser");
+                self.nodes.insert("phaser".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Flanger {
                 modulation, input, ..
             } => {
-                self.nodes.insert("flanger");
+                self.nodes.insert("flanger".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Tremolo {
                 modulation, input, ..
             } => {
-                self.nodes.insert("tremolo");
+                self.nodes.insert("tremolo".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Vibrato {
                 modulation, input, ..
             } => {
-                self.nodes.insert("vibrato");
+                self.nodes.insert("vibrato".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Eq {
                 modulation, input, ..
             } => {
-                self.nodes.insert("eq");
+                self.nodes.insert("eq".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Granular {
                 modulation, input, ..
             } => {
-                self.nodes.insert("granular");
+                self.nodes.insert("granular".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
             AudioNode::Shift {
                 modulation, input, ..
             } => {
-                self.nodes.insert("shift");
+                self.nodes.insert("shift".into());
                 self.note_mod(modulation);
                 self.walk(input);
             }
@@ -510,7 +511,7 @@ impl Coverage {
                 sidechain,
                 ..
             } => {
-                self.nodes.insert("comp");
+                self.nodes.insert("comp".into());
                 self.note_mod(modulation);
                 self.walk(input);
                 self.walk(sidechain);
@@ -521,7 +522,7 @@ impl Coverage {
                 key,
                 ..
             } => {
-                self.nodes.insert("duck");
+                self.nodes.insert("duck".into());
                 self.note_mod(modulation);
                 self.walk(input);
                 self.walk(key);
@@ -532,7 +533,7 @@ impl Coverage {
                 sidechain,
                 ..
             } => {
-                self.nodes.insert("gate");
+                self.nodes.insert("gate".into());
                 self.note_mod(modulation);
                 self.walk(input);
                 self.walk(sidechain);
@@ -543,22 +544,35 @@ impl Coverage {
                 modulator,
                 ..
             } => {
-                self.nodes.insert("vocoder");
+                self.nodes.insert("vocoder".into());
                 self.note_mod(modulation);
                 self.walk(carrier);
                 self.walk(modulator);
             }
             AudioNode::Track { input, listen, .. } => {
-                self.nodes.insert("track");
+                self.nodes.insert("track".into());
                 self.walk(input);
                 self.walk(listen);
             }
             AudioNode::Capture { input, .. } => {
-                self.nodes.insert("capture");
+                self.nodes.insert("capture".into());
                 self.walk(input);
             }
         }
     }
+}
+
+/// The members of `all` that `used` lacks.
+fn unused(all: &[String], used: &HashSet<String>) -> Vec<String> {
+    all.iter().filter(|x| !used.contains(*x)).cloned().collect()
+}
+
+/// A kind's name on the wire, which is also how the walk above names it.
+fn wire_name<T: serde::Serialize>(k: &T) -> String {
+    serde_json::to_string(k)
+        .expect("a kind serializes")
+        .trim_matches('"')
+        .to_string()
 }
 
 /// The preset library doubles as the instrument's documentation and as the
@@ -583,56 +597,66 @@ fn the_library_covers_the_grammar() {
         nodes,
     } = cov;
 
-    assert_eq!(waves.len(), 4, "not every oscillator waveform is used");
+    // Each set the library has to cover is read from its type's `ALL`, so a
+    // new waveform, filter kind, noise colour, module or modulator that no
+    // preset uses fails here, by name.
+    let missing = unused(&Waveform::ALL.map(|w| format!("{w:?}")), &waves);
+    assert!(
+        missing.is_empty(),
+        "no preset plays the {missing:?} waveform"
+    );
     assert!(
         lfo_waves.len() >= 3,
         "the LFO is only ever run as {lfo_waves:?} — its waveform is a real timbral choice"
     );
-    assert_eq!(kinds.len(), 4, "not every filter kind is used: {kinds:?}");
-    assert_eq!(colors.len(), 2, "one of the noise colours is never heard");
+    let missing = unused(&FilterKind::ALL.map(|k| format!("{k:?}")), &kinds);
+    assert!(missing.is_empty(), "no preset uses the {missing:?} filter");
+    let missing = unused(&NoiseColor::ALL.map(|c| format!("{c:?}")), &colors);
+    assert!(missing.is_empty(), "no preset plays {missing:?} noise");
     assert!(
         !tables.is_empty(),
         "the wavetable oscillator is never heard"
     );
     assert!(!drive_modes.is_empty(), "the distortion is never heard");
-    // Every modulation **source** — the six leaf kinds plus the empty
-    // slot — has to appear, on the same argument as the node list: a
-    // source no preset demonstrates is a source nobody discovers.
-    //
-    // The eleven **shapers** are held to a weaker bar, and deliberately.
-    // They are a combinatorial space rather than a list (any of them over
-    // any source, two deep), so "one preset each" would be eleven near
-    // duplicates that teach the same lesson; what the library owes is that
-    // each of the three new *productions* — a leaf generator, a unary
-    // processor, a binary combiner — is shown at least once, so the shape
-    // of the sort is discoverable from the bank.
-    for src in ["none", "lfo", "env", "rand", "follow", "euclid", "steps"] {
-        assert!(mods.contains(src), "no preset uses the {src} modulator");
-    }
-    // The shapers *were* held to a weaker bar than the sources, on the
-    // argument above that they are a combinatorial space rather than a
-    // list. That bar turned out to be too weak to be worth having: it
-    // passed with `rectify`, `hold` and five of the six combiners in zero
-    // presets, which is exactly the "a source nobody demonstrates is a
-    // source nobody discovers" failure the source rule exists to prevent —
-    // and the bank's auto-namer has no adjectives for a region of the
-    // grammar the library never visits.
-    //
-    // Each of the ten now needs one preset. They are not near-duplicates
-    // in practice: `min` and `max` are opposite bargains on the same two
-    // modulators, `and` and `or` are opposite densities on the same two
-    // patterns, and `rectify` is the one that gives a modulator a resting
-    // state. If a future op genuinely has nothing of its own to show, the
-    // honest move is to cut it from the palette rather than to lower this.
-    for op in [
-        "quantize", "slew", "rectify", "hold", "min", "max", "and", "or", "xor", "switch",
-    ] {
-        assert!(
-            mods.contains(op),
-            "no preset uses the {op} modulation shaper: {mods:?}"
-        );
-    }
-    assert_eq!(nodes.len(), 26, "not every audio node is used: {nodes:?}");
+    // Every modulator, the empty slot included: a source no preset
+    // demonstrates is a source nobody discovers. The shapers were once held
+    // to a weaker bar, as a combinatorial space rather than a list, and the
+    // bar passed with `rectify`, `hold` and five of the six combiners in no
+    // preset at all, which is that failure exactly (and the bank's
+    // auto-namer has no adjectives for a region the library never visits).
+    // They are not near-duplicates in practice: `min` and `max` are
+    // opposite bargains on the same two modulators, `and` and `or` opposite
+    // densities on the same two patterns, and `rectify` is the one that gives
+    // a modulator a resting state. If a future one genuinely has nothing of
+    // its own to show, the honest move is to cut it from the palette rather
+    // than to lower this.
+    let missing = unused(&ModKind::ALL.map(|k| wire_name(&k)), &mods);
+    assert!(
+        missing.is_empty(),
+        "no preset uses the {missing:?} modulator"
+    );
+    // Every module, but the four a player puts in place and the prior never
+    // draws: an unplugged socket, AUDIO IN, TRACK and CAPTURE. The library is
+    // the warm start's first evidence, so it holds none of those.
+    let player = [
+        NodeKind::Silence,
+        NodeKind::AudioIn,
+        NodeKind::Track,
+        NodeKind::Capture,
+    ];
+    let drawn: Vec<String> = NodeKind::ALL
+        .iter()
+        .filter(|k| !player.contains(k))
+        .map(wire_name)
+        .collect();
+    let missing = unused(&drawn, &nodes);
+    assert!(missing.is_empty(), "no preset uses {missing:?}");
+    let played = unused(&player.map(|k| wire_name(&k)), &nodes);
+    assert_eq!(
+        played.len(),
+        player.len(),
+        "a preset holds a player's module"
+    );
     for oct in [-2, -1, 0, 1, 2] {
         assert!(octaves.contains(&oct), "octave {oct} is never used");
     }
