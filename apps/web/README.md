@@ -430,8 +430,8 @@ surface degrades:
 2. **Tracking law.** Uppercase gets tracking; lowercase and mono get none.
 3. **No off-system colour.** Every accent is signal-green or mind-amber.
 
-Type is six roles on a scale with a **10px floor** — the panel used to label
-its own parameters at 6.5–7.5px. The three faces (Jost, IBM Plex Mono,
+Type is six roles on one scale with an **11px floor** (9px in the rack, drawn
+to its zoom); the panel used to label its own parameters at 6.5–7.5px. The three faces (Jost, IBM Plex Mono,
 Newsreader italic) are **self-hosted** in `fonts/`; see `fonts/README.md` for
 why the previous local-only stack silently resolved to Trebuchet MS and Menlo
 on most machines.
