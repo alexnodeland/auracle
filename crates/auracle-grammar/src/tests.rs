@@ -613,8 +613,9 @@ fn presets_and_struct_ops_stay_in_grammar() {
 ///
 /// Identity rather than content, because a lock, a hand position and a
 /// selection all ride on a module staying the module it was. The chain
-/// arrives at `{key}/0` module for module, and nothing anywhere in the
-/// patch loses its identity.
+/// arrives at `{key}/0` module for module, nothing anywhere in the patch
+/// loses its identity, the inserted module is minted one of its own, and
+/// no two modules share one.
 #[test]
 fn an_insert_keeps_every_module_of_the_chain_it_lands_on() {
     use mutate::{NodeKind, StructOp};
@@ -653,6 +654,19 @@ fn an_insert_keeps_every_module_of_the_chain_it_lands_on() {
                 identities(&next.root, &mut after);
                 let lost = before.iter().filter(|u| !after.contains(u)).count();
                 assert_eq!(lost, 0, "{name}: {op:?} lost {lost} modules");
+                // The new plate has an identity of its own, and no two
+                // modules share one after the splice.
+                let placed = node_at(&next.root, key).expect("the inserted module").uid();
+                assert!(
+                    !placed.is_new() && !before.contains(&placed.0),
+                    "{name}: {op:?} gave the inserted module no identity of its own"
+                );
+                let unique: std::collections::HashSet<&u64> = after.iter().collect();
+                assert_eq!(
+                    unique.len(),
+                    after.len(),
+                    "{name}: {op:?} left two modules one identity"
+                );
                 let below = node_at(&next.root, &format!("{key}/0")).expect("a /0");
                 let mut seated = Vec::new();
                 identities(below, &mut seated);
@@ -1506,55 +1520,6 @@ fn prior_penalizes_depth() {
         mean(&small),
         mean(&large)
     );
-}
-
-/// A structural edit keeps the identity of every module that lived
-/// through it, and mints one for the module it added.
-///
-/// This is the difference between "insert a filter" and "throw the patch
-/// away and build a new one that looks similar", and every lock, hand
-/// position and selection in the panel rides on it.
-#[test]
-fn struct_ops_carry_identity_through() {
-    use mutate::{NodeKind, StructOp};
-    let mut tree = presets::presets()[0].1.clone();
-    tree.ensure_uids();
-    let before = describe::describe(&tree);
-    let uid_of = |d: &describe::RackDescription, key: &str| {
-        d.modules.iter().find(|m| m.key == key).map(|m| m.uid)
-    };
-    let root_uid = uid_of(&before, "node").expect("a root module");
-
-    // Insert above the root: everything shifts down one key, and nothing
-    // changes identity but the new plate.
-    let after = describe::describe(
-        &mutate::apply_struct_op(
-            &tree,
-            &StructOp::Insert {
-                key: "node".into(),
-                kind: NodeKind::Filter,
-            },
-        )
-        .expect("insert at the root is legal"),
-    );
-    assert_eq!(
-        uid_of(&after, "node/0"),
-        Some(root_uid),
-        "the module that was at `node` is now at `node/0` and is the same module"
-    );
-    assert!(
-        uid_of(&after, "node") != Some(root_uid) && uid_of(&after, "node") != Some(0),
-        "the inserted filter gets an identity of its own"
-    );
-
-    // And the identities in one tree are unique, including after a splice.
-    let mut seen = std::collections::HashSet::new();
-    for m in &after.modules {
-        if m.key == "amp" {
-            continue;
-        }
-        assert!(seen.insert(m.uid), "duplicate uid on {}", m.key);
-    }
 }
 
 /// **R6.** A refined child must inherit its seed's identities wherever the
