@@ -12,7 +12,8 @@ everything is visible at once.
 PERFORM, PATCH, EVOLVE, TASTE and LEARNING are **levels** of one space around
 the sound in hand (`shell.js`, `levels.js`): TASTE zoomed out, PATCH zoomed
 in, LEARNING past TASTE, EVOLVE beside PERFORM. The rail's stops go there, as
-do ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 (ADR-017). It opens at PERFORM, or at the level in
+do ⌥↑/⌥↓, ⌥←/⌥→ and ⌥1–5 (ADR-017), ⌥ and the wheel, and a pinch; a move
+carries the sound's face from one level to the next. It opens at PERFORM, or at the level in
 the address's hash, or the one you were at last. Holding ⌥ (or MODEL in the
 menu bar) shows **the model view**: the bank's guesses and the pool in the
 order the model rates it, TASTE's side of its toggle, and EVOLVE's guess for

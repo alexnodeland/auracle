@@ -92,8 +92,9 @@ function inkHsl(hex) {
 // ---------- timing marks ----------
 // What the instrument promises about time is measured where it happens:
 // `performance.mark("auracle:<name>")` at boot start, veil down, first sound,
-// pool full, PERFORM wired (perform.js), a patch opened, a pair dealt and a
-// refit landed. `window.__aur.marks()` lists them; the film recorder writes
+// pool full, PERFORM wired (perform.js), a patch opened, a pair dealt, a
+// refit landed, and a move between the levels landed or a sound taken up
+// (shell.js, with where the face's flight ended). `window.__aur.marks()` lists them; the film recorder writes
 // them into every rehearsal's sidecar, and the budget specs read them.
 const marksOnce = new Set();
 function mark(name, detail, { once = false } = {}) {

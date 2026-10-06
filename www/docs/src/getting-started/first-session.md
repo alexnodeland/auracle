@@ -67,8 +67,9 @@ your 10 save slots; release any of them from its row if you want the room.
 
 At the bottom left, a pill shows the first things to try in PERFORM,
 one step at a time: *Play a key*, then a control to turn on this sound, then
-*Press OFFER*. Each ticks off (a pip fills) when you do it, not when you read
-it, and **×** stops PERFORM's showing. PATCH has four of its own, in the same
+*Press OFFER*, then *Press ⌥↑ to zoom out to TASTE*, and last *Hold ⌥ to see
+what the model believes*. Each ticks off (a pip fills) when you do it, not
+when you read it, and **×** stops PERFORM's showing. PATCH has four of its own, in the same
 pill under its well: *Play it* (done already if you have played), *Drag a
 knob*, *Lock what you love*, and *Press ⚡ EVOLVE FROM THIS*; its **×** stops
 those. It is the one place first steps are shown.
@@ -92,9 +93,10 @@ PERFORM, PATCH, EVOLVE, TASTE and LEARNING are the levels of one space around
 the sound you’re playing, and the stops at the stage’s right edge show where
 you are: TASTE and LEARNING above PERFORM, PATCH below it, and EVOLVE beside
 it. Click a stop to go there, or press <kbd>⌥←</kbd> for EVOLVE,
-<kbd>⌥↑</kbd> and <kbd>⌥↓</kbd> to zoom out and in, and <kbd>⌥1</kbd>–
-<kbd>⌥5</kbd> for each level (Alt off a Mac). The menu bar names the level
-you’re at.
+<kbd>⌥↑</kbd> and <kbd>⌥↓</kbd> to zoom out and in (or hold <kbd>⌥</kbd> and
+turn the wheel), and <kbd>⌥1</kbd>–<kbd>⌥5</kbd> for each level (Alt off a
+Mac). The menu bar names the level you’re at, and as you move, the face of
+the sound you’re playing travels with you to where the next level draws it.
 
 <figure>
 <img src="../img/evolve.webp" alt="The EVOLVE view: the question Pick the one you’d reach for, with a teaching line and a small TASTE map; two cards side by side, each with its sound’s face large in a well, its name, and PLAY and PICK below it." loading="lazy" width="1440" height="900">

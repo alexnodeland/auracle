@@ -47,9 +47,10 @@ PERFORM, PATCH, EVOLVE, TASTE and LEARNING are levels of one space
 `main.js`) owns where you are; the rules are `levels.js`, pure and
 unit-tested (`tests/levels.test.mjs`):
 
-- **`show(level, {chosen, focus})`** shows one level's section (the others
-  `.hidden`), sets `body[data-level]`, names it in the header's `#where` (a
-  polite live region), lights its stop on the rail (`aria-current=location`),
+- **`show(level, {chosen, focus})`** puts one level's section `.on` (the
+  others are `display: none`), sets `body[data-level]`, names it in the
+  header's `#where` (a polite live region), lights its stop on the rail
+  (`aria-current=location`),
   saves it as `auracle-view` and puts it in the address's hash
   (`history.replaceState`, so Back still leaves the instrument). Then it calls
   `host.levelChanged(prev, next, {chosen})`, where main keeps every side effect
@@ -75,8 +76,53 @@ unit-tested (`tests/levels.test.mjs`):
   its `href` kept for a middle click.
   A focused stop walks the rail with the plain arrows and Home/End, taken on
   the rail so EVOLVE's ←/→ never hear them.
-- **A move is instant.** The morph that carries the held sound's face from one
-  level to the next is PR C3, and so is each level's `anchor()`.
+- **A move carries the sound's face** (Plan-008 §2.3, the specimen's morph).
+  `show` reads where the level being left draws the sound you're playing,
+  puts the new level `.on` at opacity 0 and the old one `.leaving` (still on,
+  `inert`, taking no pointer), runs `levelChanged`, waits two frames so the
+  new level lays itself out unscaled (its ResizeObservers included), reads
+  where it draws the sound, then animates both sections for `--d-zoom`
+  (`levels.js` `MORPH`: in, out or aside; the old gone by 45%, the new from
+  40%) while the face flies on one fixed canvas over the page
+  (`.zoom-face`, under the toasts), the header's name slides in the way the
+  move went and a puck travels the rail's stops (`railPath`). Each move is
+  numbered: a move in flight is landed (`settle`) before the next starts, a
+  gesture's move waits for it instead, and `settle` leaves exactly one
+  section `.on` with no transform, fade or `inert` on any; a page running no
+  frames lands it on a timer. Each animated move leaves the mark
+  `level-landed` (`{from, to, dir, cut, flew}`, `flew` the box the face was
+  last drawn at). At the end of the axis a level key or gesture nods the rail
+  (its `translate`). Under reduced motion `--d-zoom` is 0: the swap is
+  instant and no canvas or puck is ever made.
+- **Which face, and where** (ADR-012). The face is the bench's own render's
+  (`heldFace`: `faceOf` on `benchTreeJson`, the engine's `face_of_key`),
+  none while an open or an edit is still at the engine. Each level registers
+  `anchor()`, `{box, key}`: where it draws the sound and the render key of
+  the face drawn there (`faceBoxOf` on a face slot: PERFORM's well,
+  `perform.anchor`; PATCH's face at OUT; the EVOLVE card whose face is the
+  sound's; the mark on TASTE's map and the ring on LEARNING's,
+  `taste.anchor`). An end whose key is not the held face's is no place for
+  it: the face fades in where it lands or fades out where it was, and with
+  no face at either end the levels cross-fade (`levels.js` `flightEnds`).
+- **The gestures.** On `.stage`, ⌥ and the wheel move a level (`wheelStep`:
+  70 px, a 400 ms pause restarts the count, 500 ms of the turn's momentum
+  after a move moves nothing), and so do ctrl and the wheel (a trackpad's
+  pinch) except over `#rack-scroll`, whose camera keeps them (Plan-008 Q9;
+  the rack's own wheel handler leaves ⌥ to the stage). Two touch pointers
+  spread past 1.3× or closed under 0.77× move a level (`pinchStep`), the puck
+  leaning toward it on the way; pointers that start on the rack are the
+  rack's. `.stage` is `touch-action: pan-x pan-y`, so the browser leaves the
+  pinch to it.
+- **A sound taken up** (`shell.takeUp(from, key)`). A bank row's open (a
+  click, Enter, a preset) arms main's `takeUpArm` with the row's face; when
+  the bench's reply puts that sound in hand and the level draws its face (a
+  `faces` reply may come after, `facesChanged` checks again, for 2.5 s), the
+  face flies from the row, where it is now, to the level's anchor, steered
+  each frame onto it (PATCH's camera may still be fitting the new patch), or
+  to the menu bar's chip (`handAnchor`) at a level with no place for it, and
+  leaves the mark `taken-up`. It waits for a move in flight to land; a move
+  started under it takes it off. A row click's own move to PATCH carries no
+  face, since an open is on its way.
 
 ### The model view
 
@@ -1196,7 +1242,9 @@ control or expression offset, a Wander or Back glide, or a drift not yet kept.
 
 The app marks its own moments with `performance.mark("auracle:<name>")`:
 `boot-start`, `veil-down`, `first-sound`, `pool-full`, `perform-wired` (with
-how: shipped, cached or measured), `patch-opened`, `pair-dealt` and `fitted`.
+how: shipped, cached or measured), `patch-opened`, `pair-dealt`, `fitted`,
+and for a move between the levels `level-landed` and `taken-up` (where the
+face's flight ended; [The levels](#the-levels)).
 `window.__aur.marks()` lists them in the page's clock. The film recorder
 (`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
 `perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),

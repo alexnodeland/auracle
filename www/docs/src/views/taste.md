@@ -15,6 +15,10 @@ one level up, in [LEARNING](./learning.md).
 2. Go to **TASTE**: its stop above PERFORM’s, or <kbd>⌥↑</kbd> from PERFORM.
 3. Point at a sound to see its card, and click it to open it.
 
+On the way, the face of the sound you’re playing flies to its mark on the
+map. A sound that isn’t on the map as it is (one you have edited since you
+opened it) has no mark to fly to, and its face fades as you go.
+
 The line under the title says what the map is drawn from: *From 18 picks.*,
 or before the first fit, how far away it is (*3 more picks and it fits your
 taste.*).
