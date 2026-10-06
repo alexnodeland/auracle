@@ -1,6 +1,52 @@
 use super::*;
 use rand::RngCore;
 
+/// A patch nested past the compiler's ceiling (`COMPILE_MAX_NESTING`): it
+/// parses, and it never compiles, so nothing renders, probes or plays it.
+/// What every route that compiles a tree the player sent must refuse.
+pub(crate) fn too_deep() -> PatchTree {
+    use auracle_grammar::term::{AudioNode, FilterKind, ModNode};
+    let mut tree = presets()[0].1.clone();
+    while tree.root.depth() + tree.root.max_mod_depth() <= auracle_grammar::COMPILE_MAX_NESTING {
+        tree.root = AudioNode::Filter {
+            uid: auracle_grammar::Uid::NEW,
+            kind: FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(tree.root),
+            modulation: ModNode::None,
+        };
+    }
+    tree
+}
+
+/// A reply that cannot be written answers with the empty shape its caller
+/// reads, never with a panic, which would poison the engine for every later
+/// call. No reply here can fail; serde_json refuses a map keyed by anything
+/// but a string, and this one stands in for it.
+#[test]
+fn a_reply_that_cannot_be_written_answers_its_fallback() {
+    let refused: std::collections::HashMap<(u8, u8), u8> = [((1, 2), 3)].into_iter().collect();
+    assert!(
+        serde_json::to_string(&refused).is_err(),
+        "fixture: serde_json refuses it"
+    );
+    assert_eq!(json_or(&refused, "[]"), "[]");
+    assert_eq!(json_or(&[1, 2], "[]"), "[1,2]", "what can be written is");
+}
+
+/// The cable probe answers `null` for a tree it cannot compile, as for a
+/// bench with nothing on it, and the cables of one it can.
+#[test]
+fn a_tree_that_does_not_compile_has_no_cables() {
+    let spec = PhraseSpec::default();
+    assert_eq!(cable_levels_json(&too_deep(), &spec), "null");
+    let probe: serde_json::Value =
+        serde_json::from_str(&cable_levels_json(&presets()[0].1, &spec)).unwrap();
+    assert!(probe["cables"].as_array().is_some_and(|c| !c.is_empty()));
+}
+
 /// PERFORM's replies write a tree exactly as the rest of the app does, key
 /// for key: through `json!` they came out with sorted keys, and PERFORM,
 /// which tells a new structure from new knob values by comparing trees'

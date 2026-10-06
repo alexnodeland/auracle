@@ -333,18 +333,27 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     let Ok(pre) = PreFeaturized::render(tree, &spec, want_audio) else {
         return rejected();
     };
-    let Ok(cached) = serde_json::to_string(&pre.cached) else {
-        return rejected();
-    };
+    let cached = json_or(&pre.cached, "");
     let samples = pre
         .audition
-        .map(|a| Arc::try_unwrap(a).unwrap_or_else(|a| (*a).clone()).samples)
+        .map(|a| Arc::unwrap_or_clone(a).samples)
         .unwrap_or_default();
     RenderJob {
-        ok: true,
+        ok: !cached.is_empty(),
         cached,
         samples,
     }
+}
+
+/// `value` as JSON, or `fallback` when it cannot be written.
+///
+/// Every reply here is a derived `Serialize` whose maps are keyed by
+/// strings, which serde_json always writes, so the fallback is not expected
+/// to be used. It is there because a binding that panicked would poison the
+/// engine for every later call (`docs/runbooks/wasm-engine-poisoned.md`),
+/// and each reply names the empty shape its caller already reads instead.
+fn json_or<T: Serialize + ?Sized>(value: &T, fallback: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| fallback.to_owned())
 }
 
 /// `{"reason": code}`: why a guess has nothing to say.
@@ -360,10 +369,10 @@ fn refusal(code: &str) -> String {
 /// ([`auracle_features::probe_cables`]), as [`WasmEngine::edit_cable_levels`]
 /// replies; `null` when the tree does not compile.
 fn cable_levels_json(tree: &PatchTree, spec: &PhraseSpec) -> String {
-    auracle_features::cable_levels(tree, spec)
-        .ok()
-        .and_then(|p| serde_json::to_string(&p).ok())
-        .unwrap_or_else(|| "null".into())
+    match auracle_features::cable_levels(tree, spec) {
+        Ok(p) => json_or(&p, "null"),
+        Err(_) => "null".into(),
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -694,7 +703,7 @@ struct TreeReply<'a> {
 }
 
 fn tree_reply(r: &TreeReply) -> String {
-    serde_json::to_string(r).unwrap_or_else(|_| "null".into())
+    json_or(r, "null")
 }
 
 /// The engine's randomness, one stream per consumer.
@@ -1132,7 +1141,7 @@ impl WasmEngine {
     /// `Engine::fill_draw`.
     pub fn fill_draw(&mut self, n: usize) -> String {
         self.engine.ensure_fill_seed(&mut self.rng.fill);
-        serde_json::to_string(&self.engine.fill_draw(n)).unwrap_or_else(|_| "[]".into())
+        json_or(&self.engine.fill_draw(n), "[]")
     }
 
     /// The term at `index` of the draw stream, as JSON (`""` before the stream
@@ -1176,7 +1185,7 @@ impl WasmEngine {
             return "[]".into();
         };
         let jobs = self.begin_deferred_import(state);
-        serde_json::to_string(&jobs).unwrap_or_else(|_| "[]".into())
+        json_or(&jobs, "[]")
     }
 
     /// [`WasmEngine::import_session_deferred`] with a verdict the caller can
@@ -1640,8 +1649,7 @@ impl WasmEngine {
     /// generation one walk at a time in this worker and show progress. The
     /// farm driver is [`WasmEngine::refine_jobs`].
     pub fn refine_begin(&mut self) -> String {
-        serde_json::to_string(&self.engine.refine_begin(&mut self.rng.refine))
-            .unwrap_or_else(|_| "[]".into())
+        json_or(&self.engine.refine_begin(&mut self.rng.refine), "[]")
     }
 
     /// Run the open generation's job for `parent_id` here and absorb it.
@@ -1683,7 +1691,7 @@ impl WasmEngine {
                 reason: None,
             },
         };
-        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
+        json_or(&reply, r#"{"context":null,"jobs":[]}"#)
     }
 
     /// Absorb one walk's result (`farm_walk`'s reply) into the open
@@ -1709,21 +1717,21 @@ impl WasmEngine {
     /// and results still in flight will read `"stale"`. Returns the retired
     /// ids as a JSON array, lowest first. Idempotent.
     pub fn refine_finish(&mut self) -> String {
-        serde_json::to_string(&self.engine.refine_finish()).unwrap_or_else(|_| "[]".into())
+        json_or(&self.engine.refine_finish(), "[]")
     }
 
     /// The ids the last generation to finish retired, lowest first, as a JSON
     /// array — including a finish that happened on its last
     /// [`WasmEngine::refine_absorb`]. They are no longer in the bank.
     pub fn refine_retired(&self) -> String {
-        serde_json::to_string(self.engine.retired()).unwrap_or_else(|_| "[]".into())
+        json_or(self.engine.retired(), "[]")
     }
 
     /// The ids the end of the running generation would retire if it ended
     /// now, lowest first, as a JSON array — the rows a save would rescue.
     /// `[]` when the pool is not over size.
     pub fn refine_retiring(&self) -> String {
-        serde_json::to_string(&self.engine.retiring()).unwrap_or_else(|_| "[]".into())
+        json_or(&self.engine.retiring(), "[]")
     }
 
     /// Locked refinement from candidate `id`: evolve everything except the
@@ -1760,7 +1768,7 @@ impl WasmEngine {
                 reason: Some(reason.as_str()),
             },
         };
-        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"reason":"no_taste"}"#.into())
+        json_or(&reply, r#"{"reason":"no_taste"}"#)
     }
 
     /// Walk the job [`WasmEngine::refine_from_job`] dealt for seed `id` here,
@@ -1843,20 +1851,22 @@ impl WasmEngine {
                 self.engine.own_set(name, &f);
                 self.own_sound()
             }
-            Err(e) => serde_json::to_string(&OwnReply {
-                ok: false,
-                error: Some(e.code()),
-                name: None,
-                seconds: None,
-                truncated: None,
-                z: None,
-                masked: None,
-                map: None,
-                nearest: None,
-                nearest_presets: None,
-                seeds: None,
-            })
-            .unwrap_or_else(|_| "null".into()),
+            Err(e) => json_or(
+                &OwnReply {
+                    ok: false,
+                    error: Some(e.code()),
+                    name: None,
+                    seconds: None,
+                    truncated: None,
+                    z: None,
+                    masked: None,
+                    map: None,
+                    nearest: None,
+                    nearest_presets: None,
+                    seeds: None,
+                },
+                "null",
+            ),
         }
     }
 
@@ -1909,7 +1919,7 @@ impl WasmEngine {
                     .collect(),
             ),
         };
-        serde_json::to_string(&reply).unwrap_or_else(|_| "null".into())
+        json_or(&reply, "null")
     }
 
     /// Put the sound of your own down. Returns whether there was one.
@@ -1949,7 +1959,7 @@ impl WasmEngine {
                 reason: Some(self.engine.own_breed_blocked().unwrap_or("untaught")),
             },
         };
-        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
+        json_or(&reply, r#"{"context":null,"jobs":[]}"#)
     }
 
     // ---- performance (see `auracle_session::perform`) ----
@@ -2026,7 +2036,7 @@ impl WasmEngine {
                 })
             })
             .collect();
-        serde_json::to_string(&need).unwrap_or_else(|_| "[]".into())
+        json_or(&need, "[]")
     }
 
     /// [`Self::perform_wire`], skipping the renders `failed_json` names as
@@ -2069,7 +2079,7 @@ impl WasmEngine {
             return "[]".into();
         };
         let knobs = auracle_session::perform::live_knobs(&tree, self.engine.cfg.phrase.sample_rate);
-        serde_json::to_string(&knobs).unwrap_or_else(|_| "[]".into())
+        json_or(&knobs, "[]")
     }
 
     /// Featurize one tree into the engine's memo, φ only: the unit a
@@ -2182,7 +2192,7 @@ impl WasmEngine {
     /// changed underneath it should lose those writes, not the others.
     pub fn perform_apply(&self, tree_json: &str, overrides_json: &str) -> String {
         match performed_tree(tree_json, overrides_json) {
-            Some(t) => serde_json::to_string(&t).unwrap_or_else(|_| "null".into()),
+            Some(t) => json_or(&t, "null"),
             None => "null".into(),
         }
     }
@@ -2367,10 +2377,8 @@ impl WasmEngine {
                     mean,
                     std,
                     origin: origin_str(c.origin),
-                    name: names
-                        .get(&c.id)
-                        .cloned()
-                        .unwrap_or_else(|| c.tree.signature()),
+                    // `display_names` names every member of the pool.
+                    name: names.get(&c.id).cloned().unwrap_or_default(),
                     named: c.name.is_some(),
                     signature: c.tree.signature(),
                     sexpr: c.tree.to_sexpr(),
@@ -2409,8 +2417,10 @@ impl WasmEngine {
     /// something else changes the pool meanwhile. It includes members the
     /// app has cut, which the engine does not know about.
     pub fn belief(&self) -> String {
-        serde_json::to_string(&self.engine.belief())
-            .unwrap_or_else(|_| r#"{"ranked":[],"seeds":[],"may_replace":[]}"#.into())
+        json_or(
+            &self.engine.belief(),
+            r#"{"ranked":[],"seeds":[],"may_replace":[]}"#,
+        )
     }
 
     /// Display name of one candidate (user-given, else musical).
@@ -2482,7 +2492,7 @@ impl WasmEngine {
     /// their summary. None exist before the first fit: there is no posterior
     /// to forecast with. They persist with the session.
     pub fn forecasts(&self) -> String {
-        serde_json::to_string(&self.engine.forecasts).unwrap_or_else(|_| "[]".into())
+        json_or(&self.engine.forecasts, "[]")
     }
 
     /// Every pool member's standardized features, as JSON:
@@ -2623,7 +2633,7 @@ impl WasmEngine {
             .into_iter()
             .zip(sz.std.iter().copied())
             .collect();
-        serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
+        json_or(&map, "{}")
     }
 
     /// The lineage log (evolution/edit events, oldest first) as JSON.
@@ -2889,14 +2899,19 @@ impl WasmEngine {
         let Some(tree) = &self.bench_tree else {
             return "there is no sound open to edit".into();
         };
-        let op: StructOp = match serde_json::from_str(op_json) {
-            Ok(op) => op,
+        let edited = match serde_json::from_str::<StructOp>(op_json) {
+            Ok(op) => apply_struct_op(tree, &op),
             Err(e) => return format!("the engine couldn’t read that edit ({e})"),
         };
-        match apply_struct_op(tree, &op) {
-            Ok(edited) => {
-                self.bench_tree = Some(edited);
-                self.guess_observe();
+        self.bench_adopt(edited)
+    }
+
+    /// Adopt a structural edit's result: the edited tree onto the bench and
+    /// `""`, or the reason it was refused, the bench unchanged.
+    fn bench_adopt(&mut self, edited: Result<PatchTree, auracle_grammar::StructError>) -> String {
+        match edited {
+            Ok(tree) => {
+                self.bench_set(tree);
                 String::new()
             }
             Err(e) => e.to_string(),
@@ -2943,8 +2958,7 @@ impl WasmEngine {
         // identities, or the locks and positions riding on them die on a
         // gesture that changed nothing but a wire.
         tree.ensure_uids();
-        self.bench_tree = Some(tree);
-        self.guess_observe();
+        self.bench_set(tree);
         String::new()
     }
 
@@ -3108,18 +3122,16 @@ impl WasmEngine {
         self.guess_key.unwrap_or(0)
     }
 
-    /// Whatever the bench just became, ask the guesses' memory whether it is
-    /// the patch as it was before one of its taken guesses: an undo (or the
-    /// module taken out again), which counts as a skip, logged once (a family
-    /// already skipped there is not logged again).
-    fn guess_observe(&mut self) {
+    /// Put `tree` on the bench, after asking the guesses' memory whether it
+    /// is the patch as it was before one of its taken guesses: an undo (or
+    /// the module taken out again), which counts as a skip, logged once (a
+    /// family already skipped there is not logged again).
+    fn bench_set(&mut self, tree: PatchTree) {
         let patch = self.guess_patch();
-        let Some(tree) = &self.bench_tree else {
-            return;
-        };
-        if let Some(skip) = self.guesses.observe(patch, tree) {
+        if let Some(skip) = self.guesses.observe(patch, &tree) {
             self.log_guess("guess_skip", &skip, true);
         }
+        self.bench_tree = Some(tree);
     }
 
     /// One row of the implicit stream for a guess: logged, as a revert is,
@@ -3183,21 +3195,23 @@ impl WasmEngine {
             &key_set(failed_json),
             limit as usize,
         ) {
-            Ok(p) => serde_json::to_string(&Plan {
-                jobs: p
-                    .jobs
-                    .into_iter()
-                    .map(|j| Job {
-                        cache: persistent_key(&j.tree, phrase),
-                        tree: serde_json::to_string(&j.tree).unwrap_or_default(),
-                        key: j.key,
-                    })
-                    .collect(),
-                total: p.total,
-                planned: p.planned,
-                skipped: p.skipped,
-            })
-            .unwrap_or_else(|_| refusal("full")),
+            Ok(p) => json_or(
+                &Plan {
+                    jobs: p
+                        .jobs
+                        .into_iter()
+                        .map(|j| Job {
+                            cache: persistent_key(&j.tree, phrase),
+                            tree: serde_json::to_string(&j.tree).unwrap_or_default(),
+                            key: j.key,
+                        })
+                        .collect(),
+                    total: p.total,
+                    planned: p.planned,
+                    skipped: p.skipped,
+                },
+                &refusal("full"),
+            ),
             Err(r) => refusal(r.code()),
         }
     }
@@ -3227,7 +3241,7 @@ impl WasmEngine {
             &key_set(failed_json),
             limit as usize,
         ) {
-            Ok(r) => serde_json::to_string(&r).unwrap_or_else(|_| refusal("full")),
+            Ok(r) => json_or(&r, &refusal("full")),
             Err(r) => refusal(r.code()),
         }
     }
@@ -3299,10 +3313,7 @@ impl WasmEngine {
         if !auracle_session::guess_is_current(&before, &taken.op, &taken.socket, &taken.family) {
             return "the patch changed after that guess, so it was not placed".into();
         }
-        let err = match serde_json::to_string(&taken.op) {
-            Ok(op) => self.edit_structure_apply(&op),
-            Err(e) => format!("the engine couldn’t read that edit ({e})"),
-        };
+        let err = self.bench_adopt(apply_struct_op(&before, &taken.op));
         if err.is_empty() {
             let skip = GuessSkip {
                 socket: taken.socket,
@@ -3645,7 +3656,7 @@ impl WasmEngine {
                 note: HELD_NOTE,
             })
             .collect();
-        serde_json::to_string(&held).unwrap_or_else(|_| "[]".into())
+        json_or(&held, "[]")
     }
 
     /// Bring held sound `id` back with a new recording: `take_json` is a take's
