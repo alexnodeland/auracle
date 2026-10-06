@@ -720,10 +720,12 @@ jobs:
   # the account's 20) a PR can wait for up to three; right after a merge,
   # main's own run takes runners too (slow-suite.yml says how much).
   #
-  # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
-  # the engine works). A failure that only appears here is still a finding
-  # about the app on a slower machine. It is fixed, or quarantined, never
-  # retried (docs/architecture/testing.md § Flakes).
+  # A slow runner may make a test slower, never wrong (ADR-022). A failure
+  # that only appears here is still a finding about the app when it is about
+  # correctness (a race the app loses, a state it never reaches): it is
+  # fixed, or quarantined, never retried (docs/architecture/testing.md
+  # § Flakes). How long something took is not asserted here: a spec records
+  # it as a budget, and the budgets are judged elsewhere.
   browser:
     name: Browser (${{ matrix.shard }})
     needs: [changes, engine]

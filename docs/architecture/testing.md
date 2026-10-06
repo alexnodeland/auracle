@@ -1,7 +1,7 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
 last_updated: 2026-10-05
-related_adrs: [3, 5]
+related_adrs: [3, 5, 22]
 ---
 
 # Testing: every gate, what it proves, when to run it
@@ -233,7 +233,12 @@ another). `make coverage-report` runs the gate again without the tests, and
 The gate runs every test once, with no retries, in CI as locally. A test
 that passes only sometimes is a finding about the app or the test, and a
 retry would hide it while charging every run its timeouts (a browser spec's
-waits run to two minutes).
+waits run to two minutes). That holds for correctness: a race the app loses,
+a state it never reaches. It does not hold for speed. A slow runner may make
+a test slower, never wrong
+([ADR-022](../decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)):
+how long something took is a budget, recorded on the gate and judged apart
+from it ([Rules](#rules)).
 
 - **The flake hunt** (`flake-hunt.yml`) runs nightly: the fast tier's
   browser tests three times each, against main, where nothing changed but
@@ -247,7 +252,7 @@ waits run to two minutes).
   which of its runs failed.
 - **Fix it.** Most flakes here have been a wait on a time rather than a
   state, an exact count of something a slow machine may do twice, or a
-  timing bound with no slack ([Rules](#rules)).
+  speed bound asserted where a budget belongs ([Rules](#rules)).
 - **Or quarantine it** while it is fixed: add `@quarantine` to the test's
   tags (`{ tag: ["@quarantine"] }`, or beside `@slow`) with a comment naming
   the issue. It leaves the gate and runs in the *Slow suite*, so it is still

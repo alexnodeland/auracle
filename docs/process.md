@@ -250,14 +250,17 @@ deletes merged branches). Remove the worktree and the local branch:
 ## Flakes
 
 No retries, on the gate or anywhere else. A test that passes only sometimes is
-a finding about the app or the test.
+a finding about the app or the test, when what failed is correctness. A slow
+runner may make a test slower, never wrong
+([ADR-022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)):
+how long something took is a budget, not a gate assertion.
 
 1. **Read it.** The run's summary links one HTML report of every browser
    runner, with traces. Decide whether the app, the test or the machine is at
    fault.
 2. **Fix it** when the cause is clear: a wait on a time rather than a state,
    an injected reply the engine can overwrite, a count a slow runner can
-   double, a bound with no slack, or a real race in the app.
+   double, a speed bound that should be a budget, or a real race in the app.
 3. **Or quarantine it** while it is fixed: open a `flake` issue (the template
    says what goes in it), tag the test `@quarantine` with a comment naming the
    issue, label the issue `quarantined`. It leaves the gate and runs in the
