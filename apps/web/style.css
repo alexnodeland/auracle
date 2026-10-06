@@ -1251,7 +1251,11 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
 
 /* A preset: the face and the name, IN POOL at the end once it is in the pool,
    and ▶ on approach. Every preset row keeps IN POOL's place. */
-.preset-item { padding-right: calc(var(--s2) + 52px); } /* token-exempt: the width IN POOL takes, kept on every preset row */
+.preset-item {
+  padding-right: calc(var(--s2) + 52px); /* token-exempt: the width IN POOL takes, kept on every preset row */
+  --row-ground: var(--panel); /* the row's own ground, for what fades in over its end */
+}
+.preset-item:hover, .preset-item.kbd { --row-ground: var(--panel-hi); }
 .preset-item .pb-in {
   font-family: var(--font-silk);
   font-size: var(--t-label);
@@ -1261,7 +1265,21 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
   color: var(--phos-a-dim);
   pointer-events: none;
 }
-.preset-item:hover .pb-in, .preset-item.kbd .pb-in { visibility: hidden; }
+/* While ▶ is in sight (on approach, with the focus in the row, and while it
+   plays) IN POOL stands clear of it, left of the ▶'s strip, on a ground that
+   fades in from the row, so both read whole: hearing a preset is what put it
+   in the pool, and its ▶ (■ while it sounds) stays up while it plays. The
+   name keeps its x; its end passes under the word, as it passes under a pool
+   row's actions. The selectors are the ones that show the actions
+   (`.bank-item .bi-acts`, above), less `.pending`, which a preset's ▶ never
+   carries (a preset row waits as `.loading`). */
+.preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in {
+  right: calc(var(--s1) + 24px + var(--s4)); /* the ▶ (24 px) and its strip's fade */
+  background: linear-gradient(to right, transparent, var(--row-ground) var(--s4));
+}
+/* Under the model view the actions show only under the pointer, so IN POOL
+   keeps the row's end until then. */
+body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: none; }
 .preset-item.in-bank { border-left-color: var(--phos-a-dim); }
 .preset-item.kbd { box-shadow: inset 0 0 0 1px var(--phos-a); }
 
@@ -4143,7 +4161,8 @@ kbd { font-family: var(--font-mono); }
   .bank-item .bi-pct,
   .preset-item .pb-in { top: var(--s1); transform: none; height: 20px; }
   .bank-item:hover .bi-flag, .bank-item.kbd .bi-flag, .bank-item.rating .bi-flag { visibility: visible; }
-  .preset-item:hover .pb-in, .preset-item.kbd .pb-in { visibility: visible; }
+  /* The ▶ is on its own line here, so IN POOL keeps the row's end. */
+  .preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing)) .pb-in { right: var(--s1); background: none; }
 
   /* Law 2 — gesture ownership.
      The rack frame no longer scrolls: it is a camera, and the drag and the
@@ -6835,6 +6854,15 @@ html.xl-on .alarm { z-index: 62; }
   pointer-events: none;
 }
 .guess-read[hidden] { display: none; }
+/* The words, the live region: laid out as the line was before the ✕ moved
+   out of it. */
+.guess-read .gr-line {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
 .gr-chip {
   flex: none;
   font-family: var(--font-silk);

@@ -90,7 +90,11 @@ timer starts in the same capture listener as the level keys, under the same
 rules (a text field and a modal dialog keep ⌥), and any other keydown while it
 counts cancels it, so ⌥↑ never flashes the view; a level key while ⌥ holds the
 view up ends it before moving. ⌥'s keyup, the window's `blur` and Esc end it
-(Esc any view; it goes on to close what it closes). Main does the rest in
+(Esc any view, held or tapped, once nothing nearer took the press: the shell
+hears Esc last, on the window in the bubble phase, and leaves a press a
+closer used, which says so with `preventDefault` or stops it on its way; at
+every level, a bank row's ★, PATCH's chain, PERFORM's well modes, the ? card,
+the scope and picture panels and TASTE's selected point among them). Main does the rest in
 `host.modelViewChanged(on)` (`modelViewChanged`), engine facts only:
 
 - **The bank** redraws through `flipBank`: under the view, once fitted, the
@@ -619,10 +623,16 @@ PATCH is the specimen's canvas (Plan-008 C2a) over the same SVG rack
 - **The keys** (the rack's keydown): `platesInOrder` (by `rackBoxes`, x then
   y, the guess plate among them) for ←/→, `plateToward` for ↑/↓, Enter into a
   plate's controls (which walk only that plate's), F2 or the menu key for
-  `openStructMenu`. Esc closes one thing a press: a menu, a handoff or the
-  touch sheet spends it (the sheet stops the event in patch.js), then the
-  selection, then the catalog (`escBusy` holds a new patch's Esc while either
-  is up). The global Home/End focus the first and last plate only with the
+  `openStructMenu`. Esc closes one thing a press. Whatever floats spends
+  it (`escFloats`: a handoff, a bank row's ★, the comparison, the lineage
+  pop-up, the ⋯ menu, the scope or picture panel, the bank tour, KEYS ⋯, a
+  context menu; main's Esc chain closes all that are open together, and
+  the two panels and the context menu hear Esc nowhere else), and so does
+  the touch sheet (it stops the event in patch.js); then the first of
+  `escSteps` that is open: the layout menu, the shelf, TEACH, the evolve
+  menu, the selection, then the catalog. `escBusy` reads both lists, so a
+  new patch's Esc waits while anything on them is open, and the two cannot
+  drift. The global Home/End focus the first and last plate only with the
   focus on the canvas or nowhere, and never under a modal (`modalUp`);
   ⇧Home is `fitAll`.
 - **The foot**: the camera's corner (`#pt-fit`, `#pt-zoom-out`/`in`,
@@ -672,6 +682,16 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   refit, a guess or a cable probe always goes first, and blocked until boot
   has finished (`blocked`: half a second each, they would slow the fill);
   each is answered as it lands, or in `failed` (a tree that does not vet).
+  One render per key: a job carries every asker (`asks`), and a later asker
+  for the same key joins it rather than being queued again, so a preset's
+  row, that preset's row in the pool and the bench (an unedited preset's
+  tree is the preset's) are all answered by the one render (before #153 the
+  second was left unanswered). Each asker keeps its own source (its id, tree
+  or memo row), and the render is made from the first, in the order they
+  asked, that can still say what to render (`faceFromAsks`): a pool member
+  cut since it asked (its `face_key` is empty) and a memo row the memo has
+  let go are passed over, and a render that gives nothing is not made again
+  for the others, whose key is the same.
   Rendering a pool member for its face does not make it resident, so it
   evicts no audition. A preset is asked by index (`preset_tree_json`), so its
   face does not insert it into the bank. Every request is answered; a
@@ -680,7 +700,8 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
   PATCH's "without this module" outline (Plan-008 C2b) asks the same way, by
   tree, with `seen` on its entry: the patch the structure menu's verb would
   leave without the selected module (`withoutTree`), rendered for its face at
-  the front of the faces lane (moved there if it was already waiting) and
+  the front of the faces lane (moved there, with everyone on it, if it was
+  already waiting) and
   ahead of a measurement nobody is waiting on (`seenFaceWaiting`, in
   `nextLong` and in `measure`'s breaths). It still waits for `soon` work, the
   rest of `later` (the guess, the cable probe, a refit) and PERFORM's own
@@ -688,8 +709,10 @@ bands × 12 slices (`auracle_features::face`), drawn against the bank.
 - **`face_cancel`** (now; `{refs, ids}`): what is still waiting for a slot
   that left the view (a preset row scrolled past, the PRESETS tab left, or
   PATCH's selection moved on before its "without" face was rendered) is
-  dropped from the faces lane and from waiting lookups, and answered as `faces`
-  with `cancelled`; main asks again when the slot comes back into view.
+  taken off the render it waits on and out of waiting lookups, and answered
+  as `faces` with `cancelled`; a render is dropped once nobody is left on it,
+  so another slot waiting on the same key still gets its face. Main asks
+  again when the slot comes back into view.
 - **After a `render`**, the worker posts the buffer first; the face, if main
   hasn't been sent it, is looked up in `later` (`faceAfterRender`), from the
   stored audition (not the PCM main is sent: `audition_pcm` limits). No face

@@ -5,7 +5,7 @@
 // rule that hides it (CSS specificity), so the control could never appear.
 // ★ folds the five stars out in the actions' place, and a star rates. And
 // m in the list saves the row under the cursor once a press, held or not.
-const { test, expect } = require("./fixtures");
+const { test, expect, bankTab } = require("./fixtures");
 
 test("a bank row's cut appears on hover and can be pressed", async ({ page, app }) => {
   await app.boot();
@@ -134,3 +134,100 @@ test("a sound opened from outside the bank has its row brought into the bank's v
   await app.engine((timeout) => expect(page.locator(`#bank-list .bank-item[data-id="${id}"]`)).toHaveClass(/\b(live|opening)\b/, { timeout }), { ms: 30_000 });
   await expect.poll(() => inView(id), { timeout: 15_000 }).toBe(true);
 });
+
+// A preset row's IN POOL and its ▶ (#130): once a preset is in the pool its
+// row says so at its end, and its ▶ shows on approach, with the focus in the
+// row, and while it plays. Both read whole in every one of those states, at
+// the narrowest window the app allows and a wide one: IN POOL's words inside
+// the row and clear of the ▶'s strip (its fade too), and the ▶ inside the
+// row. The name keeps its x, the x of every other preset row's name. (IN
+// POOL used to be cut by the ▶ wherever the ▶ showed without the pointer on
+// the row: with the focus on it, or while it played.) Each state is measured
+// as it is drawn, the way text_fits measures a caption's: the pointer, the
+// keyboard cursor and the focus for real, the ▶'s playing mark set on it in
+// the page.
+
+/** A preset row as drawn: IN POOL's words and the ▶'s strip, as boxes. */
+const presetRowDrawn = (row) =>
+  row.evaluate((r) => {
+    const box = (b) => ({ l: Math.round(b.left * 10) / 10, r: Math.round(b.right * 10) / 10 });
+    const tag = r.querySelector(".pb-in");
+    const words = document.createRange();
+    words.selectNodeContents(tag);
+    const acts = r.querySelector(".bi-acts");
+    const cs = getComputedStyle(acts);
+    const xOf = (n) => Math.round(n.getBoundingClientRect().left - n.closest(".preset-item").getBoundingClientRect().left);
+    return {
+      row: box(r.getBoundingClientRect()),
+      tagShown: getComputedStyle(tag).visibility === "visible",
+      words: box(words.getBoundingClientRect()),
+      actsShown: cs.visibility === "visible" && cs.opacity === "1",
+      acts: box(acts.getBoundingClientRect()),
+      hear: box(r.querySelector(".bi-hear").getBoundingClientRect()),
+      nameX: xOf(r.querySelector(".bi-name")),
+      othersX: [...new Set([...document.querySelectorAll("#bank-list .preset-item:not(.in-bank) .bi-name")].map(xOf))],
+    };
+  });
+
+/** What the spec asks of a row as drawn, each as a yes or no. */
+const inPoolFacts = (d) => ({
+  tagShown: d.tagShown,
+  tagInRow: d.words.l >= d.row.l && d.words.r <= d.row.r,
+  actsShown: d.actsShown,
+  tagClearOfActs: d.words.r <= d.acts.l + 0.5,
+  hearInRow: d.hear.l >= d.row.l && d.hear.r <= d.row.r,
+  namesAtOneX: d.othersX.length === 1,
+  nameKeepsX: d.nameX === d.othersX[0],
+});
+const AT_REST = { tagShown: true, tagInRow: true, actsShown: false, namesAtOneX: true, nameKeepsX: true };
+const WITH_PLAY = { ...AT_REST, actsShown: true, tagClearOfActs: true, hearInRow: true };
+
+for (const [width, height] of [[1000, 800], [1440, 900]]) {
+  test.describe(`at ${width} px`, () => {
+    test.use({ viewport: { width, height } });
+
+    test(`a preset row's IN POOL and its ▶ both read whole at ${width} px, and its name keeps its x`, async ({ page, app }) => {
+      await app.boot();
+      await bankTab(page, "presets");
+      // Heard, a preset joins the pool, and its row says IN POOL.
+      const row = page.locator("#bank-list .preset-item").nth(2);
+      const index = await row.getAttribute("data-index");
+      const at = page.locator(`#bank-list .preset-item[data-index="${index}"]`);
+      const acts = at.locator(".bi-acts");
+      const hear = at.locator(".bi-hear");
+      await row.hover();
+      await row.locator(".bi-hear").click();
+      await app.engine((timeout) => expect(at.locator(".pb-in")).toBeAttached({ timeout }), { ms: 60_000 });
+      await expect(hear).not.toHaveClass(/\bplaying\b/, { timeout: 30_000 });
+      // At rest: the pointer away, the focus elsewhere. IN POOL alone.
+      await page.mouse.move(5, 5);
+      await page.evaluate(() => document.activeElement?.blur?.());
+      await expect(acts).toHaveCSS("opacity", "0");
+      expect(inPoolFacts(await presetRowDrawn(at)), "at rest").toMatchObject(AT_REST);
+      // The pointer on the row.
+      await at.hover();
+      await expect(acts).toHaveCSS("opacity", "1");
+      expect(inPoolFacts(await presetRowDrawn(at)), "under the pointer").toMatchObject(WITH_PLAY);
+      // The focus on its ▶, the pointer away.
+      await page.mouse.move(5, 5);
+      await hear.focus();
+      await expect(acts).toHaveCSS("opacity", "1");
+      expect(inPoolFacts(await presetRowDrawn(at)), "with the focus on its ▶").toMatchObject(WITH_PLAY);
+      // Playing, the pointer and the focus away: the mark a ▶ pressed on a
+      // preset in the pool carries while it sounds, set for as long as this
+      // takes to measure.
+      await hear.evaluate((b) => { b.blur(); b.classList.add("playing"); });
+      await expect(acts).toHaveCSS("opacity", "1");
+      expect(inPoolFacts(await presetRowDrawn(at)), "while its ▶ plays").toMatchObject(WITH_PLAY);
+      await hear.evaluate((b) => b.classList.remove("playing"));
+      // The keyboard's cursor on it: Home, then ↓ to the third row.
+      await page.locator("#bank-list").focus();
+      await page.keyboard.press("Home");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
+      await expect(at).toHaveClass(/\bkbd\b/);
+      await expect(acts).toHaveCSS("opacity", "1");
+      expect(inPoolFacts(await presetRowDrawn(at)), "under the keyboard's cursor").toMatchObject(WITH_PLAY);
+    });
+  });
+}

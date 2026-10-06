@@ -268,7 +268,12 @@ which is why the [reference](../reference/architecture/two-loops.html) quotes
 
 Sixty-two hand-made sounds in seven families (bass, lead, keys, pad, texture,
 perc, and weird), browsed in place under each family’s name and count. A
-preset’s description is its name’s tooltip.
+preset’s description is its name’s tooltip. Each row carries the preset’s
+[face](./faces.md), from a render of the preset itself: the rows in view ask
+for theirs, and the engine renders them one at a time once nothing you are
+waiting on needs it (at the start, that includes PERFORM’s measurement of the
+sound it opens with). Until a face lands its place stays empty, and the name
+stays where it is.
 
 1. Open **PRESETS**.
 2. Point at a row and press **▶** to hear it (on a touch screen the **▶** is
@@ -278,8 +283,9 @@ The engine can only play what it holds, so a preset you hear or open joins
 the pool and replaces the lowest-rated sound it can. The toast names what it
 replaced (*It replaced the lowest-rated sound it could: Bell Jar.*), and saved
 sounds are never among them, nor is a sound you kept as new that hasn’t been in
-a pick yet. From then on the row
-reads **IN POOL**, and a second click opens the same copy.
+a pick yet. From then on the row reads **IN POOL** at its end, just left of its
+**▶** whenever the **▶** shows (on a touch screen, where the **▶** is under the
+name, it stays at the end), and a second click opens the same copy.
 
 The presets are worth playing through early. They are what the [warm
 start](./teaching.md#the-warm-start) draws from, and they cover the range of

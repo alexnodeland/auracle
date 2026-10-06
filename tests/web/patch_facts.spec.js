@@ -185,6 +185,11 @@ test("What goes here? asks the model's guess for a module's place, draws it ther
   await hereRanked(app, vcoKey, tv);
   await app.engine((timeout) => expect(ghost).toHaveAttribute("data-at", vcoKey, { timeout }), { ms: 30_000 });
   expect(await onKnob(), "the focus stayed on the knob").toBe(true);
+  // The ✕ is beside the line's live region, not in it, so its label is not
+  // read out with every update of the line (#153).
+  await expect(page.locator('#guess-read [role="status"]')).toHaveText(/^guess · /);
+  await expect(page.locator('#guess-read [role="status"] .gr-back')).toHaveCount(0);
+  await expect(page.locator("#guess-read > .gr-back")).toHaveCount(1);
   const t4 = await app.now();
   await page.locator("#guess-read .gr-back").click();
   await expect(page.locator("#guess-read .gr-at")).toHaveCount(0);
