@@ -315,9 +315,11 @@ mutant no test fails on survives. What it runs, how to read a survivor and
 what review does with one are the crates' rules, in
 [`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing).
 The *Mutants* workflow (`mutants.yml`) is a workflow of its own, part of
-neither `CI` lane, and not required. It skips the queue's draft PRs
-(branches under `mergify/merge-queue/`), whose code each PR's own run has
-judged.
+neither `CI` lane, and not required. On the queue's draft PRs (branches
+under `mergify/merge-queue/`) its job passes at once, about a runner-minute
+a batch, since each PR's own run has judged its code; it still runs there,
+so that once it is required its check reports instead of sitting as
+skipped.
 
 **On every PR**, one runner tests the mutants in the changed code
 (`make mutants DIFF=1`'s command against the merge base, in place, one at a
@@ -341,9 +343,10 @@ hours. Fifty-eight shards make fifteen parts, so a fifteen-week cycle aims
 to cover the workspace. The cover is approximate: a shard is a slice of
 its crate's mutants in source order on the day it runs, so code that
 changes between weeks moves the slices' edges, and a mutant near one can be
-tested twice in a cycle or not at all. Weeks count from Mondays, so a run
-by hand takes the part the coming Saturday will, unless its `part` input
-names another (its summary lists them all). A week whose run is dropped
+tested twice in a cycle or not at all. Weeks run Monday to Sunday, so a
+run by hand takes the part of its week's Saturday (on a Sunday, the day
+before's), unless its `part` input names another (its summary lists them
+all). A week whose run is dropped
 leaves its part to the next cycle. A run on `main` that finds a survivor,
 or a shard that left no outcomes, files or comments on *Mutants that
 survive*, naming its part.
@@ -375,14 +378,15 @@ mutants timed out at `db2103f` (`synthetic.rs:54` and `:55`, in
 known. At `cf61f48`, with #198's tests and a 24 s limit, both finished in
 4 s and survived.
 
-**On a runner**, estimated, not yet measured. CI's Test job spends about
-eleven minutes of a runner's time on the fast tier (two runners, five and a
-half each), which this Mac runs in about a minute and a half unloaded: about
-eight times slower. A build is taken to be about four times slower. A mutant
-then costs about 15 s in taste, 25 s in grammar, two minutes in features
-and wasm, and three to four in session, and the workspace's mutants (about
-8,300) about 200 to 250 runner-hours. Four runners for six hours a week are 24, hence the
-parts. `PLAN`'s counts are sized from these estimates to keep each shard
+**On a runner**, estimated, not yet measured. CI's Test job, before
+Coverage took its place (ADR-023), spent about eleven minutes of a runner's
+time on the fast tier (two runners, five and a half each), which this Mac
+ran in about a minute and a half unloaded: about eight times slower. A
+build is taken to be about four times slower. A mutant then costs about
+15 s in taste, 25 s in grammar, two minutes in features and wasm, and three
+to four in session; over the workspace's 8,307 mutants at `0f7a85d`, about
+235 to 265 runner-hours. Four runners for six hours a week are 24, hence
+the parts. `PLAN`'s counts are sized from these estimates to keep each shard
 near four and a half hours, under its cap of five and a half (session's
 2,001 mutants in 26 shards are 77 each: four and a half hours at three and
 a half minutes a mutant, five at four). A weekly shard that stops at its

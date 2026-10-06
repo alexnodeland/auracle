@@ -244,7 +244,8 @@ shaped so: `docs/architecture/testing.md`
   DIFF=1`'s command against the merge base, run directly so the job reads
   cargo-mutants' own exit code), one at a time on one runner, stopped after
   25 minutes, the unmutated build and tests included, with what was judged
-  reported. A PR that changes no Rust in `crates/` passes at once. Mutants
+  reported. A PR that changes no Rust in `crates/` passes at once, and so
+  does the merge queue's draft PR, whose PRs were each judged. Mutants
   run in source order, so a stopped run has judged the first. A change to
   taste or grammar finishes; one that changes much of session, features or
   wasm is judged in part, and the local `make mutants DIFF=1` is the

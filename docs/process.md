@@ -211,7 +211,8 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   changed code: its summary lists the mutants of it that no test noticed,
   and review treats each as a finding. The builder runs
   `make mutants DIFF=1` before review, so they are answered before the PR.
-  It skips the queue's draft PRs, whose code each PR's own run has judged.
+  On the queue's draft PRs it passes at once, since each PR's own run has
+  judged their code.
 - **The *Slow suite* runs on a PR only with `full-ci`.** Add the label to a
   PR that changes what the slow tests cover: any crate, `Cargo.toml` or
   `Cargo.lock`, `rust-toolchain.toml`, the `Makefile`, `slow-suite.yml` or

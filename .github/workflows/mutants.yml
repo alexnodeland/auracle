@@ -17,10 +17,13 @@ name: Mutants
 #   lane) or the queue's `Full gate`. Review treats each survivor it reports
 #   as a finding. The job is
 #   red when a mutant survived. It runs on every PR, with no `paths:`
-#   filter, and passes at once when no Rust in crates/ changed: a workflow
-#   a filter skips leaves a required check waiting forever, so this way
-#   making it required, once the crates are clean, is a change to the
-#   ruleset alone.
+#   filter, and passes at once when no Rust in crates/ changed, and on the
+#   merge queue's draft PRs (branches under mergify/merge-queue/), whose
+#   code each PR's own run has judged. A workflow a filter skips leaves a
+#   required check waiting forever, and a job skipped by its `if` sits on
+#   the PR as skipped; this way the check always runs and reports, at about
+#   a runner-minute a batch, and making it required, once the crates are
+#   clean, is a change to the ruleset alone.
 # - schedule (weekly) and workflow_dispatch: one part of the workspace, four
 #   shards two runners at a time, the parts taken in turn so that a cycle
 #   aims to cover the workspace (the `plan` job says why it is not all of it
@@ -88,19 +91,34 @@ jobs:
   # of session judges a handful: there `make mutants DIFF=1`, run locally
   # before review, is the complete run.
   #
-  # Not on a branch of Mergify's merge queue, which would judge again code
-  # each of its PRs already ran here (.mergify.yml checks PRs in place, so
-  # there should be none).
+  # On the merge queue's draft PR (a branch under mergify/merge-queue/), it
+  # passes at once: each PR in the batch was judged on its own run, and
+  # judging the batch again would hold a runner for up to forty minutes.
+  # It still runs, so a required check reports there instead of sitting
+  # as skipped.
   changed:
     name: Mutants in the changed code
-    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       CAP: 25
       BASE: origin/${{ github.base_ref }}
     steps:
+      - id: queue
+        name: Is this the merge queue's batch?
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            mergify/merge-queue/*)
+              echo "batch=true" >> "$GITHUB_OUTPUT"
+              echo "The merge queue's batch: its code was already judged on each PR's own run." >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "batch=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.queue.outputs.batch == 'false'
         with:
           # The merge base has to be reachable to diff against it.
           fetch-depth: 0
@@ -109,6 +127,7 @@ jobs:
       # is `make mutants DIFF=1`'s, kept in target/ for the run below.
       - id: rust
         name: Is any Rust changed?
+        if: steps.queue.outputs.batch == 'false'
         run: |
           make -s mutants-diff BASE="$BASE"
           if [ -s target/mutants.diff ]; then
@@ -148,8 +167,9 @@ jobs:
       # also marks survivors on their lines in the PR's changed files (the
       # first ten: GitHub shows no more for one step). The codes are
       # cargo-mutants' (0 all caught; 2 a survivor; 3 a timeout, maybe
-      # survivors too; 4 the unmutated tests failed; 5 and 6 the diff; 1 its
-      # arguments; 70 it broke) or `timeout`'s (124, 137: the cap).
+      # survivors too; 4 the unmutated tests failed; 5 and 6 the diff; 1 any
+      # error of its own, an interrupt included; its 70, an internal error,
+      # is not expected) or `timeout`'s (124, 137: the cap).
       - name: Survivors
         if: ${{ !cancelled() && steps.mutants.outcome != 'skipped' }}
         env:
@@ -171,8 +191,8 @@ jobs:
                 exit 0
               fi
               echo "Stopped at the ${CAP}-minute cap; the mutants not reached are not judged." >> "$GITHUB_STEP_SUMMARY" ;;
-            4) echo "::error::The unmutated tests failed, so no mutant was judged: the Test job says why." ;;
-            *) echo "::error::cargo-mutants exited $CODE (5 or 6: the diff; 1: its arguments; 70: it broke; the step above has its log)."; exit 1 ;;
+            4) echo "::error::The unmutated tests failed, so no mutant was judged: the step above, and the artifact's log/baseline.log, say why." ;;
+            *) echo "::error::cargo-mutants exited $CODE (5: the diff does not match the tree; 6: it does not parse; 1: an error of cargo-mutants' own, an interrupt among them): the step above has its log."; exit 1 ;;
           esac
           python3 scripts/mutants_report.py mutants.out --markdown "$GITHUB_STEP_SUMMARY" --link "$LINK"
 
@@ -186,14 +206,15 @@ jobs:
 
   # This week's part of the workspace. The whole of it does not fit in a
   # week's runners: estimated from runs on a Mac (testing.md § Mutants), its
-  # mutants (about 8,300) take about 200 to 250 runner-hours, and two
+  # mutants (about 8,300) take about 235 to 265 runner-hours, and two
   # runners for most of a week would hold the runners the queue's full gate
   # and the PRs' fast lanes need. So each
   # crate's mutants are cut into PLAN's shards, as many as keep a shard
   # near four and a half hours at the estimates above (under its cap of
   # five and a half), and each week runs the next four, in order: crate by
   # crate, so a shard's unmutated tests, and the time limit they set, are
-  # its own crate's. PLAN's shards divided by four is the cycle, in weeks.
+  # its own crate's. PLAN's shards divided by four, rounded up, is the
+  # cycle, in weeks.
   #
   # The cover is approximate. A shard is a slice of its crate's mutants in
   # source order, as they are on the day it runs; code added or removed
@@ -231,8 +252,8 @@ jobs:
           asked = os.environ.get("PART", "").strip()
           if asked and not (asked.isdigit() and 1 <= int(asked) <= len(parts)):
               sys.exit(f"part {asked!r}: the cycle has parts 1 to {len(parts)}")
-          # Weeks counted from a Monday, as ISO weeks are: a run by hand on
-          # Thursday takes the part the coming Saturday will.
+          # Weeks run Monday to Sunday, as ISO weeks do: a run by hand takes
+          # the part of its week's Saturday (on a Sunday, the day before's).
           week = (datetime.date.today() - datetime.date(1970, 1, 5)).days // 7
           i = int(asked) - 1 if asked else week % len(parts)
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
@@ -295,14 +316,26 @@ jobs:
                 exit 1
               fi
               echo "::warning::Stopped at the ${CAP}-minute cap; the mutants not reached are not judged, and $CRATE needs more shards in the plan." ;;
-            4) echo "::error::The unmutated tests failed, so no mutant was judged."; exit 4 ;;
-            *) echo "::error::cargo-mutants exited $code (1: its arguments; 70: it broke)."; exit "$code" ;;
+            4) echo "::error::The unmutated tests failed, so no mutant was judged: the log above, and the artifact's log/baseline.log, say why."; exit 4 ;;
+            *) echo "::error::cargo-mutants exited $code (1: an error of cargo-mutants' own, an interrupt among them): its log is above."; exit "$code" ;;
           esac
+      # The artifact holds one directory named for the shard, so that the
+      # survivors job finds each shard where it looks, however many came
+      # (download-artifact puts a lone artifact's files at its path, and
+      # several each in a directory of its own; `merge-multiple` there
+      # makes the two the same).
+      - name: Name the shard's output
+        if: ${{ !cancelled() }}
+        env:
+          SHARD_DIR: mutants-${{ matrix.crate }}-${{ matrix.k }}-of-${{ matrix.n }}
+        run: |
+          mkdir -p shard-out
+          if [ -d mutants.out ]; then cp -R mutants.out "shard-out/$SHARD_DIR"; fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
           name: mutants-${{ matrix.crate }}-${{ matrix.k }}-of-${{ matrix.n }}
-          path: mutants.out/
+          path: shard-out/
           retention-days: 14
           if-no-files-found: warn
 
@@ -320,10 +353,14 @@ jobs:
       issue: ${{ steps.report.outputs.issue }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Every shard's directory into shards/. A pattern that matches no
+      # artifact (every shard died before its upload) downloads nothing and
+      # passes; the report then names each shard as missing.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: mutants-*
           path: shards
+          merge-multiple: true
       - id: report
         env:
           PART: ${{ needs.plan.outputs.part }}

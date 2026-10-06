@@ -12,7 +12,8 @@ Each DIR is one run's `mutants.out` (CI's weekly run has one per shard).
 It prints, per crate, how many mutants were listed and tested and how each
 ended, then every survivor (a mutant no test failed on) and every mutant
 stopped at the time limit, each as file:line, function and change. A run
-stopped before its end (CI's time cap) is said to be, with how far it got:
+stopped before its end (a time cap, an interrupt or a crash) is said to be,
+with how far it got:
 cargo-mutants writes each mutant's outcome as it goes. A DIR that is not
 there, or that lists mutants and holds no outcomes, is reported as missing,
 and the others are reported all the same. One that lists no mutant (a
@@ -42,6 +43,9 @@ from dataclasses import dataclass, field
 # Room for the issue's own first lines and its advice, under GitHub's 65,536.
 ISSUE_BUDGET = 50_000
 OUTCOMES = ("caught", "survived", "timeout", "unviable")
+# Why a run that wrote outcomes has no end time: the files cannot tell.
+STOPPED = "a time cap, an interrupt, or a crash (the shard's job says which)"
+NONE_REPORTED = "No shard reported: every one is missing, so nothing was judged."
 # cargo-mutants' summary of a mutant's scenario, to the word used here.
 SUMMARY = {
     "CaughtMutant": "caught",
@@ -174,6 +178,9 @@ class Report:
             out += [f"{r.path}: {o}" for o in r.other]
         return out
 
+    def none_reported(self) -> bool:
+        return all(r.missing for r in self.runs)
+
     def unfinished(self) -> list[Run]:
         return [r for r in self.runs if not r.finished and not r.missing]
 
@@ -207,10 +214,12 @@ def where_md(m: Mutant, link: str | None) -> str:
 
 def text_report(rep: Report, rows: dict[str, dict[str, int]]) -> str:
     lines = [f"  mutants: {counts_line(totals(rows))}"]
+    if rep.none_reported():
+        lines.append(f"  {NONE_REPORTED}")
     for crate, row in rows.items():
         lines.append(f"    {crate}: {counts_line(row)}")
     for r in rep.unfinished():
-        lines.append(f"  {r.path}: stopped before its end (a time cap, or interrupted); the rest were not tested")
+        lines.append(f"  {r.path}: stopped before its end ({STOPPED}); the rest were not tested")
     for b in rep.broken():
         lines.append(f"  {b}")
     for kind, title in (("survived", "survived (each is a finding)"), ("timeout", "timed out")):
@@ -230,8 +239,10 @@ def markdown_report(rep: Report, rows: dict[str, dict[str, int]], link: str | No
     for crate, row in [*rows.items(), ("**All**", totals(rows))]:
         out.append(f"| {crate} | " + " | ".join(f"{row[k]:,}" for k in ("listed", "tested", *OUTCOMES)) + " |")
     out.append("")
+    if rep.none_reported():
+        out += [f"**{NONE_REPORTED}**", ""]
     for r in rep.unfinished():
-        out.append(f"**Stopped before its end** (`{r.path}`): a time cap, or interrupted. The mutants not tested are not judged.")
+        out.append(f"**Stopped before its end** (`{r.path}`): {STOPPED}. The mutants not tested are not judged.")
         out.append("")
     for b in rep.broken():
         out.append(f"**Not judged:** {b}.")
@@ -272,6 +283,8 @@ def issue_body(rep: Report, rows: dict[str, dict[str, int]], link: str | None, b
     for crate, row in [*rows.items(), ("**All**", totals(rows))]:
         head.append(f"| {crate} | {row['tested']:,} | {row['survived']:,} | {row['timeout']:,} |")
     head.append("")
+    if rep.none_reported():
+        head += [f"**{NONE_REPORTED}**", ""]
     if rep.unfinished():
         head += ["Some shards stopped before their end; their untested mutants are not counted.", ""]
     if rep.broken():

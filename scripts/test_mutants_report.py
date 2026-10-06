@@ -189,6 +189,20 @@ class Runs(unittest.TestCase):
         # Its listed mutants are counted as listed and untested.
         self.assertIn("| **All** | 4 | 2 |", self.read(md))
 
+    def test_when_no_shard_reported_the_issue_says_so(self):
+        # download-artifact passes when its pattern matches nothing, so the
+        # survivors job can be left with no directory at all.
+        gone = [os.path.join(self.tmp, f"shard-{k}") for k in range(2)]
+        issue, md = os.path.join(self.tmp, "issue.md"), os.path.join(self.tmp, "summary.md")
+        code, out = self.main(*gone, "--issue", issue, "--markdown", md)
+        self.assertEqual(code, 1)
+        self.assertIn(R.NONE_REPORTED, out)
+        body = self.read(issue)
+        self.assertIn(R.NONE_REPORTED, body)
+        self.assertIn("shard-0: missing", body)
+        self.assertIn("shard-1: missing", body)
+        self.assertIn(R.NONE_REPORTED, self.read(md))
+
     def test_a_shard_with_nothing_to_test_is_empty_not_missing(self):
         empty = self.write_listed_only("shard-0", [])
         good = self.run_dir("shard-1", [CUT], [BASELINE_OK, outcome(CUT, "CaughtMutant")])
@@ -212,8 +226,9 @@ class Runs(unittest.TestCase):
         md = os.path.join(self.tmp, "summary.md")
         code, out = self.main(d, "--markdown", md)
         self.assertEqual(code, 0)
-        self.assertIn("stopped before its end", out)
+        self.assertIn("stopped before its end (a time cap, an interrupt, or a crash", out)
         self.assertIn("**Stopped before its end**", self.read(md))
+        self.assertNotIn(R.NONE_REPORTED, out)
         self.assertIn("| **All** | 3 | 1 | 1 | 0 | 0 | 0 |", self.read(md))
 
     # ─── Markdown and the issue ─────────────────────────────────────────────
