@@ -308,15 +308,11 @@ impl TasteSample {
 fn dot(a: &[f64], b: &[f64]) -> f64 {
     // `zip` truncates silently, which would turn a posterior loaded for a
     // different feature set into a utility over a prefix of φ. Every caller
-    // pairs a θ with a φ of the posterior's own dimension; say so where it is
-    // cheapest to hear.
-    debug_assert_eq!(
-        a.len(),
-        b.len(),
-        "θ and φ dimensions disagree ({} vs {})",
-        a.len(),
-        b.len()
-    );
+    // pairs a θ with a φ of the posterior's own dimension: that is the
+    // callers' contract, and nothing here checks it. (A `debug_assert` did,
+    // in no build this repository makes: the tests build under test-fast,
+    // which keeps release's `debug-assertions = false`, and the app ships
+    // release.)
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
