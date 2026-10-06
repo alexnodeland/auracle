@@ -1,35 +1,9 @@
 use super::*;
 use crate::observe::{Feedback, FitSet, Observation, ObservationLog};
 use crate::synthetic::{cosine, IdealPointUser, MixtureSyntheticUser, SyntheticUser};
+use crate::testkit::{ground_truth, random_phi, scratch_file, D};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-
-const D: usize = 16;
-
-fn random_phi<R: Rng>(rng: &mut R) -> Vec<f64> {
-    // Standardized feature space: unit normals.
-    (0..D)
-        .map(|_| {
-            let (u1, u2): (f64, f64) = (rng.gen(), rng.gen());
-            (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
-        })
-        .collect()
-}
-
-fn ground_truth() -> SyntheticUser {
-    // A sparse, interpretable taste: likes dims 0/3 strongly, dislikes 1/7.
-    let mut theta = vec![0.0; D];
-    theta[0] = 1.8;
-    theta[1] = -1.2;
-    theta[3] = 1.0;
-    theta[7] = -0.8;
-    theta[10] = 0.5;
-    SyntheticUser {
-        theta,
-        tau: 0.4,
-        cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
-    }
-}
 
 /// M3 gate 1: duels alone recover θ* (direction) and predict held-out
 /// duels far above chance.
@@ -1224,12 +1198,6 @@ fn mixture_captures_bimodal_taste() {
         ca > 0.85 && cb > 0.85,
         "style recovery too weak: cos_a={ca:.2} cos_b={cb:.2}"
     );
-}
-
-/// A file of this process's own, so that test runs in several worktrees at
-/// once never read each other's half-written files.
-fn scratch_file(name: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("auracle-taste-{}-{name}", std::process::id()))
 }
 
 /// A posterior round-trips through its file bit for bit: its config, its

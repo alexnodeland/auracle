@@ -32,6 +32,8 @@ pub mod model;
 pub mod observe;
 pub mod standardize;
 pub mod synthetic;
+#[cfg(test)]
+mod testkit;
 
 pub use model::{TasteConfig, TasteModel, TastePosterior, TasteSample, MAX_NORMAL_SD};
 pub use observe::{

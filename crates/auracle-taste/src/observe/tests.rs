@@ -1,35 +1,8 @@
 use super::*;
 use crate::standardize::Standardizer;
-use crate::synthetic::SyntheticUser;
+use crate::testkit::{ground_truth, random_phi, scratch_file, D};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-
-const D: usize = 16;
-
-fn random_phi<R: Rng>(rng: &mut R) -> Vec<f64> {
-    // Standardized feature space: unit normals.
-    (0..D)
-        .map(|_| {
-            let (u1, u2): (f64, f64) = (rng.gen(), rng.gen());
-            (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
-        })
-        .collect()
-}
-
-fn ground_truth() -> SyntheticUser {
-    // A sparse, interpretable taste: likes dims 0/3 strongly, dislikes 1/7.
-    let mut theta = vec![0.0; D];
-    theta[0] = 1.8;
-    theta[1] = -1.2;
-    theta[3] = 1.0;
-    theta[7] = -0.8;
-    theta[10] = 0.5;
-    SyntheticUser {
-        theta,
-        tau: 0.4,
-        cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
-    }
-}
+use rand::SeedableRng;
 
 /// One unreadable row must cost one vote, not the profile.
 ///
@@ -65,12 +38,6 @@ fn tolerance_does_not_change_a_clean_log() {
     assert_eq!(log.observations.len(), 2);
     assert_eq!(log.observations[0].provenance, Provenance::SelfReport);
     assert!(!log.observations[1].is_raw(), "legacy row must stay legacy");
-}
-
-/// A file of this process's own, so that test runs in several worktrees at
-/// once never read each other's half-written files.
-fn scratch_file(name: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("auracle-taste-{}-{name}", std::process::id()))
 }
 
 /// An observation log round-trips through its file bit for bit: the
