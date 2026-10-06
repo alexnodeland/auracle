@@ -493,14 +493,8 @@
     }
   },
   "perform_offer_latency.spec.js": {
-    "auracle/budget-not-expect": {
-      "count": 2
-    },
     "auracle/no-runner-clock": {
       "count": 4
-    },
-    "playwright/no-conditional-in-test": {
-      "count": 3
     }
   },
   "perform_offer_moments.spec.js": {
