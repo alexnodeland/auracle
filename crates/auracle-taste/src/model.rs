@@ -319,8 +319,9 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 
 /// Numerically stable `log σ(x)`.
 fn log_sigmoid(x: f64) -> f64 {
-    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}).
-    -((-x).max(0.0) + (-(-x).abs()).exp().ln_1p())
+    // -softplus(-x) with softplus(t) = max(t,0) + ln(1 + e^{-|t|}), and
+    // |-x| = |x|: `-x.abs()` is -(|x|), the method before the sign.
+    -((-x).max(0.0) + (-x.abs()).exp().ln_1p())
 }
 
 fn sigmoid(x: f64) -> f64 {
