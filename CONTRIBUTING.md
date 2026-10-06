@@ -146,8 +146,9 @@ Every change must pass `make check`:
    code (`www/checknames.py`), the color tokens (`www/brand/tokens.py`), the
    voice (`www/checkwords.py`: no file's count of banned words, em dashes or
    British spellings above `www/brand/voice-baseline.json`), the Claude Code
-   hooks against the inputs they must block and pass, and the syntax of every
-   film tool
+   hooks against the inputs they must block and pass, the syntax of every
+   film tool, and the saved Claude Code workflows run dry on stubbed agents
+   with the operator scripts' tests (`dev-ops`: `scripts/ops/`)
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; the pinned toolchain brings the target)
 6. `cargo nextest run --workspace --cargo-profile test-fast --lib --bins --tests`

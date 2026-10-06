@@ -46,6 +46,7 @@ fast-forwarded. Before that, `make dev-check` tries the branch's own
 | `changelog` | Write a change's entry as `changelog.d/<topic>.md`, in the house voice |
 | `film` | Make or change a film: script, voice, shots, rehearsal, recording, publishing |
 | `ship` | Take one task from its issue to a merged PR: worktree, brief, build, review, PR, CI, merge, clean up ([`docs/process.md`](../docs/process.md)) |
+| `ship-wave` | Run several at once with the saved workflows, and the operator's part around each run: worktrees, launch, the result, voice drafts as a batch, ship, watch, rebase on a conflict ([`docs/process.md` § Waves](../docs/process.md#waves)) |
 
 ## Agents (`.claude/agents/`)
 
@@ -66,6 +67,50 @@ merge queue, which merges it once the full gate is green on its batch
 ([`docs/process.md`](../docs/process.md)). The one-browser rule applies to
 agents too.
 
+## Workflows (`.claude/workflows/`)
+
+Claude Code workflows, saved by name (the Workflow tool runs one by its
+file's name): a script that runs agents in stages, each agent's result
+checked against a schema. The `ship-wave` skill says when and how to run
+each; they spend many tokens, so one runs when the maintainer asks for a
+wave or for it by name.
+
+| Workflow | Runs |
+| --- | --- |
+| `ship-issues` | Build, review, fix, a second look at the blocking fixes, and finalize (rebased onto `origin/main`, the quick gates and the PR checks again), per issue or bundle; one per run, so each completion notifies |
+| `fix-flake` | One flaky test: diagnose, fix, prove (repeat runs at throttle 4 and under load, a mutation it must fail on), review, finalize |
+| `triage-backlog` | One read-only agent per open issue, then waves, bundles, chains and the maintainer's questions |
+| `review-pr` | Five review lenses in parallel, then an agent that tries to refute each finding; the survivors, ranked |
+| `mutants-burndown` | One crate's surviving mutants killed file by file, measured again, reviewed and finalized |
+
+A workflow file is a plain script, not a module: `export const meta = {…}`
+(a pure literal), then a body that ends in a top-level `return`. `node
+--check` passes such a file whatever it holds, so
+`scripts/ops/check_workflows.mjs` checks them instead (`make dev-check`,
+and the after-edit hook): meta, the phases it names, no `Date.now()`,
+`Math.random()` or Node API, and a dry run of the body on stubbed agents
+with sample `args` for each, which it keeps. A new workflow adds its sample
+there. What the workflows promise the operator is tested on scripted agents
+in `scripts/ops/workflows.test.mjs`: an item of `ship-issues`, `fix-flake`
+or `mutants-burndown` is `ready` only when every agent it needed came back,
+and `review-pr` loses no finding. An agent label is `<stage> <key>`
+(`build #233`, `fix #233 r2`), which `wf_result.py` reads a running
+workflow's journal by.
+
+## The operator's scripts (`scripts/ops/`)
+
+Around a run, for the operator (Python's standard library and bash; the
+repository from the `origin` remote, `GH_REPO` to override; their tests in
+`make dev-check`):
+
+| Script | Does |
+| --- | --- |
+| `wf_result.py <run>` | Reads a finished run's output file, or a running run's journal, and writes each branch's PR body and a summary: status, problems, voice drafts, open items by kind, the `ship_pr.sh` command |
+| `ship_pr.sh [--full-ci] [--priority] <worktree> <branch> <title> <body>` | Checks the title and body as `PR checks` will, pushes, opens the PR with `queue` and queues it (`--full-ci`: opened with `full-ci`, queued once its Slow suite is green); through the REST API when `gh pr create` fails |
+| `watch_queue.sh <pr>...` | Polls until a PR merges, closes, leaves the queue, goes red, or (`full-ci`) its Slow suite finishes; run as a background task. Its rule is `queue_state.py` |
+| `rows_resolve.py <file>...` | Resolves a diff3 rebase's line-wise conflicts (table rows, a list, words added to one line) and refuses a real overlap |
+| `check_workflows.mjs` | Checks the saved workflows, as above |
+
 ## Hooks (`.claude/hooks/`, wired in `.claude/settings.json`)
 
 - **Session start** (`session-start.sh`): says when `apps/web/pkg` has no
@@ -85,7 +130,10 @@ agents too.
 - **After an edit** (`post-edit-check.sh`, on Edit, Write and MultiEdit):
   `rustfmt` on a `.rs` file; `node --check` on `.js`, `.mjs` and `.cjs` (as an
   ES module under `apps/web/`, which also catches a backtick inside
-  `live-audio.js`'s `PROCESSOR`); ESLint on a spec or helper in `tests/web`,
+  `live-audio.js`'s `PROCESSOR`, and for any other `.js` with an `import` or
+  `export`: a plain `--check` passes such a file whatever it holds); the
+  workflow check on a saved workflow (`.claude/workflows/`, not a module);
+  ESLint on a spec or helper in `tests/web`,
   as `make spec-lint` runs it, where `tests/web`'s packages are installed
   (`npm ci` there; a few tenths of a second for one file); `py_compile` on
   `.py`; `json.tool` on `.json`; `bash -n` on `.sh`. It skips the file's own

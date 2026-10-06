@@ -12,8 +12,12 @@
 //   itself, the preset's insert (one render, about 0.4 s on a quiet machine)
 //   and the bench.
 // - A warm-start pick's controls are live the moment PERFORM names it, and
-//   within a second of "teach it" (its insert is the first thing the worker
-//   does).
+//   within a second of "teach it": its insert is the first thing the worker
+//   does, and a memo hit when the pick's card was measured before "teach it"
+//   arrived (the engine measures the cards while they are chosen,
+//   `warm_cards`, the picks first). This spec presses it about half a second
+//   after the deal, and the card usually was; what is left then is the
+//   render in progress when "teach it" arrives (#221).
 // - A pick puts the next pair up in the click's own task, with no deal
 //   asked for, and its ▶ sounds in its own: the next pair is dealt, and its
 //   sounds fetched, ahead. Within 0.3 s and 0.15 s.
@@ -42,6 +46,9 @@ const INIT = ({ warmed }) => `(() => {
   const steps = (window.__steps = []);
   // Every request posted to the engine, in order: [type, ahead, bg].
   window.__sent = [];
+  // The warm start's cards as main asked the engine to measure them, in
+  // order, and its "teach it": [type, order].
+  window.__warm = [];
   function Wrapped(url, opts) {
     const w = new Orig(url, opts);
     if (/worker\\.js/.test(String(url))) {
@@ -57,6 +64,7 @@ const INIT = ({ warmed }) => `(() => {
       const post = w.postMessage.bind(w);
       w.postMessage = (m, t) => {
         if (m && typeof m.type === "string") window.__sent.push([m.type, !!m.ahead, !!m.bg]);
+        if (m && (m.type === "warm_cards" || m.type === "warm_start")) window.__warm.push([m.type, m.order || null]);
         if (m && (m.type === "load_preset" || m.type === "edit_begin" || m.type === "warm_start")) steps.push([m.type, performance.now()]);
         if (m && m.type === "duel_shown") {
           window.__shownBefore = window.__shown;
@@ -154,14 +162,18 @@ test("a preset's controls are live within a second of its click", async ({ page 
   await goLevel(page, "perform");
   await bankTab(page, "presets");
   for (const name of ["Acid Line", "Bell Jar", "Glass Pad"]) {
-    const row = page.locator(".bank-item", { hasText: name }).first();
-    await row.scrollIntoViewIfNeeded();
+    await expect(page.locator(".bank-item", { hasText: name }).first()).toBeAttached();
     const [ms, named, steps, insert, liveAtName, how] = await page.evaluate(
       async ([name, js, watch]) => {
         window.__want = name;
         window.__named = null;
         eval(watch);
         const el = [...document.querySelectorAll(".bank-item")].find((e) => e.querySelector(".bi-name")?.textContent === name);
+        // Into view as a player's click finds it, in the click's own task: the
+        // bank is rebuilt by every reply that carries the views (an open's
+        // insert, its bench), and a row scrolled to from the test, a turn
+        // earlier, could be gone by the time it was scrolled.
+        el.scrollIntoView({ block: "nearest" });
         const t0 = performance.now();
         const from = window.__steps.length;
         el.click();
@@ -208,6 +220,17 @@ test("a warm-start pick's controls are live within a second of teach it", async 
   console.log(`teach it → ${first} named ${named.toFixed(0)} ms (its insert ${insert.toFixed(0)} ms) → controls live ${ms.toFixed(0)} ms; live in the naming's task: ${liveAtName}; wired from ${how}`);
   expect(liveAtName, "its controls are live in the task PERFORM names it").toBe(true);
   expect(how, "it is wired from the shipped file (the app's mark), not measured").toBe("shipped");
+  // The engine was asked to measure the nine cards as they were dealt, then
+  // the picks first in the order they were made, and none once the card
+  // closed with "teach it".
+  const warm = await page.evaluate(() => window.__warm);
+  const dealt = warm[0][1];
+  expect(warm[0][0]).toBe("warm_cards");
+  expect(dealt).toHaveLength(9);
+  const picks = [dealt[0], dealt[3], dealt[6]];
+  const teachAt = warm.findIndex(([type]) => type === "warm_start");
+  expect(warm[teachAt - 1], "the last order before teach it").toEqual(["warm_cards", [...picks, ...dealt.filter((i) => !picks.includes(i))]]);
+  expect(warm.slice(teachAt + 1), "the order after it").toEqual([["warm_cards", []]]);
   budget(`teach it → the first pick's controls live (its insert ${Math.round(insert)} ms)`, ms, 1000);
   expect(errs).toEqual([]);
 });

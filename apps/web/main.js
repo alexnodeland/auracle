@@ -129,6 +129,7 @@ const {
   leanSentence, platformKeys, pairGuess,
   walkSaid, walkLabel, belowNote, fromLine, grownFrom, bredRatings, markWord,
   changeParts, STRUCT_SITES, SKIP_SITES, cardLine, cardDims, cardNoFace, bredLine, turnedBy, turnsItsKnobs,
+  dealRule, jobEta,
 } = words;
 // PATCH's guess, cable levels, new patch and module sheet (patch.js), built
 // on the rack below through the host it is handed (`patchView`).
@@ -185,6 +186,17 @@ const { createToastLane, UNDO_WINDOW_MS } = await import(`./toasts.js?v=${BUILD}
 // deal goes up, waits as the next pair or is dealt again. Created with what
 // it reads of the table where the next pair is dealt ahead, below.
 const { createDealer } = await import(`./deal.js?v=${BUILD}`);
+// What the address asks of a boot, `?farm=N` and `?seed=N` (params.js,
+// tests/params.test.mjs).
+const bootParams = await import(`./params.js?v=${BUILD}`);
+// The warm start's nine cards, one per family (warm.js, tests/warm.test.mjs).
+const { warmSample } = await import(`./warm.js?v=${BUILD}`);
+// Find a sound's rule: what a sound must hold to stay in the bank while words
+// are typed (bank-find.js, tests/bank-find.test.mjs).
+const { findQuery, bankMatches } = await import(`./bank-find.js?v=${BUILD}`);
+// What pointing at EVOLVE POOL marks in the bank: the seeds, and what may or
+// will be replaced (marks.js, tests/marks.test.mjs).
+const { evolveMarks, bankMarks, retiringAfter, NO_MARKS } = await import(`./marks.js?v=${BUILD}`);
 const guide = createGuide({
   el: $("guide"),
   ends: {
@@ -325,7 +337,7 @@ let modelOn = false;       // the model view is up (shell.js; `modelViewChanged`
 // well as with every views post; `views.ranked` and `views.map` still change
 // only when views are posted. While a generation runs, what it will replace is
 // `refine_child`'s `retiring`; `ratings.may_replace` is the next generation's,
-// so read it at rest. Pointing at EVOLVE POOL marks both (`evolveMarks`).
+// so read it at rest. Pointing at EVOLVE POOL marks both (marks.js `evolveMarks`).
 // TASTE's halos and LEARNING's arrow are drawn from it (taste.js).
 // TASTE and LEARNING, once the bridge creates them (taste.js `createTaste`).
 let taste = null;
@@ -3860,15 +3872,6 @@ function lampOff(job) {
   renderJobSlot();
 }
 
-/** "about 40 s" for a remaining time in ms; "" when there is no estimate. */
-function aboutLeft(ms) {
-  if (ms == null || !Number.isFinite(ms)) return "";
-  const s = ms / 1000;
-  if (s < 3) return "almost done";
-  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
-  return `about ${Math.round(s / 60)} min`;
-}
-
 /** What the generation still owes, counted down from the worker's last
  *  estimate. */
 function breedLeft() {
@@ -3883,7 +3886,8 @@ function slotJob() {
     const total = b.total || 0;
     if (b.stopping) return { kind: "refine", text: "⚡ stopping, ending with what’s bred", fill: total ? b.done / total : 0 };
     const count = total ? ` ${b.done}/${total}` : "…";
-    const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
+    // "about 40 s" (words.js `jobEta`, tests/words.test.mjs).
+    const left = total && b.done < total ? jobEta(breedLeft()) : "";
     return {
       kind: "refine",
       text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
@@ -6580,61 +6584,22 @@ function retireForecast() {
 }
 
 // ---------- how the pair was chosen ----------
-// The engine says, on every deal, which rule dealt the pair (`meta.method`):
-// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
-// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
-// "unbiased probe" mark over the forecast line, captioned "about one duel in
-// ten is dealt at random rather than by the acquisition rule". Under the
-// default rule, `Acquisition::Random`, that caption was false: *every* pair is
-// dealt at random, which is the reason it is the default (engine.rs). So the
-// mark was hidden after five deals as saying nothing, never drawn on the deal
-// after a vote (the forecast held its slot), and the rule in use went unsaid.
-//
-// Now the rule is stated on its own line, where it holds its place while
-// forecasts come and go above it. Under the default it is one fact about
-// every pair — the model does not choose what you hear, which is what makes
-// every pick a fair test of its forecast — and it does not change from deal
-// to deal. The one-in-ten ◇ mark is kept for what it is true of: a check
-// dealt at random under a rule that otherwise chooses.
-//
-// The rule is read from the deals themselves, as the method of the last deal
-// that was not a scheduled check. Under `Random` the engine says "random" of
-// every pair, the scheduled slot included (auracle-session's
-// `the_default_rule_deals_every_pair_at_random_and_says_so` pins it); a
-// "check" that reached the page under `Random` all the same would still not
-// be taken for a change of rule. (An engine's first deal is never a check.)
-let dealRule = null;
-
-const DEAL_RULE = {
-  random: {
-    text: "◇ random pair · a fair test",
-    title: "The model doesn’t choose what you hear: every pair is dealt at random from the pool. That makes every pick a fair test of the guess it makes before you pick, and its forecasts in LEARNING are graded on them all.",
-  },
-  bald: {
-    text: "chosen where it’s least sure",
-    title: "The model dealt this pair where its guess is closest to a coin flip: the question it learns most from. About one pair in ten is dealt at random instead, as a fair test (◇).",
-  },
-  thompson: {
-    text: "chosen from its best guesses",
-    title: "The model drew two likely versions of your taste and dealt the sound each rates highest. About one pair in ten is dealt at random instead, as a fair test (◇).",
-  },
-  check: {
-    text: "◇ fair test · dealt at random",
-    title: "About one pair in ten is dealt at random rather than chosen by the model. Fair-test picks like this one grade its guesses without the chooser’s bias, in LEARNING.",
-  },
-};
+// The rule that dealt the pair, on its own line (`#duel-rule`), read from the
+// deals themselves: the method of the last deal that was not a scheduled
+// check, and a check marked ◇ only under a rule that otherwise chooses. The
+// rule and its words are words.js's (`dealRule`, `DEAL_RULE`,
+// tests/words.test.mjs); what stays here is the rule read so far and the line.
+let dealRuleRead = null;
 
 function renderDealRule() {
   const el = $("duel-rule");
   if (!el || !duelMeta || !duelMeta.method) return;
-  const method = duelMeta.method;
-  if (method !== "check") dealRule = method;
-  // A scheduled check is only news under a rule that otherwise chooses.
-  const said = DEAL_RULE[method === "check" && dealRule !== "random" ? "check" : dealRule || method];
-  if (!said) return;
-  el.textContent = said.text;
-  el.title = said.title;
-  el.classList.toggle("check", said === DEAL_RULE.check);
+  const line = dealRule(duelMeta.method, dealRuleRead);
+  dealRuleRead = line.rule;
+  if (!line.said) return;
+  el.textContent = line.said.text;
+  el.title = line.said.title;
+  el.classList.toggle("check", line.check);
 }
 
 // ---------- the live utility readout ----------
@@ -7416,29 +7381,10 @@ function renderEvolveBtn() {
 // ---------- what a generation does: its seeds, and what it may replace ----------
 // Pointing at (or focusing) EVOLVE POOL marks, in the bank, the sounds a
 // generation breeds from and the ones it may replace, so a save can come
-// first. Every mark is the engine's own list (ADR-012), never worked out here:
-// - at rest, a generation opened now: `ratings.seeds` (`Engine::next_seeds`,
-//   the rule `refine_jobs` takes its parents by) and `ratings.may_replace`
-//   (`Engine::may_replace`: nothing outside it can leave at its end), said
-//   "may be replaced";
-// - while one runs, that generation: the seeds it opened with
-//   (`breeding.seeds`, posted with its progress: `refine_jobs`' parents), and
-//   what its end would replace if it ended now (`refine_child`'s `retiring`,
-//   `Engine::retiring`), said "will be replaced": stopped now or run out, its
-//   end replaces them. That list grows by one with each child admitted
-//   (`admit_refined` defers the eviction) and loses none, so it is empty until
-//   the first child lands, and a child still to come can add a sound not on
-//   it: it is not the whole of what may go (words.js `markWord`);
-// - while ⚡ walks, the one sound it walks from (`refine_from_job`'s seed),
-//   and what its child would replace if the pool takes it. With no
-//   generation open `absorb_from` evicts at once (`evict_to_size`, the seed
-//   protected) the lowest of `eviction_order`, which passes over the seed in
-//   flight (`evolving`); `may_replace` ranks the same way, so its first
-//   `pool + 1 − pool_target` (one at size, none while the pool fills) are
-//   those.
-// The rail carries the mark (amber, the model's choice: solid for a seed,
-// dashed for what may go) and the word sits on the row's second line, over
-// the stars, so the name never moves.
+// first, from the engine's own lists: which list, by what is running, is
+// marks.js's (`evolveMarks`, `bankMarks`, `retiringAfter`, with the rules
+// and why; tests/marks.test.mjs). What stays here is when they are read and
+// the rows they are painted on.
 let mayGoShown = false;
 let mayGo = new Set();
 let mayKind = "may"; // which word the dashed rail's rows carry (`markWord`)
@@ -7446,32 +7392,18 @@ let seedMarks = new Set();
 // Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
 // takes its focus away while the pointer is still on it.
 const mayGoBy = { hover: false, focus: false };
-function evolveMarks() {
-  const r = views && views.ratings;
-  if (breeding) return { seeds: breeding.seeds || [], may: breeding.retiring || [], kind: "will" };
-  if (evolvingFrom) {
-    const owed = status ? Math.max(0, (status.pool || 0) + 1 - (status.pool_target || Infinity)) : 0;
-    const may = ((r && r.may_replace) || []).filter((id) => id !== evolvingFrom.id).slice(0, owed);
-    return { seeds: [evolvingFrom.id], may, kind: "may" };
-  }
-  return { seeds: (r && r.seeds) || [], may: (r && r.may_replace) || [], kind: "may" };
-}
 function markMayGo(on) {
   mayGoShown = on;
-  const m = on ? evolveMarks() : { seeds: [], may: [], kind: "may" };
-  seedMarks = new Set(m.seeds);
-  mayGo = new Set(m.may.filter((id) => !seedMarks.has(id)));
-  mayKind = m.kind;
+  const m = on ? evolveMarks({ breeding, evolvingFrom, ratings: views && views.ratings, status }) : NO_MARKS;
+  ({ seeds: seedMarks, may: mayGo, kind: mayKind } = bankMarks(m));
   for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) paintMarks(el, Number(el.dataset.id));
 }
 /** A reply that can move what the running generation will replace (a save, a
- *  preset or a kept edit: `eviction_order` passes over saved sounds, and a
- *  new member moves the lowest) carries `retiring` while one is open; only
- *  `refine_child` did, so a sound saved mid-run kept "will be replaced"
- *  while the one that would go instead was unmarked. The caller repaints
- *  (`applyViews` and the `pinned` case do). */
+ *  preset or a kept edit) carries `retiring` while one is open (marks.js
+ *  `retiringAfter`). The caller repaints (`applyViews` and the `pinned` case
+ *  do). */
 function takeRetiring(m) {
-  if (breeding && Array.isArray(m.retiring)) breeding.retiring = m.retiring;
+  if (breeding) breeding.retiring = retiringAfter(breeding, m);
 }
 /** The word a row carries while EVOLVE POOL is pointed at, or "". */
 function flagWord(id) {
@@ -7883,7 +7815,8 @@ const sq = (u) => 1 / (1 + Math.exp(-u));
 // Find a sound (`#bank-find`): what is typed, lowercased and trimmed. Held
 // here, not read from the field at render time, and the field sits outside
 // the list, so the bank's many redraws (and the rename guard's deferred one)
-// keep both the words and the filter.
+// keep both the words and the filter. What a sound must hold to match is
+// bank-find.js's (`bankMatches`, tests/bank-find.test.mjs).
 let bankQuery = "";
 /** The library's row for a pool sound opened from it, if any: its category
  *  and blurb are what Find reads for it. */
@@ -7892,23 +7825,19 @@ function presetOfId(id) {
   for (const [index, pid] of presetIds) if (pid === id) return presetRows.find((p) => p.index === index) || null;
   return null;
 }
-/** Does a sound match what is typed? Its name, its category and its blurb
- *  (a preset's own, or the preset a pool sound was opened from). */
-function bankMatches(name, category = "", blurb = "") {
-  if (!bankQuery) return true;
-  return [name, category, blurb].some((t) => String(t || "").toLowerCase().includes(bankQuery));
-}
+/** Does a pool sound match what is typed? Its name, and the category and
+ *  blurb of the preset it was opened from, if any. */
 function poolMatches(r) {
   if (!bankQuery) return true;
   const p = presetOfId(r.id);
-  return bankMatches(r.name, p && p.category, p && p.blurb);
+  return bankMatches(bankQuery, r.name, p && p.category, p && p.blurb);
 }
 
 function bankSource() {
   const ranked = (views && views.ranked) || [];
   const live = ranked.filter((r) => !cutIds.has(r.id) && poolMatches(r));
   if (bankFilter === "saved") return live.filter((r) => r.pinned);
-  if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(p.name, p.category, p.blurb));
+  if (bankFilter === "presets") return (presetRows || []).filter((p) => bankMatches(bankQuery, p.name, p.category, p.blurb));
   return live;
 }
 
@@ -8021,7 +7950,7 @@ function renderBank() {
     frag.appendChild(bankRow(r, fitted));
   });
   if (bankFilter === "pool" && !bankQuery) appendReplaced(frag);
-  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }), (name) => bankMatches(name));
+  if (bankFilter === "pool") takes.appendKept(frag, (text, title, count) => bankGroup(text, title, { count, cls: "kept" }), (name) => bankMatches(bankQuery, name));
   landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
@@ -8543,7 +8472,7 @@ $("bank-list").setAttribute("aria-labelledby", "bank-tab-pool-w"); // the word a
 {
   const find = $("bank-find");
   find.addEventListener("input", () => {
-    const q = find.value.trim().toLowerCase();
+    const q = findQuery(find.value);
     if (q === bankQuery) return;
     bankQuery = q;
     renderBank();
@@ -21931,17 +21860,18 @@ $("warm-rerun-btn").onclick = () => openWarmStart();
 // forecasts, style names or generations, and none of the unsaved pool, which
 // is filled afresh on the reload.
 let resetting = null; // null | "exporting" | "saving"
+/** Reset's question, with the counts (words.js `resetQuestion`,
+ *  tests/words.test.mjs): TAUGHT's kinds, the generations bred and the saved
+ *  sounds that stay. */
 function resetQuestion() {
-  const n = picksTaught();
-  const g = status.generation || 0;
-  const saved = ((views && views.ranked) || []).filter((r) => r.pinned).length;
-  const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  const k = taughtKinds();
-  const forgotten = `Your ${plural(k.picks, "pick", "picks")}, ${plural(k.stars, "star", "stars")}, ${plural(k.cuts, "cut", "cuts")}, and ${plural(g, "generation", "generations")} are forgotten`;
-  return saved > 0
-    ? `Reset your taste? ${forgotten}, with every sound you haven’t saved. ` +
-        `Your ${plural(saved, "saved sound stays", "saved sounds stay")}. A copy of your taste downloads first.`
-    : `Reset your taste? ${forgotten}, and the bank starts afresh. A copy of your taste downloads first.`;
+  const { picks, stars, cuts } = taughtKinds();
+  return words.resetQuestion({
+    picks,
+    stars,
+    cuts,
+    generations: status.generation || 0,
+    saved: ((views && views.ranked) || []).filter((r) => r.pinned).length,
+  });
 }
 $("taste-reset-btn").onclick = () => {
   if (saveBlocked === "crashed") {
@@ -23278,47 +23208,30 @@ function warmPrewarmPump() {
   });
 }
 
+// "teach it" inserts the nine cards, and an insert is a render: so the engine
+// measures them while the player chooses, one at a time behind every gesture,
+// and the inserts come from its memo (worker.js `warmCard`). The first pick's
+// controls then wait on no render of its own. In the order "teach it" inserts
+// them: the picks first, in the order they were made, then the rest as dealt;
+// sent again on every pick, and with none once the card is closed.
+function warmCardsSend() {
+  const open = warmRows && !$("warmstart").classList.contains("hidden");
+  const dealt = open ? warmRows.map((r) => r.index) : [];
+  send({ type: "warm_cards", order: [...new Set([...[...warmPicked].filter((i) => dealt.includes(i)), ...dealt])] });
+}
+
 function openWarmStart() {
   send({ type: "presets" });
   warmPending = true;
 }
 let warmPending = false;
 
-// Nine cards, drawn one per family, however big the library gets.
-//
-// This screen used to render a card for *every* preset and `warm-go` loaded
-// every one of them — which was survivable at nine and is not at twenty-eight:
-// a first-run screen you have to scroll, and 58% of a 48-slot pool spent
-// before the user has expressed a single preference. Library size and grid
-// size are now independent.
-//
-// Stratified rather than uniform on purpose. An unstratified sample of nine
-// from a library that is deliberately unevenly weighted (five basses, three
-// perc) keeps landing in the same corner, and a cold start taught from one
-// corner is the exact bias this screen exists to remove. One per family first,
-// then fill from what is left, so the first thirty seconds *span* the space.
-function warmSample(rows) {
-  const byCat = new Map();
-  for (const r of rows) {
-    if (!byCat.has(r.category)) byCat.set(r.category, []);
-    byCat.get(r.category).push(r);
-  }
-  const pick = (xs) => xs[Math.floor(Math.random() * xs.length)];
-  const chosen = [];
-  const taken = new Set();
-  for (const [, xs] of byCat) {
-    const r = pick(xs);
-    chosen.push(r);
-    taken.add(r.index);
-  }
-  const rest = rows.filter((r) => !taken.has(r.index)).sort(() => Math.random() - 0.5);
-  while (chosen.length < 9 && rest.length) chosen.push(rest.pop());
-  // Back into library order so the grid reads as a shelf, not a shuffle.
-  return chosen.slice(0, 9).sort((a, b) => a.index - b.index);
-}
-
+// Nine cards, drawn one per family, however big the library gets: warm.js
+// (`warmSample`, tests/warm.test.mjs), handed Math.random. The cards are one
+// of the page's own draws that stay random (params.js `seedOverride`), there
+// against position bias.
 function renderWarmStart(all) {
-  const rows = warmSample(all);
+  const rows = warmSample(all, Math.random);
   warmRows = rows;
   const grid = $("warm-grid");
   grid.innerHTML = "";
@@ -23353,6 +23266,7 @@ function renderWarmStart(all) {
       b.classList.toggle("picked", warmPicked.has(r.index));
       b.setAttribute("aria-pressed", String(warmPicked.has(r.index)));
       warmPrewarmPump();
+      warmCardsSend();
       $("warm-go").disabled = warmPicked.size !== 3;
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
@@ -23365,9 +23279,14 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  // Every deal starts with none picked. The last deal's picks used to stay
+  // (⋯ › Re-run, or the offer again after a skip), so a new card could not
+  // be added once three were held, and TEACH IT taught the old ones.
+  warmPicked.clear();
   warmHeard.clear();
   warmPrewarm = { done: new Set(), busy: false };
   warmPrewarmPump();
+  warmCardsSend();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
   // Land on the first ▶: hearing comes before choosing.
   grid.querySelector(".wi-play")?.focus();
@@ -23441,6 +23360,7 @@ function closeWarmStart(mark = true) {
   warmPreviewCancel();
   warmPrewarm = null;
   $("warmstart").classList.add("hidden");
+  warmCardsSend(); // none left to measure: "teach it" or SKIP
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
   pointFilmChip();
@@ -23798,34 +23718,17 @@ function farmWidth() {
   return n < 2 ? 0 : n;
 }
 
-/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null. */
+/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null
+ *  (params.js, tests/params.test.mjs). */
 function farmOverride() {
-  const override =
-    new URLSearchParams(location.search).get("farm") ??
-    localStorage.getItem("auracle-renderers");
-  if (override != null && override !== "") {
-    const n = Number(override);
-    if (Number.isFinite(n)) return Math.max(0, Math.min(8, Math.floor(n)));
-  }
-  return null;
+  return bootParams.farmOverride(location.search, () => localStorage.getItem("auracle-renderers"));
 }
 
-/** `?seed=N`: the session's random seed, any whole number (taken modulo
- *  2^32, exactly, as the engine's u32), or null; anything else is said in
- *  the console and ignored. The engine draws its pool, its pairs, its walks and its fits from
- *  streams of this one number (ADR-001), so a fresh session with the same seed
- *  deals the same sounds: a session can be shared, or replayed. The page's
- *  own draws (which side of the table a sound stands on, the warm start's nine
- *  cards, the sides of the keep-as-new comparison) stay random: they are there
- *  against position bias. Read at boot, never saved. */
+/** `?seed=N`: the session's random seed, or null; anything else is said in
+ *  the console and ignored (params.js `seedOverride`, which says why the
+ *  page's own draws stay random). Read at boot, never saved. */
 function seedOverride() {
-  const raw = new URLSearchParams(location.search).get("seed");
-  if (raw == null) return null;
-  if (!/^\d+$/.test(raw)) {
-    console.warn(`[auracle] ?seed= takes a whole number, so "${raw}" is ignored and this session's random seed is its own.`);
-    return null;
-  }
-  return Number(BigInt(raw) % 4294967296n);
+  return bootParams.seedOverride(location.search, (said) => console.warn(said));
 }
 
 /** Reload as a fresh start: Reset your taste and a booth's next visitor.

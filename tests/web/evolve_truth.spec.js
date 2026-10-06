@@ -139,13 +139,41 @@ test("⌘Z in EVOLVE with nothing to take back says so and leaves the PATCH edit
 
   await toEvolve(page, app);
   const restores = await app.sentCount("edit_set_tree");
+  // What waits behind the toast on screen (its +N, all the player sees of the
+  // lane's queue), read in each ⌘Z's own task, before main.js handles it and
+  // after, so no other toast can land between the two reads.
+  const max = await page.evaluate(async () => {
+    const isUndo = (e) => (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z";
+    const read = () => [...document.querySelectorAll("#toasts .toast")].map((t) => ({
+      msg: t.querySelector(".toast-msg").textContent,
+      waiting: Number(t.querySelector(".toast-stack").textContent.slice(1)),
+    }));
+    window.undoReads = [];
+    // Before main.js's own listener (capture, on the window), and after it
+    // (the same target, added later).
+    window.addEventListener("keydown", (e) => isUndo(e) && window.undoReads.push({ before: read() }), true);
+    document.addEventListener("keydown", (e) => isUndo(e) && Object.assign(window.undoReads.at(-1), { after: read() }));
+    return (await import("/toasts.js")).MAX_TOASTS;
+  });
+  const REFUSAL = "Nothing to undo here. PATCH edits undo in PATCH.";
   await page.keyboard.press("Control+z");
-  await expect(page.locator("#toasts .toast-msg")).toHaveText("Nothing to undo here. PATCH edits undo in PATCH.", { timeout: 1_500 });
-  // Pressed again, it is said once, not queued twice.
+  await expect(page.locator("#toasts .toast-msg")).toHaveText(REFUSAL, { timeout: 1_500 });
+  // Pressed again, it is said once: the second refusal takes the first's
+  // place, and what waits behind it does not grow. main.js gives the refusal
+  // `replace: "undo-here"`; without it the first refusal goes back in line
+  // behind the second, one more waiting (the lane's rule is
+  // apps/web/tests/toasts.test.mjs's).
   await page.keyboard.press("Control+z");
+  const again = (await page.evaluate(() => window.undoReads))[1];
+  const seen = JSON.stringify(again);
+  expect(again.before.map((t) => t.msg), `the first refusal is on screen at the second press: ${seen}`).toEqual([REFUSAL]);
+  expect(again.after.map((t) => t.msg), seen).toEqual([REFUSAL]);
+  // The backlog is trimmed to MAX_TOASTS, counting the toast about to show:
+  // with more than one waiting, a second copy could be cut from view.
+  expect(again.before[0].waiting, `no room to see a second copy: ${seen}`).toBeLessThanOrEqual(max - 2);
+  expect(again.after[0].waiting, `the second ⌘Z's refusal put the first back in line: ${seen}`).toBe(again.before[0].waiting);
   await app.quiet();
   expect(await app.sentCount("edit_set_tree"), "⌘Z in EVOLVE sent an edit undo").toBe(restores);
-  expect(await page.locator("#toasts .toast").count()).toBe(1);
 
   // Back in PATCH the edit is still there, and ⌘Z there does undo it.
   await goLevel(page, "patch");

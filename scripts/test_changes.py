@@ -104,7 +104,7 @@ class Lanes(unittest.TestCase):
         self.assertEqual(reached("tests/worker/harness.mjs"), {"worker"})
 
     def test_another_script_reaches_web_only(self):
-        for f in ("scripts/changelog.py", "scripts/test_pr_checks.py", "scripts/test_changes.py"):
+        for f in ("scripts/changelog.py", "scripts/test_pr_checks.py", "scripts/test_changes.py", "scripts/ops/ship_pr.sh", "scripts/ops/workflows.test.mjs"):
             with self.subTest(f=f):
                 self.assertEqual(reached(f), {"web"})
 

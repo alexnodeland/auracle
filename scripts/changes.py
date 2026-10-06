@@ -25,8 +25,9 @@ The classes (docs/architecture/testing.md § CI tiers, *The two lanes*):
     site    the site's sources (the Rust, which it embeds as the engine and
             rustdoc; the app; www/; docs/; the Claude Code setup; an
             AGENTS.md or CLAUDE.md): Site
-    web     the site's, and a script's own tests (scripts/*.py): Web
-            (`make web-check`, `make dev-check`)
+    web     the site's, a script's own tests (scripts/*.py), and the
+            operator's scripts and the saved workflows' check (scripts/ops/):
+            Web (`make web-check`, `make dev-check`)
     smoke   what the browser reads changed, other than spec files alone (a
             spec runs against main's app, and runs itself): Browser smoke
     worker  the engine, apps/web, or tests/worker, their prose aside: Worker
@@ -64,7 +65,7 @@ RUST = re.compile(
     r"|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)"
 )
 SITE = re.compile(r"^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$")
-SCRIPT = re.compile(r"^scripts/[^/]+\.py$")
+SCRIPT = re.compile(r"^scripts/([^/]+\.py$|ops/)")
 # What the browser reads: the app, its specs and what runs them, the engine.
 BROWSER = re.compile(r"^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)")
 PROSE = re.compile(r"\.md$")

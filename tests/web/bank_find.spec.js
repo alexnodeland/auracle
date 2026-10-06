@@ -4,6 +4,10 @@
 // the page's own state, outside the list, so the bank's many redraws (a
 // rating, a cut, the rename guard's deferred one) keep both the words and the
 // filter. It is a text field: typing in it plays no note.
+//
+// What a sound must hold to match (its name, family or blurb, in any case,
+// and nothing else) is apps/web/tests/bank-find.test.mjs's; here, that the
+// page hands each row's words to it and draws what it keeps.
 const { test, expect, bankTab } = require("./fixtures");
 
 /** Boot, and wait for the whole pool in the bank. */
@@ -29,7 +33,6 @@ test("Find a sound narrows the pool and the presets by name, family and blurb, a
   const word = all[5].split(/\s+/)[0].toLowerCase();
   await find.fill(word);
   await expect.poll(async () => (await names(page)).length).toBeLessThan(all.length);
-  for (const n of await names(page)) expect(n.toLowerCase()).toContain(word);
   expect(await names(page)).toContain(all[5]);
 
   // The presets: the words carry over, and a family's name finds its sounds.
@@ -42,9 +45,8 @@ test("Find a sound narrows the pool and the presets by name, family and blurb, a
   await find.fill(family);
   await expect.poll(async () => (await presets(page)).length).toBeLessThan(library.length);
   const byFamily = await presets(page);
-  for (const p of byFamily) {
-    expect(`${p.name} ${p.family} ${p.blurb}`.toLowerCase(), `${p.name} matches "${family}"`).toContain(family);
-  }
+  // Every one of the family's sounds is still listed: its family reaches the
+  // rule, whatever its name says.
   expect(byFamily.filter((p) => p.family.toLowerCase() === family).length).toBe(library.filter((p) => p.family.toLowerCase() === family).length);
   // …and a word only its blurb has.
   const target = library.find((p) => p.blurb.split(/\s+/).some((w) => w.length > 4 && !library.some((q) => q.name.toLowerCase().includes(w.toLowerCase()))));
