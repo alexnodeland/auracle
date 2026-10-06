@@ -60,3 +60,7 @@ repository. Nits are labelled as nits. End with a verdict:
 which findings block the PR, which should be fixed in it, and which are the
 maintainer's call. When you are asked to review only the fixes to an earlier
 review, review that delta and say whether each earlier finding is resolved.
+
+Use the advisor. If an advisor tool is available, call it before you commit
+to an approach, when you are stuck or going in circles, and before you report
+done.

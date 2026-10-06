@@ -38,15 +38,25 @@ WT="$REPO/.claude/worktrees/<topic>"    # one item's worktree
 
 | Workflow (`.claude/workflows/`) | For | Its args |
 | --- | --- | --- |
-| `triage-backlog` | Choosing the next wave: one read-only agent per open issue, then waves (items that share no file), bundles (issues that do), chains, and one batch of questions for the maintainer | `{issues?: [n], session?}`; none reads every open issue |
-| `ship-issues` | Building: build, review, fix (every blocking and should-fix finding, the nits, the in-area open items), re-check the blocking ones, then finalize (rebased onto `origin/main` with diff3, the quick gates again, the PR checks on the title and body) | `{items: [{issue, closes, refs, branch, worktree, port, agentType, notes, decisions, avoid}], session}` |
-| `fix-flake` | One flaky test: diagnosed from the run's log and trace and reproduced at throttle 4 and under load, its cause named by ADR-022's classes; fixed; proved by `--repeat-each=5` and a mutation it must fail on; reviewed; finalized, its quarantine tag out | `{spec, test_title, run_id, issue?, branch, worktree, port, session}` |
-| `review-pr` | A second review of a PR or branch: five lenses in parallel, each finding then put to an agent that tries to refute it; only the survivors come back, ranked | `{pr}` or `{branch, worktree}` |
-| `mutants-burndown` | One crate's surviving mutants, killed file by file with behavior tests (or shown equivalent and excluded narrowly), measured again, reviewed and finalized. Hours | `{crate, branch, worktree, issue?, session}` |
+| `triage-backlog` | Choosing the next wave: one read-only agent per open issue, then waves (items that share no file), bundles (issues that do), chains, and one batch of questions for the maintainer | `{issues?: [n], models?, session?}`; none reads every open issue |
+| `ship-issues` | Building: build, review, fix (every blocking and should-fix finding, the nits, the in-area open items), re-check the blocking ones, then finalize (rebased onto `origin/main` with diff3, the quick gates again, the PR checks on the title and body) | `{items: [{issue, closes, refs, branch, worktree, port, agentType, model?, notes, decisions, avoid}], models?, session}` |
+| `fix-flake` | One flaky test: diagnosed from the run's log and trace and reproduced at throttle 4 and under load, its cause named by ADR-022's classes; fixed; proved by `--repeat-each=5` and a mutation it must fail on; reviewed; finalized, its quarantine tag out | `{spec, test_title, run_id, issue?, branch, worktree, port, models?, session}` |
+| `review-pr` | A second review of a PR or branch: five lenses in parallel, each finding then put to an agent that tries to refute it; only the survivors come back, ranked | `{pr, models?}` or `{branch, worktree, models?}` |
+| `mutants-burndown` | One crate's surviving mutants, killed file by file with behavior tests (or shown equivalent and excluded narrowly), measured again, reviewed and finalized. Hours | `{crate, branch, worktree, issue?, models?, session}` |
 
 `session` is this operator session's link (`https://claude.ai/code/session_…`):
 each commit then ends with `Claude-Session: <it>` and each PR body with the
 link. Without it, neither does.
+
+`models` is `{<stage>: 'opus' | 'sonnet'}`. Each workflow runs its stages on the
+model its script sets by how hard the stage is and what a wrong answer costs.
+Opus builds, fixes, diagnoses, proves a flake's fix, kills mutants, plans,
+reviews (`review-pr`'s correctness, descriptions and tests lenses, and every
+refuter), and re-checks a blocking finding (`verify`), the last gate on it.
+Sonnet finalizes, lists issues, reads one issue, runs `mutants-burndown`'s
+first measure (the run after, `remeasure`, is Opus), and runs `review-pr`'s
+voice and process lenses. A script's args comment names its stages, and the
+[README](../../README.md#choosing-the-model) has them in a table.
 
 **One run per item.** A run returns when its slowest item is done, so give
 `ship-issues` one issue per run, or a small bundle of issues that share
@@ -83,9 +93,18 @@ says more of each).
 Give each item a free port of its own (8771 and up; the reviewer takes the
 port plus 100). Its notes are what the builder needs and would otherwise ask:
 what remains, the decisions already made, what not to touch (another item's
-files).
+files). The workflow adds the rules to each prompt, and tells every agent to
+use the advisor when there is one (before it commits to an approach, when it is
+stuck, and before it reports done), so the notes need not.
 
 ## 3. Launch
+
+**Choose each item's model** first. An item that is well specified and
+mechanical (the issue says exactly what to change, and a gate proves it) takes
+`model: 'sonnet'` for its build and fix stages. An item that needs design or
+diagnosis keeps the default, Opus, and so does one you are unsure of. To move a
+stage for every item, pass `models: {stage: 'opus' | 'sonnet'}`. The README has
+[examples of each](../../README.md#choosing-the-model).
 
 With Claude Code's Workflow tool, by name (the file
 `.claude/workflows/<name>.js`), and `args` as a JSON object, never a string:
@@ -96,6 +115,9 @@ Workflow({ name: "ship-issues", args: { items: [ { issue: 233, closes: [233], re
   agentType: "web-engineer", notes: "…", decisions: "…", avoid: "…" } ],
   session: "https://claude.ai/code/session_…" } })
 ```
+
+`model` and `models` are optional: without them an item builds and fixes on
+Opus, and every other stage runs on its default.
 
 The run goes on in the background and tells you when it ends. Launch the
 next item's run beside it; the tool caps how many agents run at once.

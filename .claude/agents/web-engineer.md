@@ -54,6 +54,10 @@ Where your work goes ([`docs/process.md`](../../docs/process.md)):
 - Anything you move or retire keeps its function by mouse, keyboard and
   touch; when something would have no home, stop and say so.
 
+Use the advisor. If an advisor tool is available, call it before you commit
+to an approach, when you are stuck or going in circles, and before you report
+done.
+
 Report: the head SHA; the behaviour before and after (with numbers where you
 measured), the cause, the files and functions changed; the gates and the specs
 with their counts; a before → after table for anything moved; specs whose
