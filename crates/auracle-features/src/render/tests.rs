@@ -426,3 +426,57 @@ fn chord_segment_stacks_a_second_voice() {
         "chord feature must read 'no evidence' without a chord"
     );
 }
+
+/// **A chord voice still ringing keeps its tail into the next chord.** Two
+/// chord notes back to back, the first one's voice released only 50 ms
+/// before the second's onset: rendered with and without the first chord,
+/// the difference is that voice alone, and it is still sounding after the
+/// second chord starts (a voice retired at the new onset would cut it
+/// there). After a rest long enough for it to fall silent, it is parked and
+/// retired, and the second chord is exactly what it would have been.
+#[test]
+fn a_ringing_chord_voice_keeps_its_tail_into_the_next_chord() {
+    let tree = PatchTree {
+        amp: AmpEnv {
+            release: 0.6,
+            ..crate::tests::amp()
+        },
+        root: vco(Waveform::Saw).root,
+    };
+    let render = |first_chord: &[f64], rest: f64| {
+        let spec = PhraseSpec {
+            notes: vec![
+                Note {
+                    voct: 0.0,
+                    on_s: 0.3,
+                    off_s: rest,
+                    chord: first_chord.to_vec(),
+                },
+                Note {
+                    voct: 0.0,
+                    on_s: 0.3,
+                    off_s: 0.3,
+                    chord: vec![7.0 / 12.0],
+                },
+            ],
+            ..PhraseSpec::default()
+        };
+        let r = render_phrase(&tree, &spec).expect("renders");
+        (r.samples, r.spans[1].on_start, spec.sample_rate)
+    };
+    let tail = |rest: f64| {
+        let (with, onset, sr) = render(&[4.0 / 12.0], rest);
+        let (without, _, _) = render(&[], rest);
+        let diff: Vec<f64> = with.iter().zip(&without).map(|(a, b)| a - b).collect();
+        let window = &diff[onset..onset + (0.02 * sr) as usize];
+        window.iter().fold(0.0f64, |m, d| m.max(d.abs()))
+    };
+    let ringing = tail(0.05);
+    println!("ringing {ringing:.3e} parked {:.3e}", tail(2.0));
+    assert!(
+        ringing > 1e-3,
+        "the first chord's tail was cut at the next onset ({ringing:.2e})"
+    );
+    let parked = tail(2.0);
+    assert_eq!(parked, 0.0, "a parked chord voice still sounded");
+}
