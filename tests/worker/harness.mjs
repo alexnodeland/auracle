@@ -36,8 +36,8 @@ const V = "harness";
 
 /** How long a wait on the engine may take before the test fails: renders on
  *  a loaded runner, never a claim about speed. The slowest whole test seen
- *  took 66 s (at a load average of 115); under the tests' own 150 s, so a
- *  wait that hangs names the reply it missed. */
+ *  took 80 s, under load; under the tests' own 150 s, so a wait that hangs
+ *  names the reply it missed. */
 export const ENGINE_MS = 120_000;
 
 if (!isMainThread && workerData && workerData.auracleWorker) await host();

@@ -261,9 +261,10 @@ jobs:
           fi
 
           # Worker protocol: worker.js (in apps/web), the engine it runs
-          # over, or the tests themselves. changed.mjs picks no spec for
-          # worker.js, so this is the fast lane's check of it.
-          if [ "$rust" = true ] || echo "$files" | grep -qE '^(apps/web/|tests/worker/)'; then
+          # over, or the tests themselves, their prose aside. changed.mjs
+          # picks no spec for worker.js, so this is the fast lane's check of it.
+          wreach="$(echo "$files" | grep -E '^(apps/web/|tests/worker/)' | grep -vE '\.md$' || true)"
+          if [ "$rust" = true ] || [ -n "$wreach" ]; then
             worker=true
           else
             worker=false
@@ -868,8 +869,9 @@ jobs:
   # apps/web/worker.js run as it is in a Node worker thread over this run's
   # engine, with no page, for what it answers and in what order. About a
   # minute, once the engine is built. In the fast lane, on a change to
-  # apps/web, tests/worker or the engine: changed.mjs picks no spec for
-  # worker.js (the smoke only), so this is the fast lane's real check of it.
+  # apps/web or tests/worker (their prose aside) or the engine: changed.mjs
+  # picks no spec for worker.js (the smoke only), so this is the fast lane's
+  # real check of it.
   # In the full gate, always; on main, not again when the queue's run passed
   # it on these files (the changes job). Its files run side by side and a
   # test fails at 150 s, so the slowest file (three tests) is reported within

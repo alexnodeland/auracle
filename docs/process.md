@@ -190,10 +190,9 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   changed (Coverage sets the length) or an app module's specs run (`patch.js`
   reaches about 23 test-minutes, on four runners).
   - A change whose specs can't be told (`main.js`, `worker.js`, `index.html`,
-    `style.css`, a crate) runs the smoke and no other spec; Worker protocol
-    is its check of `worker.js`. So does a helper
+    `style.css`, a crate) runs the smoke and no other spec. So does a helper
     that more than twenty spec files require, or a change to more than
-    twenty spec files.
+    twenty spec files. For `worker.js`, Worker protocol is the check.
   - A change to CI itself (`.github/workflows/`, `.github/actions/`) runs the
     full gate in its own lane.
   - **A green PR is fit to queue, not proven.** The fast lane is quick word on

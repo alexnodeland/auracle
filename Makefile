@@ -230,9 +230,10 @@ smoke-tools:
 ## worker-test: the worker-protocol tests (tests/worker): apps/web/worker.js
 ## run as it is in a Node worker thread over the built engine, with no page,
 ## for what it answers and in what order (its lanes). Needs `make wasm` first.
+## Its three files run side by side on any machine (CI's job limit counts on it).
 worker-test:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine in apps/web/pkg: run `make wasm` first\n'; exit 1; }
-	node --test tests/worker/*.test.mjs
+	node --test --test-concurrency=3 tests/worker/*.test.mjs
 
 ## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower
