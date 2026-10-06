@@ -160,7 +160,10 @@ runs in full. The *Slow suite* on main does the same.
 and checked, and the *Deploy to Pages* job publishes it once `CI` is green;
 a red run deploys nothing and the last green build stays live. Lint, the
 Doctests and Coverage are reused only while `rust-toolchain.toml` still
-pins the release they ran on (the record keeps `rustc --version`).
+pins the release they ran on (the record keeps `rustc --version`). After a
+batch that changed `rust-toolchain.toml`, Lint and Coverage run on main
+anyway: their caches are saved from main only, under a key that holds the
+compiler's release, so reused they would never be saved for the new one.
 
 **The timings come from the queue's run.** Main no longer runs the browser
 tier when it reuses the queue's verdict, so the queue run's *Browser report*

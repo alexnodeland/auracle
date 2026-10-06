@@ -288,6 +288,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           tree="$(git rev-parse 'HEAD^{tree}')"
@@ -315,17 +316,36 @@ jobs:
           pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
           echo "rustc: recorded '$recorded', pinned '$pinned'"
+          # Lint and Coverage run here anyway after a batch that changed
+          # rust-toolchain.toml, for their caches. rust-cache restores by a
+          # key that holds the rustc release, and these jobs save their caches
+          # from main only: reused, nothing would save under the new release's
+          # key, and both would build cold on every run after. (The test
+          # cache is the Slow suite's to save; a Cargo.lock change needs
+          # nothing, since the caches restore across it and rebuild only what
+          # changed.) The batch is everything since main's tip when the queue
+          # tested it (the record's `base`; the push's `before` for a record
+          # without one). A diff that can't be read runs them too.
+          since="$(jq -r '.base // empty' verified/verified.json)"
+          since="${since:-$BEFORE}"
+          fresh=""
+          if ! git diff --quiet "$since" HEAD -- rust-toolchain.toml; then
+            echo "rust-toolchain.toml changed since ${since:0:12} (or the diff failed): Lint and Coverage run, to save their caches"
+            fresh=" lint coverage "
+          fi
+          reused=""
           for job in lint web doctests coverage; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
             if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
-            if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
+            case "$fresh" in *" $job "*) continue ;; esac
+            if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; reused="$reused, $job"; fi
           done
-          [ "$(jq -r .ran.browser verified/verified.json)" = full ] && echo "browser=true" >> "$GITHUB_OUTPUT"
+          if [ "$(jq -r .ran.browser verified/verified.json)" = full ]; then echo "browser=true" >> "$GITHUB_OUTPUT"; reused="$reused, browser"; fi
           echo "run=$art" >> "$GITHUB_OUTPUT"
           {
             echo "### Reused from the merge queue"
             echo
-            echo "Queue run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`): $(jq -r '[.ran | to_entries[] | select(.value == "success" or .value == "full") | .key] | join(", ")' verified/verified.json). They are not run again."
+            echo "Queue run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`), and they are not run again: ${reused#, }."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The queue run's browser times, folded into main's timings by its
@@ -968,13 +988,15 @@ jobs:
           RUSTC: ${{ needs.lint.outputs.rustc }}
         run: |
           set -euo pipefail
-          tree="$(gh api "repos/$REPO/git/commits/$GITHUB_SHA" -q .tree.sha)"
+          # The tree it tested, and the main it tested it on (the merge's
+          # first parent), from which main's run sees what the batch changed.
+          IFS=$'\t' read -r tree base <<<"$(gh api "repos/$REPO/git/commits/$GITHUB_SHA" -q '[.tree.sha, .parents[0].sha] | @tsv')"
           browser="$(jq -r .browser.result <<<"$RESULTS")"
           if [ "$browser" = success ]; then
             if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
           fi
-          jq -n --arg tree "$tree" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
-            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
+          jq -n --arg tree "$tree" --arg base "$base" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
+            '{tree: $tree, base: $base, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
             > verified.json
           cat verified.json
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
