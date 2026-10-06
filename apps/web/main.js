@@ -141,6 +141,9 @@ const { createTaste } = await import(`./taste.js?v=${BUILD}`);
 // one renderer that draws it at every size (vessel.js, tests/vessel.test.mjs).
 const { decodeFace, bankStats, statsMoved } = await import(`./faces.js?v=${BUILD}`);
 const { drawVessel, vesselBox } = await import(`./vessel.js?v=${BUILD}`);
+// How many sounds in the pool carry each module and each coordinate, read off
+// the ranked rows' s-expressions (support.js, tests/support.test.mjs).
+const { poolSupport } = await import(`./support.js?v=${BUILD}`);
 // AUDIO IN: the permission, the inputs, monitoring and the clip
 // (audio-in.js, Plan-007 task 4). Created once the audio exists, below.
 const { createAudioIn, INPUT_LANE_H } = await import(`./audio-in.js?v=${BUILD}`);
@@ -16974,7 +16977,7 @@ const MODULES = [
     frag: () => ({ Fold: { threshold: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
   },
   {
-    kind: "distortion", tag: "Distortion", name: "distortion", sort: "proc", group: "shape", sx: "dist",
+    kind: "distortion", tag: "Distortion", name: "distortion", sort: "proc", group: "shape",
     ins: 1, modTarget: "drive", phi: "n_drive",
     tags: ["drive", "overdrive", "saturation", "fuzz", "grit", "warm", "tube", "dirt"],
     blurb: "Runs the signal into a wall. Soft rounds the peaks, hard clips them flat, tube leans on one side harder than the other.",
@@ -17882,32 +17885,17 @@ function nameSetting(kg, knob) {
 }
 
 // ---- pool support: how often the model has actually seen a module ----
-// Counted client-side off the `sexpr` each ranked row already carries, so this
-// costs no new wasm surface and is honest from the first vote.
+// Counted client-side off the `sexpr` each ranked row already carries
+// (support.js `poolSupport`, by the token the grammar opens each module's term
+// with), so this costs no new wasm surface and is honest from the first vote.
+// Cut patches are gone from every other count in the app (see bankSource),
+// and they are not what the model is reasoning over either. The coefficient
+// is fitted per FAMILY (`n_drive` covers fold, distortion, bitcrush and ring
+// mod), so the evidence behind it is every patch using any of them, each
+// patch once: gating a family's θ on one member's prevalence measured a
+// different quantity from the one it was guarding.
 function nbSupport() {
-  // Cut patches are gone from every other count in the app (see bankSource),
-  // and they are not what the model is reasoning over either.
-  const rows = ((views && views.ranked) || []).filter((r) => !cutIds.has(r.id));
-  const counts = {};
-  for (const m of MODULES) counts[m.kind] = 0;
-  for (const r of rows) {
-    if (!r.sexpr) continue;
-    // `sx` is the head token the grammar's compact s-expression actually
-    // writes, which is not always the module kind (`distortion` prints as
-    // `dist`). Counting the kind blind would have shown "the model has never
-    // seen a distortion" on a pool full of them.
-    for (const m of MODULES) if (r.sexpr.includes(`(${m.sx || m.kind} `)) counts[m.kind] += 1;
-  }
-  // The coefficient is fitted per FAMILY (`n_drive` covers fold, distortion
-  // and bitcrush), so the evidence behind it is every patch using any of them.
-  // Gating a family's θ on one member's prevalence measured a different
-  // quantity from the one it was guarding.
-  const byPhi = {};
-  for (const m of MODULES) {
-    if (!m.phi) continue;
-    byPhi[m.phi] = (byPhi[m.phi] || 0) + counts[m.kind];
-  }
-  return { counts, byPhi, total: rows.length };
+  return poolSupport((views && views.ranked) || [], MODULES, cutIds);
 }
 
 /** Below this many patches carrying the coordinate, the model has no business
@@ -18243,7 +18231,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
       : state === "unfitted" ? unfittedWhy()
-      : `Too little to go on: ${sup} of ${total} sounds carry this.`;
+      : `In ${sup} of ${total} sounds: too few for the model to lean yet.`;
     return;
   }
   // The catalog cell is 34 px with the zero rule at 17; the in-patch pill's
