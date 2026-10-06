@@ -58,7 +58,7 @@ whether filtered first deals move the search's measured numbers
   pair from the pool. The default rule (`Acquisition::Random`) stays uniform
   afterwards.
 - **The warm start** deals presets, not prior draws: one card per preset
-  category, then two more at random (`warmSample` in `main.js`). The page
+  category, then two more at random (`warmSample` in `warm.js`). The page
   draws them, not the session's seed (`seedOverride`). Its "teach
   it" fits a posterior at once (`warmStartDone` sends `fit`). So for a player
   who takes the warm start, one duel is dealt before a posterior exists.
