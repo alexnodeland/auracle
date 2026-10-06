@@ -33,14 +33,25 @@
 // runner downloads, a re-run's too), and each runner prints a hash of the
 // whole plan: runners of one run that print different hashes dealt from
 // different files.
-import { spawnSync } from "node:child_process";
+//
+// A run that would outlast its job is interrupted, not left to be killed.
+// CI's browser jobs set AURACLE_GLOBAL_TIMEOUT_MIN a few minutes under their
+// own limit, and the config makes it Playwright's globalTimeout. That alone
+// ends a run without ending the test that was running: Playwright 1.63
+// reports it as not run, with no error and no trace. So a minute before it
+// (half-way, for a limit under two minutes) `run` sends Playwright SIGINT,
+// as Ctrl-C would: the running test ends interrupted, naming the wait it was
+// in, with its trace, and the blob report is written. The global timeout
+// then bounds the teardown.
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEIGHT_S = 12; // the median test on main before any timings exist
+const INTERRUPT_EARLY_MS = 60_000; // how long before the global timeout `run` interrupts
 
 function parseArgs(argv) {
   const dash = argv.indexOf("--");
@@ -66,7 +77,8 @@ function testsIn(report) {
     if (titles.length) out.describes.push({ file: suite.file, line: suite.line, title: titles.join(" › ") });
     for (const spec of suite.specs || []) {
       const key = keyOf(spec.file, [...titles, spec.title]);
-      const durations = (spec.tests || []).flatMap((t) => (t.results || []).map((r) => r.duration));
+      // An interrupted run's time is how far it got, not how long it takes.
+      const durations = (spec.tests || []).flatMap((t) => (t.results || []).filter((r) => r.status !== "interrupted").map((r) => r.duration));
       out.push({ key, file: spec.file, line: spec.line, durations });
     }
     for (const child of suite.suites || []) walk(child, [...titles, child.title]);
@@ -183,8 +195,30 @@ function cmdRun(opts, pass) {
     console.log("nothing for this runner");
     return 0;
   }
-  const r = spawnSync("npx", ["playwright", "test", ...mine.units.map((u) => u.sel), ...pass], { cwd: HERE, stdio: "inherit" });
-  return r.status ?? 1;
+  return runPlaywright([...mine.units.map((u) => u.sel), ...pass]);
+}
+
+/** Playwright's test command with these arguments, interrupted (SIGINT)
+ *  ahead of AURACLE_GLOBAL_TIMEOUT_MIN when it is set (the header says why).
+ *  Run as node and the CLI's own file, not through npx, so the signal
+ *  reaches Playwright itself. Resolves to its exit code. */
+function runPlaywright(args) {
+  const limitMs = Number(process.env.AURACLE_GLOBAL_TIMEOUT_MIN || 0) * 60_000;
+  const cli = join(HERE, "node_modules", "@playwright", "test", "cli.js");
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [cli, "test", ...args], { cwd: HERE, stdio: "inherit" });
+    const at = limitMs > 0 ? Math.max(limitMs / 2, limitMs - INTERRUPT_EARLY_MS) : 0;
+    const timer = at > 0
+      ? setTimeout(() => {
+          console.log(`shard: ${(at / 60_000).toFixed(1)} min in, ${((limitMs - at) / 60_000).toFixed(1)} before the global timeout: interrupting the run, so the test running now is reported`);
+          child.kill("SIGINT");
+        }, at)
+      : null;
+    child.on("exit", (code) => {
+      if (timer) clearTimeout(timer);
+      resolve(code ?? 1);
+    });
+  });
 }
 
 function cmdPlan(opts, pass) {
@@ -227,7 +261,7 @@ if (!commands[cmd]) {
   process.exit(2);
 }
 try {
-  process.exit(commands[cmd](opts, pass));
+  process.exit(await commands[cmd](opts, pass));
 } catch (e) {
   console.error(`shard: ${e.message}`);
   process.exit(2);

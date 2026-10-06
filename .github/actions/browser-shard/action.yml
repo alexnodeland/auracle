@@ -30,6 +30,17 @@ inputs:
 runs:
   using: composite
   steps:
+    # The runner on the record: the hosted runners differ in speed by about
+    # a factor of two, so a failure's log and the run's summary say which
+    # CPU this shard ran on.
+    - name: This runner's CPU
+      shell: bash
+      run: |
+        lscpu
+        model="$(lscpu | sed -n 's/^Model name: *//p' | head -1)"
+        echo "runner: $(nproc) × ${model:-unknown CPU}"
+        echo "Browser shard ${{ inputs.shard }} ran on $(nproc) × ${model:-unknown CPU}." >> "$GITHUB_STEP_SUMMARY"
+
     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: browser-timings-${{ inputs.tier }}
@@ -43,8 +54,10 @@ runs:
         PLAYWRIGHT_BLOB_OUTPUT_NAME: report-${{ inputs.name }}-${{ inputs.index }}.zip
       run: cd tests/web && node shard.mjs run --shard "${{ inputs.shard }}" --timings "timings-${{ inputs.tier }}.json" --files "${{ inputs.files }}" -- ${{ inputs.args }}
 
+    # Always, a cancelled or timed-out job's too: whatever the run wrote is
+    # what the merged report can say about this shard.
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      if: ${{ !cancelled() }}
+      if: ${{ always() }}
       with:
         name: blob-${{ inputs.name }}-${{ inputs.index }}
         path: tests/web/blob-report/

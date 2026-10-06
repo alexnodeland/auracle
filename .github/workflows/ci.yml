@@ -524,10 +524,17 @@ jobs:
     needs: [changes, engine]
     if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.reuse_browser != 'true'
     runs-on: ubuntu-24.04
-    # The planned ~9 minutes, a test's own five-minute timeout and room: a
-    # test that times out is reported as a failure, with its trace, rather
-    # than the whole runner being cancelled before it can say which.
+    # The planned ~6 minutes and room. AURACLE_GLOBAL_TIMEOUT_MIN is
+    # Playwright's global timeout (tests/web/playwright.config.js), five
+    # minutes under the job's limit for the setup (about half a minute; each
+    # network step is cut at three) and the upload. A minute before it,
+    # shard.mjs interrupts the run: a shard that runs long or hangs reports
+    # the test that was running as interrupted, with its trace, and its blob
+    # reaches the merged report, rather than the runner being cancelled
+    # before it can say which. The two numbers move together.
     timeout-minutes: 20
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 15
     strategy:
       fail-fast: false
       matrix:

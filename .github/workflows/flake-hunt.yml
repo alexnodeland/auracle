@@ -50,7 +50,13 @@ jobs:
     name: Flake hunt (${{ matrix.shard }})
     needs: engine
     runs-on: ubuntu-24.04
+    # Playwright's global timeout, five minutes under the job's limit; the
+    # shard interrupts the run a minute before it, so a shard that runs long
+    # still reports its tests and the one it was running (ci.yml's browser
+    # job says why). The two numbers move together.
     timeout-minutes: 45
+    env:
+      AURACLE_GLOBAL_TIMEOUT_MIN: 40
     strategy:
       fail-fast: false
       max-parallel: 4
