@@ -3375,7 +3375,10 @@ mod tests {
     }
 
     /// Kept names survive a reload, and a session saved before names were
-    /// kept is named once, on restore, with every name unique.
+    /// kept is named once, on restore, as it always was: every unnamed sound
+    /// read off the whole restored bank, claimed in id order. A restore is not
+    /// a fill, so the fill's joining order (#154) must not reach it; when it
+    /// did, 12 of these 16 sounds came back under new names.
     #[test]
     fn names_are_kept_across_a_reload() {
         let mut rng = StdRng::seed_from_u64(0x9A6);
@@ -3412,6 +3415,20 @@ mod tests {
         let names = restored.display_names();
         let unique: std::collections::HashSet<&String> = names.values().collect();
         assert_eq!(unique.len(), names.len(), "names collide: {names:?}");
+        let whole = {
+            let scale = NameScale::fit(restored.pool.iter().map(|c| &c.features));
+            let mut taken = std::collections::HashSet::new();
+            let mut by_id: Vec<&Candidate> = restored.pool.iter().collect();
+            by_id.sort_by_key(|c| c.id);
+            by_id
+                .into_iter()
+                .map(|c| (c.id, claim_name(&scale.name(&c.features), &mut taken)))
+                .collect::<std::collections::HashMap<u64, String>>()
+        };
+        assert_eq!(
+            names, whole,
+            "an older save was not named off the whole bank it restored"
+        );
     }
 
     /// A name cleared on a sound that never had a generated one (named in a
@@ -3467,6 +3484,32 @@ mod tests {
             restored.display_names()[&id],
             claim_name(&base, &mut taken),
             "a cleared name was read off the oldest sounds, not the bank"
+        );
+
+        // The same in a bank where every sound carries a player's name and
+        // none a generated one, so no name is kept to order it by.
+        let ids: Vec<u64> = engine.pool.iter().map(|c| c.id).collect();
+        for (k, each) in ids.iter().enumerate() {
+            engine.set_name(*each, &format!("Mine {k}"));
+        }
+        let mut old = serde_json::to_value(engine.export_state()).unwrap();
+        for entry in old["bank"].as_array_mut().unwrap() {
+            entry.as_object_mut().unwrap().remove("auto_name");
+        }
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg());
+        restored.import_state(serde_json::from_value(old).unwrap());
+        assert!(restored.pool.iter().all(|c| c.auto_name.is_none()));
+        restored.set_name(id, "");
+        let mut taken: HashSet<String> = restored
+            .pool
+            .iter()
+            .filter(|c| c.id != id)
+            .filter_map(|c| c.name.clone())
+            .collect();
+        assert_eq!(
+            restored.display_names()[&id],
+            claim_name(&base, &mut taken),
+            "in a bank named by its player, a cleared name was read off the oldest sounds"
         );
     }
 

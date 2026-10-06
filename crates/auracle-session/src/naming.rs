@@ -26,7 +26,8 @@
 //! is the seed's draw order, never by when the app was handed the bank: a
 //! progressive boot hands it over at whatever count the render farm has
 //! folded in by then, and reading every name off *that* bank named one seeded
-//! pool differently from run to run (#154).
+//! pool differently from run to run (#154). A bank restored from a session
+//! saved before names were kept is not a fill, and is read whole, as one bank.
 //!
 //! ## Why the buckets are quantiles and not thresholds
 //!

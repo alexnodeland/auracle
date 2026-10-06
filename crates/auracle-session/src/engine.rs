@@ -3989,8 +3989,10 @@ impl Engine {
     /// same names, and so does a fill folded in one at a time or two at a
     /// time. A patch that joins after the fill has the newest id, so it is
     /// read off the whole pool, and so is a patch named out of joining order:
-    /// one whose own name was cleared and that never had a generated one (a
-    /// sound named in a session saved before names were kept).
+    /// a bank restored from a session saved before names were kept (a
+    /// restore is not a fill, and is named as one bank, as it always was),
+    /// and a sound whose own name was cleared and that never had a generated
+    /// one.
     fn fix_names(&mut self) {
         if self.standardizer.is_none()
             || self
@@ -4000,33 +4002,42 @@ impl Engine {
         {
             return;
         }
-        // The session's first names (none kept yet) wait for a bank the seed
-        // decides, not the one the handover happened to catch.
-        let first = self.pool.iter().all(|c| c.auto_name.is_none());
-        let floor = NAME_FLOOR.min(self.cfg.pool_size).max(1);
-        let fill_spent = self.draw_cursor >= self.cfg.max_draws as u64;
-        if first && self.pool.len() < floor && !fill_spent {
-            return;
-        }
-        // The newest member a fresh patch is read against. One named in
-        // joining order (newer than every kept name): itself, the bank as it
-        // stood when it joined, or the `floor`-th to join, whichever came
-        // later. One named out of it (a sound whose own name was cleared, and
-        // that never had a generated one): the whole pool, as it stands.
-        let floor_id = {
-            let mut ids: Vec<u64> = self.pool.iter().map(|c| c.id).collect();
-            ids.sort_unstable();
-            ids[floor.min(ids.len()) - 1]
-        };
+        // The fill's first names: this engine's own fill has folded draws in
+        // and nothing is named yet. They wait for a bank the seed decides,
+        // not the one the handover happened to catch. A restore is not a
+        // fill (its cursor has not moved), so a bank saved before names were
+        // kept is named as it was before: all at once, off the whole bank.
         let newest_kept = self
             .pool
             .iter()
             .filter(|c| c.auto_name.is_some())
             .map(|c| c.id)
             .max();
-        let reach = |id: u64| match newest_kept {
-            Some(kept) if id < kept => u64::MAX,
-            _ => id.max(floor_id),
+        let fill_first = newest_kept.is_none() && self.draw_cursor > 0;
+        let floor = NAME_FLOOR.min(self.cfg.pool_size).max(1);
+        let fill_spent = self.draw_cursor >= self.cfg.max_draws as u64;
+        if fill_first && self.pool.len() < floor && !fill_spent {
+            return;
+        }
+        // The newest member a fresh patch is read against. One named in
+        // joining order (the fill's first names, or newer than every kept
+        // name): itself, the bank as it stood when it joined, or the
+        // `floor`-th to join, whichever came later. Any other (a restored
+        // bank saved before names were kept, a sound whose own name was
+        // cleared and that never had a generated one): the whole pool, as it
+        // stands.
+        let floor_id = {
+            let mut ids: Vec<u64> = self.pool.iter().map(|c| c.id).collect();
+            ids.sort_unstable();
+            ids[floor.min(ids.len()) - 1]
+        };
+        let in_order = |id: u64| fill_first || newest_kept.is_some_and(|kept| id > kept);
+        let reach = |id: u64| {
+            if in_order(id) {
+                id.max(floor_id)
+            } else {
+                u64::MAX
+            }
         };
         let mut taken: HashSet<String> = self
             .pool
@@ -4463,7 +4474,8 @@ impl Engine {
             self.standardizer = Some(sz);
         }
         // A session saved before names were kept is named here, once,
-        // against the bank it restored.
+        // against the whole bank it restored: a restore is not a fill, so
+        // the fill's joining order does not apply (`fix_names`).
         self.fix_names();
         // A file can claim more sounds kept as new than the cap allows (an
         // engine with a smaller pool, or a hand edit): the bound holds anyway.
