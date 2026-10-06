@@ -313,8 +313,8 @@ worker-test:
 #
 # `test-fast` is release codegen without release's shipping flags (see the
 # profile in Cargo.toml). Same opt-level, so the suite runs at the same speed it
-# always did; no fat LTO, so it stops paying a serialized link for five test
-# binaries. CI builds the tests under this profile too — one definition of what
+# always did; no fat LTO, so it stops paying a serialized link for each test
+# binary. CI builds the tests under this profile too — one definition of what
 # an optimized test build is.
 #
 # The test builds name their targets (TEST_TARGETS): the libraries, the
@@ -325,8 +325,8 @@ worker-test:
 # own (there are none today; CI's Doctests job checks that the same way).
 #
 # nextest runs every test in the workspace in one pool, each in a process of
-# its own, where `cargo test` ran the five test binaries one after another
-# and waited on the slowest test of each before starting the next. What a
+# its own, where `cargo test` ran the workspace's test binaries one after
+# another and waited on the slowest test of each before starting the next. What a
 # test needs from that pool (the threads it starts, how long before it is
 # slow, and when a hung one is stopped) is in .config/nextest.toml. nextest
 # runs no doctests, hence the second line. It stops starting tests at the

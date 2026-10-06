@@ -106,9 +106,9 @@ each comparison was taken back to back, with the load average beside it.
 
 - **`make test` runs nextest**, every test in the workspace in one pool,
   each in a process of its own, then the doctests with `cargo test --doc`
-  (nextest runs none; there are none today). `cargo test` ran the five test
-  binaries one after another, each waiting on its slowest test before the
-  next began: 204 s against nextest's 158 s on a quiet machine (#177). At a
+  (nextest runs none; there are none today). `cargo test` ran the
+  workspace's test binaries one after another, each waiting on its slowest
+  test before the next began: 204 s against nextest's 158 s on a quiet machine (#177). At a
   load average of 46 to 143, three runs of each could not tell them apart
   (`cargo test` 390, 504 and 512 s; nextest 346, 487 and 609 s), and
   nextest used no more CPU (2,096 and 2,113 s against 2,139 and 2,145 s).
