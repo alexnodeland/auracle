@@ -3080,6 +3080,58 @@ fn duels_spread_over_candidates_not_just_pairs() {
     }
 }
 
+/// **Under the default rule every pair is dealt at random, and says so.**
+/// Random pairs are the calibration sample TRUST scores the model on
+/// (crates/auracle-session/AGENTS.md), so under the default rule no pair
+/// may be the model's choice, and none may read as the exception: before
+/// the fit and after it, across the slot a choosing rule would fill with a
+/// scheduled check, every deal says `"random"` and is a check, and every one
+/// answered after the fit is scored.
+#[test]
+fn the_default_rule_deals_every_pair_at_random_and_says_so() {
+    assert_eq!(SessionConfig::default().acquisition, Acquisition::Random);
+    let mut rng = StdRng::seed_from_u64(0xD3F);
+    let user = ground_truth();
+    let mut engine = Engine::new(
+        PatchGrammarPrior::default(),
+        SessionConfig {
+            pool_size: 8,
+            ..fast()
+        },
+    );
+    engine.begin_session();
+    engine.fill_pool(&mut rng);
+    let deal = |engine: &mut Engine, rng: &mut StdRng| {
+        let d = engine.deal_duel_except(rng, &[]).expect("a pair");
+        assert_eq!(
+            d.method, "random",
+            "pair {} said {}",
+            engine.duels_shown, d.method
+        );
+        assert!(d.random_check, "pair {} is not a check", engine.duels_shown);
+        let (a, b) = (engine.pool[d.a].id, engine.pool[d.b].id);
+        assert!(engine.duel_shown(a, b));
+        let chose_a = user.duel(rng, &engine.pool[d.a].phi_std, &engine.pool[d.b].phi_std);
+        engine.record_duel(d.a, d.b, chose_a);
+    };
+    for _ in 0..8 {
+        deal(&mut engine, &mut rng);
+    }
+    engine.fit_posterior(&mut rng);
+    let every = engine.cfg.duel_check_every;
+    assert!(every > 0, "no check slot to cross");
+    let before = engine.calibration().check_n;
+    let n = 2 * every + 1;
+    for _ in 0..n {
+        deal(&mut engine, &mut rng);
+    }
+    assert_eq!(
+        engine.calibration().check_n,
+        before + n,
+        "a random pair answered was not scored as a check"
+    );
+}
+
 /// A check pair still counts as a check when it is answered after the
 /// next pair has been dealt — which is how the app always answers, since
 /// it records a vote only once its undo window has passed. Tagging only
