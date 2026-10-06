@@ -1,18 +1,33 @@
 name: CI
 
-# The FAST tier: what a PR must pass to merge, about eleven minutes of wall
-# time (the engine job, then the browser tier's twelve runners, set it). The
-# tests too slow for that (the search floor, the other Rust tests over a
-# minute, the browser specs tagged @slow, and any tagged @quarantine while a
-# flake is fixed) run in the Slow suite workflow (slow-suite.yml): on main,
-# nightly, and on a PR that carries the `full-ci` label. Each test runs in
-# exactly one tier; docs/architecture/testing.md § CI tiers lists which and
-# why.
+# The FAST tier: every test fast enough to gate a merge on. The tests too
+# slow for that (the search floor, the other Rust tests over a minute, the
+# browser specs tagged @slow, and any tagged @quarantine while a flake is
+# fixed) run in the Slow suite workflow (slow-suite.yml): on main, nightly,
+# and on a PR that carries the `full-ci` label. Each test runs in exactly one
+# tier; docs/architecture/testing.md § CI tiers lists which and why.
 #
-# The branch ruleset requires one check, `CI`. The fast browser shards are
-# inside it; the Slow suite is not.
+# Two lanes, one workflow (ADR-023); the `changes` job picks the lane.
 #
-# On main a job the merged PR already passed on these exact files is not run
+# - A PR's own run is the FAST LANE: Lint, the Rust tests (as Coverage) and
+#   the Doctests when Rust changed; Web and Site when the site, the docs or
+#   the app did; Browser smoke when the app or the engine did; and the
+#   browser specs the change reaches (tests/web/changed.mjs), on up to four
+#   runners. A change whose specs can't be told (main.js, worker.js, a
+#   crate) runs the smoke only, and a change to CI itself runs the full
+#   gate. About five minutes without Rust; with it, Coverage sets the
+#   length, about nine (an estimate). A green fast lane puts the PR in the
+#   merge queue. It is not the whole gate.
+# - The merge queue's run (Mergify's draft PR, from a branch under
+#   mergify/merge-queue/: .mergify.yml) is the FULL GATE, about twelve
+#   minutes: everything, as on main, the browser tier on twelve runners. It
+#   tests the tree that lands, up to three queued PRs at once, and its `Full
+#   gate` job is the check the queue merges on.
+#
+# The branch ruleset requires one check, `CI`, in both lanes. The browser
+# shards are inside it; the Slow suite is not.
+#
+# On main the jobs the queue's run passed on these exact files are not run
 # again (the `changes` job says which), and the site deploys from this run's
 # own build once `CI` is green (the `deploy` job).
 #
@@ -29,19 +44,19 @@ on:
   workflow_dispatch:
 
 # A new push to a PR makes the in-flight run for that PR obsolete, so stop it
-# rather than paying for two answers to the same question. A run on main is
-# not cancelled by the next push, and none is skipped: runs on main wait in
-# a queue (`queue: max`, up to 100 waiting) and run in turn, so each of three
-# merges inside one run's length gets its own verdict.
-# (The default, `single`, keeps one waiting run and replaces it, so the
-# middle merge was never tested on main.) On a PR the queue stays `single`:
-# `queue: max` with `cancel-in-progress: true` is a workflow validation
-# error, so both keys are expressions on the event. With the merged PR's
-# jobs reused (the changes job), main's runs are short.
+# rather than paying for two answers to the same question. On main, the
+# latest push only: a run in progress is not cancelled, and of the pushes
+# that arrive meanwhile only the newest waits (`queue: single`, which
+# replaces a waiting run with a newer one). A batch from the merge queue
+# lands as two or three merges seconds apart, and the newest one's tree is
+# the tree the queue tested, so that is the run worth having; it covers
+# everything before it. A run that finds main already moved past its commit
+# runs nothing (the changes job). A run on main reuses the queue's verdict
+# on the same files, so the runs are short.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
+  queue: single
 
 # Read the code, nothing else: no job here writes to the repository. The
 # Actions cache and artifacts use the runner's own token, not this one.
@@ -63,33 +78,33 @@ env:
   MDBOOK_ADMONISH_VERSION: 1.20.0
 
 jobs:
-  # Which halves of the tree does this change actually reach?
+  # Which lane is this run, and what does the change reach?
   #
-  # Most PRs in this repo are documentation, brand and site copy — the same
-  # observation search-health.yml makes about where a PR budget goes. Compiling
-  # the workspace and re-running a 16-seed MH walk to land a paragraph is pure
-  # waste, so the Rust jobs are gated on Rust actually having changed.
-  #
-  # Narrowing happens on `pull_request` ONLY. Pushes to `main` and manual runs
-  # always run everything: `main` is what the site deploys from and what
-  # releases are cut from, so it is never allowed to be partially verified.
+  # The lane comes from the event and the branch (the header says what each
+  # runs). A queue run, a push and a run by hand run everything: main is what
+  # the site deploys from and what releases are cut from, and the queue's run
+  # is the verdict main reuses, so neither is ever partly verified. Only a
+  # PR's fast lane is narrowed, by the paths it changed.
   changes:
     name: What changed
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    # actions: read, to find and download a merged PR's record (the reuse step).
+    # actions: read, to find and download the queue run's record (the reuse
+    # step) and its browser times.
     permissions:
       contents: read
       actions: read
     outputs:
+      lane: ${{ steps.filter.outputs.lane }}
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
+      smoke: ${{ steps.filter.outputs.smoke }}
       browser: ${{ steps.filter.outputs.browser }}
       specs: ${{ steps.filter.outputs.specs }}
       browser_matrix: ${{ steps.filter.outputs.browser_matrix }}
       reuse_lint: ${{ steps.reuse.outputs.lint }}
       reuse_web: ${{ steps.reuse.outputs.web }}
-      reuse_test: ${{ steps.reuse.outputs.test }}
+      reuse_doctests: ${{ steps.reuse.outputs.doctests }}
       reuse_coverage: ${{ steps.reuse.outputs.coverage }}
       reuse_browser: ${{ steps.reuse.outputs.browser }}
     steps:
@@ -99,101 +114,176 @@ jobs:
           fetch-depth: 0
 
       - id: filter
-        name: Classify the changed paths
+        name: Pick the lane and classify the changed paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "not a pull request — running everything"
+          twelve='["1/12","2/12","3/12","4/12","5/12","6/12","7/12","8/12","9/12","10/12","11/12","12/12"]'
+          # Every lane writes every output. The browser job's matrix is read
+          # even when the job is skipped, and an empty one is an error.
+          full() {
             {
               echo "rust=true"
               echo "site=true"
               echo "browser=true"
-              echo 'browser_matrix=["1/12","2/12","3/12","4/12","5/12","6/12","7/12","8/12","9/12","10/12","11/12","12/12"]'
+              echo "smoke=false"
+              echo "specs="
+              echo "browser_matrix=$twelve"
             } >> "$GITHUB_OUTPUT"
+          }
+
+          # The queue's draft PRs come from branches under Mergify's prefix
+          # (.mergify.yml's queue_branch_prefix, its default). Any other
+          # pull_request run is a PR's own.
+          lane=full
+          if [ "$EVENT" = pull_request ]; then
+            case "$HEAD_REF" in
+              mergify/merge-queue/*) lane=queue ;;
+              *) lane=fast ;;
+            esac
+          fi
+          echo "lane=$lane" >> "$GITHUB_OUTPUT"
+
+          if [ "$lane" != fast ]; then
+            # On main, latest only: a batch lands as two or three merges
+            # seconds apart, and only the last one's files are the files the
+            # queue tested. A run whose commit main has already moved past
+            # runs nothing; the run of the newest push, which the concurrency
+            # queue always keeps, tests these changes with the ones after
+            # them. Main's tip unread is no reason to skip: run everything.
+            if [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+              tip="$(gh api "repos/$REPO/git/ref/heads/main" -q .object.sha || true)"
+              if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+                echo "superseded: main is at ${tip:0:12} now, and that push's run tests this one's changes with it"
+                {
+                  echo "rust=false"
+                  echo "site=false"
+                  echo "browser=false"
+                  echo "smoke=false"
+                  echo "specs="
+                  echo "browser_matrix=$twelve"
+                  echo "superseded=true"
+                } >> "$GITHUB_OUTPUT"
+                {
+                  echo "### Superseded"
+                  echo
+                  echo "main moved on to \`${tip:0:12}\` before this run began, so nothing here runs: that push's run tests these changes with the ones after them, and deploys."
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            fi
+            echo "$lane: running everything"
+            full
             exit 0
           fi
 
-          base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
           files="$(git diff --name-only "$base" HEAD)"
           echo "changed files:"
           echo "$files" | awk '{ print "  " $0 }'
 
-          # Anything that can change what the compiler sees or how CI runs.
-          # The Makefile and the workflows are in here deliberately: they define
-          # every build, so a change to one is treated as touching everything.
-          # So are the coverage gate's own scripts, which only the Coverage
-          # jobs run on real numbers (their tests run in Web's dev-check), and
-          # setup.sh: a change to either used to reach no job at all. Only
-          # those: another script under scripts/ is no reason to run the Rust.
-          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$|\.github/(workflows|actions)/)'; then
+          # A change to CI itself runs the full gate here too: a workflow or
+          # an action the queue would trip on proves itself before it
+          # reaches the queue, where it would hold up a batch.
+          if echo "$files" | grep -qE '^\.github/(workflows|actions)/'; then
+            echo "a change to CI itself: the full gate, as the queue runs it"
+            full
+            exit 0
+          fi
+
+          # Anything that can change what the compiler sees or how CI builds.
+          # The Makefile is in here deliberately: it defines every build, so a
+          # change to it is treated as touching everything. So are the
+          # coverage gate's own scripts, which only the Coverage jobs run on
+          # real numbers (their tests run in Web's dev-check), and setup.sh:
+          # a change to either used to reach no job at all. Only those:
+          # another script under scripts/ is no reason to run the Rust.
+          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|scripts/(coverage_gate|test_coverage_gate)\.py$|scripts/setup\.sh$)'; then
             rust=true
           else
             rust=false
           fi
 
           # The site embeds the wasm engine and rustdoc for every crate, so a
-          # Rust change is also a site change. The browser smoke test runs
-          # with the site (the Browser smoke job, after Site), so its own
-          # sources count as site changes too.
-          # The agent docs, the Claude Code setup and the engineering record
-          # are checked in the web job (make dev-check), so they count too.
+          # Rust change is also a site change. The agent docs, the Claude
+          # Code setup and the engineering record are checked in the web job
+          # (make dev-check), so they count too, and so do the app and its
+          # specs, whose smoke test runs after Site.
           if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$'; then
             site=true
           else
             site=false
           fi
 
-          # The fast browser tier: the app, its specs, and the engine it runs.
-          if [ "$rust" = true ] || echo "$files" | grep -qE '^(apps/web/|tests/web/)'; then
-            browser=true
-          else
-            browser=false
+          # What the browser reads: the app, its specs and what runs them,
+          # and the engine. Their prose aside.
+          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain)' | grep -vE '\.md$' || true)"
+
+          # Browser smoke: anything the browser reads changed, other than
+          # spec files alone (a spec runs against main's app, and runs
+          # itself below).
+          smoke=false
+          if [ -n "$reach" ] && echo "$reach" | grep -qvE '^tests/web/[^/]+\.spec\.js$'; then
+            smoke=true
           fi
 
-          # A PR whose only change the browser tier can see is to spec files
-          # runs those specs and nothing else: no other spec's code changed,
-          # and the app it runs against is main's. A change to a spec's
-          # helpers, the config or anything else the tier reads runs it all.
-          # On main every run is the whole tier.
+          # The specs the change reaches, as `make browser-changed` picks
+          # them (tests/web/changed.mjs): a changed spec, the specs that
+          # require a changed helper, the specs named for a changed app
+          # module. main.js, worker.js, index.html, style.css, the config and
+          # the engine reach every level and select nothing, and say so
+          # below. More than twenty files is a helper that nearly every spec
+          # requires, the tier in all but name: the smoke runs here, and the
+          # queue runs the rest. One runner per spec file, at most four,
+          # dealt by time like the full tier.
+          browser=false
           specs=""
-          reach="$(echo "$files" | grep -E '^(apps/web/|tests/web/|crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/(workflows|actions)/)' | grep -vE '^tests/web/[^/]+\.md$' || true)"
-          if [ "$browser" = true ] && [ -n "$reach" ] && ! echo "$reach" | grep -qvE '^tests/web/[^/]+\.spec\.js$'; then
-            # Anchored at a path separator, as shard.mjs does, so a spec's
-            # name never also selects another file ending in it.
-            for f in $reach; do [ -f "$f" ] && specs="$specs /${f#tests/web/}"; done
-          fi
-          specs="${specs# }"
-          n=12
-          if [ -n "$specs" ]; then
-            n=$(echo "$specs" | wc -w | tr -d " ")
-            [ "$n" -gt 12 ] && n=12
+          n=1
+          if [ -n "$reach" ]; then
+            sel="$(cd tests/web && node changed.mjs "origin/$BASE_REF")" || { echo "changed.mjs could not say: smoke only"; sel=""; }
+            count="$(echo "$sel" | grep -c . || true)"
+            if [ "$count" -gt 20 ]; then
+              echo "the change reaches $count spec files: smoke only here, and the queue runs them all"
+            elif [ "$count" -gt 0 ]; then
+              browser=true
+              # Anchored at a path separator, as shard.mjs does, so a spec's
+              # name never also selects another file ending in it.
+              specs="$(echo "$sel" | sed 's#^#/#' | paste -sd' ' -)"
+              n="$count"
+              [ "$n" -gt 4 ] && n=4
+            fi
           fi
           matrix="[$(seq 1 "$n" | sed "s#.*#\"&/$n\"#" | paste -sd, -)]"
 
           {
             echo "rust=$rust"
             echo "site=$site"
+            echo "smoke=$smoke"
             echo "browser=$browser"
             echo "specs=$specs"
             echo "browser_matrix=$matrix"
           } >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$browser" "${specs:-all}" "$matrix"
+          printf '\n  rust=%s site=%s smoke=%s browser=%s\n  specs=%s\n  browser runners=%s\n' "$rust" "$site" "$smoke" "$browser" "${specs:-none}" "$matrix"
 
-      # A push to main is a squash merge. When the PR was up to date with main,
-      # the merge's files are exactly the files the PR's run tested (a
-      # pull_request run tests the PR merged into main), and that run left a
-      # record of the jobs it passed on them (the `ci` job). Those jobs are not
-      # run again: same files, same answer, and one more chance to flake for
-      # nothing. A job the PR skipped or ran in part (a spec-only PR's browser
-      # tier) runs here as before, and so does everything when the files
-      # differ (main moved on after the PR's run), on a manual run, and when
-      # the record is missing or expired.
+      # A push to main is a squash merge by the merge queue. The last merge
+      # of a batch has exactly the files the queue's run tested (a
+      # pull_request run tests the draft PR merged into main), and that run
+      # left a record of the jobs it passed on them (the `ci` job). Those
+      # jobs are not run again: same files, same answer, and one more chance
+      # to flake for nothing. Everything runs when no record matches (a merge
+      # by hand, outside the queue), on a manual run, and when the record is
+      # missing or expired. Only a queue run's record counts: a PR's fast
+      # lane runs part of the gate, and leaves none.
       # Any error here (the API, a download, a record it cannot read) means no
       # reuse, not a red run: the jobs then simply run.
       - id: reuse
-        name: Reuse the merged PR's verdict on the same files
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Reuse the queue's verdict on the same files
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.filter.outputs.superseded != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -205,35 +295,60 @@ jobs:
           art="$(gh api "repos/$REPO/actions/artifacts?name=verified-tree-$tree&per_page=10" \
             -q '[.artifacts[] | select(.expired == false)] | first | .workflow_run.id // empty')"
           if [ -z "$art" ]; then
-            echo "no PR run verified these exact files; running everything"; exit 0
+            echo "no queue run verified these exact files; running everything"; exit 0
           fi
-          # Only a pull_request run of this workflow, from a branch of this
-          # repository: a fork's run executes the fork's copy of the workflow.
-          read -r event path head <<<"$(gh api "repos/$REPO/actions/runs/$art" \
-            -q '[.event, .path, .head_repository.full_name] | @tsv')"
-          if [ "$event" != pull_request ] || [ "$path" != .github/workflows/ci.yml ] || [ "$head" != "$REPO" ]; then
-            echo "the record is from run $art ($event, $path, $head), which does not count; running everything"; exit 0
+          # Only a pull_request run of this workflow from the queue's branch
+          # in this repository: a fork's run executes the fork's copy of the
+          # workflow, and a PR's own run is the fast lane.
+          IFS=$'\t' read -r event path head branch <<<"$(gh api "repos/$REPO/actions/runs/$art" \
+            -q '[.event, .path, .head_repository.full_name, .head_branch] | @tsv')"
+          if [ "$event" != pull_request ] || [ "$path" != .github/workflows/ci.yml ] || [ "$head" != "$REPO" ] || [ "${branch#mergify/merge-queue/}" = "$branch" ]; then
+            echo "the record is from run $art ($event, $path, $head, $branch), which does not count; running everything"; exit 0
           fi
           gh run download "$art" --repo "$REPO" -n "verified-tree-$tree" -D verified
           cat verified/verified.json
-          # Lint, the Rust tests and their coverage hold for the compiler they
-          # ran on: reused only while rust-toolchain.toml pins that release.
-          # The record keeps what `rustc --version` prints after "rustc", so
-          # its first word is the release ("1.99.0 (b940084d7 2026-09-28)").
+          # Lint, the Rust tests and their coverage, and the doctests hold for
+          # the compiler they ran on: reused only while rust-toolchain.toml
+          # pins that release. The record keeps what `rustc --version` prints
+          # after "rustc", so its first word is the release ("1.99.0
+          # (b940084d7 2026-09-28)").
           pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           recorded="$(jq -r '.rustc // ""' verified/verified.json)"
           echo "rustc: recorded '$recorded', pinned '$pinned'"
-          for job in lint web test coverage; do
+          for job in lint web doctests coverage; do
             r="$(jq -r ".ran.$job" verified/verified.json)"
             if [ "$job" != web ] && { [ -z "$pinned" ] || [ "${recorded%% *}" != "$pinned" ]; }; then continue; fi
             if [ "$r" = success ]; then echo "$job=true" >> "$GITHUB_OUTPUT"; fi
           done
           [ "$(jq -r .ran.browser verified/verified.json)" = full ] && echo "browser=true" >> "$GITHUB_OUTPUT"
+          echo "run=$art" >> "$GITHUB_OUTPUT"
           {
-            echo "### Reused from the merged PR"
+            echo "### Reused from the merge queue"
             echo
-            echo "PR run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`): $(jq -r '[.ran | to_entries[] | select(.value == "success" or .value == "full") | .key] | join(", ")' verified/verified.json). They are not run again."
+            echo "Queue run [$art]($GITHUB_SERVER_URL/$REPO/actions/runs/$art) passed these jobs on these exact files (tree \`${tree:0:12}\`): $(jq -r '[.ran | to_entries[] | select(.value == "success" or .value == "full") | .key] | join(", ")' verified/verified.json). They are not run again."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The queue run's browser times, folded into main's timings by its
+      # Browser report job, saved here for the next run's deal: a cache
+      # saved by a pull_request run is that PR's alone, and main never runs
+      # the tier itself when it reuses the queue's verdict. Without this, the
+      # timings would stop at the last tier main ran. An error costs the next
+      # run its balance, never this run its answer.
+      - id: times
+        name: Keep the queue run's browser times
+        if: steps.reuse.outputs.browser == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ steps.reuse.outputs.run }}
+        run: gh run download "$RUN" --repo "$REPO" -n browser-timings-folded-fast -D tests/web
+      - if: steps.times.outcome == 'success'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/web/timings-fast.json
+          key: browser-timings-fast-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The voice check (www/brand/voice.md) reads the README and the
       # changelog as well as the site and the app, and a PR that touches only
@@ -335,67 +450,28 @@ jobs:
       - run: make web-check BASE=HEAD^1
       - run: make -j4 -O dev-check
 
-  # The fast tier of the Rust tests, split across two runners.
-  #
-  # The slow tests (the search floor, `refinement_improves_pool`, ~330 s alone,
-  # and ten more over a minute each, ~1030 s of test time between them) are
-  # named in the Makefile (SEARCH_FLOOR, SLOW_TESTS) and run in the Slow suite.
-  # This job runs everything NOT named there, so the two tiers are exact
-  # complements by construction: a new or renamed test lands here rather than
-  # in neither, and `--no-tests=fail` turns a filter that empties a shard into
-  # a red run rather than a silently skipped gate.
-  #
-  # What is left, 417 tests at 42bd322, is about 2,200 s of test time, which
-  # nextest runs about 3.7 wide on a 4-core runner, split over two runners.
-  # By `slice`, which deals the filtered list out in turn, each runner gets
-  # half the tests; `hash` put 1,270 test-seconds on one and 933 on the other
-  # (Oct 5). The build names its targets (the Makefile's TEST_TARGETS), so the
-  # 34 examples, which no test runs, are not compiled here; Lint's clippy
-  # --all-targets still compiles them.
-  #
-  # nextest rather than `cargo test` for the filtering and the partitioning,
-  # and because it pools every test binary into one scheduler; `cargo test`
-  # runs the five binaries strictly one after another.
-  test:
-    name: Test (${{ matrix.partition }})
+  # The doctests, which nextest does not run. There are none today, and this
+  # is what keeps that a fact rather than an assumption. A job of its own:
+  # in Coverage's build it would lengthen Coverage's path by a compile. It
+  # restores the test cache the Slow suite saves from main (slow-suite.yml)
+  # and builds the libraries in test-fast, as `make test` does.
+  doctests:
+    name: Doctests
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_test != 'true'
+    if: needs.changes.outputs.rust == 'true' && needs.changes.outputs.reuse_doctests != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      # One shard failing should not hide the other shard's result.
-      fail-fast: false
-      matrix:
-        partition: ["1/2", "2/2"]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust (rust-toolchain.toml)
         run: rustup toolchain install --no-self-update && rustc --version
-      # One cache for every test job, here and in slow-suite.yml, saved from
-      # main by this job only.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
-        with:
-          tool: nextest
+          save-if: false
+      - run: cargo test --doc --workspace --profile test-fast
 
-      # test-fast, not release: the tests need release-grade codegen for the DSP
-      # but none of release's shipping flags. Measured on the three heaviest
-      # tests, dropping fat LTO and codegen-units=1 changed their runtime by
-      # under a tenth of a second while cutting compile CPU ~40% — the LTO was
-      # buying the test suite nothing and costing it a serialized link. See the
-      # profile's comment in Cargo.toml.
-      - run: make test-fast-tier NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
-
-      # nextest does not run doctests. There are none today, and this is what
-      # keeps that a fact rather than an assumption.
-      - name: Doctests
-        if: matrix.partition == '1/2'
-        run: cargo test --doc --workspace --profile test-fast
-
-  # Coverage: the same fast tier, instrumented by cargo-llvm-cov, then each
+  # The Rust tests: the fast tier, instrumented by cargo-llvm-cov, then each
   # crate's line and function coverage against its floor
   # (crates/coverage-baseline.json, which only rises) and every line the PR
   # adds or changes in crates/ that no test ran (scripts/coverage_gate.py;
@@ -403,14 +479,27 @@ jobs:
   # cargo-llvm-cov merges runs made on several machines: one build into a
   # nextest archive, three runners that each run a slice of it and keep
   # their profiles, and one report that reads them all against the archive.
+  # A failing test fails its Coverage runner, so these are the Rust tests'
+  # gate as well as coverage's: there is no separate uninstrumented run.
+  #
+  # The slow tests (the search floor, `refinement_improves_pool`, ~330 s alone,
+  # and ten more over a minute each, ~1030 s of test time between them) are
+  # named in the Makefile (SEARCH_FLOOR, SLOW_TESTS) and run in the Slow suite.
+  # These jobs run everything NOT named there, so the two tiers are exact
+  # complements by construction: a new or renamed test lands here rather than
+  # in neither, and `--no-tests=fail` turns a filter that empties a slice into
+  # a red run rather than a silently skipped gate. By `slice`, which deals the
+  # filtered list out in turn, each runner gets a third of the tests. The
+  # build names its targets (the Makefile's TEST_TARGETS), so the 34
+  # examples, which no test runs, are not compiled here; Lint's clippy
+  # --all-targets still compiles them. `make test-fast-tier` runs the same
+  # tier uninstrumented, locally.
   #
   # Instrumented, the tier takes about 1.2 times its plain time (measured
   # locally, Oct 5: 1,257 test-seconds against 1,029), so about 2,700
   # test-seconds here, about twelve minutes on one runner. On three, with
   # the build and the report around them, about nine (an estimate until a
-  # run measures it), inside the browser tier's path. It runs beside Test,
-  # which runs the same tests uninstrumented; folding Test into it is the
-  # follow-up once a run here has measured it.
+  # run measures it), inside the browser tier's path in the queue's run.
   #
   # The three jobs agree on paths because every runner checks the repository
   # out at the same place: the archive's binaries, the profiles and the
@@ -554,6 +643,10 @@ jobs:
   # here for the API reference (`cargo doc`), which is why this job is not in
   # Playwright's image and the browser smoke test is a job of its own
   # (`smoke`, below).
+  #
+  # The site's sources are the Rust, the app and everything under www/ and
+  # docs/, so it runs in the fast lane when any of them changed, and always
+  # in the queue's run and on main.
   site:
     name: Site
     needs: [changes, engine]
@@ -622,11 +715,9 @@ jobs:
         run: make site-check
 
       # What the deploy job publishes once `CI` is green: this build, the one
-      # just checked. The deploy also waits for the Browser smoke job to boot
-      # its engine (the `ci` job needs it). Last, so a red Site never kept
-      # one; named for the attempt, because deploy-pages refuses a run holding
-      # two artifacts of one name, which a re-run of this job would otherwise
-      # leave.
+      # just checked. Last, so a red Site never kept one; named for the
+      # attempt, because deploy-pages refuses a run holding two artifacts of
+      # one name, which a re-run of this job would otherwise leave.
       - name: Keep the site for the deploy
         id: pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -644,24 +735,27 @@ jobs:
   # that reaches `playable` (tests/web/smoke.spec.js); then provoke the
   # audit's four failure flows (an unparseable save, an engine error, a
   # refused vote, a profile import) and require each to be reported and
-  # contained (tests/web/failure_flows.spec.js). The fast browser tier runs
-  # these two as well, but only when the app or the engine changed; here they
-  # also guard a site-only PR, whose `make site` ships this very engine as
-  # /play/. The numeric audio assertions CONTRIBUTING describes are still run
-  # by hand.
+  # contained (tests/web/failure_flows.spec.js). The numeric audio assertions
+  # CONTRIBUTING describes are still run by hand.
+  #
+  # In the fast lane only, when anything the browser reads changed other than
+  # spec files alone: the app, the engine, or what runs the specs. It is the
+  # one browser check such a PR is sure of when its specs can't be told
+  # (main.js, a crate). The full browser tier, in the queue's run and on
+  # main, runs these two specs itself, so the job doesn't run there.
   #
   # A job of its own, in Playwright's image like every browser job (no apt
   # step and no browser download: .github/actions/playwright says why),
   # because Site needs Rust and mdBook, which the image does not have. It runs
   # against apps/web and the engine job's build, the bytes /play/ is made
   # from, so it needs nothing Site built. It waits for Site all the same: it
-  # then takes Site's place rather than a runner beside it, so a PR's `CI` at
-  # its widest still holds 16 (slow-suite.yml counts them), and a red Site
-  # stops it, as it did when the two were one job.
+  # then takes Site's place rather than a runner beside it, and a red Site
+  # stops it, as it did when the two were one job. Whatever sets `smoke` also
+  # sets `site`, so Site runs before it.
   smoke:
     name: Browser smoke
     needs: [changes, engine, site]
-    if: needs.changes.outputs.site == 'true'
+    if: needs.changes.outputs.smoke == 'true'
     runs-on: ubuntu-24.04
     # The tag is the lockfile's Playwright, read by the engine job.
     container:
@@ -734,7 +828,8 @@ jobs:
           tier: fast
 
   # The fast browser tier: every spec in tests/web not tagged @slow or
-  # @quarantine, against the engine built above.
+  # @quarantine, against the engine built above; in a PR's fast lane, only
+  # the specs the change reaches (the changes job).
   #
   # About 75 minutes of test time in one worker (main at 42bd322, 284 tests,
   # a fresh boot each). tests/web/shard.mjs deals them to twelve runners by
@@ -742,11 +837,10 @@ jobs:
   # minutes: with Playwright's own split by count, five runners took from 9
   # to 19. Twelve, not eight: simulated with the runners' observed spread of
   # speeds, eight finish the tier in a median 13.1 minutes and twelve in 9.4
-  # (#177 § 3.1). The count is fixed and raised by hand. A PR's CI at its
-  # widest holds 19 runners (these twelve, Site, Test's two, Coverage's
-  # three and one more), so beside the Slow suite's four on main (23 against
-  # the account's 20) a PR can wait for up to three; right after a merge,
-  # main's own run takes runners too (slow-suite.yml says how much).
+  # (#177 § 3.1). The count is fixed and raised by hand. The queue's run at
+  # its widest holds about 17 runners (these twelve, Site, Coverage's three,
+  # and one more); a PR's fast lane holds at most four browser runners, ten
+  # in all (testing.md § CI tiers, Runners, does the sums).
   #
   # A slow runner may make a test slower, never wrong (ADR-022). A failure
   # that only appears here is still a finding about the app when it is about
@@ -782,8 +876,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Twelve, or one per changed spec up to twelve on a PR that changed
-        # only specs (the changes job).
+        # Twelve, or in a PR's fast lane one per spec file the change
+        # reaches, up to four (the changes job).
         shard: ${{ fromJSON(needs.changes.outputs.browser_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -807,8 +901,9 @@ jobs:
   # The runners' reports as one: an HTML report of every test, with the traces
   # of what failed, uploaded when a runner failed (the run's summary links
   # it), the speed budgets recorded over their limit listed in the summary
-  # (ADR-022), and on main the times folded into the timings the next run
-  # deals by.
+  # (ADR-022), and the times folded into the timings the next run deals by:
+  # on main, saved; in the queue's run, kept for main's run to save once it
+  # reuses this one (the changes job). A fast lane's few specs fold nothing.
   # Not part of the `CI` check: it reports on the answer, it is not one.
   report:
     name: Browser report
@@ -822,7 +917,7 @@ jobs:
         with:
           name: fast
           failed: ${{ needs.browser.result == 'failure' }}
-          timings: fast
+          timings: ${{ (github.ref == 'refs/heads/main' || needs.changes.outputs.lane == 'queue') && 'fast' || '' }}
 
   # One check that means "CI is green", whatever ran.
   #
@@ -830,10 +925,13 @@ jobs:
   # failure — so requiring them individually in a branch ruleset would wedge every
   # documentation PR forever. This is the job to require instead: it distinguishes
   # "skipped because the change could not affect it" from "did not pass".
+  # In a PR's fast lane it is what puts the PR in the merge queue; in the
+  # queue's run it is the full gate's answer (and `Full gate`, below, the
+  # check the queue merges on).
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, test, coverage-build, coverage, coverage-report, site, smoke, engine, browser]
+    needs: [changes, lint, web, doctests, coverage-build, coverage, coverage-report, site, smoke, engine, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -851,15 +949,16 @@ jobs:
           echo "green"
 
       # What main reuses (the changes job's reuse step): the files this run
-      # tested, as a git tree, and the jobs that passed on them. A
-      # pull_request run tests the PR merged into main, GITHUB_SHA, so this is
-      # that merge's tree, the tree a squash merge of an up-to-date PR makes.
-      # Not from a fork: its run executes the fork's copy of this workflow.
-      # A record that cannot be written costs main a re-run, never the PR its
-      # green: both steps carry on past an error.
+      # tested, as a git tree, and the jobs that passed on them. From the
+      # queue's run only, the full gate: a PR's fast lane runs part of it.
+      # A pull_request run tests the draft PR merged into main, GITHUB_SHA,
+      # so this is that merge's tree, the tree main has once the queue has
+      # squash-merged every PR of the batch. A record that cannot be written
+      # costs main a re-run, never the queue its green: both steps carry on
+      # past an error.
       - name: Record what passed on these files
         id: record
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: needs.changes.outputs.lane == 'queue' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -875,7 +974,7 @@ jobs:
             if [ -n "$SPECS" ]; then browser=partial; else browser=full; fi
           fi
           jq -n --arg tree "$tree" --arg run "$GITHUB_RUN_ID" --arg browser "$browser" --arg rustc "$RUSTC" --argjson r "$RESULTS" \
-            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, test: $r.test.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
+            '{tree: $tree, run: $run, rustc: $rustc, ran: {lint: $r.lint.result, web: $r.web.result, doctests: $r.doctests.result, coverage: $r["coverage-report"].result, site: $r.site.result, browser: $browser}}' \
             > verified.json
           cat verified.json
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
@@ -887,6 +986,27 @@ jobs:
           name: verified-tree-${{ steps.record.outputs.tree }}
           path: verified.json
           retention-days: 14
+
+  # The check the merge queue merges on (.mergify.yml's merge_conditions):
+  # green when this is the queue's run and `CI` is green. It is a check of
+  # its own, not `CI`, because Mergify takes a queue whose merge conditions
+  # match its queue conditions for a one-step queue, and then merges a PR
+  # already on main's tip on the PR's own run, with no draft PR: the fast
+  # lane would be the gate again. A PR's own run skips it, so a skipped
+  # `Full gate` on a PR is expected.
+  full-gate:
+    name: Full gate
+    needs: [changes, ci]
+    if: always() && needs.changes.outputs.lane == 'queue'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The queue's run passed the full gate
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+        run: |
+          echo "CI: $CI_RESULT"
+          test "$CI_RESULT" = success
 
   # The site, published from this run's build once `CI` is green: four
   # sections under one origin (/ the landing page, /play/ the instrument,

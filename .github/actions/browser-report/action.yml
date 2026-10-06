@@ -2,8 +2,9 @@ name: Browser report
 description: >
   A run's browser runners merged: one HTML report (every test, the traces of
   what failed) uploaded as `browser-report-<name>` when a runner failed, the
-  speed budgets recorded over their limit listed in the run's summary, and on
-  main the run's times folded into the tier's timings for the next run's deal.
+  speed budgets recorded over their limit listed in the run's summary, and,
+  when asked, the run's times folded into the tier's timings for the next
+  run's deal.
 
 inputs:
   name:
@@ -13,7 +14,12 @@ inputs:
     description: "'true' when a runner of this set failed: upload the HTML report"
     required: true
   timings:
-    description: "On main, the tier whose timings these times update (`fast`, `slow`); empty for none"
+    description: >-
+      The tier whose timings these times update (`fast`, `slow`); empty for
+      none. On main they are saved to the cache; on any other ref, where a
+      saved cache would be that ref's alone, they are uploaded as
+      `browser-timings-folded-<tier>` for main's run to save (ci.yml's
+      changes job, once main reuses the merge queue's run)
     required: false
     default: ""
 
@@ -78,18 +84,18 @@ runs:
           echo "Unzip it and run \`npx playwright show-report <dir>\` in tests/web."
         } >> "$GITHUB_STEP_SUMMARY"
 
-    # Main's times for the next run's deal: folded into the last timings and
+    # The times for the next run's deal: folded into main's last timings and
     # saved under a new key (a cache entry is immutable), which the next run's
     # browser-timings restores by prefix. A failure here costs the next run its
     # balance, not its answer.
-    - if: inputs.timings != '' && github.ref == 'refs/heads/main'
+    - if: inputs.timings != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: tests/web/timings-${{ inputs.timings }}.json
         key: browser-timings-${{ inputs.timings }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: browser-timings-${{ inputs.timings }}-
 
-    - if: inputs.timings != '' && github.ref == 'refs/heads/main'
+    - if: inputs.timings != ''
       shell: bash
       run: |
         cd tests/web
@@ -101,3 +107,13 @@ runs:
       with:
         path: tests/web/timings-${{ inputs.timings }}.json
         key: browser-timings-${{ inputs.timings }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+    # Elsewhere (the merge queue's run), kept for main: a cache saved from a
+    # pull_request run is restored by that PR's runs only.
+    - if: inputs.timings != '' && github.ref != 'refs/heads/main'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: browser-timings-folded-${{ inputs.timings }}
+        path: tests/web/timings-${{ inputs.timings }}.json
+        retention-days: 3
+        if-no-files-found: ignore

@@ -237,7 +237,7 @@ smoke-tools:
 # also compiles every example and runs none: 34 of them, about half the
 # workspace's compile CPU. `make lint` (clippy --all-targets) still compiles
 # them. Naming targets turns the doctests off, so `test` runs them on their
-# own (there are none today; CI's test job checks that the same way).
+# own (there are none today; CI's Doctests job checks that the same way).
 TEST_TARGETS := --lib --bins --tests
 test:
 	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS)
