@@ -344,8 +344,8 @@ pub struct SessionConfig {
     ///
     /// K is also the fit's dominant cost driver, because single-site MH
     /// rebuilds the whole program every step and the site count is
-    /// `d·K + n_sessions + 5` — at today's d = 40, that is 46 at K = 1 and
-    /// **206 at K = 5** (printed by `fit_bench`, so it moves with φ). Two
+    /// `d·K + n_sessions + 5` — at today's d = 44, that is 50 at K = 1 and
+    /// **226 at K = 5** (printed by `fit_bench`, so it moves with φ). Two
     /// consequences, both measured by `auracle-taste/examples/fit_bench.rs`:
     /// the fit is ~4× slower at the cap than at the first fit, and the step
     /// budget is *fixed*, so a mature fit gets ~4× fewer sweeps per site than
@@ -353,14 +353,14 @@ pub struct SessionConfig {
     /// thinner.
     ///
     /// **Open option, deliberately not taken here: cap this at 3** (sites
-    /// 206 → 126, a ~1.6× mature-fit win at no engineering cost). It is left
+    /// 226 → 138, a ~1.6× mature-fit win at no engineering cost). It is left
     /// open because unlike the address hoist and the budget cut it is not a
     /// pure efficiency change — it removes model *capacity*, and capacity is
     /// the whole point of the mixture (a user with four islands of taste
     /// cannot be represented by three lenses). Take it only on evidence:
     /// [`TastePosterior::style_share`](auracle_taste::TastePosterior::style_share)
     /// reports what fraction of the pool each lens claims, and if lenses 4
-    /// and 5 sit near zero share across real sessions they are paying 54
+    /// and 5 sit near zero share across real sessions they are paying 88
     /// sites per step for nothing. `learn_synthetic --compare` is the A/B.
     pub k_styles: usize,
     /// The audition stimulus.
@@ -377,8 +377,8 @@ pub struct SessionConfig {
     /// This is the one knob in this struct that buys wall time with
     /// *statistics*, so it is set from a measurement rather than a guess.
     /// Only 500 draws survive thinning at any budget, so the budget does not
-    /// buy draws — it buys **sweeps per site**, and at K = 5 (206 sites) even
-    /// 10 000 steps is only ~49 sweeps.
+    /// buy draws — it buys **sweeps per site**, and at K = 5 (226 sites) even
+    /// 10 000 steps is only ~44 sweeps.
     ///
     /// Recovery vs budget at the mature operating point (K = 5, n_obs = 100,
     /// 12 seeds, `cargo run --release -p auracle-taste --example fit_bench
@@ -836,7 +836,7 @@ pub struct ImplicitEvent {
 /// Recorded per fit and persisted, because the question it answers is about
 /// **real sessions over time** and cannot be answered from one of them.
 /// [`SessionConfig::k_styles`] documents an option that is deliberately not
-/// taken — cap K at 3, taking the fit from 206 sites to 126 for a ~1.6×
+/// taken — cap K at 3, taking the fit from 226 sites to 138 for a ~1.6×
 /// mature-fit win — and gates it explicitly on whether lenses 4 and 5 sit near
 /// zero share across real sessions. Nothing collected that, so the decision
 /// could not be made either way; this is the collection.
