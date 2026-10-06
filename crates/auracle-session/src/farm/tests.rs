@@ -292,6 +292,68 @@ fn a_seed_names_its_pool_however_the_bank_was_handed_over() {
     }
 }
 
+/// **A listening draw the pool already holds is not measured again.** The
+/// farm is told a draw is a duplicate (`fill_draw`'s `dup`), answers it with
+/// no result (`worker.js`), and the engine spends its index and lands
+/// nothing. For a draw that listens, a missing result is otherwise measured
+/// here (it might be the clip's), so the duplicate has to be passed over
+/// before that: no featurization is made or even looked up.
+#[test]
+fn a_listening_duplicate_the_farm_skipped_is_not_measured_again() {
+    // AUDIO IN as the likeliest source, so a stream soon starts with one.
+    let mut prior = PatchGrammarPrior::default();
+    prior.source_weights[auracle_grammar::prior::N_SOURCES - 1] = 2.0;
+    let cfg = SessionConfig {
+        pool_size: 4,
+        ..fast()
+    };
+    // A stream whose first draw listens and vets, and a session restored
+    // holding that very sound.
+    let (seed, engine) = (0..64u64)
+        .find_map(|seed| {
+            let mut probe = Engine::new(prior.clone(), cfg.clone());
+            probe.set_fill_seed(seed);
+            let tree = probe.draw_at(0).unwrap();
+            if !tree.listens() {
+                return None;
+            }
+            let mut state = Engine::new(prior.clone(), cfg.clone()).export_state();
+            state.bank.push(BankEntry {
+                id: 50,
+                tree,
+                origin: Origin::Prior,
+                name: None,
+                pinned: false,
+                auto_name: None,
+                unjudged: false,
+            });
+            let mut engine = Engine::new(prior.clone(), cfg.clone());
+            (engine.import_state(state) == 1).then_some((seed, engine))
+        })
+        .expect("no stream in 64 starts with a listener that vets");
+    let mut engine = engine;
+    engine.set_fill_seed(seed);
+    let wave = engine.fill_draw(2);
+    assert!(
+        wave[0].index == 0 && wave[0].dup,
+        "the first draw is not the held sound"
+    );
+    let before = engine.memo().stats();
+    assert_eq!(engine.absorb_prior(0, None), None);
+    assert_eq!(
+        engine.draw_cursor(),
+        1,
+        "the duplicate's index was not spent"
+    );
+    let after = engine.memo().stats();
+    assert_eq!(
+        (after.hits, after.misses),
+        (before.hits, before.misses),
+        "a duplicate was measured"
+    );
+    assert_eq!(engine.pool.len(), 1);
+}
+
 /// **A farm on a stale clip still builds the serial pool.** The farm
 /// measures with the clip its phrase carries, and after a capture (or a
 /// restore that installed a clip) it can be a phrase behind. Every draw

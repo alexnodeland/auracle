@@ -1788,8 +1788,12 @@ impl Engine {
                 if !tree.listens() {
                     return pre;
                 }
-                // A duplicate is measured too, and lands nowhere: the caller
-                // passes over a draw the pool already holds.
+                // A duplicate lands nowhere, so there is nothing to measure:
+                // the farm answers every draw it was told is a duplicate with
+                // no result (`worker.js`), and it comes here.
+                if self.pool.iter().any(|c| c.tree == tree) {
+                    return None;
+                }
                 self.measure_draw(tree)
             }
         }
