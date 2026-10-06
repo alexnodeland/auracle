@@ -150,15 +150,13 @@ pub fn integrated_lufs(samples: &[f64], sample_rate: f64) -> Option<f64> {
             .sum::<f64>()
             / ls.len() as f64
     };
-    // Relative gate 10 LU below the absolute-gated mean.
+    // Relative gate 10 LU below the absolute-gated mean. Never empty: the
+    // loudest block is at or above that mean, 10 LU over the gate.
     let rel_threshold = -0.691 + 10.0 * mean_energy(&abs_gated).log10() - 10.0;
     let rel_gated: Vec<f64> = abs_gated
         .into_iter()
         .filter(|l| *l > rel_threshold)
         .collect();
-    if rel_gated.is_empty() {
-        return None;
-    }
     Some(-0.691 + 10.0 * mean_energy(&rel_gated).log10())
 }
 
@@ -205,17 +203,13 @@ pub fn normalize_to(samples: &mut [f64], sample_rate: f64, target_lufs: f64) -> 
     let wanted_db = (target_lufs - lufs).min(MAX_GAIN_DB);
 
     // The peak is measured *before* the gain, so the headroom below is exactly
-    // the gain at which the loudest sample lands on the ceiling. Guarded on
-    // `peak > 0` rather than assumed: a buffer of exact zeros cannot reach the
-    // loudness gate above, but nothing here should depend on that reasoning
-    // holding somewhere else.
+    // the gain at which the loudest sample lands on the ceiling. Safe at
+    // `peak = 0` without depending on the loudness gate above to rule it out:
+    // a buffer of exact zeros has infinite headroom, and `min` keeps the
+    // gain loudness wanted.
     let peak_before = samples.iter().fold(0.0f64, |p, s| p.max(s.abs()));
-    let gain_db = if peak_before > 0.0 {
-        let headroom_db = 20.0 * (PEAK_CEILING / peak_before).log10();
-        wanted_db.min(headroom_db)
-    } else {
-        wanted_db
-    };
+    let headroom_db = 20.0 * (PEAK_CEILING / peak_before).log10();
+    let gain_db = wanted_db.min(headroom_db);
     // Measured against what *loudness* wanted, not against unity: a patch that
     // was already over the ceiling and also needed attenuating to reach the
     // target reports only the extra the ceiling took, because the rest was
