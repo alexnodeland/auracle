@@ -460,8 +460,12 @@ function outroCard(stage, S, K) {
       wm.style.fontSize = "var(--t-frame-7)";
       S.el("span", { class: "wm" }, wm, "AURACLE");
       const wmW = wm.getBoundingClientRect().width;
+      // The mark and the gap keep their proportion to the wordmark: 76 and 22 at 46.
+      const wmPx = parseFloat(getComputedStyle(wm).fontSize); // the size its token sets
+      const markPx = (76 / 46) * wmPx;
+      const gap = (22 / 46) * wmPx;
       S.place(wm, { x: 1670 - wmW, y: 700, ay: 0.5 });
-      const mk = K.mark(svg, { cx: 1670 - wmW - 22 - 38, cy: 700, size: 76 });
+      const mk = K.mark(svg, { cx: 1670 - wmW - gap - markPx / 2, cy: 700, size: markPx });
       const L2 = l2.t0 - b.t0;
       return (tl, t) => {
         const u = S.ramp(tl, -0.3, 0.5, S.E.out3);

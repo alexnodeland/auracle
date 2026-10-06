@@ -171,7 +171,7 @@
   --t-frame-8: 52px;   /* 12 × 1.2⁸: a headline number */
   --t-frame-9: 62px;   /* 12 × 1.2⁹: a frequency, set large */
   --t-frame-11: 89px;  /* 12 × 1.2¹¹: the lockup that ends a film */
-  --t-frame-12: 107px; /* 12 × 1.2¹²: the launch film's closing lockup */
+  --t-frame-12: 107px; /* 12 × 1.2¹²: the launch film's closing lockup, the tour's opening one */
   --t-frame-14: 154px; /* 12 × 1.2¹⁴: the launch film's opening lockup */
 }
 @media (prefers-reduced-motion: reduce) {

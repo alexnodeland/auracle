@@ -20,12 +20,14 @@ function scrim(layer, alpha) {
   return d;
 }
 
-/** The mark and the wordmark side by side, centred at (960, cy). */
-function lockup(layer, svg, { cy, size }) {
+/** The mark and the wordmark side by side, centered at (960, cy), the
+ *  wordmark set at a frame-tier token and the mark and gap sized from it. */
+function lockup(layer, svg, { cy, token }) {
   const lock = place(el("div", { class: "lk" }, layer), { x: 0, y: 0 });
-  lock.style.fontSize = `${size}px`;
+  lock.style.fontSize = `var(${token})`;
   const wm = el("span", { class: "wm" }, lock, "AURACLE");
   const wmW = wm.getBoundingClientRect().width;
+  const size = parseFloat(getComputedStyle(lock).fontSize); // the size its token sets
   const markPx = 1.28 * size;
   const gap = 0.62 * size;
   const left = 960 - (markPx + gap + wmW) / 2;
@@ -58,7 +60,7 @@ function titleCard(stage, b, l2) {
     build(layer) {
       const glass = scrim(layer, 0.8);
       const svg = svgLayer(layer);
-      const { lock, wm, mk } = lockup(layer, svg, { cy: 470, size: 104 });
+      const { lock, wm, mk } = lockup(layer, svg, { cy: 470, token: "--t-frame-12" });
       const sub = textBlock(layer, { x: 960, y: 610, w: 1400, cls: "mono", size: 26, align: "center", ax: 0.5, ay: 0.5 });
       Object.assign(sub.style, { letterSpacing: "0.26em", textTransform: "uppercase", color: ink("--silk-dim") });
       sub.textContent = "a tour of the instrument";
@@ -94,7 +96,7 @@ function endCard(stage, b, l6) {
     build(layer) {
       const glass = scrim(layer, 0.84);
       const svg = svgLayer(layer);
-      const { lock, wm, mk } = lockup(layer, svg, { cy: 440, size: 96 });
+      const { lock, wm, mk } = lockup(layer, svg, { cy: 440, token: "--t-frame-11" });
       const url = el("div", { class: "pill a" }, layer, "auracle.alexnodeland.com  ▸");
       place(url, { x: 960, y: 590, ax: 0.5, ay: 0.5 });
       Object.assign(url.style, { fontSize: "var(--t-frame-5)", padding: "var(--s4) var(--s6)" });
