@@ -656,6 +656,37 @@ class Ticks(unittest.TestCase):
         self.assertIn("ticked: “Quarantined specs report to their own issues; the nightly files Flaky: issues…”.", said)
 
 
+class Boxes(unittest.TestCase):
+    """What `boxes` reads as a box, and the numbers it names, where GitHub
+    reads an HTML comment, and where it reads `<!--` as text."""
+
+    def read(self, body):
+        return [(b.text, b.issues) for b in P.boxes(body, REPO)]
+
+    def test_a_comment_opener_in_code_hides_nothing(self):
+        self.assertEqual(self.read("- [ ] Lines carry a `<!--` marker — #7\n- [ ] Real box — #5"), [("Lines carry a `<!--` marker — #7", [7]), ("Real box — #5", [5])])
+        self.assertEqual(self.read("```html\n<!-- an example\n```\n- [ ] Real box — #5"), [("Real box — #5", [5])])
+        # A `-->` in code on the line its paragraph goes on to closes nothing.
+        self.assertEqual(self.read("- [ ] Lines carry a `<!--` marker — #7\n  and end with `-->`"), [("Lines carry a `<!--` marker — #7", [7])])
+
+    def test_one_mid_line_that_its_paragraph_never_closes_is_text(self):
+        # Its paragraph ends where the next box starts: a `-->` past that, a
+        # comment's or a line's of the next box, closes nothing here.
+        for after in ["\n<!-- a note -->", "\n  and its own line, ending -->"]:
+            body = "- [ ] foo <!-- unclosed mid-line — #7\n- [ ] Real box — #5" + after
+            self.assertEqual(self.read(body), [("foo <!-- unclosed mid-line — #7", [7]), ("Real box — #5", [5])], after)
+
+    def test_one_mid_line_closes_on_a_line_its_paragraph_goes_on_to(self):
+        body = "- [ ] Real — #5 <!-- not #7\n  still the note --> and after\n- [ ] Next — #6"
+        self.assertEqual(self.read(body), [("Real — #5", [5]), ("Next — #6", [6])])
+
+    def test_one_that_starts_a_line_runs_to_the_line_holding_its_close_or_to_the_end(self):
+        # The line it closes on is hidden whole, a box after the `-->` too;
+        # a fence inside it opens nothing.
+        body = "<!-- note --> - [ ] After a comment — #5\n<!--\n```\n-->\n- [ ] Real — #5\n<!-- a note never closed\n- [ ] Hidden — #5"
+        self.assertEqual(self.read(body), [("Real — #5", [5])])
+
+
 class ReadPr(unittest.TestCase):
     """The PR the merge job acts on: from the event's environment in CI,
     from the API with `--pr N`; its merge time among the rest."""

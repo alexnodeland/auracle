@@ -53,17 +53,19 @@ bodies of the other open issues (an umbrella's checklist), and each body
 found is read and parsed. A box there (`- [ ] …`) that names it is ticked
 once every issue the box names is closed: `#130 + #153` waits for both. A
 number that is a PR is not an issue to wait for. A box in fenced code, an
-HTML comment or a quote isn't read, nor a number in inline code; a box that
-names an issue in another repository is left for a person. Only `[ ]`
-becomes `[x]`: the body is read again just before the write, and a box whose
-line changed since the first read is left as it is. A person's edit made in
-the moment between that read and the write is lost: the API has no
-conditional write for a body. The issue's comment gets a line listing the
-boxes ticked. A box ticked is ticked for good, so a run again ticks nothing
-twice; a run that ticked a box and then failed to post its line doesn't post
-it later, since a box ticked by the job looks like one ticked by hand. The
-search index can lag an edit by a minute, so a box added just before the
-merge can be missed; it is ticked by hand.
+HTML comment or a quote isn't read, nor a number in inline code or a
+comment, as GitHub reads them: a `<!--` in code is text, and one that starts
+mid-line and never closes is text too (only one that starts a line hides the
+rest of the body). A box that names an issue in another repository is left
+for a person. Only `[ ]` becomes `[x]`: the body is read again just before
+the write, and a box whose line changed since the first read is left as it
+is. A person's edit made in the moment between that read and the write is
+lost: the API has no conditional write for a body. The issue's comment gets
+a line listing the boxes ticked. A box ticked is ticked for good, so a run
+again ticks nothing twice; a run that ticked a box and then failed to post
+its line doesn't post it later, since a box ticked by the job looks like one
+ticked by hand. The search index can lag an edit by a minute, so a box added
+just before the merge can be missed; it is ticked by hand.
 
 The GitHub API is read and written through `gh api` (GH_TOKEN in CI).
 Python 3 standard library only.
@@ -198,6 +200,15 @@ def off(m: re.Match) -> str:
 
 
 INLINE_CODE = r"(`+)(?:(?!\1).)+?\1"
+# A line that opens fenced code: three backticks or tildes, or more.
+FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})")
+
+
+def closes(fence: str, line: str) -> bool:
+    """`line` closes fenced code that `fence` opened: a run of its character
+    as long or longer, and nothing after it."""
+    m = FENCE.match(line)
+    return bool(m) and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not line.strip()[len(m.group(1)) :].strip()
 
 
 def unfenced(lines: list[str]):
@@ -205,13 +216,13 @@ def unfenced(lines: list[str]):
     lines are left out too."""
     fence = None
     for i, line in enumerate(lines):
-        m = re.match(r"[ \t]*(`{3,}|~{3,})", line)
-        if fence is None and m:
-            fence = m.group(1)
-            continue
         if fence is not None:
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not line.strip()[len(m.group(1)) :].strip():
+            if closes(fence, line):
                 fence = None
+            continue
+        m = FENCE.match(line)
+        if m:
+            fence = m.group(1)
             continue
         yield i, line
 
@@ -289,18 +300,77 @@ class Box:
     elsewhere: bool  # it names an issue in another repository
 
 
+# A line that starts a block of its own, so a paragraph doesn't go on to it:
+# a blank line, a list item, a quote, a heading, a fence or an HTML comment.
+BLOCK = re.compile(r"[ \t]*(?:\r?$|(?:[-*+]|\d{1,9}[.)])(?:[ \t]|\r?$)|>|#{1,6}(?:[ \t]|\r?$)|`{3,}|~{3,}|<!--)")
+# Inline code, or the start of an HTML comment: whichever comes first is it.
+CODE_OR_COMMENT = re.compile(rf"{INLINE_CODE}|<!--")
+
+
+def shown(body: str) -> list[str | None]:
+    """Each line of `body` (split at "\\n") as GitHub reads it as Markdown,
+    each HTML comment in it blanked to spaces so its columns hold; None for a
+    line with no Markdown in it, in fenced code (the fences' own lines too)
+    or in an HTML comment. A comment that starts a line is an HTML block: it
+    runs to the line holding its `-->`, that line whole, or to the end of the
+    body when none does. One that starts mid-line, outside inline code, runs
+    to its `-->` on that line, or on a line its paragraph goes on to; with
+    none, it is text. A `<!--` in code is text."""
+    lines = body.split("\n")
+    out: list[str | None] = [None] * len(lines)
+    fence = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if fence is not None:
+            if closes(fence, line):
+                fence = None
+            i += 1
+            continue
+        m = FENCE.match(line)
+        if m:
+            fence = m.group(1)
+            i += 1
+            continue
+        if line.lstrip().startswith("<!--"):
+            rest = line[line.index("<!--") + 4 :]
+            while "-->" not in rest and i + 1 < len(lines):
+                i += 1
+                rest = lines[i]
+            i += 1
+            continue
+        text, at, last = line, 0, i
+        while c := CODE_OR_COMMENT.search(text, at):
+            at = c.end()
+            if c.group(0) != "<!--":
+                continue
+            end = text.find("-->", at)
+            if end >= 0:
+                end += 3
+            else:
+                j = i + 1
+                while j < len(lines) and not BLOCK.match(lines[j]) and "-->" not in lines[j]:
+                    j += 1
+                if j == len(lines) or BLOCK.match(lines[j]):
+                    break
+                # It closes on line j: the lines between go on its paragraph,
+                # so none of them is a box.
+                last, end = j, len(text.rstrip("\r"))
+            text = text[: c.start()] + " " * (end - c.start()) + text[end:]
+            at = end
+        out[i] = text
+        i = last + 1
+    return out
+
+
 def boxes(body: str, repo: str = REPO) -> list[Box]:
     """Every box GitHub draws in `body`, and the numbers each names: not one
     in fenced code, in an HTML comment or in a quote, and no number in inline
     code or a comment, which GitHub doesn't link."""
-    # Each comment blanked to spaces, its line ends kept, so every line keeps
-    # its place and its columns. One that is never closed hides the rest of
-    # the body, as it does on GitHub.
-    shown = re.sub(r"<!--.*?(?:-->|\Z)", lambda m: re.sub(r"[^\n]", " ", m.group(0)), body, flags=re.DOTALL)
     raw = body.split("\n")
     found = []
-    for i, line in unfenced(shown.split("\n")):
-        m = BOX.fullmatch(line)
+    for i, line in enumerate(shown(body)):
+        m = BOX.fullmatch(line) if line is not None else None
         if not m:
             continue
         issues: list[int] = []
