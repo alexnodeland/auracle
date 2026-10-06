@@ -10,7 +10,6 @@
 //! support); musical mappings (log cutoff scales, bounded resonance/feedback)
 //! live in [`crate::compile`]. Discrete parameters are small enums.
 
-use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
@@ -120,9 +119,6 @@ impl PartialEq for Uid {
     }
 }
 impl Eq for Uid {}
-impl Hash for Uid {
-    fn hash<H: Hasher>(&self, _: &mut H) {}
-}
 
 /// Every [`AudioNode`] variant, in declaration order — the one list the uid
 /// accessors expand over, so a new module cannot be added without one.
