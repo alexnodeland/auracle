@@ -255,6 +255,40 @@ function farmSetup(ports) {
   }
 }
 
+// The render cache's store (render-store.js), opened and stamped here, once,
+// and closed again. A farm worker opens it when the phrase arrives (farm.js
+// `cacheOpen`), and opens a store already stamped by reading it. When each
+// worker of a crew found no store (a first visit) and created and stamped it
+// itself, their writes queued behind one another's first renders: at width 6
+// the veil waited about 1.5 s for them (#200). Started at init whatever the
+// farm's width, and once per worker: the namespace never sees the audition
+// clip, so a phrase sent again (`farmResendPhrase`) leaves the stamp as it is,
+// and a walk crew raised after boot finds the store stamped.
+const renderStoreModule = () => import(`./render-store.js?v=${V}`);
+let renderStamped = null;
+function renderStoreReady(ns) {
+  if (!renderStamped) {
+    renderStamped = (async () => {
+      try {
+        const { renderStoreOpen } = await renderStoreModule();
+        const db = await renderStoreOpen(self.indexedDB, ns);
+        if (db) db.close();
+      } catch (_) {
+        /* each farm worker creates and stamps it, as before */
+      }
+    })();
+  }
+  return renderStamped;
+}
+
+// Boot's crew: the store stamped, then the phrase handed to each worker, then
+// the wait for one to report ready. True when one did.
+async function farmBoot(ports, ns) {
+  await renderStoreReady(ns);
+  farmSetup(ports);
+  return farmHandshake(FARM_HANDSHAKE_MS);
+}
+
 // Set by whichever fill is running; farm messages are meaningless outside one.
 let farmSink = null;
 
@@ -2865,6 +2899,7 @@ async function dispatch(m) {
         } catch (_) { /* older engine */ }
         faceNs = ns;
         faceStoreOpen(); // ready for the first faces copied out of the memo
+        renderStoreReady(ns); // before any farm worker opens it (`farmBoot`)
         // The audition clip sounds with an AUDIO IN are measured with (the
         // built-in reference until an input is captured). PERFORM keys the
         // wiring of a sound that listens by it.
@@ -2886,8 +2921,7 @@ async function dispatch(m) {
         let farmed = false;
         if (Array.isArray(m.farmPorts) && m.farmPorts.length) {
           try {
-            farmSetup(m.farmPorts);
-            farmed = await farmHandshake(FARM_HANDSHAKE_MS);
+            farmed = await farmBoot(m.farmPorts, ns);
           } catch (err) {
             console.warn("[auracle] farm unavailable:", err);
             farmed = false;

@@ -147,6 +147,12 @@ Farm workers consult an IndexedDB store (`auracle-renders`) before rendering and
 write back on a miss. The engine reports the hit rate per wave into the app’s own
 log.
 
+The engine worker opens the store once at boot, before any farm worker is handed
+the phrase: it creates the store on a first visit and stamps it with the
+namespace (below), so the farm workers’ own opens only read it. When each farm
+worker created and stamped it, their writes queued behind one another, and a
+first visit at six workers waited about 1.5 s longer for its first sounds.
+
 ### The key is not enough
 
 `render_key` addresses $(\text{term}, \text{spec})$, which is everything
@@ -173,9 +179,9 @@ cost is one cold boot.
 
 Every row is stored under a key that begins with its namespace (`farm_key`: the
 namespace, then `render_key`), so a row written under another namespace is never
-a hit. The store’s own stamp is not enough for that: it is checked when a farm
-worker opens the store, and a tab still running an older build goes on writing
-its rows after a newer tab has cleared and re-stamped it.
+a hit. The store’s own stamp is not enough for that: it is checked only when the
+store is opened, and a tab still running an older build goes on writing its rows
+after a newer tab has cleared and re-stamped it.
 
 A hit is **checked rather than trusted**: `pre_featurized` re-derives the content
 address from the tree the engine holds at that index and drops the row if it
