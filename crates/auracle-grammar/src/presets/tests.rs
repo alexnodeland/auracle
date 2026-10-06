@@ -1,10 +1,19 @@
 use super::*;
 use std::collections::HashSet;
 
-/// `0.01·3000^x` Hz, the LFO/S&H rate map (quiver `oscillators.rs`).
+/// `0.01·3000^x` Hz, the LFO/S&H rate map (quiver `oscillators.rs`), as
+/// the compiled LFO plays it (`the_rate_map_is_the_one_the_lfo_plays`).
 fn mod_hz(cv: f64) -> f64 {
     0.01 * 3000f64.powf(cv)
 }
+
+/// The library's modulation floor: every rate it ships is at least this
+/// fast (`every_modulation_source_is_audible_within_one_note` says why).
+const FLOOR_HZ: f64 = 0.2;
+
+/// The rates of the four LFOs and S&Hs the library first shipped, each too
+/// slow to move inside a note: what the floor has to catch.
+const ORIGINAL_OFFENDERS: [f64; 4] = [0.15, 0.20, 0.35, 0.35];
 
 /// `0.1·50^x` Hz — the chorus runs its own, much narrower map, which is
 /// why it needs its own conversion rather than sharing the LFO's. Missing
@@ -177,10 +186,20 @@ fn mod_sources() -> Vec<(&'static str, &'static str, f64)> {
 /// that "felt slow" — would have waved two of them straight through,
 /// while the module doc two hundred lines up calls 0.165 Hz inaudible. A
 /// gate that disagrees with its own file is not a gate. 0.2 Hz clears all
-/// four with margin and still leaves room for a genuinely slow pad drift.
+/// four with margin and still leaves room for a genuinely slow pad drift,
+/// and the gate checks that it still catches every one of them: without
+/// that, the floor is a number someone liked rather than one that catches
+/// the bug, which is exactly how the first version of it let half of them
+/// through.
 #[test]
 fn every_modulation_source_is_audible_within_one_note() {
-    const FLOOR_HZ: f64 = 0.2;
+    for cv in ORIGINAL_OFFENDERS {
+        let f = mod_hz(cv);
+        assert!(
+            f < FLOOR_HZ,
+            "rate {cv} = {f:.4} Hz would now pass the floor it exists to catch"
+        );
+    }
     let slow: Vec<String> = mod_sources()
         .into_iter()
         .filter(|(_, kind, cv)| hz_of(kind, *cv) < FLOOR_HZ)
@@ -199,17 +218,65 @@ fn every_modulation_source_is_audible_within_one_note() {
     );
 }
 
-/// Every one of the original four offenders must fail the gate. Without
-/// this, the floor is a number someone liked rather than one that catches
-/// the bug — which is exactly how the first version of it let half of them
-/// through.
+/// `mod_hz` is the map the compiled LFO plays, not a copy of quiver's that
+/// could drift from it while the gate above kept measuring it. A square LFO
+/// on a sine's pitch, at full depth, flips the note between two pitches an
+/// octave apart twice a cycle; the time from the first flip to the last
+/// gives the rate. Two settings, a second and a sixth of a second per
+/// cycle, pin both the map's floor and its span, each within 1 % (they
+/// read 0.0 % and 0.2 % off; a 10 ms window over the 3.5 s the flips span
+/// can be off by 0.6 %).
 #[test]
-fn the_floor_catches_every_original_offender() {
-    for cv in [0.15, 0.20, 0.35, 0.35] {
-        let f = mod_hz(cv);
+fn the_rate_map_is_the_one_the_lfo_plays() {
+    const SR: f64 = 44_100.0;
+    // 10 ms windows: the two pitches cross zero about 15 and 30 times in one.
+    const WINDOW: usize = 441;
+    for hz in [1.0, 6.0] {
+        let cv = (hz / 0.01f64).ln() / 3000f64.ln();
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.0,
+                decay: 0.0,
+                sustain: 1.0,
+                release: 0.3,
+            },
+            root: AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Sine,
+                octave: 0,
+                detune: 0.5,
+                mod_depth: 1.0,
+                modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
+                    wave: Waveform::Square,
+                    rate: cv,
+                },
+            },
+        };
+        quiver::rng::seed(0x1F0_5EED);
+        let mut v = crate::compile(&tree, SR).expect("compiles");
+        v.pitch.set(2.0);
+        v.gate.set(5.0);
+        let out: Vec<f64> = (0..(4.0 * SR) as usize).map(|_| v.patch.tick().0).collect();
+        let high: Vec<bool> = out
+            .chunks_exact(WINDOW)
+            .map(|w| {
+                w.windows(2)
+                    .filter(|p| (p[0] < 0.0) != (p[1] < 0.0))
+                    .count()
+                    > 22
+            })
+            .collect();
+        let flips: Vec<usize> = (1..high.len())
+            .filter(|&i| high[i] != high[i - 1])
+            .collect();
+        assert!(flips.len() >= 6, "{hz} Hz: only {} flips", flips.len());
+        let span = (flips[flips.len() - 1] - flips[0]) as f64 * WINDOW as f64 / SR;
+        let played = (flips.len() - 1) as f64 / (2.0 * span);
         assert!(
-            f < 0.2,
-            "rate {cv} = {f:.4} Hz would now pass the floor it exists to catch"
+            (played / mod_hz(cv) - 1.0).abs() < 0.01,
+            "rate {cv:.4} plays at {played:.3} Hz; mod_hz says {:.3}",
+            mod_hz(cv)
         );
     }
 }
