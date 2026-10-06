@@ -23,7 +23,9 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   specs that assert what a player sees, with slack for load. In Rust, a
   mutant of the changed code that survived (the builder's
   `make mutants DIFF=1`, or the *Mutants* job's summary on the PR) is a
-  finding unless it was killed or answered (`crates/AGENTS.md` § Mutation
+  blocking finding unless it was killed, or excluded as equivalent in
+  `.cargo/mutants.toml` with its reason: the PR's *Mutants* check keeps the
+  PR out of the merge queue until then (`crates/AGENTS.md` § Mutation
   testing).
 - **Drop nothing**: everything the change moved or retired still works by
   mouse, keyboard and touch. Check the builder's before → after table against

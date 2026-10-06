@@ -166,10 +166,11 @@ tagged `@slow` or `@quarantine`, dealt to twelve runners by time, about
 twelve minutes. It runs in two lanes. Your PR's own run is the fast lane,
 the part of it your change reaches: about five minutes for docs, up to about
 ten when Rust changed or an app module's specs run; green, with `PR checks`
-([Pull requests](#pull-requests)), it puts the PR in the merge queue. The
-merge queue's run is the full gate, on your PR together with up to two
-others queued beside it, on top of `main`, and it is what merges them. A PR
-may merge on the fast tier and `PR checks` alone. The **slow tier**
+([Pull requests](#pull-requests)) and `Mutants in the changed code`
+(below), it puts the PR in the merge queue. The merge queue's run is the
+full gate, on your PR together with up to two others queued beside it, on
+top of `main`, and it is what merges them. A PR may merge on the fast tier,
+`PR checks` and `Mutants in the changed code` alone. The **slow tier**
 (the *Slow suite* workflow) runs the search floor, the other Rust tests over
 a minute and the `@slow` and `@quarantine` browser specs
 on `main` (the newest push, whose run covers the ones before it) and
@@ -202,11 +203,15 @@ Coverage says a test ran a line, not that it checked it. `make mutants
 DIFF=1` changes the code you changed one small way at a time (a `<` made
 `<=`, a function returning a default) and runs its crate's fast tier on
 each change; a change no test fails on survives, and review treats a
-survivor as a finding. The *Mutants* workflow runs the same on your PR's
-own run (done at once when no Rust changed), and weekly on a part of the
-workspace, a fifteen-week cycle aiming to cover it all. It is a workflow
-of its own, in neither the fast lane nor the full gate, and nothing waits
-on it to merge
+survivor as a finding. The *Mutants* workflow runs the same on your PR
+(done at once when no Rust changed), and *Mutants weekly* on a part of the
+workspace, a fifteen-week cycle aiming to cover it all. Each is a workflow
+of its own, in neither the fast lane nor the full gate, but the merge
+queue waits on the PR's check, `Mutants in the changed code`: a mutant of the code you changed that
+survives keeps your PR out of the queue until a test kills it, or until it
+is excluded as equivalent in `.cargo/mutants.toml` with its reason. A
+timeout, or a run its 25-minute cap stopped before it judged a mutant,
+does not hold the PR
 ([`crates/AGENTS.md` § Mutation testing](crates/AGENTS.md#mutation-testing)).
 
 Changes that touch `www/`, `apps/web/` or any public API must also pass `make
@@ -324,7 +329,8 @@ an alias for notes written before the rename).
 4. Add or extend a **gate test** for new behavior. Property-style tests over
    random trees / synthetic users are preferred over mocks.
 5. CI must be green: `main` requires it, and nobody can merge past it. So
-   must `PR checks`, before the merge queue takes the PR:
+   must `PR checks` and `Mutants in the changed code`, before the merge
+   queue takes the PR:
    - **The title** is the squash commit's subject on `main`, so it starts
      with a type, as a commit message does: `fix(web): a toast is never
      dropped`, `tests: …`, `docs: …` ([Commit messages](#commit-messages)).
@@ -335,18 +341,22 @@ an alias for notes written before the rename).
      a line that starts `No issue:`.
    - A change to `apps/web/`, `www/docs/src/` or `www/landing/` with no
      entry in `changelog.d/` gets a warning there (item 3), not a failure.
+   - `Mutants in the changed code` is green when every mutant of the Rust
+     you changed fails a test, or is excluded as equivalent with its reason
+     ([Quality bar](#quality-bar)); a PR that changes no Rust passes at once.
 
-   Once the PR merges, the same workflow comments on each `Refs` issue,
-   closes any `Closes` issue GitHub didn't, tells each closed issue's
-   parent issue how many of its sub-issues are closed, and ticks the boxes
-   in other open issues' checklists that name an issue that closed, once
-   every issue each box names is closed as completed.
+   Once the PR merges, the `PR checks` workflow comments on each `Refs`
+   issue, closes any `Closes` issue GitHub didn't, tells each closed
+   issue's parent issue how many of its sub-issues are closed, and ticks
+   the boxes in other open issues' checklists that name an issue that
+   closed, once every issue each box names is closed as completed.
 6. PRs merge through a merge queue
    ([Mergify](https://docs.mergify.com/merge-queue/), set up in
    `.mergify.yml`). Once your PR is reviewed, the maintainer adds the `queue`
-   label and queues it. When its CI and `PR checks` are green it enters the
-   queue, which runs the full gate
-   on it together with up to two other queued PRs, on top of `main`, and
+   label and queues it. When its CI, `PR checks` and
+   `Mutants in the changed code` are green it enters the queue, which runs
+   the full gate on it together with up to two other queued PRs, on top of
+   `main`, and
    squash-merges each as `<title> (#<number>)`, with the PR's commit messages
    as the commit's body (the repository's squash setting), so write each
    commit message to say why. A PR green on its own run can be red there: the queue

@@ -21,8 +21,9 @@ name: CI
 #   for docs; up to about ten when Rust changed (Coverage sets the length,
 #   about nine, an estimate) or an app module's specs run (patch.js reaches
 #   about 23 test-minutes, on four runners). A green fast lane, with the PR's
-#   `PR checks` (pr-checks.yml), puts the PR in the merge queue. It is not
-#   the whole gate.
+#   `PR checks` (pr-checks.yml) and `Mutants in the changed code`
+#   (mutants.yml), puts the PR in the merge queue (.mergify.yml's queue
+#   conditions). It is not the whole gate.
 # - The merge queue's run (Mergify's draft PR, from a branch under
 #   mergify/merge-queue/: .mergify.yml) is the FULL GATE, about twelve
 #   minutes: everything, as on main, the browser tier on twelve runners. It
@@ -1096,8 +1097,9 @@ jobs:
   # documentation PR forever. This is the job to require instead: it distinguishes
   # "skipped because the change could not affect it" from "did not pass".
   # In a PR's fast lane it is what puts the PR in the merge queue, with
-  # `PR checks` (pr-checks.yml); in the queue's run it is the full gate's
-  # answer (and `Full gate`, below, the check the queue merges on).
+  # `PR checks` (pr-checks.yml) and `Mutants in the changed code`
+  # (mutants.yml); in the queue's run it is the full gate's answer (and
+  # `Full gate`, below, the check the queue merges on).
   ci:
     name: CI
     if: always()
