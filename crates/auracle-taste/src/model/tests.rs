@@ -856,8 +856,8 @@ fn sample_sd(v: &[f64]) -> f64 {
 }
 
 /// A posterior with no draws (a fit that kept none) is inert: it claims no
-/// information (ESS 0, so the session's refit trigger fires), and every
-/// update and alignment returns it empty rather than dividing by zero.
+/// information (an ESS of 0), and every update and alignment returns it
+/// empty rather than dividing by zero.
 #[test]
 fn an_empty_posterior_is_inert() {
     let p = TastePosterior {
