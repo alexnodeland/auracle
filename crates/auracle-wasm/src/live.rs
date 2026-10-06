@@ -1317,7 +1317,7 @@ impl LivePoly {
         // voice running, so each new press found no silent voice and stole the
         // oldest there was — a held note — and the notes under the player's
         // hands dropped out while the trill played on.
-        let idx = self
+        let i = self
             .voices
             .iter()
             .position(|v| v.note == Some(note))
@@ -1330,68 +1330,68 @@ impl LivePoly {
                     .min_by_key(|(_, v)| v.released)
                     .map(|(i, _)| i)
             })
-            .or_else(|| {
+            .unwrap_or_else(|| {
+                // An instrument has a voice at least (`new` builds
+                // `n_voices.max(1)`), so this is the oldest of them.
                 self.voices
                     .iter()
                     .enumerate()
                     .min_by_key(|(_, v)| v.stamp)
-                    .map(|(i, _)| i)
+                    .map_or(0, |(i, _)| i)
             });
         // Is anything under the player's fingers right now? Asked *before* the
         // new voice is assigned, because it decides whether this press is one
         // note of a chord or one note of a line.
         let anything_held = self.voices.iter().any(|v| v.note.is_some());
-        if let Some(i) = idx {
-            let glide_on = self.glide > 0.0;
-            let bend = self.bend;
-            let v = &mut self.voices[i];
-            // Portamento is *per voice* (fingered): a voice that was already
-            // sounding slides from its own pitch, a fresh voice starts on
-            // target. A single global `last_pitch` would chain note→note
-            // through a chord and make it swoop in as a scramble.
-            //
-            // Per-voice alone, though, meant the control did nothing at all
-            // for the one thing portamento is for. Voice assignment prefers a
-            // *free* voice, so a melody played on a four-voice keybed rotates
-            // through voices that were never sounding: `was_sounding` is false
-            // for note after note, and every one of them starts dead on pitch.
-            // The glide fader moved a number that could not be heard unless
-            // you exceeded the polyphony and forced a steal.
-            //
-            // So a line glides too. A press with nothing else held is a line —
-            // it slides from the pitch of the note before it — and a press
-            // made while a key is still down is a chord, which still starts on
-            // target and keeps its attack clean. That is the same distinction
-            // the original comment was protecting; it just wasn't being made.
-            let was_sounding = v.running;
-            v.pitch_tgt = target;
-            v.pitch_cur = if glide_on && was_sounding {
-                v.pitch_cur
-            } else if glide_on && !anything_held && !first_press {
-                start
-            } else {
-                target
-            };
-            v.voice.pitch.set(v.pitch_cur + bend);
-            // Stealing a voice whose gate is still high needs a real rising
-            // edge, or the ADSR never re-enters Attack and the new note
-            // inherits the old note's envelope level.
-            if v.note.is_some() {
-                v.voice.gate.set(0.0);
-                v.regate_in = 1;
-            } else {
-                v.voice.gate.set(GATE_ON);
-                v.regate_in = 0;
-            }
-            v.note = Some(note);
-            v.stamp = stamp;
-            v.running = true;
-            v.silent_run = 0;
-            v.vel = Self::vel_gain(vel);
-            v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
-            v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
-            self.apply_touch(i, vel);
+        let glide_on = self.glide > 0.0;
+        let bend = self.bend;
+        let v = &mut self.voices[i];
+        // Portamento is *per voice* (fingered): a voice that was already
+        // sounding slides from its own pitch, a fresh voice starts on
+        // target. A single global `last_pitch` would chain note→note
+        // through a chord and make it swoop in as a scramble.
+        //
+        // Per-voice alone, though, meant the control did nothing at all
+        // for the one thing portamento is for. Voice assignment prefers a
+        // *free* voice, so a melody played on a four-voice keybed rotates
+        // through voices that were never sounding: `was_sounding` is false
+        // for note after note, and every one of them starts dead on pitch.
+        // The glide fader moved a number that could not be heard unless
+        // you exceeded the polyphony and forced a steal.
+        //
+        // So a line glides too. A press with nothing else held is a line —
+        // it slides from the pitch of the note before it — and a press
+        // made while a key is still down is a chord, which still starts on
+        // target and keeps its attack clean. That is the same distinction
+        // the original comment was protecting; it just wasn't being made.
+        let was_sounding = v.running;
+        v.pitch_tgt = target;
+        v.pitch_cur = if glide_on && was_sounding {
+            v.pitch_cur
+        } else if glide_on && !anything_held && !first_press {
+            start
+        } else {
+            target
+        };
+        v.voice.pitch.set(v.pitch_cur + bend);
+        // Stealing a voice whose gate is still high needs a real rising
+        // edge, or the ADSR never re-enters Attack and the new note
+        // inherits the old note's envelope level.
+        if v.note.is_some() {
+            v.voice.gate.set(0.0);
+            v.regate_in = 1;
+        } else {
+            v.voice.gate.set(GATE_ON);
+            v.regate_in = 0;
         }
+        v.note = Some(note);
+        v.stamp = stamp;
+        v.running = true;
+        v.silent_run = 0;
+        v.vel = Self::vel_gain(vel);
+        v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
+        v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+        self.apply_touch(i, vel);
     }
 
     fn release_voices(&mut self, note: u8) {
@@ -1564,15 +1564,12 @@ impl LivePoly {
     /// Slide the voice currently sounding `from` to pitch `to` without touching
     /// its gate. This is what makes a tied step tie: no falling edge, so the
     /// amp envelope keeps its place and (with glide up) the step portamentos.
-    /// Returns false if that voice was stolen out from under us.
-    fn arp_slide(&mut self, from: u8, to: u8, vel: f32) -> bool {
-        let Some(i) = self.voices.iter().position(|v| v.note == Some(from)) else {
-            return false;
-        };
+    /// `None` if no voice is sounding `from` (stolen out from under us).
+    fn arp_slide(&mut self, from: u8, to: u8, vel: f32) -> Option<()> {
         let target = (to as f64 - 60.0) / 12.0;
         let glide_on = self.glide > 0.0;
         let bend = self.bend;
-        let v = &mut self.voices[i];
+        let v = self.voices.iter_mut().find(|v| v.note == Some(from))?;
         v.pitch_tgt = target;
         if !glide_on {
             v.pitch_cur = target;
@@ -1581,7 +1578,7 @@ impl LivePoly {
         v.note = Some(to);
         v.vel = Self::vel_gain(vel);
         v.silent_run = 0;
-        true
+        Some(())
     }
 
     /// Advance the arpeggiator by `frames` samples. Step boundaries press the
@@ -1589,13 +1586,6 @@ impl LivePoly {
     /// across [`Self::arp_octaves`] octaves — held for `arp_gate` of the step.
     fn tick_arp(&mut self, frames: usize) {
         if !self.arp_on {
-            return;
-        }
-        if self.held.is_empty() {
-            if let Some(n) = self.arp_note.take() {
-                self.release_voices(n);
-            }
-            self.arp_base = None;
             return;
         }
         // Swing lengthens even steps and shortens the odd step that follows by
@@ -1613,7 +1603,8 @@ impl LivePoly {
         self.arp_phase = (self.arp_phase + frames as f64).min(f64::MAX);
         if let Some(n) = self.arp_note {
             // Release at the gate fraction — or immediately if the key this
-            // step came from was let go mid-step.
+            // step came from was let go mid-step (every key let go is that
+            // key too).
             let key_gone = self
                 .arp_base
                 .is_none_or(|b| !self.held.iter().any(|(h, _)| *h == b));
@@ -1623,7 +1614,9 @@ impl LivePoly {
                 self.arp_base = None;
             }
         }
-        if self.arp_phase < step_len {
+        // No chord, no step: the next key down fires the first one at once
+        // (`note_on`).
+        if self.held.is_empty() || self.arp_phase < step_len {
             return;
         }
         // Carry the overshoot. Steps fire on block boundaries, and resetting
@@ -1691,7 +1684,7 @@ impl LivePoly {
         match self.arp_note.filter(|_| tied) {
             // Tied: reuse the sounding voice so the gate never falls. If it was
             // stolen in the meantime, fall back to a normal press.
-            Some(prev) if self.arp_slide(prev, note, vel) => {}
+            Some(prev) if self.arp_slide(prev, note, vel).is_some() => {}
             _ => self.press(note, vel),
         }
         self.arp_note = Some(note);
