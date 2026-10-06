@@ -2674,8 +2674,13 @@ self.onmessage = (e) => {
   // Guarding centrally rather than per-case, because the failure is a property
   // of the boot sequence, not of any one message, and thirty individual
   // `if (!engine) break` lines is thirty chances to forget the thirty-first.
+  //
+  // It names the request as `engine_error` does: its type, its number (`re`,
+  // from `answer`) and PERFORM's `req`, which PERFORM matches its questions'
+  // replies by, so main can let go of one that will never be run (main.js
+  // `notReady`).
   if (!engine && m.type !== "init") {
-    answer(m, { type: "not_ready", request: m.type });
+    answer(m, { type: "not_ready", request: m.type, req: m.req == null ? null : m.req });
     return;
   }
   // Boot is not queued: it is the fill everything else is served *between*
