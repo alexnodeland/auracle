@@ -248,11 +248,13 @@ jobs:
 
           # Web (make web-check, make dev-check) checks all of the above, and
           # the scripts' own tests too (scripts/*.py: the changelog's
-          # assembler, the coverage gate, each with its tests), which reach
-          # no other job. A changelog entry (changelog.d/) reaches none: the
-          # entries' check and the voice run in this job, on every PR, and
-          # the site doesn't read them.
-          if [ "$site" = true ] || echo "$files" | grep -qE '^scripts/[^/]+\.py$'; then
+          # assembler, the coverage gate, each with its tests; and the
+          # operator's scripts in scripts/ops/, with their tests and the
+          # check of the saved workflows), which reach no other job. A
+          # changelog entry (changelog.d/) reaches none: the entries' check
+          # and the voice run in this job, on every PR, and the site doesn't
+          # read them.
+          if [ "$site" = true ] || echo "$files" | grep -qE '^scripts/([^/]+\.py$|ops/)'; then
             web=true
           else
             web=false

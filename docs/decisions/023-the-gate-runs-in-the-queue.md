@@ -32,12 +32,16 @@ green, one review round, quarantine an unrelated failure on sight.
 Since #216, a PR enters the queue once its `PR checks` are green beside its
 fast lane, and its title carries a type
 ([`docs/process.md` § Pull requests](../process.md#pull-requests)). Since
-the PR that finished #181, its `Mutants in the changed code`
-(`mutants.yml`) must be green too: a mutant of the Rust the PR changed that
-survives keeps it out of the queue
+#279, its `Mutants in the changed code` (`mutants.yml`) must be green too: a
+mutant of the Rust the PR changed that survives keeps it out of the queue
 ([`crates/AGENTS.md` § Mutation testing](../../crates/AGENTS.md#mutation-testing)).
-Both are Mergify's queue conditions, not the ruleset's. The rest of this
-record is as accepted.
+Both are Mergify's queue conditions, not the ruleset's. Since #260, a batch
+waits ten minutes for company, not three: on 2026-10-06, with three, ten of
+fifteen batches held one PR (`.mergify.yml` says why). Since #272, the
+view-to-spec map the consequences ask for is local: `make browser-changed`
+runs the specs of the views a `main.js` change draws; in CI such a change
+still gets only the smoke before the queue. The rest of this record is as
+accepted.
 
 ## Context
 
@@ -70,8 +74,7 @@ second has to be everything.
      no Browser smoke job there.
 2. **The queue checks batches on a draft PR** (`.mergify.yml`):
    - up to three queued PRs in one batch, which waits at most three minutes
-     for company (ten since 2026-10-06, when three left most batches with
-     one PR: `.mergify.yml` says why); serial, one batch checked at a time;
+     for company; serial, one batch checked at a time;
    - a PR enters on its fast lane's green `CI`;
    - the batch merges on `Full gate`, a check only the queue's run has. It is
      not `CI`, because Mergify takes a queue whose merge conditions match its
@@ -141,10 +144,8 @@ second has to be everything.
   hand. A conflict with `main` itself dequeues it at once.
 - **The fast lane is not the gate.** A builder still runs the specs a change
   reaches locally (`make browser-changed`), and a `main.js` change gets only
-  the smoke in CI before the queue. Locally, a view-to-spec map narrows that
-  gap: `make browser-changed` runs the specs of the views a `main.js` change
-  draws, and each view's sample for the engine; before the push, with the
-  spec files the branch adds or edits three times each (#177).
+  the smoke before the queue. A view-to-spec map for `main.js` would narrow
+  that gap (#177, wave 2).
 - **`main` reuses the queue's verdict on every batch's last merge.** The
   batch's earlier merges are never tested alone, as with any batch; their run
   runs nothing once `main` has moved past them. The browser tier's timings

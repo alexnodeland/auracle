@@ -5,9 +5,12 @@ canonical description: when practice changes, this page changes in the same PR.
 It was settled by [RFC-009](proposals/009-how-work-flows.md) and is recorded as
 [ADR-019](decisions/019-work-flows-through-issues-and-prs.md), as
 [ADR-020](decisions/020-merge-at-green-one-pr-in-ci.md),
-[ADR-021](decisions/021-merges-go-through-mergifys-queue.md) and
-[ADR-023](decisions/023-the-gate-runs-in-the-queue.md) amend it. The `ship` skill
-(`.claude/skills/ship/`) walks one task through it with the exact commands.
+[ADR-021](decisions/021-merges-go-through-mergifys-queue.md),
+[ADR-023](decisions/023-the-gate-runs-in-the-queue.md) and
+[ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)
+amend it. The `ship` skill (`.claude/skills/ship/`) walks one task through it
+with the exact commands; the `ship-wave` skill runs several at once with the
+saved workflows ([Waves](#waves)).
 
 ## The lifecycle
 
@@ -198,10 +201,16 @@ Findings come back ranked, and review is **one round**:
     keeps the PR out of the queue until it is killed with a test, or
     excluded as equivalent in `.cargo/mutants.toml` with its reason. Saying
     why in the PR body is not enough on its own.
-- **Every other finding** becomes an issue, named in the PR body. It is not
-  more commits on the branch: a branch that grows in review runs CI again,
-  and every run is another roll of the flaky dice.
+- **Every other finding in what the branch touches** is fixed on the branch
+  in the same round, before the PR: an in-area bug, a flaky or vacuous test,
+  a description left untrue, a nit. So is in-area work the builder lists as
+  left open. Only two kinds leave the PR, each as an issue named in its
+  body: a choice for the maintainer, and work in an area the branch doesn't
+  touch ([ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)).
 - A finding the operator declines is said in the PR body with the reason.
+- Nothing is added once the PR is open ([Merge at green](#ci-and-merging)):
+  a branch that grows in CI runs CI again, and every run is another roll of
+  the flaky dice.
 
 ## Pull requests
 
@@ -341,8 +350,12 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   `vessel.js`; `tests/web/`'s `fixtures.js`, `playwright.config.js`,
   `package.json` or `package-lock.json`; a spec file that holds an `@slow` or
   `@quarantine` test; or a `main.js` change that reaches EVOLVE's
-  generations or PERFORM's offers. It does not block merging; without it,
-  the push to `main` is where a slow test catches the change.
+  generations or PERFORM's offers. It is none of the queue's conditions;
+  without the label, the push to `main` is where a slow test catches the
+  change. By hand, a `full-ci` PR is queued at once. A wave holds it out of
+  the queue until its Slow suite is green (`scripts/ops/ship_pr.sh --full-ci`, [Waves](#waves)): a
+  wave's PRs land minutes apart, and a slow test one of them broke would
+  turn up on `main` with several to suspect.
 - **Wait on the state, never a fixed time:** poll until the run completes,
   or the PR merges or leaves the queue, then read what happened.
 - **The merge queue merges**
@@ -424,8 +437,11 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   the PR's head, the fast lane, so a merge by hand without it lands code
   that only the fast lane has seen. A merge from outside the queue makes
   the queue start over on the new `main`.
-- **Linear:** one merge queue, at most two streams of work in flight and
-  never two touching the same files.
+- **Linear:** one merge queue, and never two streams in flight touching
+  the same files. By hand, at most two streams; a wave runs more, each item
+  on files no other touches ([Waves](#waves),
+  [ADR-024](decisions/024-in-area-findings-are-fixed-in-the-pr-and-waves-run-wider.md)),
+  and every browser job still goes through the one queue.
 - **On `main`**, a job the queue's run already passed is not run again when
   `main`'s files are exactly the files that run tested (the same git tree):
   the last merge of every batch. The site deploys from CI's own build once
@@ -462,6 +478,57 @@ to git). It refuses a worktree holding work not committed, one on no
 branch, and a branch whose commits no remote branch holds; `FORCE=1`
 deletes that branch anyway, for a merged one whose remote branch was
 pruned.
+
+## Waves
+
+Several tasks at once, when the maintainer asks for a wave: Claude Code
+workflows saved in `.claude/workflows/` run the agents, and the `ship-wave`
+skill (`.claude/skills/ship-wave/`) is the operator's procedure around them.
+A workflow spends many tokens, so one runs when the maintainer asks for a
+wave or for it by name.
+
+| Workflow | What it runs |
+| --- | --- |
+| `triage-backlog` | One read-only agent per open issue, then a plan: waves of items that share no file, bundles of issues that do, the chains that go in order, and the maintainer's questions as one batch |
+| `ship-issues` | Per item: build, review (the `reviewer`), fix (every blocking and should-fix finding, the nits, the in-area open items), a second look at the blocking fixes, and finalize: rebased onto `origin/main`, the quick gates again, `PR checks` run on the title and body |
+| `fix-flake` | One flaky test: diagnosed from its run's log and trace and reproduced at `AURACLE_CPU_THROTTLE=4` and under load, its cause named ([ADR-022](decisions/022-a-slow-runner-makes-a-test-slower-never-wrong.md)); fixed; proved by `--repeat-each=5` and a mutation it must fail on; reviewed and finalized |
+| `review-pr` | Five reviewers in parallel, one lens each (correctness and dropped capability, descriptions, tests, voice, CI and process); each finding put to an agent that tries to refute it; the survivors, ranked |
+| `mutants-burndown` | One crate's surviving mutants, killed file by file with tests of behavior or shown equivalent ([`crates/AGENTS.md` § Mutation testing](../crates/AGENTS.md#mutation-testing)), measured again, reviewed and finalized |
+
+The operator's loop:
+
+1. **Plan.** A triage, when the next wave isn't obvious. Its questions go to
+   the maintainer as one batch before the wave.
+2. **Prepare.** A worktree from `origin/main` and a port for each item, and
+   an in-progress comment on its issue: `make worktree TOPIC=<topic>`, at
+   `.claude/worktrees/<topic>`, with the main checkout kept on `main` and
+   current.
+3. **Run.** One run per issue, or per small bundle of issues that share
+   files: a run returns when its slowest item is done, and one per item
+   lets each completion say so.
+4. **Read.** `scripts/ops/wf_result.py` reads a finished run, or a running
+   one's journal, and writes each PR body; every item `ready`, or its
+   problems put right on the branch. Open items carry a kind: `in_area` is
+   done on the branch, never filed; `decision` goes to the maintainer;
+   `other_area` becomes an issue.
+5. **Approve.** The wave's voice drafts (the words, where, the `voice.md`
+   row), as one question; approved rows are committed on their branch.
+6. **Ship.** `scripts/ops/ship_pr.sh` checks the title and body as
+   `PR checks` will, pushes, opens the PR and queues it; with `--full-ci`, it
+   opens the PR with `full-ci` and it is queued once its Slow suite is green.
+7. **Watch.** `scripts/ops/watch_queue.sh`, as a background task, until each
+   PR merges, goes red or leaves the queue. A conflict is rebased with
+   diff3 and its row-wise parts resolved by `scripts/ops/rows_resolve.py`,
+   pushed with a lease to its `claude/` branch, and put back in the queue
+   with `@mergifyio queue`.
+8. **Clean up** after each merge, as for one task:
+   `make worktree-rm TOPIC=<topic>`.
+
+An agent inside a workflow can't be resumed once the run has ended: a
+follow-up is a fresh agent briefed with the branch, its head and what is
+left, or another run. `make dev-check` runs each saved workflow dry on
+stubbed agents (`scripts/ops/check_workflows.mjs`), so a broken one fails
+there, not in a run.
 
 ## Flakes
 
