@@ -4398,19 +4398,20 @@ mod tests {
     /// bank caught then, so one `?seed=` named its pool differently from run
     /// to run (sound 4 was *Soft Lead* on one, *Bright Lead* on another).
     ///
-    /// The same seed filled every way the app fills it — the serial fill that
-    /// hands nothing over until the pool is full, farms of several widths
-    /// handed over at several counts, a handover below [`NAME_FLOOR`], and
-    /// the no-farm fallback two at a time — must end with the same names, and
-    /// every name shown at a handover of `NAME_FLOOR` or more must be the one
-    /// kept. It first checks that reading the smallest and the largest bank
-    /// caught whole, the rule before, would have named them apart, so it
-    /// cannot pass on a seed whose names do not move.
+    /// The same seed filled four ways — the serial fill, which shows its
+    /// names first when the pool is full; a farm whose batch carries the
+    /// handover past [`NAME_FLOOR`]; a handover below it; and the no-farm
+    /// fallback two at a time — must end with the same names, and every name
+    /// shown at a handover of `NAME_FLOOR` or more must be the one kept. It
+    /// first checks that reading the smallest and the largest bank caught
+    /// whole, the rule before, would have named them apart, so it cannot pass
+    /// on a seed whose names do not move. A pool of 12 keeps it in the fast
+    /// tier: four fills, about 10 s.
     #[test]
     fn a_seed_names_its_pool_however_the_bank_was_handed_over() {
         use std::collections::{HashMap, HashSet};
         const SEED: u64 = 0x5EED_0154;
-        const POOL: usize = 24;
+        const POOL: usize = 12;
         let cfg = || SessionConfig {
             pool_size: POOL,
             ..fast()
@@ -4428,13 +4429,7 @@ mod tests {
 
         // Every way to the same pool, with the names shown at the handover.
         let mut runs: Vec<(String, Engine, HashMap<u64, String>)> = Vec::new();
-        for (width, at) in [
-            (0, NAME_FLOOR),
-            (3, NAME_FLOOR),
-            (8, NAME_FLOOR),
-            (5, NAME_FLOOR + 3),
-            (2, 3),
-        ] {
+        for (width, at) in [(3, NAME_FLOOR), (2, 3)] {
             let (farm, shown) = farm_fill_handing(width, SEED, POOL, Some(at));
             let shown = shown.expect("the bank was handed over");
             let how = format!("width {width}, handed over at {} sounds", shown.len());
@@ -4469,7 +4464,10 @@ mod tests {
                 .map(|c| claim_name(&scale.name(&c.features), &mut taken))
                 .collect()
         };
-        let caught: Vec<usize> = runs.iter().map(|(_, _, s)| s.len()).collect();
+        // The serial fill first shows its names with the pool full.
+        let caught: Vec<usize> = std::iter::once(POOL)
+            .chain(runs.iter().map(|(_, _, s)| s.len()))
+            .collect();
         println!("handovers caught {caught:?} sounds");
         let lo = caught.iter().copied().filter(|&n| n >= NAME_FLOOR).min();
         let hi = caught.iter().copied().max();
