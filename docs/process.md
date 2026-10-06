@@ -269,10 +269,10 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
   - It enters the queue once its fast lane's `CI` and its `PR checks` are
-    green. The PRs numbered up to #216, opened before `PR checks` was on
-    `main`, need only `CI` (`.mergify.yml` says why); a PR opened after that
-    and before the workflow landed gets its first run from any edit to its
-    title or body, or a push.
+    green. The PRs already open when `PR checks` reached `main` need only
+    `CI`: `.mergify.yml` names them by number, with the reason, and says how
+    one opened while it was on its way gets its first run (any edit to its
+    title or body, or a push).
   - The queue tests up to three queued PRs together, a batch, on a draft PR
     of its own, on top of `main`: one full gate for the batch. A batch waits
     at most three minutes for company. One batch is tested at a time.
