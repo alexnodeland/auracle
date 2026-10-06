@@ -51,7 +51,9 @@ path = "junit.xml"
 # they would hold the slots idle through their one-thread phases, in CI's
 # fast tier too; left at one, they oversubscribe the pool while they teach
 # or walk. The wasm crate's `twins` (two engines taught at once) and the
-# tilted walks in the session's own tests are left at one the same way.
+# walks of the `own` module's tilt test (auracle-session's own/tests.rs, a
+# thread per walk for a phase) are left at one the same way; the tilted
+# walk declared below (`walk::tests`) runs its three threads throughout.
 #
 # Declared tests also run first (`priority`). nextest starts tests in order and
 # starts nothing new while the next one waits for its slots, so a test that
