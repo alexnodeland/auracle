@@ -3179,7 +3179,7 @@ async function dispatch(m) {
         pair = JSON.parse(engine.next_duel());
       }
       // `ahead`: main asked for the pair after this one, dealt while this one
-      // is on the table (see `requestAhead` in main.js); it rides back so the
+      // is on the table (deal.js `dealAhead`); it rides back so the
       // reply is not taken for the table's.
       post({ type: "duel", pair, meta, ahead: !!m.ahead });
       // The pair's sounds are not rendered here. They used to be, in this

@@ -2037,7 +2037,10 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   padding: 3px var(--s2);
   cursor: pointer;
 }
-.inspect-btn:hover { color: var(--phos-a); border-color: var(--phos-a-dim); }
+.inspect-btn:hover:not(:disabled) { color: var(--phos-a); border-color: var(--phos-a-dim); }
+/* Off while the table has no pair (main.js setDuelControlsEnabled): it does
+   not light under the pointer. */
+.inspect-btn:disabled { cursor: default; }
 .inspect-btn kbd { margin-left: var(--s1); padding: 0 var(--s1); border: 1px solid var(--hairline); border-radius: 3px; }
 
 .scope, .crt {
