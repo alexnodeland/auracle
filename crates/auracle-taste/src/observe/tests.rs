@@ -67,22 +67,44 @@ fn tolerance_does_not_change_a_clean_log() {
     assert!(!log.observations[1].is_raw(), "legacy row must stay legacy");
 }
 
-/// Observation logs round-trip through JSON (the profile's source of
-/// truth must survive persistence).
+/// A file of this process's own, so that test runs in several worktrees at
+/// once never read each other's half-written files.
+fn scratch_file(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("auracle-taste-{}-{name}", std::process::id()))
+}
+
+/// An observation log round-trips through its file bit for bit: the
+/// profile's source of truth must survive persistence, every modality and
+/// every field of it, full-precision floats included.
 #[test]
-fn log_roundtrips() {
+fn a_log_round_trips_through_its_file() {
     let mut rng = StdRng::seed_from_u64(44);
     let user = ground_truth();
+    let names: Vec<String> = (0..D).map(|i| format!("f{i}")).collect();
     let mut log = ObservationLog::new();
+    assert!(log.is_empty());
     for s in 0..3 {
         let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
         log.push(user.observe_duel(&mut rng, a, b, s));
     }
-    let dir = std::env::temp_dir().join("auracle-taste-test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("log.json");
+    let x = random_phi(&mut rng);
+    let kept = user.keep(&mut rng, &x);
+    log.push(Observation::tagged(
+        Feedback::KeepKill { x, kept },
+        1,
+        &names,
+        Provenance::HeardEdit,
+    ));
+    let x = random_phi(&mut rng);
+    let rating = user.stars(&mut rng, &x);
+    log.push(Observation::new(Feedback::Stars { x, rating }, 2, &names));
+    assert!(!log.is_empty());
+
+    let path = scratch_file("log.json");
     log.save(&path).unwrap();
-    let back = ObservationLog::load(&path).unwrap();
+    let back = ObservationLog::load(&path);
+    std::fs::remove_file(&path).unwrap();
+    let back = back.unwrap();
     assert_eq!(back, log);
     assert_eq!(back.n_sessions(), 3);
 }
