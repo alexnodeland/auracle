@@ -182,7 +182,13 @@ issue is caught only when the test fails, and then the suite goes red. No retrie
     on Glass Pad is a typical one (SEED's is unusually light).
     `AURACLE_SEED=random` boots every spec that names no seed of its own
     unseeded, PERFORM's too (the nightly flake hunt does), and
-    `AURACLE_SEED=N` with N;
+    `AURACLE_SEED=N` with N. `app.visit(path)` loads it again at an address
+    `boot`'s `query` cannot carry, a level's hash (`"/#learning"`), seeded
+    the same way, as a new load even when only the hash changed;
+  - **another context** (a phone beside a desktop, a second visit) comes
+    from the fixture `newContext(options)`: its pages' errors fail the test
+    as the test's own context's do, and `openApp(page)` puts the tap on a
+    page of it;
   - what the engine said and was asked: `app.reply(type, { where, after })`
     waits for a reply main was handed (`where` a pattern or a function),
     `app.replies`, `app.last`, `app.count`, `app.sent`, `app.sentCount`,

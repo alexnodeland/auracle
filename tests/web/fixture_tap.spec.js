@@ -18,6 +18,10 @@
 //   worker answers; a reply the tap gives for a request (`app.answer`,
 //   `app.fail`) carries its number too. Here on an engine that answers the
 //   way worker.js does.
+// - `app.visit` is a new load of the address, seeded as `boot` seeds it and
+//   with a level's hash, even when only the hash changed.
+// - A page error in a context `newContext` made fails the test, as one in
+//   the test's own context does; the context has the project's `use`.
 const { test, expect, UNANSWERED } = require("./fixtures");
 
 const ECHO = "self.onmessage = (e) => postMessage(e.data);";
@@ -165,4 +169,26 @@ test("a reply the tap gives for a request carries the request's number", async (
   await app.answered({ lanes: ["bench"] });
   expect(await app.replyTo(5)).toMatchObject({ type: "bench", edited: "structure", re: 5 });
   expect(await app.replyTo(6)).toMatchObject({ type: "engine_error", request: "edit_set_tree", re: 6 });
+});
+
+test("a visit is a new load of the seeded address, a level's hash and all", async ({ page, app }) => {
+  await page.route(/\/tap-test\/(\?[^#]*)?$/, (r) => r.fulfill({ contentType: "text/html", body: "<!doctype html><title>tap</title>" }));
+  await app.visit("/tap-test/#taste", { seed: 7, wait: false });
+  expect(new URL(page.url()).search + new URL(page.url()).hash).toBe("?seed=7#taste");
+  await page.evaluate(() => { window.__before = true; });
+  // Another hash alone: a new document, not a move within this one.
+  await app.visit("/tap-test/#learning", { seed: 7, wait: false });
+  expect(new URL(page.url()).hash).toBe("#learning");
+  expect(await page.evaluate(() => window.__before ?? null), "the page before the visit").toBeNull();
+});
+
+test("a page error in a context of the test's own fails the test, as one in its own context does", async ({ newContext, pageErrors }) => {
+  const context = await newContext();
+  const page = await context.newPage();
+  // The project's `use` holds there too: its baseURL.
+  await page.goto("/pkg/build.json");
+  await page.evaluate(() => setTimeout(() => { throw new Error("thrown in another context"); }, 0));
+  await expect.poll(() => [...pageErrors]).toEqual(["thrown in another context"]);
+  // Taken off again: thrown on purpose, and the test's teardown would fail on it.
+  pageErrors.splice(0);
 });
