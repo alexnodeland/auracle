@@ -111,7 +111,7 @@ you choose, unless you are stepping through them with the arrow keys.
 | <kbd>F2</kbd>, or the menu key | Its structure menu (⋯) |
 | <kbd>Delete</kbd> | Delete it; a two-input module asks which input survives. On the guess: skip it |
 | <kbd>L</kbd> | Lock it, or unlock it |
-| <kbd>Q</kbd> | What goes here? The model's guess for its place: after it, on its modulation slot, or in it if the socket is empty (on a modulator, its module's slot). The guess takes the focus when it lands: <kbd>Enter</kbd> adds it, <kbd>Delete</kbd> skips it, <kbd>Esc</kbd> goes back to the guess for the output |
+| <kbd>Q</kbd> | What goes here? The model's guess for its place: after it, on its modulation slot, or in it if the socket is empty (on a modulator, its module's slot). The guess takes the focus when it lands, unless you have gone into a module's knobs since: <kbd>Enter</kbd> adds it, <kbd>Delete</kbd> skips it, <kbd>Esc</kbd> goes back to the guess for the output |
 | <kbd>/</kbd> | A module after it, from the catalog |
 | <kbd>Esc</kbd> | Out of it |
 
