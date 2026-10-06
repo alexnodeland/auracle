@@ -282,8 +282,9 @@ const PROBE_SEED = 20260928;
 const nothing = async () => {};
 /** Each order: what is held from boot (`hold`), what "P up and Q waiting"
  *  waits for (`ready`), what is held from the first pick (`arm`), what has
- *  happened to the deal behind Q by ⌘Z (`atUndo`), and how many deals ahead
- *  were asked for between the first pick and ⌘Z (`asked`). */
+ *  happened to the deal behind Q by ⌘Z (`atUndo`), and whether it had been
+ *  asked for by then (`asked`; an answer refused is dealt again, so how many
+ *  were is not the point). */
 const ORDERS = [
   {
     name: "landed before ⌘Z",
@@ -291,7 +292,7 @@ const ORDERS = [
     ready: (app) => aheadReady(app),
     arm: nothing,
     atUndo: (app, mark) => app.reply("duel", { where: { ahead: true }, after: mark, timeout: 30_000 }),
-    asked: 1,
+    asked: true,
   },
   {
     name: "still out at ⌘Z",
@@ -299,7 +300,7 @@ const ORDERS = [
     ready: (app) => aheadReady(app),
     arm: (app) => app.hold({ type: "duel" }, { from: AHEAD }),
     atUndo: (app) => expect.poll(async () => (await app.held()).map((h) => h.type)).toContain("duel"),
-    asked: 1,
+    asked: true,
   },
   {
     name: "not asked for before ⌘Z",
@@ -307,7 +308,7 @@ const ORDERS = [
     ready: (app) => app.reply("duel", { where: { ahead: true, pair: true } }),
     arm: nothing,
     atUndo: nothing,
-    asked: 0,
+    asked: false,
   },
 ];
 for (const order of ORDERS) {
@@ -343,7 +344,7 @@ for (const order of ORDERS) {
     const dealt = (await app.replies("duel", { after: mark, where: { pair: true } })).map((d) => d.pair);
     const behindQ = dealt[firstUsable(dealt, [P, Q])];
     console.log(`P ${P}, Q ${Q}; deals asked ahead before ⌘Z: ${askedBeforeUndo}; dealt after the first pick: ${JSON.stringify(dealt)}; after Q: ${afterQ}`);
-    expect(askedBeforeUndo, "the deal behind Q was asked for before ⌘Z, or not, as this order says").toBe(order.asked);
+    expect(askedBeforeUndo > 0, "the deal behind Q was asked for before ⌘Z, or not, as this order says").toBe(order.asked);
     expect(afterQ, "the pair after Q is not the deal behind Q").toBe(key(behindQ));
   });
 }
