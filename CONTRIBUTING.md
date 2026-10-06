@@ -130,8 +130,10 @@ Every change must pass `make check`:
    film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; the pinned toolchain brings the target)
-6. `cargo test --workspace --profile test-fast` — release-grade codegen
-   without release's shipping flags; see the profile's comment in `Cargo.toml`
+6. `cargo test --workspace --profile test-fast --lib --bins --tests`, then
+   the doctests (`--doc`) — release-grade codegen without release's shipping
+   flags (see the profile's comment in `Cargo.toml`), and no build of the
+   examples, which no test runs and step 2 already compiles
 
 That list is what CI's `lint`, `web` and `test` jobs and its wasm32 build
 (the engine job, with warnings as errors) run, so "green locally" and "green

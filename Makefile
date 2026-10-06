@@ -201,11 +201,20 @@ smoke-tools:
 # always did; no fat LTO, so it stops paying a serialized link for five test
 # binaries. CI builds the tests under this profile too — one definition of what
 # an optimized test build is.
+#
+# The test builds name their targets (TEST_TARGETS): the libraries, the
+# binaries and the test targets. Left to itself, `cargo test` (and nextest)
+# also compiles every example and runs none: 34 of them, about half the
+# workspace's compile CPU. `make lint` (clippy --all-targets) still compiles
+# them. Naming targets turns the doctests off, so `test` runs them on their
+# own (there are none today; CI's test job checks that the same way).
+TEST_TARGETS := --lib --bins --tests
 test:
-	$(CARGO) test --workspace --profile test-fast
+	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS)
+	$(CARGO) test --workspace --profile test-fast --doc
 
 test-verbose:
-	$(CARGO) test --workspace --profile test-fast -- --nocapture
+	$(CARGO) test --workspace --profile test-fast $(TEST_TARGETS) -- --nocapture
 
 # ─── CI's two tiers ──────────────────────────────────────────────────────────
 #
@@ -234,8 +243,8 @@ SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) 
 	| test(=perform::tests::a_stepped_walk_is_the_walk) \
 	| test(=tests::farm_walks_breed_the_serial_generation) \
 	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
-NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast --no-tests=fail
-# CI passes `--partition hash:k/N` here to split the fast tier across runners.
+NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast $(TEST_TARGETS) --no-tests=fail
+# CI passes `--partition slice:k/N` here to split the fast tier across runners.
 NEXTEST_ARGS ?=
 
 nextest-installed:

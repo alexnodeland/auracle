@@ -303,9 +303,13 @@ jobs:
   # in neither, and `--no-tests=fail` turns a filter that empties a shard into
   # a red run rather than a silently skipped gate.
   #
-  # What is left, 262 tests, is ~1120 s of test time that nextest runs about
-  # 3.7 wide on a 4-core runner; split in two by hash, each runner takes ~2.5 min
-  # of tests after its ~2 min compile, instead of one runner taking ~5.
+  # What is left, 417 tests at 42bd322, is about 2,200 s of test time, which
+  # nextest runs about 3.7 wide on a 4-core runner, split over two runners.
+  # By `slice`, which deals the filtered list out in turn, each runner gets
+  # half the tests; `hash` put 1,270 test-seconds on one and 933 on the other
+  # (Oct 5). The build names its targets (the Makefile's TEST_TARGETS), so the
+  # 34 examples, which no test runs, are not compiled here; Lint's clippy
+  # --all-targets still compiles them.
   #
   # nextest rather than `cargo test` for the filtering and the partitioning,
   # and because it pools every test binary into one scheduler; `cargo test`
@@ -341,7 +345,7 @@ jobs:
       # under a tenth of a second while cutting compile CPU ~40% — the LTO was
       # buying the test suite nothing and costing it a serialized link. See the
       # profile's comment in Cargo.toml.
-      - run: make test-fast-tier NEXTEST_ARGS='--partition hash:${{ matrix.partition }}'
+      - run: make test-fast-tier NEXTEST_ARGS='--partition slice:${{ matrix.partition }}'
 
       # nextest does not run doctests. There are none today, and this is what
       # keeps that a fact rather than an assumption.
