@@ -1006,8 +1006,7 @@ fn everything_a_hand_can_reach_has_finite_prior() {
         ("node#cut", 0.0),
     ] {
         let t = set_param(&base, addr, ParamValue::Continuous(v))
-            .or_else(|_| set_param(&base, "amp#release", ParamValue::Continuous(v)))
-            .expect("a knob edit");
+            .unwrap_or_else(|e| panic!("{addr} is a knob on {}: {e}", presets::presets()[0].0));
         finite(&format!("knob {addr} = {v}"), &t);
     }
 
