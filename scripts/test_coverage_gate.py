@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""The coverage gate's tests: the floors, their ratchet, and the changed lines.
+
+    python3 scripts/test_coverage_gate.py      (run by `make dev-check`)
+
+No test reads a real coverage run or the real floors. The floors' cases run on
+summaries written here, against a floors file in a throwaway tree; the changed
+lines' cases make a throwaway git repository with a crate in it, change it,
+and read an lcov file written to match. Python 3 standard library only.
+"""
+
+import contextlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import coverage_gate as C  # noqa: E402
+
+
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def summary(root, files):
+    """A `cargo llvm-cov report --json --summary-only` with these files, each
+    {path: (lines, lines covered, functions, functions covered)}; regions
+    follow lines."""
+    out = []
+    for path, (ln, lc, fn, fc) in files.items():
+        out.append(
+            {
+                "filename": os.path.join(root, path),
+                "summary": {
+                    "lines": {"count": ln, "covered": lc},
+                    "functions": {"count": fn, "covered": fc},
+                    "regions": {"count": ln, "covered": lc},
+                },
+            }
+        )
+    return {"data": [{"files": out, "totals": {}}], "type": "llvm.coverage.json.export"}
+
+
+class Tree(unittest.TestCase):
+    """A throwaway repository root with a crates/ directory."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="coverage-test-")
+        os.makedirs(os.path.join(self.root, "crates"))
+
+    def tearDown(self):
+        shutil.rmtree(self.root)
+
+    def write(self, rel, text):
+        path = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def run_main(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = C.main(list(argv), self.root)
+        return code, out.getvalue(), err.getvalue()
+
+    def git(self, *args):
+        subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True)
+
+
+class Paths(unittest.TestCase):
+    def test_a_file_is_placed_by_its_path_under_crates(self):
+        self.assertEqual(C.repo_path("/r/crates/auracle-taste/src/lib.rs", "/r"), "crates/auracle-taste/src/lib.rs")
+        self.assertEqual(C.crate_of("crates/auracle-taste/src/model.rs"), "auracle-taste")
+
+    def test_a_path_from_another_checkout_is_read_from_its_crates_directory(self):
+        self.assertEqual(
+            C.repo_path("/home/runner/work/a/a/crates/auracle-grammar/src/term.rs", "/Users/me/auracle"),
+            "crates/auracle-grammar/src/term.rs",
+        )
+
+    def test_a_file_outside_crates_belongs_to_no_crate(self):
+        self.assertIsNone(C.repo_path("/r/apps/web/x.rs", "/r"))
+        self.assertIsNone(C.repo_path("/elsewhere/lib.rs", "/r"))
+
+
+class Floors(Tree):
+    def floors(self, data):
+        self.write(C.BASELINE, C.write_floors(data))
+
+    def summary_file(self, files):
+        return self.write("summary.json", json.dumps(summary(self.root, files)))
+
+    def test_a_crate_is_the_sum_of_its_files(self):
+        s = summary(self.root, {"crates/a/src/lib.rs": (100, 90, 10, 9), "crates/a/src/x.rs": (50, 50, 5, 5)})
+        a = C.per_crate(s, self.root)["a"].tallies
+        self.assertEqual((a["lines"].count, a["lines"].covered), (150, 140))
+        self.assertEqual((a["functions"].count, a["functions"].covered), (15, 14))
+
+    def test_a_crate_at_its_floor_passes_and_the_table_says_so(self):
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        code, out, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)}))
+        self.assertEqual(code, 0, err)
+        self.assertRegex(out, r"a\s+90\.00%\s+90\.00%")
+        self.assertIn("ok", out)
+
+    def test_one_line_under_the_floor_fails_and_names_the_crate(self):
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        code, out, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 89, 10, 9)}))
+        self.assertEqual(code, 1)
+        self.assertIn("a: lines 89.00% (11 of 100 not covered) is under its floor of 90.00%", err)
+
+    def test_functions_are_gated_as_lines_are(self):
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 100, 10, 8)}))
+        self.assertEqual(code, 1)
+        self.assertIn("a: functions 80.00%", err)
+
+    def test_the_comparison_is_exact_not_rounded(self):
+        # 2 of 3 is 66.666…%: at a floor of 66.66 it passes, at 66.67 it does not.
+        self.assertTrue(C.Tally(3, 2).at_least(66.66))
+        self.assertFalse(C.Tally(3, 2).at_least(66.67))
+        self.assertTrue(C.Tally(0, 0).at_least(100.0))
+
+    def test_a_crate_with_no_floor_fails_and_a_floor_with_no_crate_fails(self):
+        self.floors({"gone": {"lines": 50.0, "functions": 50.0}})
+        code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (10, 10, 1, 1)}))
+        self.assertEqual(code, 1)
+        self.assertIn("a: no floor yet", err)
+        self.assertIn("gone: has a floor, but the run measured no file of it", err)
+
+    def test_raise_writes_todays_values_truncated_so_the_run_passes(self):
+        self.floors({"a": {"lines": 90.0, "functions": 50.0}})
+        s = self.summary_file({"crates/a/src/lib.rs": (3, 3, 3, 2), "crates/b/src/lib.rs": (1000, 979, 7, 7)})
+        code, out, err = self.run_main("floors", s, "--raise")
+        self.assertEqual(code, 0, err)
+        floors = json.loads(read(os.path.join(self.root, C.BASELINE)))
+        # 2 of 3 functions is 66.666…%: written as 66.66, never rounded up to 66.67.
+        self.assertEqual(floors, {"a": {"lines": 100.0, "functions": 66.66}, "b": {"lines": 97.9, "functions": 100.0}})
+        self.assertIn("a: functions 50.00 → 66.66", out)
+        self.assertIn("b: new", out)
+        self.assertEqual(self.run_main("floors", s)[0], 0)
+
+    def test_the_file_keeps_two_decimals_one_crate_a_line(self):
+        text = C.write_floors({"b": {"lines": 97.9, "functions": 100}, "a": {"lines": 1, "functions": 2.5}})
+        self.assertEqual(
+            text,
+            '{\n  "a": {"lines": 1.00, "functions": 2.50},\n  "b": {"lines": 97.90, "functions": 100.00}\n}\n',
+        )
+        self.assertEqual(C.read_floors(text)["b"]["lines"], 97.9)
+
+    def test_raise_never_lowers_a_floor_and_writes_nothing_while_one_is_under(self):
+        self.floors({"a": {"lines": 95.0, "functions": 90.0}})
+        before = read(os.path.join(self.root, C.BASELINE))
+        code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 94, 10, 10)}), "--raise")
+        self.assertEqual(code, 1)
+        self.assertIn("wrote nothing", err)
+        self.assertEqual(read(os.path.join(self.root, C.BASELINE)), before)
+
+    def test_raise_keeps_a_floor_the_run_is_over_but_not_by_a_hundredth(self):
+        v = C.judge(C.per_crate(summary(self.root, {"crates/a/src/lib.rs": (100000, 90005, 1, 1)}), self.root),
+                    {"a": {"lines": 90.0, "functions": 100.0}})
+        self.assertEqual(v.raised["a"], {"lines": 90.0, "functions": 100.0})
+
+    def test_a_malformed_floor_is_refused(self):
+        with self.assertRaises(ValueError):
+            C.read_floors('{"a": {"lines": 90}}')
+        with self.assertRaises(ValueError):
+            C.read_floors('{"a": {"lines": "90", "functions": 90}}')
+
+    def test_base_fails_a_floor_that_went_down_or_away(self):
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}, "b": {"lines": 80.0, "functions": 80.0}})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "floors")
+        self.floors({"a": {"lines": 89.0, "functions": 90.0}})
+        s = self.summary_file({"crates/a/src/lib.rs": (100, 95, 10, 10)})
+        code, _, err = self.run_main("floors", s, "--base", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("a: the lines floor went from 90.00 to 89.00", err)
+        self.assertIn("b: its floor was removed", err)
+
+    def test_base_passes_a_floor_that_rose(self):
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "floors")
+        self.floors({"a": {"lines": 95.0, "functions": 90.0}})
+        code, _, err = self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 95, 10, 10)}), "--base", "HEAD")
+        self.assertEqual(code, 0, err)
+
+    def test_markdown_appends_the_table(self):
+        self.floors({"a": {"lines": 90.0, "functions": 90.0}})
+        md = self.write("summary.md", "before\n")
+        self.run_main("floors", self.summary_file({"crates/a/src/lib.rs": (100, 90, 10, 9)}), "--markdown", md)
+        text = read(md)
+        self.assertTrue(text.startswith("before\n### Coverage of the fast tier, by crate"))
+        self.assertIn("| `a` | 90.00% (10 of 100 missed) | 90.00% (1 of 10 missed) |", text)
+
+
+LIB_BEFORE = """pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+"""
+
+# Three changed lines: line 2 (code that runs), line 4 (blank) and line 5
+# (code that does not run).
+LIB_AFTER = """pub fn add(a: i32, b: i32) -> i32 {
+    a.saturating_add(b)
+}
+
+pub fn sub(a: i32, b: i32) -> i32 { a - b }
+"""
+
+
+def lcov(root, records):
+    """An lcov file: records is {path: (lines {n: count}, functions {name: (line, count)})}."""
+    out = []
+    for path, (lines, fns) in records.items():
+        out.append(f"SF:{os.path.join(root, path)}")
+        for name, (n, _) in fns.items():
+            out.append(f"FN:{n},{name}")
+        for name, (_, c) in fns.items():
+            out.append(f"FNDA:{c},{name}")
+        for n, c in sorted(lines.items()):
+            out.append(f"DA:{n},{c}")
+        out.append("end_of_record")
+    return "\n".join(out) + "\n"
+
+
+class Changed(Tree):
+    def setUp(self):
+        super().setUp()
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+        self.write("crates/a/src/lib.rs", LIB_BEFORE)
+        self.write("README.md", "x\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "base")
+        self.git("checkout", "-q", "-b", "change")
+
+    def lcov_file(self, records):
+        return self.write("lcov.info", lcov(self.root, records))
+
+    def test_one_covered_and_one_uncovered_changed_line(self):
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.git("commit", "-q", "-am", "change")
+        f = self.lcov_file({"crates/a/src/lib.rs": ({1: 3, 2: 3, 3: 3, 5: 0}, {"add": (1, 3), "sub": (5, 0)})})
+        code, out, err = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 1)
+        self.assertIn("3 changed line(s) in crates/ since main", err)
+        self.assertIn("2 of them code the run measured, 1 not covered", err)
+        self.assertIn("crates/a/src/lib.rs\n        5  pub fn sub(a: i32, b: i32) -> i32 { a - b }\n", err)
+        self.assertNotIn("saturating_add", err)
+
+    def test_every_changed_line_covered_passes(self):
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.git("commit", "-q", "-am", "change")
+        f = self.lcov_file({"crates/a/src/lib.rs": ({1: 3, 2: 3, 3: 3, 5: 1}, {"add": (1, 3), "sub": (5, 1)})})
+        code, out, _ = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 0)
+        self.assertIn("0 not covered", out)
+
+    def test_a_closure_that_never_ran_on_a_line_that_did_is_uncovered(self):
+        self.write("crates/a/src/lib.rs", "pub fn f(v: &[i32]) -> i32 {\n    v.iter().map(|x| x * 2).sum()\n}\n")
+        self.git("commit", "-q", "-am", "change")
+        f = self.lcov_file({"crates/a/src/lib.rs": ({1: 1, 2: 1, 3: 1}, {"f": (1, 1), "f::{closure#0}": (2, 0)})})
+        code, _, err = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 1)
+        self.assertIn("    2  v.iter().map(|x| x * 2).sum()", err)
+
+    def test_a_function_counts_as_run_when_any_copy_of_it_ran(self):
+        # The same function in two binaries (or two instantiations): one copy
+        # ran, so the line is covered.
+        self.write("crates/a/src/lib.rs", "pub fn f() -> i32 {\n    1\n}\n")
+        self.git("commit", "-q", "-am", "change")
+        text = lcov(self.root, {"crates/a/src/lib.rs": ({1: 1, 2: 1, 3: 1}, {"_RNv1f": (1, 0)})})
+        text += lcov(self.root, {"crates/a/src/lib.rs": ({1: 0, 2: 0, 3: 0}, {"_RNv2f": (1, 2)})})
+        f = self.write("lcov.info", text)
+        code, out, err = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 0, err)
+
+    def test_uncommitted_and_untracked_changes_count(self):
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.write("crates/a/src/new.rs", "pub fn n() {}\n")
+        f = self.lcov_file(
+            {
+                "crates/a/src/lib.rs": ({1: 1, 2: 1, 3: 1, 5: 1}, {}),
+                "crates/a/src/new.rs": ({1: 0}, {"n": (1, 0)}),
+            }
+        )
+        code, _, err = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 1)
+        self.assertIn("crates/a/src/new.rs\n        1  pub fn n() {}", err)
+
+    def test_files_the_run_did_not_measure_are_named_not_failed(self):
+        self.write("crates/a/tests/it.rs", "#[test]\nfn t() {}\n")
+        self.write("crates/a/Cargo.toml", "[package]\n")
+        self.write("README.md", "changed\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "change")
+        code, out, _ = self.run_main("diff", self.lcov_file({}), "--base", "main")
+        self.assertEqual(code, 0)
+        self.assertIn("not measured (no code the native fast tier builds): crates/a/tests/it.rs", out)
+        self.assertNotIn("Cargo.toml", out)
+        self.assertNotIn("README", out)
+
+    def test_a_renamed_file_counts_only_its_changed_lines(self):
+        self.git("mv", "crates/a/src/lib.rs", "crates/a/src/math.rs")
+        self.git("commit", "-q", "-m", "rename")
+        f = self.lcov_file({"crates/a/src/math.rs": ({1: 0, 2: 0, 3: 0}, {})})
+        code, out, _ = self.run_main("diff", f, "--base", "main")
+        self.assertEqual(code, 0)
+        self.assertIn("0 changed line(s)", out)
+
+    def test_the_diff_is_against_the_merge_base_not_the_branch_tip(self):
+        # main moves on after the branch: its new line is not this change's.
+        self.git("checkout", "-q", "main")
+        self.write("crates/a/src/other.rs", "pub fn o() {}\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "main moves")
+        self.git("checkout", "-q", "change")
+        code, out, _ = self.run_main("diff", self.lcov_file({"crates/a/src/other.rs": ({1: 0}, {})}), "--base", "main")
+        self.assertEqual(code, 0)
+        self.assertIn("0 changed line(s)", out)
+
+    def test_markdown_links_each_run_of_lines(self):
+        self.write("crates/a/src/lib.rs", LIB_AFTER)
+        self.git("commit", "-q", "-am", "change")
+        self.write("crates/a/src/more.rs", "pub fn m(a: i32) -> i32 {\n    a * 2\n}\n")
+        f = self.lcov_file(
+            {
+                "crates/a/src/lib.rs": ({1: 1, 2: 1, 3: 1, 5: 0}, {}),
+                "crates/a/src/more.rs": ({1: 0, 2: 0, 3: 0}, {}),
+            }
+        )
+        md = self.write("summary.md", "")
+        self.run_main("diff", f, "--base", "main", "--markdown", md, "--link", "https://x/blob/abc/")
+        text = read(md)
+        self.assertIn("4 of the 5 changed lines the run measured (against `main`):", text)
+        self.assertIn("- [`crates/a/src/lib.rs:5`](https://x/blob/abc/crates/a/src/lib.rs#L5): `pub fn sub(a: i32, b: i32) -> i32 { a - b }`", text)
+        self.assertIn("- [`crates/a/src/more.rs:1-3`](https://x/blob/abc/crates/a/src/more.rs#L1-L3): `pub fn m(a: i32) -> i32 {`", text)
+
+
+class Parsing(unittest.TestCase):
+    def test_hunks_give_the_new_side_and_a_deletion_gives_nothing(self):
+        diff = "\n".join(
+            [
+                "diff --git a/crates/a/src/x.rs b/crates/a/src/x.rs",
+                "--- a/crates/a/src/x.rs",
+                "+++ b/crates/a/src/x.rs",
+                "@@ -3 +3 @@",
+                "@@ -10,0 +11,2 @@",
+                "@@ -20,4 +22,0 @@",
+                "diff --git a/crates/a/src/gone.rs b/crates/a/src/gone.rs",
+                "--- a/crates/a/src/gone.rs",
+                "+++ /dev/null",
+                "@@ -1,3 +0,0 @@",
+            ]
+        )
+        self.assertEqual(C.changed_lines(diff), {"crates/a/src/x.rs": {3, 11, 12}})
+
+    def test_runs_group_consecutive_lines(self):
+        self.assertEqual(C.runs([1, 2, 3, 7, 9, 10]), [(1, 3), (7, 7), (9, 10)])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
