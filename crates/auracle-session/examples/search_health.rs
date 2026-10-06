@@ -16,10 +16,12 @@
 //! cargo run -p auracle-session --example search_health --release -- --routing
 //! cargo run -p auracle-session --example search_health --release -- --climb 16
 //! cargo run -p auracle-session --example search_health --release -- --tail
+//! cargo run -p auracle-session --example search_health --release -- --hits 16
 //! ```
 //!
 //! `--tail` is measurements 4 and 3 alone — the back half of the default run,
-//! and the expensive half.
+//! and the expensive half. `--hits` is measurement 3 alone, whose per-seed
+//! rows pair two runs of a change seed for seed.
 //!
 //! `--climb` runs measurement 1 alone, at whatever seed count is asked for,
 //! and prints the **per-seed** final utilities as well as the mean. That is
@@ -1051,7 +1053,11 @@ fn tail_report(seeds: &[u64]) {
         100.0 * kept as f64 / chances.max(1) as f64
     );
     println!();
+    hits_report(seeds);
+}
 
+/// Measurement 3, the locked `refine_from` hit rate, with each seed's count.
+fn hits_report(seeds: &[u64]) {
     println!("== 3. locked refine_from hit rate ==");
     println!("(a third of each seed's knobs locked at random; a hit is a new patch that beats the evictee)");
     println!(
@@ -1109,6 +1115,7 @@ fn main() {
     let routing_only = args.iter().any(|a| a == "--routing");
     let climb_only = args.iter().any(|a| a == "--climb");
     let tail_only = args.iter().any(|a| a == "--tail");
+    let hits_only = args.iter().any(|a| a == "--hits");
     let islands_only = args.iter().any(|a| a == "--islands");
     KEEP_BEST.store(args.iter().any(|a| a == "--keep-best"), Ordering::Relaxed);
     if KEEP_BEST.load(Ordering::Relaxed) {
@@ -1134,6 +1141,10 @@ fn main() {
     }
     if tail_only {
         tail_report(&seeds);
+        return;
+    }
+    if hits_only {
+        hits_report(&seeds);
         return;
     }
     if islands_only {
