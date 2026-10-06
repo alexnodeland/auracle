@@ -93,7 +93,8 @@ contributor guide; this file does not repeat it.
    merges; the operator pushes it and opens the PR in the merge queue (a
    human contributor pushes their own branch). Every branch an agent builds
    is reviewed before its PR, and a PR merges through Mergify's queue: its
-   own `CI` is a fast lane that, with `PR checks`, puts it in the queue, and
+   own `CI` is a fast lane that, with `PR checks` and *Mutants* (no
+   surviving mutant in the Rust it changed), puts it in the queue, and
    the queue merges it once the full gate is green on its batch, on top of
    `main` (`main` requires `CI` of everyone;
    [ADR-021](docs/decisions/021-merges-go-through-mergifys-queue.md),
@@ -121,7 +122,7 @@ contributor guide; this file does not repeat it.
 | The site | `make site && make site-check` (needs `make site-tools` once) |
 | A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
 | A PR's CI, until it finishes | `gh run list --workflow ci.yml --branch <branch>`, then `gh run view <id> --json jobs` (wait on the state, never a fixed time) |
-| A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane) and `PR checks` are green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
+| A merge | Open the PR with `--label queue` and comment `@mergifyio queue` (the label alone once Merge Protections is on); it enters the merge queue once its own `CI` (the fast lane), `PR checks` and *Mutants* are green, and the queue merges it once the full gate is green on its batch, on top of `main` ([`docs/process.md`](docs/process.md#ci-and-merging)) |
 
 The `check` skill picks the right subset for what changed.
 

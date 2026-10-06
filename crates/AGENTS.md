@@ -53,9 +53,10 @@ each crate's own `AGENTS.md` has its rules.
 - **Every line you add or change is covered** by a fast-tier test that checks
   what it does, and no crate falls below its coverage floor
   ([Coverage](#coverage)). `make coverage` says so before CI does.
-- **No mutant of the code you change survives**, or its survival is
-  answered ([Mutation testing](#mutation-testing)). `make mutants DIFF=1`
-  says so before review.
+- **No mutant of the code you change survives**, unless it is excluded
+  as equivalent with its reason ([Mutation testing](#mutation-testing)).
+  `make mutants DIFF=1` says so before review; the PR's *Mutants* check
+  keeps it out of the merge queue until it is so.
 
 ## Writing a test
 
@@ -273,30 +274,34 @@ every test of `auracle-taste` still passed. It is one of three things:
    that can show it ([Coverage](#coverage)'s standard).
 2. **A change no behavior can show** (an equivalent mutant): a `<` that
    becomes `<=` where the two sides are never equal, a value every caller
-   overwrites. Say why in the PR. If it is permanent, exclude it in
-   `.cargo/mutants.toml`'s `exclude_re`, by file, function and change (not
-   by line, which moves), with the reason above it. That is rare, and
-   review sees each one.
+   overwrites. Exclude it in `.cargo/mutants.toml`'s `exclude_re`, by
+   file, function and change (not by line, which moves), with the reason
+   above it, and say why in the PR: the PR's *Mutants* check stays red
+   until it is excluded. That is rare, and review sees each one.
 3. **Code that doesn't matter.** Remove it. If it guards a case no input
    reaches, let a type or a `const` assertion rule the case out, as
    `standardize.rs` does for `winsor_k`'s bound.
 
-**Review treats a survivor in changed code as a finding**, as it does an
-uncovered changed line: killed, or answered with why it can't be. The
-crates didn't start clean: on `main` at `cf61f48`, with taste's PR (#198)
-merged, 87 of `auracle-taste`'s 619 mutants survived (506 were caught, 26
-unviable). Taste's and features' PRs merged before this check existed, so
-a follow-up issue took their survivors (#207). Taste's are done: each was
-killed by a test or went with code that couldn't matter, except one
-equivalent mutant, which is excluded. Features' are still to be measured;
-the weekly run finds them, and #181 tracks them with the other crates'.
-A crate PR's own Mutants job kills or answers what it changes. The PR job
-becomes required once they are done.
+**A survivor in a PR's changed code keeps the PR out of the merge queue.**
+The PR's *Mutants* check is required by Mergify's queue conditions
+(`.mergify.yml`), beside `CI` and `PR checks` (#181), so each survivor is
+killed (1), excluded with its reason (2) or removed with its code (3) before
+the PR can merge. Review treats one as a finding, as it does an uncovered
+changed line. The crates didn't start clean: on `main` at `cf61f48`, with
+taste's PR (#198) merged, 87 of `auracle-taste`'s 619 mutants survived (506
+were caught, 26 unviable). Taste's and features' PRs merged before this
+check existed, so a follow-up issue took their survivors (#207). Taste's are
+done: each was killed by a test or went with code that couldn't matter,
+except one equivalent mutant, which is excluded. Features' are still to be
+measured; the weekly run finds them, with the other crates', and files them
+on *Mutants that survive*. A crate PR's own *Mutants* check holds the code
+it changes.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
-part of neither `CI` lane, the PR's fast lane or the queue's full gate, and
-is not required (how long each part takes, and why it is
-shaped so: `docs/architecture/testing.md`
+part of neither `CI` lane, the PR's fast lane or the queue's full gate; its
+PR job's check, *Mutants in the changed code*, is required by Mergify's
+queue conditions, not by `main`'s ruleset (how long each part takes, and
+why it is shaped so: `docs/architecture/testing.md`
 [§ Mutants](../docs/architecture/testing.md#mutants)):
 
 - **On every PR:** the mutants in the changed code (`make mutants
@@ -309,9 +314,20 @@ shaped so: `docs/architecture/testing.md`
   taste or grammar finishes; one that changes much of session, features or
   wasm is judged in part, and the local `make mutants DIFF=1` is the
   complete run. The run's summary lists each survivor (its line, linked,
-  its function and its change) and each timeout, the PR's changed files
-  mark survivors on their lines (the first ten), and the job is red when
-  one survived.
+  its function and its change) and each timeout, and the PR's changed
+  files mark survivors on their lines (the first ten).
+- **What holds a PR:** the job is red when a mutant of the changed code
+  survived, or when the run broke (the unmutated tests failed, or
+  cargo-mutants did), and red keeps the PR out of the merge queue. Kill the
+  survivor with a test that asserts what the code does, or, when no behavior
+  can show it, exclude it in `.cargo/mutants.toml` with its reason (*Reading
+  a survivor*, above); push, and the job runs again. A timeout is reported
+  and passes. A run the cap stopped before it judged a mutant passes, with a
+  warning, and one it stopped after passes unless a mutant it judged
+  survived: no PR is held by time alone, and for the mutants the cap left,
+  the local `make mutants DIFF=1` is the complete run that review reads. A
+  crate PR enters the queue when the job ends, up to 40 minutes (its limit)
+  after it starts, which is often after its fast lane.
 - **Weekly, and by hand:** one part of the workspace. The whole does not fit
   in a week's runners, so each crate's mutants are cut into shards (the
   `plan` job's `PLAN`), four run each week, two runners at a time, and the
