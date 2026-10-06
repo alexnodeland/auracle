@@ -4442,6 +4442,10 @@ export function createPerform(host) {
     // Why PERFORM is playing a knob away from the patch (the controls on it,
     // "Wander", "Back"…), or null: what PATCH draws a ghost for, and says.
     movedOn,
+    // Where PERFORM draws the sound you're playing: its face in the well
+    // (main.js `faceBoxOf`, the box and the face's render key), for the face
+    // carried between the levels (shell.js). Null while PERFORM is hidden.
+    anchor: () => (state.visible && host.faceBox ? host.faceBox(heldFace) : null),
     // PATCH turned a knob; PATCH's knob writes landed on the bench.
     knobSet,
     followTree,

@@ -1375,6 +1375,19 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
   min-height: 0;
   overflow: hidden;
 }
+/* One level is `.on` (shell.js). During a move the one you leave stays on
+   until it has faded (`.leaving`, inert), and the two overlap, each scaled
+   or slid by the move (levels.js `MORPH`). */
+.view:not(.on) { display: none !important; }
+.view.leaving { pointer-events: none; }
+/* A pinch on a touch screen is a move between the levels (shell.js), not
+   the page's zoom; a finger still scrolls what scrolls. */
+.stage { touch-action: pan-x pan-y; }
+/* The face carried between the levels, on one canvas over the page, drawn
+   only while it flies (shell.js `overlay`): over the bank and the levels,
+   under the toasts (30), the menus and every dialog. */
+.zoom-face { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 29; display: none; }
+.zoom-face.on { display: block; }
 /* ---- the levels: where you are (shell.js) ----
    A cross at the stage's right edge, to the prototype: out to in, LEARNING,
    TASTE, PERFORM and PATCH, with EVOLVE branching left of PERFORM. The
@@ -1413,6 +1426,27 @@ body.model-view .preset-item:not(:hover) .pb-in { right: var(--s1); background: 
 .rail-mid { display: flex; align-items: center; }
 .rail-stop.aside { width: 34px; height: 34px; }
 .rail-stop.aside svg { width: 15px; height: 15px; }
+/* The puck: a light that travels from the stop you left to the one you
+   reach (shell.js); while it does, the stop you reach waits unlit. */
+.rail-puck {
+  position: absolute;
+  left: -3.5px;
+  top: -3.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--phos-a);
+  box-shadow: 0 0 10px var(--phos-a), 0 0 2px var(--phos-a-35);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.rail.travelling .rail-stop[aria-current="location"] {
+  color: var(--silk-mute);
+  border-color: var(--plate-edge);
+  background: var(--panel);
+  box-shadow: none;
+}
 .rail-line { width: 1px; height: 26px; margin-right: calc(var(--s4) + 3.5px); background: var(--plate-edge); }
 .rail-branch { width: 12px; height: 1px; background: var(--plate-edge); }
 .rail-hint { font-family: var(--font-mono); font-size: var(--t-label); color: var(--silk-dim); margin: var(--s1) var(--s3) var(--s1) 0; }

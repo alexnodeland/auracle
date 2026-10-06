@@ -312,10 +312,10 @@
       <!-- ------------- PERFORM: the sound under your hands ------------- -->
       <!-- Built by perform.js. Nothing in it opens a modal: a player in the
            middle of a phrase cannot answer a dialog. -->
-      <section id="view-perform" class="view perform hidden" aria-label="Perform"></section>
+      <section id="view-perform" class="view perform" aria-label="Perform"></section>
 
       <!-- ------------- PATCH: what the sound is made of ------------- -->
-      <section id="view-patch" class="view hidden" aria-label="Patch">
+      <section id="view-patch" class="view" aria-label="Patch">
         <!-- The head, to the specimen (Plan-008 C2a, `z-desk-patch.png`):
              the cap (PATCH, and the family where the engine has one), the
              name at the display size, and the subtitle the rack counts
@@ -605,7 +605,7 @@
       </section>
 
       <!-- ------------- EVOLVE: duels + generations ------------- -->
-      <section id="view-evolve" class="view hidden" aria-label="Evolve">
+      <section id="view-evolve" class="view" aria-label="Evolve">
         <!-- To the specimen (Plan-008 C1, `z-desk-evolve.png`): the head (the
              level's cap with its generations, the question, the pips and the
              teaching line), a small TASTE map at its right, two cards each
@@ -739,7 +739,7 @@
            The map (taste.js): every sound in the pool where the engine's map
            puts it, the model's liking an amber halo behind it. A pick draws
            an arrow from the sound passed to the sound picked. -->
-      <section id="view-taste" class="view hidden" aria-label="Taste">
+      <section id="view-taste" class="view" aria-label="Taste">
         <div class="ts">
           <header class="ts-head">
             <span class="lv-eyebrow">taste</span>
@@ -770,7 +770,7 @@
       <!-- ------------- LEARNING: the model room -------------
            What it weighs, which way liking rises on the map, its forecasts,
            the data as JSON, and the math (taste.js). -->
-      <section id="view-learning" class="view hidden" aria-label="Learning">
+      <section id="view-learning" class="view" aria-label="Learning">
         <div class="md">
           <header class="md-head">
             <span class="lv-eyebrow">learning</span>
@@ -821,7 +821,9 @@
            stop is lit (`aria-current=location`); a stop's name and key are its
            tooltip (`title`) and its name, line and key a screen reader's
            (`aria-label`, `aria-keyshortcuts`), and nothing pops up over the
-           stage; a click goes there, and so do the level keys (ADR-017). -->
+           stage; a click goes there, and so do the level keys (ADR-017).
+           On a move a light (the puck, shell.js) travels from the stop you left
+           to the one you reach. -->
       <nav class="rail" id="rail" aria-label="Where you are">
         <span class="rail-hint" aria-hidden="true">out</span>
         <button class="rail-stop" type="button" data-level="learning" aria-label="Learning: how it learns your taste" aria-keyshortcuts="Alt+5" title="Learning · ⌥5"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/></svg></button>

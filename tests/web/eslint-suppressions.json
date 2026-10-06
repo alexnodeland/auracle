@@ -454,9 +454,6 @@
   "shell_levels.spec.js": {
     "auracle/no-read-after-action": {
       "count": 2
-    },
-    "playwright/prefer-to-have-count": {
-      "count": 1
     }
   },
   "smoke.spec.js": {
