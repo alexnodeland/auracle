@@ -77,7 +77,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="$(RUSTFLAGS) -C link-arg=-zstack-size=$(WASM_STACK)
         browser-fast browser-changed browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
-        wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings serve doc bundle clean \
+        wasm wasm-dev pkg-reuse wasm-prebuilt wasm-stamp perform-wirings preset-faces serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -694,7 +694,8 @@ clippy: lint
 # `make revalidate` on both sides of the change, and the paired table goes in
 # the PR.** These targets exist so that is a command rather than a memory. A φ
 # change also re-measures the preset wirings the app ships
-# (`make perform-wirings`); `make test` fails until it has.
+# (`make perform-wirings`) and renders its presets' faces again
+# (`make preset-faces`); `make test` fails until it has.
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
 # always-on floors under all of this and they DO run in `make check`, and in
@@ -747,7 +748,7 @@ offer-census:
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
 	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n'
-	@printf '  a φ change also owes `make perform-wirings` (the shipped preset wirings)\n\n'
+	@printf '  a φ change also owes `make perform-wirings` and `make preset-faces` (the shipped preset wirings and faces)\n\n'
 
 # The engine's two builds, and what pkg/build.json says of them
 # (scripts/wasm_pkg.py): which build it is, and what it was made from (a
@@ -820,6 +821,16 @@ wasm-stamp:
 ## Owed by every φ change. THREADS=n to use n cores.
 perform-wirings:
 	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_wirings --release -- $(or $(THREADS),2) apps/web/perform-wirings.json
+
+## preset-faces: render every preset's face natively, the way the worker
+## renders a preset's, into apps/web/preset-faces.json (one render per preset,
+## about 15 s on one core; commit the file). The page draws a preset's face
+## from it without asking the engine. `make test` fails while it is stale: a
+## preset, the render namespace, the reference clip or the face's encoding
+## changed, or a face renders differently today. Owed by every φ change.
+## One thread unless THREADS=n.
+preset-faces:
+	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_faces --release -- $(or $(THREADS),1) apps/web/preset-faces.json
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

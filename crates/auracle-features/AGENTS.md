@@ -34,7 +34,11 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
   4. runs `make perform-wirings` and commits `apps/web/perform-wirings.json`:
      the preset wirings the app ships are measured in φ, and
      `shipped_preset_wirings_measure_the_same_today` fails until they are
-     re-measured;
+     re-measured; and runs `make preset-faces` and commits
+     `apps/web/preset-faces.json`, the presets' faces the app ships, which
+     `shipped_preset_faces_are_current` (a new `RENDER_EPOCH`) or
+     `shipped_preset_faces_render_the_same_today` (a render that moved)
+     fails on until they are rendered again;
   5. runs `examples/file_phi.rs` and updates `FILE_MASKED` in `file.rs` to
      its verdict: what a recording measures is a measurement of φ too, and
      `the_mask_is_what_survives_a_recording` fails until the mask agrees.

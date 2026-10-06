@@ -170,7 +170,9 @@ repository from the `origin` remote, `GH_REPO` to override; their tests in
   own checkout (a worktree under `.claude/worktrees/` included), saying what
   writes each: `apps/web/pkg/` (`make wasm`), `site/` (`make site`), `target/`
   (cargo), `www/docs/src/img/` (a copy of the landing page's screenshots) and
-  `www/landing/assets/film/` (`publish.py`).
+  `www/landing/assets/film/` (`publish.py`), and to the presets' two
+  generated files, `apps/web/perform-wirings.json` (`make perform-wirings`)
+  and `apps/web/preset-faces.json` (`make preset-faces`).
 - **After an edit** (`post-edit-check.sh`, on Edit, Write and MultiEdit):
   `rustfmt` on a `.rs` file; `node --check` on `.js`, `.mjs` and `.cjs` (as an
   ES module under `apps/web/`, which also catches a backtick inside

@@ -22,5 +22,9 @@ case "$rel" in
     echo "www/docs/src/img/ is a build-time copy of www/landing/assets/screens/. Edit or recapture the source (see www/SCREENSHOTS.md)." >&2; exit 2 ;;
   www/landing/assets/film/*)
     echo "www/landing/assets/film/ is written by www/video/tools/publish.py. Re-render or re-publish the film instead." >&2; exit 2 ;;
+  apps/web/perform-wirings.json)
+    echo "apps/web/perform-wirings.json is measured natively by \`make perform-wirings\` (crates/auracle-wasm/examples/preset_wirings.rs). Change what it measures, then run it." >&2; exit 2 ;;
+  apps/web/preset-faces.json)
+    echo "apps/web/preset-faces.json is rendered natively by \`make preset-faces\` (crates/auracle-wasm/examples/preset_faces.rs). Change what it renders, then run it." >&2; exit 2 ;;
 esac
 exit 0
