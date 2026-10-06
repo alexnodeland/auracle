@@ -351,6 +351,35 @@ class TheBump(unittest.TestCase):
             self.assertIn("at 0.3.0 already", out)
 
 
+class TheManifests(unittest.TestCase):
+    """Read line by line, as Cargo writes them: a TOML parser is in Python's
+    library from 3.11 only, and `make dev-check` may run on macOS's 3.9."""
+
+    def test_a_key_is_read_in_its_own_table_only(self):
+        text = (
+            '[workspace]\nmembers = ["crates/a", "crates/b"] # two\n\n'
+            '[workspace.package] # the shared keys\nrust-version = "1.87"\nversion = "0.2.0"  # the workspace\'s\n\n'
+            '[workspace.dependencies]\nserde = { version = "1" }\n\n[profile.release]\nversion = "9.9.9"\n'
+        )
+        self.assertEqual(R.strings(text, "workspace", "members"), ["crates/a", "crates/b"])
+        self.assertEqual(R.string(text, "workspace.package", "version"), (5, "0.2.0"))
+        self.assertEqual(R.workspace_version(text), "0.2.0")
+        self.assertEqual(R.workspace_version(text.replace('version = "0.2.0"', 'version.workspace = true')), "")
+
+    def test_an_array_on_several_lines_leaves_its_comments_out(self):
+        text = '[workspace]\nmembers = [\n    "crates/a",\n    # "crates/old",\n    "crates/b", # the last\n]\nexclude = ["x"]\n'
+        self.assertEqual(R.strings(text, "workspace", "members"), ["crates/a", "crates/b"])
+        self.assertEqual(R.strings(text, "workspace", "exclude"), ["x"])
+        self.assertEqual(R.strings(text, "workspace.package", "members"), [])
+
+    def test_a_crate_with_no_name_is_refused(self):
+        with Tree() as t:
+            t.write("crates/auracle-b/Cargo.toml", CRATE_B.replace('name = "auracle-b"\n', ""))
+            with self.assertRaisesRegex(R.Refused, r"^crates/auracle-b/Cargo.toml: no `name` under `\[package\]`$"):
+                R.bump(t.root, "0.3.0")
+            self.assertEqual(R.verify(t.root, "v0.2.0"), ["crates/auracle-b/Cargo.toml: no `name` under `[package]`"])
+
+
 # ─── what a tag owes ─────────────────────────────────────────────────────────
 
 

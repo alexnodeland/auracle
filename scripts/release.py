@@ -54,8 +54,10 @@ the tag before, by type, each with its author, in place of GitHub's
 generated list. The titles come from git; only the authors are asked of the
 API (`gh api`, GET), a page of a hundred closed PRs at a time.
 
-Python 3 standard library only. `make dev-check` runs its tests
-(scripts/test_release.py), with no network.
+Python 3 standard library only, from 3.9 (macOS's own `python3`, which
+`make dev-check` may run on): the manifests are read line by line, as Cargo
+writes them, since a TOML parser is in the library from 3.11 only.
+`make dev-check` runs its tests (scripts/test_release.py), with no network.
 """
 
 from __future__ import annotations
@@ -69,7 +71,6 @@ import re
 import subprocess
 import sys
 import time
-import tomllib
 from typing import Any, Callable, Iterable, NamedTuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -273,14 +274,64 @@ class Place(NamedTuple):
     version: str  # as written there
 
 
+def table(text: str, name: str) -> list[tuple[int, str]]:
+    """The lines of a manifest's `[name]` table, each with its 0-based
+    number, up to the next header."""
+    out = []
+    inside = False
+    for i, line in enumerate(text.split("\n")):
+        if line.startswith("["):
+            inside = line.split("#", 1)[0].strip() == f"[{name}]"
+        elif inside:
+            out.append((i, line))
+    return out
+
+
+def string(text: str, name: str, key: str) -> tuple[int, str] | None:
+    """`key = "…"` in the manifest's `[name]` table: its line, and the
+    string. None without one."""
+    pattern = re.compile(rf'^\s*{re.escape(key)}\s*=\s*"([^"]*)"')
+    for i, line in table(text, name):
+        if m := pattern.match(line):
+            return i, m.group(1)
+    return None
+
+
+def strings(text: str, name: str, key: str) -> list[str]:
+    """`key = ["…", …]` in the manifest's `[name]` table, on one line or
+    several, comments left out. [] without one."""
+    lines = table(text, name)
+    start = re.compile(rf"^\s*{re.escape(key)}\s*=\s*\[")
+    for k, (_, line) in enumerate(lines):
+        m = start.match(line)
+        if not m:
+            continue
+        held = []
+        for ln in [line[m.end() :]] + [ln for _, ln in lines[k + 1 :]]:
+            ln = ln.split("#", 1)[0]
+            held.append(ln.split("]", 1)[0])
+            if "]" in ln:
+                break
+        return re.findall(r'"([^"]*)"', " ".join(held))
+    return []
+
+
+def workspace_version(text: str) -> str:
+    """Cargo.toml's `[workspace.package] version`, or "" without one."""
+    found = string(text, "workspace.package", "version")
+    return found[1] if found else ""
+
+
 def members(root: pathlib.Path) -> dict[str, str]:
-    """Each workspace crate's name, and its manifest's path."""
-    data = tomllib.loads((root / CARGO).read_text(encoding="utf-8"))
+    """Each workspace crate's name, and its manifest's path. Raises Refused
+    for a manifest with no `[package] name`."""
     out = {}
-    for member in data.get("workspace", {}).get("members", []):
+    for member in strings((root / CARGO).read_text(encoding="utf-8"), "workspace", "members"):
         rel = f"{member}/{CARGO}"
-        name = tomllib.loads((root / rel).read_text(encoding="utf-8"))["package"]["name"]
-        out[name] = rel
+        found = string((root / rel).read_text(encoding="utf-8"), "package", "name")
+        if found is None:
+            raise Refused(f"{rel}: no `name` under `[package]`")
+        out[found[1]] = rel
     return out
 
 
@@ -297,16 +348,10 @@ def places(root: pathlib.Path) -> list[Place]:
     not the workspace's). Raises Refused when the workspace's own is
     missing."""
     crates = members(root)
-    found: list[Place] = []
-    lines = (root / CARGO).read_text(encoding="utf-8").split("\n")
-    section = ""
-    for i, line in enumerate(lines):
-        if line.startswith("["):
-            section = line.strip()
-        elif section == "[workspace.package]" and (m := VERSION_LINE.match(line)):
-            found.append(Place(CARGO, i, m.group(2)))
-    if not found:
+    own = string((root / CARGO).read_text(encoding="utf-8"), "workspace.package", "version")
+    if own is None:
         raise Refused(f"{CARGO}: no `version` under `[workspace.package]`")
+    found = [Place(CARGO, *own)]
     for rel in [CARGO, *crates.values()]:
         for i, line in enumerate((root / rel).read_text(encoding="utf-8").split("\n")):
             m = PATH_DEP.match(line)
@@ -384,10 +429,12 @@ def verify(root: pathlib.Path, tag: str) -> list[str]:
         return [f"`{tag}` is not a release's tag: vX.Y.Z"]
     version = m.group(1)
     wrong = []
+    found = []
     try:
         found = places(root)
-    except (Refused, OSError, tomllib.TOMLDecodeError, KeyError) as e:
-        found = []
+    except Refused as e:
+        wrong.append(str(e))
+    except OSError as e:
         wrong.append(f"{CARGO}: {e}")
     for p in found:
         if p.version != version:
@@ -607,8 +654,7 @@ def plan_at(root: pathlib.Path, ref: str | None, asked: str) -> Plan:
     tags = all_tags(root)
     text = show(root, ref, changelog.CHANGELOG)
     pending = pending_section(text, lambda v: f"v{v}" in tags)
-    cargo = tomllib.loads(show(root, ref, CARGO)).get("workspace", {}).get("package", {}).get("version", "")
-    return decide(previous, cargo, pending, titles, asked)
+    return decide(previous, workspace_version(show(root, ref, CARGO)), pending, titles, asked)
 
 
 def describe(plan: Plan) -> str:
