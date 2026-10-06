@@ -307,7 +307,7 @@ jobs:
   # test, how many of its runs failed and what the first said, and the run.
   # Nothing here is a verdict on main.
   file-quarantine:
-    name: Say it on #${{ matrix.issue }}
+    name: "Say it on #${{ matrix.issue }}"
     needs: report-quarantine
     if: >-
       always() && github.ref == 'refs/heads/main' &&
