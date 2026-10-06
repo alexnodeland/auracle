@@ -272,7 +272,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
   with `main`: the queue tests on top of `main` itself. To merge anything
   else, the maintainer edits the ruleset.
 - **Every PR also runs *Mutants*,** a workflow of its own, part of neither
-  lane's `CI`. Its check, *Mutants in the changed code*, is required by
+  lane's `CI`. Its check, `Mutants in the changed code`, is required by
   Mergify's queue conditions (not by the ruleset): a PR enters the queue
   only once it is green. On a PR that changes a crate it tests the changed
   code, for at most 25 minutes; its summary lists the mutants of it that no
@@ -319,7 +319,7 @@ in two lanes ([ADR-023](decisions/023-the-gate-runs-in-the-queue.md)):
     on. Once it is, the label alone queues a PR, and the comment is only for
     putting one back.
   - It enters the queue once its fast lane's `CI`, its `PR checks` and its
-    *Mutants* (*Mutants in the changed code*) are green. All three are
+    *Mutants* (`Mutants in the changed code`) are green. All three are
     required of every PR, in either of `.mergify.yml`'s queues. A crate
     PR's *Mutants* run takes up to 40 minutes, so it often enters well
     after its fast lane is green.

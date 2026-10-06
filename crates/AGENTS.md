@@ -299,7 +299,7 @@ it changes.
 
 **In CI**, the *Mutants* workflow (`.github/workflows/mutants.yml`), which is
 part of neither `CI` lane, the PR's fast lane or the queue's full gate; its
-PR job's check, *Mutants in the changed code*, is required by Mergify's
+PR job's check, `Mutants in the changed code`, is required by Mergify's
 queue conditions, not by `main`'s ruleset (how long each part takes, and
 why it is shaped so: `docs/architecture/testing.md`
 [§ Mutants](../docs/architecture/testing.md#mutants)):

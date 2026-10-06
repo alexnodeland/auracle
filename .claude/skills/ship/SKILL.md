@@ -144,7 +144,7 @@ only once the maintainer switches on Merge Protections in Mergify's
 dashboard. Put the label on anyway; once Merge Protections is on, the label
 alone queues the PR and the comment is only for putting one back. The PR
 enters Mergify's merge queue once its own `CI`, the fast lane, its
-`PR checks` and its *Mutants* (*Mutants in the changed code*) are green;
+`PR checks` and its *Mutants* (`Mutants in the changed code`) are green;
 the queue runs the full gate on its batch and merges it (`process.md` § CI
 and merging). The title becomes the squash commit's subject,
 `<title> (#<n>)`, so it starts with a type as a commit does
