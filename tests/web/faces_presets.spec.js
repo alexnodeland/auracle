@@ -8,7 +8,8 @@
 //   preset, and the bytes main was handed for the row are those bytes (not
 //   pixels).
 // - Scrolling the list asks for the rows that came into view, and each gets
-//   its face; none of them had one before the scroll.
+//   its face; none of them had one before the scroll, and no name moves for
+//   it.
 // - A sound opened while preset faces wait to render is not kept waiting
 //   behind them: each of the open's requests waits at most for the face
 //   render already running when it arrived, and the faces go on landing
@@ -28,7 +29,8 @@ const presetsInView = (page) =>
       })
       .map((r) => {
         const slot = r.querySelector(".face-slot");
-        return { index: Number(r.dataset.index), face: !!slot.querySelector("img.face"), key: (slot.dataset.drawn || "").split("|")[0] };
+        const nameX = Math.round(r.querySelector(".bi-name").getBoundingClientRect().left - r.getBoundingClientRect().left);
+        return { index: Number(r.dataset.index), face: !!slot.querySelector("img.face"), key: (slot.dataset.drawn || "").split("|")[0], nameX };
       });
   });
 
@@ -89,7 +91,11 @@ test("scrolling the presets renders the rows that come into view", async ({ page
         const b = r.getBoundingClientRect();
         return b.bottom > box.top && b.top < box.bottom;
       })
-      .map((r) => ({ index: Number(r.dataset.index), face: !!r.querySelector(".face-slot img.face") }));
+      .map((r) => ({
+        index: Number(r.dataset.index),
+        face: !!r.querySelector(".face-slot img.face"),
+        nameX: Math.round(r.querySelector(".bi-name").getBoundingClientRect().left - r.getBoundingClientRect().left),
+      }));
   });
   expect(revealed.length).toBeGreaterThan(3);
   expect(revealed.filter((r) => r.face), "no row at the foot had a face before it came into view").toEqual([]);
@@ -100,10 +106,10 @@ test("scrolling the presets renders the rows that come into view", async ({ page
       return revealed.every((r) => asked.has(r.index));
     }, { message: "a faces request names every row that came into view" })
     .toBe(true);
-  // …and each drawn as its face lands.
+  // …and each drawn as its face lands, its name where it was without it.
   await allInViewDrawn(app, page);
   const now = await presetsInView(page);
-  expect(now.map((r) => r.index)).toEqual(revealed.map((r) => r.index));
+  expect(now.map((r) => [r.index, r.nameX]), "the same rows, each name at the x it had before its face").toEqual(revealed.map((r) => [r.index, r.nameX]));
 });
 
 test("a sound opened while preset faces wait to render is not kept waiting behind them", async ({ page, app }) => {

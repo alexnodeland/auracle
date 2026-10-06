@@ -1266,12 +1266,12 @@ body.model-view .bank-item:not(:hover):not(.rating) .bi-acts { visibility: hidde
   pointer-events: none;
 }
 /* While ▶ is in sight (on approach, with the focus in the row, and while it
-   plays or waits for its sound) IN POOL stands clear of it, left of the ▶'s
-   strip, on a ground that fades in from the row, so both read whole: hearing
-   a preset is what put it in the pool, and its ▶ (now ■) stays up while it
-   plays. The name keeps its x; its end passes under the word, as it passes
-   under a pool row's actions. The selectors are the ones that show the
-   actions (`.bank-item .bi-acts`, above). */
+   plays) IN POOL stands clear of it, left of the ▶'s strip, on a ground that
+   fades in from the row, so both read whole: hearing a preset is what put it
+   in the pool, and its ▶ (■ while it sounds) stays up while it plays. The
+   name keeps its x; its end passes under the word, as it passes under a pool
+   row's actions. The selectors are the ones that show the actions
+   (`.bank-item .bi-acts`, above). */
 .preset-item:is(:hover, :focus-within, .kbd, :has(.bi-hear.playing), :has(.bi-hear.pending)) .pb-in {
   right: calc(var(--s1) + 24px + var(--s4)); /* the ▶ (24 px) and its strip's fade */
   background: linear-gradient(to right, transparent, var(--row-ground) var(--s4));
