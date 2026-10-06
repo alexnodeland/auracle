@@ -501,6 +501,9 @@ fn every_kind_bumps_exactly_one_counter() {
             s.n_mix + s.n_ringmod + s.n_comp + s.n_duck + s.n_gate + s.n_vocoder + s.n_track;
         assert_eq!(leaves - binaries, 1.0, "{kind:?}: {s:?}");
         assert!(s.to_vec().iter().all(|v| v.is_finite()), "{kind:?}");
+        for (name, v) in StructFeatures::UNIT_NAMES.iter().zip(s.unit_coordinates()) {
+            assert!((0.0..=1.0).contains(&v), "{kind:?}: {name} = {v}");
+        }
     }
 }
 
@@ -550,5 +553,8 @@ fn every_modulation_kind_counts_as_what_it_is() {
         let leaves = s.n_lfo + s.n_env + s.n_rand + s.n_steps + s.n_follow + s.n_euclid;
         let combiners = s.n_min + s.n_max + s.n_and + s.n_or + s.n_xor + s.n_switch;
         assert_eq!(leaves - combiners, filled, "{kind:?}: {s:?}");
+        for (name, v) in StructFeatures::UNIT_NAMES.iter().zip(s.unit_coordinates()) {
+            assert!((0.0..=1.0).contains(&v), "{kind:?}: {name} = {v}");
+        }
     }
 }

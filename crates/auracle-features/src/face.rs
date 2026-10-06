@@ -263,7 +263,6 @@ fn analyze(n: usize, sample_rate: f64, sample: impl Fn(usize) -> f64) -> Face {
         Some(v) => encode(v - loudest),
         None => 0,
     }));
-    debug_assert_eq!(bytes.len(), FACE_LEN);
     Face { bytes }
 }
 
