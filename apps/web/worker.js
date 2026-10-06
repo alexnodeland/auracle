@@ -157,7 +157,11 @@ const PLAYABLE_AT = 8;
 // "teach it" waited 0.8 s, behind the warm-start card being measured and two
 // more (#221). So a yield that took longer than a turn yields again, its
 // timer set behind what arrived meanwhile; twice at most, so a throttled
-// timer cannot hold a flow up.
+// timer cannot hold a flow up. The clock cannot tell a timer that was only
+// late (a loaded machine, a browser slowing a worker's timers) from one
+// another flow's call held up, so a late timer is waited out up to three
+// times. Telling them apart would take a count of the calls each flow
+// makes, and every flow calls the engine bare.
 const YIELD_TURN_MS = 20;
 async function yieldToQueue() {
   for (let k = 0; k < 3; k++) {

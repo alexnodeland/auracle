@@ -169,8 +169,12 @@ work each, a message waited for both loops' work, and *teach it* waited 0.8 s
 behind three warm-start cards (#221). So a yield that took longer than a turn
 (`YIELD_TURN_MS`, 20 ms) yields again, its timer set behind what arrived
 meanwhile, at most twice, so a throttled timer cannot hold a flow up
-(`apps/web/tests/worker-lanes.test.mjs`; with two loops measuring cards,
-`tests/worker/warm_start.test.mjs`).
+(`apps/web/tests/worker-lanes.test.mjs`, which fails with a single yield).
+The rule reads the clock only: a timer that was merely late (a loaded
+machine, or a browser that slows a worker's timers) looks the same as one
+another flow's call held up, and is waited out up to three times. Telling
+them apart would take a count of the calls every flow makes, and the engine
+is called bare from each of them.
 
 So a `now` request waits for the one call in progress when it arrives, then
 for the `now` requests queued ahead of it (first come, first served), and
