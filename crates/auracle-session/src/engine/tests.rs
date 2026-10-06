@@ -487,9 +487,16 @@ fn the_memo_does_not_change_the_pool() {
 /// fit — with a ground truth that lives *only* on the two band
 /// coordinates, so every bit of recovered correlation had to come through
 /// them.
+///
+/// **Gated on the means over five seeds**, as
+/// [`closed_loop_learns_synthetic_taste`] is, and for its reason: one run
+/// is one draw over the pool, the answers and the chain. Its per-seed
+/// floors used to be the gate, set under three seeds' values, and they
+/// were a lottery: over seeds 0xE05 and 0x1–0xF, 4 of 16 fell under one,
+/// with the octave prior of #62 and without it alike.
 #[test]
 fn closed_loop_learns_motion_rate() {
-    const SEEDS: [u64; 3] = [0xE05, 0x1, 0x2];
+    const SEEDS: [u64; 5] = [0xE05, 0x1, 0x2, 0x3, 0x4];
     fn user() -> SyntheticUser {
         let names = Features::phi_names();
         let mut theta = vec![0.0; names.len()];
@@ -557,23 +564,37 @@ fn closed_loop_learns_motion_rate() {
     for (seed, (r, lift, spread)) in &rows {
         println!("motion seed {seed:#x}: r = {r:.3}  top-5 lift = {lift:+.2}σ  truth spread = {spread:.3}");
     }
-    for (seed, (r, lift, _)) in &rows {
-        assert!(*r > MOTION_R_FLOOR, "seed {seed:#x}: r = {r:.3}");
+    for (seed, (r, _, _)) in &rows {
         assert!(
-            *lift > MOTION_LIFT_FLOOR,
-            "seed {seed:#x}: top-5 lift {lift:+.2}σ"
+            *r > MOTION_R_SEED_FLOOR,
+            "seed {seed:#x}: r = {r:.3} under the per-seed floor"
         );
     }
+    let mean = |f: fn(&(f64, f64, f64)) -> f64| {
+        rows.iter().map(|(_, row)| f(row)).sum::<f64>() / rows.len() as f64
+    };
+    let (r, lift) = (mean(|row| row.0), mean(|row| row.1));
+    assert!(r > MOTION_R_FLOOR, "mean r = {r:.3}");
+    assert!(lift > MOTION_LIFT_FLOOR, "mean top-5 lift {lift:+.2}σ");
 }
 
-/// Per-seed floors for [`closed_loop_learns_motion_rate`], set under the
-/// measured values with margin. Measured when the bands shipped (3 seeds,
-/// 60 duels, shipped MCMC budget): r = 0.631 / 0.594 / 0.434 and top-5
-/// lift = +1.02 / +0.60 / +0.97σ over a truth spread of ~1.6. Chance is
-/// r ≈ 0 and lift ≈ 0.
+/// Floors for [`closed_loop_learns_motion_rate`]'s means over its five
+/// seeds. Chance is r ≈ 0 and lift ≈ 0. Swept over seeds 0xE05 and
+/// 0x1–0xF (60 duels, the shipped MCMC budget), with the grammar's octave
+/// weights (#62) and with the uniform octave it had before: a seed's r ran
+/// 0.222 to 0.733 (mean 0.46 either way) and its top-5 lift −0.03 to
+/// +1.53σ (mean +0.84σ before, +0.70σ after; paired, −0.14 ± 0.11). Five
+/// seeds drawn from those 32 runs put a mean under these floors 0.1 % of
+/// the time. (When the bands shipped, three seeds measured r = 0.631 /
+/// 0.594 / 0.434 and lift = +1.02 / +0.60 / +0.97σ.)
 const MOTION_R_FLOOR: f64 = 0.25;
 
 const MOTION_LIFT_FLOOR: f64 = 0.2;
+
+/// The per-seed floor of [`closed_loop_learns_motion_rate`]: this seed
+/// learned *something*. Under the worst of the 32 swept runs (r = 0.222);
+/// not the gate.
+const MOTION_R_SEED_FLOOR: f64 = 0.15;
 
 /// M4 gate: the headless closed loop. Fill a pool through the real
 /// pipeline, run rounds of acquisition-chosen duels answered by the
