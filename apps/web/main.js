@@ -11181,8 +11181,9 @@ function renderSubject() {
     nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · sound ${hearingSide.toUpperCase()}`;
     nameEl.title = nameEl.textContent;
     fam("");
-    metaEl.textContent =
-      benchBeforeAudition != null ? `← back returns to ${nameOf(benchBeforeAudition)}` : "";
+    // A state, in a span as every other is: under the model view the belief
+    // line comes first, and this follows it after a "·" (style.css).
+    metaSpans(metaEl, benchBeforeAudition != null ? [["", `← back returns to ${nameOf(benchBeforeAudition)}`]] : []);
     return;
   }
   nameEl.classList.remove("hearing");
@@ -11200,7 +11201,9 @@ function renderSubject() {
     nameEl.textContent = fresh.name;
     nameEl.title = fresh.name;
     fam("from nothing");
-    metaEl.textContent = [fresh.meta, laneWaitingText()].filter(Boolean).join(" · ");
+    // Its counts are what the belief line stands in for under the model
+    // view (`pt-made`); what is happening to it stays after it.
+    metaSpans(metaEl, [["pt-made", fresh.made], ...[...fresh.states, laneWaitingText()].filter(Boolean).map((t) => ["", t])]);
     return;
   }
   // The rack's own counts: modules in the audio path (not the amp, not an
@@ -11231,15 +11234,21 @@ function renderSubject() {
   // model view's belief line can stand in for the counts alone (`pt-made`,
   // style.css) and every state stays in sight beside it.
   const lf = lineageFacts();
-  const parts = [
+  metaSpans(metaEl, [
     ...(lf ? [["pt-from", bredLine(lf.seedName, lf.changes)]] : []),
     ["pt-made", `${made}, ${LAYOUT_SAYS[layoutMode] || LAYOUT_SAYS.chain}`],
     ...states.map((t) => ["", t]),
-  ];
+  ]);
+  syncEditBar();
+}
+
+/** PATCH's subtitle, one span per part (`[class, words]`), each after the
+ *  first with its "·", so the model view's belief line can stand in for the
+ *  counts alone (`pt-made`) and every state stays in sight beside it. */
+function metaSpans(metaEl, parts) {
   metaEl.innerHTML = parts
     .map(([cls, t], i) => `<span class="pm${cls ? ` ${cls}` : ""}">${i ? `<i class="pm-sep"> · </i>` : ""}${esc(t)}</span>`)
     .join("");
-  syncEditBar();
 }
 
 /** The edit bar (`#pt-editbar`): shown once the bench has been edited, as

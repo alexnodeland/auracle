@@ -132,3 +132,37 @@ test("the model view in PATCH: nothing of it at rest; held ⌥ or a tapped MODEL
   await atRest(page);
   expect(await same(), "the tapped view rebuilt nothing either").toBe(true);
 });
+
+// Under the model view the belief line stands in for the subtitle's counts,
+// and what is happening to the patch follows it after a "·" (#153). A new
+// patch's subtitle, and sound A's while TEACH plays it, were each written as
+// one bare line, with no counts to hide and no "·": both showed in full
+// beside the belief line, run together.
+test("under the model view a new patch's subtitle, and sound A's in TEACH, follow the belief line after a ·", async ({ page, app }) => {
+  await app.boot();
+  await openPreset(app, "Reese");
+  const meta = page.locator("#rack-meta");
+  // A new patch: its counts give way to the belief line, its state stays.
+  await page.locator("#patch-new-btn").click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toHaveText("New patch", { timeout }), { ms: 30_000 });
+  await expect(meta).toHaveText(/^0 modules · nothing to hear yet$/, { useInnerText: true });
+  await modelView(page, true);
+  await expect(page.locator("#belief")).toHaveText("nothing to rate: no source reaches the output");
+  await expect(meta.locator(".pt-made")).toBeHidden();
+  await expect(meta).toHaveText(/^· nothing to hear yet$/, { useInnerText: true });
+  await modelView(page, false);
+  // Sound A from TEACH: the way back is a state, after the belief line.
+  await app.engine((timeout) => expect(page.locator("#pt-teach")).toBeVisible({ timeout }), { ms: 90_000 });
+  await page.locator("#pt-teach").click();
+  await page.locator("#pd-a").click();
+  await app.engine((timeout) => expect(page.locator("#rack-subject")).toContainText("sound A", { timeout }), { ms: 30_000 });
+  // Its "·" is drawn before the first state (style.css), not written.
+  const lead = () => meta.locator(".pm").first().evaluate((e) => getComputedStyle(e, "::before").content);
+  await expect(meta).toHaveText(/^← back returns to \S/, { useInnerText: true });
+  await expect.poll(lead).toBe("none");
+  await modelView(page, true);
+  await expect(page.locator("#belief")).toBeVisible();
+  await expect(meta).toHaveText(/^← back returns to \S/, { useInnerText: true });
+  await expect.poll(lead).toBe('"· "');
+});
+
