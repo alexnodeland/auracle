@@ -106,7 +106,8 @@ expensive part, which is why the web app caches wirings and measures in pieces.
 Under the model view each control also shows which way your taste leans along
 it (`Engine::lean`): the posterior slope of the utility along the control's
 direction at the sound in hand, through the lens that claims the sound in each
-draw (`TastePosterior::slope`), a few dot products and no render.
+draw (`TastePosterior::slope`): a few dot products per draw for a tree in the
+engine's memo, and otherwise one render, as ▶ costs.
 
 ## Randomness
 
