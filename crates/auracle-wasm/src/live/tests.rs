@@ -53,22 +53,25 @@ fn energy(buf: &[f32]) -> f64 {
 /// tail after release, and eventually parks its voices.
 #[test]
 fn live_poly_plays_and_parks() {
+    quiver::rng::seed(7);
     let mut rng = StdRng::seed_from_u64(0x11FE);
     let json = tree_json(&mut rng);
     let mut poly = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
 
     poly.note_on(60, 1.0);
     poly.note_on(64, 1.0);
-    let mut energy = 0.0f64;
+    let mut held = 0.0f64;
     for _ in 0..40 {
         let out = poly.process(512);
         assert!(out.iter().all(|s| s.is_finite()));
-        energy += out.iter().map(|s| (*s as f64) * (*s as f64)).sum::<f64>();
+        held += energy(&out);
     }
-    assert!(energy > 1e-6, "held notes produced silence");
+    assert!(held > 1e-6, "held notes produced silence");
 
     poly.note_off(60);
     poly.note_off(64);
+    let tail = energy(&poly.process(128));
+    assert!(tail > 0.0, "the released notes stopped dead");
     for _ in 0..900 {
         poly.process(512);
         if poly.voices.iter().all(|v| !v.running) {
