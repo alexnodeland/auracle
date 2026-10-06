@@ -40,12 +40,14 @@ const trap = () => {
 function harness(engine) {
   const posts = [];
   const make = new Function(
-    "engine", "post", "breathe", "laneOf", "idleOnly", "laterWaiting", "lanes", "LATER", "beginLongOp", "endLongOp",
+    "engine", "post", "answer", "breathe", "laneOf", "idleOnly", "laterWaiting", "lanes", "LATER", "beginLongOp", "endLongOp",
     `${lift("isFatal")}\n${lift("performReply")}\n${lift("measure")}\n${lift("walkRun")}\nreturn { performReply, measure, walkRun };`,
   );
   const fns = make(
     engine,
     (m) => posts.push(m),
+    // A reply to `m` (worker.js `answer`): its request's number aside, a post.
+    (m, msg) => posts.push(msg),
     async () => false,
     () => 1,
     () => false,

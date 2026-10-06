@@ -270,7 +270,7 @@ from it ([Rules](#rules)).
 | `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface, the `belief` call and the face calls `worker.js` calls |
 | `session_seed.spec.js` | `?seed=N`: a fresh session with the same seed fills the same pool under the same names (each boot a browser context of its own), and another seed another |
 | `boot_agrees.spec.js` | The built wasm's `boot_probe` (the shipped seed's first 400 trees, a small pool and its first duels) equals what native `shipped::boot_probe` pins in `boot_probe.json`; opens no page, about 3 s under Node |
-| `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1` |
+| `fixture_tap.spec.js` | The fixture's tap (`fixtures.js`), on an echo worker with no app booted: a hold armed with `from` begins at the request it names and is spent once it has; `app.fail` answers a request as the worker answers one it could not run (an `engine_error` naming it, injected), the request still in `sent` and never at the engine, once or for every match, fatal or not; a speed budget is the test's annotation, and one over its limit fails the test only under `AURACLE_PERF=1`; on a worker that answers as `worker.js` does, a request's last reply (`app.replyTo`) is the one carrying its number without `more`, not the first of its type nor the engine's own news, `app.answered` waits while a request it covers has none and names it when it gives up, by type or lane, never for a request the worker never answers or one main did not number, and a reply `app.answer` or `app.fail` gives for a request carries its number |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote (and no ratings posted for it), profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off in the guide pill |
 | `guide_pill.spec.js` | The guide pill (Plan-008 C1) shows one step at a time, bottom left of the stage under PERFORM's well and on PERFORM only, ticks each off as it happens (a note, a turn, an offer), says what the loop was and goes; × stops it across a reload (`auracle-guide`); the first steps' old ticks (`auracle-perform-steps`) carry over and the old key goes |
@@ -346,9 +346,10 @@ from it ([Rules](#rules)).
   page errors fail every test by themselves; `app` boots seeded (`?seed=`)
   through one tap on the engine worker, waits on the engine through named
   bounds that add their time to the test's timeout (`app.engine`,
-  `app.reply`, `ENGINE_MS`; 450 s in all at most, `ENGINE_CAP_MS`), and
-  holds the engine's own replies while an
-  injected one stands (`app.hold`). UI state waits the config's 10 s; a test
+  `app.reply`, `ENGINE_MS`; 450 s in all at most, `ENGINE_CAP_MS`), finds a
+  request's own reply by the number it carries back (`app.replyTo`,
+  `app.answered`; `web-runtime.md` § The worker's replies), and holds the
+  engine's own replies while an injected one stands (`app.hold`). UI state waits the config's 10 s; a test
   has 90 s of its own; "nothing happens" is `app.quiet()` (`QUIET_MS`,
   1.5 s), the one fixed wait. `tests/web/AGENTS.md` § Writing a spec.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust

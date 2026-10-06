@@ -243,7 +243,85 @@ while the other runs, with the reason on hover. Neither starts before boot's
 crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
-or the main thread's in-flight queue deadlocks.
+or the main thread's in-flight queue deadlocks. The few requests that are
+never answered, by design, are listed in [The worker's replies](#the-workers-replies).
+
+## The worker's replies
+
+Every request main posts to the engine worker goes out through `send` in
+`main.js`, which numbers it: `rid`, counted from 1 on each page, assigned
+there and nowhere else. Every reply the worker sends in answer carries that
+number back as `re`, so a reply names the request it answers whatever its
+type. A request with several replies marks all but its last with
+`more: true`:
+
+| Request | Its replies, the last one last |
+| --- | --- |
+| `edit_structure`, `edit_set_tree` | `tree_json` (the tree for the voices, ahead of its render; not for an undo or a redo with no makeup known), then `bench`; or `edit_rejected` alone |
+| `edit_begin` | `bench_opening`, then `bench` (or `bench_missing`) |
+| `load_preset` that opens (`open`) | `preset_loaded`, then `bench_opening` |
+| `warm_start` | `warm_first`, then `warm_done` |
+| `perform_record` | `perform_recorded`, then `status` |
+| `readmit_held` | `readmitted`, then `held_sounds` (when the sound was let back in) |
+| `refine` | `pool_trimmed` (when a restored pool was over size), `refine_progress` and `refine_child` as the generation goes, then `refined` |
+| `refine_from` | `evolve_started`, then `evolved_from` |
+
+A request whose handler throws is answered with `engine_error`, carrying its
+`re`. What the worker says of its own accord carries no `re`: `busy` and
+`idle`, a log line, a crew wanted or reaped (`farm_want`, `farm_done`), the
+boot's fill (`fill_progress`, `repaired`, `playable`, `filled`, a restore's
+`fitted`, and `boot_failed` once `ready` has gone: `init` itself is answered
+by `ready`, or by `boot_failed` before it), a face that was `pending`
+when its `faces` request was answered, and the sound of your own re-ranked
+when the presets' file lands (`own_sound` with `presets`).
+
+The reply path in `worker.js` is one function, `emit`, behind three names,
+so the echo cannot be forgotten:
+
+- **`post`** is the reply to the request whose handler is running.
+  `runMessage` names that request (`answering`) for the synchronous part of
+  its handler and restores it before it returns, so every case in
+  `dispatch`, and what it calls in the same turn (`postBench`,
+  `postLiveTree`, `engineError`), is stamped without saying so.
+- **`answer(m, …)`** is the reply to `m` from anywhere else: after an
+  `await` (PERFORM's measurement and walks, the guess, a control's figure,
+  the boot's `ready`), from a farm message or a timer (a generation's
+  children and `refined`, ⚡'s child: each holds its request as `to`), or
+  on another request's behalf.
+- **`news`** is what nobody asked for. It is never stamped.
+
+A request the worker cancels or supersedes is still answered with its
+number:
+
+- a figure or a lesson put away while it waits (`explain_cancel`) gets its
+  own reply with `error: "cancelled"`;
+- an offer or a drift retired while it waits gets `perform_offered` or
+  `perform_drifted` with `error: "retired"`, and one retired while it walks
+  gets the same at its next step;
+- a measurement retired or demoted, a walk that gives way, and a guess back
+  from its crew phase are the same request queued again, and answer it when
+  they finish;
+- a stopped generation answers its `refine` with `refined`, and a stopped ⚡
+  its `refine_from` with `evolved_from` (`reason: "stopped"`);
+- one render of an id answers everyone who asked (`renderJoined`): a
+  background render asked for while the player's is queued is not queued
+  again, and the player's takes the place of a queued background one. Its
+  one reply's `re` lists both numbers;
+- a request that arrives before the engine is up gets `not_ready`.
+
+Never answered, by design: `log_edit`, `log_event`, `duel_shown` and
+`set_style_name` (main waits on none of them), `farm_lost` and `farm_ports`
+(the farm's plumbing), and the
+requests that act on others, whose effect is the other request's own last
+reply: `promote`, `retire`, `explain_cancel`, `refine_stop` and
+`refine_from_stop`.
+
+Main still matches a reply by what it is about (an id, a `token`, PERFORM's
+`req`); `re` names the request itself. The browser specs read it, through
+the fixture's `app.replyTo` and `app.answered` (`tests/web/AGENTS.md`).
+`apps/web/tests/worker-protocol.test.mjs` runs `send` and the reply path as
+written, and holds the never-answered list (the fixture's `UNANSWERED`) to
+the worker.
 
 ## The ratings after each pick
 
