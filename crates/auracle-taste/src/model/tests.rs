@@ -184,8 +184,14 @@ fn a_fused_prior_beats_a_flat_one_on_a_correlated_cluster() {
     let n = 12.0;
     let (flat, fused) = (sum_flat / n, sum_fused / n);
     println!("mean: flat {flat:.3}  fused {fused:.3}");
+    // The bound is the claim, "beats": a higher mean and more wins than
+    // losses. Swept over sixteen data seeds (this one and 1 to 15), each
+    // with these twelve chain seeds, the mean gain ran from +0.0065 to
+    // +0.037 and the wins from 8 to 12 of 12; this data seed is the one at
+    // 8. It used to ask for 8, which is where this seed sits, so any
+    // correct change to the MCMC stream was a coin toss.
     assert!(
-        fused > flat && wins >= 8,
+        fused > flat && wins >= 7,
         "fusing the cluster did not help: flat {flat:.3}, fused {fused:.3}, {wins}/12 wins"
     );
 }
