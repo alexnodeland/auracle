@@ -72,6 +72,7 @@ jobs:
       - name: Only from main
         if: github.ref != 'refs/heads/main'
         run: |
+          set -euo pipefail
           echo "::error::a release is cut from main: run this workflow on main, not on $GITHUB_REF_NAME"
           exit 1
 
@@ -84,14 +85,20 @@ jobs:
 
       - id: plan
         name: Work out the version
+        # A refused plan fails here, its reason in the summary as well as
+        # the log, before any step reads an empty version.
         run: |
-          python3 scripts/release.py plan --version "$ASKED" --body "$RUNNER_TEMP/release-pr.md" --github-output | tee "$RUNNER_TEMP/plan.txt"
+          set -euo pipefail
+          status=0
+          python3 scripts/release.py plan --version "$ASKED" --body "$RUNNER_TEMP/release-pr.md" --github-output 2>&1 | tee "$RUNNER_TEMP/plan.txt" || status=$?
           { echo '### The plan'; echo; echo '```'; cat "$RUNNER_TEMP/plan.txt"; echo '```'; echo; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Refuse when its branch is there already
         env:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
+          set -euo pipefail
           if git ls-remote --exit-code --heads origin "release/$VERSION" > /dev/null; then
             echo "::error::release/$VERSION is there already: a release PR for $VERSION is open, or its branch was left behind. Close that PR and delete the branch, then run this again."
             exit 1
@@ -112,11 +119,13 @@ jobs:
         env:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
+          set -euo pipefail
           python3 scripts/changelog.py --release "$VERSION" "$(date -u +%F)"
           python3 scripts/changelog.py --check
 
       - name: What the release PR holds, and the list under its notes
         run: |
+          set -euo pipefail
           {
             echo '### What the release PR holds'
             echo
@@ -133,6 +142,7 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           PREVIOUS: ${{ steps.plan.outputs.previous }}
         run: |
+          set -euo pipefail
           branch="release/$VERSION"
           git switch -q -c "$branch"
           git add -A
@@ -208,6 +218,7 @@ jobs:
       - id: check
         name: The merge commit is ready to tag
         run: |
+          set -euo pipefail
           version="${PR_TITLE#release: }"
           if [ "$version" = "$PR_TITLE" ]; then
             echo "::error::#$PR_NUMBER has the release label, and its title is '$PR_TITLE', not 'release: X.Y.Z': nothing is tagged"
@@ -225,6 +236,7 @@ jobs:
         env:
           TAG: ${{ steps.check.outputs.tag }}
         run: |
+          set -euo pipefail
           object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$TAG" -f message="Auracle $TAG" -f object="$SHA" -f type=commit -q .sha)"
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$object" > /dev/null
           echo "Tagged ${SHA:0:12}, #$PR_NUMBER's merge commit, as $TAG." >> "$GITHUB_STEP_SUMMARY"
@@ -233,5 +245,6 @@ jobs:
         env:
           TAG: ${{ steps.check.outputs.tag }}
         run: |
+          set -euo pipefail
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
           echo "Started release.yml on $TAG: it publishes the release." >> "$GITHUB_STEP_SUMMARY"
