@@ -2216,7 +2216,9 @@ fn sounds_kept_as_new_are_protected_up_to_a_cap_newest_first() {
         assert!(engine.set_pinned(*id, true));
     }
     assert_eq!(engine.pinned_count(), engine.pin_cap());
-    for i in 0..auracle_grammar::presets().len() {
+    // One more than the pool holds: every place a preset may take turns
+    // over, the two keeps past the cap among them.
+    for i in 0..size + 1 {
         assert!(
             engine.insert_preset(fresh_preset(i), "Fresh").is_some(),
             "a preset found nothing it could replace"
