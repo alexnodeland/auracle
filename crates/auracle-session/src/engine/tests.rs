@@ -1481,14 +1481,22 @@ fn a_child_the_pool_would_not_take_is_refused_and_leaves_no_trace() {
         cached: None,
     };
     let twin = landing(engine.pool[ranked[1].0].tree.clone());
-    // The lowest member with one knob moved, rating no higher than it: the
-    // member the child would displace, with the seed spared.
+    // The lowest member with one knob of its envelope moved, rating no
+    // higher than it: the member the child would displace, with the seed
+    // spared. Which knob and which setting do that depends on the member
+    // and the taste, so every envelope knob is tried at a spread of settings.
     let sz = engine.standardizer.clone().unwrap();
-    let under = [0.002, 0.03, 0.2, 0.5, 0.9]
-        .iter()
-        .map(|&a| {
+    let settings = [0.002, 0.03, 0.2, 0.5, 0.9];
+    let under = (0..4)
+        .flat_map(|knob| settings.iter().map(move |&v| (knob, v)))
+        .map(|(knob, v)| {
             let mut t = low.tree.clone();
-            t.amp.attack = a;
+            match knob {
+                0 => t.amp.attack = v,
+                1 => t.amp.decay = v,
+                2 => t.amp.sustain = v,
+                _ => t.amp.release = v,
+            }
             t
         })
         .find(|t| {
@@ -4599,10 +4607,14 @@ fn the_proposal_leans_toward_taste_only_when_taught_and_asked() {
     let plain = draws(&PatchGrammarPrior::default());
     let untaught = Engine::new(PatchGrammarPrior::default(), fast());
     assert_eq!(draws(&untaught.biased_prior()), plain);
+    // Taught, the tables a walk draws kinds from are not the grammar's. Not
+    // its forty draws: a tilt of a few percent moved none of them on 4 of 12
+    // taught engines measured, and many on the rest.
+    let tables = |p: &PatchGrammarPrior| (p.source_weights, p.op_weights, p.mod_weights);
     let mut engine = taught(0xB1B);
     assert_ne!(
-        draws(&engine.biased_prior()),
-        plain,
+        tables(&engine.biased_prior()),
+        tables(&PatchGrammarPrior::default()),
         "the taste tilted nothing"
     );
     engine.cfg.proposal_tilt = 0.0;
@@ -4691,8 +4703,12 @@ fn a_restore_mends_what_it_can_and_says_what_it_mended() {
     let mut poisoned = vec![0.5; names.len()];
     poisoned[at] = 1e30;
     let (mut saved, _) = with_corrupt_take(&engine, id);
+    // The release, clamped to its longest, which only lengthens a tail: an
+    // attack clamped to its longest (ten seconds) can leave a sound too
+    // quiet in the phrase to vet, and which members of a pool survive that
+    // is a fact about the pool, not about the count.
     for e in saved["bank"].as_array_mut().unwrap() {
-        e["tree"]["amp"]["attack"] = 5.0.into();
+        e["tree"]["amp"]["release"] = 5.0.into();
     }
     saved["events"] = serde_json::json!([{
         "kind": "revert", "id": 0, "value": 1.0, "session": 0, "detail": "",
