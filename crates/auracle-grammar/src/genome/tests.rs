@@ -389,3 +389,61 @@ fn mod_kind_indices_are_append_only() {
     assert_eq!(steps.site_count(), t.choices.len());
     assert_eq!(decode_mod(&t, "k").unwrap(), steps);
 }
+
+/// **Every audio kind's `#src` or `#op` index, as a literal table.** A
+/// saved trace stores these numbers, so a kind that moved would re-point
+/// every persisted genome at a different module; asked of the encoder
+/// alone, a renumbering would agree with itself and catch nothing. The
+/// match is exhaustive, so a new kind does not compile until it is given
+/// its index here, after the last, and every kind in `NodeKind::ALL` is
+/// encoded from the module a hand places and decoded back.
+#[test]
+fn source_and_op_indices_are_append_only() {
+    use crate::mutate::{default_fragment, NodeKind};
+    let pinned = |k: NodeKind| -> (&'static str, usize) {
+        match k {
+            NodeKind::Vco => ("src", 0),
+            NodeKind::Supersaw => ("src", 1),
+            NodeKind::Noise => ("src", 2),
+            NodeKind::Wavetable => ("src", 3),
+            NodeKind::Pluck => ("src", 4),
+            NodeKind::Formant => ("src", 5),
+            NodeKind::Silence => ("src", 6),
+            NodeKind::AudioIn => ("src", 7),
+            NodeKind::Mix => ("op", 0),
+            NodeKind::Filter => ("op", 1),
+            NodeKind::Fold => ("op", 2),
+            NodeKind::Delay => ("op", 3),
+            NodeKind::Chorus => ("op", 4),
+            NodeKind::Reverb => ("op", 5),
+            NodeKind::Distortion => ("op", 6),
+            NodeKind::Bitcrush => ("op", 7),
+            NodeKind::Phaser => ("op", 8),
+            NodeKind::RingMod => ("op", 9),
+            NodeKind::Flanger => ("op", 10),
+            NodeKind::Tremolo => ("op", 11),
+            NodeKind::Vibrato => ("op", 12),
+            NodeKind::Eq => ("op", 13),
+            NodeKind::Granular => ("op", 14),
+            NodeKind::Shift => ("op", 15),
+            NodeKind::Comp => ("op", 16),
+            NodeKind::Duck => ("op", 17),
+            NodeKind::Gate => ("op", 18),
+            NodeKind::Vocoder => ("op", 19),
+            NodeKind::Track => ("op", 20),
+            NodeKind::Capture => ("op", 21),
+        }
+    };
+    for kind in NodeKind::ALL {
+        let node = default_fragment(kind);
+        let mut t = Trace::default();
+        encode_node(&node, "k", &mut t);
+        let (site, want) = pinned(kind);
+        assert_eq!(
+            (site == "src", get_usize(&t, "k", site).ok()),
+            (kind.is_source(), Some(want)),
+            "{kind:?} must stay at #{site} {want}: the index is the wire format"
+        );
+        assert_eq!(decode_node(&t, "k").expect("decodes"), node, "{kind:?}");
+    }
+}
