@@ -1,0 +1,112 @@
+name: PR checks
+
+# What a pull request owes before the merge queue takes it, and what its merge
+# owes the issues it names (#216; docs/process.md § Pull requests). The logic
+# is scripts/pr_checks.py, and its tests (scripts/test_pr_checks.py) run in
+# `make dev-check`, so in CI's Web job.
+#
+# - `PR checks`, whenever a PR's title, body or commits change: the title is
+#   a conventional subject (it becomes the squash commit's subject on main),
+#   the body names its issues one closing keyword each, every issue it names
+#   exists, and none it closes is closed already; a warning, never a failure,
+#   when it changes what a player or a reader sees with no changelog.d/ entry.
+#   Mergify queues a PR only once this is green (.mergify.yml). A Dependabot
+#   PR's title is checked, and its links aren't: its body is the upstream
+#   release notes.
+# - `Issues on merge`, once a PR merges into main: a comment on each issue
+#   it advanced (`Refs #n`), each issue it finishes (`Closes #n`) closed if
+#   GitHub didn't close it, and each parent of an issue that closed told,
+#   with its count of sub-issues closed. Each line it writes is marked, so a
+#   run again adds only what an earlier run left out, and nothing twice.
+#
+# Neither runs on the merge queue's draft PRs (branches under
+# mergify/merge-queue/: .mergify.yml), whose titles and bodies are Mergify's.
+#
+# `pull_request`, never `pull_request_target`: a run gets the token of the PR
+# it runs for, and no secret. The title and body reach the script as
+# environment variables, never written into a script, so no text in them can
+# run as a command. A PR from a fork gets a read-only token, so its merge job
+# says so and writes nothing; its issues are updated by hand.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review, closed]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The name is the check Mergify's queue conditions name
+    # (`check-success = @github-actions/PR checks`): renaming it is a change
+    # to .mergify.yml too.
+    name: PR checks
+    if: github.event.action != 'closed' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # The PR's files (the changelog's warning) and the issues it names: read
+    # only.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    # An edit makes the run on the text before it obsolete.
+    concurrency:
+      group: pr-checks-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      # Each part is a step of its own, so the run says which failed, and
+      # each runs whatever the one before it said.
+      - name: The title is a conventional subject
+        run: python3 scripts/pr_checks.py title
+      - name: The body names its issues, one closing keyword each
+        if: success() || failure()
+        run: python3 scripts/pr_checks.py links
+      - name: A player-facing change has a changelog entry (a warning)
+        if: success() || failure()
+        run: python3 scripts/pr_checks.py changelog
+
+  merged:
+    name: Issues on merge
+    # Only a merge into the default branch: GitHub closes the issues a PR
+    # names only then, so a PR into another branch (one stacked on another)
+    # finishes nothing yet, and closing its issues here would be early.
+    if: >-
+      github.event.action == 'closed' && github.event.pull_request.merged
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+      && !startsWith(github.head_ref, 'mergify/merge-queue/')
+    runs-on: ubuntu-24.04
+    # Up to a minute of waiting for GitHub to close what the PR closes, and a
+    # few calls per issue.
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+      PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+    steps:
+      # The script as main has it, from the commit the PR merged as.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Comment on what it advanced, close what it finished, tell the parents
+        run: python3 scripts/pr_checks.py merged

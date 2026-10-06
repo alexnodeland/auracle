@@ -25,6 +25,7 @@ this table.
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens, in any styled page; a live figure reads only tokens, and aliases of them, that every page loading it defines; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
 | Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
 | Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`, and both in CI's *What changed* job, on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes, with its note and nothing else before its first `###`; the assembler's tests cover the parse, the note, the merge order, the release and folding into an untagged one (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
+| PR checks | `python3 scripts/pr_checks.py check --pr <n>` (reads the PR with `gh`); before a PR is opened, `PR_TITLE="…" PR_BODY="$(cat <body file>)" python3 scripts/pr_checks.py title` (and `links`); its tests, `python3 scripts/test_pr_checks.py`, are in `make dev-check` | A PR's title is a conventional subject; its body names each issue it finishes with a closing keyword of its own (`Closes #a, #b` fails: GitHub would close #a only), each it advances with `Refs`, or says why on a `No issue:` line; every issue named exists and is an issue, and none named with `Closes` is closed; a warning when `apps/web/`, `www/docs/src/` or `www/landing/` changed with no `changelog.d/` entry. `merged --pr <n> --dry-run` says what the merge job would do. The tests cover the parse, the title, the warning and the merge job on a fake API, with no network | A PR's title or body before it is opened or edited; `scripts/pr_checks.py` |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |
@@ -96,11 +97,13 @@ engine that traps on demand.
 
 ## CI tiers
 
-CI runs in two tiers. A PR may merge on the fast tier alone.
+CI runs in two tiers, and the PR checks run beside them. A PR may merge on
+the fast tier and the PR checks alone.
 
 | Tier | Where | Runs | Gates merging |
 | --- | --- | --- | --- |
 | Fast | `.github/workflows/ci.yml`, the `CI` check, in two lanes ([ADR-023](../decisions/023-the-gate-runs-in-the-queue.md)) | The voice check and the changelog's (`scripts/changelog.py --check` and its tests), in *What changed*, on every run; Lint; Web (`make web-check`, then `make -j4 -O dev-check`, its parts side by side); the engine for the browser, once per run (a wasm32 build under `-Dwarnings` when a crate, the Cargo files or the Makefile changed, main's cached build otherwise); Site (built with that engine); the worker-protocol tests (`make worker-test`, against the same engine, once it is built); the Rust tests not named slow, instrumented for coverage (built once, run on three runners by slice, then one report: [Coverage](#coverage)); the doctests; every browser spec not tagged `@slow` or `@quarantine` (twelve runners, dealt by time). That is the full gate, the merge queue's run. A PR's own run is the fast lane, the part of it the change reaches, with Browser smoke (`make smoke`'s two specs) in place of the browser specs it can't pick (*The two lanes*, below) | Yes. The branch ruleset requires `CI` on a PR's head (the fast lane); the queue merges on the full gate's `Full gate` |
+| PR checks | `.github/workflows/pr-checks.yml`, the `PR checks` check, on every change to a PR's title, body or commits (not the queue's draft PRs) | The PR checks gate above on the PR's own title, body and files. On merge, its *Issues on merge* job comments on each `Refs` issue, closes each `Closes` issue GitHub didn't, and tells each closed issue's parent its count of sub-issues closed | Yes. Mergify's queue conditions require it (`.mergify.yml`), so a PR enters the queue only once it is green; not the ruleset, and not the queue's merge conditions |
 | Slow | `.github/workflows/slow-suite.yml`, *Slow suite* | The search floor (`make test-search-floor`); the other slow Rust tests (`make test-slow-rest`); every `@slow` and `@quarantine` browser spec (six runners, three at a time, dealt by time). On a PR only with the `full-ci` label | No |
 | Flake hunt | `.github/workflows/flake-hunt.yml`, nightly | The fast tier's browser specs three times each, against main, on twelve runners four at a time ([Flakes](#flakes)) | No |
 | Speed budgets | `.github/workflows/flake-hunt.yml`, nightly, beside the hunt | Every spec file that records a budget, each test once (`@slow` ones too), against main, with `AURACLE_PERF=1` at `AURACLE_CPU_THROTTLE=1`, on two runners; a budget over its limit files *Speed budgets over their limit* ([Rules](#rules)) | No |
@@ -119,7 +122,7 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
 | A crate, `Cargo.*`, `rust-toolchain.toml`, the `Makefile` | Lint, Coverage, the Doctests, Web, the engine (built), Site, then Browser smoke; Worker protocol |
 | The coverage gate's scripts, `scripts/setup.sh` | Lint, Coverage, the Doctests, Web, the engine, Site, Worker protocol |
 | The worker-protocol tests (`tests/worker/`) | The engine (restored), Worker protocol |
-| Another script (`scripts/*.py`: the changelog's assembler and its tests) | Web, whose `dev-check` runs the scripts' tests |
+| Another script (`scripts/*.py`: the changelog's assembler, the PR checks, and their tests) | Web, whose `dev-check` runs the scripts' tests |
 | A changelog entry (`changelog.d/`) | Nothing more: *What changed* checks the entries and the voice on every run, and the site doesn't read them |
 | A workflow or an action (`.github/`) | The full gate, as the queue runs it |
 
@@ -131,8 +134,9 @@ CI runs in two tiers. A PR may merge on the fast tier alone.
   none, and gets the smoke only (with Worker protocol, which is the fast
   lane's real check of `worker.js`); so does a change that reaches more than
   twenty spec files (a helper nearly every spec requires, or that many specs
-  changed at once). A green fast lane puts the PR in the queue. It is not the
-  gate: a `main.js` change has run two specs when it enters the queue.
+  changed at once). A green fast lane, with the PR checks green beside it,
+  puts the PR in the queue. It is not the gate: a `main.js` change has run
+  two specs when it enters the queue.
 - **The full gate** is the merge queue's run: CI on the draft PR Mergify
   opens for a batch of up to three PRs (a release PR alone), from a branch
   under `mergify/merge-queue/`. Everything runs, as on `main`, on the tree that

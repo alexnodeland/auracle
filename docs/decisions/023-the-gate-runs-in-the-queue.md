@@ -29,6 +29,11 @@ ADR-021's rule 3 stands: no retries. So do
 [ADR-020](020-merge-at-green-one-pr-in-ci.md)'s rules 1, 2 and 5: merge at
 green, one review round, quarantine an unrelated failure on sight.
 
+Since #216, a PR enters the queue once its `PR checks` are green beside its
+fast lane, and its title carries a type
+([`docs/process.md` § Pull requests](../process.md#pull-requests)). The rest
+of this record is as accepted.
+
 ## Context
 
 Under ADR-021 every PR ran the full gate on its own branch: Lint, Web, Site,
@@ -106,7 +111,9 @@ second has to be everything.
   what the queue skipped, after every merge. Running everything once, where
   it decides the merge, keeps `main`'s runs to the deploy.
 - **The title's type (`ci`, `fix(tests)`) for priority.** PR titles here say
-  the outcome and carry no type, so a label is the simpler rule.
+  the outcome and carry no type, so a label is the simpler rule. (Since
+  #216 they carry one; the label stays the rule, since a type says what a
+  PR changes, not that the queue waits on it.)
 
 ## Consequences
 
