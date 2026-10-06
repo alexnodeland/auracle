@@ -250,3 +250,28 @@ fn an_out_of_domain_term_is_quarantined() {
         Err(FeaturizeError::OutOfDomain { .. })
     ));
 }
+
+/// **φ is eighteen audio coordinates, then twenty-six structural ones:
+/// forty-four.** The books say so by number: the films (`films.md`), the
+/// guide (`views/learning.md`) and the reference (`features/audio.md`,
+/// `features/structural.md`, `audition/vetting.md`). A change to either
+/// count fails here until they are updated, and owes `make revalidate`.
+/// And `phi()` lays the values out in `phi_names()`'s order: the audio half,
+/// then the structural half, each in its own `NAMES` order.
+#[test]
+fn phi_is_eighteen_audio_then_twenty_six_structural_coordinates() {
+    assert_eq!(
+        (AudioFeatures::NAMES.len(), StructFeatures::NAMES.len()),
+        (18, 26),
+        "φ's size moved: update the films, the guide and the reference"
+    );
+    let names = Features::phi_names();
+    assert_eq!(names[..18], AudioFeatures::NAMES);
+    assert_eq!(names[18..], StructFeatures::NAMES);
+
+    let v = featurize(&vco(Waveform::Saw), &PhraseSpec::default()).expect("a saw vets");
+    let phi = v.features.phi();
+    assert_eq!(phi.len(), 44);
+    assert_eq!(phi[..18], v.features.audio.to_vec());
+    assert_eq!(phi[18..], v.features.structural.to_vec());
+}

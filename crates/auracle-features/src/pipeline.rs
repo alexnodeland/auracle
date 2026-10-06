@@ -152,7 +152,7 @@ pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate,
         peak_reduction_db: norm.peak_reduction_db,
     };
     // The second half of the same guard, on the vector rather than the term.
-    // Costs one pass over 37 doubles against a render that took most of a
+    // Costs one pass over φ's 44 doubles against a render that took most of a
     // second, and it is the only thing standing between a NaN out of a
     // spectral descriptor and a posterior fit that returns all-NaN θ.
     for (name, value) in Features::phi_names().iter().zip(features.phi()) {
