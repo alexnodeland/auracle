@@ -1134,9 +1134,13 @@ work, `bg` in `now`: between the pieces of the measurement holding the floor,
 which a `later` job would wait out, behind every gesture, and ahead of the
 lane's other background renders, a dealt pair's sounds for a table behind the
 card), with `memo_render` (φ into the memo, no audio, nothing inserted). A
-card measured is not measured again; `warm_start` stops it. Its inserts are
-memo hits, the same φ (a hit is bit-identical to a miss), so the pool, the
-picks and the first fit are the ones *teach it* made without them
+card measured is not measured again while the card is open; `warm_start`
+stops it. The card closing (*teach it* or SKIP, the empty order) forgets
+which were measured: the warm start offered again may deal them again after
+generations that pushed them out of the memo, and they are measured again (a
+hit where they are still in it; `apps/web/tests/worker-lanes.test.mjs`). Its
+inserts are memo hits, the same φ (a hit is bit-identical to a miss), so the
+pool, the picks and the first fit are the ones *teach it* made without them
 (`tests/worker/warm_start.test.mjs`). What is left between *teach it* and the
 first pick's controls is the call in progress when it arrives: a card's
 render, or one of the measurement's. The first pick's sound is not in the

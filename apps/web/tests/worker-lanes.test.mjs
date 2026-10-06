@@ -270,3 +270,48 @@ test("the guess gives way to long work the player asks for, at the front of late
   assert.equal(w.lanes[LATER][0], guess);
   assert.equal(typeof guess.spent, "number");
 });
+
+// The warm start's cards are measured while the player chooses, into the
+// memo, so "teach it" inserts them without a render (worker.js `warmCard`).
+// A card measured is not measured again while the card is open; the warm
+// start offered again after SKIP deals cards whose φ the generations since
+// may have pushed out of the memo, so it measures them again.
+test("a warm-start card measured before SKIP is measured again when the warm start is offered again", () => {
+  const lanes = [[], [], [], []];
+  const measured = [];
+  const engine = {
+    preset_tree_json: (i) => `preset ${i}`,
+    memo_render(tree) {
+      measured.push(tree);
+      return true;
+    },
+  };
+  const w = new Function(
+    "NOW", "lanes", "engine", "drainNow",
+    [
+      line(/^let warmCards = .*$/m), line(/^const warmMeasured = .*$/m), lift("warmCardsOrder"), lift("warmCard"),
+      "return { warmCardsOrder, warmCard };",
+    ].join("\n"),
+  )(NOW, lanes, engine, () => {});
+  // The lane serving every card queued, as the worker's drain does.
+  const serve = () => {
+    while (lanes[NOW].length) if (lanes[NOW].shift().type === "warm_card") w.warmCard();
+  };
+  // Dealt; the first card measured, then a pick of the second, which is
+  // measured next; a pick's order sent again measures neither twice…
+  w.warmCardsOrder([0, 1, 2]);
+  w.warmCard();
+  lanes[NOW].length = 0;
+  w.warmCardsOrder([1, 0, 2]);
+  w.warmCard();
+  lanes[NOW].length = 0;
+  w.warmCardsOrder([1, 0, 2]);
+  assert.deepEqual(measured, ["preset 0", "preset 1"]);
+  // …SKIP closes the card, and the warm start offered again deals the same
+  // three: each is measured, the two from the first offer too.
+  w.warmCardsOrder([]);
+  serve();
+  w.warmCardsOrder([0, 1, 2]);
+  serve();
+  assert.deepEqual(measured, ["preset 0", "preset 1", "preset 0", "preset 1", "preset 2"]);
+});

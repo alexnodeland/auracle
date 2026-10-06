@@ -2486,13 +2486,20 @@ function evolveStop() {
 // they were made, then the rest as dealt; again on every pick, and none once
 // the card closes. `warm_start` stops it, and renders what is left.
 let warmCards = []; // preset indices still to measure, next first
-const warmMeasured = new Set(); // preset indices measured since the last "teach it"
+const warmMeasured = new Set(); // preset indices measured since the card was dealt
 
 /** Main's order for the cards (`warm_cards`), taken on arrival, so a pick
  *  moves its card ahead of those still waiting at once. Main sends every
- *  card each time; one measured already is not measured again. */
+ *  card each time; one measured already is not measured again while the
+ *  card is open. An empty order is the card closed ("teach it" or SKIP),
+ *  and forgets what was measured: the warm start offered again (after a few
+ *  duels, or from ⋯) deals cards whose φ the generations since may have
+ *  pushed out of the memo, and one measured on the first offer and passed
+ *  over on the second would be rendered at "teach it". Still in the memo,
+ *  measuring it again is a hit. */
 function warmCardsOrder(order) {
-  warmCards = Array.isArray(order) ? order.filter((i) => Number.isInteger(i) && i >= 0 && !warmMeasured.has(i)) : [];
+  if (!Array.isArray(order) || !order.length) warmMeasured.clear();
+  warmCards =Array.isArray(order) ? order.filter((i) => Number.isInteger(i) && i >= 0 && !warmMeasured.has(i)) : [];
   if (!warmCards.length || lanes[NOW].some((q) => q.type === "warm_card")) return;
   lanes[NOW].unshift({ type: "warm_card", bg: true });
   drainNow();
@@ -3914,7 +3921,6 @@ async function dispatch(m) {
       // The cards measured while the player chose are memo hits here; the
       // rest are rendered now, and none is measured for the card any more.
       warmCardsOrder([]);
-      warmMeasured.clear();
       const ids = {};
       for (const i of m.picked) {
         // The first pick goes onto the bench next. Unless it was measured
