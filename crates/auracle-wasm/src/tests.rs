@@ -1993,11 +1993,10 @@ fn transported_audio_neither_moves_nor_misses_the_pool() {
         !from_farm.is_empty(),
         "absorbed audio never reached the pool"
     );
-    let mut cold = WasmEngine::new(0x1234, 4);
-    farm_fill(&mut cold, false);
+    // `dry` holds no audio: its render_of renders the term here.
     assert_eq!(
         from_farm,
-        cold.render_of(id),
+        dry.render_of(id),
         "a transported audition drifted from the render it names"
     );
 }
