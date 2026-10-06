@@ -113,6 +113,10 @@ jobs:
     name: Speed budgets (${{ matrix.shard }})
     needs: engine
     runs-on: ubuntu-24.04
+    # In Playwright's image, as the hunt's runners.
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.engine.outputs.playwright }}-noble
+      options: --ipc=host --init
     timeout-minutes: 45
     env:
       AURACLE_GLOBAL_TIMEOUT_MIN: 40

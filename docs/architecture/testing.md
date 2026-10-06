@@ -84,8 +84,8 @@ a minute before it `shard.mjs` interrupts the run, so the test that was
 running is reported as interrupted, with its trace.
 
 **In Playwright's image.** Every job that runs a browser (the fast tier's
-runners, Browser smoke, the *Slow suite*'s and the flake hunt's runners)
-runs in `mcr.microsoft.com/playwright:v<version>-noble`, with
+runners, Browser smoke, the *Slow suite*'s, the flake hunt's and the speed
+budgets' runners) runs in `mcr.microsoft.com/playwright:v<version>-noble`, with
 `--ipc=host --init`. It has Chromium and its system libraries, so no job
 installs them: they were apt packages fetched from Ubuntu's mirror on every
 run, and a slow mirror twice took a shard past its job limit (#162). The
@@ -169,8 +169,8 @@ everything: three runners at once (five jobs in a chain: the build, three
 runners, the report) where Test holds two. So a PR pushed right after a
 merge can wait for runners until `main`'s run is done; the merge queue
 ([ADR-021](../decisions/021-merges-go-through-mergifys-queue.md)) keeps
-merges one at a time. The nightly *Flake hunt* holds four, beside *Search health*'s three
-long jobs.
+merges one at a time. At night the *Flake hunt* holds four and its *Speed
+budgets* two, beside *Search health*'s three long jobs: nine in all.
 
 **What is slow.** Rust: the tests that took over a minute on a runner, named
 in the `Makefile` as `SEARCH_FLOOR` (`refinement_improves_pool`, about five
