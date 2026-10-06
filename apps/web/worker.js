@@ -3173,7 +3173,15 @@ async function dispatch(m) {
         // With the summary, every forecast it scores (LEARNING's strip) and
         // the numbers LEARNING's math states (`modelFacts`).
         post({ type: "calibration", calib: JSON.parse(engine.calibration()), forecasts: engineForecasts(), facts: modelFacts() });
-      } catch (_) { /* older engine: the UI falls back to its own tally */ }
+      } catch (err) {
+        // An older engine, or a summary that failed: answered all the same,
+        // with none (`calib: null`), and main keeps what it had (its own
+        // tally until a summary lands). A trap is rethrown unanswered, as in
+        // `performReply`: `runMessage` answers it with the fatal
+        // `engine_error` and latches `poisoned`.
+        if (isFatal(err, String((err && err.message) || err))) throw err;
+        post({ type: "calibration", calib: null });
+      }
       break;
     }
     case "render": {

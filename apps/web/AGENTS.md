@@ -39,10 +39,13 @@ the long-form notes are this directory's `README.md`.
   edit). There must be **no backtick anywhere inside `PROCESSOR`** in
   `live-audio.js`, not even in a comment: the worklet class is one template
   literal, and the failure is a worklet that silently never registers.
-- **Every worker request gets a reply.** Bench edits get `bench` or
-  `edit_rejected`, or the main thread's queue deadlocks. Anything the player
-  does goes in the `now` lane of `worker.js`. Long work goes in `soon` or
-  `later`, and breathes between steps.
+- **Every worker request gets a reply,** carrying its number (`re`), except
+  the few never answered by design: the fixture's `UNANSWERED`, listed in
+  [web-runtime.md § The worker's replies](../../docs/architecture/web-runtime.md#the-workers-replies)
+  and held to the worker by `tests/worker-protocol.test.mjs`. Bench edits
+  get `bench` or `edit_rejected`, or the main thread's queue deadlocks.
+  Anything the player does goes in the `now` lane of `worker.js`. Long work
+  goes in `soon` or `later`, and breathes between steps.
 - **Bench edits go through the one ordered lane** in `main.js`. A drag
   starts from the value the player last set, not from the last reply, and the
   rack never rebuilds a knob under a held pointer.

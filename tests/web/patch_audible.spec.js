@@ -650,8 +650,12 @@ test("an undo and a redo of a selector keep the held note's level: the voices ta
     await page.locator("#rack-subject").click();
     await page.keyboard.press(key);
     // The reply to this undo (or redo): the last reply to the restore the key
-    // sent, by the request it names. Not the first bench reply after the key,
-    // which on a slow machine was an earlier request's landing late (#175).
+    // sent, by the request it names, rather than the first bench reply after
+    // the key, which is right only while nothing else is in the lane. (#175
+    // failed at throttle 4 for another reason: the spec's slowdown, served
+    // with the worker, was dropped whenever the fixture routed the worker
+    // itself, so the restore's render was a memo hit and its reply came at
+    // once. Booting with `workerPrefix` keeps it.)
     await expect.poll(async () => (await app.sent({ type: "edit_set_tree", restore: true }, { after: t0 })).length).toBe(1);
     const [asked] = await app.sent({ type: "edit_set_tree", restore: true }, { after: t0 });
     const back = await app.replyTo(asked, { timeout: 30_000 });

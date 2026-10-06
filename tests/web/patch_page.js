@@ -71,13 +71,20 @@ const laneCounts = (app) => app.page.evaluate((edits) => {
  *  here, never missed between the two. A state, not a quiet window: an
  *  engine wait. */
 async function settled(app, { timeout = 90_000 } = {}) {
-  const waiting = async () => (await app.unanswered({ lanes: ["bench"] })).length;
+  let left = [];
+  const waiting = async () => (left = await app.unanswered({ lanes: ["bench"] })).length;
   const frames = () => app.page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-  await app.engine((ms) => expect.poll(async () => {
-    if (await waiting()) return false;
-    await frames();
-    return (await waiting()) === 0;
-  }, { timeout: ms, message: "the bench lane settled" }).toBe(true), { ms: timeout });
+  try {
+    await app.engine((ms) => expect.poll(async () => {
+      if (await waiting()) return false;
+      await frames();
+      return (await waiting()) === 0;
+    }, { timeout: ms, message: "the bench lane settled" }).toBe(true), { ms: timeout });
+  } catch (err) {
+    // Say which edits were still waiting for their last reply, as
+    // `app.answered` does.
+    throw new Error(`the bench lane never settled: still waiting for ${left.map((r) => `${r.type} #${r.rid}`).join(", ") || "none at the last look"}\n${err.message}`);
+  }
 }
 
 /** The newest `guess` reply with a ranking in it for the tree on the bench,

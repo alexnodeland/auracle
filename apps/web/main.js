@@ -2373,6 +2373,9 @@ worker.onmessage = (e) => {
       break;
     }
     case "calibration": {
+      // No summary (an older engine, or one that failed to make it): what was
+      // shown stands, the engine's last summary or the page's own tally.
+      if (m.calib == null) break;
       engineCalib = m.calib;
       if (m.forecasts) engineForecasts = m.forecasts;
       if (m.facts) engineFacts = m.facts;

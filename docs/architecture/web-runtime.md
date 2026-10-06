@@ -270,10 +270,12 @@ A request whose handler throws is answered with `engine_error`, carrying its
 `re`. What the worker says of its own accord carries no `re`: `busy` and
 `idle`, a log line, a crew wanted or reaped (`farm_want`, `farm_done`), the
 boot's fill (`fill_progress`, `repaired`, `playable`, `filled`, a restore's
-`fitted`, and `boot_failed` once `ready` has gone: `init` itself is answered
-by `ready`, or by `boot_failed` before it), a face that was `pending`
-when its `faces` request was answered, and the sound of your own re-ranked
-when the presets' file lands (`own_sound` with `presets`).
+`audition_clip`, `restore_failed` and `fitted`, and `boot_failed` once `ready`
+has gone: `init` itself is answered by `ready`, or by `boot_failed` before
+it), a face that was `pending` when its `faces` request was answered, the
+sound of your own re-ranked when the presets' file lands (`own_sound` with
+`presets`), and the `engine_error` for a rejection nothing awaited
+(`request: null`).
 
 The reply path in `worker.js` is one function, `emit`, behind three names,
 so the echo cannot be forgotten:
@@ -304,9 +306,10 @@ number:
 - a stopped generation answers its `refine` with `refined`, and a stopped ⚡
   its `refine_from` with `evolved_from` (`reason: "stopped"`);
 - one render of an id answers everyone who asked (`renderJoined`): a
-  background render asked for while the player's is queued is not queued
-  again, and the player's takes the place of a queued background one. Its
-  one reply's `re` lists both numbers;
+  background render asked for while one of the same id is queued (the
+  player's, or another in the background) is not queued again, and the
+  player's takes the place of a queued background one. Its one reply's `re`
+  lists every number it answers;
 - a request that arrives before the engine is up gets `not_ready`.
 
 Never answered, by design: `log_edit`, `log_event`, `duel_shown` and
@@ -320,8 +323,12 @@ Main still matches a reply by what it is about (an id, a `token`, PERFORM's
 `req`); `re` names the request itself. The browser specs read it, through
 the fixture's `app.replyTo` and `app.answered` (`tests/web/AGENTS.md`).
 `apps/web/tests/worker-protocol.test.mjs` runs `send` and the reply path as
-written, and holds the never-answered list (the fixture's `UNANSWERED`) to
-the worker.
+written, the bench's cases and a generation's replies among them, and holds
+the never-answered list (the fixture's `UNANSWERED`) to the worker both
+ways: each request on it posts no reply of its own, and each one the
+worker's source leaves unanswered is on it (a case that hands its request
+to a helper is checked through the helper; the worker's own queued work,
+`face_lookup`, `face_render` and `breed_step`, is never sent by main).
 
 ## The ratings after each pick
 
