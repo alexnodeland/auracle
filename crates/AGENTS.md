@@ -54,6 +54,38 @@ each crate's own `AGENTS.md` has its rules.
   what it does, and no crate falls below its coverage floor
   ([Coverage](#coverage)). `make coverage` says so before CI does.
 
+## Writing a test
+
+What a test checks, and at which level, is the test audit's standard (#178;
+the level table is in `docs/architecture/testing.md`). In the crates:
+
+- **Tests sit beside their module.** A module's tests are in `<module>/tests.rs`
+  (`#[cfg(test)] mod tests;`), not in `lib.rs` and not inline; fixtures that
+  several test files share are in a `src/testkit.rs` (`#[cfg(test)] mod
+  testkit;`), which is measured, so each of its helpers runs in the fast tier.
+- **A statistical bound comes from a sweep of seeds**, never from the seed the
+  test ships with. Run the claim over many seeds (or simulate the rule), set
+  the bound where it fails on a negligible share of them, and say in the test
+  what the sweep measured. A bound the shipped seed happens to clear fails on
+  the next change that moves a random stream.
+- **"Every X" derives X from its `::ALL` constant** (or the type's own list),
+  never from a literal count or a list retyped in the test, so a new member is
+  swept the day it is added.
+- **An input is sized to its claim.** `N + 1` inserts turn over a pool of `N`;
+  the preset bank is a census, not a fixture; a standardizer whose units the
+  assertion does not read is fitted on a few presets; a reload whose subject
+  is not measurement shares the memo.
+- **Quiver's RNG is seeded in every test that ticks audio**
+  (`quiver::rng::seed(…)` before the render): its noise is clock-seeded
+  otherwise, and a test that passes on most clocks is flimsy.
+- **A wire-format index is pinned as a literal table**: a number that crosses
+  the wasm boundary or a saved file in place of a name (a palette index, an
+  enum's spelling) is written out in the test, index by index, so a reorder
+  fails there and not in a player's session.
+- **A binding test checks only what the binding adds** (shapes, field names,
+  refusals, ids, `u64` at the boundary). The engine fact it relies on has its
+  test in `auracle-session` or below.
+
 ## Coverage
 
 The fast tier's tests are measured with cargo-llvm-cov, and the *Coverage*
