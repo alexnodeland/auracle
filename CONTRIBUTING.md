@@ -268,11 +268,14 @@ an alias for notes written before the rename).
    changed Rust that the web app uses, rebuild with `make wasm` and
    smoke-test the instrument (`make serve`, play a patch, watch the console).
 3. Update docs alongside code: `www/reference/` for design decisions and how it
-   works, `www/docs/` for what the instrument *does*, `CHANGELOG.md` under
-   `[Unreleased]` for anything user-visible. That section becomes the release
-   notes verbatim when a version is cut (see [Cutting a
-   release](#cutting-a-release)), so write it for someone who has never seen
-   the repo.
+   works, `www/docs/` for what the instrument *does*, and for anything
+   user-visible, a changelog entry as `changelog.d/<topic>.md`, `<topic>`
+   being your branch's ([`changelog.d/README.md`](changelog.d/README.md)
+   says how). It holds what you would have put under `CHANGELOG.md`'s
+   `[Unreleased]`, in a file of its own, so two open PRs never edit the same
+   lines. A release moves it into `CHANGELOG.md`, and it becomes the release
+   notes verbatim (see [Cutting a release](#cutting-a-release)), so write it
+   for someone who has never seen the repo.
    - The reference quotes constants by name so they can be grepped when one
      moves. If you change a default, grep the books for it.
    - `make site && make site-check` before pushing a docs change. CI runs both.
@@ -325,9 +328,13 @@ The steps, in order:
    `[workspace.dependencies]` and in `crates/auracle-wasm/Cargo.toml`. Cargo
    refuses to resolve a path dependency whose version requirement the member no
    longer satisfies, so a half-bump fails loudly at `cargo check` — run it.
-3. **Close the changelog section.** Rename `## [Unreleased]` to `## [X.Y.Z] —
-   YYYY-MM-DD`, write the short paragraph under it that says what this release
-   *is*, and open a fresh empty `## [Unreleased]` above it. This text becomes
+3. **Close the changelog section.** Run
+   `python3 scripts/changelog.py --release X.Y.Z YYYY-MM-DD` (`--preview`
+   first shows what it will hold). It makes `## [X.Y.Z] - YYYY-MM-DD` from
+   what `## [Unreleased]` holds, then every entry waiting in `changelog.d/`,
+   in the order they merged, deletes those files, and leaves an empty
+   `## [Unreleased]` above it with its note. Then write the short paragraph
+   under the new heading that says what this release *is*. This text becomes
    the release notes verbatim, so write it for someone who has never seen the
    repo.
 4. **Open a PR for 2 and 3 with the `queue` label, and wait for the queue to
@@ -340,6 +347,10 @@ The steps, in order:
    git push origin v0.2.0
    ```
 
+   If a PR with an entry in `changelog.d/` merged after the one from step 4,
+   tag that one's merge commit instead: the change after it belongs to the
+   next release.
+
 6. **Watch the release workflow**, then check the things a green run does not
    prove:
    download the attached zip, serve it, and confirm the app boots from the
@@ -347,8 +358,9 @@ The steps, in order:
    `/reference/api/`) to confirm the deploy landed and the routes resolve.
 
 The release workflow **fails before building** if the tag and the workspace
-version disagree, or if `CHANGELOG.md` has no section for the tag. Both are
-cheap to hit and expensive to notice later. An asset labelled v0.3.0 whose
+version disagree, if `CHANGELOG.md` has no section for the tag, or if
+`changelog.d/` still holds an entry (a change the tag ships that its notes
+don't mention). All three are cheap to hit and expensive to notice later. An asset labelled v0.3.0 whose
 crates all say `0.2.0` is a bug report waiting to happen.
 
 To rehearse the bundle locally without tagging anything:

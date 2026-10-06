@@ -26,7 +26,8 @@ deeper material. Read those when a task takes you into their area, not before.
 | `www/video` | The films: scripts, shots, stage, voice, score, mix, publish | [`www/video/AGENTS.md`](www/video/AGENTS.md) |
 | `docs` | For contributors and agents: architecture, decisions (ADRs), proposals, plans, runbooks | [`docs/README.md`](docs/README.md) |
 
-`CHANGELOG.md` is user-facing release notes. `CONTRIBUTING.md` is the human
+`CHANGELOG.md` is user-facing release notes, and `changelog.d/` holds the
+entries waiting for the next release. `CONTRIBUTING.md` is the human
 contributor guide; this file does not repeat it.
 
 ## Rules that hold everywhere
@@ -75,8 +76,10 @@ contributor guide; this file does not repeat it.
    edits to the first three.
 8. **Commits explain why.** Loose conventional prefixes (`feat:`, `fix(web):`,
    `docs:` …), an imperative subject, a body that says what was wrong and why
-   this is the fix. User-visible changes get a `CHANGELOG.md` entry under
-   `[Unreleased]`, written for someone who has never seen the repo.
+   this is the fix. A user-visible change writes its changelog entry as
+   `changelog.d/<topic>.md`, not under `CHANGELOG.md`'s `[Unreleased]` (a
+   release moves it there; [`changelog.d/README.md`](changelog.d/README.md)),
+   written for someone who has never seen the repo.
 9. **Work flows through issues and reviewed PRs.** Outstanding work is a
    GitHub issue. A change is built on its own `claude/<topic>` branch in its
    own worktree. An agent commits there and never pushes, opens a PR or

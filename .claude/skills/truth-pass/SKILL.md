@@ -25,7 +25,7 @@ status lines, tooltips, knob labels (`describe.rs`, `SITE_NAMES` in
 rg -n -i "<word>|<old word>" \
   www/docs/src www/reference/src www/landing/index.html \
   www/video/films/*/script.json www/video/films/*/storyboard.md \
-  apps/web/index.html apps/web/*.js README.md CHANGELOG.md
+  apps/web/index.html apps/web/*.js README.md CHANGELOG.md changelog.d
 ```
 
 | Surface | Holds |
@@ -36,7 +36,7 @@ rg -n -i "<word>|<old word>" \
 | `www/landing/index.html` | The pitch and its captions |
 | `www/video/films/*/script.json` | Narration; `shots.json`/`film.js` hold on-screen callouts |
 | `apps/web/index.html`, `*.js` | In-app copy, help card, tooltips, first-steps strip |
-| `CHANGELOG.md` | What changed, in `[Unreleased]` |
+| `CHANGELOG.md`, `changelog.d/*.md` | What changed: each release's notes; the entries waiting for the next one are one file per change in `changelog.d/` (the older ones under `[Unreleased]`) |
 
 ## 3. Decide, for each hit
 

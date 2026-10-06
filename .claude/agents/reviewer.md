@@ -25,8 +25,9 @@ the ADRs they link. Then review the diff (`git diff <base>...<head>`) for:
   mouse, keyboard and touch. Check the builder's before → after table against
   the old code, not only against the report.
 - **Truth**: ADR-004 (every description of the changed behaviour updated in
-  the same change: guide, reference, films, in-app copy, a `CHANGELOG.md`
-  entry for anything a player notices, the plan's as-built) and ADR-012
+  the same change: guide, reference, films, in-app copy, a changelog entry
+  as `changelog.d/<topic>.md` for anything a player notices, never an edit
+  under `CHANGELOG.md`'s `[Unreleased]`, the plan's as-built) and ADR-012
   (every mark and motion an engine fact, never an estimate drawn as one).
 - **Spec robustness** under the no-retry policy (`docs/process.md` § Flakes):
   waits on states, never times; no exact count of something a slow runner may

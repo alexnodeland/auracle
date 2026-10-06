@@ -1,6 +1,6 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
-last_updated: 2026-10-05
+last_updated: 2026-10-06
 related_adrs: [3, 5, 22]
 ---
 
@@ -21,7 +21,8 @@ this table.
 | JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
 | Tokens | `python3 www/brand/tokens.py --check` (in `make dev-check`) | Every generated block is current; no color is written outside the tokens; no token is redefined after its block; no file's count of literal font sizes, spacings, radii and durations (in its CSS, its scripts' styles, canvas fonts and animations, and the custom properties those use) has moved from `www/brand/sizes-baseline.json` (`www/brand/README.md` § The tokens) | Any stylesheet, a page's styles, a script that draws or styles |
-| Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog |
+| Voice | `python3 www/checkwords.py` (in `make dev-check`) | No file's count of banned words, em dashes or British spellings has moved from `www/brand/voice-baseline.json` (`www/brand/voice.md` § How this is kept) | Any copy: app strings, the site, the guide, the reference, the films, the README, the changelog and its entries in `changelog.d/` |
+| Changelog | `python3 scripts/changelog.py --check` and `python3 scripts/test_changelog.py` (in `make dev-check`; CI's *What changed* job runs the check on every PR) | Every entry waiting in `changelog.d/` is one or more `### Kind: title` sections with no heading that would cut a release's notes short, and `CHANGELOG.md` has the one `## [Unreleased]` a release closes; the assembler's tests cover the parse, the merge order and the release (`changelog.d/README.md`) | A changelog entry, `scripts/changelog.py` |
 | Film tools | `make dev-check` (its `dev-film-tests` part) | The films' sound stays one source (`www/brand/sound.py --check`), and the film tools' own tests pass: the timeline's grammar, the film's bed and marks, the mix to the ladder (`www/video/tools/test_*.py`). The mix's tests need numpy and scipy: locally from `.venv-voice`, in CI's Web job pinned from `www/video/requirements-tools.txt` | Any change under `www/video/tools/`, `www/video/sound/` or `www/brand/sound.*` |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target, with no warnings (CI's engine build has `-Dwarnings`) | Rust in session or wasm |
 | Crate tests | `make test-crate CRATE=<crate>` (`cargo test -p <crate> --profile test-fast --lib --bins --tests` with the pinned compiler; a bare `cargo` with Homebrew's first on PATH is not it) | That crate's gates | The crate you changed |

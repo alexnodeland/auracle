@@ -97,7 +97,9 @@ in a plan's prose, a session's notes or a conversation.
   to date with `main` itself.
 - **Descriptions stay true in the same change**
   ([ADR-004](decisions/004-descriptions-stay-true.md)): the guide, the
-  reference, in-app copy, `CHANGELOG.md`, and the plan's as-built section.
+  reference, in-app copy, the changelog entry (`changelog.d/<topic>.md`,
+  which a release moves into `CHANGELOG.md`), and the plan's as-built
+  section.
 - **Drop no functionality.** When something moves or is retired, every
   capability keeps a home by mouse, keyboard and touch, and the builder's
   report has the before → after table that shows it. Where a capability has
@@ -222,11 +224,11 @@ CI is the gate ([`architecture/testing.md` § CI tiers](architecture/testing.md#
   first: `git rebase --onto origin/main <the one ahead's last head>`. Don't
   push it stacked on the one ahead: a squash merge gives `main` one new
   commit, and the branch behind, still carrying the old ones, conflicts
-  wherever both PRs changed the same lines (`CHANGELOG.md`'s Unreleased
-  section, nearly always).
+  wherever both PRs changed the same lines.
 - **A conflict with `main` takes a PR out of the queue.** Two PRs that both
-  edit the same lines (the top of `CHANGELOG.md`'s Unreleased section, most
-  often) can't both be rebased: the second leaves the queue. Rebase it on
+  edit the same lines can't both be rebased: the second leaves the queue.
+  Their changelog entries never do this, since each is a file of its own in
+  `changelog.d/`. Rebase it on
   `main` by hand, push with
   `--force-with-lease=<branch>:<the head on GitHub>`, and queue it again.
 - **By hand, only when Mergify is down:**
