@@ -57,7 +57,18 @@ each crate's own `AGENTS.md` has its rules.
 ## Writing a test
 
 What a test checks, and at which level, is the test audit's standard (#178;
-the level table is in `docs/architecture/testing.md`). In the crates:
+its rubric is `docs/notes/test-audit-2026-10/rubric.md`). A test checks
+something a player sees, hears or can do, an engine fact the app shows, or a
+contract, and it lives at the lowest level that can prove it:
+
+| Level | Proves | Where |
+| --- | --- | --- |
+| Rust unit | One module's logic | `<module>/tests.rs` |
+| Rust engine | Engine behavior through a crate's public API: the pool, duels, fits, walks, PERFORM's offers and measurements, names, persistence | The tests of the module that owns it (`auracle-session/src/engine/tests.rs` for most) |
+| Wasm binding | Only what the binding adds: shapes, field names, refusals, `u32` ids, the `u64` seed | `auracle-wasm`'s tests |
+| Above the crates | Pure `apps/web` logic (`node:test`); a worker message and its reply (a harness #178 plans); the wiring from a gesture to the engine and back, and what a player sees and hears (the browser) | `apps/web/tests`, `tests/web` |
+
+In the crates:
 
 - **Tests sit beside their module.** A module's tests are in `<module>/tests.rs`
   (`#[cfg(test)] mod tests;`), not in `lib.rs` and not inline; fixtures that
@@ -83,7 +94,7 @@ the level table is in `docs/architecture/testing.md`). In the crates:
   enum's spelling) is written out in the test, index by index, so a reorder
   fails there and not in a player's session.
 - **A binding test checks only what the binding adds** (shapes, field names,
-  refusals, ids, `u64` at the boundary). The engine fact it relies on has its
+  refusals, `u32` ids, the `u64` seed). The engine fact it relies on has its
   test in `auracle-session` or below.
 
 ## Coverage
