@@ -6,32 +6,45 @@ fn col(values: &[f64]) -> Vec<Vec<f64>> {
     values.iter().map(|v| vec![*v]).collect()
 }
 
-/// The defect, as a number. Fifty rows of a coordinate spread over [0,1]
-/// plus **one** escaped `1e30`: unwinsorized, the outlier owns the mean
-/// and the scale, every real patch standardizes to the same place, and the
-/// column is dead — the model can never learn from an axis whose fifty
-/// honest values are separated by 1e-30 of a standard deviation.
+/// The defect, as a number. A coordinate spread over [0,1] plus **one**
+/// escaped `1e30`: unwinsorized, the outlier owns the mean and the scale,
+/// every real patch standardizes to the same place, and the column is dead —
+/// the model can never learn from an axis whose honest values are separated
+/// by 1e-30 of a standard deviation.
+///
+/// At every size this runs at: the smallest column the detector acts on
+/// (10 rows), the 48-row pool the app and the search-health harness fit at
+/// (where a `floor` of the tail fraction once clipped nothing, so the rule
+/// was inert exactly where it was needed), the fifty-odd rows of a pool with
+/// its log, and a long log.
 #[test]
 fn one_escaped_row_cannot_kill_a_column() {
-    let mut values: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
-    let clean = Standardizer::fit(&col(&values));
-    values.push(1e30);
-    let poisoned = Standardizer::fit(&col(&values));
+    for n in [10, 48, 51, 200] {
+        let mut values: Vec<f64> = (0..n - 1).map(|i| i as f64 / (n - 2) as f64).collect();
+        let clean = Standardizer::fit(&col(&values));
+        values.push(1e30);
+        let poisoned = Standardizer::fit(&col(&values));
 
-    // The scale still describes where the real data is, to within the one
-    // row's worth of extra weight at the top of the range.
-    assert!(
-        (poisoned.std[0] - clean.std[0]).abs() < 0.05,
-        "σ moved from {} to {}",
-        clean.std[0],
-        poisoned.std[0]
-    );
-    assert!((poisoned.mean[0] - clean.mean[0]).abs() < 0.05);
+        // The scale still describes where the real data is, to within the
+        // one row's worth of extra weight at the top of the range.
+        let (ds, dm) = (
+            (poisoned.std[0] - clean.std[0]).abs(),
+            (poisoned.mean[0] - clean.mean[0]).abs(),
+        );
+        assert!(ds < 0.05, "{n} rows: σ moved by {ds}");
+        assert!(
+            dm < 1.0 / (n - 1) as f64,
+            "{n} rows: the mean moved by {dm}"
+        );
 
-    // …and the coordinate still separates two real patches, which is the
-    // only thing it is for. Unwinsorized this difference was ~1e-30.
-    let spread = poisoned.transform(&[1.0])[0] - poisoned.transform(&[0.0])[0];
-    assert!(spread > 3.0, "the column carries no information: {spread}");
+        // …and the coordinate still separates two real patches, which is
+        // the only thing it is for. Unwinsorized this difference was ~1e-30.
+        let spread = poisoned.transform(&[1.0])[0] - poisoned.transform(&[0.0])[0];
+        assert!(
+            spread > 3.0,
+            "{n} rows: the column carries no information: {spread}"
+        );
+    }
 }
 
 /// **Clean data must come out bit-identical to the unrobustified fit.**
@@ -78,32 +91,6 @@ fn clean_columns_are_bit_identical_to_the_plain_moments() {
             "case {i}: σ moved"
         );
     }
-}
-
-/// The tail size the detector uses when it does fire. `floor` gave zero for
-/// every n below 50 — including the 48-row reference population the
-/// search-health harness uses — so the rule was inert exactly where it was
-/// needed.
-#[test]
-fn winsor_k_covers_the_sizes_this_runs_at() {
-    assert_eq!(winsor_k(9), 0, "too few rows to call anything a tail");
-    assert_eq!(winsor_k(10), 1);
-    assert_eq!(winsor_k(48), 1, "a full pool must be able to clip a row");
-    assert_eq!(winsor_k(90), 2);
-    assert_eq!(winsor_k(200), 4);
-
-    // …and the guarantee it buys: one escaped value in a 48-row column
-    // cannot move the scale by more than the honest spread of the column.
-    let mut values: Vec<f64> = (0..47).map(|i| i as f64 / 46.0).collect();
-    let clean = Standardizer::fit(&col(&values));
-    values.push(1e30);
-    let poisoned = Standardizer::fit(&col(&values));
-    assert!(
-        (poisoned.std[0] - clean.std[0]).abs() < 0.05,
-        "σ moved from {} to {}",
-        clean.std[0],
-        poisoned.std[0]
-    );
 }
 
 /// A non-finite cell is dropped from its column rather than turning the
