@@ -148,10 +148,13 @@ fn live_params_ramp_without_retrigger() {
     );
 }
 
-/// Patch swap: output fades (no hard discontinuity), the swap completes
-/// with an event, and held notes are re-pressed on the new patch.
+/// Patch swap: the output fades out into the silent rebuild and back in
+/// out of it, never cut hard at either edge, and the swap completes with an
+/// event. (That a held note comes back at its level is
+/// `a_held_pad_keeps_its_envelope_across_a_patch_swap`.)
 #[test]
-fn patch_swap_is_gapless_for_held_notes() {
+fn a_patch_swap_fades_out_and_in_around_its_silent_rebuild() {
+    quiver::rng::seed(7);
     let mut rng = StdRng::seed_from_u64(0x5A5A);
     let mut poly = LivePoly::new(&tree_json(&mut rng), 44_100.0, 4).unwrap();
     poly.note_on(57, 1.0);
@@ -179,26 +182,23 @@ fn patch_swap_is_gapless_for_held_notes() {
     let silent: Vec<usize> = (0..quanta.len()).filter(|&i| quanta[i].0 == 0.0).collect();
     assert!(!silent.is_empty(), "no silent rebuild gap observed");
     let (first, last) = (silent[0], *silent.last().unwrap());
-    if first > 0 {
-        // The final sample before the gap must have been faded to ~0.
-        assert!(
-            quanta[first - 1].2 < 0.02,
-            "hard cut into silence: boundary sample {}",
-            quanta[first - 1].2
-        );
-    }
-    if last + 1 < quanta.len() {
-        // The first sample after the gap starts from ~0 (fade-in).
-        assert!(
-            quanta[last + 1].1 < 0.02,
-            "hard jump out of silence: boundary sample {}",
-            quanta[last + 1].1
-        );
-    }
-    // The held note survived onto the new patch.
+    assert!(first > 0, "the swap fell silent with no fade out");
+    assert!(last + 1 < quanta.len(), "the swap never came back");
+    // The final sample before the gap must have been faded to ~0, and the
+    // first after it starts from ~0 (the fade in).
     assert!(
-        poly.voices.iter().any(|v| v.note == Some(57)),
-        "held note lost across patch swap"
+        quanta[first - 1].2 < 0.02,
+        "hard cut into silence: boundary sample {}",
+        quanta[first - 1].2
+    );
+    assert!(
+        quanta[last + 1].1 < 0.02,
+        "hard jump out of silence: boundary sample {}",
+        quanta[last + 1].1
+    );
+    assert!(
+        quanta[first - 1].0 > 0.0 && quanta[last + 1].0 > 0.0,
+        "the held note sounded on neither side of the gap"
     );
 }
 
